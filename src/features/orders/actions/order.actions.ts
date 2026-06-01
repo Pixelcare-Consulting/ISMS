@@ -78,6 +78,8 @@ export async function approveOrderAction(orderId: string, comment?: string) {
       comment,
     );
     revalidatePath("/orders");
+    revalidatePath("/logistics/deliveries");
+    revalidatePath("/operations");
     return { success: true as const };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to approve order" };

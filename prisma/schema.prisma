@@ -14,6 +14,7 @@ enum BranchStatus {
 
 enum BranchOrderStatus {
   draft
+  pending_ps
   pending_tl
   pending_sp
   pending_logistics
@@ -735,6 +736,7 @@ model BranchOrder {
   approvedBy     User?                      @relation("BranchOrderApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
   details        BranchOrderDetail[]
   approvalLevels BranchOrderApprovalLevel[]
+  deliveries     BranchDelivery[]
 
   @@unique([tenantId, orderNumber])
   @@index([tenantId, branchId, status])
@@ -773,21 +775,24 @@ model BranchOrderApprovalLevel {
 // --- BRS logistics & sales ---
 
 model BranchDelivery {
-  id           String   @id @default(cuid())
-  tenantId     String   @map("tenant_id")
-  branchId     String   @map("branch_id")
-  deliveryNo   String   @map("delivery_no")
-  statusCodeId String   @map("status_code_id")
+  id           String    @id @default(cuid())
+  tenantId     String    @map("tenant_id")
+  branchId     String    @map("branch_id")
+  orderId      String?   @map("order_id")
+  deliveryNo   String    @map("delivery_no")
+  statusCodeId String    @map("status_code_id")
   acceptedAt   DateTime? @map("accepted_at")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
 
   tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branch     Branch           @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  order      BranchOrder?     @relation(fields: [orderId], references: [id], onDelete: SetNull)
   statusCode ReasonStatusCode @relation(fields: [statusCodeId], references: [id])
 
   @@unique([tenantId, deliveryNo])
   @@index([tenantId, branchId, statusCodeId])
+  @@index([tenantId, orderId])
   @@map("branch_deliveries")
 }
 

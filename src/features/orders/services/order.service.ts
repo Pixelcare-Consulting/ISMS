@@ -1,21 +1,29 @@
-import type { BranchOrderType } from "@prisma/client";
+import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
 
 import { auditService } from "@/features/audit/services/audit.service";
 import {
   canApproveOrder,
+  getApprovalLevelForStatus,
+  getInitialOrderStatus,
+  getRoleSlugForApproval,
   nextStatusAfterApprove,
 } from "@/features/orders/constants/order-workflow";
 import { orderRepository } from "@/features/orders/repositories/order.repository";
+import { logisticsService } from "@/features/logistics/services/logistics.service";
 import { planogramRepository } from "@/features/planogram/repositories/planogram.repository";
 import { masterDataRepository } from "@/features/master-data/repositories/master-data.repository";
 import { getUserBranchIds } from "@/lib/aor/scope";
 import { sendWorkflowEmail } from "@/lib/notifications/workflow-email";
 
-const LEVEL_BY_STATUS = {
-  pending_tl: 1,
-  pending_sp: 2,
-  pending_logistics: 3,
-} as const;
+function pendingApprovalEmail(status: BranchOrderStatus, orderType: BranchOrderType) {
+  if (orderType === "special" && status === "pending_sp") {
+    return "Special order submitted — pending Supply Planning approval.";
+  }
+  if (status === "pending_ps") return "Manual order submitted — pending PS review.";
+  if (status === "pending_tl") return "Order pending Team Leader review.";
+  if (status === "pending_sp") return "Order pending Supply Planning approval.";
+  return `Order is pending approval (${status}).`;
+}
 
 async function validateOrderLines(
   tenantId: string,
@@ -156,7 +164,7 @@ export const orderService = {
 
     await sendWorkflowEmail({
       subject: `Branch order ${order.id.slice(-8)} submitted`,
-      body: `Order is pending TL approval.`,
+      body: pendingApprovalEmail(getInitialOrderStatus(data.orderType), data.orderType),
     });
 
     return order;
@@ -171,18 +179,12 @@ export const orderService = {
   ) {
     const order = await orderRepository.findById(tenantId, orderId);
     if (!order) throw new Error("Order not found");
-    if (!canApproveOrder(order.status, roleSlugs)) {
+    if (!canApproveOrder(order.status, order.orderType, roleSlugs)) {
       throw new Error("Not authorized for this approval step");
     }
 
-    const roleSlug =
-      order.status === "pending_tl"
-        ? "tl"
-        : order.status === "pending_sp"
-          ? "sp"
-          : "logistics";
-
-    const level = LEVEL_BY_STATUS[order.status as keyof typeof LEVEL_BY_STATUS] ?? 1;
+    const roleSlug = getRoleSlugForApproval(order.status, order.orderType);
+    const level = getApprovalLevelForStatus(order.status, order.orderType);
 
     await orderRepository.addApproval(orderId, {
       level,
@@ -191,12 +193,20 @@ export const orderService = {
       comment,
     });
 
-    const nextStatus = nextStatusAfterApprove(order.status);
+    const nextStatus = nextStatusAfterApprove(order.status, order.orderType);
     const isFinal = nextStatus === "approved";
 
     await orderRepository.updateStatus(tenantId, orderId, nextStatus, {
       ...(isFinal ? { approvedById: userId } : {}),
     });
+
+    if (isFinal) {
+      await logisticsService.createDeliveryFromApprovedOrder(tenantId, userId, {
+        id: order.id,
+        branchId: order.branchId,
+        orderNumber: order.orderNumber,
+      });
+    }
 
     await auditService.log({
       tenantId,
@@ -204,12 +214,14 @@ export const orderService = {
       action: isFinal ? "order.approved" : "order.approval_step",
       entityType: "BranchOrder",
       entityId: orderId,
-      metadata: { from: order.status, to: nextStatus, roleSlug },
+      metadata: { from: order.status, to: nextStatus, roleSlug, orderType: order.orderType },
     });
 
     await sendWorkflowEmail({
       subject: `Branch order — ${isFinal ? "approved" : "next approval"}`,
-      body: `Order status is now ${nextStatus}.`,
+      body: isFinal
+        ? "Order approved. A branch delivery has been queued for logistics fulfillment."
+        : `Order status is now ${nextStatus}.`,
     });
   },
 
@@ -217,7 +229,7 @@ export const orderService = {
     const order = await orderRepository.findById(tenantId, orderId);
     if (!order) throw new Error("Order not found");
 
-    const level = LEVEL_BY_STATUS[order.status as keyof typeof LEVEL_BY_STATUS] ?? 1;
+    const level = getApprovalLevelForStatus(order.status, order.orderType);
 
     await orderRepository.updateStatus(tenantId, orderId, "rejected");
     await orderRepository.addRejection(orderId, {
@@ -237,6 +249,7 @@ export const orderService = {
 
   countPendingApprovals(tenantId: string) {
     return orderRepository.countPendingByStatus(tenantId, [
+      "pending_ps",
       "pending_tl",
       "pending_sp",
       "pending_logistics",

@@ -83,7 +83,7 @@ export const appNavigation: NavEntry[] = [
     icon: Package,
     items: [
       {
-        href: "/logistics",
+        href: "/logistics/deliveries",
         label: "Deliveries",
         icon: Truck,
         permission: "logistics.manage",

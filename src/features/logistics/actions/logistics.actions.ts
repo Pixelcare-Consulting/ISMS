@@ -6,7 +6,7 @@ import { z } from "zod";
 import { auditService } from "@/features/audit/services/audit.service";
 import { logisticsRepository } from "@/features/logistics/repositories/logistics.repository";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
-import { requirePermission } from "@/lib/auth/permissions";
+import { requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/database/client";
 
 const deliverySchema = z.object({ branchId: z.string().min(1) });
@@ -24,8 +24,15 @@ function nextNo(prefix: string) {
   return `${prefix}-${Date.now().toString(36).toUpperCase()}`;
 }
 
+function revalidateLogisticsPaths() {
+  revalidatePath("/logistics");
+  revalidatePath("/logistics/deliveries");
+  revalidatePath("/logistics/transfers");
+  revalidatePath("/logistics/pickups");
+}
+
 export async function listDeliveriesAction(input?: { page?: number }) {
-  const session = await requirePermission("logistics.manage");
+  const session = await requireAnyPermission(["logistics.manage", "orders.create", "orders.view"]);
   return logisticsRepository.listDeliveries(session.user.tenantId, {
     page: input?.page,
   });
@@ -59,13 +66,13 @@ export async function createDeliveryAction(input: unknown) {
     entityId: row.id,
   });
 
-  revalidatePath("/logistics");
+  revalidateLogisticsPaths();
   revalidatePath("/operations");
   return { success: true as const };
 }
 
 export async function acceptDeliveryAction(id: string) {
-  const session = await requirePermission("logistics.manage");
+  const session = await requireAnyPermission(["logistics.manage", "orders.create"]);
   const acceptedCodeId = await reasonStatusService.requireCodeId(
     session.user.tenantId,
     "delivery_workflow",
@@ -104,21 +111,21 @@ export async function acceptDeliveryAction(id: string) {
     entityId: id,
   });
 
-  revalidatePath("/logistics");
+  revalidateLogisticsPaths();
   revalidatePath("/inventory");
   revalidatePath("/operations");
   return { success: true as const };
 }
 
 export async function listTransfersAction(input?: { page?: number }) {
-  const session = await requirePermission("logistics.manage");
+  const session = await requireAnyPermission(["logistics.manage", "orders.create", "orders.view"]);
   return logisticsRepository.listTransfers(session.user.tenantId, {
     page: input?.page,
   });
 }
 
 export async function createTransferAction(input: unknown) {
-  const session = await requirePermission("logistics.manage");
+  const session = await requirePermission("orders.create");
   const parsed = transferSchema.safeParse(input);
   if (!parsed.success) return { error: "Invalid input" };
 
@@ -146,7 +153,7 @@ export async function createTransferAction(input: unknown) {
     entityId: row.id,
   });
 
-  revalidatePath("/logistics");
+  revalidateLogisticsPaths();
   revalidatePath("/operations");
   return { success: true as const };
 }
@@ -156,26 +163,58 @@ export async function approveTransferAction(id: string) {
   const statusCodeId = await reasonStatusService.requireCodeId(
     session.user.tenantId,
     "transfer_workflow",
+    "for_transfer",
+  );
+  await prisma.branchTransfer.update({
+    where: { id, tenantId: session.user.tenantId },
+    data: { statusCodeId },
+  });
+  revalidateLogisticsPaths();
+  revalidatePath("/operations");
+  return { success: true as const };
+}
+
+export async function executeTransferAction(id: string) {
+  const session = await requirePermission("logistics.manage");
+  const statusCodeId = await reasonStatusService.requireCodeId(
+    session.user.tenantId,
+    "transfer_workflow",
     "in_transit",
   );
   await prisma.branchTransfer.update({
     where: { id, tenantId: session.user.tenantId },
     data: { statusCodeId },
   });
-  revalidatePath("/logistics");
+  revalidateLogisticsPaths();
+  revalidatePath("/operations");
+  return { success: true as const };
+}
+
+export async function receiveTransferAction(id: string) {
+  const session = await requirePermission("orders.create");
+  const statusCodeId = await reasonStatusService.requireCodeId(
+    session.user.tenantId,
+    "transfer_workflow",
+    "completed",
+  );
+  await prisma.branchTransfer.update({
+    where: { id, tenantId: session.user.tenantId },
+    data: { statusCodeId },
+  });
+  revalidateLogisticsPaths();
   revalidatePath("/operations");
   return { success: true as const };
 }
 
 export async function listPulloutsAction(input?: { page?: number }) {
-  const session = await requirePermission("logistics.manage");
+  const session = await requireAnyPermission(["logistics.manage", "orders.create", "orders.view"]);
   return logisticsRepository.listPullouts(session.user.tenantId, {
     page: input?.page,
   });
 }
 
 export async function createPulloutAction(input: unknown) {
-  const session = await requirePermission("logistics.manage");
+  const session = await requirePermission("orders.create");
   const parsed = pulloutSchema.safeParse(input);
   if (!parsed.success) return { error: "Invalid input" };
 
@@ -219,13 +258,77 @@ export async function createPulloutAction(input: unknown) {
     entityId: row.id,
   });
 
-  revalidatePath("/logistics");
+  revalidateLogisticsPaths();
+  revalidatePath("/operations");
+  return { success: true as const };
+}
+
+export async function approvePulloutTlAction(id: string) {
+  const session = await requirePermission("orders.approve");
+  const statusCodeId = await reasonStatusService.requireCodeId(
+    session.user.tenantId,
+    "pullout_workflow",
+    "for_pullout",
+  );
+  await prisma.branchPullout.update({
+    where: { id, tenantId: session.user.tenantId },
+    data: { statusCodeId },
+  });
+  revalidateLogisticsPaths();
+  revalidatePath("/operations");
+  return { success: true as const };
+}
+
+export async function schedulePulloutAction(id: string) {
+  const session = await requirePermission("logistics.manage");
+  const statusCodeId = await reasonStatusService.requireCodeId(
+    session.user.tenantId,
+    "pullout_workflow",
+    "pending_logistics",
+  );
+  await prisma.branchPullout.update({
+    where: { id, tenantId: session.user.tenantId },
+    data: { statusCodeId },
+  });
+  revalidateLogisticsPaths();
+  revalidatePath("/operations");
+  return { success: true as const };
+}
+
+export async function releasePulloutAction(id: string) {
+  const session = await requirePermission("orders.create");
+  const statusCodeId = await reasonStatusService.requireCodeId(
+    session.user.tenantId,
+    "pullout_workflow",
+    "in_transit",
+  );
+  await prisma.branchPullout.update({
+    where: { id, tenantId: session.user.tenantId },
+    data: { statusCodeId },
+  });
+  revalidateLogisticsPaths();
+  revalidatePath("/operations");
+  return { success: true as const };
+}
+
+export async function completePulloutAction(id: string) {
+  const session = await requirePermission("logistics.manage");
+  const statusCodeId = await reasonStatusService.requireCodeId(
+    session.user.tenantId,
+    "pullout_workflow",
+    "completed",
+  );
+  await prisma.branchPullout.update({
+    where: { id, tenantId: session.user.tenantId },
+    data: { statusCodeId },
+  });
+  revalidateLogisticsPaths();
   revalidatePath("/operations");
   return { success: true as const };
 }
 
 export async function listBranchesForLogisticsAction() {
-  const session = await requirePermission("logistics.manage");
+  const session = await requireAnyPermission(["logistics.manage", "orders.create"]);
   return prisma.branch.findMany({
     where: { tenantId: session.user.tenantId, deletedAt: null },
     orderBy: { name: "asc" },
@@ -233,7 +336,7 @@ export async function listBranchesForLogisticsAction() {
 }
 
 export async function listWarehousesForLogisticsAction() {
-  const session = await requirePermission("logistics.manage");
+  const session = await requireAnyPermission(["logistics.manage", "orders.create"]);
   return prisma.warehouse.findMany({
     where: { tenantId: session.user.tenantId },
     orderBy: { name: "asc" },
@@ -241,7 +344,7 @@ export async function listWarehousesForLogisticsAction() {
 }
 
 export async function listPulloutReasonCodesAction() {
-  const session = await requirePermission("logistics.manage");
+  const session = await requireAnyPermission(["logistics.manage", "orders.create"]);
   return reasonStatusService.listActiveCodes(session.user.tenantId, "pullout_reason");
 }
 

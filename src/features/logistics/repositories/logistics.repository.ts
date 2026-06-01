@@ -7,6 +7,7 @@ import type { Prisma } from "@prisma/client";
 
 const deliveryListInclude = {
   branch: { select: { name: true, sapCode: true } },
+  order: { select: { id: true, orderNumber: true } },
   statusCode: { select: { id: true, code: true, name: true } },
 } satisfies Prisma.BranchDeliveryInclude;
 

@@ -14,52 +14,56 @@ export async function seedReasonStatusesForTenant(
 ): Promise<ReasonStatusCodeMap> {
   const map: ReasonStatusCodeMap = {};
 
-  for (const group of REASON_STATUS_DEFAULTS) {
-    const reasonStatus = await prisma.reasonStatus.upsert({
-      where: {
-        tenantId_category_code: {
-          tenantId,
-          category: group.category,
-          code: group.code,
-        },
-      },
-      create: {
-        tenantId,
-        category: group.category,
-        name: group.name,
-        code: group.code,
-      },
-      update: { name: group.name },
-    });
-
-    map[group.category] ??= {};
-
-    for (const codeDef of group.codes) {
-      const codeRow = await prisma.reasonStatusCode.upsert({
+  await Promise.all(
+    REASON_STATUS_DEFAULTS.map(async (group) => {
+      const reasonStatus = await prisma.reasonStatus.upsert({
         where: {
-          tenantId_reasonStatusId_code: {
+          tenantId_category_code: {
             tenantId,
-            reasonStatusId: reasonStatus.id,
-            code: codeDef.code,
+            category: group.category,
+            code: group.code,
           },
         },
         create: {
           tenantId,
-          reasonStatusId: reasonStatus.id,
-          code: codeDef.code,
-          name: codeDef.name,
-          sortOrder: codeDef.sortOrder,
-          isSystem: true,
+          category: group.category,
+          name: group.name,
+          code: group.code,
         },
-        update: {
-          name: codeDef.name,
-          sortOrder: codeDef.sortOrder,
-        },
+        update: { name: group.name },
       });
 
-      map[group.category][codeDef.code] = codeRow.id;
-    }
-  }
+      map[group.category] ??= {};
+
+      await Promise.all(
+        group.codes.map(async (codeDef) => {
+          const codeRow = await prisma.reasonStatusCode.upsert({
+            where: {
+              tenantId_reasonStatusId_code: {
+                tenantId,
+                reasonStatusId: reasonStatus.id,
+                code: codeDef.code,
+              },
+            },
+            create: {
+              tenantId,
+              reasonStatusId: reasonStatus.id,
+              code: codeDef.code,
+              name: codeDef.name,
+              sortOrder: codeDef.sortOrder,
+              isSystem: true,
+            },
+            update: {
+              name: codeDef.name,
+              sortOrder: codeDef.sortOrder,
+            },
+          });
+
+          map[group.category][codeDef.code] = codeRow.id;
+        }),
+      );
+    }),
+  );
 
   return map;
 }
@@ -73,6 +77,7 @@ const LEGACY_DELIVERY_STATUS: Record<string, string> = {
 const LEGACY_TRANSFER_STATUS: Record<string, string> = {
   draft: "draft",
   pending_tl: "pending_tl",
+  for_transfer: "for_transfer",
   in_transit: "in_transit",
   completed: "completed",
   cancelled: "cancelled",
@@ -81,7 +86,9 @@ const LEGACY_TRANSFER_STATUS: Record<string, string> = {
 const LEGACY_PULLOUT_STATUS: Record<string, string> = {
   draft: "draft",
   pending_tl: "pending_tl",
+  for_pullout: "for_pullout",
   pending_logistics: "pending_logistics",
+  in_transit: "in_transit",
   completed: "completed",
   cancelled: "cancelled",
 };

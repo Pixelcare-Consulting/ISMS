@@ -50,9 +50,10 @@ export const REASON_STATUS_DEFAULTS: ReasonStatusDefaultGroup[] = [
     codes: [
       { code: "draft", name: "Draft", sortOrder: 1 },
       { code: "pending_tl", name: "Pending TL", sortOrder: 2 },
-      { code: "in_transit", name: "In transit", sortOrder: 3 },
-      { code: "completed", name: "Completed", sortOrder: 4 },
-      { code: "cancelled", name: "Cancelled", sortOrder: 5 },
+      { code: "for_transfer", name: "For transfer", sortOrder: 3 },
+      { code: "in_transit", name: "In transit", sortOrder: 4 },
+      { code: "completed", name: "Completed", sortOrder: 5 },
+      { code: "cancelled", name: "Cancelled", sortOrder: 6 },
     ],
   },
   {
@@ -61,10 +62,12 @@ export const REASON_STATUS_DEFAULTS: ReasonStatusDefaultGroup[] = [
     code: "pullout_workflow",
     codes: [
       { code: "draft", name: "Draft", sortOrder: 1 },
-      { code: "pending_tl", name: "Pending TL", sortOrder: 2 },
-      { code: "pending_logistics", name: "Pending logistics", sortOrder: 3 },
-      { code: "completed", name: "Completed", sortOrder: 4 },
-      { code: "cancelled", name: "Cancelled", sortOrder: 5 },
+      { code: "pending_tl", name: "Reserve pull-out", sortOrder: 2 },
+      { code: "for_pullout", name: "For pull-out", sortOrder: 3 },
+      { code: "pending_logistics", name: "Pending logistics", sortOrder: 4 },
+      { code: "in_transit", name: "Pull-out in transit", sortOrder: 5 },
+      { code: "completed", name: "Completed", sortOrder: 6 },
+      { code: "cancelled", name: "Cancelled", sortOrder: 7 },
     ],
   },
 ];

@@ -1,3 +1,4 @@
+import { ORDER_WORKFLOW_DESCRIPTION } from "@/features/orders/constants/order-workflow";
 import { listOrdersAction } from "@/features/orders/actions/order.actions";
 import { requirePermission } from "@/lib/auth/permissions";
 import { PageHeader } from "@/app/(app)/_components/page-header";
@@ -17,7 +18,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
     <div className="space-y-6">
       <PageHeader
         title="Branch orders"
-        description="Manual, auto-replenish, and special orders with PS → TL → SP → Logistics approval."
+        description={ORDER_WORKFLOW_DESCRIPTION}
       />
       <OrdersTable result={result} />
     </div>

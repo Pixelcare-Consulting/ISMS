@@ -75,6 +75,9 @@ export async function updateReasonStatusCodeAction(codeId: string, input: unknow
     revalidatePath("/settings/status");
     revalidatePath("/inventory");
     revalidatePath("/logistics");
+    revalidatePath("/logistics/deliveries");
+    revalidatePath("/logistics/transfers");
+    revalidatePath("/logistics/pickups");
     return { success: true as const };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Could not update status code" };

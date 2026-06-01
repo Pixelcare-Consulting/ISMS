@@ -11,6 +11,8 @@ import {
   listModelsForOrderAction,
   rejectOrderAction,
 } from "@/features/orders/actions/order.actions";
+import type { BranchOrderStatus } from "@prisma/client";
+import { ORDER_WORKFLOW_DESCRIPTION, isOrderPendingApproval } from "@/features/orders/constants/order-workflow";
 import { OrderWorkflowDialog } from "@/app/(app)/orders/_components/order-workflow-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -132,7 +134,7 @@ export function OrdersTable({ result }: OrdersTableProps) {
                   {o.details.map((d) => `${d.model.skuCode}×${d.quantity}`).join(", ")}
                 </TableCell>
                 <TableCell>
-                  {["pending_tl", "pending_sp", "pending_logistics"].includes(o.status) ? (
+                  {isOrderPendingApproval(o.status as BranchOrderStatus) ? (
                     <Button size="sm" variant="outline" onClick={() => setWorkflowOrder(o)}>
                       Review
                     </Button>
@@ -210,7 +212,11 @@ function CreateOrderDialog({ onClose }: { onClose: () => void }) {
         toast.error(result.error);
         return;
       }
-      toast.success("Order submitted for TL approval");
+      toast.success(
+        orderType === "special"
+          ? "Special order submitted for SP approval"
+          : "Manual order submitted for PS review",
+      );
       onClose();
       router.refresh();
     });

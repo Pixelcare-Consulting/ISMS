@@ -245,7 +245,7 @@ export const planogramRepository = {
           tenantId,
           branchId,
           status: {
-            in: ["pending_tl", "pending_sp", "pending_logistics"],
+            in: ["pending_ps", "pending_tl", "pending_sp", "pending_logistics"],
           },
         },
       },

@@ -87,6 +87,15 @@ export async function requirePermission(permission: string): Promise<Session> {
   return session;
 }
 
+export async function requireAnyPermission(required: string[]): Promise<Session> {
+  const session = await requireAuth();
+  const permissions = session.user.permissions ?? [];
+  if (!required.some((permission) => permissions.includes(permission))) {
+    redirect("/dashboard?error=forbidden");
+  }
+  return session;
+}
+
 export async function requirePlatformOperator(): Promise<Session> {
   const session = await requireAuth();
   const isPlatformOperator = await resolveSessionPlatformOperator(session.user);

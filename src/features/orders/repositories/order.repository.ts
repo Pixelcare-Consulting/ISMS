@@ -1,5 +1,9 @@
 import { prisma } from "@/lib/database/client";
 import { resolvePagination, toPaginatedResult } from "@/lib/shared/pagination";
+import {
+  getInitialOrderStatus,
+  getOrderApprovalChain,
+} from "@/features/orders/constants/order-workflow";
 import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
 
@@ -63,22 +67,24 @@ export const orderRepository = {
       details: { modelId: string; quantity: number }[];
     },
   ) {
+    const approvalChain = getOrderApprovalChain(data.orderType);
+    const initialStatus = getInitialOrderStatus(data.orderType);
+
     return prisma.branchOrder.create({
       data: {
         tenantId,
         branchId: data.branchId,
         orderType: data.orderType,
         orderNumber: nextOrderNumber(),
-        status: "pending_tl",
+        status: initialStatus,
         createdById: data.createdById,
         notes: data.notes,
         details: { create: data.details },
         approvalLevels: {
-          create: [
-            { level: 1, roleSlug: "tl" },
-            { level: 2, roleSlug: "sp" },
-            { level: 3, roleSlug: "logistics" },
-          ],
+          create: approvalChain.map((step) => ({
+            level: step.level,
+            roleSlug: step.roleSlug,
+          })),
         },
       },
       include: { details: true, approvalLevels: true },

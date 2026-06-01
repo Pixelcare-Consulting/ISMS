@@ -14,8 +14,11 @@ interface StatusCodeBadgeProps {
 
 const WORKFLOW_VARIANTS: Record<string, string> = {
   pending: "border-amber-200 bg-amber-50 text-amber-800",
+  pending_ps: "border-amber-200 bg-amber-50 text-amber-800",
   pending_tl: "border-amber-200 bg-amber-50 text-amber-800",
   pending_logistics: "border-amber-200 bg-amber-50 text-amber-800",
+  for_transfer: "border-violet-200 bg-violet-50 text-violet-800",
+  for_pullout: "border-violet-200 bg-violet-50 text-violet-800",
   accepted: "border-emerald-200 bg-emerald-50 text-emerald-800",
   completed: "border-emerald-200 bg-emerald-50 text-emerald-800",
   in_transit: "border-sky-200 bg-sky-50 text-sky-800",
