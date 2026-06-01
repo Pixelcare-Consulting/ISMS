@@ -10,50 +10,34 @@ import { reasonStatusRepository } from "@/features/reason-status/repositories/re
 
 export const inventoryService = {
 
-  async listForUser(tenantId: string, userId: string, isUnrestricted: boolean) {
-
+  async listForUser(
+    tenantId: string,
+    userId: string,
+    isUnrestricted: boolean,
+    pagination?: { page?: number; limit?: number },
+  ) {
     const branchIds = isUnrestricted
-
       ? undefined
-
       : await aorService.getBranchIdsForUser(tenantId, userId);
 
-
-
     if (!isUnrestricted && (!branchIds || branchIds.length === 0)) {
-
-      return [];
-
+      return inventoryRepository.listByBranches(tenantId, [], pagination);
     }
-
-
 
     const allBranches = branchIds ?? [];
-
     if (isUnrestricted) {
-
       const { branchRepository } = await import(
-
         "@/features/branches/repositories/branch.repository"
-
       );
-
       const branches = await branchRepository.listByTenant(tenantId);
-
       return inventoryRepository.listByBranches(
-
         tenantId,
-
         branches.map((b) => b.id),
-
+        pagination,
       );
-
     }
 
-
-
-    return inventoryRepository.listByBranches(tenantId, allBranches);
-
+    return inventoryRepository.listByBranches(tenantId, allBranches, pagination);
   },
 
 

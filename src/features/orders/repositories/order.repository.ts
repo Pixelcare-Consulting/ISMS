@@ -1,27 +1,45 @@
 import { prisma } from "@/lib/database/client";
+import { resolvePagination, toPaginatedResult } from "@/lib/shared/pagination";
 import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 
 function nextOrderNumber() {
   return `ORD-${Date.now().toString(36).toUpperCase()}`;
 }
 
+const orderListInclude = {
+  branch: { select: { id: true, name: true, sapCode: true } },
+  createdBy: { select: { id: true, name: true, email: true } },
+  details: {
+    include: { model: { select: { id: true, skuCode: true, name: true } } },
+  },
+  approvalLevels: { orderBy: { level: "asc" as const } },
+} satisfies Prisma.BranchOrderInclude;
+
 export const orderRepository = {
-  listForTenant(tenantId: string, branchIds: string[] | null) {
-    return prisma.branchOrder.findMany({
-      where: {
-        tenantId,
-        ...(branchIds?.length ? { branchId: { in: branchIds } } : {}),
-      },
-      include: {
-        branch: { select: { id: true, name: true, sapCode: true } },
-        createdBy: { select: { id: true, name: true, email: true } },
-        details: {
-          include: { model: { select: { id: true, skuCode: true, name: true } } },
-        },
-        approvalLevels: { orderBy: { level: "asc" } },
-      },
-      orderBy: { createdAt: "desc" },
-    });
+  async listForTenant(
+    tenantId: string,
+    branchIds: string[] | null,
+    pagination?: { page?: number; limit?: number },
+  ) {
+    const { limit, page, skip } = resolvePagination(pagination);
+    const where: Prisma.BranchOrderWhereInput = {
+      tenantId,
+      ...(branchIds?.length ? { branchId: { in: branchIds } } : {}),
+    };
+
+    const [items, total] = await Promise.all([
+      prisma.branchOrder.findMany({
+        where,
+        include: orderListInclude,
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: limit,
+      }),
+      prisma.branchOrder.count({ where }),
+    ]);
+
+    return toPaginatedResult(items, total, page, limit);
   },
 
   findById(tenantId: string, id: string) {

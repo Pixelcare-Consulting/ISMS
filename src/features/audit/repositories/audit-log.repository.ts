@@ -138,4 +138,21 @@ export const auditLogRepository = {
     });
     return rows.map((row) => row.entityType);
   },
+
+  findOlderThan(tenantId: string, before: Date, limit: number) {
+    return prisma.auditLog.findMany({
+      where: { tenantId, createdAt: { lt: before } },
+      orderBy: { createdAt: "asc" },
+      take: limit,
+    });
+  },
+
+  deleteByIds(tenantId: string, ids: string[]) {
+    if (ids.length === 0) {
+      return Promise.resolve({ count: 0 });
+    }
+    return prisma.auditLog.deleteMany({
+      where: { tenantId, id: { in: ids } },
+    });
+  },
 };

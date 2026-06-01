@@ -1,9 +1,9 @@
-import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { createPrismaClient } from "../src/lib/database/create-prisma-client";
 import { seedBrsDemoData } from "./seed-brs";
 import { seedReasonStatusesForTenant } from "./seed-reason-status";
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 
 /** Shared dev password — documented in database/seed-users.md */
 const DEMO_PASSWORD = "DemoPass123";

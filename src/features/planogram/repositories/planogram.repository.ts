@@ -33,19 +33,125 @@ export const planogramRepository = {
   },
 
   async countStockForModel(tenantId: string, branchId: string, modelId: string) {
+    const counts = await planogramRepository.countStockByBranchModels(
+      tenantId,
+      branchId,
+      [modelId],
+    );
+    return counts.get(modelId) ?? 0;
+  },
+
+  async countStockByBranchModels(
+    tenantId: string,
+    branchId: string,
+    modelIds: string[],
+  ): Promise<Map<string, number>> {
+    if (modelIds.length === 0) return new Map();
+
     const stk = await reasonStatusRepository.findCodeId(
       tenantId,
       "inventory_system",
       "STK",
     );
-    if (!stk) return 0;
-    return prisma.branchInventory.count({
+    const counts = new Map<string, number>();
+    for (const modelId of modelIds) {
+      counts.set(modelId, 0);
+    }
+    if (!stk) return counts;
+
+    const rows = await prisma.branchInventory.findMany({
       where: {
         tenantId,
         branchId,
         statusCodeId: stk.id,
-        serialNumber: { modelId },
+        serialNumber: { modelId: { in: modelIds } },
       },
+      select: { serialNumber: { select: { modelId: true } } },
+    });
+
+    for (const row of rows) {
+      const modelId = row.serialNumber.modelId;
+      counts.set(modelId, (counts.get(modelId) ?? 0) + 1);
+    }
+    return counts;
+  },
+
+  async countStockByBranchModelPairs(
+    tenantId: string,
+    statusCodeId: string,
+    pairs: { branchId: string; modelId: string }[],
+  ): Promise<Map<string, number>> {
+    if (pairs.length === 0) return new Map();
+
+    const branchIds = [...new Set(pairs.map((p) => p.branchId))];
+    const modelIds = [...new Set(pairs.map((p) => p.modelId))];
+    const pairKeys = new Set(pairs.map((p) => `${p.branchId}:${p.modelId}`));
+    const counts = new Map<string, number>();
+    for (const key of pairKeys) {
+      counts.set(key, 0);
+    }
+
+    const rows = await prisma.branchInventory.findMany({
+      where: {
+        tenantId,
+        branchId: { in: branchIds },
+        statusCodeId,
+        serialNumber: { modelId: { in: modelIds } },
+      },
+      select: {
+        branchId: true,
+        serialNumber: { select: { modelId: true } },
+      },
+    });
+
+    for (const row of rows) {
+      const key = `${row.branchId}:${row.serialNumber.modelId}`;
+      if (!pairKeys.has(key)) continue;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  },
+
+  async findOldestStockByBranchModelPairs(
+    tenantId: string,
+    statusCodeId: string,
+    pairs: { branchId: string; modelId: string }[],
+  ): Promise<Map<string, { updatedAt: Date }>> {
+    if (pairs.length === 0) return new Map();
+
+    const branchIds = [...new Set(pairs.map((p) => p.branchId))];
+    const modelIds = [...new Set(pairs.map((p) => p.modelId))];
+    const pairKeys = new Set(pairs.map((p) => `${p.branchId}:${p.modelId}`));
+    const oldest = new Map<string, { updatedAt: Date }>();
+
+    const rows = await prisma.branchInventory.findMany({
+      where: {
+        tenantId,
+        branchId: { in: branchIds },
+        statusCodeId,
+        serialNumber: { modelId: { in: modelIds } },
+      },
+      select: {
+        branchId: true,
+        updatedAt: true,
+        serialNumber: { select: { modelId: true } },
+      },
+      orderBy: { updatedAt: "asc" },
+    });
+
+    for (const row of rows) {
+      const key = `${row.branchId}:${row.serialNumber.modelId}`;
+      if (pairKeys.has(key) && !oldest.has(key)) {
+        oldest.set(key, { updatedAt: row.updatedAt });
+      }
+    }
+    return oldest;
+  },
+
+  listMilByBranches(tenantId: string, branchIds: string[]) {
+    if (branchIds.length === 0) return Promise.resolve([]);
+    return prisma.branchMilSetting.findMany({
+      where: { tenantId, branchId: { in: branchIds } },
     });
   },
 

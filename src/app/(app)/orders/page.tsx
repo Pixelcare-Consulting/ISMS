@@ -3,9 +3,15 @@ import { requirePermission } from "@/lib/auth/permissions";
 import { PageHeader } from "@/app/(app)/_components/page-header";
 import { OrdersTable } from "@/app/(app)/orders/_components/orders-table";
 
-export default async function OrdersPage() {
+interface OrdersPageProps {
+  searchParams: Promise<{ page?: string }>;
+}
+
+export default async function OrdersPage({ searchParams }: OrdersPageProps) {
   await requirePermission("orders.view");
-  const orders = await listOrdersAction();
+  const params = await searchParams;
+  const page = Number(params.page) || 1;
+  const result = await listOrdersAction({ page });
 
   return (
     <div className="space-y-6">
@@ -13,7 +19,7 @@ export default async function OrdersPage() {
         title="Branch orders"
         description="Manual, auto-replenish, and special orders with PS → TL → SP → Logistics approval."
       />
-      <OrdersTable orders={orders} />
+      <OrdersTable result={result} />
     </div>
   );
 }

@@ -13,20 +13,24 @@ function hasFullOrderAccess(permissions: string[] | undefined) {
   );
 }
 
-export async function listOrdersAction() {
+export async function listOrdersAction(input?: { page?: number }) {
   const session = await requirePermission("orders.view");
-  const orders = await orderService.list(
+  const result = await orderService.list(
     session.user.tenantId,
     session.user.id,
     hasFullOrderAccess(session.user.permissions),
+    { page: input?.page },
   );
-  return orders.map((o) => ({
-    ...o,
-    details: o.details.map((d) => ({
-      ...d,
-      model: { ...d.model, sku: d.model.skuCode },
+  return {
+    ...result,
+    items: result.items.map((o) => ({
+      ...o,
+      details: o.details.map((d) => ({
+        ...d,
+        model: { ...d.model, sku: d.model.skuCode },
+      })),
     })),
-  }));
+  };
 }
 
 export async function listBranchesForOrderAction() {

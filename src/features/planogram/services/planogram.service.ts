@@ -26,28 +26,42 @@ export const planogramService = {
       planogramRepository.listMilByBranch(tenantId, branchId),
     ]);
 
-    const milByModel = new Map(milSettings.map((m: { modelId: string; daysThreshold: number }) => [m.modelId, m.daysThreshold]));
-
-    const rows = await Promise.all(
-      entries.map(async (entry: { id: string; branchId: string; modelId: string; maxQty: number; model: { id: string; skuCode: string; name: string; status: string; brand: { name: string } | null } }) => {
-        const stockCount = await planogramRepository.countStockForModel(
-          tenantId,
-          branchId,
-          entry.modelId,
-        );
-        return {
-          id: entry.id,
-          branchId: entry.branchId,
-          modelId: entry.modelId,
-          maxQty: entry.maxQty,
-          stockCount,
-          daysThreshold: milByModel.get(entry.modelId) ?? null,
-          model: entry.model,
-        };
-      }),
+    const milByModel = new Map(
+      milSettings.map((m: { modelId: string; daysThreshold: number }) => [
+        m.modelId,
+        m.daysThreshold,
+      ]),
     );
 
-    return rows;
+    const stockByModel = await planogramRepository.countStockByBranchModels(
+      tenantId,
+      branchId,
+      entries.map((entry: { modelId: string }) => entry.modelId),
+    );
+
+    return entries.map(
+      (entry: {
+        id: string;
+        branchId: string;
+        modelId: string;
+        maxQty: number;
+        model: {
+          id: string;
+          skuCode: string;
+          name: string;
+          status: string;
+          brand: { name: string } | null;
+        };
+      }) => ({
+        id: entry.id,
+        branchId: entry.branchId,
+        modelId: entry.modelId,
+        maxQty: entry.maxQty,
+        stockCount: stockByModel.get(entry.modelId) ?? 0,
+        daysThreshold: milByModel.get(entry.modelId) ?? null,
+        model: entry.model,
+      }),
+    );
   },
 
   async addModel(input: {
@@ -214,29 +228,49 @@ export const planogramService = {
       "STK",
     );
 
+    const pairs = entries.map((entry) => ({
+      branchId: entry.branchId,
+      modelId: entry.modelId,
+    }));
+    const entryBranchIds = [...new Set(entries.map((entry) => entry.branchId))];
+
+    const [stockByPair, milSettings, oldestByPair] = await Promise.all([
+      stkCode
+        ? planogramRepository.countStockByBranchModelPairs(
+            tenantId,
+            stkCode.id,
+            pairs,
+          )
+        : Promise.resolve(new Map<string, number>()),
+      planogramRepository.listMilByBranches(tenantId, entryBranchIds),
+      stkCode
+        ? planogramRepository.findOldestStockByBranchModelPairs(
+            tenantId,
+            stkCode.id,
+            pairs,
+          )
+        : Promise.resolve(new Map<string, { updatedAt: Date }>()),
+    ]);
+
+    const milByPair = new Map(
+      milSettings.map((mil) => [`${mil.branchId}:${mil.modelId}`, mil.daysThreshold]),
+    );
+
     let belowCapacity = 0;
     let milBreaches = 0;
     const now = Date.now();
 
     for (const entry of entries) {
-      const [stockCount, mil, oldestStock] = await Promise.all([
-        planogramRepository.countStockForModel(tenantId, entry.branchId, entry.modelId),
-        planogramRepository.findMilSetting(tenantId, entry.branchId, entry.modelId),
-        stkCode
-          ? planogramRepository.findOldestStockForModel(
-              tenantId,
-              entry.branchId,
-              entry.modelId,
-              stkCode.id,
-            )
-          : Promise.resolve(null),
-      ]);
-
+      const pairKey = `${entry.branchId}:${entry.modelId}`;
+      const stockCount = stockByPair.get(pairKey) ?? 0;
       if (stockCount < entry.maxQty) belowCapacity += 1;
 
-      if (mil && oldestStock) {
-        const ageDays = (now - oldestStock.updatedAt.getTime()) / (1000 * 60 * 60 * 24);
-        if (ageDays > mil.daysThreshold) milBreaches += 1;
+      const milDays = milByPair.get(pairKey);
+      const oldestStock = oldestByPair.get(pairKey);
+      if (milDays != null && oldestStock) {
+        const ageDays =
+          (now - oldestStock.updatedAt.getTime()) / (1000 * 60 * 60 * 24);
+        if (ageDays > milDays) milBreaches += 1;
       }
     }
 

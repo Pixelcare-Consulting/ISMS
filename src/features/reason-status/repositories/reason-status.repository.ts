@@ -1,40 +1,56 @@
 import type { LookupRecordStatus, ReasonStatusCategory } from "@prisma/client";
 
 import { prisma } from "@/lib/database/client";
+import { CACHE_TTL, cacheKey, getOrSet } from "@/lib/cache/redis";
 
 export const reasonStatusRepository = {
   listByTenant(tenantId: string) {
-    return prisma.reasonStatus.findMany({
-      where: { tenantId },
-      include: {
-        codes: { orderBy: [{ sortOrder: "asc" }, { name: "asc" }] },
-      },
-      orderBy: [{ category: "asc" }, { name: "asc" }],
-    });
+    return getOrSet(
+      cacheKey("tenant", tenantId, "reason-status", "all"),
+      CACHE_TTL.reasonCodes,
+      () =>
+        prisma.reasonStatus.findMany({
+          where: { tenantId },
+          include: {
+            codes: { orderBy: [{ sortOrder: "asc" }, { name: "asc" }] },
+          },
+          orderBy: [{ category: "asc" }, { name: "asc" }],
+        }),
+    );
   },
 
   listActiveCodesByCategory(tenantId: string, category: ReasonStatusCategory) {
-    return prisma.reasonStatusCode.findMany({
-      where: {
-        tenantId,
-        recordStatus: "active",
-        reasonStatus: { category, recordStatus: "active" },
-      },
-      include: { reasonStatus: { select: { name: true, category: true } } },
-      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-    });
+    return getOrSet(
+      cacheKey("tenant", tenantId, "reason-status", "active", category),
+      CACHE_TTL.reasonCodes,
+      () =>
+        prisma.reasonStatusCode.findMany({
+          where: {
+            tenantId,
+            recordStatus: "active",
+            reasonStatus: { category, recordStatus: "active" },
+          },
+          include: { reasonStatus: { select: { name: true, category: true } } },
+          orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+        }),
+    );
   },
 
   findCodeId(tenantId: string, category: ReasonStatusCategory, code: string) {
-    return prisma.reasonStatusCode.findFirst({
-      where: {
-        tenantId,
-        code,
-        recordStatus: "active",
-        reasonStatus: { category, recordStatus: "active" },
-      },
-      select: { id: true, name: true, code: true },
-    });
+    return getOrSet(
+      cacheKey("tenant", tenantId, "reason-status", "code", category, code),
+      CACHE_TTL.reasonCodes,
+      () =>
+        prisma.reasonStatusCode.findFirst({
+          where: {
+            tenantId,
+            code,
+            recordStatus: "active",
+            reasonStatus: { category, recordStatus: "active" },
+          },
+          select: { id: true, name: true, code: true },
+        }),
+    );
   },
 
   findGroup(tenantId: string, category: ReasonStatusCategory) {

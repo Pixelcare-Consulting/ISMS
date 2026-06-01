@@ -63,9 +63,14 @@ async function validateOrderLines(
 }
 
 export const orderService = {
-  async list(tenantId: string, userId: string, hasFullAccess: boolean) {
+  async list(
+    tenantId: string,
+    userId: string,
+    hasFullAccess: boolean,
+    pagination?: { page?: number; limit?: number },
+  ) {
     const branchIds = hasFullAccess ? null : await getUserBranchIds(tenantId, userId);
-    return orderRepository.listForTenant(tenantId, branchIds);
+    return orderRepository.listForTenant(tenantId, branchIds, pagination);
   },
 
   async listModelsForOrder(

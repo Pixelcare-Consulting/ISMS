@@ -13,6 +13,7 @@ import {
   DataTableScroll,
   DataTableShell,
 } from "@/components/data-table/data-table-shell";
+import { TablePagination } from "@/components/data-table/table-pagination";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -32,14 +33,28 @@ interface SaleRow {
   serialNumber: { serialNo: string } | null;
 }
 
-export function SalesTable({ sales }: { sales: SaleRow[] }) {
+interface SalesTableProps {
+  result: {
+    items: SaleRow[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+}
+
+function buildSalesHref(page: number): string {
+  return page > 1 ? `/sales?page=${page}` : "/sales";
+}
+
+export function SalesTable({ result }: SalesTableProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
   function recordSale(branchId: string, amount: number) {
     startTransition(async () => {
-      const result = await createSaleAction({ branchId, amount });
-      if (result.error) {
+      const createResult = await createSaleAction({ branchId, amount });
+      if (createResult.error) {
         toast.error("Could not record sale");
         return;
       }
@@ -64,7 +79,7 @@ export function SalesTable({ sales }: { sales: SaleRow[] }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sales.map((s) => (
+              {result.items.map((s) => (
                 <TableRow key={s.id}>
                   <TableCell className="font-mono text-sm">{s.id.slice(-8)}</TableCell>
                   <TableCell>{s.branch.name}</TableCell>
@@ -95,6 +110,15 @@ export function SalesTable({ sales }: { sales: SaleRow[] }) {
             </TableBody>
           </Table>
         </DataTableScroll>
+        <TablePagination
+          meta={{
+            total: result.total,
+            page: result.page,
+            totalPages: result.totalPages,
+            itemLabel: "sale",
+          }}
+          buildHref={buildSalesHref}
+        />
       </DataTableShell>
     </div>
   );

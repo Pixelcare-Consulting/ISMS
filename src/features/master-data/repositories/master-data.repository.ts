@@ -1,24 +1,40 @@
 import { prisma } from "@/lib/database/client";
+import { CACHE_TTL, cacheKey, getOrSet } from "@/lib/cache/redis";
 
 export const masterDataRepository = {
   listBrands(tenantId: string) {
-    return prisma.brand.findMany({ where: { tenantId }, orderBy: { name: "asc" } });
+    return getOrSet(
+      cacheKey("tenant", tenantId, "master-data", "brands"),
+      CACHE_TTL.masterData,
+      () => prisma.brand.findMany({ where: { tenantId }, orderBy: { name: "asc" } }),
+    );
   },
 
   listCategories(tenantId: string) {
-    return prisma.category.findMany({
-      where: { tenantId },
-      include: { brand: true },
-      orderBy: { name: "asc" },
-    });
+    return getOrSet(
+      cacheKey("tenant", tenantId, "master-data", "categories"),
+      CACHE_TTL.masterData,
+      () =>
+        prisma.category.findMany({
+          where: { tenantId },
+          include: { brand: true },
+          orderBy: { name: "asc" },
+        }),
+    );
   },
 
   listModels(tenantId: string, brandId?: string) {
-    return prisma.productModel.findMany({
-      where: { tenantId, ...(brandId ? { brandId } : {}) },
-      include: { brand: true, category: true },
-      orderBy: { skuCode: "asc" },
-    });
+    const scope = brandId ?? "all";
+    return getOrSet(
+      cacheKey("tenant", tenantId, "master-data", "models", scope),
+      CACHE_TTL.masterData,
+      () =>
+        prisma.productModel.findMany({
+          where: { tenantId, ...(brandId ? { brandId } : {}) },
+          include: { brand: true, category: true },
+          orderBy: { skuCode: "asc" },
+        }),
+    );
   },
 
   findModel(tenantId: string, id: string) {

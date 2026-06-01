@@ -1,11 +1,10 @@
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../src/lib/database/generated/prisma"
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "postgresql"
 }
 
 enum BranchStatus {
@@ -128,6 +127,7 @@ model User {
 
   @@unique([tenantId, email])
   @@index([tenantId])
+  @@index([email])
   @@map("users")
 }
 
@@ -187,6 +187,7 @@ model UserRole {
   role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
   @@unique([userId, roleId])
+  @@index([userId])
   @@map("user_roles")
 }
 
@@ -222,6 +223,7 @@ model AuditLog {
   @@index([tenantId, createdAt])
   @@index([tenantId, action])
   @@index([tenantId, entityType])
+  @@index([tenantId, userId])
   @@map("audit_logs")
 }
 
@@ -397,6 +399,7 @@ model ProductModel {
 
   @@unique([tenantId, skuCode])
   @@index([tenantId])
+  @@index([brandId])
   @@map("product_models")
 }
 
@@ -650,6 +653,7 @@ model SerialNumber {
 
   @@unique([tenantId, serialNo])
   @@index([tenantId])
+  @@index([modelId])
   @@map("serial_numbers")
 }
 
@@ -851,6 +855,7 @@ model BranchSalesTransaction {
 
   @@unique([tenantId, transactionNo])
   @@index([tenantId, branchId])
+  @@index([tenantId, atrStatus])
   @@map("branch_sales_transactions")
 }
 

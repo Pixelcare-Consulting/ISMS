@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { auditService } from "@/features/audit/services/audit.service";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
+import { salesRepository } from "@/features/sales/repositories/sales.repository";
 import { requirePermission } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/database/client";
 
@@ -15,24 +16,22 @@ const saleSchema = z.object({
   notes: z.string().optional(),
 });
 
-export async function listSalesAction() {
+export async function listSalesAction(input?: { page?: number }) {
   const session = await requirePermission("sales.create");
-  const rows = await prisma.branchSalesTransaction.findMany({
-    where: { tenantId: session.user.tenantId },
-    include: {
-      branch: { select: { name: true } },
-      serialNumber: { select: { serialNo: true } },
-    },
-    orderBy: { createdAt: "desc" },
+  const result = await salesRepository.listForTenant(session.user.tenantId, {
+    page: input?.page,
   });
 
-  return rows.map((row) => ({
-    id: row.id,
-    amount: row.amount.toString(),
-    atrStatus: row.atrStatus,
-    branch: row.branch,
-    serialNumber: row.serialNumber,
-  }));
+  return {
+    ...result,
+    items: result.items.map((row) => ({
+      id: row.id,
+      amount: row.amount.toString(),
+      atrStatus: row.atrStatus,
+      branch: row.branch,
+      serialNumber: row.serialNumber,
+    })),
+  };
 }
 
 export async function createSaleAction(input: unknown) {

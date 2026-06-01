@@ -33,12 +33,10 @@ import {
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 
 import {
-
   DataTableScroll,
-
   DataTableShell,
-
 } from "@/components/data-table/data-table-shell";
+import { TablePagination } from "@/components/data-table/table-pagination";
 
 import { Button } from "@/components/ui/button";
 
@@ -83,50 +81,54 @@ interface StatusCodeRef {
 
 
 
+interface PaginatedList<T> {
+  items: T[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+interface DeliveryRow {
+  id: string;
+  deliveryNo: string;
+  statusCode: StatusCodeRef;
+  branch: { name: string };
+}
+
+interface TransferRow {
+  id: string;
+  transferNo: string;
+  statusCode: StatusCodeRef;
+  fromBranch: { name: string };
+  toBranch: { name: string };
+}
+
+interface PulloutRow {
+  id: string;
+  pulloutNo: string;
+  statusCode: StatusCodeRef;
+  reasonStatusCode: StatusCodeRef | null;
+  branch: { name: string };
+  warehouse: { name: string; code: string };
+}
+
 interface LogisticsPanelsProps {
+  deliveries: PaginatedList<DeliveryRow>;
+  transfers: PaginatedList<TransferRow>;
+  pullouts: PaginatedList<PulloutRow>;
+}
 
-  deliveries: {
-
-    id: string;
-
-    deliveryNo: string;
-
-    statusCode: StatusCodeRef;
-
-    branch: { name: string };
-
-  }[];
-
-  transfers: {
-
-    id: string;
-
-    transferNo: string;
-
-    statusCode: StatusCodeRef;
-
-    fromBranch: { name: string };
-
-    toBranch: { name: string };
-
-  }[];
-
-  pullouts: {
-
-    id: string;
-
-    pulloutNo: string;
-
-    statusCode: StatusCodeRef;
-
-    reasonStatusCode: StatusCodeRef | null;
-
-    branch: { name: string };
-
-    warehouse: { name: string; code: string };
-
-  }[];
-
+function buildLogisticsHref(
+  page: number,
+  param: "deliveriesPage" | "transfersPage" | "pulloutsPage",
+): string {
+  const params = new URLSearchParams();
+  if (page > 1) {
+    params.set(param, String(page));
+  }
+  const query = params.toString();
+  return query ? `/logistics?${query}` : "/logistics";
 }
 
 
@@ -309,7 +311,7 @@ export function LogisticsPanels({
 
             <TableBody>
 
-              {deliveries.map((d) => (
+              {deliveries.items.map((d) => (
 
                 <TableRow key={d.id}>
 
@@ -358,15 +360,19 @@ export function LogisticsPanels({
           </Table>
 
         </DataTableScroll>
-
+        <TablePagination
+          meta={{
+            total: deliveries.total,
+            page: deliveries.page,
+            totalPages: deliveries.totalPages,
+            itemLabel: "delivery",
+          }}
+          buildHref={(page) => buildLogisticsHref(page, "deliveriesPage")}
+        />
       </DataTableShell>
 
-
-
       <DataTableShell>
-
         <div className="flex items-center justify-between border-b px-4 py-3">
-
           <h3 className="font-medium">Transfers</h3>
 
           {branches.length >= 2 ? (
@@ -427,7 +433,7 @@ export function LogisticsPanels({
 
             <TableBody>
 
-              {transfers.map((t) => (
+              {transfers.items.map((t) => (
 
                 <TableRow key={t.id}>
 
@@ -480,15 +486,19 @@ export function LogisticsPanels({
           </Table>
 
         </DataTableScroll>
-
+        <TablePagination
+          meta={{
+            total: transfers.total,
+            page: transfers.page,
+            totalPages: transfers.totalPages,
+            itemLabel: "transfer",
+          }}
+          buildHref={(page) => buildLogisticsHref(page, "transfersPage")}
+        />
       </DataTableShell>
 
-
-
       <DataTableShell>
-
         <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
-
           <h3 className="font-medium">Pull-outs</h3>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -583,7 +593,7 @@ export function LogisticsPanels({
 
             <TableBody>
 
-              {pullouts.map((p) => (
+              {pullouts.items.map((p) => (
 
                 <TableRow key={p.id}>
 
@@ -628,7 +638,15 @@ export function LogisticsPanels({
           </Table>
 
         </DataTableScroll>
-
+        <TablePagination
+          meta={{
+            total: pullouts.total,
+            page: pullouts.page,
+            totalPages: pullouts.totalPages,
+            itemLabel: "pull-out",
+          }}
+          buildHref={(page) => buildLogisticsHref(page, "pulloutsPage")}
+        />
       </DataTableShell>
 
       <AlertDialog

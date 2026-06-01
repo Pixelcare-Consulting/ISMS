@@ -37,6 +37,16 @@ yarn-error.log*
 # vercel
 .vercel
 
+# scripts
+/scripts
+/scripts/*
+!/scripts/check-migrations.mjs
+!/scripts/generate-modules-workflow-excel.mjs
+.scripts/
+.scripts/*
+!/scripts/check-migrations.mjs
+!/scripts/generate-modules-workflow-excel.mjs
+
 # typescript
 *.tsbuildinfo
 

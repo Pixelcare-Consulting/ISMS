@@ -1,4 +1,7 @@
 import {
+  ArrowBigRight,
+  ArrowLeftRight,
+  ArrowUpToLine,
   Building2,
   CircleDot,
   ClipboardList,
@@ -20,6 +23,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { getModuleNavPermission } from "@/config/app-modules";
+import { Arrow } from "@radix-ui/react-dropdown-menu";
 
 export interface NavLinkItem {
   href: string;
@@ -74,11 +78,29 @@ export const appNavigation: NavEntry[] = [
     anyPermissions: ["orders.view", "orders.create", "orders.approve"],
   },
   {
-    type: "link",
-    href: "/logistics",
+    type: "group",
     label: "Logistics",
-    icon: Truck,
-    permission: "logistics.manage",
+    icon: Package,
+    items: [
+      {
+        href: "/logistics",
+        label: "Deliveries",
+        icon: Truck,
+        permission: "logistics.manage",
+      },
+      {
+        href: "/logistics/transfers",
+        label: "Transfers",
+        icon: ArrowLeftRight,
+        permission: "logistics.manage",
+      },
+      {
+        href: "/logistics/pickups",
+        label: "Pull-outs",
+        icon: ArrowUpToLine,
+        permission: "logistics.manage",
+      },
+    ],
   },
   {
     type: "link",
