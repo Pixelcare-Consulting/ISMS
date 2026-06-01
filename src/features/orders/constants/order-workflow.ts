@@ -59,6 +59,14 @@ export function nextStatusAfterApprove(
   return chain[idx + 1].status;
 }
 
+/** Roles that may perform Supply Planning (SP) final approval — includes SPA aliases. */
+export const SUPPLY_PLANNING_APPROVER_SLUGS = [
+  "sp",
+  "spa",
+  "supply_planning",
+  "supply_planning_associate",
+] as const;
+
 export function canApproveOrder(
   status: BranchOrderStatus,
   orderType: BranchOrderType,
@@ -70,7 +78,18 @@ export function canApproveOrder(
 
   const step = getOrderApprovalChain(orderType).find((s) => s.status === status);
   if (!step) return false;
+  if (step.roleSlug === "sp") {
+    return SUPPLY_PLANNING_APPROVER_SLUGS.some((slug) => roleSlugs.includes(slug));
+  }
   return roleSlugs.includes(step.roleSlug);
+}
+
+export function isSupplyPlanningApprovalStep(
+  status: BranchOrderStatus,
+  orderType: BranchOrderType,
+): boolean {
+  const step = getOrderApprovalChain(orderType).find((s) => s.status === status);
+  return step?.roleSlug === "sp";
 }
 
 export function getApprovalLevelForStatus(

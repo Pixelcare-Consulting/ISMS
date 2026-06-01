@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import {
   createSaleAction,
+  requestReturnAction,
   updateAtrStatusAction,
 } from "@/features/sales/actions/sales.actions";
 import { listBranchesForOrderAction } from "@/features/orders/actions/order.actions";
@@ -76,6 +77,7 @@ export function SalesTable({ result }: SalesTableProps) {
                 <TableHead>Amount</TableHead>
                 <TableHead>Serial</TableHead>
                 <TableHead>ATR</TableHead>
+                <TableHead className="w-28" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -104,6 +106,28 @@ export function SalesTable({ result }: SalesTableProps) {
                       <option value="reserve">reserve</option>
                       <option value="closed">closed</option>
                     </select>
+                  </TableCell>
+                  <TableCell>
+                    {s.atrStatus === "open" ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={pending}
+                        onClick={() =>
+                          startTransition(async () => {
+                            const result = await requestReturnAction(s.id);
+                            if (result.error) {
+                              toast.error(result.error);
+                              return;
+                            }
+                            toast.success("Return request logged (ATR reserve)");
+                            router.refresh();
+                          })
+                        }
+                      >
+                        Request return
+                      </Button>
+                    ) : null}
                   </TableCell>
                 </TableRow>
               ))}

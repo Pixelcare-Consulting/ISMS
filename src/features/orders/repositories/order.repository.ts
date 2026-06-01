@@ -4,18 +4,17 @@ import {
   getInitialOrderStatus,
   getOrderApprovalChain,
 } from "@/features/orders/constants/order-workflow";
+import { nextSalesOrderNumber } from "@/features/orders/utils/next-sales-order-number";
 import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
-
-function nextOrderNumber() {
-  return `ORD-${Date.now().toString(36).toUpperCase()}`;
-}
 
 const orderListInclude = {
   branch: { select: { id: true, name: true, sapCode: true } },
   createdBy: { select: { id: true, name: true, email: true } },
   details: {
-    include: { model: { select: { id: true, skuCode: true, name: true } } },
+    include: {
+      model: { select: { id: true, skuCode: true, name: true, brandId: true } },
+    },
   },
   approvalLevels: { orderBy: { level: "asc" as const } },
 } satisfies Prisma.BranchOrderInclude;
@@ -57,7 +56,7 @@ export const orderRepository = {
     });
   },
 
-  create(
+  async create(
     tenantId: string,
     data: {
       branchId: string;
@@ -70,12 +69,14 @@ export const orderRepository = {
     const approvalChain = getOrderApprovalChain(data.orderType);
     const initialStatus = getInitialOrderStatus(data.orderType);
 
+    const orderNumber = await nextSalesOrderNumber(tenantId);
+
     return prisma.branchOrder.create({
       data: {
         tenantId,
         branchId: data.branchId,
         orderType: data.orderType,
-        orderNumber: nextOrderNumber(),
+        orderNumber,
         status: initialStatus,
         createdById: data.createdById,
         notes: data.notes,
@@ -135,5 +136,39 @@ export const orderRepository = {
     return prisma.branchOrder.count({
       where: { tenantId, status: { in: statuses } },
     });
+  },
+
+  async finalizeApproved(
+    tenantId: string,
+    orderId: string,
+    data: {
+      approvedById: string;
+      spaRemarks?: string;
+      deliveryDueDate?: Date;
+      brandId?: string | null;
+      lineApprovedQty: { detailId: string; approvedQty: number }[];
+    },
+  ) {
+    const processedAt = new Date();
+
+    await prisma.$transaction([
+      ...data.lineApprovedQty.map((line) =>
+        prisma.branchOrderDetail.update({
+          where: { id: line.detailId },
+          data: { approvedQty: line.approvedQty },
+        }),
+      ),
+      prisma.branchOrder.update({
+        where: { id: orderId, tenantId },
+        data: {
+          status: "approved",
+          approvedById: data.approvedById,
+          processedAt,
+          spaRemarks: data.spaRemarks ?? null,
+          deliveryDueDate: data.deliveryDueDate ?? null,
+          brandId: data.brandId ?? null,
+        },
+      }),
+    ]);
   },
 };

@@ -353,11 +353,12 @@ model Brand {
   name      String
   code      String?
   createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
 
   tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  models   ProductModel[]
-  categories Category[]
+  models       ProductModel[]
+  categories   Category[]
+  branchOrders BranchOrder[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -390,6 +391,7 @@ model ProductModel {
   skuCode    String    @map("sku_code")
   name       String
   srp        Decimal?  @db.Decimal(12, 2)
+  cbm        Decimal?  @db.Decimal(10, 4)
   status     SkuStatus @default(active)
   createdAt  DateTime  @default(now()) @map("created_at")
   updatedAt  DateTime  @updatedAt @map("updated_at")
@@ -687,12 +689,13 @@ model BranchInventory {
 }
 
 model BranchPlanogram {
-  id        String   @id @default(cuid())
-  tenantId  String   @map("tenant_id")
-  branchId  String   @map("branch_id")
-  modelId   String   @map("model_id")
-  maxQty    Int      @default(1) @map("max_qty")
-  createdAt DateTime @default(now()) @map("created_at")
+  id            String    @id @default(cuid())
+  tenantId      String    @map("tenant_id")
+  branchId      String    @map("branch_id")
+  modelId       String    @map("model_id")
+  maxQty        Int       @default(1) @map("max_qty")
+  effectiveFrom DateTime? @map("effective_from")
+  createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   tenant Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -787,20 +790,25 @@ model BranchAllocation {
 // --- BRS orders ---
 
 model BranchOrder {
-  id           String            @id @default(cuid())
-  tenantId     String            @map("tenant_id")
-  branchId     String            @map("branch_id")
-  orderType    BranchOrderType   @map("order_type")
-  status       BranchOrderStatus @default(pending_tl)
-  orderNumber  String            @map("order_number")
-  notes        String?
-  createdById  String            @map("created_by_id")
-  approvedById String?           @map("approved_by_id")
-  createdAt    DateTime          @default(now()) @map("created_at")
-  updatedAt    DateTime          @updatedAt @map("updated_at")
+  id              String            @id @default(cuid())
+  tenantId        String            @map("tenant_id")
+  branchId        String            @map("branch_id")
+  brandId         String?           @map("brand_id")
+  orderType       BranchOrderType   @map("order_type")
+  status          BranchOrderStatus @default(pending_tl)
+  orderNumber     String            @map("order_number")
+  notes           String?
+  spaRemarks      String?           @map("spa_remarks")
+  deliveryDueDate DateTime?         @map("delivery_due_date")
+  processedAt     DateTime?         @map("processed_at")
+  createdById     String            @map("created_by_id")
+  approvedById    String?           @map("approved_by_id")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
 
   tenant         Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branch         Branch                     @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  brand          Brand?                     @relation(fields: [brandId], references: [id], onDelete: SetNull)
   createdBy      User                       @relation("BranchOrderCreatedBy", fields: [createdById], references: [id])
   approvedBy     User?                      @relation("BranchOrderApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
   details        BranchOrderDetail[]
@@ -809,14 +817,16 @@ model BranchOrder {
 
   @@unique([tenantId, orderNumber])
   @@index([tenantId, branchId, status])
+  @@index([tenantId, processedAt])
   @@map("branch_orders")
 }
 
 model BranchOrderDetail {
-  id       String @id @default(cuid())
-  orderId  String @map("order_id")
-  modelId  String @map("model_id")
-  quantity Int
+  id          String @id @default(cuid())
+  orderId     String @map("order_id")
+  modelId     String @map("model_id")
+  quantity    Int
+  approvedQty Int?   @map("approved_qty")
 
   order BranchOrder  @relation(fields: [orderId], references: [id], onDelete: Cascade)
   model ProductModel @relation(fields: [modelId], references: [id], onDelete: Cascade)

@@ -8,6 +8,7 @@ import {
   approveTransferAction,
   createTransferAction,
   executeTransferAction,
+  rejectTransferAction,
   receiveTransferAction,
 } from "@/features/logistics/actions/logistics.actions";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
@@ -74,7 +75,7 @@ type PendingConfirm = {
   id: string;
   transferNo: string;
   route: string;
-  action: "approve" | "execute" | "receive";
+  action: "approve" | "reject" | "execute" | "receive";
 };
 
 export function TransfersPanel({ transfers }: TransfersPanelProps) {
@@ -104,6 +105,9 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
       if (pendingConfirm.action === "approve") {
         await approveTransferAction(pendingConfirm.id);
         toast.success("Transfer endorsed by TL");
+      } else if (pendingConfirm.action === "reject") {
+        await rejectTransferAction(pendingConfirm.id);
+        toast.success("Transfer rejected");
       } else if (pendingConfirm.action === "execute") {
         await executeTransferAction(pendingConfirm.id);
         toast.success("Transfer dispatched — in transit");
@@ -119,6 +123,8 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
   const confirmTitle =
     pendingConfirm?.action === "approve"
       ? "Approve transfer?"
+      : pendingConfirm?.action === "reject"
+        ? "Reject transfer?"
       : pendingConfirm?.action === "execute"
         ? "Execute transfer?"
         : "Receive transfer?";
@@ -126,6 +132,8 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
   const confirmDescription =
     pendingConfirm?.action === "approve"
       ? "Team Lead approval routes the request to the releasing branch."
+      : pendingConfirm?.action === "reject"
+        ? "Rejected transfer requests are closed and excluded from dispatch."
       : pendingConfirm?.action === "execute"
         ? "Logistics will mark units in transit after serial selection at the releasing branch."
         : "Receiving branch confirms arrival and updates stock.";
@@ -178,7 +186,7 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
                     <StatusCodeBadge code={t.statusCode.code} name={t.statusCode.name} />
                   </TableCell>
                   <TableCell className="space-x-2">
-                    {t.statusCode.code === "pending_tl" ? (
+                    {["requested", "pending_tl"].includes(t.statusCode.code) ? (
                       <Button
                         size="sm"
                         disabled={pending}
@@ -195,7 +203,24 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
                         TL approve
                       </Button>
                     ) : null}
-                    {t.statusCode.code === "for_transfer" ? (
+                    {["requested", "pending_tl"].includes(t.statusCode.code) ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={pending}
+                        onClick={() =>
+                          setPendingConfirm({
+                            id: t.id,
+                            transferNo: t.transferNo,
+                            route: `${t.fromBranch.name} → ${t.toBranch.name}`,
+                            action: "reject",
+                          })
+                        }
+                      >
+                        Reject
+                      </Button>
+                    ) : null}
+                    {["approved", "for_transfer"].includes(t.statusCode.code) ? (
                       <Button
                         size="sm"
                         disabled={pending}

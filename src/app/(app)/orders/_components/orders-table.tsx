@@ -34,11 +34,16 @@ import { matchesTableSearch } from "@/utils/match-table-search";
 
 interface OrderRow {
   id: string;
+  orderNumber: string;
   orderType: string;
   status: string;
   branch: { name: string };
   createdBy: { name: string | null; email: string };
-  details: { quantity: number; model: { skuCode: string } }[];
+  details: {
+    id: string;
+    quantity: number;
+    model: { skuCode: string };
+  }[];
 }
 
 interface OrderModelOption {
@@ -80,10 +85,14 @@ export function OrdersTable({ result }: OrdersTableProps) {
     [result.items, query],
   );
 
-  function handleApprove(comment?: string) {
+  function handleApprove(input?: {
+    comment?: string;
+    lineAdjustments?: { detailId: string; approvedQty: number }[];
+    deliveryDueDate?: string;
+  }) {
     if (!workflowOrder) return;
     startTransition(async () => {
-      const result = await approveOrderAction(workflowOrder.id, comment);
+      const result = await approveOrderAction(workflowOrder.id, input);
       if (result.error) {
         toast.error(result.error);
         return;
@@ -131,7 +140,7 @@ export function OrdersTable({ result }: OrdersTableProps) {
           <TableBody>
             {filtered.map((o) => (
               <TableRow key={o.id}>
-                <TableCell className="font-mono text-sm">{o.id.slice(-8)}</TableCell>
+                <TableCell className="font-mono text-sm">{o.orderNumber}</TableCell>
                 <TableCell>{o.branch.name}</TableCell>
                 <TableCell>
                   <OrderTypeBadge orderType={o.orderType} />
@@ -170,12 +179,14 @@ export function OrdersTable({ result }: OrdersTableProps) {
       />
       {workflowOrder ? (
         <OrderWorkflowDialog
-          orderNumber={workflowOrder.id.slice(-8)}
+          orderNumber={workflowOrder.orderNumber}
           orderType={workflowOrder.orderType as "auto_replenish" | "manual" | "special"}
           branchName={workflowOrder.branch.name}
-          linesSummary={workflowOrder.details
-            .map((d) => `${d.model.skuCode}×${d.quantity}`)
-            .join(", ")}
+          lines={workflowOrder.details.map((d) => ({
+            detailId: d.id,
+            skuCode: d.model.skuCode,
+            quantity: d.quantity,
+          }))}
           status={workflowOrder.status as BranchOrderStatus}
           open
           pending={pending}

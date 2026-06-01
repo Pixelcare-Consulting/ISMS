@@ -8,6 +8,7 @@ export interface PlanogramRow {
   branchId: string;
   modelId: string;
   maxQty: number;
+  effectiveFrom: string | null;
   stockCount: number;
   ditCount: number;
   daysThreshold: number | null;
@@ -79,6 +80,7 @@ export const planogramService = {
         branchId: string;
         modelId: string;
         maxQty: number;
+        effectiveFrom: Date | null;
         model: {
           id: string;
           skuCode: string;
@@ -93,6 +95,9 @@ export const planogramService = {
         branchId: entry.branchId,
         modelId: entry.modelId,
         maxQty: entry.maxQty,
+        effectiveFrom: entry.effectiveFrom
+          ? entry.effectiveFrom.toISOString().slice(0, 10)
+          : null,
         stockCount: stockByModel.get(entry.modelId) ?? 0,
         ditCount: ditByModel.get(entry.modelId) ?? 0,
         daysThreshold: milByModel.get(entry.modelId) ?? null,

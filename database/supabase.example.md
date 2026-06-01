@@ -9,7 +9,21 @@ Do not store passwords or API keys in this repo. Use `.env.local` (gitignored).
 | `DATABASE_URL` | Supabase → Settings → Database → Connection pooling (Session mode, port **6543** or pooler host) |
 | `DIRECT_URL` | Supabase → Settings → Database → **Direct connection** (host `db.<project-ref>.supabase.co`, port **5432**) — **not** the pooler URL |
 
-**Important:** `pnpm run db:deploy` / `db:migrate` use `DIRECT_URL`. If `DIRECT_URL` contains `pooler.supabase.com`, migrations will fail with `P1002` advisory lock timeout.
+**Important:** `pnpm run db:deploy` / `db:migrate` use `DIRECT_URL`.
+
+### IPv4-only hosts (this dev server)
+
+Direct host `db.<project-ref>.supabase.co` may not resolve (`ENOTFOUND`). Use the **session pooler** on port **5432** for `DIRECT_URL` (not port 6543).
+
+`migrate dev` can still hit **P1002 advisory lock timeout** when stale locks remain from a crashed run. Fix:
+
+```bash
+pnpm run db:unlock          # clear stale Prisma locks
+pnpm run db:migrate         # unlock + migrate dev (IPv4-safe)
+pnpm run db:deploy          # apply pending migrations without shadow DB
+```
+
+Prefer `db:deploy` in CI/production. Use `db:migrate` locally when creating new migration files.
 | `NEXT_PUBLIC_SUPABASE_URL` | Project URL |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Project API keys (publishable) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Project API keys (service role, **server-only**) |

@@ -81,6 +81,38 @@ export async function createSaleAction(input: unknown) {
   return { success: true as const };
 }
 
+export async function requestReturnAction(saleId: string, notes?: string) {
+  const session = await requirePermission("sales.create");
+  const sale = await prisma.branchSalesTransaction.findFirst({
+    where: { id: saleId, tenantId: session.user.tenantId },
+  });
+  if (!sale) return { error: "Sale not found" as const };
+
+  await prisma.branchSalesTransaction.update({
+    where: { id: saleId },
+    data: {
+      atrStatus: "reserve",
+      notes: notes
+        ? [sale.notes, `[Return requested] ${notes}`].filter(Boolean).join("\n")
+        : sale.notes
+          ? `${sale.notes}\n[Return requested]`
+          : "[Return requested]",
+    },
+  });
+
+  await auditService.log({
+    tenantId: session.user.tenantId,
+    userId: session.user.id,
+    action: "sale.return_requested",
+    entityType: "BranchSalesTransaction",
+    entityId: saleId,
+    metadata: { transactionNo: sale.transactionNo, atrStatus: "reserve" },
+  });
+
+  revalidatePath("/sales");
+  return { success: true as const };
+}
+
 export async function updateAtrStatusAction(id: string, atrStatus: "open" | "reserve" | "closed") {
   const session = await requirePermission("sales.create");
   await prisma.branchSalesTransaction.update({
