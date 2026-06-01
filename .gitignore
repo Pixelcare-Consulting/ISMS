@@ -65,3 +65,7 @@ yarn-error.log*
 /CLAUDE.md
 /docs/
 /.docs/
+
+.claude/
+_bmad/
+_bmad-output/
