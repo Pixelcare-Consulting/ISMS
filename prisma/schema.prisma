@@ -1,0 +1,856 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum BranchStatus {
+  active
+  inactive
+}
+
+enum BranchOrderStatus {
+  draft
+  pending_tl
+  pending_sp
+  pending_logistics
+  approved
+  rejected
+  cancelled
+}
+
+enum BranchOrderType {
+  auto_replenish
+  manual
+  special
+}
+
+enum ReasonStatusCategory {
+  inventory_system
+  pullout_reason
+  delivery_workflow
+  transfer_workflow
+  pullout_workflow
+}
+
+enum LookupRecordStatus {
+  active
+  inactive
+}
+
+enum AtrStatus {
+  open
+  reserve
+  closed
+}
+
+enum SkuStatus {
+  active
+  hold
+  retired
+}
+
+model Tenant {
+  id        String    @id @default(cuid())
+  name      String
+  slug      String    @unique
+  tagline   String?
+  logo      String?
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  users       User[]
+  roles       Role[]
+  departments Department[]
+  auditLogs   AuditLog[]
+  policies    Policy[]
+
+  brands              Brand[]
+  categories          Category[]
+  models              ProductModel[]
+  areas               Area[]
+  regions             Region[]
+  provinces           Province[]
+  packageTypes        PackageType[]
+  paymentTypes        PaymentType[]
+  saleTypes           SaleType[]
+  branches            Branch[]
+  warehouses          Warehouse[]
+  aors                Aor[]
+  serialNumbers       SerialNumber[]
+  branchInventories   BranchInventory[]
+  branchPlanograms    BranchPlanogram[]
+  branchMilSettings   BranchMilSetting[]
+  branchOrders        BranchOrder[]
+  branchDeliveries    BranchDelivery[]
+  branchTransfers     BranchTransfer[]
+  branchPullouts      BranchPullout[]
+  branchSales         BranchSalesTransaction[]
+  reasonStatuses      ReasonStatus[]
+  reasonStatusCodes   ReasonStatusCode[]
+
+  @@map("tenants")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  tenantId      String    @map("tenant_id")
+  email         String
+  name          String?
+  passwordHash  String    @map("password_hash")
+  emailVerified DateTime? @map("email_verified")
+  image         String?
+  departmentId  String?   @map("department_id")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  department Department? @relation(fields: [departmentId], references: [id])
+  userRoles  UserRole[]
+  accounts   Account[]
+  sessions   Session[]
+  auditLogs  AuditLog[]
+  policiesCreated Policy[]       @relation("PolicyCreatedBy")
+  policyVersionsCreated PolicyVersion[] @relation("PolicyVersionCreatedBy")
+  policiesReviewing Policy[]     @relation("PolicyReviewer")
+  policyReviewEvents PolicyReviewEvent[]
+  policyAttachmentsUploaded PolicyAttachment[] @relation("PolicyAttachmentUploadedBy")
+  aors                      Aor[]
+  branchOrdersCreated       BranchOrder[]       @relation("BranchOrderCreatedBy")
+  branchOrdersApproved      BranchOrder[]       @relation("BranchOrderApprovedBy")
+  branchInventoriesUpdated  BranchInventory[]   @relation("BranchInventoryUpdatedBy")
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@map("users")
+}
+
+model Role {
+  id          String    @id @default(cuid())
+  tenantId    String    @map("tenant_id")
+  slug        String
+  name        String
+  description String?
+  isSystem    Boolean   @default(false) @map("is_system")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  rolePermissions RolePermission[]
+  userRoles       UserRole[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String   @id @default(cuid())
+  roleId       String   @map("role_id")
+  permissionId String   @map("permission_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  roleId    String   @map("role_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@map("user_roles")
+}
+
+model Department {
+  id        String    @id @default(cuid())
+  tenantId  String    @map("tenant_id")
+  name      String
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  users  User[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("departments")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  tenantId   String   @map("tenant_id")
+  userId     String?  @map("user_id")
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String?  @map("entity_id")
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, action])
+  @@index([tenantId, entityType])
+  @@map("audit_logs")
+}
+
+model Policy {
+  id          String    @id @default(cuid())
+  tenantId    String    @map("tenant_id")
+  title       String
+  description String?
+  status      String    @default("draft")
+  createdById String    @map("created_by_id")
+  reviewerId  String?   @map("reviewer_id")
+  approvedAt  DateTime? @map("approved_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  tenant       Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy    User                @relation("PolicyCreatedBy", fields: [createdById], references: [id])
+  reviewer     User?               @relation("PolicyReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  versions     PolicyVersion[]
+  reviewEvents PolicyReviewEvent[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("policies")
+}
+
+model PolicyVersion {
+  id          String   @id @default(cuid())
+  policyId    String   @map("policy_id")
+  version     Int
+  content     String   @db.Text
+  status      String   @default("draft")
+  createdById String   @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  policy      Policy             @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  createdBy   User               @relation("PolicyVersionCreatedBy", fields: [createdById], references: [id])
+  attachments PolicyAttachment[]
+
+  @@unique([policyId, version])
+  @@map("policy_versions")
+}
+
+model PolicyReviewEvent {
+  id        String   @id @default(cuid())
+  policyId  String   @map("policy_id")
+  userId    String   @map("user_id")
+  action    String
+  comment   String?  @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  policy Policy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([policyId, createdAt])
+  @@map("policy_review_events")
+}
+
+model PolicyAttachment {
+  id              String   @id @default(cuid())
+  policyVersionId String   @map("policy_version_id")
+  fileName        String   @map("file_name")
+  storagePath     String   @map("storage_path")
+  mimeType        String   @map("mime_type")
+  sizeBytes       Int      @map("size_bytes")
+  uploadedById    String   @map("uploaded_by_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  policyVersion PolicyVersion @relation(fields: [policyVersionId], references: [id], onDelete: Cascade)
+  uploadedBy    User          @relation("PolicyAttachmentUploadedBy", fields: [uploadedById], references: [id])
+
+  @@index([policyVersionId])
+  @@map("policy_attachments")
+}
+
+// Auth.js adapter tables
+model Account {
+  id                String  @id @default(cuid())
+  userId            String  @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// --- BRS reference data ---
+
+model Brand {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  name      String
+  code      String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  models   ProductModel[]
+  categories Category[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("brands")
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  brandId   String?  @map("brand_id")
+  code      String?
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  brand  Brand?         @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  models ProductModel[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("categories")
+}
+
+model ProductModel {
+  id         String    @id @default(cuid())
+  tenantId   String    @map("tenant_id")
+  brandId    String?   @map("brand_id")
+  categoryId String?   @map("category_id")
+  skuCode    String    @map("sku_code")
+  name       String
+  status     SkuStatus @default(active)
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  brand             Brand?              @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  category          Category?           @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  serialNumbers     SerialNumber[]
+  branchPlanograms  BranchPlanogram[]
+  branchMilSettings BranchMilSetting[]
+  branchOrderDetails BranchOrderDetail[]
+
+  @@unique([tenantId, skuCode])
+  @@index([tenantId])
+  @@map("product_models")
+}
+
+model Area {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  code      String
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branches Branch[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("areas")
+}
+
+model Region {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  provinces Province[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("regions")
+}
+
+model Province {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  regionId  String?  @map("region_id")
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  region Region? @relation(fields: [regionId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("provinces")
+}
+
+model PackageType {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("package_types")
+}
+
+model PaymentType {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("payment_types")
+}
+
+model SaleType {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("sale_types")
+}
+
+// --- BRS organization ---
+
+model Branch {
+  id               String       @id @default(cuid())
+  tenantId         String       @map("tenant_id")
+  sapCode          String       @map("sap_code")
+  name             String
+  branchAreaId     String?      @map("branch_area_id")
+  deliverySchedule Json?        @map("delivery_schedule")
+  status           BranchStatus @default(active)
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+  deletedAt        DateTime?    @map("deleted_at")
+
+  tenant              Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branchArea          Area?               @relation(fields: [branchAreaId], references: [id], onDelete: SetNull)
+  alternateWarehouses AlternateWarehouse[]
+  aors                Aor[]
+  branchInventories   BranchInventory[]
+  branchPlanograms    BranchPlanogram[]
+  branchMilSettings   BranchMilSetting[]
+  branchOrders        BranchOrder[]
+  branchDeliveries    BranchDelivery[]
+  transfersFrom       BranchTransfer[]    @relation("TransferFromBranch")
+  transfersTo         BranchTransfer[]    @relation("TransferToBranch")
+  branchPullouts      BranchPullout[]
+  branchSales         BranchSalesTransaction[]
+
+  @@unique([tenantId, sapCode])
+  @@index([tenantId])
+  @@map("branches")
+}
+
+model Warehouse {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  code      String
+  name      String
+  isMain    Boolean  @default(false) @map("is_main")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  locations           WarehouseLocation[]
+  alternateWarehouses AlternateWarehouse[]
+  aors                Aor[]
+  pulloutsDestination BranchPullout[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("warehouses")
+}
+
+model WarehouseLocation {
+  id          String   @id @default(cuid())
+  warehouseId String   @map("warehouse_id")
+  code        String
+  name        String
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  @@unique([warehouseId, code])
+  @@map("warehouse_locations")
+}
+
+model AlternateWarehouse {
+  id          String   @id @default(cuid())
+  branchId    String   @map("branch_id")
+  warehouseId String   @map("warehouse_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  branch    Branch    @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, warehouseId])
+  @@map("alternate_warehouses")
+}
+
+model Aor {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+  userId      String   @map("user_id")
+  branchId    String?  @map("branch_id")
+  warehouseId String?  @map("warehouse_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch    Branch?    @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  warehouse Warehouse? @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId])
+  @@map("aors")
+}
+
+// --- BRS reference: Reason/Status (ISMS-v2 schema) ---
+
+model ReasonStatus {
+  id           String               @id @default(cuid())
+  tenantId     String               @map("tenant_id")
+  category     ReasonStatusCategory
+  name         String
+  code         String
+  recordStatus LookupRecordStatus   @default(active) @map("record_status")
+  createdAt    DateTime             @default(now()) @map("created_at")
+  updatedAt    DateTime             @updatedAt @map("updated_at")
+
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  codes               ReasonStatusCode[]
+  pulloutsAsReason    BranchPullout[]      @relation("PulloutReasonStatus")
+
+  @@unique([tenantId, category, code])
+  @@index([tenantId, category])
+  @@map("reason_statuses")
+}
+
+model ReasonStatusCode {
+  id             String             @id @default(cuid())
+  tenantId       String             @map("tenant_id")
+  reasonStatusId String             @map("reason_status_id")
+  name           String
+  code           String
+  sortOrder      Int                @default(0) @map("sort_order")
+  isSystem       Boolean            @default(false) @map("is_system")
+  recordStatus   LookupRecordStatus @default(active) @map("record_status")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+
+  tenant                    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  reasonStatus              ReasonStatus      @relation(fields: [reasonStatusId], references: [id], onDelete: Cascade)
+  branchInventories         BranchInventory[]
+  branchDeliveries          BranchDelivery[]
+  branchTransfers           BranchTransfer[]
+  branchPulloutsWorkflow    BranchPullout[]   @relation("PulloutWorkflowStatus")
+  branchPulloutsReasonCode  BranchPullout[]   @relation("PulloutReasonCode")
+
+  @@unique([tenantId, reasonStatusId, code])
+  @@index([tenantId])
+  @@map("reason_status_codes")
+}
+
+// --- BRS inventory ---
+
+model SerialNumber {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  serialNo  String   @map("serial_no")
+  modelId   String   @map("model_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant            Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  model             ProductModel              @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  branchInventories BranchInventory[]
+  branchSales       BranchSalesTransaction[]
+
+  @@unique([tenantId, serialNo])
+  @@index([tenantId])
+  @@map("serial_numbers")
+}
+
+model BranchInventory {
+  id             String   @id @default(cuid())
+  tenantId       String   @map("tenant_id")
+  branchId       String   @map("branch_id")
+  serialNumberId String   @map("serial_number_id")
+  statusCodeId   String   @map("status_code_id")
+  updatedById    String?  @map("updated_by_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch       Branch           @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  serialNumber SerialNumber     @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
+  statusCode   ReasonStatusCode @relation(fields: [statusCodeId], references: [id])
+  updatedBy    User?            @relation("BranchInventoryUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([branchId, serialNumberId])
+  @@index([tenantId, branchId, statusCodeId])
+  @@map("branch_inventories")
+}
+
+model BranchPlanogram {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  branchId  String   @map("branch_id")
+  modelId   String   @map("model_id")
+  maxQty    Int      @default(1) @map("max_qty")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  model  ProductModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, modelId])
+  @@index([tenantId])
+  @@map("branch_planograms")
+}
+
+model BranchMilSetting {
+  id             String   @id @default(cuid())
+  tenantId       String   @map("tenant_id")
+  branchId       String   @map("branch_id")
+  modelId        String   @map("model_id")
+  daysThreshold  Int      @default(30) @map("days_threshold")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  model  ProductModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, modelId])
+  @@index([tenantId])
+  @@map("branch_mil_settings")
+}
+
+// --- BRS orders ---
+
+model BranchOrder {
+  id           String            @id @default(cuid())
+  tenantId     String            @map("tenant_id")
+  branchId     String            @map("branch_id")
+  orderType    BranchOrderType   @map("order_type")
+  status       BranchOrderStatus @default(pending_tl)
+  orderNumber  String            @map("order_number")
+  notes        String?
+  createdById  String            @map("created_by_id")
+  approvedById String?           @map("approved_by_id")
+  createdAt    DateTime          @default(now()) @map("created_at")
+  updatedAt    DateTime          @updatedAt @map("updated_at")
+
+  tenant         Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch         Branch                     @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  createdBy      User                       @relation("BranchOrderCreatedBy", fields: [createdById], references: [id])
+  approvedBy     User?                      @relation("BranchOrderApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  details        BranchOrderDetail[]
+  approvalLevels BranchOrderApprovalLevel[]
+
+  @@unique([tenantId, orderNumber])
+  @@index([tenantId, branchId, status])
+  @@map("branch_orders")
+}
+
+model BranchOrderDetail {
+  id       String @id @default(cuid())
+  orderId  String @map("order_id")
+  modelId  String @map("model_id")
+  quantity Int
+
+  order BranchOrder  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  model ProductModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("branch_order_details")
+}
+
+model BranchOrderApprovalLevel {
+  id           String    @id @default(cuid())
+  orderId      String    @map("order_id")
+  level        Int
+  roleSlug     String    @map("role_slug")
+  approvedAt   DateTime? @map("approved_at")
+  approvedById String?   @map("approved_by_id")
+  rejectedAt   DateTime? @map("rejected_at")
+  comment      String?
+
+  order BranchOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, level])
+  @@map("branch_order_approval_levels")
+}
+
+// --- BRS logistics & sales ---
+
+model BranchDelivery {
+  id           String   @id @default(cuid())
+  tenantId     String   @map("tenant_id")
+  branchId     String   @map("branch_id")
+  deliveryNo   String   @map("delivery_no")
+  statusCodeId String   @map("status_code_id")
+  acceptedAt   DateTime? @map("accepted_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch     Branch           @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  statusCode ReasonStatusCode @relation(fields: [statusCodeId], references: [id])
+
+  @@unique([tenantId, deliveryNo])
+  @@index([tenantId, branchId, statusCodeId])
+  @@map("branch_deliveries")
+}
+
+model BranchTransfer {
+  id           String   @id @default(cuid())
+  tenantId     String   @map("tenant_id")
+  fromBranchId String   @map("from_branch_id")
+  toBranchId   String   @map("to_branch_id")
+  transferNo   String   @map("transfer_no")
+  statusCodeId String   @map("status_code_id")
+  notes        String?
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fromBranch Branch           @relation("TransferFromBranch", fields: [fromBranchId], references: [id], onDelete: Cascade)
+  toBranch   Branch           @relation("TransferToBranch", fields: [toBranchId], references: [id], onDelete: Cascade)
+  statusCode ReasonStatusCode @relation(fields: [statusCodeId], references: [id])
+
+  @@unique([tenantId, transferNo])
+  @@index([tenantId, statusCodeId])
+  @@map("branch_transfers")
+}
+
+model BranchPullout {
+  id                 String   @id @default(cuid())
+  tenantId           String   @map("tenant_id")
+  branchId           String   @map("branch_id")
+  warehouseId        String   @map("warehouse_id")
+  pulloutNo          String   @map("pullout_no")
+  statusCodeId       String   @map("status_code_id")
+  reasonStatusId     String?  @map("reason_status_id")
+  reasonStatusCodeId String?  @map("reason_status_code_id")
+  notes              String?
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch           Branch            @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  warehouse        Warehouse         @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  statusCode       ReasonStatusCode  @relation("PulloutWorkflowStatus", fields: [statusCodeId], references: [id])
+  reasonStatus     ReasonStatus?     @relation("PulloutReasonStatus", fields: [reasonStatusId], references: [id], onDelete: SetNull)
+  reasonStatusCode ReasonStatusCode? @relation("PulloutReasonCode", fields: [reasonStatusCodeId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, pulloutNo])
+  @@index([tenantId, branchId, statusCodeId])
+  @@map("branch_pullouts")
+}
+
+model BranchSalesTransaction {
+  id             String    @id @default(cuid())
+  tenantId       String    @map("tenant_id")
+  branchId       String    @map("branch_id")
+  serialNumberId String?   @map("serial_number_id")
+  transactionNo  String    @map("transaction_no")
+  amount         Decimal   @default(0) @db.Decimal(12, 2)
+  atrStatus      AtrStatus @default(open) @map("atr_status")
+  notes          String?
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch       Branch        @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  serialNumber SerialNumber? @relation(fields: [serialNumberId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, transactionNo])
+  @@index([tenantId, branchId])
+  @@map("branch_sales_transactions")
+}
+
