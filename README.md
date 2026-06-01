@@ -21,7 +21,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | **Logistics** | Delivery acceptance, branch transfer, pull-out (MVP) |
 | **Sales** | Branch sales stub with ATR status |
 | **RBAC** | ISO roles + BRS roles (PS, TL, SP, Logistics, AE), permission-gated sidebar |
-| **Docs** | [`docs/README.md`](docs/README.md) — BRS PDF index and hybrid Tenant/Branch mapping |
+| **Docs** | [`/README.md`](README.md) — BRS PDF index and hybrid Tenant/Branch mapping |
 
 ### App routes
 
@@ -66,8 +66,6 @@ src/
 └── proxy.ts             # Protects /dashboard, /settings, /policies
 ```
 
-See [`docs/README.md`](docs/README.md) for xlsx specs and [`docs/release-notes.md`](docs/release-notes.md) for version maintenance.
-
 ## Setup
 
 1. Copy env: `cp .env.example .env.local`
@@ -78,8 +76,8 @@ See [`docs/README.md`](docs/README.md) for xlsx specs and [`docs/release-notes.m
    - `pnpm run db:migrate`
    - `pnpm run db:seed`
    - Run [`database/extensions.sql`](database/extensions.sql) in Supabase SQL editor
-5. (Optional) Policy attachments: create Storage bucket `policy-documents` — see [`database/supabase.example.md`](database/supabase.example.md)
-6. (Optional) Workflow email: Resend — see [`docs/email-setup.md`](docs/email-setup.md)
+5. (Optional) Policy attachments: create Storage bucket `policy-documents`.
+6. (Optional) Workflow email: Resend.
 7. Dev: `pnpm run dev`
 
 ### Demo login
