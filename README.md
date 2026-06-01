@@ -87,7 +87,7 @@ After seeding, use the accounts in [`database/seed-users.md`](database/seed-user
 | User | Role | Policies access |
 |------|------|-----------------|
 | `employee@demo.local` | Employee | View approved only |
-| `auditor@demo.local` | Auditor | View approved only |
+| `superadmin@demo.local` | Super Admin | Full workflow |
 | `admin@demo.local` | Tenant Admin | Full workflow |
 
 Or register at `/register` to create a new tenant (Tenant Admin on a fresh org).
