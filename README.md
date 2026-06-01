@@ -72,15 +72,15 @@ See [`docs/README.md`](docs/README.md) for xlsx specs and [`docs/release-notes.m
 
 1. Copy env: `cp .env.example .env.local`
 2. Set `DATABASE_URL`, `DIRECT_URL`, `AUTH_SECRET` (see [`database/supabase.example.md`](database/supabase.example.md))
-3. Install: `npm install`
+3. Install: `pnpm install`
 4. Database:
-   - `npm run db:generate`
-   - `npm run db:migrate`
-   - `npm run db:seed`
+   - `pnpm run db:generate`
+   - `pnpm run db:migrate`
+   - `pnpm run db:seed`
    - Run [`database/extensions.sql`](database/extensions.sql) in Supabase SQL editor
 5. (Optional) Policy attachments: create Storage bucket `policy-documents` — see [`database/supabase.example.md`](database/supabase.example.md)
 6. (Optional) Workflow email: Resend — see [`docs/email-setup.md`](docs/email-setup.md)
-7. Dev: `npm run dev`
+7. Dev: `pnpm run dev`
 
 ### Demo login
 
@@ -98,15 +98,15 @@ Or register at `/register` to create a new tenant (Tenant Admin on a fresh org).
 
 | Script | Description |
 |--------|-------------|
-| `npm run dev` | Development server |
-| `npm run build` | Production build |
-| `npm run lint` | ESLint |
-| `npm run typecheck` | `tsc --noEmit` |
-| `npm run db:generate` | Prisma client |
-| `npm run db:migrate` | Dev migrations |
-| `npm run db:deploy` | Deploy migrations |
-| `npm run db:seed` | Seed permissions, demo tenant, roles, demo users |
-| `npm run db:studio` | Prisma Studio |
+| `pnpm run dev` | Development server |
+| `pnpm run build` | Production build |
+| `pnpm run lint` | ESLint |
+| `pnpm run typecheck` | `tsc --noEmit` |
+| `pnpm run db:generate` | Prisma client |
+| `pnpm run db:migrate` | Dev migrations |
+| `pnpm run db:deploy` | Deploy migrations |
+| `pnpm run db:seed` | Seed permissions, demo tenant, roles, demo users |
+| `pnpm run db:studio` | Prisma Studio |
 
 ## Optional env
 
