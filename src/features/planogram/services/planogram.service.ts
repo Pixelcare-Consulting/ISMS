@@ -9,21 +9,44 @@ export interface PlanogramRow {
   modelId: string;
   maxQty: number;
   stockCount: number;
+  ditCount: number;
   daysThreshold: number | null;
   model: {
     id: string;
     skuCode: string;
     name: string;
     status: string;
+    srp: number | null;
+    series: string | null;
     brand: { name: string } | null;
   };
 }
 
+export interface PlanogramBranchSummary {
+  offPlanogramSerialCount: number;
+}
+
+function formatSrp(value: { toNumber?: () => number } | number | null | undefined) {
+  if (value == null) return null;
+  const num = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
 export const planogramService = {
+  async getBranchSummary(
+    tenantId: string,
+    branchId: string,
+  ): Promise<PlanogramBranchSummary> {
+    const offPlanogramSerialCount =
+      await planogramRepository.countOffPlanogramSerials(tenantId, branchId);
+    return { offPlanogramSerialCount };
+  },
+
   async listPlanogram(tenantId: string, branchId: string): Promise<PlanogramRow[]> {
-    const [entries, milSettings] = await Promise.all([
+    const [entries, milSettings, ditCode] = await Promise.all([
       planogramRepository.listByBranch(tenantId, branchId),
       planogramRepository.listMilByBranch(tenantId, branchId),
+      reasonStatusRepository.findCodeId(tenantId, "inventory_system", "DIT"),
     ]);
 
     const milByModel = new Map(
@@ -33,11 +56,22 @@ export const planogramService = {
       ]),
     );
 
+    const modelIds = entries.map((entry: { modelId: string }) => entry.modelId);
     const stockByModel = await planogramRepository.countStockByBranchModels(
       tenantId,
       branchId,
-      entries.map((entry: { modelId: string }) => entry.modelId),
+      modelIds,
     );
+
+    const ditByModel =
+      ditCode && modelIds.length > 0
+        ? await planogramRepository.countInventoryByStatusForModels(
+            tenantId,
+            branchId,
+            modelIds,
+            ditCode.id,
+          )
+        : new Map<string, number>();
 
     return entries.map(
       (entry: {
@@ -50,7 +84,9 @@ export const planogramService = {
           skuCode: string;
           name: string;
           status: string;
+          srp: { toNumber?: () => number } | null;
           brand: { name: string } | null;
+          category: { name: string } | null;
         };
       }) => ({
         id: entry.id,
@@ -58,8 +94,17 @@ export const planogramService = {
         modelId: entry.modelId,
         maxQty: entry.maxQty,
         stockCount: stockByModel.get(entry.modelId) ?? 0,
+        ditCount: ditByModel.get(entry.modelId) ?? 0,
         daysThreshold: milByModel.get(entry.modelId) ?? null,
-        model: entry.model,
+        model: {
+          id: entry.model.id,
+          skuCode: entry.model.skuCode,
+          name: entry.model.name,
+          status: entry.model.status,
+          srp: formatSrp(entry.model.srp),
+          series: entry.model.category?.name ?? null,
+          brand: entry.model.brand,
+        },
       }),
     );
   },

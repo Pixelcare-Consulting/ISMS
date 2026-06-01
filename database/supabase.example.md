@@ -6,8 +6,10 @@ Do not store passwords or API keys in this repo. Use `.env.local` (gitignored).
 
 | Variable | Source |
 |----------|--------|
-| `DATABASE_URL` | Supabase → Settings → Database → Connection pooling (Session mode) |
-| `DIRECT_URL` | Supabase → Settings → Database → Direct connection |
+| `DATABASE_URL` | Supabase → Settings → Database → Connection pooling (Session mode, port **6543** or pooler host) |
+| `DIRECT_URL` | Supabase → Settings → Database → **Direct connection** (host `db.<project-ref>.supabase.co`, port **5432**) — **not** the pooler URL |
+
+**Important:** `pnpm run db:deploy` / `db:migrate` use `DIRECT_URL`. If `DIRECT_URL` contains `pooler.supabase.com`, migrations will fail with `P1002` advisory lock timeout.
 | `NEXT_PUBLIC_SUPABASE_URL` | Project URL |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Project API keys (publishable) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Project API keys (service role, **server-only**) |

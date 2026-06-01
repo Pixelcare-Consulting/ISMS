@@ -40,6 +40,7 @@ export const PERMISSIONS = [
   { slug: "sales.create", name: "Create sales transactions" },
   { slug: "planogram.view", name: "View branch planogram" },
   { slug: "planogram.manage", name: "Manage branch planogram and MIL" },
+  { slug: "forecast.manage", name: "Manage forecast, allocation, and suggested orders" },
 ] as const;
 
 export const ROLES = [
@@ -74,6 +75,7 @@ export const ROLES = [
       "logistics.manage",
       "sales.create",
       "planogram.manage",
+      "forecast.manage",
     ],
   },
   {
@@ -144,6 +146,7 @@ export const ROLES = [
       "orders.view",
       "orders.approve",
       "planogram.manage",
+      "forecast.manage",
     ],
   },
   {

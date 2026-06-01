@@ -5,8 +5,15 @@ import { z } from "zod";
 
 import { branchService } from "@/features/branches/services/branch.service";
 import { planogramService } from "@/features/planogram/services/planogram.service";
+import {
+  parsePlanogramCsvFromContent,
+  syncPlanogramFromCsvContent,
+  upsertModelsFromPlanogramRows,
+} from "@/features/planogram/services/planogram-csv-sync.service";
+import { prisma } from "@/lib/database/client";
 import { getUserBranchIds } from "@/lib/aor/scope";
 import { hasPermission, requirePermission, requirePlanogramView } from "@/lib/auth/permissions";
+import { DEALER1_BRANCH_MAP, readPlanogramCsvContent } from "../../../../prisma/seed-planogram-from-csv";
 
 function revalidatePlanogram(branchId: string) {
   revalidatePath(`/settings/branches/${branchId}/planogram`);
@@ -57,8 +64,83 @@ export async function listPlanogramAction(branchId: string) {
     return { error: "Branch not in your area of responsibility" as const, rows: [] };
   }
 
-  const rows = await planogramService.listPlanogram(session.user.tenantId, branchId);
-  return { rows, canManage };
+  const [rows, summary] = await Promise.all([
+    planogramService.listPlanogram(session.user.tenantId, branchId),
+    planogramService.getBranchSummary(session.user.tenantId, branchId),
+  ]);
+  return { rows, summary, canManage };
+}
+
+export async function importPlanogramCsvForBranchAction(
+  branchId: string,
+  formData?: FormData,
+) {
+  const session = await requirePlanogramManage();
+
+  const branch = await prisma.branch.findFirst({
+    where: { id: branchId, tenantId: session.user.tenantId },
+  });
+  if (!branch) return { error: "Branch not found" };
+
+  const branchDef = DEALER1_BRANCH_MAP.find((b) => b.sapCode === branch.sapCode);
+  if (!branchDef) {
+    return { error: "Branch is not mapped to BRS Dealer 1 CSV columns" };
+  }
+
+  const file = formData?.get("file");
+  const content =
+    file instanceof File && file.size > 0 ? await file.text() : readPlanogramCsvContent();
+
+  const planogramRows = parsePlanogramCsvFromContent(content);
+
+  const brandRecords = new Map<string, { id: string; code: string }>();
+  for (const brandName of [...new Set(planogramRows.map((r) => r.brand))]) {
+    const code = brandName.slice(0, 4).toUpperCase();
+    const brand = await prisma.brand.upsert({
+      where: { tenantId_name: { tenantId: session.user.tenantId, name: brandName } },
+      create: { tenantId: session.user.tenantId, name: brandName, code },
+      update: {},
+    });
+    brandRecords.set(brandName, { id: brand.id, code: brand.code ?? code });
+  }
+
+  const categoryRecords = new Map<string, string>();
+  async function getCategoryId(brandName: string, series: string) {
+    const key = `${brandName}:${series}`;
+    if (categoryRecords.has(key)) return categoryRecords.get(key)!;
+    const brandId = brandRecords.get(brandName)?.id;
+    if (!brandId) throw new Error(`Brand not found: ${brandName}`);
+    const categoryName = series || "General";
+    const category = await prisma.category.upsert({
+      where: { tenantId_name: { tenantId: session.user.tenantId, name: categoryName } },
+      create: { tenantId: session.user.tenantId, name: categoryName, brandId },
+      update: { brandId },
+    });
+    categoryRecords.set(key, category.id);
+    return category.id;
+  }
+
+  const modelIdBySku = await upsertModelsFromPlanogramRows(
+    prisma,
+    session.user.tenantId,
+    planogramRows,
+    brandRecords,
+    getCategoryId,
+  );
+
+  try {
+    await syncPlanogramFromCsvContent(
+      prisma,
+      session.user.tenantId,
+      content,
+      [{ id: branchId, branchIndex: branchDef.branchIndex }],
+      modelIdBySku,
+    );
+    revalidatePlanogram(branchId);
+    return { success: true as const, skuCount: planogramRows.length };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Import failed" };
+  }
 }
 
 export async function listActiveModelsForPlanogramAction(branchId: string) {

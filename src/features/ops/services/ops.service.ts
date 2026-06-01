@@ -44,6 +44,11 @@ export const opsService = {
       action: "delivery.accepted",
       entityType: "BranchDelivery",
       entityId: delivery.id,
+      metadata: {
+        deliveryNo: delivery.deliveryNo,
+        branchName: delivery.branch.name,
+        ...(delivery.order ? { orderNumber: delivery.order.orderNumber } : {}),
+      },
     });
 
     return delivery;
@@ -66,6 +71,11 @@ export const opsService = {
       action: "transfer.created",
       entityType: "BranchTransfer",
       entityId: transfer.id,
+      metadata: {
+        transferNo: transfer.transferNo,
+        from: transfer.fromBranch.name,
+        to: transfer.toBranch.name,
+      },
     });
     return transfer;
   },
@@ -88,6 +98,10 @@ export const opsService = {
       action: "pullout.created",
       entityType: "BranchPullout",
       entityId: pullout.id,
+      metadata: {
+        pulloutNo: pullout.pulloutNo,
+        branchName: pullout.branch.name,
+      },
     });
     return pullout;
   },

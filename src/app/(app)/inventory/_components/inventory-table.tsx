@@ -1,6 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
@@ -9,6 +10,9 @@ import { StatusCodeBadge } from "@/features/reason-status/components/status-code
 import { DataTableScroll, DataTableShell } from "@/components/data-table/data-table-shell";
 import { TablePagination } from "@/components/data-table/table-pagination";
 import { TableSearchToolbar } from "@/components/data-table/table-search-bar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -27,8 +31,9 @@ interface StatusOption {
 
 interface InventoryRow {
   id: string;
+  onPlanogram: boolean;
   statusCode: { id: string; code: string; name: string };
-  branch: { name: string; sapCode: string };
+  branch: { id: string; name: string; sapCode: string };
   serialNumber: {
     serialNo: string;
     model: { sku: string; name: string; brand: { name: string } };
@@ -44,16 +49,30 @@ interface InventoryTableProps {
     totalPages: number;
   };
   statusOptions: StatusOption[];
+  initialOffPlanogram?: boolean;
 }
 
-function buildInventoryHref(page: number): string {
-  return page > 1 ? `/inventory?page=${page}` : "/inventory";
+function buildInventoryHref(page: number, offPlanogram: boolean): string {
+  const params = new URLSearchParams();
+  if (page > 1) params.set("page", String(page));
+  if (offPlanogram) params.set("offPlanogram", "1");
+  const qs = params.toString();
+  return qs ? `/inventory?${qs}` : "/inventory";
 }
 
-export function InventoryTable({ result, statusOptions }: InventoryTableProps) {
+export function InventoryTable({
+  result,
+  statusOptions,
+  initialOffPlanogram = false,
+}: InventoryTableProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
+  const [offPlanogramOnly, setOffPlanogramOnly] = useState(initialOffPlanogram);
   const [pending, startTransition] = useTransition();
+
+  const branchFilter = searchParams.get("branch") ?? "";
+  const skuFilter = searchParams.get("sku") ?? "";
 
   const filtered = useMemo(
     () =>
@@ -68,6 +87,16 @@ export function InventoryTable({ result, statusOptions }: InventoryTableProps) {
       ),
     [result.items, query],
   );
+
+  function toggleOffPlanogram(checked: boolean) {
+    setOffPlanogramOnly(checked);
+    const params = new URLSearchParams(searchParams.toString());
+    if (checked) params.set("offPlanogram", "1");
+    else params.delete("offPlanogram");
+    params.delete("page");
+    const qs = params.toString();
+    router.push(qs ? `/inventory?${qs}` : "/inventory");
+  }
 
   function changeStatus(id: string, statusCodeId: string) {
     startTransition(async () => {
@@ -87,7 +116,29 @@ export function InventoryTable({ result, statusOptions }: InventoryTableProps) {
         value={query}
         onChange={setQuery}
         placeholder="Search serial, SKU, branch…"
-      />
+      >
+        <div className="flex items-center gap-2 text-sm">
+          <input
+            id="off-planogram"
+            type="checkbox"
+            checked={offPlanogramOnly}
+            onChange={(e) => toggleOffPlanogram(e.target.checked)}
+          />
+          <Label htmlFor="off-planogram" className="font-normal">
+            Off-planogram only
+          </Label>
+        </div>
+      </TableSearchToolbar>
+      {(branchFilter || skuFilter) && (
+        <div className="border-b px-4 py-2 text-sm text-muted-foreground">
+          Filtered
+          {branchFilter ? " · branch" : ""}
+          {skuFilter ? ` · SKU ${skuFilter}` : ""}
+          <Button variant="link" className="ml-2 h-auto p-0" asChild>
+            <Link href="/inventory">Clear</Link>
+          </Button>
+        </div>
+      )}
       <DataTableScroll>
         <Table>
           <TableHeader>
@@ -95,6 +146,7 @@ export function InventoryTable({ result, statusOptions }: InventoryTableProps) {
               <TableHead>Serial</TableHead>
               <TableHead>Model</TableHead>
               <TableHead>Branch</TableHead>
+              <TableHead>Planogram</TableHead>
               <TableHead>Status</TableHead>
             </TableRow>
           </TableHeader>
@@ -103,12 +155,35 @@ export function InventoryTable({ result, statusOptions }: InventoryTableProps) {
               <TableRow key={r.id}>
                 <TableCell className="font-mono text-sm">{r.serialNumber.serialNo}</TableCell>
                 <TableCell>
-                  {r.serialNumber.model.sku}
+                  <Link
+                    href={`/settings/branches/${r.branch.id}/planogram`}
+                    className="font-mono text-sm underline"
+                  >
+                    {r.serialNumber.model.sku}
+                  </Link>
                   <span className="block text-xs text-muted-foreground">
                     {r.serialNumber.model.name}
                   </span>
                 </TableCell>
-                <TableCell>{r.branch.name}</TableCell>
+                <TableCell>
+                  <Link
+                    href={`/settings/branches/${r.branch.id}/planogram`}
+                    className="underline"
+                  >
+                    {r.branch.name}
+                  </Link>
+                </TableCell>
+                <TableCell>
+                  {r.onPlanogram ? (
+                    <Badge variant="outline" className="border-green-600 text-green-700">
+                      On planogram
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="border-amber-600 text-amber-700">
+                      Off planogram
+                    </Badge>
+                  )}
+                </TableCell>
                 <TableCell>
                   <select
                     className="rounded-md border px-2 py-1 text-sm"
@@ -145,7 +220,7 @@ export function InventoryTable({ result, statusOptions }: InventoryTableProps) {
           totalPages: result.totalPages,
           itemLabel: "unit",
         }}
-        buildHref={buildInventoryHref}
+        buildHref={(page) => buildInventoryHref(page, offPlanogramOnly)}
       />
     </DataTableShell>
   );

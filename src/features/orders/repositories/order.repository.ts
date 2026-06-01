@@ -87,7 +87,11 @@ export const orderRepository = {
           })),
         },
       },
-      include: { details: true, approvalLevels: true },
+      include: {
+        branch: { select: { name: true } },
+        details: { include: { model: { select: { skuCode: true } } } },
+        approvalLevels: true,
+      },
     });
   },
 

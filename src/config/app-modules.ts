@@ -165,6 +165,15 @@ export const appModules: AppModule[] = [
     actions: [{ value: "create", label: "Create" }],
   },
   {
+    id: "forecast",
+    name: "Planning & Forecast",
+    route: "/settings/planning",
+    slugPrefix: "forecast",
+    navPermission: "forecast.manage",
+    description: "Forecast upload, allocation, and suggested orders",
+    actions: [{ value: "manage", label: "Manage" }],
+  },
+  {
     id: "planogram",
     name: "Planogram",
     route: "/settings/planogram",

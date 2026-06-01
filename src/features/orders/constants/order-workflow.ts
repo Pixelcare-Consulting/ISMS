@@ -1,5 +1,7 @@
 import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
 
+import { BRANCH_ORDER_STATUS_LABELS } from "@/features/orders/constants/order-status";
+
 export interface OrderApprovalStep {
   level: number;
   roleSlug: string;
@@ -97,3 +99,27 @@ export function isOrderPendingApproval(status: BranchOrderStatus): boolean {
 
 export const ORDER_WORKFLOW_DESCRIPTION =
   "Auto-replenish: TL → SP. Manual: PS → TL → SP. Special: TL creates → SP. Approved orders queue logistics delivery (DIT → Stock).";
+
+export function getOrderStatusLabel(status: BranchOrderStatus): string {
+  return BRANCH_ORDER_STATUS_LABELS[status] ?? status;
+}
+
+export function getCurrentApproverLabel(
+  status: BranchOrderStatus,
+  orderType: BranchOrderType,
+): string {
+  const step = getOrderApprovalChain(orderType).find((s) => s.status === status);
+  return step ? `Awaiting: ${step.label}` : "";
+}
+
+export function getAfterApproveHint(
+  status: BranchOrderStatus,
+  orderType: BranchOrderType,
+): string {
+  const nextStatus = nextStatusAfterApprove(status, orderType);
+  if (nextStatus === "approved") {
+    return "After approve → Approved (logistics delivery queued)";
+  }
+  const step = getOrderApprovalChain(orderType).find((s) => s.status === nextStatus);
+  return step ? `After approve → ${step.label}` : "";
+}

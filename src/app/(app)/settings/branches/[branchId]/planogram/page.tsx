@@ -57,6 +57,7 @@ export default async function BranchPlanogramPage({ params }: PlanogramPageProps
         branchId={branchId}
         rows={result.rows}
         canManage={result.canManage ?? false}
+        offPlanogramSerialCount={result.summary?.offPlanogramSerialCount ?? 0}
       />
     </div>
   );

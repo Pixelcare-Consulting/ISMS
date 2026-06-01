@@ -38,7 +38,44 @@ Optional env: `SEED_BCRYPT_ROUNDS=8` (default) — lower for faster local re-see
 | Logistics | Logistics Coordinator | `logistics@demo.local` | Deliveries, pull-outs |
 | AE | Account Executive | `ae@demo.local` | Multi-branch dashboard view |
 
-Demo tenant is seeded as **Western Appliance Trade Group**. Branches (Makati, Recto, Quezon City) require `pnpm run db:seed:full` or `db:seed:brs`.
+Demo tenant is seeded as **Western Appliance Trade Group** (BRS **Dealer 1**). Branches require `pnpm run db:seed:full` or `db:seed:brs`.
+
+### Dealer 1 → demo tenant branch map
+
+| BRS CSV (Dealer 1) | ISMS branch | SAP code |
+|--------------------|-------------|----------|
+| Branch 1 | Western Makati | `WMK-001` |
+| Branch 2 | Western Recto | `WRC-002` |
+| Branch 3 | Western Quezon City | `WQC-003` |
+| Branch 4 | Western Pasig | `WPAS-004` |
+
+Planogram SKUs and shelf max quantities come from `docs/BRS Planogram & Forecast(Planogram & Target).csv` (Dealer 1 columns only). Brands **Devant** and **Sonique**; categories by series (e.g. 32STV, 50QUH). SWS-01 Free bundle rows are excluded. MIL defaults to 30 days where the CSV has no MIL column.
+
+### Planning pipeline test path (steps 5–8)
+
+1. `pnpm run db:seed:brs` — syncs planogram, Dec-25 forecast targets, aligned inventory serials
+2. **Settings → Planning** (`sp@demo.local`) — confirm Dec-25 period and 4 branch revenue targets
+3. **Run allocation** — gap rows for SKUs below shelf max (STK count only)
+4. **Generate suggested orders** — draft `auto_replenish` orders per branch
+5. **Submit for TL review** — moves drafts to `pending_tl`
+6. **Orders** — TL approve → SP approve (existing workflow)
+7. **Planogram / Inventory** — Western Makati shows Devant SKUs only; STK/DIT breakdown on planogram rows
+
+Refresh planogram data without resetting users:
+
+```bash
+pnpm run db:seed:brs
+```
+
+### Full planning pipeline test path (after `db:seed:full` or `db:seed:brs`)
+
+1. Log in as `sp@demo.local` → **Settings → Planning**
+2. Confirm active period **Dec-25** and four branch revenue targets (Western Makati, Recto, QC, Pasig)
+3. **Run allocation** — gap rows where STK count is below planogram max
+4. **Generate suggested orders** — draft `auto_replenish` orders per branch
+5. **Submit drafts for TL review** → log in as `tl@demo.local` → **Orders** → approve
+6. Log in as `sp@demo.local` → approve SP step → logistics delivery queued
+7. **Settings → Planogram** (Western Makati) — Devant/Sonique SKUs only; STK/DIT breakdown; **Inventory** links and off-planogram badge
 
 ## Login example
 

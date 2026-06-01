@@ -37,12 +37,12 @@ export async function seedCore(prisma: PrismaClient): Promise<CoreSeedResult> {
   const demoTenant = await prisma.tenant.upsert({
     where: { slug: "demo" },
     create: {
-      name: "Western Appliance Trade Group",
+      name: "Finden Technology",
       slug: "demo",
       tagline: "BRS inventory ops + ISMS compliance",
     },
     update: {
-      name: "Western Appliance Trade Group",
+      name: "Finden Technology",
       tagline: "BRS inventory ops + ISMS compliance",
     },
   });

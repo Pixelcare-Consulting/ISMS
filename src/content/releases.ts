@@ -24,6 +24,110 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.9.6",
+    date: "2026-06-01",
+    title: "Planning tables — pagination and filters",
+    highlights: [
+      "Allocation gaps on Planning and Suggested orders paginate at 25 rows per page",
+      "Filter gaps by branch or search by branch name / SKU",
+      "Draft suggested orders table supports branch filter, search, and pagination",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Planning — server-side pagination and branch/SKU filters on allocation gaps table",
+      },
+      {
+        type: "improvement",
+        description:
+          "Suggested orders — paginated draft orders and open gaps with independent filters",
+      },
+    ],
+  },
+  {
+    version: "0.9.5",
+    date: "2026-06-01",
+    title: "Full planning pipeline (forecast → allocation → suggested orders)",
+    highlights: [
+      "Settings → Planning: branch revenue targets, run allocation, generate auto-replenish drafts",
+      "Planogram import with prune; Series/SRP columns; STK/DIT stock breakdown and inventory cross-links",
+      "Inventory planogram badges, off-planogram filter, and Western Makati-aligned demo seed",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Forecast schema — PlanningPeriod, BranchForecastTarget, BranchAllocation; gapQty from planogram max minus STK",
+      },
+      {
+        type: "feature",
+        description:
+          "Suggested orders — draft auto_replenish BranchOrders from allocations; submit for TL → SP approval",
+      },
+      {
+        type: "fix",
+        description:
+          "Planning page — serialize Prisma Decimal/Date fields before passing props to client components",
+      },
+    ],
+  },
+  {
+    version: "0.9.4",
+    date: "2026-06-01",
+    title: "BRS planogram seed and order UX",
+    highlights: [
+      "Demo seed aligns Devant/Sonique SKUs and shelf targets with BRS Planogram CSV (Dealer 1)",
+      "Fourth demo branch (Western Pasig) and CSV-driven branch planograms",
+      "Order review/create dialogs show workflow hints and remaining shelf capacity",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description: "BRS seed — CSV parser for Dealer 1 planogram targets; Devant/Sonique brands, ~33 SKUs, 4 branches",
+      },
+      {
+        type: "improvement",
+        description: "Orders — Review dialog shows type, branch, lines, human status, and next approver",
+      },
+      {
+        type: "improvement",
+        description: "Orders — Create dialog shows remaining shelf capacity; auto-replenish marked coming soon",
+      },
+    ],
+  },
+  {
+    version: "0.9.3",
+    date: "2026-06-01",
+    title: "Audit log readability",
+    highlights: [
+      "Operational audit entries show branch names, document numbers, and line summaries",
+      "Colored entity badges for orders, deliveries, transfers, pull-outs, and sales",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description: "Audit log — action-specific detail formatters for orders, logistics, and sales events",
+      },
+      {
+        type: "improvement",
+        description: "Audit writers — enrich metadata at log time with branch names, doc numbers, and routes",
+      },
+      {
+        type: "fix",
+        description: "Audit log — inventory.status_updated label now displays correctly",
+      },
+      {
+        type: "improvement",
+        description: "Orders and logistics lists — shared search toolbar, colored status badges, client-side search on logistics tables",
+      },
+      {
+        type: "fix",
+        description: "Navigation progress bar — no longer renders above header dropdown menus",
+      },
+    ],
+  },
+  {
     version: "0.9.2",
     date: "2026-06-01",
     title: "Navigation performance",
@@ -37,6 +141,7 @@ export const RELEASES: ReleaseNote[] = [
       { type: "improvement", description: "Request-scoped auth deduplication so layout, page, and server actions share one session check" },
       { type: "improvement", description: "Cached header branding/profile data and Prisma client reuse on Vercel warm instances" },
       { type: "improvement", description: "App-wide loading skeleton for smoother tab transitions" },
+      { type: "improvement", description: "Unified list toolbar on Orders and logistics pages — search left, actions right, colored status and order-type badges" },
     ],
   },
   {

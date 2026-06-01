@@ -56,6 +56,7 @@ export async function createDeliveryAction(input: unknown) {
       deliveryNo: nextNo("DLV"),
       statusCodeId,
     },
+    include: { branch: { select: { name: true } } },
   });
 
   await auditService.log({
@@ -64,6 +65,10 @@ export async function createDeliveryAction(input: unknown) {
     action: "delivery.created",
     entityType: "BranchDelivery",
     entityId: row.id,
+    metadata: {
+      deliveryNo: row.deliveryNo,
+      branchName: row.branch.name,
+    },
   });
 
   revalidateLogisticsPaths();
@@ -92,6 +97,10 @@ export async function acceptDeliveryAction(id: string) {
   const row = await prisma.branchDelivery.update({
     where: { id, tenantId: session.user.tenantId },
     data: { statusCodeId: acceptedCodeId, acceptedAt: new Date() },
+    include: {
+      branch: { select: { name: true } },
+      order: { select: { orderNumber: true } },
+    },
   });
 
   await prisma.branchInventory.updateMany({
@@ -109,6 +118,11 @@ export async function acceptDeliveryAction(id: string) {
     action: "delivery.accepted",
     entityType: "BranchDelivery",
     entityId: id,
+    metadata: {
+      deliveryNo: row.deliveryNo,
+      branchName: row.branch.name,
+      ...(row.order ? { orderNumber: row.order.orderNumber } : {}),
+    },
   });
 
   revalidateLogisticsPaths();
@@ -143,6 +157,10 @@ export async function createTransferAction(input: unknown) {
       transferNo: nextNo("XFR"),
       statusCodeId,
     },
+    include: {
+      fromBranch: { select: { name: true } },
+      toBranch: { select: { name: true } },
+    },
   });
 
   await auditService.log({
@@ -151,6 +169,11 @@ export async function createTransferAction(input: unknown) {
     action: "transfer.created",
     entityType: "BranchTransfer",
     entityId: row.id,
+    metadata: {
+      transferNo: row.transferNo,
+      from: row.fromBranch.name,
+      to: row.toBranch.name,
+    },
   });
 
   revalidateLogisticsPaths();
@@ -225,6 +248,7 @@ export async function createPulloutAction(input: unknown) {
   );
 
   let reasonStatusId: string | undefined;
+  let reasonName: string | undefined;
   if (parsed.data.reasonStatusCodeId) {
     const reasonCode = await prisma.reasonStatusCode.findFirst({
       where: {
@@ -232,10 +256,11 @@ export async function createPulloutAction(input: unknown) {
         tenantId: session.user.tenantId,
         reasonStatus: { category: "pullout_reason" },
       },
-      select: { id: true, reasonStatusId: true },
+      select: { id: true, reasonStatusId: true, name: true },
     });
     if (!reasonCode) return { error: "Invalid pull-out reason" };
     reasonStatusId = reasonCode.reasonStatusId;
+    reasonName = reasonCode.name;
   }
 
   const row = await prisma.branchPullout.create({
@@ -248,6 +273,7 @@ export async function createPulloutAction(input: unknown) {
       reasonStatusId: reasonStatusId ?? null,
       reasonStatusCodeId: parsed.data.reasonStatusCodeId ?? null,
     },
+    include: { branch: { select: { name: true } } },
   });
 
   await auditService.log({
@@ -256,6 +282,11 @@ export async function createPulloutAction(input: unknown) {
     action: "pullout.created",
     entityType: "BranchPullout",
     entityId: row.id,
+    metadata: {
+      pulloutNo: row.pulloutNo,
+      branchName: row.branch.name,
+      ...(reasonName ? { reasonName } : {}),
+    },
   });
 
   revalidateLogisticsPaths();

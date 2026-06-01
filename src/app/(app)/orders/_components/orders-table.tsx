@@ -12,10 +12,12 @@ import {
   rejectOrderAction,
 } from "@/features/orders/actions/order.actions";
 import type { BranchOrderStatus } from "@prisma/client";
-import { ORDER_WORKFLOW_DESCRIPTION, isOrderPendingApproval } from "@/features/orders/constants/order-workflow";
+import { isOrderPendingApproval } from "@/features/orders/constants/order-workflow";
 import { OrderWorkflowDialog } from "@/app/(app)/orders/_components/order-workflow-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { BRANCH_ORDER_STATUS_LABELS } from "@/features/orders/constants/order-status";
+import { OrderTypeBadge } from "@/features/orders/components/order-type-badge";
+import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { DataTableScroll, DataTableShell } from "@/components/data-table/data-table-shell";
 import { TablePagination } from "@/components/data-table/table-pagination";
 import { TableSearchToolbar } from "@/components/data-table/table-search-bar";
@@ -44,6 +46,8 @@ interface OrderModelOption {
   skuCode: string;
   name: string;
   maxQty: number | null;
+  stockCount?: number;
+  remainingCapacity?: number;
   onPlanogram: boolean;
 }
 
@@ -107,6 +111,9 @@ export function OrdersTable({ result }: OrdersTableProps) {
   return (
     <DataTableShell>
       <TableSearchToolbar value={query} onChange={setQuery} placeholder="Search orders…">
+        <Button variant="outline" asChild>
+          <a href="/planning/suggested-orders">Suggested orders</a>
+        </Button>
         <Button onClick={() => setShowCreate(true)}>Create order</Button>
       </TableSearchToolbar>
       <DataTableScroll>
@@ -126,9 +133,16 @@ export function OrdersTable({ result }: OrdersTableProps) {
               <TableRow key={o.id}>
                 <TableCell className="font-mono text-sm">{o.id.slice(-8)}</TableCell>
                 <TableCell>{o.branch.name}</TableCell>
-                <TableCell>{o.orderType}</TableCell>
                 <TableCell>
-                  <Badge variant="outline">{o.status}</Badge>
+                  <OrderTypeBadge orderType={o.orderType} />
+                </TableCell>
+                <TableCell>
+                  <StatusCodeBadge
+                    code={o.status}
+                    name={
+                      BRANCH_ORDER_STATUS_LABELS[o.status as BranchOrderStatus] ?? o.status
+                    }
+                  />
                 </TableCell>
                 <TableCell>
                   {o.details.map((d) => `${d.model.skuCode}×${d.quantity}`).join(", ")}
@@ -157,7 +171,12 @@ export function OrdersTable({ result }: OrdersTableProps) {
       {workflowOrder ? (
         <OrderWorkflowDialog
           orderNumber={workflowOrder.id.slice(-8)}
-          status={workflowOrder.status}
+          orderType={workflowOrder.orderType as "auto_replenish" | "manual" | "special"}
+          branchName={workflowOrder.branch.name}
+          linesSummary={workflowOrder.details
+            .map((d) => `${d.model.skuCode}×${d.quantity}`)
+            .join(", ")}
+          status={workflowOrder.status as BranchOrderStatus}
           open
           pending={pending}
           onOpenChange={() => setWorkflowOrder(null)}
@@ -178,7 +197,7 @@ function CreateOrderDialog({ onClose }: { onClose: () => void }) {
   const [branches, setBranches] = useState<{ id: string; name: string }[]>([]);
   const [models, setModels] = useState<OrderModelOption[]>([]);
   const [branchId, setBranchId] = useState("");
-  const [orderType, setOrderType] = useState<"manual" | "special">("manual");
+  const [orderType, setOrderType] = useState<"manual" | "special" | "auto_replenish">("manual");
   const [modelId, setModelId] = useState("");
   const [qty, setQty] = useState(1);
   const [loaded, setLoaded] = useState(false);
@@ -215,7 +234,9 @@ function CreateOrderDialog({ onClose }: { onClose: () => void }) {
       toast.success(
         orderType === "special"
           ? "Special order submitted for SP approval"
-          : "Manual order submitted for PS review",
+          : orderType === "auto_replenish"
+            ? "Auto-replenish order submitted for TL review"
+            : "Manual order submitted for PS review",
       );
       onClose();
       router.refresh();
@@ -251,11 +272,17 @@ function CreateOrderDialog({ onClose }: { onClose: () => void }) {
               <select
                 className="flex h-9 w-full rounded-md border px-2 text-sm"
                 value={orderType}
-                onChange={(e) => setOrderType(e.target.value as "manual" | "special")}
+                onChange={(e) =>
+                  setOrderType(e.target.value as "manual" | "special" | "auto_replenish")
+                }
               >
                 <option value="manual">Manual (planogram SKUs)</option>
+                <option value="auto_replenish">Auto replenish (planogram SKUs)</option>
                 <option value="special">Special (off-planogram allowed)</option>
               </select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Bulk auto-replenish drafts: Planning → Suggested orders.
+              </p>
             </div>
             <div>
               <Label>Model</Label>
@@ -282,12 +309,24 @@ function CreateOrderDialog({ onClose }: { onClose: () => void }) {
               <input
                 type="number"
                 min={1}
-                max={selectedModel?.maxQty ?? undefined}
+                max={
+                  (orderType === "manual" || orderType === "auto_replenish") &&
+                  selectedModel?.remainingCapacity != null
+                    ? selectedModel.remainingCapacity
+                    : selectedModel?.maxQty ?? undefined
+                }
                 className="flex h-9 w-full rounded-md border px-2 text-sm"
                 value={qty}
                 onChange={(e) => setQty(Number(e.target.value))}
               />
-              {selectedModel?.maxQty != null ? (
+              {(orderType === "manual" || orderType === "auto_replenish") &&
+              selectedModel?.maxQty != null ? (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Shelf capacity: {selectedModel.remainingCapacity ?? selectedModel.maxQty} remaining
+                  of {selectedModel.maxQty} max
+                  {selectedModel.stockCount != null ? ` (${selectedModel.stockCount} in stock)` : ""}
+                </p>
+              ) : selectedModel?.maxQty != null ? (
                 <p className="mt-1 text-xs text-muted-foreground">
                   Planogram max: {selectedModel.maxQty}
                 </p>

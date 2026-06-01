@@ -7,7 +7,12 @@ import { PageHeader } from "@/app/(app)/_components/page-header";
 import { InventoryTable } from "@/app/(app)/inventory/_components/inventory-table";
 
 interface InventoryPageProps {
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{
+    page?: string;
+    branch?: string;
+    sku?: string;
+    offPlanogram?: string;
+  }>;
 }
 
 export default async function InventoryPage({ searchParams }: InventoryPageProps) {
@@ -15,7 +20,12 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
   const params = await searchParams;
   const page = Number(params.page) || 1;
   const [result, statusOptions] = await Promise.all([
-    listInventoryAction({ page }),
+    listInventoryAction({
+      page,
+      branchId: params.branch,
+      sku: params.sku,
+      offPlanogram: params.offPlanogram === "1",
+    }),
     listInventoryStatusOptionsAction(),
   ]);
 
@@ -23,10 +33,13 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
     <div className="space-y-6">
       <PageHeader
         title="Inventory"
-        description="Serialized units by branch. System status codes are configured under Settings → Status."
+        description="Serialized units by branch. Planogram badge shows whether each SKU is authorized at that branch."
       />
-      <InventoryTable result={result} statusOptions={statusOptions} />
+      <InventoryTable
+        result={result}
+        statusOptions={statusOptions}
+        initialOffPlanogram={params.offPlanogram === "1"}
+      />
     </div>
   );
 }
-

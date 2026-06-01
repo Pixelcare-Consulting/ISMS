@@ -11,7 +11,7 @@ export const logisticsService = {
   async createDeliveryFromApprovedOrder(
     tenantId: string,
     userId: string,
-    order: { id: string; branchId: string; orderNumber: string },
+    order: { id: string; branchId: string; branchName: string; orderNumber: string },
   ) {
     const existing = await prisma.branchDelivery.findFirst({
       where: { tenantId, orderId: order.id },
@@ -32,6 +32,7 @@ export const logisticsService = {
         deliveryNo: nextDeliveryNo(),
         statusCodeId,
       },
+      include: { branch: { select: { name: true } } },
     });
 
     await auditService.log({
@@ -40,7 +41,12 @@ export const logisticsService = {
       action: "delivery.created_from_order",
       entityType: "BranchDelivery",
       entityId: row.id,
-      metadata: { orderId: order.id, orderNumber: order.orderNumber },
+      metadata: {
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        deliveryNo: row.deliveryNo,
+        branchName: row.branch.name,
+      },
     });
 
     return row;

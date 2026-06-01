@@ -31,12 +31,14 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   "branch.updated": "Branch updated",
   "branch.deleted": "Branch removed",
   "inventory.status_changed": "Inventory status changed",
+  "inventory.status_updated": "Inventory status changed",
   "order.created": "Branch order created",
   "order.approved": "Branch order approved",
   "order.approval_step": "Branch order approval step",
   "order.rejected": "Branch order rejected",
   "delivery.created": "Delivery created",
   "delivery.accepted": "Delivery accepted",
+  "delivery.created_from_order": "Delivery created from order",
   "transfer.created": "Branch transfer created",
   "pullout.created": "Pull-out created",
   "sale.created": "Sale recorded",
@@ -58,6 +60,31 @@ const ENTITY_TYPE_LABELS: Record<string, string> = {
   BranchSalesTransaction: "Sale",
 };
 
+const OPERATIONAL_SUMMARY_KEYS = [
+  "orderNumber",
+  "deliveryNo",
+  "transferNo",
+  "pulloutNo",
+  "branchName",
+] as const;
+
+const GENERIC_DETAIL_KEYS = [
+  "branchName",
+  "orderNumber",
+  "deliveryNo",
+  "transferNo",
+  "pulloutNo",
+  "orderType",
+  "linesSummary",
+  "reasonName",
+  "comment",
+  "roleSlug",
+  "from",
+  "to",
+  "statusCode",
+  "statusName",
+] as const;
+
 type AuditActionTone = "create" | "update" | "delete" | "neutral";
 
 function getAuditActionTone(action: string): AuditActionTone {
@@ -65,7 +92,8 @@ function getAuditActionTone(action: string): AuditActionTone {
     action.endsWith(".created") ||
     action.endsWith(".registered") ||
     action.endsWith(".granted") ||
-    action.endsWith(".approved")
+    action.endsWith(".approved") ||
+    action.endsWith(".accepted")
   ) {
     return "create";
   }
@@ -73,7 +101,8 @@ function getAuditActionTone(action: string): AuditActionTone {
   if (
     action.endsWith(".deleted") ||
     action.endsWith(".removed") ||
-    action.endsWith(".revoked")
+    action.endsWith(".revoked") ||
+    action.endsWith(".rejected")
   ) {
     return "delete";
   }
@@ -83,7 +112,8 @@ function getAuditActionTone(action: string): AuditActionTone {
     action.includes("profile") ||
     action.includes("password") ||
     action.includes("submitted") ||
-    action.includes("reverted")
+    action.includes("reverted") ||
+    action.includes("approval_step")
   ) {
     return "update";
   }
@@ -97,6 +127,38 @@ function titleCaseWords(value: string): string {
     .filter(Boolean)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
+}
+
+function formatOrderTypeLabel(orderType: string): string {
+  switch (orderType) {
+    case "manual":
+      return "Manual";
+    case "special":
+      return "Special";
+    case "auto_replenish":
+      return "Auto replenish";
+    default:
+      return titleCaseWords(orderType);
+  }
+}
+
+function formatStatusLabel(status: string): string {
+  return titleCaseWords(status);
+}
+
+function formatRoleSlugLabel(roleSlug: string): string {
+  switch (roleSlug) {
+    case "ps":
+      return "Product Specialist";
+    case "tl":
+      return "Team Leader";
+    case "sp":
+      return "Supply Planning";
+    case "logistics":
+      return "Logistics";
+    default:
+      return titleCaseWords(roleSlug);
+  }
 }
 
 export function formatAuditActionLabel(action: string): string {
@@ -135,6 +197,18 @@ export function getAuditEntityBadgeClassName(entityType: string): string {
       return "border-teal-200 bg-teal-50 text-teal-900 dark:border-teal-900 dark:bg-teal-950 dark:text-teal-100";
     case "Tenant":
       return "border-indigo-200 bg-indigo-50 text-indigo-900 dark:border-indigo-900 dark:bg-indigo-950 dark:text-indigo-100";
+    case "BranchOrder":
+      return "border-sky-200 bg-sky-50 text-sky-900 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-100";
+    case "BranchDelivery":
+      return "border-cyan-200 bg-cyan-50 text-cyan-900 dark:border-cyan-900 dark:bg-cyan-950 dark:text-cyan-100";
+    case "BranchTransfer":
+      return "border-violet-200 bg-violet-50 text-violet-900 dark:border-violet-900 dark:bg-violet-950 dark:text-violet-100";
+    case "BranchPullout":
+      return "border-orange-200 bg-orange-50 text-orange-900 dark:border-orange-900 dark:bg-orange-950 dark:text-orange-100";
+    case "BranchSalesTransaction":
+      return "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-100";
+    case "BranchInventory":
+      return "border-lime-200 bg-lime-50 text-lime-900 dark:border-lime-900 dark:bg-lime-950 dark:text-lime-100";
     default:
       return "border-border bg-secondary text-secondary-foreground";
   }
@@ -148,6 +222,191 @@ function readMetadataString(
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function formatActionFallback(action: string): string {
+  const label = formatAuditActionLabel(action);
+  if (label !== titleCaseWords(action)) {
+    return `${label} recorded`;
+  }
+  return `${titleCaseWords(action)} recorded`;
+}
+
+function formatOperationalAuditDetails(
+  action: string,
+  data: Record<string, unknown>,
+): string | null {
+  const branchName = readMetadataString(data, "branchName");
+  const orderNumber = readMetadataString(data, "orderNumber");
+  const deliveryNo = readMetadataString(data, "deliveryNo");
+  const transferNo = readMetadataString(data, "transferNo");
+  const pulloutNo = readMetadataString(data, "pulloutNo");
+  const orderType = readMetadataString(data, "orderType");
+  const linesSummary = readMetadataString(data, "linesSummary");
+  const from = readMetadataString(data, "from");
+  const to = readMetadataString(data, "to");
+  const roleSlug = readMetadataString(data, "roleSlug");
+  const reasonName = readMetadataString(data, "reasonName");
+  const comment = readMetadataString(data, "comment");
+  const statusName = readMetadataString(data, "statusName");
+  const statusCode = readMetadataString(data, "statusCode");
+
+  switch (action) {
+    case "order.created": {
+      const typeLabel = orderType ? formatOrderTypeLabel(orderType) : "Order";
+      const parts = [`${typeLabel} order`];
+      if (branchName) parts[0] = `${typeLabel} order at ${branchName}`;
+      if (linesSummary) parts.push(`Lines: ${linesSummary}`);
+      if (orderNumber) parts.push(orderNumber);
+      return parts.join(" · ");
+    }
+    case "order.approval_step":
+    case "order.approved": {
+      const typeLabel = orderType ? formatOrderTypeLabel(orderType) : "Order";
+      const stepLabel = roleSlug ? formatRoleSlugLabel(roleSlug) : "Approval";
+      const transition =
+        from && to
+          ? `${formatStatusLabel(from)} → ${formatStatusLabel(to)}`
+          : to
+            ? formatStatusLabel(to)
+            : null;
+      const parts = [`${typeLabel} order · ${stepLabel} step`];
+      if (transition) parts.push(transition);
+      if (orderNumber) parts.push(orderNumber);
+      if (branchName) parts.push(branchName);
+      return parts.join(" · ");
+    }
+    case "order.rejected": {
+      const typeLabel = orderType ? formatOrderTypeLabel(orderType) : "Order";
+      const parts = [`${typeLabel} order rejected`];
+      if (branchName) parts.push(branchName);
+      if (orderNumber) parts.push(orderNumber);
+      if (comment) parts.push(`Reason: ${comment}`);
+      return parts.join(" · ");
+    }
+    case "delivery.created":
+    case "delivery.accepted":
+    case "delivery.created_from_order": {
+      const parts: string[] = [];
+      if (deliveryNo) parts.push(deliveryNo);
+      if (branchName) parts.push(`at ${branchName}`);
+      if (orderNumber) parts.push(`Order ${orderNumber}`);
+      if (parts.length === 0) return null;
+      return parts.join(" · ");
+    }
+    case "transfer.created": {
+      const parts: string[] = [];
+      if (transferNo) parts.push(transferNo);
+      if (from && to) parts.push(`${from} → ${to}`);
+      else if (branchName) parts.push(branchName);
+      return parts.length > 0 ? parts.join(" · ") : null;
+    }
+    case "pullout.created": {
+      const parts: string[] = [];
+      if (pulloutNo) parts.push(pulloutNo);
+      if (branchName) parts.push(branchName);
+      if (reasonName) parts.push(`Reason: ${reasonName}`);
+      return parts.length > 0 ? parts.join(" · ") : null;
+    }
+    case "sale.created": {
+      const parts: string[] = [];
+      if (branchName) parts.push(`Sale at ${branchName}`);
+      if (linesSummary) parts.push(linesSummary);
+      return parts.length > 0 ? parts.join(" · ") : null;
+    }
+    case "inventory.status_updated":
+    case "inventory.status_changed": {
+      if (statusName || statusCode) {
+        return `Status → ${statusName ?? formatStatusLabel(statusCode ?? "")}`;
+      }
+      return null;
+    }
+    default:
+      return null;
+  }
+}
+
+function formatGenericOperationalDetails(data: Record<string, unknown>): string | null {
+  const parts: string[] = [];
+  const from = readMetadataString(data, "from");
+  const to = readMetadataString(data, "to");
+
+  if (from && to) {
+    parts.push(`${formatStatusLabel(from)} → ${formatStatusLabel(to)}`);
+  } else if (from) {
+    parts.push(`From: ${formatStatusLabel(from)}`);
+  } else if (to) {
+    parts.push(`To: ${formatStatusLabel(to)}`);
+  }
+
+  for (const key of GENERIC_DETAIL_KEYS) {
+    if (key === "from" || key === "to") continue;
+    const value = readMetadataString(data, key);
+    if (!value) continue;
+
+    switch (key) {
+      case "orderType":
+        parts.push(`Type: ${formatOrderTypeLabel(value)}`);
+        break;
+      case "roleSlug":
+        parts.push(`Role: ${formatRoleSlugLabel(value)}`);
+        break;
+      case "linesSummary":
+        parts.push(`Lines: ${value}`);
+        break;
+      case "reasonName":
+        parts.push(`Reason: ${value}`);
+        break;
+      case "comment":
+        parts.push(`Comment: ${value}`);
+        break;
+      case "statusCode":
+      case "statusName":
+        if (!parts.some((p) => p.startsWith("Status"))) {
+          parts.push(`Status: ${key === "statusName" ? value : formatStatusLabel(value)}`);
+        }
+        break;
+      default:
+        parts.push(`${titleCaseWords(key)}: ${value}`);
+    }
+  }
+
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+function formatAdminAuditDetails(
+  data: Record<string, unknown>,
+  action: string,
+): string | null {
+  const parts: string[] = [];
+
+  const title = readMetadataString(data, "title");
+  const name = readMetadataString(data, "name");
+  const email = readMetadataString(data, "email");
+  const slug = readMetadataString(data, "slug");
+  const tagline = readMetadataString(data, "tagline");
+  const status = readMetadataString(data, "status");
+  const roleSlug = readMetadataString(data, "roleSlug");
+  const permissionSlug = readMetadataString(data, "permissionSlug");
+
+  if (title) parts.push(`Title: ${title}`);
+  if (name && name !== title) parts.push(`Name: ${name}`);
+  if (email) parts.push(`Email: ${email}`);
+  if (slug && slug !== name) parts.push(`Identifier: ${slug}`);
+  if (tagline) parts.push(`Tagline: ${tagline}`);
+  if (status) parts.push(`Status: ${formatStatusLabel(status)}`);
+
+  if (action === "role.permission.granted") {
+    parts.push(
+      `Granted ${permissionSlug ?? "permission"} to ${roleSlug ?? "role"}`,
+    );
+  } else if (action === "role.permission.revoked") {
+    parts.push(
+      `Revoked ${permissionSlug ?? "permission"} from ${roleSlug ?? "role"}`,
+    );
+  }
+
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
 export function formatAuditEntitySummary(
   entityType: string,
   metadata: unknown,
@@ -157,6 +416,12 @@ export function formatAuditEntitySummary(
   }
 
   const data = metadata as Record<string, unknown>;
+
+  for (const key of OPERATIONAL_SUMMARY_KEYS) {
+    const value = readMetadataString(data, key);
+    if (value) return value;
+  }
+
   return (
     readMetadataString(data, "title") ??
     readMetadataString(data, "name") ??
@@ -171,7 +436,7 @@ export function formatAuditDetails(
   action: string,
 ): string {
   if (metadata === null || metadata === undefined) {
-    return "No additional details";
+    return formatActionFallback(action);
   }
 
   if (typeof metadata !== "object" || Array.isArray(metadata)) {
@@ -179,51 +444,16 @@ export function formatAuditDetails(
   }
 
   const data = metadata as Record<string, unknown>;
-  const parts: string[] = [];
 
-  const title = readMetadataString(data, "title");
-  const name = readMetadataString(data, "name");
-  const email = readMetadataString(data, "email");
-  const slug = readMetadataString(data, "slug");
-  const tagline = readMetadataString(data, "tagline");
-  const status = readMetadataString(data, "status");
-  const roleSlug = readMetadataString(data, "roleSlug");
-  const permissionSlug = readMetadataString(data, "permissionSlug");
+  const operational =
+    formatOperationalAuditDetails(action, data) ??
+    formatGenericOperationalDetails(data);
+  if (operational) return operational;
 
-  if (title) {
-    parts.push(`Title: ${title}`);
-  }
-  if (name && name !== title) {
-    parts.push(`Name: ${name}`);
-  }
-  if (email) {
-    parts.push(`Email: ${email}`);
-  }
-  if (slug && slug !== name) {
-    parts.push(`Identifier: ${slug}`);
-  }
-  if (tagline) {
-    parts.push(`Tagline: ${tagline}`);
-  }
-  if (status) {
-    parts.push(`Status: ${titleCaseWords(status)}`);
-  }
+  const admin = formatAdminAuditDetails(data, action);
+  if (admin) return admin;
 
-  if (action === "role.permission.granted") {
-    parts.push(
-      `Granted ${permissionSlug ?? "permission"} to ${roleSlug ?? "role"}`,
-    );
-  } else if (action === "role.permission.revoked") {
-    parts.push(
-      `Revoked ${permissionSlug ?? "permission"} from ${roleSlug ?? "role"}`,
-    );
-  }
-
-  if (parts.length === 0) {
-    return "No additional details";
-  }
-
-  return parts.join(" · ");
+  return formatActionFallback(action);
 }
 
 export function formatAuditTimestamp(value: Date | string): string {

@@ -27,6 +27,11 @@ export const inventoryRepository = {
     tenantId: string,
     branchIds: string[],
     pagination?: { page?: number; limit?: number },
+    filters?: {
+      branchId?: string;
+      skuCode?: string;
+      offPlanogramOnly?: boolean;
+    },
   ) {
     if (branchIds.length === 0) {
       const { limit, page } = resolvePagination(pagination);
@@ -34,9 +39,20 @@ export const inventoryRepository = {
     }
 
     const { limit, page, skip } = resolvePagination(pagination);
+    const effectiveBranchIds = filters?.branchId
+      ? branchIds.filter((id) => id === filters.branchId)
+      : branchIds;
+
+    if (effectiveBranchIds.length === 0) {
+      return toPaginatedResult([], 0, page, limit);
+    }
+
     const where: Prisma.BranchInventoryWhereInput = {
       tenantId,
-      branchId: { in: branchIds },
+      branchId: { in: effectiveBranchIds },
+      ...(filters?.skuCode
+        ? { serialNumber: { model: { skuCode: filters.skuCode } } }
+        : {}),
     };
 
     const [items, total] = await Promise.all([
@@ -81,4 +97,4 @@ export const inventoryRepository = {
     });
   },
 };
-
+

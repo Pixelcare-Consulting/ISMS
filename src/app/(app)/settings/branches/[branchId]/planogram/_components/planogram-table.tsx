@@ -1,12 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
-import { Trash2 } from "lucide-react";
+import { useRef, useState, useTransition } from "react";
+import { Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import {
   addPlanogramModelAction,
+  importPlanogramCsvForBranchAction,
   listActiveModelsForPlanogramAction,
   removePlanogramModelAction,
   updatePlanogramMaxQtyAction,
@@ -33,26 +35,41 @@ interface PlanogramRow {
   id: string;
   maxQty: number;
   stockCount: number;
+  ditCount: number;
   daysThreshold: number | null;
   model: {
     id: string;
     skuCode: string;
     name: string;
     status: string;
+    srp: number | null;
+    series: string | null;
     brand: { name: string } | null;
   };
+}
+
+function formatPeso(value: number | null) {
+  if (value == null) return "—";
+  return new Intl.NumberFormat("en-PH", {
+    style: "currency",
+    currency: "PHP",
+    maximumFractionDigits: 0,
+  }).format(value);
 }
 
 export function PlanogramTable({
   branchId,
   rows,
   canManage,
+  offPlanogramSerialCount = 0,
 }: {
   branchId: string;
   rows: PlanogramRow[];
   canManage: boolean;
+  offPlanogramSerialCount?: number;
 }) {
   const router = useRouter();
+  const fileRef = useRef<HTMLInputElement>(null);
   const [pending, startTransition] = useTransition();
   const [showAdd, setShowAdd] = useState(false);
 
@@ -68,11 +85,67 @@ export function PlanogramTable({
     });
   }
 
+  function handleImport(formData: FormData) {
+    startTransition(async () => {
+      const result = await importPlanogramCsvForBranchAction(branchId, formData);
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success(`Planogram imported (${result.skuCount ?? 0} SKUs)`);
+      router.refresh();
+    });
+  }
+
+  function importBundledCsv() {
+    startTransition(async () => {
+      const result = await importPlanogramCsvForBranchAction(branchId);
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success(`Planogram synced from BRS CSV (${result.skuCount ?? 0} SKUs)`);
+      router.refresh();
+    });
+  }
+
   return (
     <div className="space-y-4">
+      {offPlanogramSerialCount > 0 ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">
+          {offPlanogramSerialCount} inventory unit
+          {offPlanogramSerialCount === 1 ? "" : "s"} at this branch{" "}
+          {offPlanogramSerialCount === 1 ? "is" : "are"} off-planogram.{" "}
+          <Link href={`/inventory?branch=${branchId}&offPlanogram=1`} className="underline">
+            View units
+          </Link>
+        </div>
+      ) : null}
+
       <DataTableShell>
         {canManage ? (
-          <div className="flex items-center justify-end border-b px-4 py-3">
+          <div className="flex flex-wrap items-center justify-end gap-2 border-b px-4 py-3">
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const fd = new FormData();
+                fd.set("file", file);
+                handleImport(fd);
+                e.target.value = "";
+              }}
+            />
+            <Button variant="outline" size="sm" disabled={pending} onClick={() => fileRef.current?.click()}>
+              <Upload className="mr-1 size-4" />
+              Import CSV
+            </Button>
+            <Button variant="outline" size="sm" disabled={pending} onClick={importBundledCsv}>
+              Sync BRS CSV
+            </Button>
             <Button onClick={() => setShowAdd(true)}>Add model</Button>
           </div>
         ) : null}
@@ -82,11 +155,14 @@ export function PlanogramTable({
               <TableRow>
                 <TableHead>SKU</TableHead>
                 <TableHead>Model</TableHead>
+                <TableHead>Series</TableHead>
+                <TableHead>SRP</TableHead>
                 <TableHead>Brand</TableHead>
                 <TableHead>Stock / Max</TableHead>
                 <TableHead title="Minimum inventory life — alert when oldest stock exceeds this age">
                   MIL (days)
                 </TableHead>
+                <TableHead className="w-28">Units</TableHead>
                 {canManage ? <TableHead className="w-24" /> : null}
               </TableRow>
             </TableHeader>
@@ -140,6 +216,7 @@ function PlanogramRowEditor({
   const [saving, startTransition] = useTransition();
 
   const belowCapacity = row.stockCount < row.maxQty;
+  const inventoryHref = `/inventory?branch=${branchId}&sku=${encodeURIComponent(row.model.skuCode)}`;
 
   function saveMaxQty() {
     if (maxQty === row.maxQty) return;
@@ -179,10 +256,13 @@ function PlanogramRowEditor({
     <TableRow>
       <TableCell className="font-mono text-sm">{row.model.skuCode}</TableCell>
       <TableCell>{row.model.name}</TableCell>
+      <TableCell>{row.model.series ?? "—"}</TableCell>
+      <TableCell className="tabular-nums">{formatPeso(row.model.srp)}</TableCell>
       <TableCell>{row.model.brand?.name ?? "—"}</TableCell>
       <TableCell>
-        <span className={belowCapacity ? "text-amber-600 font-medium" : ""}>
-          {row.stockCount} / {canManage ? (
+        <span className={belowCapacity ? "font-medium text-amber-600" : ""}>
+          STK {row.stockCount} · DIT {row.ditCount} / max{" "}
+          {canManage ? (
             <Input
               type="number"
               min={1}
@@ -216,6 +296,11 @@ function PlanogramRowEditor({
         ) : (
           (row.daysThreshold ?? "—")
         )}
+      </TableCell>
+      <TableCell>
+        <Button variant="link" size="sm" className="h-auto p-0" asChild>
+          <Link href={inventoryHref}>View units</Link>
+        </Button>
       </TableCell>
       {canManage ? (
         <TableCell>

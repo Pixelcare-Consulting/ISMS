@@ -1,9 +1,18 @@
 import type { PrismaClient } from "@prisma/client";
 
-import { LEGACY_INVENTORY_STATUS_TO_CODE } from "@/features/reason-status/constants/defaults";
-
 import type { ReasonStatusCodeMap } from "./seed-reason-status";
 import { getReasonStatusCodeId } from "./seed-reason-status";
+import {
+  DEALER1_BRANCH_MAP,
+  readPlanogramCsvContent,
+} from "./seed-planogram-from-csv";
+import { allocationService } from "@/features/forecast/services/allocation.service";
+import {
+  importForecastFromCsvContent,
+  syncPlanogramFromCsvContent,
+  upsertModelsFromPlanogramRows,
+} from "@/features/planogram/services/planogram-csv-sync.service";
+import { parsePlanogramCsvFromContent } from "./seed-planogram-from-csv";
 
 export async function seedBrsDemoData(
   prisma: PrismaClient,
@@ -18,46 +27,50 @@ export async function seedBrsDemoData(
     return getReasonStatusCodeId(prisma, tenantId, "inventory_system", code);
   };
 
+  const csvContent = readPlanogramCsvContent();
+  const planogramRows = parsePlanogramCsvFromContent(csvContent);
+
   const area = await prisma.area.upsert({
     where: { tenantId_code: { tenantId, code: "NCR" } },
     create: { tenantId, code: "NCR", name: "National Capital Region" },
     update: {},
   });
 
-  const brand = await prisma.brand.upsert({
-    where: { tenantId_name: { tenantId, name: "Western" } },
-    create: { tenantId, name: "Western", code: "WEST" },
-    update: {},
-  });
+  const brandRecords = new Map<string, { id: string; code: string }>();
+  for (const brandName of [...new Set(planogramRows.map((r) => r.brand))]) {
+    const code = brandName.slice(0, 4).toUpperCase();
+    const brand = await prisma.brand.upsert({
+      where: { tenantId_name: { tenantId, name: brandName } },
+      create: { tenantId, name: brandName, code },
+      update: {},
+    });
+    brandRecords.set(brandName, { id: brand.id, code: brand.code ?? code });
+  }
 
-  const category = await prisma.category.upsert({
-    where: { tenantId_name: { tenantId, name: "Refrigerator" } },
-    create: { tenantId, name: "Refrigerator", brandId: brand.id },
-    update: {},
-  });
+  const categoryRecords = new Map<string, string>();
+  async function getCategoryId(brandName: string, series: string) {
+    const key = `${brandName}:${series}`;
+    if (categoryRecords.has(key)) return categoryRecords.get(key)!;
 
-  const models = [
-    { skuCode: "WREF-200L", name: "Western 200L Refrigerator", status: "active" as const, maxQty: 5, milDays: 30 },
-    { skuCode: "WREF-300L", name: "Western 300L Refrigerator", status: "active" as const, maxQty: 3, milDays: 45 },
-    { skuCode: "WREF-LEGACY", name: "Western Legacy Model (retired)", status: "retired" as const, maxQty: 2, milDays: 60 },
-  ];
+    const brandId = brandRecords.get(brandName)?.id;
+    if (!brandId) throw new Error(`Brand not found: ${brandName}`);
 
-  const modelRecords = await Promise.all(
-    models.map(async (m) => {
-      const model = await prisma.productModel.upsert({
-        where: { tenantId_skuCode: { tenantId, skuCode: m.skuCode } },
-        create: {
-          tenantId,
-          brandId: brand.id,
-          categoryId: category.id,
-          skuCode: m.skuCode,
-          name: m.name,
-          status: m.status,
-        },
-        update: { name: m.name, status: m.status },
-      });
-      return { id: model.id, skuCode: m.skuCode, status: m.status, maxQty: m.maxQty, milDays: m.milDays };
-    }),
+    const categoryName = series || "General";
+    const category = await prisma.category.upsert({
+      where: { tenantId_name: { tenantId, name: categoryName } },
+      create: { tenantId, name: categoryName, brandId },
+      update: { brandId },
+    });
+    categoryRecords.set(key, category.id);
+    return category.id;
+  }
+
+  const modelIdBySku = await upsertModelsFromPlanogramRows(
+    prisma,
+    tenantId,
+    planogramRows,
+    brandRecords,
+    getCategoryId,
   );
 
   const mainWarehouse = await prisma.warehouse.upsert({
@@ -72,61 +85,68 @@ export async function seedBrsDemoData(
     update: {},
   });
 
-  const branches = [
-    { sapCode: "WMK-001", name: "Western Makati", schedule: { days: ["Tue", "Thu"] } },
-    { sapCode: "WRC-002", name: "Western Recto", schedule: { days: ["Mon", "Wed", "Fri"] } },
-    { sapCode: "WQC-003", name: "Western Quezon City", schedule: { days: ["Tue", "Fri"] } },
-  ] as const;
+  const branchRecords: { id: string; sapCode: string; name: string; branchIndex: 1 | 2 | 3 | 4 }[] =
+    [];
+  const branchByIndex = new Map<1 | 2 | 3 | 4, string>();
 
-  const activeModels = modelRecords.filter((m) => m.status === "active");
-  const branchRecords: { id: string; sapCode: string; name: string }[] = [];
+  for (const branchDef of DEALER1_BRANCH_MAP) {
+    const schedule =
+      branchDef.branchIndex === 1
+        ? { days: ["Tue", "Thu"] }
+        : branchDef.branchIndex === 2
+          ? { days: ["Mon", "Wed", "Fri"] }
+          : branchDef.branchIndex === 3
+            ? { days: ["Tue", "Fri"] }
+            : { days: ["Wed", "Sat"] };
 
-  for (const b of branches) {
     const branch = await prisma.branch.upsert({
-      where: { tenantId_sapCode: { tenantId, sapCode: b.sapCode } },
+      where: { tenantId_sapCode: { tenantId, sapCode: branchDef.sapCode } },
       create: {
         tenantId,
-        sapCode: b.sapCode,
-        name: b.name,
+        sapCode: branchDef.sapCode,
+        name: branchDef.name,
         branchAreaId: area.id,
-        deliverySchedule: b.schedule,
+        deliverySchedule: schedule,
         status: "active",
       },
-      update: { name: b.name, deliverySchedule: b.schedule },
+      update: { name: branchDef.name, deliverySchedule: schedule },
     });
-    branchRecords.push(branch);
+
+    branchRecords.push({
+      id: branch.id,
+      sapCode: branchDef.sapCode,
+      name: branchDef.name,
+      branchIndex: branchDef.branchIndex,
+    });
+    branchByIndex.set(branchDef.branchIndex, branch.id);
 
     await prisma.alternateWarehouse.upsert({
       where: { branchId_warehouseId: { branchId: branch.id, warehouseId: mainWarehouse.id } },
       create: { branchId: branch.id, warehouseId: mainWarehouse.id },
       update: {},
     });
+  }
 
-    await prisma.$transaction(
-      activeModels.flatMap((model) => {
-        const maxQty = b.sapCode === "WMK-001" ? model.maxQty : model.maxQty - 1;
-        return [
-          prisma.branchPlanogram.upsert({
-            where: { branchId_modelId: { branchId: branch.id, modelId: model.id } },
-            create: { tenantId, branchId: branch.id, modelId: model.id, maxQty },
-            update: { maxQty },
-          }),
-          prisma.branchMilSetting.upsert({
-            where: { branchId_modelId: { branchId: branch.id, modelId: model.id } },
-            create: {
-              tenantId,
-              branchId: branch.id,
-              modelId: model.id,
-              daysThreshold: model.milDays,
-            },
-            update: { daysThreshold: model.milDays },
-          }),
-        ];
-      }),
-    );
+  await syncPlanogramFromCsvContent(
+    prisma,
+    tenantId,
+    csvContent,
+    branchRecords,
+    modelIdBySku,
+  );
+
+  const period = await importForecastFromCsvContent(prisma, tenantId, csvContent, branchByIndex);
+
+  if (userIdsByEmail["sp@demo.local"]) {
+    try {
+      await allocationService.runAllocation(tenantId, period.id);
+    } catch {
+      // non-fatal during seed
+    }
   }
 
   const makati = branchRecords.find((b) => b.sapCode === "WMK-001");
+  const recto = branchRecords.find((b) => b.sapCode === "WRC-002");
   const psUserId = userIdsByEmail["ps@demo.local"]?.id;
   const tlUserId = userIdsByEmail["tl@demo.local"]?.id;
   const spUserId = userIdsByEmail["sp@demo.local"]?.id;
@@ -148,43 +168,59 @@ export async function seedBrsDemoData(
     await prisma.aor.createMany({ data: aorCreates, skipDuplicates: true });
   }
 
-  if (makati) {
-    const primaryModel = activeModels[0];
-    const serials = [
-      { serialNo: "SN-WMK-001", status: "Stock" as const, ageDays: 45 },
-      { serialNo: "SN-WMK-002", status: "DeliveryInTransit" as const, ageDays: 0 },
-      { serialNo: "SN-WMK-003", status: "Stock" as const, ageDays: 5 },
-    ];
+  const stkCodeId = await resolveStatusCodeId("STK");
+  const ditCodeId = await resolveStatusCodeId("DIT");
 
-    const statusCodeIds = await Promise.all(
-      serials.map(async (item) => {
-        const code = LEGACY_INVENTORY_STATUS_TO_CODE[item.status] ?? "STK";
-        return resolveStatusCodeId(code);
-      }),
+  const inventorySeed: {
+    branchId: string;
+    skuCode: string;
+    serialNo: string;
+    statusCodeId: string;
+    ageDays: number;
+  }[] = [];
+
+  const makati32 = modelIdBySku.get("32STV104");
+  const recto32 = modelIdBySku.get("32STV105");
+
+  if (makati && makati32) {
+    inventorySeed.push(
+      { branchId: makati.id, skuCode: "32STV104", serialNo: "SN-WMK-001", statusCodeId: stkCodeId, ageDays: 45 },
+      { branchId: makati.id, skuCode: "32STV104", serialNo: "SN-WMK-002", statusCodeId: ditCodeId, ageDays: 0 },
+      { branchId: makati.id, skuCode: "32STV104", serialNo: "SN-WMK-003", statusCodeId: stkCodeId, ageDays: 5 },
     );
+  }
 
+  if (recto && recto32) {
+    inventorySeed.push(
+      { branchId: recto.id, skuCode: "32STV105", serialNo: "SN-WRC-001", statusCodeId: stkCodeId, ageDays: 12 },
+      { branchId: recto.id, skuCode: "32STV105", serialNo: "SN-WRC-002", statusCodeId: ditCodeId, ageDays: 1 },
+    );
+  }
+
+  if (inventorySeed.length > 0) {
     await prisma.$transaction(async (tx) => {
-      for (let index = 0; index < serials.length; index++) {
-        const item = serials[index];
+      for (const item of inventorySeed) {
+        const modelId = modelIdBySku.get(item.skuCode);
+        if (!modelId) continue;
+
         const stockedAt = new Date(Date.now() - item.ageDays * 24 * 60 * 60 * 1000);
-        const statusCodeId = statusCodeIds[index];
 
         const sn = await tx.serialNumber.upsert({
           where: { tenantId_serialNo: { tenantId, serialNo: item.serialNo } },
-          create: { tenantId, modelId: primaryModel.id, serialNo: item.serialNo },
-          update: {},
+          create: { tenantId, modelId, serialNo: item.serialNo },
+          update: { modelId },
         });
 
         await tx.branchInventory.upsert({
-          where: { branchId_serialNumberId: { branchId: makati.id, serialNumberId: sn.id } },
+          where: { branchId_serialNumberId: { branchId: item.branchId, serialNumberId: sn.id } },
           create: {
             tenantId,
-            branchId: makati.id,
+            branchId: item.branchId,
             serialNumberId: sn.id,
-            statusCodeId,
+            statusCodeId: item.statusCodeId,
             updatedAt: stockedAt,
           },
-          update: { statusCodeId, updatedAt: stockedAt },
+          update: { statusCodeId: item.statusCodeId, updatedAt: stockedAt },
         });
       }
     });
@@ -192,6 +228,13 @@ export async function seedBrsDemoData(
 
   await prisma.tenant.update({
     where: { id: tenantId },
-    data: { name: "Western Appliance Trade Group", tagline: "BRS inventory ops demo" },
+    data: {
+      name: "Finden Technology",
+      tagline: "Your BRS inventory ops partner",
+    },
   });
+
+  console.log(
+    `BRS seed: ${planogramRows.length} SKUs, ${branchRecords.length} branches, ${period.label} forecast targets`,
+  );
 }

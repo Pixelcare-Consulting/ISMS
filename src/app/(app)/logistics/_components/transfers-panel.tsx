@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import {
@@ -16,6 +16,7 @@ import {
   DataTableShell,
 } from "@/components/data-table/data-table-shell";
 import { TablePagination } from "@/components/data-table/table-pagination";
+import { TableSearchToolbar } from "@/components/data-table/table-search-bar";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -41,6 +42,7 @@ import {
   LOGISTICS_TRANSFERS_PATH,
 } from "@/app/(app)/logistics/_components/logistics-paths";
 import { useLogisticsRefs } from "@/app/(app)/logistics/_components/use-logistics-refs";
+import { matchesTableSearch } from "@/utils/match-table-search";
 
 interface StatusCodeRef {
   id: string;
@@ -77,9 +79,24 @@ type PendingConfirm = {
 
 export function TransfersPanel({ transfers }: TransfersPanelProps) {
   const router = useRouter();
+  const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
   const { branches, loadRefs } = useLogisticsRefs();
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
+
+  const filtered = useMemo(
+    () =>
+      transfers.items.filter((t) =>
+        matchesTableSearch(query, [
+          t.transferNo,
+          t.fromBranch.name,
+          t.toBranch.name,
+          t.statusCode.name,
+          t.statusCode.code,
+        ]),
+      ),
+    [transfers.items, query],
+  );
 
   function confirmPendingAction() {
     if (!pendingConfirm) return;
@@ -114,12 +131,14 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
         : "Receiving branch confirms arrival and updates stock.";
 
   return (
-    <div className="space-y-6">
-      <LogisticsLoadRefsButton onClick={loadRefs} />
-
+    <>
       <DataTableShell>
-        <div className="flex items-center justify-between border-b px-4 py-3">
-          <h3 className="font-medium">Transfers</h3>
+        <TableSearchToolbar
+          value={query}
+          onChange={setQuery}
+          placeholder="Search transfers…"
+        >
+          <LogisticsLoadRefsButton onClick={loadRefs} />
           {branches.length >= 2 ? (
             <Button
               size="sm"
@@ -137,7 +156,7 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
               New transfer request
             </Button>
           ) : null}
-        </div>
+        </TableSearchToolbar>
         <DataTableScroll>
           <Table>
             <TableHeader>
@@ -149,7 +168,7 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {transfers.items.map((t) => (
+              {filtered.map((t) => (
                 <TableRow key={t.id}>
                   <TableCell>{t.transferNo}</TableCell>
                   <TableCell>
@@ -261,6 +280,6 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </>
   );
 }

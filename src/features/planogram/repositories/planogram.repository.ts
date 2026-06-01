@@ -12,7 +12,9 @@ export const planogramRepository = {
             skuCode: true,
             name: true,
             status: true,
+            srp: true,
             brand: { select: { name: true } },
+            category: { select: { name: true } },
           },
         },
       },
@@ -74,6 +76,81 @@ export const planogramRepository = {
       counts.set(modelId, (counts.get(modelId) ?? 0) + 1);
     }
     return counts;
+  },
+
+  async countInventoryByStatusForModels(
+    tenantId: string,
+    branchId: string,
+    modelIds: string[],
+    statusCodeId: string,
+  ): Promise<Map<string, number>> {
+    if (modelIds.length === 0) return new Map();
+
+    const counts = new Map<string, number>();
+    for (const modelId of modelIds) {
+      counts.set(modelId, 0);
+    }
+
+    const rows = await prisma.branchInventory.findMany({
+      where: {
+        tenantId,
+        branchId,
+        statusCodeId,
+        serialNumber: { modelId: { in: modelIds } },
+      },
+      select: { serialNumber: { select: { modelId: true } } },
+    });
+
+    for (const row of rows) {
+      const modelId = row.serialNumber.modelId;
+      counts.set(modelId, (counts.get(modelId) ?? 0) + 1);
+    }
+    return counts;
+  },
+
+  findPlanogramModelIds(tenantId: string, branchId: string) {
+    return prisma.branchPlanogram.findMany({
+      where: { tenantId, branchId },
+      select: { modelId: true },
+    });
+  },
+
+  countOffPlanogramUnits(tenantId: string, branchId: string, planogramModelIds: string[]) {
+    return prisma.branchInventory.count({
+      where: {
+        tenantId,
+        branchId,
+        serialNumber: {
+          modelId: planogramModelIds.length > 0 ? { notIn: planogramModelIds } : undefined,
+        },
+      },
+    });
+  },
+
+  isModelOnBranchPlanogram(tenantId: string, branchId: string, modelId: string) {
+    return prisma.branchPlanogram.findFirst({
+      where: { tenantId, branchId, modelId },
+      select: { id: true },
+    });
+  },
+
+  listSerialsForPlanogramEntry(
+    tenantId: string,
+    branchId: string,
+    modelId: string,
+  ) {
+    return prisma.branchInventory.findMany({
+      where: {
+        tenantId,
+        branchId,
+        serialNumber: { modelId },
+      },
+      include: {
+        statusCode: { select: { code: true, name: true } },
+        serialNumber: { select: { serialNo: true } },
+      },
+      orderBy: { updatedAt: "desc" },
+    });
   },
 
   async countStockByBranchModelPairs(
@@ -264,6 +341,48 @@ export const planogramRepository = {
         model: { select: { id: true, skuCode: true, name: true, status: true } },
       },
       orderBy: { model: { skuCode: "asc" } },
+    });
+  },
+
+  async countInventoryByStatusForBranchModel(
+    tenantId: string,
+    branchId: string,
+    modelId: string,
+  ): Promise<Map<string, number>> {
+    const rows = await prisma.branchInventory.groupBy({
+      by: ["statusCodeId"],
+      where: {
+        tenantId,
+        branchId,
+        serialNumber: { modelId },
+      },
+      _count: { id: true },
+    });
+
+    const codes = await prisma.reasonStatusCode.findMany({
+      where: { id: { in: rows.map((r) => r.statusCodeId) }, tenantId },
+      select: { id: true, code: true },
+    });
+    const codeById = new Map(codes.map((c) => [c.id, c.code]));
+    const counts = new Map<string, number>();
+    for (const row of rows) {
+      const code = codeById.get(row.statusCodeId) ?? "OTHER";
+      counts.set(code, row._count.id);
+    }
+    return counts;
+  },
+
+  countOffPlanogramSerials(tenantId: string, branchId: string) {
+    return prisma.branchInventory.count({
+      where: {
+        tenantId,
+        branchId,
+        serialNumber: {
+          model: {
+            branchPlanograms: { none: { branchId } },
+          },
+        },
+      },
     });
   },
 

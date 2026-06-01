@@ -164,6 +164,12 @@ export const appNavigation: NavEntry[] = [
         permission: "branches.manage",
       },
       {
+        href: "/settings/planning",
+        label: "Planning & Forecast",
+        icon: LayoutGrid,
+        anyPermissions: ["forecast.manage", "planogram.manage"],
+      },
+      {
         href: "/settings/planogram",
         label: "Planogram",
         icon: LayoutGrid,

@@ -12,7 +12,12 @@ function isUnrestricted(permissions: string[] | undefined) {
   );
 }
 
-export async function listInventoryAction(input?: { page?: number }) {
+export async function listInventoryAction(input?: {
+  page?: number;
+  branchId?: string;
+  sku?: string;
+  offPlanogram?: boolean;
+}) {
   const session = await requirePermission("inventory.view");
   const unrestricted = isUnrestricted(session.user.permissions);
   const result = await inventoryService.listForUser(
@@ -20,11 +25,19 @@ export async function listInventoryAction(input?: { page?: number }) {
     session.user.id,
     unrestricted,
     { page: input?.page },
+    {
+      branchId: input?.branchId,
+      skuCode: input?.sku,
+      offPlanogramOnly: input?.offPlanogram === true,
+    },
   );
   return {
     ...result,
     items: result.items.map((r) => ({
       ...r,
+      branchId: r.branchId,
+      onPlanogram: "onPlanogram" in r ? Boolean(r.onPlanogram) : false,
+      branch: { ...r.branch, id: r.branchId },
       serialNumber: {
         ...r.serialNumber,
         model: {
@@ -60,4 +73,4 @@ export async function updateInventoryStatusAction(
     return { error: e instanceof Error ? e.message : "Failed to update status" };
   }
 }
-
+

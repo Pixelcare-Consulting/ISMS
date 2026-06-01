@@ -15,13 +15,18 @@ export const inventoryService = {
     userId: string,
     isUnrestricted: boolean,
     pagination?: { page?: number; limit?: number },
+    filters?: {
+      branchId?: string;
+      skuCode?: string;
+      offPlanogramOnly?: boolean;
+    },
   ) {
     const branchIds = isUnrestricted
       ? undefined
       : await aorService.getBranchIdsForUser(tenantId, userId);
 
     if (!isUnrestricted && (!branchIds || branchIds.length === 0)) {
-      return inventoryRepository.listByBranches(tenantId, [], pagination);
+      return inventoryRepository.listByBranches(tenantId, [], pagination, filters);
     }
 
     const allBranches = branchIds ?? [];
@@ -30,14 +35,62 @@ export const inventoryService = {
         "@/features/branches/repositories/branch.repository"
       );
       const branches = await branchRepository.listByTenant(tenantId);
-      return inventoryRepository.listByBranches(
+      const result = await inventoryRepository.listByBranches(
         tenantId,
         branches.map((b) => b.id),
         pagination,
+        filters,
       );
+      return this.enrichWithPlanogramFlags(tenantId, result);
     }
 
-    return inventoryRepository.listByBranches(tenantId, allBranches, pagination);
+    const result = await inventoryRepository.listByBranches(
+      tenantId,
+      allBranches,
+      pagination,
+      filters,
+    );
+    const enriched = await this.enrichWithPlanogramFlags(tenantId, result);
+    if (!filters?.offPlanogramOnly) return enriched;
+
+    const filteredItems = enriched.items.filter(
+      (item) => !("onPlanogram" in item && item.onPlanogram),
+    );
+    return {
+      ...enriched,
+      items: filteredItems,
+      total: filteredItems.length,
+      totalPages: 1,
+    };
+  },
+
+  async enrichWithPlanogramFlags<
+    T extends {
+      items: { branchId: string; serialNumber: { model: { id: string } } }[];
+    },
+  >(tenantId: string, result: T) {
+    const { planogramRepository } = await import(
+      "@/features/planogram/repositories/planogram.repository"
+    );
+
+    const flags = await Promise.all(
+      result.items.map(async (item) => {
+        const onPlanogram = await planogramRepository.isModelOnBranchPlanogram(
+          tenantId,
+          item.branchId,
+          item.serialNumber.model.id,
+        );
+        return Boolean(onPlanogram);
+      }),
+    );
+
+    return {
+      ...result,
+      items: result.items.map((item, index) => ({
+        ...item,
+        onPlanogram: flags[index] ?? false,
+      })),
+    };
   },
 
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { acceptDeliveryAction } from "@/features/logistics/actions/logistics.actions";
@@ -11,6 +11,7 @@ import {
   DataTableShell,
 } from "@/components/data-table/data-table-shell";
 import { TablePagination } from "@/components/data-table/table-pagination";
+import { TableSearchToolbar } from "@/components/data-table/table-search-bar";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,6 +35,7 @@ import {
   buildLogisticsPageHref,
   LOGISTICS_DELIVERIES_PATH,
 } from "@/app/(app)/logistics/_components/logistics-paths";
+import { matchesTableSearch } from "@/utils/match-table-search";
 
 interface StatusCodeRef {
   id: string;
@@ -70,8 +72,23 @@ type PendingConfirm = {
 
 export function DeliveriesPanel({ deliveries }: DeliveriesPanelProps) {
   const router = useRouter();
+  const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
+
+  const filtered = useMemo(
+    () =>
+      deliveries.items.filter((d) =>
+        matchesTableSearch(query, [
+          d.deliveryNo,
+          d.branch.name,
+          d.order?.orderNumber,
+          d.statusCode.name,
+          d.statusCode.code,
+        ]),
+      ),
+    [deliveries.items, query],
+  );
 
   function confirmPendingAction() {
     if (!pendingConfirm) return;
@@ -84,14 +101,13 @@ export function DeliveriesPanel({ deliveries }: DeliveriesPanelProps) {
   }
 
   return (
-    <div className="space-y-6">
+    <>
       <DataTableShell>
-        <div className="flex items-center justify-between border-b px-4 py-3">
-          <h3 className="font-medium">Deliveries</h3>
-          <p className="text-sm text-muted-foreground">
-            Created automatically when orders are approved (SAP ITR/SO sync).
-          </p>
-        </div>
+        <TableSearchToolbar
+          value={query}
+          onChange={setQuery}
+          placeholder="Search deliveries…"
+        />
         <DataTableScroll>
           <Table>
             <TableHeader>
@@ -104,7 +120,7 @@ export function DeliveriesPanel({ deliveries }: DeliveriesPanelProps) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {deliveries.items.map((d) => (
+              {filtered.map((d) => (
                 <TableRow key={d.id}>
                   <TableCell>{d.deliveryNo}</TableCell>
                   <TableCell>{d.order?.orderNumber ?? "—"}</TableCell>
@@ -141,7 +157,7 @@ export function DeliveriesPanel({ deliveries }: DeliveriesPanelProps) {
             total: deliveries.total,
             page: deliveries.page,
             totalPages: deliveries.totalPages,
-            itemLabel: "delivery",
+            itemLabel: "deliveries",
           }}
           buildHref={(page) => buildLogisticsPageHref(LOGISTICS_DELIVERIES_PATH, page)}
         />
@@ -186,6 +202,6 @@ export function DeliveriesPanel({ deliveries }: DeliveriesPanelProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </>
   );
 }

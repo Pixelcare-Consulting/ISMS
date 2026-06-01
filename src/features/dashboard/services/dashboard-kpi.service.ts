@@ -1,3 +1,4 @@
+import { forecastRepository } from "@/features/forecast/repositories/forecast.repository";
 import { orderService } from "@/features/orders/services/order.service";
 import { planogramService } from "@/features/planogram/services/planogram.service";
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
@@ -12,6 +13,8 @@ export interface DashboardKpis {
   openAtr: number;
   belowPlanogramCapacity: number;
   milBreaches: number;
+  allocationGapCount: number;
+  draftSuggestedOrders: number;
 }
 
 async function computeDashboardKpis(
@@ -22,29 +25,41 @@ async function computeDashboardKpis(
   const branchIds = hasFullAccess ? null : await getUserBranchIds(tenantId, userId);
   const scope = branchScopeFilter(branchIds);
 
-  const [ditCode, stkCode] = await Promise.all([
+  const [ditCode, stkCode, activePeriod] = await Promise.all([
     reasonStatusRepository.findCodeId(tenantId, "inventory_system", "DIT"),
     reasonStatusRepository.findCodeId(tenantId, "inventory_system", "STK"),
+    forecastRepository.findActivePeriod(tenantId),
   ]);
 
-  const [pendingOrderApprovals, deliveryInTransit, stockCount, openAtr, planogramAlerts] =
-    await Promise.all([
-      orderService.countPendingApprovals(tenantId),
-      ditCode
-        ? prisma.branchInventory.count({
-            where: { tenantId, statusCodeId: ditCode.id, ...scope },
-          })
-        : Promise.resolve(0),
-      stkCode
-        ? prisma.branchInventory.count({
-            where: { tenantId, statusCodeId: stkCode.id, ...scope },
-          })
-        : Promise.resolve(0),
-      prisma.branchSalesTransaction.count({
-        where: { tenantId, atrStatus: "open", ...scope },
-      }),
-      planogramService.getMilAndCapacityAlerts(tenantId, branchIds),
-    ]);
+  const [
+    pendingOrderApprovals,
+    deliveryInTransit,
+    stockCount,
+    openAtr,
+    planogramAlerts,
+    allocationGapCount,
+    draftSuggestedOrders,
+  ] = await Promise.all([
+    orderService.countPendingApprovals(tenantId),
+    ditCode
+      ? prisma.branchInventory.count({
+          where: { tenantId, statusCodeId: ditCode.id, ...scope },
+        })
+      : Promise.resolve(0),
+    stkCode
+      ? prisma.branchInventory.count({
+          where: { tenantId, statusCodeId: stkCode.id, ...scope },
+        })
+      : Promise.resolve(0),
+    prisma.branchSalesTransaction.count({
+      where: { tenantId, atrStatus: "open", ...scope },
+    }),
+    planogramService.getMilAndCapacityAlerts(tenantId, branchIds),
+    activePeriod
+      ? forecastRepository.countGapsForPeriod(tenantId, activePeriod.id)
+      : Promise.resolve(0),
+    forecastRepository.countDraftAutoReplenishOrders(tenantId),
+  ]);
 
   return {
     pendingOrderApprovals,
@@ -53,6 +68,8 @@ async function computeDashboardKpis(
     openAtr,
     belowPlanogramCapacity: planogramAlerts.belowCapacity,
     milBreaches: planogramAlerts.milBreaches,
+    allocationGapCount,
+    draftSuggestedOrders,
   };
 }
 

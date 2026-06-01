@@ -111,9 +111,10 @@ body {
   color: hsl(var(--foreground));
 }
 
-/* nextjs-toploader — sit below the h-14 app header */
+/* nextjs-toploader — below header dropdowns (z-50), above page content */
 body:has(.app-shell) #nprogress .bar {
   top: 3.5rem;
+  z-index: 40;
   background: hsl(var(--primary));
 }
 

@@ -12,7 +12,7 @@ export function AppTopLoader() {
       crawlSpeed={120}
       initialPosition={0.12}
       speed={280}
-      zIndex={1500}
+      zIndex={40}
     />
   );
 }

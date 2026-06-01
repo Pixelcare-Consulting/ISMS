@@ -62,6 +62,10 @@ export const opsRepository = {
     return prisma.branchDelivery.update({
       where: { id, tenantId },
       data: { statusCodeId, acceptedAt: new Date() },
+      include: {
+        branch: { select: { name: true } },
+        order: { select: { orderNumber: true } },
+      },
     });
   },
 
@@ -100,6 +104,10 @@ export const opsRepository = {
         notes: data.notes,
         statusCodeId,
       },
+      include: {
+        fromBranch: { select: { name: true } },
+        toBranch: { select: { name: true } },
+      },
     });
   },
 
@@ -121,6 +129,7 @@ export const opsRepository = {
         notes: data.notes,
         statusCodeId,
       },
+      include: { branch: { select: { name: true } } },
     });
   },
 

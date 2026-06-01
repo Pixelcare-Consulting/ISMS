@@ -1,6 +1,7 @@
 import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
 
 import { auditService } from "@/features/audit/services/audit.service";
+import { BRANCH_ORDER_TYPE_LABELS } from "@/features/orders/constants/order-status";
 import {
   canApproveOrder,
   getApprovalLevelForStatus,
@@ -14,6 +15,29 @@ import { planogramRepository } from "@/features/planogram/repositories/planogram
 import { masterDataRepository } from "@/features/master-data/repositories/master-data.repository";
 import { getUserBranchIds } from "@/lib/aor/scope";
 import { sendWorkflowEmail } from "@/lib/notifications/workflow-email";
+
+function buildLinesSummary(
+  details: { quantity: number; model: { skuCode: string } }[],
+): string {
+  return details.map((d) => `${d.model.skuCode}×${d.quantity}`).join(", ");
+}
+
+function orderAuditMetadata(order: {
+  orderNumber: string;
+  orderType: BranchOrderType;
+  branch: { name: string };
+  details: { quantity: number; model: { skuCode: string } }[];
+  status?: BranchOrderStatus;
+}) {
+  return {
+    orderNumber: order.orderNumber,
+    orderType: order.orderType,
+    orderTypeLabel: BRANCH_ORDER_TYPE_LABELS[order.orderType],
+    branchName: order.branch.name,
+    linesSummary: buildLinesSummary(order.details),
+    ...(order.status ? { status: order.status } : {}),
+  };
+}
 
 function pendingApprovalEmail(status: BranchOrderStatus, orderType: BranchOrderType) {
   if (orderType === "special" && status === "pending_sp") {
@@ -100,13 +124,24 @@ export const orderService = {
     }
 
     const entries = await planogramRepository.listPlanogramModelsForOrder(tenantId, branchId);
-    return entries.map((e) => ({
-      id: e.model.id,
-      skuCode: e.model.skuCode,
-      name: e.model.name,
-      maxQty: e.maxQty,
-      onPlanogram: true,
-    }));
+    const stockCounts = await planogramRepository.countStockByBranchModels(
+      tenantId,
+      branchId,
+      entries.map((e) => e.model.id),
+    );
+    return entries.map((e) => {
+      const stockCount = stockCounts.get(e.model.id) ?? 0;
+      const remainingCapacity = Math.max(0, e.maxQty - stockCount);
+      return {
+        id: e.model.id,
+        skuCode: e.model.skuCode,
+        name: e.model.name,
+        maxQty: e.maxQty,
+        stockCount,
+        remainingCapacity,
+        onPlanogram: true,
+      };
+    });
   },
 
   async create(
@@ -156,8 +191,7 @@ export const orderService = {
       entityType: "BranchOrder",
       entityId: order.id,
       metadata: {
-        branchId: data.branchId,
-        orderType: data.orderType,
+        ...orderAuditMetadata(order),
         offPlanogram: offPlanogramSkus,
       },
     });
@@ -204,6 +238,7 @@ export const orderService = {
       await logisticsService.createDeliveryFromApprovedOrder(tenantId, userId, {
         id: order.id,
         branchId: order.branchId,
+        branchName: order.branch.name,
         orderNumber: order.orderNumber,
       });
     }
@@ -214,7 +249,12 @@ export const orderService = {
       action: isFinal ? "order.approved" : "order.approval_step",
       entityType: "BranchOrder",
       entityId: orderId,
-      metadata: { from: order.status, to: nextStatus, roleSlug, orderType: order.orderType },
+      metadata: {
+        ...orderAuditMetadata(order),
+        from: order.status,
+        to: nextStatus,
+        roleSlug,
+      },
     });
 
     await sendWorkflowEmail({
@@ -244,6 +284,12 @@ export const orderService = {
       action: "order.rejected",
       entityType: "BranchOrder",
       entityId: orderId,
+      metadata: {
+        ...orderAuditMetadata(order),
+        from: order.status,
+        to: "rejected",
+        ...(comment ? { comment } : {}),
+      },
     });
   },
 
