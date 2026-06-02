@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import {
@@ -28,11 +28,21 @@ interface MasterDataBrandsPanelProps {
 
 export function MasterDataBrandsPanel({ brands, categories }: MasterDataBrandsPanelProps) {
   const router = useRouter();
+  const [brandRows, setBrandRows] = useState(brands);
+  const [categoryRows, setCategoryRows] = useState(categories);
   const [pending, startTransition] = useTransition();
   const [brandCode, setBrandCode] = useState("");
   const [brandName, setBrandName] = useState("");
   const [catCode, setCatCode] = useState("");
   const [catName, setCatName] = useState("");
+
+  useEffect(() => {
+    setBrandRows(brands);
+  }, [brands]);
+
+  useEffect(() => {
+    setCategoryRows(categories);
+  }, [categories]);
 
   function addBrand() {
     startTransition(async () => {
@@ -42,6 +52,9 @@ export function MasterDataBrandsPanel({ brands, categories }: MasterDataBrandsPa
         return;
       }
       toast.success("Brand added");
+      if (result.brand) {
+        setBrandRows((currentRows) => [result.brand, ...currentRows]);
+      }
       setBrandCode("");
       setBrandName("");
       router.refresh();
@@ -56,6 +69,9 @@ export function MasterDataBrandsPanel({ brands, categories }: MasterDataBrandsPa
         return;
       }
       toast.success("Category added");
+      if (result.category) {
+        setCategoryRows((currentRows) => [result.category, ...currentRows]);
+      }
       setCatCode("");
       setCatName("");
       router.refresh();
@@ -78,7 +94,7 @@ export function MasterDataBrandsPanel({ brands, categories }: MasterDataBrandsPa
             Add brand
           </Button>
         </div>
-        {brands.length === 0 ? (
+        {brandRows.length === 0 ? (
           <DataTableEmpty message="No brands yet." />
         ) : (
           <AppDataTable title="Brands">
@@ -91,7 +107,7 @@ export function MasterDataBrandsPanel({ brands, categories }: MasterDataBrandsPa
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {brands.map((b) => (
+                  {brandRows.map((b) => (
                     <TableRow key={b.id}>
                       <TableCell className="font-mono text-sm">{b.code ?? "—"}</TableCell>
                       <TableCell className="font-medium">{b.name}</TableCell>
@@ -118,7 +134,7 @@ export function MasterDataBrandsPanel({ brands, categories }: MasterDataBrandsPa
             Add category
           </Button>
         </div>
-        {categories.length === 0 ? (
+        {categoryRows.length === 0 ? (
           <DataTableEmpty message="No categories yet." />
         ) : (
           <AppDataTable title="Categories">
@@ -130,7 +146,7 @@ export function MasterDataBrandsPanel({ brands, categories }: MasterDataBrandsPa
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {categories.map((c) => (
+                  {categoryRows.map((c) => (
                     <TableRow key={c.id}>
                       <TableCell className="font-medium">{c.name}</TableCell>
                     </TableRow>

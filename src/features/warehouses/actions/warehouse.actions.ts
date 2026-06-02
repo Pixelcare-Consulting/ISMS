@@ -31,13 +31,13 @@ export async function createWarehouseAction(input: unknown) {
   if (!parsed.success) return { error: "Invalid input" };
 
   try {
-    await warehouseService.createWarehouse({
+    const warehouse = await warehouseService.createWarehouse({
       tenantId: session.user.tenantId,
       actorUserId: session.user.id,
       ...parsed.data,
     });
     revalidatePath("/settings/warehouses");
-    return { success: true as const };
+    return { success: true as const, warehouse };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to create warehouse" };
   }
@@ -72,13 +72,13 @@ export async function addWarehouseLocationAction(input: unknown) {
   if (!parsed.success) return { error: "Invalid input" };
 
   try {
-    await warehouseService.addLocation({
+    const location = await warehouseService.addLocation({
       tenantId: session.user.tenantId,
       actorUserId: session.user.id,
       ...parsed.data,
     });
     revalidatePath("/settings/warehouses");
-    return { success: true as const };
+    return { success: true as const, location };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to add location" };
   }
@@ -102,7 +102,7 @@ export async function deleteWarehouseAction(warehouseId: string) {
     await prisma.warehouseLocation.deleteMany({ where: { warehouseId } });
     await prisma.warehouse.delete({ where: { id: warehouseId, tenantId: session.user.tenantId } });
     revalidatePath("/settings/warehouses");
-    return { success: true as const };
+    return { success: true as const, warehouseId };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to delete warehouse" };
   }
@@ -118,7 +118,7 @@ export async function deleteWarehouseLocationAction(warehouseId: string, locatio
   try {
     await warehouseRepository.deleteLocation(warehouseId, locationId);
     revalidatePath("/settings/warehouses");
-    return { success: true as const };
+    return { success: true as const, warehouseId, locationId };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to delete location" };
   }

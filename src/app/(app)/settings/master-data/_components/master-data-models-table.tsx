@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import {
@@ -27,6 +27,8 @@ import { formatPeso } from "@/utils/format-currency";
 
 export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) {
   const router = useRouter();
+  const [optimisticRows, setOptimisticRows] = useState<ClientModelRow[]>([]);
+  const [statusOverrides, setStatusOverrides] = useState<Record<string, string>>({});
   const [pending, startTransition] = useTransition();
   const [brandId, setBrandId] = useState("");
   const [categoryId, setCategoryId] = useState("");
@@ -36,6 +38,15 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
     brands: { id: string; name: string }[];
     categories: { id: string; name: string }[];
   } | null>(null);
+
+  const rows = useMemo(() => {
+    const modelIds = new Set(models.map((model) => model.id));
+    const merged = [...optimisticRows.filter((row) => !modelIds.has(row.id)), ...models];
+    return merged.map((row) => ({
+      ...row,
+      status: statusOverrides[row.id] ?? row.status,
+    }));
+  }, [models, optimisticRows, statusOverrides]);
 
   async function loadOptions() {
     if (options) return;
@@ -56,6 +67,25 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
         return;
       }
       toast.success("Model added");
+      if (result.model) {
+        const selectedBrand = options?.brands.find((brand) => brand.id === brandId);
+        const selectedCategory = options?.categories.find(
+          (category) => category.id === categoryId,
+        );
+        setOptimisticRows((currentRows) => [
+          {
+            id: result.model.id,
+            skuCode: result.model.skuCode,
+            name: result.model.name,
+            status: result.model.status,
+            srp: null,
+            cbm: null,
+            brand: selectedBrand ? { name: selectedBrand.name } : null,
+            category: selectedCategory ? { name: selectedCategory.name } : null,
+          },
+          ...currentRows,
+        ]);
+      }
       setSkuCode("");
       setName("");
       router.refresh();
@@ -117,7 +147,7 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
         </Button>
       </div>
 
-      {models.length === 0 ? (
+      {rows.length === 0 ? (
         <DataTableEmpty message="No product models yet." />
       ) : (
         <AppDataTable title="Product models">
@@ -134,7 +164,7 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {models.map((m) => (
+                {rows.map((m) => (
                   <TableRow key={m.id}>
                     <TableCell className="font-mono text-sm">{m.skuCode}</TableCell>
                     <TableCell className="font-medium">{m.name}</TableCell>
@@ -144,7 +174,17 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
                       {formatPeso(m.srp)}
                     </TableCell>
                     <TableCell>
-                      <ModelStatusSelect modelId={m.id} status={m.status} />
+                      <ModelStatusSelect
+                        modelId={m.id}
+                        status={m.status}
+                        onUpdated={(nextStatus) => {
+                          setStatusOverrides((current) => ({
+                            ...current,
+                            [m.id]: nextStatus,
+                          }));
+                          router.refresh();
+                        }}
+                      />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -159,8 +199,15 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
 
 const SKU_STATUSES = ["active", "hold", "retired"] as const;
 
-function ModelStatusSelect({ modelId, status }: { modelId: string; status: string }) {
-  const router = useRouter();
+function ModelStatusSelect({
+  modelId,
+  status,
+  onUpdated,
+}: {
+  modelId: string;
+  status: string;
+  onUpdated?: (status: string) => void;
+}) {
   const [pending, startTransition] = useTransition();
 
   function onChange(next: string) {
@@ -175,7 +222,7 @@ function ModelStatusSelect({ modelId, status }: { modelId: string; status: strin
         return;
       }
       toast.success("SKU status updated");
-      router.refresh();
+      onUpdated?.(next);
     });
   }
 

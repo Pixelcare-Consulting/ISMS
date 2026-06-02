@@ -45,27 +45,42 @@ export async function createBrandAction(input: unknown) {
   const session = await requirePermission("master_data.manage");
   const parsed = brandSchema.safeParse(input);
   if (!parsed.success) return { error: "Invalid input" };
-  await masterDataRepository.createBrand(session.user.tenantId, parsed.data);
-  revalidateMasterData();
-  return { success: true as const };
+  try {
+    const brand = await masterDataRepository.createBrand(session.user.tenantId, parsed.data);
+    revalidateMasterData();
+    return { success: true as const, brand };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to create brand" };
+  }
 }
 
 export async function createCategoryAction(input: unknown) {
   const session = await requirePermission("master_data.manage");
   const parsed = categorySchema.safeParse(input);
   if (!parsed.success) return { error: "Invalid input" };
-  await masterDataRepository.createCategory(session.user.tenantId, parsed.data);
-  revalidateMasterData();
-  return { success: true as const };
+  try {
+    const category = await masterDataRepository.createCategory(
+      session.user.tenantId,
+      parsed.data,
+    );
+    revalidateMasterData();
+    return { success: true as const, category };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to create category" };
+  }
 }
 
 export async function createModelAction(input: unknown) {
   const session = await requirePermission("master_data.manage");
   const parsed = modelSchema.safeParse(input);
   if (!parsed.success) return { error: "Invalid input" };
-  await masterDataRepository.createModel(session.user.tenantId, parsed.data);
-  revalidateMasterData();
-  return { success: true as const };
+  try {
+    const model = await masterDataRepository.createModel(session.user.tenantId, parsed.data);
+    revalidateMasterData();
+    return { success: true as const, model };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to create model" };
+  }
 }
 
 const modelStatusSchema = z.object({
@@ -88,7 +103,7 @@ export async function updateModelStatusAction(input: unknown) {
       status: parsed.data.status,
     });
     revalidateMasterData();
-    return { success: true as const };
+    return { success: true as const, modelId: parsed.data.modelId, status: parsed.data.status };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to update status" };
   }

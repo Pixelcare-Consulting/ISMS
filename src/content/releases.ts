@@ -24,6 +24,22 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.11.11",
+    date: "2026-06-02",
+    title: "Instant CRUD updates for remaining settings tables",
+    highlights: [
+      "Warehouses, status settings, and master-data create/update flows now reflect instantly in table UI",
+      "Server revalidation and background refresh remain in place for consistency",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Settings UX — optimistic updates expanded to warehouse/location, status codes, and master-data entries",
+      },
+    ],
+  },
+  {
     version: "0.11.10",
     date: "2026-06-02",
     title: "Instant CRUD updates on more settings pages",

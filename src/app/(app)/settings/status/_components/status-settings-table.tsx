@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import {
@@ -46,6 +46,7 @@ interface StatusGroupRow {
 
 export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
   const router = useRouter();
+  const [rows, setRows] = useState(groups);
   const [pending, startTransition] = useTransition();
   const [expanded, setExpanded] = useState<ReasonStatusCategory | null>(
     groups[0]?.category ?? null,
@@ -53,9 +54,13 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
   const [newCode, setNewCode] = useState("");
   const [newName, setNewName] = useState("");
 
+  useEffect(() => {
+    setRows(groups);
+  }, [groups]);
+
   const activeGroup = useMemo(
-    () => groups.find((g) => g.category === expanded),
-    [groups, expanded],
+    () => rows.find((g) => g.category === expanded),
+    [rows, expanded],
   );
 
   function toggleCodeStatus(code: StatusCodeRow) {
@@ -67,6 +72,14 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
         return;
       }
       toast.success(next === "active" ? "Status code activated" : "Status code deactivated");
+      setRows((currentRows) =>
+        currentRows.map((group) => ({
+          ...group,
+          codes: group.codes.map((entry) =>
+            entry.id === code.id ? { ...entry, recordStatus: next } : entry,
+          ),
+        })),
+      );
       router.refresh();
     });
   }
@@ -84,6 +97,28 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
         return;
       }
       toast.success("Status code added");
+      if (result.code) {
+        setRows((currentRows) =>
+          currentRows.map((group) =>
+            group.category === activeGroup.category
+              ? {
+                  ...group,
+                  codes: [
+                    ...group.codes,
+                    {
+                      id: result.code.id,
+                      code: result.code.code,
+                      name: result.code.name,
+                      sortOrder: result.code.sortOrder,
+                      isSystem: result.code.isSystem,
+                      recordStatus: result.code.recordStatus,
+                    },
+                  ],
+                }
+              : group,
+          ),
+        );
+      }
       setNewCode("");
       setNewName("");
       router.refresh();
@@ -93,7 +128,7 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2">
-        {groups.map((group) => (
+        {rows.map((group) => (
           <Button
             key={group.category}
             type="button"

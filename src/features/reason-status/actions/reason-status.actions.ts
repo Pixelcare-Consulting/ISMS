@@ -51,7 +51,7 @@ export async function createReasonStatusCodeAction(input: unknown) {
   if (!parsed.success) return { error: "Invalid input" };
 
   try {
-    await reasonStatusService.createCode({
+    const code = await reasonStatusService.createCode({
       tenantId: session.user.tenantId,
       category: parsed.data.category,
       name: parsed.data.name,
@@ -59,7 +59,7 @@ export async function createReasonStatusCodeAction(input: unknown) {
       sortOrder: parsed.data.sortOrder,
     });
     revalidatePath("/settings/status");
-    return { success: true as const };
+    return { success: true as const, code };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Could not create status code" };
   }
@@ -71,14 +71,14 @@ export async function updateReasonStatusCodeAction(codeId: string, input: unknow
   if (!parsed.success) return { error: "Invalid input" };
 
   try {
-    await reasonStatusService.updateCode(session.user.tenantId, codeId, parsed.data);
+    const code = await reasonStatusService.updateCode(session.user.tenantId, codeId, parsed.data);
     revalidatePath("/settings/status");
     revalidatePath("/inventory");
     revalidatePath("/logistics");
     revalidatePath("/logistics/deliveries");
     revalidatePath("/logistics/transfers");
     revalidatePath("/logistics/pickups");
-    return { success: true as const };
+    return { success: true as const, code };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Could not update status code" };
   }

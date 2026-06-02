@@ -2,7 +2,7 @@
 
 import { Fragment } from "react";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -48,6 +48,7 @@ interface WarehouseRow {
 
 export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) {
   const router = useRouter();
+  const [rows, setRows] = useState(warehouses);
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
   const [deleting, setDeleting] = useState<WarehouseRow | null>(null);
@@ -57,12 +58,16 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
   const [locCode, setLocCode] = useState("");
   const [locName, setLocName] = useState("");
 
+  useEffect(() => {
+    setRows(warehouses);
+  }, [warehouses]);
+
   const filtered = useMemo(
     () =>
-      warehouses.filter((w) =>
+      rows.filter((w) =>
         matchesTableSearch(query, [w.code, w.name, ...w.locations.map((l) => l.code)]),
       ),
-    [warehouses, query],
+    [rows, query],
   );
 
   function createWarehouse() {
@@ -73,6 +78,16 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
         return;
       }
       toast.success("Warehouse created");
+      if (result.warehouse) {
+        setRows((currentRows) => [
+          {
+            ...result.warehouse,
+            locations: [],
+            _count: { aors: 0, pulloutsDestination: 0 },
+          },
+          ...currentRows,
+        ]);
+      }
       setNewCode("");
       setNewName("");
       router.refresh();
@@ -88,6 +103,9 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
         return;
       }
       toast.success("Warehouse removed");
+      setRows((currentRows) =>
+        currentRows.filter((warehouse) => warehouse.id !== deleting.id),
+      );
       setDeleting(null);
       router.refresh();
     });
@@ -105,6 +123,18 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
         return;
       }
       toast.success("Location added");
+      if (result.location) {
+        setRows((currentRows) =>
+          currentRows.map((warehouse) =>
+            warehouse.id === warehouseId
+              ? {
+                  ...warehouse,
+                  locations: [...warehouse.locations, result.location],
+                }
+              : warehouse,
+          ),
+        );
+      }
       setLocCode("");
       setLocName("");
       router.refresh();
@@ -119,6 +149,16 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
         return;
       }
       toast.success("Location removed");
+      setRows((currentRows) =>
+        currentRows.map((warehouse) =>
+          warehouse.id === warehouseId
+            ? {
+                ...warehouse,
+                locations: warehouse.locations.filter((location) => location.id !== locationId),
+              }
+            : warehouse,
+        ),
+      );
       router.refresh();
     });
   }
