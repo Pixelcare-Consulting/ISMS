@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { Plus } from "lucide-react";
@@ -19,8 +18,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-export function CreateDepartmentDialog() {
-  const router = useRouter();
+interface CreateDepartmentDialogProps {
+  onCreated?: (department: { id: string; name: string }) => void;
+}
+
+export function CreateDepartmentDialog({ onCreated }: CreateDepartmentDialogProps) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -45,8 +47,10 @@ export function CreateDepartmentDialog() {
         return;
       }
       toast.success("Department created");
+      if (result.department) {
+        onCreated?.(result.department);
+      }
       onOpenChange(false);
-      router.refresh();
     });
   }
 

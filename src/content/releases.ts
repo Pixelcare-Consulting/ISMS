@@ -24,6 +24,38 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.11.10",
+    date: "2026-06-02",
+    title: "Instant CRUD updates on more settings pages",
+    highlights: [
+      "Departments, branches, and AOR tables now update immediately after create, edit, and delete",
+      "Background route refresh remains enabled to keep data synchronized with server state",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Settings CRUD UX — optimistic row updates extended beyond users table",
+      },
+    ],
+  },
+  {
+    version: "0.11.9",
+    date: "2026-06-02",
+    title: "Faster user table CRUD feedback",
+    highlights: [
+      "Users table now updates immediately after create, edit, and delete actions",
+      "Background route refresh still runs to keep server state fully synchronized",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Settings users — optimistic local row updates wired to CRUD dialog success callbacks",
+      },
+    ],
+  },
+  {
     version: "0.11.8",
     date: "2026-06-02",
     title: "Remove redundant section tabs",

@@ -55,13 +55,13 @@ export async function createUserAction(formData: FormData) {
   }
 
   try {
-    await userService.createUser({
+    const user = await userService.createUser({
       tenantId: session.user.tenantId,
       actorUserId: session.user.id,
       ...parsed.data,
     });
     revalidatePath("/settings/users");
-    return { success: true };
+    return { success: true, user };
   } catch (e) {
     return {
       error: e instanceof Error ? e.message : "Failed to create user",
@@ -84,7 +84,7 @@ export async function updateUserAction(formData: FormData) {
   }
 
   try {
-    await userService.updateUser({
+    const user = await userService.updateUser({
       tenantId: session.user.tenantId,
       actorUserId: session.user.id,
       ...parsed.data,
@@ -92,7 +92,7 @@ export async function updateUserAction(formData: FormData) {
     });
     revalidatePath("/settings/users");
     revalidatePath("/dashboard");
-    return { success: true };
+    return { success: true, user };
   } catch (e) {
     return {
       error: e instanceof Error ? e.message : "Failed to update user",
@@ -115,7 +115,7 @@ export async function deleteUserAction(userId: string) {
     });
     revalidatePath("/settings/users");
     revalidatePath("/dashboard");
-    return { success: true };
+    return { success: true, userId };
   } catch (e) {
     return {
       error: e instanceof Error ? e.message : "Failed to delete user",

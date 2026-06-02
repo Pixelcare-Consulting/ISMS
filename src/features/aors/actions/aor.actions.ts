@@ -23,7 +23,7 @@ export async function listAorFormOptionsAction() {
 export async function createAorAction(formData: FormData) {
   const session = await requirePermission("aors.manage");
   try {
-    await aorService.createAor({
+    const aor = await aorService.createAor({
       tenantId: session.user.tenantId,
       actorUserId: session.user.id,
       userId: String(formData.get("userId") ?? ""),
@@ -31,7 +31,7 @@ export async function createAorAction(formData: FormData) {
       warehouseId: (formData.get("warehouseId") as string) || null,
     });
     revalidatePath("/settings/aors");
-    return { success: true };
+    return { success: true, aor };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to assign AOR" };
   }
@@ -46,7 +46,7 @@ export async function deleteAorAction(aorId: string) {
       aorId,
     });
     revalidatePath("/settings/aors");
-    return { success: true };
+    return { success: true, aorId };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to remove AOR" };
   }

@@ -25,14 +25,14 @@ export async function createDepartmentAction(formData: FormData) {
   }
 
   try {
-    await departmentService.createDepartment({
+    const department = await departmentService.createDepartment({
       tenantId: session.user.tenantId,
       actorUserId: session.user.id,
       name: parsed.data.name,
     });
     revalidatePath("/settings/departments");
     revalidatePath("/settings/users");
-    return { success: true };
+    return { success: true, department };
   } catch (e) {
     return {
       error: e instanceof Error ? e.message : "Failed to create department",
@@ -52,14 +52,14 @@ export async function updateDepartmentAction(formData: FormData) {
   }
 
   try {
-    await departmentService.updateDepartment({
+    const department = await departmentService.updateDepartment({
       tenantId: session.user.tenantId,
       actorUserId: session.user.id,
       ...parsed.data,
     });
     revalidatePath("/settings/departments");
     revalidatePath("/settings/users");
-    return { success: true };
+    return { success: true, department };
   } catch (e) {
     return {
       error: e instanceof Error ? e.message : "Failed to update department",
@@ -82,7 +82,7 @@ export async function deleteDepartmentAction(departmentId: string) {
     });
     revalidatePath("/settings/departments");
     revalidatePath("/settings/users");
-    return { success: true };
+    return { success: true, departmentId };
   } catch (e) {
     return {
       error: e instanceof Error ? e.message : "Failed to delete department",

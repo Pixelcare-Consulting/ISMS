@@ -23,10 +23,14 @@ export default async function SettingsAorsPage() {
         aors={aors}
         users={options.users.map((u) => ({
           id: u.id,
+          name: u.name,
+          email: u.email,
           label: u.name ?? u.email,
         }))}
         branches={options.branches.map((b) => ({
           id: b.id,
+          name: b.name,
+          sapCode: b.sapCode,
           label: `${b.name} (${b.sapCode})`,
         }))}
       />

@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { toast } from "sonner";
@@ -26,16 +25,18 @@ interface DepartmentRow {
 interface EditDepartmentDialogProps {
   department: DepartmentRow | null;
   onClose: () => void;
+  onUpdated?: (department: { id: string; name: string }) => void;
 }
 
 function EditDepartmentForm({
   department,
   onClose,
+  onUpdated,
 }: {
   department: DepartmentRow;
   onClose: () => void;
+  onUpdated?: (department: { id: string; name: string }) => void;
 }) {
-  const router = useRouter();
   const [name, setName] = useState(department.name);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -54,8 +55,10 @@ function EditDepartmentForm({
         return;
       }
       toast.success("Department updated");
+      if (result.department) {
+        onUpdated?.(result.department);
+      }
       onClose();
-      router.refresh();
     });
   }
 
@@ -88,6 +91,7 @@ function EditDepartmentForm({
 export function EditDepartmentDialog({
   department,
   onClose,
+  onUpdated,
 }: EditDepartmentDialogProps) {
   return (
     <Dialog open={!!department} onOpenChange={(open) => !open && onClose()}>
@@ -101,6 +105,7 @@ export function EditDepartmentDialog({
             key={department.id}
             department={department}
             onClose={onClose}
+            onUpdated={onUpdated}
           />
         ) : null}
       </DialogContent>

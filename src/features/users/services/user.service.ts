@@ -82,7 +82,7 @@ export const userService = {
       metadata: { email: user.email },
     });
 
-    return user;
+    return userRepository.findById(input.tenantId, user.id);
   },
 
   async updateUser(input: {

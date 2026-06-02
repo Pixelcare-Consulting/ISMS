@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -35,13 +35,18 @@ export function AorsTable({
   branches,
 }: {
   aors: AorRow[];
-  users: { id: string; label: string }[];
-  branches: { id: string; label: string }[];
+  users: { id: string; name: string | null; email: string; label: string }[];
+  branches: { id: string; name: string; sapCode: string; label: string }[];
 }) {
   const router = useRouter();
+  const [rows, setRows] = useState(aors);
   const [pending, startTransition] = useTransition();
   const [userId, setUserId] = useState(users[0]?.id ?? "");
   const [branchId, setBranchId] = useState(branches[0]?.id ?? "");
+
+  useEffect(() => {
+    setRows(aors);
+  }, [aors]);
 
   function assign() {
     startTransition(async () => {
@@ -54,14 +59,37 @@ export function AorsTable({
         return;
       }
       toast.success("AOR assigned");
+      if (result.aor) {
+        const selectedUser = users.find((user) => user.id === userId);
+        const selectedBranch = branches.find((branch) => branch.id === branchId);
+        setRows((currentRows) => [
+          {
+            id: result.aor.id,
+            user: {
+              name: selectedUser?.name ?? null,
+              email: selectedUser?.email ?? "unknown@email.local",
+            },
+            branch: selectedBranch
+              ? { name: selectedBranch.name, sapCode: selectedBranch.sapCode }
+              : null,
+            warehouse: null,
+          },
+          ...currentRows,
+        ]);
+      }
       router.refresh();
     });
   }
 
   function remove(id: string) {
     startTransition(async () => {
-      await deleteAorAction(id);
+      const result = await deleteAorAction(id);
+      if (result.error) {
+        toast.error(String(result.error));
+        return;
+      }
       toast.success("AOR removed");
+      setRows((currentRows) => currentRows.filter((row) => row.id !== id));
       router.refresh();
     });
   }
@@ -113,7 +141,7 @@ export function AorsTable({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {aors.map((a) => (
+              {rows.map((a) => (
                 <TableRow key={a.id}>
                   <TableCell>{a.user.name ?? a.user.email}</TableCell>
                   <TableCell>

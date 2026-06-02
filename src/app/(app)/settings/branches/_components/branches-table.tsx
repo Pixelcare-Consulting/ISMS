@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { LayoutGrid, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -38,17 +38,22 @@ interface BranchRow {
 
 export function BranchesTable({ branches }: { branches: BranchRow[] }) {
   const router = useRouter();
+  const [rows, setRows] = useState(branches);
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<BranchRow | null>(null);
   const [deleting, setDeleting] = useState<BranchRow | null>(null);
   const [pending, startTransition] = useTransition();
 
+  useEffect(() => {
+    setRows(branches);
+  }, [branches]);
+
   const filtered = useMemo(
     () =>
-      branches.filter((b) =>
+      rows.filter((b) =>
         matchesTableSearch(query, [b.name, b.sapCode, b.branchArea?.name ?? ""]),
       ),
-    [branches, query],
+    [rows, query],
   );
 
   function handleDelete() {
@@ -62,6 +67,7 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
         return;
       }
       toast.success("Branch removed");
+      setRows((currentRows) => currentRows.filter((branch) => branch.id !== deleting.id));
       setDeleting(null);
       router.refresh();
     });
@@ -70,7 +76,12 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
   return (
     <DataTableShell>
       <TableSearchToolbar value={query} onChange={setQuery} placeholder="Search branches…">
-        <CreateBranchDialog />
+        <CreateBranchDialog
+          onCreated={(branch) => {
+            setRows((currentRows) => [branch, ...currentRows]);
+            router.refresh();
+          }}
+        />
       </TableSearchToolbar>
       <DataTableScroll>
         <Table>
@@ -117,7 +128,17 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
         </Table>
       </DataTableScroll>
       {editing ? (
-        <EditBranchDialog branch={editing} open onOpenChange={() => setEditing(null)} />
+        <EditBranchDialog
+          branch={editing}
+          open
+          onOpenChange={() => setEditing(null)}
+          onUpdated={(branch) => {
+            setRows((currentRows) =>
+              currentRows.map((row) => (row.id === branch.id ? branch : row)),
+            );
+            router.refresh();
+          }}
+        />
       ) : null}
       <DeleteConfirmDialog
         open={!!deleting}

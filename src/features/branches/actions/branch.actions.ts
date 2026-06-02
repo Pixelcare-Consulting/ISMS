@@ -31,13 +31,13 @@ export async function createBranchAction(input: unknown) {
   const parsed = branchInputSchema.safeParse(input);
   if (!parsed.success) return { error: "Invalid input" };
   try {
-    await branchService.createBranch({
+    const branch = await branchService.createBranch({
       tenantId: session.user.tenantId,
       actorUserId: session.user.id,
       ...parsed.data,
     });
     revalidatePath("/settings/branches");
-    return { success: true as const };
+    return { success: true as const, branch };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to create branch" };
   }
@@ -50,13 +50,13 @@ export async function updateBranchAction(input: unknown) {
     .safeParse(input);
   if (!parsed.success) return { error: "Invalid input" };
   try {
-    await branchService.updateBranch({
+    const branch = await branchService.updateBranch({
       tenantId: session.user.tenantId,
       actorUserId: session.user.id,
       ...parsed.data,
     });
     revalidatePath("/settings/branches");
-    return { success: true as const };
+    return { success: true as const, branch };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to update branch" };
   }
@@ -71,7 +71,7 @@ export async function deleteBranchAction(branchId: string) {
       branchId,
     });
     revalidatePath("/settings/branches");
-    return { success: true as const };
+    return { success: true as const, branchId };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to delete branch" };
   }

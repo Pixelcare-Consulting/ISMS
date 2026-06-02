@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -17,8 +16,17 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-export function CreateBranchDialog() {
-  const router = useRouter();
+interface CreateBranchDialogProps {
+  onCreated?: (branch: {
+    id: string;
+    sapCode: string;
+    name: string;
+    status: string;
+    branchArea: { name: string } | null;
+  }) => void;
+}
+
+export function CreateBranchDialog({ onCreated }: CreateBranchDialogProps) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
 
@@ -32,8 +40,16 @@ export function CreateBranchDialog() {
         return;
       }
       toast.success("Branch created");
+      if (result.branch) {
+        onCreated?.({
+          id: result.branch.id,
+          sapCode: result.branch.sapCode,
+          name: result.branch.name,
+          status: result.branch.status,
+          branchArea: null,
+        });
+      }
       setOpen(false);
-      router.refresh();
     });
   }
 

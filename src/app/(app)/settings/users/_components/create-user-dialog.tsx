@@ -1,6 +1,4 @@
 "use client";
-
-import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 
 import { Plus } from "lucide-react";
@@ -40,10 +38,21 @@ interface DepartmentOption {
 interface CreateUserDialogProps {
   roles: RoleOption[];
   departments: DepartmentOption[];
+  onCreated?: (user: {
+    id: string;
+    name: string | null;
+    email: string;
+    image: string | null;
+    userRoles: { role: { slug: string; name: string } }[];
+    department: { id: string; name: string } | null;
+  }) => void;
 }
 
-export function CreateUserDialog({ roles, departments }: CreateUserDialogProps) {
-  const router = useRouter();
+export function CreateUserDialog({
+  roles,
+  departments,
+  onCreated,
+}: CreateUserDialogProps) {
   const { isUserDialogOpen, setUserDialogOpen } = useSettingsUi();
   const [error, setError] = useState<string | null>(null);
   const [roleSlug, setRoleSlug] = useState(roles[0]?.slug ?? "");
@@ -86,8 +95,10 @@ export function CreateUserDialog({ roles, departments }: CreateUserDialogProps) 
       toast.success("User created", {
         description: "The new team member can sign in now.",
       });
+      if (result.user) {
+        onCreated?.(result.user);
+      }
       onOpenChange(false);
-      router.refresh();
     });
   }
 

@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { toast } from "sonner";
 
@@ -20,10 +19,21 @@ interface EditBranchDialogProps {
   branch: { id: string; sapCode: string; name: string; status: string };
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onUpdated?: (branch: {
+    id: string;
+    sapCode: string;
+    name: string;
+    status: string;
+    branchArea: { name: string } | null;
+  }) => void;
 }
 
-export function EditBranchDialog({ branch, open, onOpenChange }: EditBranchDialogProps) {
-  const router = useRouter();
+export function EditBranchDialog({
+  branch,
+  open,
+  onOpenChange,
+  onUpdated,
+}: EditBranchDialogProps) {
   const [pending, startTransition] = useTransition();
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -42,8 +52,16 @@ export function EditBranchDialog({ branch, open, onOpenChange }: EditBranchDialo
         return;
       }
       toast.success("Branch updated");
+      if (result.branch) {
+        onUpdated?.({
+          id: result.branch.id,
+          sapCode: result.branch.sapCode,
+          name: result.branch.name,
+          status: result.branch.status,
+          branchArea: null,
+        });
+      }
       onOpenChange(false);
-      router.refresh();
     });
   }
 

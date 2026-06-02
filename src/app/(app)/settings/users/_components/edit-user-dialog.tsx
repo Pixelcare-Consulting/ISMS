@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { toast } from "sonner";
@@ -47,6 +46,14 @@ interface EditUserDialogProps {
   } | null;
   roles: RoleOption[];
   departments: DepartmentOption[];
+  onUpdated?: (user: {
+    id: string;
+    name: string | null;
+    email: string;
+    image: string | null;
+    userRoles: { role: { slug: string; name: string } }[];
+    department: { id: string; name: string } | null;
+  }) => void;
 }
 
 export function EditUserDialog({
@@ -55,8 +62,8 @@ export function EditUserDialog({
   user,
   roles,
   departments,
+  onUpdated,
 }: EditUserDialogProps) {
-  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [roleSlug, setRoleSlug] = useState(
     user?.userRoles[0]?.role.slug ?? roles[0]?.slug ?? "",
@@ -87,8 +94,10 @@ export function EditUserDialog({
       }
 
       toast.success("User updated");
+      if (result.user) {
+        onUpdated?.(result.user);
+      }
       onOpenChange(false);
-      router.refresh();
     });
   }
 
