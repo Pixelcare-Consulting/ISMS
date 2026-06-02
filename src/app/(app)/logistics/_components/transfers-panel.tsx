@@ -11,6 +11,7 @@ import {
   rejectTransferAction,
   receiveTransferAction,
 } from "@/features/logistics/actions/logistics.actions";
+import { listStkSerialsForBranchAction } from "@/features/sales/actions/sales.actions";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import {
   DataTableScroll,
@@ -63,8 +64,9 @@ interface TransferRow {
   id: string;
   transferNo: string;
   statusCode: StatusCodeRef;
-  fromBranch: { name: string };
-  toBranch: { name: string };
+  fromBranch: { id: string; name: string };
+  toBranch: { id: string; name: string };
+  lines: { serialNumberId: string }[];
 }
 
 interface TransfersPanelProps {
@@ -75,8 +77,15 @@ type PendingConfirm = {
   id: string;
   transferNo: string;
   route: string;
+  fromBranchId: string;
   action: "approve" | "reject" | "execute" | "receive";
 };
+
+interface SerialOption {
+  id: string;
+  serialNo: string;
+  skuCode: string;
+}
 
 export function TransfersPanel({ transfers }: TransfersPanelProps) {
   const router = useRouter();
@@ -84,6 +93,8 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
   const [pending, startTransition] = useTransition();
   const { branches, loadRefs } = useLogisticsRefs();
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
+  const [executeSerials, setExecuteSerials] = useState<SerialOption[]>([]);
+  const [selectedSerialIds, setSelectedSerialIds] = useState<string[]>([]);
 
   const filtered = useMemo(
     () =>
@@ -99,6 +110,19 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
     [transfers.items, query],
   );
 
+  async function openExecuteConfirm(transfer: TransferRow) {
+    const serials = await listStkSerialsForBranchAction(transfer.fromBranch.id);
+    setExecuteSerials(serials);
+    setSelectedSerialIds(serials.slice(0, 1).map((s) => s.id));
+    setPendingConfirm({
+      id: transfer.id,
+      transferNo: transfer.transferNo,
+      route: `${transfer.fromBranch.name} → ${transfer.toBranch.name}`,
+      fromBranchId: transfer.fromBranch.id,
+      action: "execute",
+    });
+  }
+
   function confirmPendingAction() {
     if (!pendingConfirm) return;
     startTransition(async () => {
@@ -109,13 +133,25 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
         await rejectTransferAction(pendingConfirm.id);
         toast.success("Transfer rejected");
       } else if (pendingConfirm.action === "execute") {
-        await executeTransferAction(pendingConfirm.id);
+        const result = await executeTransferAction(pendingConfirm.id, {
+          serialNumberIds: selectedSerialIds,
+        });
+        if (result.error) {
+          toast.error(result.error);
+          return;
+        }
         toast.success("Transfer dispatched — in transit");
       } else {
-        await receiveTransferAction(pendingConfirm.id);
+        const result = await receiveTransferAction(pendingConfirm.id);
+        if (result.error) {
+          toast.error(result.error);
+          return;
+        }
         toast.success("Transfer received — stock updated");
       }
       setPendingConfirm(null);
+      setExecuteSerials([]);
+      setSelectedSerialIds([]);
       router.refresh();
     });
   }
@@ -196,6 +232,7 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
                             id: t.id,
                             transferNo: t.transferNo,
                             route: `${t.fromBranch.name} → ${t.toBranch.name}`,
+                            fromBranchId: t.fromBranch.id,
                             action: "approve",
                           })
                         }
@@ -213,6 +250,7 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
                             id: t.id,
                             transferNo: t.transferNo,
                             route: `${t.fromBranch.name} → ${t.toBranch.name}`,
+                            fromBranchId: t.fromBranch.id,
                             action: "reject",
                           })
                         }
@@ -224,14 +262,7 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
                       <Button
                         size="sm"
                         disabled={pending}
-                        onClick={() =>
-                          setPendingConfirm({
-                            id: t.id,
-                            transferNo: t.transferNo,
-                            route: `${t.fromBranch.name} → ${t.toBranch.name}`,
-                            action: "execute",
-                          })
-                        }
+                        onClick={() => openExecuteConfirm(t)}
                       >
                         Execute
                       </Button>
@@ -246,6 +277,7 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
                             id: t.id,
                             transferNo: t.transferNo,
                             route: `${t.fromBranch.name} → ${t.toBranch.name}`,
+                            fromBranchId: t.fromBranch.id,
                             action: "receive",
                           })
                         }
@@ -287,6 +319,30 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
                     {pendingConfirm.transferNo}
                   </span>{" "}
                   ({pendingConfirm.route}). {confirmDescription}
+                  {pendingConfirm.action === "execute" ? (
+                    <div className="mt-3 max-h-40 space-y-1 overflow-y-auto rounded-md border p-2">
+                      {executeSerials.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">No STK serials at source branch.</p>
+                      ) : (
+                        executeSerials.map((s) => (
+                          <label key={s.id} className="flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={selectedSerialIds.includes(s.id)}
+                              onChange={(e) => {
+                                setSelectedSerialIds((prev) =>
+                                  e.target.checked
+                                    ? [...prev, s.id]
+                                    : prev.filter((id) => id !== s.id),
+                                );
+                              }}
+                            />
+                            {s.serialNo} · {s.skuCode}
+                          </label>
+                        ))
+                      )}
+                    </div>
+                  ) : null}
                 </>
               ) : null}
             </AlertDialogDescription>
@@ -294,7 +350,10 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              disabled={pending}
+              disabled={
+                pending ||
+                (pendingConfirm?.action === "execute" && selectedSerialIds.length === 0)
+              }
               onClick={(event) => {
                 event.preventDefault();
                 confirmPendingAction();

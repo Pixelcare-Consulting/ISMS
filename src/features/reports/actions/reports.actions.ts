@@ -6,6 +6,7 @@ import { branchService } from "@/features/branches/services/branch.service";
 import { dailyStockReportService } from "@/features/reports/services/daily-stock-report.service";
 import { processedOrdersReportService } from "@/features/reports/services/processed-orders-report.service";
 import { transferReportService } from "@/features/reports/services/transfer-report.service";
+import { salesReportService } from "@/features/reports/services/sales-report.service";
 import { requireAnyPermission } from "@/lib/auth/permissions";
 
 const REPORT_ACCESS = ["reports.view", "orders.view"] as const;
@@ -111,5 +112,25 @@ export async function exportTransferReportCsvAction(input?: {
     success: true as const,
     csv,
     filename: `transfer-report-${new Date().toISOString().slice(0, 10)}.csv`,
+  };
+}
+
+export async function exportSalesReportCsvAction(input?: {
+  from?: string;
+  to?: string;
+  branchId?: string;
+}) {
+  const session = await requireAnyPermission([...REPORT_ACCESS, "sales.create"]);
+
+  const csv = await salesReportService.generateCsv(session.user.tenantId, {
+    from: input?.from ? new Date(input.from) : undefined,
+    to: input?.to ? new Date(`${input.to}T23:59:59.999Z`) : undefined,
+    branchId: input?.branchId,
+  });
+
+  return {
+    success: true as const,
+    csv,
+    filename: `sales-report-${new Date().toISOString().slice(0, 10)}.csv`,
   };
 }

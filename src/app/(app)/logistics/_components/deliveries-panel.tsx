@@ -4,7 +4,10 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
-import { acceptDeliveryAction } from "@/features/logistics/actions/logistics.actions";
+import {
+  acceptDeliveryAction,
+  rejectDeliveryAction,
+} from "@/features/logistics/actions/logistics.actions";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import {
   DataTableScroll,
@@ -68,6 +71,7 @@ type PendingConfirm = {
   deliveryNo: string;
   branchName: string;
   orderNumber?: string;
+  action: "accept" | "reject";
 };
 
 export function DeliveriesPanel({ deliveries }: DeliveriesPanelProps) {
@@ -92,9 +96,15 @@ export function DeliveriesPanel({ deliveries }: DeliveriesPanelProps) {
 
   function confirmPendingAction() {
     if (!pendingConfirm) return;
+    const { action, id } = pendingConfirm;
     startTransition(async () => {
-      await acceptDeliveryAction(pendingConfirm.id);
-      toast.success("Delivery accepted — DIT moved to Stock");
+      if (action === "accept") {
+        await acceptDeliveryAction(id);
+        toast.success("Delivery accepted — DIT moved to Stock");
+      } else {
+        await rejectDeliveryAction(id);
+        toast.success("Delivery rejected");
+      }
       setPendingConfirm(null);
       router.refresh();
     });
@@ -128,23 +138,42 @@ export function DeliveriesPanel({ deliveries }: DeliveriesPanelProps) {
                   <TableCell>
                     <StatusCodeBadge code={d.statusCode.code} name={d.statusCode.name} />
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="space-x-2 text-right">
                     {d.statusCode.code === "pending" ? (
-                      <Button
-                        size="sm"
-                        disabled={pending}
-                        className="bg-emerald-600 text-white hover:bg-emerald-700"
-                        onClick={() =>
-                          setPendingConfirm({
-                            id: d.id,
-                            deliveryNo: d.deliveryNo,
-                            branchName: d.branch.name,
-                            orderNumber: d.order?.orderNumber,
-                          })
-                        }
-                      >
-                        Accept DIT
-                      </Button>
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={pending}
+                          onClick={() =>
+                            setPendingConfirm({
+                              id: d.id,
+                              deliveryNo: d.deliveryNo,
+                              branchName: d.branch.name,
+                              orderNumber: d.order?.orderNumber,
+                              action: "reject",
+                            })
+                          }
+                        >
+                          Reject
+                        </Button>
+                        <Button
+                          size="sm"
+                          disabled={pending}
+                          className="bg-emerald-600 text-white hover:bg-emerald-700"
+                          onClick={() =>
+                            setPendingConfirm({
+                              id: d.id,
+                              deliveryNo: d.deliveryNo,
+                              branchName: d.branch.name,
+                              orderNumber: d.order?.orderNumber,
+                              action: "accept",
+                            })
+                          }
+                        >
+                          Accept DIT
+                        </Button>
+                      </>
                     ) : null}
                   </TableCell>
                 </TableRow>
@@ -171,19 +200,34 @@ export function DeliveriesPanel({ deliveries }: DeliveriesPanelProps) {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Accept delivery?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {pendingConfirm?.action === "reject" ? "Reject delivery?" : "Accept delivery?"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
               {pendingConfirm ? (
-                <>
-                  Confirm acceptance of{" "}
-                  <span className="font-medium text-foreground">
-                    {pendingConfirm.deliveryNo}
-                  </span>
-                  {pendingConfirm.orderNumber ? (
-                    <> (order {pendingConfirm.orderNumber})</>
-                  ) : null}{" "}
-                  at {pendingConfirm.branchName}. DIT inventory will move to Stock.
-                </>
+                pendingConfirm.action === "reject" ? (
+                  <>
+                    Reject{" "}
+                    <span className="font-medium text-foreground">
+                      {pendingConfirm.deliveryNo}
+                    </span>
+                    {pendingConfirm.orderNumber ? (
+                      <> (order {pendingConfirm.orderNumber})</>
+                    ) : null}{" "}
+                    at {pendingConfirm.branchName}. DIT inventory is unchanged.
+                  </>
+                ) : (
+                  <>
+                    Confirm acceptance of{" "}
+                    <span className="font-medium text-foreground">
+                      {pendingConfirm.deliveryNo}
+                    </span>
+                    {pendingConfirm.orderNumber ? (
+                      <> (order {pendingConfirm.orderNumber})</>
+                    ) : null}{" "}
+                    at {pendingConfirm.branchName}. DIT inventory will move to Stock.
+                  </>
+                )
               ) : null}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -191,13 +235,17 @@ export function DeliveriesPanel({ deliveries }: DeliveriesPanelProps) {
             <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               disabled={pending}
-              className="bg-emerald-600 text-white hover:bg-emerald-700"
+              className={
+                pendingConfirm?.action === "reject"
+                  ? undefined
+                  : "bg-emerald-600 text-white hover:bg-emerald-700"
+              }
               onClick={(event) => {
                 event.preventDefault();
                 confirmPendingAction();
               }}
             >
-              Accept
+              {pendingConfirm?.action === "reject" ? "Reject" : "Accept"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -24,6 +24,260 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.11.8",
+    date: "2026-06-02",
+    title: "Remove redundant section tabs",
+    highlights: [
+      "Inventory, Logistics, and Reports no longer show pill tabs when the same routes are in the top nav dropdown",
+      "Master data and SAP integration keep in-page tabs (sub-routes not duplicated in header)",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description: "SectionLayout — tabs optional; removed from layouts that mirror header nav groups",
+      },
+    ],
+  },
+  {
+    version: "0.11.7",
+    date: "2026-06-02",
+    title: "AppDataTable and header pointer cursor",
+    highlights: [
+      "Reusable AppDataTable for consistent card-style tables across pages",
+      "Planning branch revenue targets use the same table shell as allocation gaps",
+      "Top navbar links and menus show pointer cursor on hover",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description: "components/data-table — AppDataTable + barrel export for shared table layout",
+      },
+      {
+        type: "improvement",
+        description: "Header nav, user menu, and dropdown items — cursor-pointer on hover",
+      },
+    ],
+  },
+  {
+    version: "0.11.6",
+    date: "2026-06-02",
+    title: "Master data tables and Decimal fix",
+    highlights: [
+      "Models page no longer passes Prisma Decimal to client components",
+      "Brands and models tables use shared DataTableShell styling",
+      "Buttons show pointer cursor on hover app-wide",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description: "listModelsAction serializes srp/cbm to plain numbers before client props",
+      },
+      {
+        type: "improvement",
+        description: "Master data brands/models tables — card shell, headers, SRP column on models",
+      },
+      {
+        type: "improvement",
+        description: "Button component — cursor-pointer on interactive states",
+      },
+    ],
+  },
+  {
+    version: "0.11.5",
+    date: "2026-06-02",
+    title: "Clearer tabs and secondary buttons",
+    highlights: [
+      "Active section tabs use primary teal fill for obvious selection",
+      "Outline and secondary buttons have visible borders and background so actions read as clickable",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description: "RouteTabs — active pill uses primary color; inactive tabs show hover affordance",
+      },
+      {
+        type: "improvement",
+        description: "Button outline/secondary variants — stronger border, shadow, and hover states app-wide",
+      },
+    ],
+  },
+  {
+    version: "0.11.4",
+    date: "2026-06-02",
+    title: "Reusable section tabs across app",
+    highlights: [
+      "Pill-style RouteTabs + SectionLayout for SAP integration, Logistics, Reports, Master data, and Inventory",
+      "Tab labels and routes centralized in src/config/section-tabs.ts",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Navigation — RouteTabs (pill | underline) and SectionLayout; SectionPageLead for per-tab copy",
+      },
+      {
+        type: "improvement",
+        description:
+          "Layouts — logistics, reports, master-data, inventory sections use shared tab chrome",
+      },
+    ],
+  },
+  {
+    version: "0.11.3",
+    date: "2026-06-02",
+    title: "Encrypt all SAP Service Layer credentials at rest",
+    highlights: [
+      "Service Layer URL, company DB, username, and password are all AES-256-GCM encrypted in the database",
+      "Audit logs record SHA-256 fingerprints only — no plaintext credentials in metadata",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "SAP Service Layer — encrypt baseUrl, companyDb, username, and password columns; legacy plaintext rows re-encrypt on save",
+      },
+    ],
+  },
+  {
+    version: "0.11.2",
+    date: "2026-06-02",
+    title: "SAP Service Layer settings",
+    highlights: [
+      "Settings → SAP integration → Service Layer submenu to configure B1 Service Layer URL, company DB, and credentials",
+      "Per-tenant config stored encrypted in sap_service_layer_configs; integration queue unchanged",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "SAP — Service Layer setup form at /settings/sap-integration/service-layer with encrypted password storage",
+      },
+      {
+        type: "improvement",
+        description:
+          "SAP integration — tab submenu (Integration queue | Service Layer)",
+      },
+    ],
+  },
+  {
+    version: "0.11.1",
+    date: "2026-06-02",
+    title: "Out-of-delivery auto-reschedule at SP approve",
+    highlights: [
+      "SP delivery due date uses branch deliverySchedule — past or off-window dates auto-reschedule to the next scheduled day",
+      "Review dialog warns before approve; audit log records requested vs final due date",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Orders — resolveDeliveryDueDate on SP final approve (Process A out-of-delivery window)",
+      },
+      {
+        type: "improvement",
+        description:
+          "Docs — README v1.0 traceability updated for shipped Phase 2–3 items",
+      },
+    ],
+  },
+  {
+    version: "0.11.0",
+    date: "2026-06-02",
+    title: "Physical stock count and SAP integration foundation",
+    highlights: [
+      "Physical inventory audit: count sessions from branch STK, PS scan, variance report, TL investigation, SAP adjustment handoff",
+      "SAP epic foundation: outbound queue with idempotency, sapDocRef on orders/deliveries/pull-outs, mock order→SAP→delivery processor",
+      "Routes at /inventory/stock-count and /settings/sap-integration with full audit trail",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Stock count — StockCountSession/Line/Variance models; workflow CSV steps 37–41",
+      },
+      {
+        type: "feature",
+        description:
+          "SAP — SapIntegrationJob queue, emitApprovedOrder/emitPulloutItr/emitSalesSummary/syncInventoryFromSap stubs",
+      },
+      {
+        type: "feature",
+        description:
+          "Orders — SP approval enqueues SAP job; mock processor sets sapDocRef and creates delivery",
+      },
+      {
+        type: "improvement",
+        description:
+          "Docs — docs/sap-integration.md updated with implemented vs stub matrix",
+      },
+    ],
+  },
+  {
+    version: "0.10.0",
+    date: "2026-06-02",
+    title: "Sales SN flow, logistics movement, ATR workflow, warehouses",
+    highlights: [
+      "Sales SN picker (AOR-scoped STK), reserved RSV sales, and /reports/sales CSV export",
+      "Transfer and pull-out serial lines move inventory on execute/receive and pull-out lifecycle",
+      "BranchReturnRequest workflow — CS evaluate, TL approve, inventory restore",
+      "Settings → Warehouses admin for warehouse and location setup (CSV step 4)",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Sales — SN picker, reserved sale (RSV), ATR return workflow with BranchReturnRequest",
+      },
+      {
+        type: "feature",
+        description:
+          "Reports — /reports/sales CSV with transaction, serial, ATR, and return status",
+      },
+      {
+        type: "feature",
+        description:
+          "Logistics — transfer lines, pull-out SN status transitions, optional per-SN delivery accept",
+      },
+      {
+        type: "feature",
+        description: "Settings — /settings/warehouses CRUD for warehouses and locations",
+      },
+    ],
+  },
+  {
+    version: "0.9.8",
+    date: "2026-06-02",
+    title: "Process flow quick wins and v1.0 doc traceability",
+    highlights: [
+      "Planning: visible Upload forecast CSV button on settings planning panel",
+      "Logistics: reject pending deliveries (delivery_workflow.rejected) on deliveries and operations",
+      "Orders: SP delivery due date warning; auto-replenish links to suggested orders",
+      "Docs: PROCESS FLOW v1.0 (A–D) table, SAP pull-out/sales/returns scope, fixed roadmap plan links",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Planning — Upload forecast CSV button wires hidden file input on /settings/planning",
+      },
+      {
+        type: "feature",
+        description:
+          "Logistics — rejectDeliveryAction and Reject UI on /logistics/deliveries and /operations",
+      },
+      {
+        type: "improvement",
+        description:
+          "Orders — delivery due date out-of-window warning at SP approve; suggested-orders link in create dialog",
+      },
+      {
+        type: "improvement",
+        description:
+          "Docs — v1.0 PDF indexed; A–D traceability and gap table in docs/README.md; sap-integration.md extended",
+      },
+    ],
+  },
+  {
     version: "0.9.7",
     date: "2026-06-01",
     title: "Processed orders report, SO# format, and xlsx workflow gaps",

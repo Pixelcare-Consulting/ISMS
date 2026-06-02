@@ -8,6 +8,7 @@ import {
   acceptDeliveryAction,
   createPulloutAction,
   createTransferAction,
+  rejectDeliveryAction,
 } from "@/features/ops/actions/ops.actions";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { Button } from "@/components/ui/button";
@@ -66,29 +67,40 @@ interface OpsPanelProps {
   branches: { id: string; name: string }[];
 }
 
-interface PendingAccept {
+interface PendingDeliveryAction {
   id: string;
   deliveryNo: string;
   branchName: string;
+  action: "accept" | "reject";
 }
 
 export function OpsPanel({ deliveries, transfers, pullouts, branches }: OpsPanelProps) {
   const router = useRouter();
   const [transferOpen, setTransferOpen] = useState(false);
   const [pulloutOpen, setPulloutOpen] = useState(false);
-  const [pendingAccept, setPendingAccept] = useState<PendingAccept | null>(null);
+  const [pendingDelivery, setPendingDelivery] = useState<PendingDeliveryAction | null>(
+    null,
+  );
   const [pending, startTransition] = useTransition();
 
-  function confirmAccept() {
-    if (!pendingAccept) return;
+  function confirmDeliveryAction() {
+    if (!pendingDelivery) return;
+    const { action, id } = pendingDelivery;
     startTransition(async () => {
-      const result = await acceptDeliveryAction(pendingAccept.id);
+      const result =
+        action === "accept"
+          ? await acceptDeliveryAction(id)
+          : await rejectDeliveryAction(id);
       if (result.error) {
         toast.error(result.error);
         return;
       }
-      toast.success("Delivery accepted — DIT moved to stock");
-      setPendingAccept(null);
+      toast.success(
+        action === "accept"
+          ? "Delivery accepted — DIT moved to stock"
+          : "Delivery rejected",
+      );
+      setPendingDelivery(null);
       router.refresh();
     });
   }
@@ -141,22 +153,40 @@ export function OpsPanel({ deliveries, transfers, pullouts, branches }: OpsPanel
                   <TableCell>
                     <StatusCodeBadge code={d.statusCode.code} name={d.statusCode.name} />
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="space-x-2 text-right">
                     {d.statusCode.code === "pending" ? (
-                      <Button
-                        size="sm"
-                        disabled={pending}
-                        className="bg-emerald-600 text-white hover:bg-emerald-700"
-                        onClick={() =>
-                          setPendingAccept({
-                            id: d.id,
-                            deliveryNo: d.deliveryNo,
-                            branchName: d.branch.name,
-                          })
-                        }
-                      >
-                        Accept
-                      </Button>
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={pending}
+                          onClick={() =>
+                            setPendingDelivery({
+                              id: d.id,
+                              deliveryNo: d.deliveryNo,
+                              branchName: d.branch.name,
+                              action: "reject",
+                            })
+                          }
+                        >
+                          Reject
+                        </Button>
+                        <Button
+                          size="sm"
+                          disabled={pending}
+                          className="bg-emerald-600 text-white hover:bg-emerald-700"
+                          onClick={() =>
+                            setPendingDelivery({
+                              id: d.id,
+                              deliveryNo: d.deliveryNo,
+                              branchName: d.branch.name,
+                              action: "accept",
+                            })
+                          }
+                        >
+                          Accept
+                        </Button>
+                      </>
                     ) : null}
                   </TableCell>
                 </TableRow>
@@ -259,33 +289,51 @@ export function OpsPanel({ deliveries, transfers, pullouts, branches }: OpsPanel
       </Dialog>
 
       <AlertDialog
-        open={pendingAccept !== null}
+        open={pendingDelivery !== null}
         onOpenChange={(open) => {
-          if (!open && !pending) setPendingAccept(null);
+          if (!open && !pending) setPendingDelivery(null);
         }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Accept delivery?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {pendingDelivery?.action === "reject" ? "Reject delivery?" : "Accept delivery?"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Confirm acceptance of{" "}
-              <span className="font-medium text-foreground">
-                {pendingAccept?.deliveryNo}
-              </span>{" "}
-              at {pendingAccept?.branchName}. DIT inventory will move to Stock.
+              {pendingDelivery?.action === "reject" ? (
+                <>
+                  Reject{" "}
+                  <span className="font-medium text-foreground">
+                    {pendingDelivery.deliveryNo}
+                  </span>{" "}
+                  at {pendingDelivery.branchName}. DIT inventory is unchanged.
+                </>
+              ) : (
+                <>
+                  Confirm acceptance of{" "}
+                  <span className="font-medium text-foreground">
+                    {pendingDelivery?.deliveryNo}
+                  </span>{" "}
+                  at {pendingDelivery?.branchName}. DIT inventory will move to Stock.
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               disabled={pending}
-              className="bg-emerald-600 text-white hover:bg-emerald-700"
+              className={
+                pendingDelivery?.action === "reject"
+                  ? undefined
+                  : "bg-emerald-600 text-white hover:bg-emerald-700"
+              }
               onClick={(event) => {
                 event.preventDefault();
-                confirmAccept();
+                confirmDeliveryAction();
               }}
             >
-              Accept
+              {pendingDelivery?.action === "reject" ? "Reject" : "Accept"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

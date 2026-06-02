@@ -69,6 +69,22 @@ export const opsRepository = {
     });
   },
 
+  async rejectDelivery(tenantId: string, id: string) {
+    const statusCodeId = await reasonStatusService.requireCodeId(
+      tenantId,
+      "delivery_workflow",
+      "rejected",
+    );
+    return prisma.branchDelivery.update({
+      where: { id, tenantId },
+      data: { statusCodeId },
+      include: {
+        branch: { select: { name: true } },
+        order: { select: { orderNumber: true } },
+      },
+    });
+  },
+
   promoteInTransitToStock(
     tenantId: string,
     branchId: string,

@@ -13,11 +13,17 @@ const deliverySchema = z.object({ branchId: z.string().min(1) });
 const transferSchema = z.object({
   fromBranchId: z.string().min(1),
   toBranchId: z.string().min(1),
+  serialNumberIds: z.array(z.string().min(1)).optional(),
 });
 const pulloutSchema = z.object({
   branchId: z.string().min(1),
   warehouseId: z.string().min(1),
   reasonStatusCodeId: z.string().optional(),
+  serialNumberIds: z.array(z.string().min(1)).optional(),
+});
+
+const serialIdsSchema = z.object({
+  serialNumberIds: z.array(z.string().min(1)).min(1),
 });
 
 function nextNo(prefix: string) {
@@ -48,6 +54,31 @@ async function requireFirstCodeId(
     if (row) return row.id;
   }
   throw new Error(`Status code not configured: ${category}/${codes[0]}`);
+}
+
+async function updateInventoryStatusForSerials(input: {
+  tenantId: string;
+  branchId: string;
+  serialNumberIds: string[];
+  statusCodeId: string;
+  userId: string;
+  requiredCurrentCodeId?: string;
+}) {
+  const where = {
+    tenantId: input.tenantId,
+    branchId: input.branchId,
+    serialNumberId: { in: input.serialNumberIds },
+    ...(input.requiredCurrentCodeId ? { statusCodeId: input.requiredCurrentCodeId } : {}),
+  };
+
+  const updated = await prisma.branchInventory.updateMany({
+    where,
+    data: { statusCodeId: input.statusCodeId, updatedById: input.userId },
+  });
+
+  if (updated.count !== input.serialNumberIds.length) {
+    throw new Error("One or more serial numbers are not available at the branch");
+  }
 }
 
 export async function listDeliveriesAction(input?: { page?: number }) {
@@ -95,8 +126,13 @@ export async function createDeliveryAction(input: unknown) {
   return { success: true as const };
 }
 
-export async function acceptDeliveryAction(id: string) {
+export async function acceptDeliveryAction(id: string, input?: unknown) {
   const session = await requireAnyPermission(["logistics.manage", "orders.create"]);
+  const parsed = input
+    ? z.object({ serialNumberIds: z.array(z.string().min(1)).optional() }).safeParse(input)
+    : { success: true as const, data: {} };
+  if (!parsed.success) return { error: "Invalid input" };
+
   const acceptedCodeId = await reasonStatusService.requireCodeId(
     session.user.tenantId,
     "delivery_workflow",
@@ -122,12 +158,17 @@ export async function acceptDeliveryAction(id: string) {
     },
   });
 
+  const inventoryWhere = {
+    tenantId: session.user.tenantId,
+    branchId: row.branchId,
+    statusCodeId: ditCodeId,
+    ...(parsed.data.serialNumberIds?.length
+      ? { serialNumberId: { in: parsed.data.serialNumberIds } }
+      : {}),
+  };
+
   await prisma.branchInventory.updateMany({
-    where: {
-      tenantId: session.user.tenantId,
-      branchId: row.branchId,
-      statusCodeId: ditCodeId,
-    },
+    where: inventoryWhere,
     data: { statusCodeId: stkCodeId, updatedById: session.user.id },
   });
 
@@ -140,12 +181,51 @@ export async function acceptDeliveryAction(id: string) {
     metadata: {
       deliveryNo: row.deliveryNo,
       branchName: row.branch.name,
+      ...(parsed.data.serialNumberIds?.length
+        ? { serialCount: parsed.data.serialNumberIds.length }
+        : {}),
       ...(row.order ? { orderNumber: row.order.orderNumber } : {}),
     },
   });
 
   revalidateLogisticsPaths();
   revalidatePath("/inventory");
+  revalidatePath("/operations");
+  return { success: true as const };
+}
+
+export async function rejectDeliveryAction(id: string, notes?: string) {
+  const session = await requireAnyPermission(["logistics.manage", "orders.create"]);
+  const rejectedCodeId = await reasonStatusService.requireCodeId(
+    session.user.tenantId,
+    "delivery_workflow",
+    "rejected",
+  );
+
+  const row = await prisma.branchDelivery.update({
+    where: { id, tenantId: session.user.tenantId },
+    data: { statusCodeId: rejectedCodeId },
+    include: {
+      branch: { select: { name: true } },
+      order: { select: { orderNumber: true } },
+    },
+  });
+
+  await auditService.log({
+    tenantId: session.user.tenantId,
+    userId: session.user.id,
+    action: "delivery.rejected",
+    entityType: "BranchDelivery",
+    entityId: id,
+    metadata: {
+      deliveryNo: row.deliveryNo,
+      branchName: row.branch.name,
+      ...(row.order ? { orderNumber: row.order.orderNumber } : {}),
+      ...(notes ? { notes } : {}),
+    },
+  });
+
+  revalidateLogisticsPaths();
   revalidatePath("/operations");
   return { success: true as const };
 }
@@ -167,6 +247,26 @@ export async function createTransferAction(input: unknown) {
     "pending_tl",
   ]);
 
+  const serialIds = parsed.data.serialNumberIds ?? [];
+  if (serialIds.length > 0) {
+    const stkCodeId = await reasonStatusService.requireCodeId(
+      session.user.tenantId,
+      "inventory_system",
+      "STK",
+    );
+    const validCount = await prisma.branchInventory.count({
+      where: {
+        tenantId: session.user.tenantId,
+        branchId: parsed.data.fromBranchId,
+        serialNumberId: { in: serialIds },
+        statusCodeId: stkCodeId,
+      },
+    });
+    if (validCount !== serialIds.length) {
+      return { error: "One or more serial numbers are not available at the source branch" };
+    }
+  }
+
   const row = await prisma.branchTransfer.create({
     data: {
       tenantId: session.user.tenantId,
@@ -174,6 +274,13 @@ export async function createTransferAction(input: unknown) {
       toBranchId: parsed.data.toBranchId,
       transferNo: nextNo("XFR"),
       statusCodeId,
+      ...(serialIds.length
+        ? {
+            lines: {
+              create: serialIds.map((serialNumberId) => ({ serialNumberId })),
+            },
+          }
+        : {}),
     },
     include: {
       fromBranch: { select: { name: true } },
@@ -229,19 +336,79 @@ export async function rejectTransferAction(id: string) {
   return { success: true as const };
 }
 
-export async function executeTransferAction(id: string) {
+export async function executeTransferAction(id: string, input?: unknown) {
   const session = await requirePermission("logistics.manage");
+  const parsed = input ? serialIdsSchema.safeParse(input) : null;
+  if (parsed && !parsed.success) return { error: "Select at least one serial number" };
+
+  const transfer = await prisma.branchTransfer.findFirst({
+    where: { id, tenantId: session.user.tenantId },
+    include: { lines: true },
+  });
+  if (!transfer) return { error: "Transfer not found" };
+
   const statusCodeId = await reasonStatusService.requireCodeId(
     session.user.tenantId,
     "transfer_workflow",
     "in_transit",
   );
-  await prisma.branchTransfer.update({
-    where: { id, tenantId: session.user.tenantId },
-    data: { statusCodeId },
+  const stkCodeId = await reasonStatusService.requireCodeId(
+    session.user.tenantId,
+    "inventory_system",
+    "STK",
+  );
+  const ditCodeId = await reasonStatusService.requireCodeId(
+    session.user.tenantId,
+    "inventory_system",
+    "DIT",
+  );
+
+  const serialNumberIds =
+    parsed?.data.serialNumberIds ?? transfer.lines.map((l) => l.serialNumberId);
+  if (serialNumberIds.length === 0) {
+    return { error: "Select serial numbers to transfer" };
+  }
+
+  try {
+    if (parsed?.data.serialNumberIds) {
+      await prisma.branchTransferLine.createMany({
+        data: parsed.data.serialNumberIds.map((serialNumberId) => ({
+          transferId: id,
+          serialNumberId,
+        })),
+        skipDuplicates: true,
+      });
+    }
+
+    await updateInventoryStatusForSerials({
+      tenantId: session.user.tenantId,
+      branchId: transfer.fromBranchId,
+      serialNumberIds,
+      statusCodeId: ditCodeId,
+      userId: session.user.id,
+      requiredCurrentCodeId: stkCodeId,
+    });
+
+    await prisma.branchTransfer.update({
+      where: { id },
+      data: { statusCodeId },
+    });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to execute transfer" };
+  }
+
+  await auditService.log({
+    tenantId: session.user.tenantId,
+    userId: session.user.id,
+    action: "transfer.executed",
+    entityType: "BranchTransfer",
+    entityId: id,
+    metadata: { transferNo: transfer.transferNo, serialCount: serialNumberIds.length },
   });
+
   revalidateLogisticsPaths();
   revalidatePath("/operations");
+  revalidatePath("/inventory");
   return { success: true as const };
 }
 
@@ -251,12 +418,60 @@ export async function receiveTransferAction(id: string) {
     "accepted",
     "completed",
   ]);
-  await prisma.branchTransfer.update({
+
+  const transfer = await prisma.branchTransfer.findFirst({
     where: { id, tenantId: session.user.tenantId },
+    include: { lines: true },
+  });
+  if (!transfer) return { error: "Transfer not found" };
+  if (transfer.lines.length === 0) return { error: "No transfer lines to receive" };
+
+  const stkCodeId = await reasonStatusService.requireCodeId(
+    session.user.tenantId,
+    "inventory_system",
+    "STK",
+  );
+  const ditCodeId = await reasonStatusService.requireCodeId(
+    session.user.tenantId,
+    "inventory_system",
+    "DIT",
+  );
+
+  const serialNumberIds = transfer.lines.map((l) => l.serialNumberId);
+
+  for (const serialNumberId of serialNumberIds) {
+    await prisma.branchInventory.updateMany({
+      where: {
+        tenantId: session.user.tenantId,
+        branchId: transfer.fromBranchId,
+        serialNumberId,
+        statusCodeId: ditCodeId,
+      },
+      data: {
+        branchId: transfer.toBranchId,
+        statusCodeId: stkCodeId,
+        updatedById: session.user.id,
+      },
+    });
+  }
+
+  await prisma.branchTransfer.update({
+    where: { id },
     data: { statusCodeId },
   });
+
+  await auditService.log({
+    tenantId: session.user.tenantId,
+    userId: session.user.id,
+    action: "transfer.received",
+    entityType: "BranchTransfer",
+    entityId: id,
+    metadata: { transferNo: transfer.transferNo, serialCount: serialNumberIds.length },
+  });
+
   revalidateLogisticsPaths();
   revalidatePath("/operations");
+  revalidatePath("/inventory");
   return { success: true as const };
 }
 
@@ -303,9 +518,44 @@ export async function createPulloutAction(input: unknown) {
       statusCodeId,
       reasonStatusId: reasonStatusId ?? null,
       reasonStatusCodeId: parsed.data.reasonStatusCodeId ?? null,
+      ...(parsed.data.serialNumberIds?.length
+        ? {
+            lines: {
+              create: parsed.data.serialNumberIds.map((serialNumberId) => ({
+                serialNumberId,
+              })),
+            },
+          }
+        : {}),
     },
-    include: { branch: { select: { name: true } } },
+    include: { branch: { select: { name: true } }, lines: true },
   });
+
+  if (parsed.data.serialNumberIds?.length) {
+    const stkCodeId = await reasonStatusService.requireCodeId(
+      session.user.tenantId,
+      "inventory_system",
+      "STK",
+    );
+    const rsvCodeId = await reasonStatusService.requireCodeId(
+      session.user.tenantId,
+      "inventory_system",
+      "RSV",
+    );
+    try {
+      await updateInventoryStatusForSerials({
+        tenantId: session.user.tenantId,
+        branchId: parsed.data.branchId,
+        serialNumberIds: parsed.data.serialNumberIds,
+        statusCodeId: rsvCodeId,
+        userId: session.user.id,
+        requiredCurrentCodeId: stkCodeId,
+      });
+    } catch (e) {
+      await prisma.branchPullout.delete({ where: { id: row.id } });
+      return { error: e instanceof Error ? e.message : "Serial not available" };
+    }
+  }
 
   await auditService.log({
     tenantId: session.user.tenantId,
@@ -317,6 +567,9 @@ export async function createPulloutAction(input: unknown) {
       pulloutNo: row.pulloutNo,
       branchName: row.branch.name,
       ...(reasonName ? { reasonName } : {}),
+      ...(parsed.data.serialNumberIds?.length
+        ? { serialCount: parsed.data.serialNumberIds.length }
+        : {}),
     },
   });
 
@@ -332,12 +585,40 @@ export async function approvePulloutTlAction(id: string) {
     "pullout_workflow",
     "for_pullout",
   );
-  await prisma.branchPullout.update({
+  const pullout = await prisma.branchPullout.findFirst({
     where: { id, tenantId: session.user.tenantId },
+    include: { lines: true },
+  });
+  if (!pullout) return { error: "Pull-out not found" };
+
+  if (pullout.lines.length > 0) {
+    const rsvCodeId = await reasonStatusService.requireCodeId(
+      session.user.tenantId,
+      "inventory_system",
+      "RSV",
+    );
+    const fpoCodeId = await reasonStatusService.requireCodeId(
+      session.user.tenantId,
+      "inventory_system",
+      "FPO",
+    );
+    await updateInventoryStatusForSerials({
+      tenantId: session.user.tenantId,
+      branchId: pullout.branchId,
+      serialNumberIds: pullout.lines.map((l) => l.serialNumberId),
+      statusCodeId: fpoCodeId,
+      userId: session.user.id,
+      requiredCurrentCodeId: rsvCodeId,
+    });
+  }
+
+  await prisma.branchPullout.update({
+    where: { id },
     data: { statusCodeId },
   });
   revalidateLogisticsPaths();
   revalidatePath("/operations");
+  revalidatePath("/inventory");
   return { success: true as const };
 }
 
@@ -380,12 +661,50 @@ export async function completePulloutAction(id: string) {
     "pullout_workflow",
     "completed",
   );
-  await prisma.branchPullout.update({
+  const pullout = await prisma.branchPullout.findFirst({
     where: { id, tenantId: session.user.tenantId },
+    include: { lines: true },
+  });
+  if (!pullout) return { error: "Pull-out not found" };
+
+  if (pullout.lines.length > 0) {
+    await prisma.branchInventory.deleteMany({
+      where: {
+        tenantId: session.user.tenantId,
+        branchId: pullout.branchId,
+        serialNumberId: { in: pullout.lines.map((l) => l.serialNumberId) },
+      },
+    });
+  }
+
+  await prisma.branchPullout.update({
+    where: { id },
     data: { statusCodeId },
   });
+
+  const { sapService } = await import("@/features/sap/services/sap.service");
+  await sapService.emitPulloutItr(session.user.tenantId, {
+    id: pullout.id,
+    pulloutNo: pullout.pulloutNo,
+    branchId: pullout.branchId,
+    warehouseId: pullout.warehouseId,
+  });
+
+  await auditService.log({
+    tenantId: session.user.tenantId,
+    userId: session.user.id,
+    action: "pullout.completed",
+    entityType: "BranchPullout",
+    entityId: id,
+    metadata: {
+      pulloutNo: pullout.pulloutNo,
+      ...(pullout.lines.length ? { serialCount: pullout.lines.length } : {}),
+    },
+  });
+
   revalidateLogisticsPaths();
   revalidatePath("/operations");
+  revalidatePath("/inventory");
   return { success: true as const };
 }
 
@@ -408,5 +727,34 @@ export async function listWarehousesForLogisticsAction() {
 export async function listPulloutReasonCodesAction() {
   const session = await requireAnyPermission(["logistics.manage", "orders.create"]);
   return reasonStatusService.listActiveCodes(session.user.tenantId, "pullout_reason");
+}
+
+export async function listBranchStockSerialsAction(branchId: string) {
+  const session = await requireAnyPermission(["logistics.manage", "orders.create"]);
+  const stkCodeId = await reasonStatusService.requireCodeId(
+    session.user.tenantId,
+    "inventory_system",
+    "STK",
+  );
+  const rows = await prisma.branchInventory.findMany({
+    where: {
+      tenantId: session.user.tenantId,
+      branchId,
+      statusCodeId: stkCodeId,
+    },
+    include: {
+      serialNumber: {
+        include: { model: { select: { skuCode: true, name: true } } },
+      },
+    },
+    orderBy: { serialNumber: { serialNo: "asc" } },
+    take: 200,
+  });
+  return rows.map((r) => ({
+    serialNumberId: r.serialNumberId,
+    serialNo: r.serialNumber.serialNo,
+    skuCode: r.serialNumber.model.skuCode,
+    modelName: r.serialNumber.model.name,
+  }));
 }
 

@@ -1,6 +1,6 @@
 import { listDeliveriesAction } from "@/features/logistics/actions/logistics.actions";
 import { requireAnyPermission } from "@/lib/auth/permissions";
-import { PageHeader } from "@/app/(app)/_components/page-header";
+import { SectionPageLead } from "@/components/navigation/section-page-lead";
 import { DeliveriesPanel } from "@/app/(app)/logistics/_components/deliveries-panel";
 
 interface DeliveriesPageProps {
@@ -14,11 +14,10 @@ export default async function DeliveriesPage({ searchParams }: DeliveriesPagePro
   const deliveries = await listDeliveriesAction({ page });
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Deliveries"
-        description="Deliveries sync from approved orders (SAP ITR/SO). Branch PS accepts DIT → Stock."
-      />
+    <div className="space-y-4">
+      <SectionPageLead>
+        Deliveries sync from approved orders (SAP ITR/SO). Branch PS accepts DIT → Stock.
+      </SectionPageLead>
       <DeliveriesPanel deliveries={deliveries} />
     </div>
   );

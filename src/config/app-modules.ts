@@ -95,6 +95,15 @@ export const appModules: AppModule[] = [
     actions: [{ value: "manage", label: "Manage" }],
   },
   {
+    id: "warehouses",
+    name: "Warehouses",
+    route: "/settings/warehouses",
+    slugPrefix: "warehouses",
+    navPermission: "branches.manage",
+    description: "Warehouse and location setup",
+    actions: [{ value: "manage", label: "Manage" }],
+  },
+  {
     id: "master_data",
     name: "Master Data",
     route: "/settings/master-data/brands",

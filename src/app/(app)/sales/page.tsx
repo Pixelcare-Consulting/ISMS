@@ -17,7 +17,7 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
     <div className="space-y-6">
       <PageHeader
         title="Sales & ATR"
-        description="Minimal branch sales recording with ATR status (open / reserve / closed)."
+        description="Branch sales with SN picker, reserved (RSV) flow, and ATR return workflow."
       />
       <SalesTable result={result} />
     </div>

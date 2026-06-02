@@ -32,7 +32,7 @@ export function HeaderUserNav({ name, email, image }: HeaderUserNavProps) {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="flex shrink-0 items-center gap-2 rounded-md px-1.5 py-1 outline-none transition-colors hover:bg-sidebar-accent/60">
+      <DropdownMenuTrigger className="flex shrink-0 cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 outline-none transition-colors hover:bg-sidebar-accent/60">
         <Avatar className="size-8">
           {image ? (
             <AvatarImage src={image} alt={name ?? email ?? "User"} />

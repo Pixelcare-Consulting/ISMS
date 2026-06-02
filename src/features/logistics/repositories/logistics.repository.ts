@@ -12,9 +12,10 @@ const deliveryListInclude = {
 } satisfies Prisma.BranchDeliveryInclude;
 
 const transferListInclude = {
-  fromBranch: { select: { name: true } },
-  toBranch: { select: { name: true } },
+  fromBranch: { select: { id: true, name: true } },
+  toBranch: { select: { id: true, name: true } },
   statusCode: { select: { id: true, code: true, name: true } },
+  lines: { select: { serialNumberId: true } },
 } satisfies Prisma.BranchTransferInclude;
 
 const pulloutListInclude = {

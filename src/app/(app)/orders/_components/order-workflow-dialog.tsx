@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -21,6 +21,7 @@ import {
   getOrderStatusLabel,
   isSupplyPlanningApprovalStep,
 } from "@/features/orders/constants/order-workflow";
+import { getDeliveryDueDateWarning } from "@/features/orders/utils/delivery-schedule";
 import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
 
 export interface OrderWorkflowLine {
@@ -33,6 +34,7 @@ interface OrderWorkflowDialogProps {
   orderNumber: string;
   orderType: BranchOrderType;
   branchName: string;
+  deliverySchedule?: unknown;
   lines: OrderWorkflowLine[];
   status: BranchOrderStatus;
   open: boolean;
@@ -50,6 +52,7 @@ export function OrderWorkflowDialog({
   orderNumber,
   orderType,
   branchName,
+  deliverySchedule,
   lines,
   status,
   open,
@@ -60,21 +63,26 @@ export function OrderWorkflowDialog({
 }: OrderWorkflowDialogProps) {
   const [comment, setComment] = useState("");
   const [deliveryDueDate, setDeliveryDueDate] = useState("");
-  const [approvedQtyByLine, setApprovedQtyByLine] = useState<Record<string, number>>({});
+  const [approvedQtyByLine, setApprovedQtyByLine] = useState<Record<string, number>>(() =>
+    Object.fromEntries(lines.map((l) => [l.detailId, l.quantity])),
+  );
 
   const isSpFinalStep = isSupplyPlanningApprovalStep(status, orderType);
+  const deliveryDueWarning = isSpFinalStep
+    ? getDeliveryDueDateWarning(deliveryDueDate, deliverySchedule)
+    : null;
   const statusLabel = getOrderStatusLabel(status);
   const currentApprover = getCurrentApproverLabel(status, orderType);
   const afterApprove = getAfterApproveHint(status, orderType);
 
-  useEffect(() => {
-    if (!open) return;
-    setComment("");
-    setDeliveryDueDate("");
-    setApprovedQtyByLine(
-      Object.fromEntries(lines.map((l) => [l.detailId, l.quantity])),
-    );
-  }, [open, lines]);
+  function handleOpenChange(nextOpen: boolean) {
+    if (nextOpen) {
+      setComment("");
+      setDeliveryDueDate("");
+      setApprovedQtyByLine(Object.fromEntries(lines.map((l) => [l.detailId, l.quantity])));
+    }
+    onOpenChange(nextOpen);
+  }
 
   function handleApprove() {
     const lineAdjustments = isSpFinalStep
@@ -92,7 +100,7 @@ export function OrderWorkflowDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Review order {orderNumber}</DialogTitle>
@@ -163,6 +171,9 @@ export function OrderWorkflowDialog({
               value={deliveryDueDate}
               onChange={(e) => setDeliveryDueDate(e.target.value)}
             />
+            {deliveryDueWarning ? (
+              <p className="text-xs text-amber-600 dark:text-amber-500">{deliveryDueWarning}</p>
+            ) : null}
           </div>
         ) : null}
         <div className="space-y-2">
