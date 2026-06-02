@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { masterDataRepository } from "@/features/master-data/repositories/master-data.repository";
+import { toClientModelRow } from "@/features/master-data/types/client-model";
 import { requirePermission } from "@/lib/auth/permissions";
 
 const brandSchema = z.object({ name: z.string().min(1), code: z.string().optional() });
@@ -36,7 +37,8 @@ export async function listCategoriesAction() {
 
 export async function listModelsAction() {
   const session = await requirePermission("master_data.manage");
-  return masterDataRepository.listModels(session.user.tenantId);
+  const rows = await masterDataRepository.listModels(session.user.tenantId);
+  return rows.map(toClientModelRow);
 }
 
 export async function createBrandAction(input: unknown) {

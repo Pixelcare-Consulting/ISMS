@@ -38,11 +38,37 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   "order.rejected": "Branch order rejected",
   "delivery.created": "Delivery created",
   "delivery.accepted": "Delivery accepted",
+  "delivery.rejected": "Delivery rejected",
   "delivery.created_from_order": "Delivery created from order",
   "transfer.created": "Branch transfer created",
   "pullout.created": "Pull-out created",
   "sale.created": "Sale recorded",
+  "sale.reserved": "Reserved sale recorded",
   "sale.return_requested": "Return request submitted",
+  "return.evaluated": "Return evaluated by CS",
+  "return.approved": "Return approved by TL",
+  "return.rejected": "Return rejected",
+  "return.completed": "Return completed — stock restored",
+  "transfer.executed": "Transfer executed",
+  "transfer.received": "Transfer received",
+  "pullout.completed": "Pull-out completed",
+  "warehouse.created": "Warehouse created",
+  "warehouse.updated": "Warehouse updated",
+  "warehouse.deleted": "Warehouse removed",
+  "warehouse.location_created": "Warehouse location added",
+  "warehouse.location_deleted": "Warehouse location removed",
+  "stock_count.session_created": "Stock count session created",
+  "stock_count.started": "Stock count started",
+  "stock_count.line_recorded": "Stock count line recorded",
+  "stock_count.completed": "Stock count completed",
+  "stock_count.variance_investigated": "Stock variance investigated",
+  "stock_count.adjustment_requested": "Stock adjustment requested",
+  "stock_count.session_closed": "Stock count session closed",
+  "sap.order_processed": "SAP order processed",
+  "sap.service_layer.updated": "SAP Service Layer settings updated",
+  "sap.inventory_adjustment_processed": "SAP inventory adjustment processed",
+  "sap.job_failed": "SAP job failed",
+  "sap.job_dead_letter": "SAP job dead letter",
 };
 
 const ENTITY_TYPE_LABELS: Record<string, string> = {
@@ -59,6 +85,14 @@ const ENTITY_TYPE_LABELS: Record<string, string> = {
   BranchTransfer: "Transfer",
   BranchPullout: "Pull-out",
   BranchSalesTransaction: "Sale",
+  BranchReturnRequest: "Return request",
+  Warehouse: "Warehouse",
+  WarehouseLocation: "Warehouse location",
+  StockCountSession: "Stock count session",
+  StockCountLine: "Stock count line",
+  StockVariance: "Stock variance",
+  SapIntegrationJob: "SAP integration job",
+  SapServiceLayerConfig: "SAP Service Layer config",
 };
 
 const OPERATIONAL_SUMMARY_KEYS = [
@@ -285,6 +319,7 @@ function formatOperationalAuditDetails(
     }
     case "delivery.created":
     case "delivery.accepted":
+    case "delivery.rejected":
     case "delivery.created_from_order": {
       const parts: string[] = [];
       if (deliveryNo) parts.push(deliveryNo);

@@ -4,9 +4,10 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { auditService } from "@/features/audit/services/audit.service";
+import { aorService } from "@/features/aors/services/aor.service";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { salesRepository } from "@/features/sales/repositories/sales.repository";
-import { requirePermission } from "@/lib/auth/permissions";
+import { hasPermission, requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/database/client";
 
 const saleSchema = z.object({
@@ -14,7 +15,25 @@ const saleSchema = z.object({
   serialNumberId: z.string().optional(),
   amount: z.coerce.number().positive(),
   notes: z.string().optional(),
+  reserved: z.boolean().optional(),
 });
+
+async function assertBranchInAor(
+  tenantId: string,
+  userId: string,
+  branchId: string,
+  permissions: string[] | undefined,
+) {
+  const unrestricted =
+    hasPermission(permissions, "branches.manage") ||
+    hasPermission(permissions, "master_data.manage");
+  if (unrestricted) return;
+
+  const branchIds = await aorService.getBranchIdsForUser(tenantId, userId);
+  if (!branchIds?.includes(branchId)) {
+    throw new Error("Branch not in your area of responsibility");
+  }
+}
 
 export async function listSalesAction(input?: { page?: number }) {
   const session = await requirePermission("sales.create");
@@ -30,14 +49,70 @@ export async function listSalesAction(input?: { page?: number }) {
       atrStatus: row.atrStatus,
       branch: row.branch,
       serialNumber: row.serialNumber,
+      returnRequest: row.returnRequest
+        ? { id: row.returnRequest.id, status: row.returnRequest.status }
+        : null,
     })),
   };
+}
+
+export async function listSaleableSerialsAction(branchId: string) {
+  const session = await requirePermission("sales.create");
+  await assertBranchInAor(
+    session.user.tenantId,
+    session.user.id,
+    branchId,
+    session.user.permissions,
+  );
+
+  const stkCodeId = await reasonStatusService.requireCodeId(
+    session.user.tenantId,
+    "inventory_system",
+    "STK",
+  );
+
+  const rows = await prisma.branchInventory.findMany({
+    where: {
+      tenantId: session.user.tenantId,
+      branchId,
+      statusCodeId: stkCodeId,
+    },
+    include: {
+      serialNumber: {
+        select: {
+          id: true,
+          serialNo: true,
+          model: { select: { skuCode: true, name: true } },
+        },
+      },
+    },
+    orderBy: { serialNumber: { serialNo: "asc" } },
+    take: 200,
+  });
+
+  return rows.map((r) => ({
+    id: r.serialNumber.id,
+    serialNo: r.serialNumber.serialNo,
+    skuCode: r.serialNumber.model.skuCode,
+    modelName: r.serialNumber.model.name,
+  }));
 }
 
 export async function createSaleAction(input: unknown) {
   const session = await requirePermission("sales.create");
   const parsed = saleSchema.safeParse(input);
   if (!parsed.success) return { error: "Invalid sale" };
+
+  try {
+    await assertBranchInAor(
+      session.user.tenantId,
+      session.user.id,
+      parsed.data.branchId,
+      session.user.permissions,
+    );
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Access denied" };
+  }
 
   const transactionNo = `SAL-${Date.now().toString(36).toUpperCase()}`;
   const row = await prisma.branchSalesTransaction.create({
@@ -53,27 +128,36 @@ export async function createSaleAction(input: unknown) {
   });
 
   if (parsed.data.serialNumberId) {
-    const sldCodeId = await reasonStatusService.requireCodeId(
+    const statusCode = parsed.data.reserved ? "RSV" : "SLD";
+    const statusCodeId = await reasonStatusService.requireCodeId(
       session.user.tenantId,
       "inventory_system",
-      "SLD",
+      statusCode,
     );
-    await prisma.branchInventory.updateMany({
+    const updated = await prisma.branchInventory.updateMany({
       where: {
         tenantId: session.user.tenantId,
         serialNumberId: parsed.data.serialNumberId,
         branchId: parsed.data.branchId,
       },
-      data: { statusCodeId: sldCodeId, updatedById: session.user.id },
+      data: { statusCodeId, updatedById: session.user.id },
     });
+    if (updated.count === 0) {
+      await prisma.branchSalesTransaction.delete({ where: { id: row.id } });
+      return { error: "Serial not available at branch" };
+    }
   }
 
   await auditService.log({
     tenantId: session.user.tenantId,
     userId: session.user.id,
-    action: "sale.created",
+    action: parsed.data.reserved ? "sale.reserved" : "sale.created",
     entityType: "BranchSalesTransaction",
     entityId: row.id,
+    metadata: {
+      transactionNo: row.transactionNo,
+      reserved: Boolean(parsed.data.reserved),
+    },
   });
 
   revalidatePath("/sales");
@@ -85,20 +169,33 @@ export async function requestReturnAction(saleId: string, notes?: string) {
   const session = await requirePermission("sales.create");
   const sale = await prisma.branchSalesTransaction.findFirst({
     where: { id: saleId, tenantId: session.user.tenantId },
+    include: { returnRequest: true },
   });
   if (!sale) return { error: "Sale not found" as const };
+  if (sale.returnRequest) return { error: "Return already requested" as const };
+  if (sale.atrStatus !== "open") return { error: "Sale is not eligible for return" as const };
 
-  await prisma.branchSalesTransaction.update({
-    where: { id: saleId },
-    data: {
-      atrStatus: "reserve",
-      notes: notes
-        ? [sale.notes, `[Return requested] ${notes}`].filter(Boolean).join("\n")
-        : sale.notes
-          ? `${sale.notes}\n[Return requested]`
-          : "[Return requested]",
-    },
-  });
+  await prisma.$transaction([
+    prisma.branchReturnRequest.create({
+      data: {
+        tenantId: session.user.tenantId,
+        saleId,
+        requestedById: session.user.id,
+        requestNotes: notes,
+      },
+    }),
+    prisma.branchSalesTransaction.update({
+      where: { id: saleId },
+      data: {
+        atrStatus: "reserve",
+        notes: notes
+          ? [sale.notes, `[Return requested] ${notes}`].filter(Boolean).join("\n")
+          : sale.notes
+            ? `${sale.notes}\n[Return requested]`
+            : "[Return requested]",
+      },
+    }),
+  ]);
 
   await auditService.log({
     tenantId: session.user.tenantId,
@@ -113,6 +210,168 @@ export async function requestReturnAction(saleId: string, notes?: string) {
   return { success: true as const };
 }
 
+export async function evaluateReturnAction(returnRequestId: string, notes?: string) {
+  const session = await requirePermission("sales.create");
+  const row = await prisma.branchReturnRequest.findFirst({
+    where: { id: returnRequestId, tenantId: session.user.tenantId },
+  });
+  if (!row || row.status !== "pending_cs") {
+    return { error: "Return request not found or not pending CS evaluation" };
+  }
+
+  await prisma.branchReturnRequest.update({
+    where: { id: returnRequestId },
+    data: {
+      status: "pending_tl",
+      evaluatedById: session.user.id,
+      evaluatedAt: new Date(),
+      evaluationNotes: notes,
+    },
+  });
+
+  await auditService.log({
+    tenantId: session.user.tenantId,
+    userId: session.user.id,
+    action: "return.evaluated",
+    entityType: "BranchReturnRequest",
+    entityId: returnRequestId,
+  });
+
+  revalidatePath("/sales");
+  return { success: true as const };
+}
+
+export async function approveReturnAction(returnRequestId: string) {
+  const session = await requirePermission("orders.approve");
+  const row = await prisma.branchReturnRequest.findFirst({
+    where: { id: returnRequestId, tenantId: session.user.tenantId },
+  });
+  if (!row || row.status !== "pending_tl") {
+    return { error: "Return request not found or not pending TL approval" };
+  }
+
+  await prisma.branchReturnRequest.update({
+    where: { id: returnRequestId },
+    data: {
+      status: "approved",
+      approvedById: session.user.id,
+      approvedAt: new Date(),
+    },
+  });
+
+  await auditService.log({
+    tenantId: session.user.tenantId,
+    userId: session.user.id,
+    action: "return.approved",
+    entityType: "BranchReturnRequest",
+    entityId: returnRequestId,
+  });
+
+  revalidatePath("/sales");
+  return { success: true as const };
+}
+
+export async function rejectReturnAction(returnRequestId: string, notes?: string) {
+  const session = await requireAnyPermission(["orders.approve", "sales.create"]);
+  const row = await prisma.branchReturnRequest.findFirst({
+    where: { id: returnRequestId, tenantId: session.user.tenantId },
+    include: { sale: true },
+  });
+  if (!row || !["pending_cs", "pending_tl"].includes(row.status)) {
+    return { error: "Return request cannot be rejected" };
+  }
+
+  await prisma.$transaction([
+    prisma.branchReturnRequest.update({
+      where: { id: returnRequestId },
+      data: { status: "rejected", evaluationNotes: notes ?? row.evaluationNotes },
+    }),
+    prisma.branchSalesTransaction.update({
+      where: { id: row.saleId },
+      data: { atrStatus: "open" },
+    }),
+  ]);
+
+  await auditService.log({
+    tenantId: session.user.tenantId,
+    userId: session.user.id,
+    action: "return.rejected",
+    entityType: "BranchReturnRequest",
+    entityId: returnRequestId,
+  });
+
+  revalidatePath("/sales");
+  return { success: true as const };
+}
+
+export async function completeReturnRestoreAction(returnRequestId: string) {
+  const session = await requireAnyPermission(["logistics.manage", "sales.create"]);
+  const row = await prisma.branchReturnRequest.findFirst({
+    where: { id: returnRequestId, tenantId: session.user.tenantId },
+    include: { sale: true },
+  });
+  if (!row || row.status !== "approved") {
+    return { error: "Return must be TL-approved before inventory restore" };
+  }
+
+  const stkCodeId = await reasonStatusService.requireCodeId(
+    session.user.tenantId,
+    "inventory_system",
+    "STK",
+  );
+
+  if (row.sale.serialNumberId) {
+    const existing = await prisma.branchInventory.findFirst({
+      where: {
+        tenantId: session.user.tenantId,
+        branchId: row.sale.branchId,
+        serialNumberId: row.sale.serialNumberId,
+      },
+    });
+    if (existing) {
+      await prisma.branchInventory.update({
+        where: { id: existing.id },
+        data: { statusCodeId: stkCodeId, updatedById: session.user.id },
+      });
+    } else {
+      await prisma.branchInventory.create({
+        data: {
+          tenantId: session.user.tenantId,
+          branchId: row.sale.branchId,
+          serialNumberId: row.sale.serialNumberId,
+          statusCodeId: stkCodeId,
+          updatedById: session.user.id,
+        },
+      });
+    }
+  }
+
+  await prisma.$transaction([
+    prisma.branchReturnRequest.update({
+      where: { id: returnRequestId },
+      data: { status: "completed", completedAt: new Date() },
+    }),
+    prisma.branchSalesTransaction.update({
+      where: { id: row.saleId },
+      data: { atrStatus: "closed" },
+    }),
+  ]);
+
+  await auditService.log({
+    tenantId: session.user.tenantId,
+    userId: session.user.id,
+    action: "return.completed",
+    entityType: "BranchReturnRequest",
+    entityId: returnRequestId,
+    metadata: { transactionNo: row.sale.transactionNo },
+  });
+
+  revalidatePath("/sales");
+  revalidatePath("/inventory");
+  return { success: true as const };
+}
+
+/** @deprecated Use workflow actions instead */
 export async function updateAtrStatusAction(id: string, atrStatus: "open" | "reserve" | "closed") {
   const session = await requirePermission("sales.create");
   await prisma.branchSalesTransaction.update({
@@ -121,4 +380,40 @@ export async function updateAtrStatusAction(id: string, atrStatus: "open" | "res
   });
   revalidatePath("/sales");
   return { success: true as const };
+}
+
+export async function listStkSerialsForBranchAction(branchId: string) {
+  const session = await requireAnyPermission(["logistics.manage", "orders.create", "sales.create"]);
+
+  const stkCodeId = await reasonStatusService.requireCodeId(
+    session.user.tenantId,
+    "inventory_system",
+    "STK",
+  );
+
+  const rows = await prisma.branchInventory.findMany({
+    where: {
+      tenantId: session.user.tenantId,
+      branchId,
+      statusCodeId: stkCodeId,
+    },
+    include: {
+      serialNumber: {
+        select: {
+          id: true,
+          serialNo: true,
+          model: { select: { skuCode: true, name: true } },
+        },
+      },
+    },
+    orderBy: { serialNumber: { serialNo: "asc" } },
+    take: 200,
+  });
+
+  return rows.map((r) => ({
+    id: r.serialNumber.id,
+    serialNo: r.serialNumber.serialNo,
+    skuCode: r.serialNumber.model.skuCode,
+    modelName: r.serialNumber.model.name,
+  }));
 }

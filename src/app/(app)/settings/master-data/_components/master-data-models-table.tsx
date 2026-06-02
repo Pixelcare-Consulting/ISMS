@@ -10,10 +10,8 @@ import {
   listCategoriesAction,
   updateModelStatusAction,
 } from "@/features/master-data/actions/master-data.actions";
-import {
-  DataTableScroll,
-  DataTableShell,
-} from "@/components/data-table/data-table-shell";
+import type { ClientModelRow } from "@/features/master-data/types/client-model";
+import { AppDataTable, AppDataTableBody, DataTableEmpty } from "@/components/data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,17 +23,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { formatPeso } from "@/utils/format-currency";
 
-interface ModelRow {
-  id: string;
-  skuCode: string;
-  name: string;
-  status: string;
-  brand: { name: string } | null;
-  category: { name: string } | null;
-}
-
-export function MasterDataModelsTable({ models }: { models: ModelRow[] }) {
+export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [brandId, setBrandId] = useState("");
@@ -74,13 +64,16 @@ export function MasterDataModelsTable({ models }: { models: ModelRow[] }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2 rounded-xl border bg-card p-4 shadow-sm" onFocus={loadOptions}>
+      <div
+        className="flex flex-wrap gap-2 rounded-xl border bg-card p-4 shadow-sm"
+        onFocus={loadOptions}
+      >
         {options ? (
           <>
             <div>
               <Label>Brand</Label>
               <select
-                className="flex h-9 rounded-md border px-2 text-sm"
+                className="flex h-9 cursor-pointer rounded-md border bg-background px-2 text-sm"
                 value={brandId}
                 onChange={(e) => setBrandId(e.target.value)}
               >
@@ -94,7 +87,7 @@ export function MasterDataModelsTable({ models }: { models: ModelRow[] }) {
             <div>
               <Label>Category</Label>
               <select
-                className="flex h-9 rounded-md border px-2 text-sm"
+                className="flex h-9 cursor-pointer rounded-md border bg-background px-2 text-sm"
                 value={categoryId}
                 onChange={(e) => setCategoryId(e.target.value)}
               >
@@ -107,7 +100,7 @@ export function MasterDataModelsTable({ models }: { models: ModelRow[] }) {
             </div>
           </>
         ) : (
-          <Button variant="outline" type="button" onClick={loadOptions}>
+          <Button variant="secondary" type="button" onClick={loadOptions}>
             Load brand/category lists
           </Button>
         )}
@@ -123,34 +116,43 @@ export function MasterDataModelsTable({ models }: { models: ModelRow[] }) {
           Add model
         </Button>
       </div>
-      <DataTableShell>
-        <DataTableScroll>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>SKU</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Brand</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {models.map((m) => (
-                <TableRow key={m.id}>
-                  <TableCell className="font-mono text-sm">{m.skuCode}</TableCell>
-                  <TableCell>{m.name}</TableCell>
-                  <TableCell>{m.brand?.name ?? "—"}</TableCell>
-                  <TableCell>{m.category?.name ?? "—"}</TableCell>
-                  <TableCell>
-                    <ModelStatusSelect modelId={m.id} status={m.status} />
-                  </TableCell>
+
+      {models.length === 0 ? (
+        <DataTableEmpty message="No product models yet." />
+      ) : (
+        <AppDataTable title="Product models">
+          <AppDataTableBody>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>SKU</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Brand</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead className="text-right">SRP</TableHead>
+                  <TableHead>Status</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </DataTableScroll>
-      </DataTableShell>
+              </TableHeader>
+              <TableBody>
+                {models.map((m) => (
+                  <TableRow key={m.id}>
+                    <TableCell className="font-mono text-sm">{m.skuCode}</TableCell>
+                    <TableCell className="font-medium">{m.name}</TableCell>
+                    <TableCell>{m.brand?.name ?? "—"}</TableCell>
+                    <TableCell>{m.category?.name ?? "—"}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {formatPeso(m.srp)}
+                    </TableCell>
+                    <TableCell>
+                      <ModelStatusSelect modelId={m.id} status={m.status} />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </AppDataTableBody>
+        </AppDataTable>
+      )}
     </div>
   );
 }
@@ -179,10 +181,11 @@ function ModelStatusSelect({ modelId, status }: { modelId: string; status: strin
 
   return (
     <select
-      className="flex h-8 rounded-md border px-2 text-sm capitalize disabled:opacity-50"
+      className="flex h-8 cursor-pointer rounded-md border bg-background px-2 text-sm capitalize disabled:cursor-not-allowed disabled:opacity-50"
       value={status}
       disabled={pending}
       onChange={(e) => onChange(e.target.value)}
+      aria-label="SKU status"
     >
       {SKU_STATUSES.map((s) => (
         <option key={s} value={s}>

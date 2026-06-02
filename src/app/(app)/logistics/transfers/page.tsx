@@ -1,6 +1,6 @@
 import { listTransfersAction } from "@/features/logistics/actions/logistics.actions";
 import { requireAnyPermission } from "@/lib/auth/permissions";
-import { PageHeader } from "@/app/(app)/_components/page-header";
+import { SectionPageLead } from "@/components/navigation/section-page-lead";
 import { TransfersPanel } from "@/app/(app)/logistics/_components/transfers-panel";
 
 interface TransfersPageProps {
@@ -14,11 +14,10 @@ export default async function TransfersPage({ searchParams }: TransfersPageProps
   const transfers = await listTransfersAction({ page });
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Transfers"
-        description="PS requests → TL approves → logistics executes → receiving branch accepts."
-      />
+    <div className="space-y-4">
+      <SectionPageLead>
+        PS requests → TL approves → logistics executes → receiving branch accepts.
+      </SectionPageLead>
       <TransfersPanel transfers={transfers} />
     </div>
   );

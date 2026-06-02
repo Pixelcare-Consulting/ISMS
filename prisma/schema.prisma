@@ -48,6 +48,57 @@ enum AtrStatus {
   closed
 }
 
+enum StockCountSessionStatus {
+  draft
+  in_progress
+  counting_complete
+  variances_under_investigation
+  pending_adjustment
+  adjustment_requested
+  closed
+}
+
+enum StockCountLineStatus {
+  pending
+  counted
+  variance
+  resolved
+}
+
+enum StockVarianceStatus {
+  open
+  investigating
+  approved_adjustment
+  rejected
+  sap_handoff
+  closed
+}
+
+enum SapIntegrationJobStatus {
+  pending
+  processing
+  completed
+  failed
+  dead_letter
+}
+
+enum SapIntegrationJobType {
+  approved_order
+  pullout_itr
+  sales_summary
+  inventory_sync_inbound
+  inventory_adjustment
+  delivery_sync_inbound
+}
+
+enum ReturnRequestStatus {
+  pending_cs
+  pending_tl
+  approved
+  rejected
+  completed
+}
+
 enum SkuStatus {
   active
   hold
@@ -91,11 +142,16 @@ model Tenant {
   branchTransfers     BranchTransfer[]
   branchPullouts      BranchPullout[]
   branchSales         BranchSalesTransaction[]
+  branchReturnRequests BranchReturnRequest[]
   reasonStatuses      ReasonStatus[]
   reasonStatusCodes   ReasonStatusCode[]
   planningPeriods     PlanningPeriod[]
   branchForecastTargets BranchForecastTarget[]
   branchAllocations   BranchAllocation[]
+  stockCountSessions  StockCountSession[]
+  stockVariances      StockVariance[]
+  sapIntegrationJobs  SapIntegrationJob[]
+  sapServiceLayerConfig SapServiceLayerConfig?
 
   @@map("tenants")
 }
@@ -128,6 +184,13 @@ model User {
   branchOrdersCreated       BranchOrder[]       @relation("BranchOrderCreatedBy")
   branchOrdersApproved      BranchOrder[]       @relation("BranchOrderApprovedBy")
   branchInventoriesUpdated  BranchInventory[]   @relation("BranchInventoryUpdatedBy")
+  returnRequestsSubmitted   BranchReturnRequest[] @relation("ReturnRequestedBy")
+  returnRequestsEvaluated   BranchReturnRequest[] @relation("ReturnEvaluatedBy")
+  returnRequestsApproved    BranchReturnRequest[] @relation("ReturnApprovedBy")
+  stockCountSessionsCreated StockCountSession[]   @relation("StockCountSessionCreatedBy")
+  stockCountLinesCounted    StockCountLine[]      @relation("StockCountLineCountedBy")
+  stockVariancesInvestigated StockVariance[]      @relation("StockVarianceInvestigatedBy")
+  stockVariancesAdjustmentRequested StockVariance[] @relation("StockVarianceAdjustmentRequestedBy")
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -404,6 +467,7 @@ model ProductModel {
   branchMilSettings BranchMilSetting[]
   branchOrderDetails BranchOrderDetail[]
   branchAllocations BranchAllocation[]
+  stockCountLines   StockCountLine[]
 
   @@unique([tenantId, skuCode])
   @@index([tenantId])
@@ -529,6 +593,7 @@ model Branch {
   branchSales         BranchSalesTransaction[]
   branchForecastTargets BranchForecastTarget[]
   branchAllocations   BranchAllocation[]
+  stockCountSessions  StockCountSession[]
 
   @@unique([tenantId, sapCode])
   @@index([tenantId])
@@ -660,6 +725,9 @@ model SerialNumber {
   model             ProductModel              @relation(fields: [modelId], references: [id], onDelete: Cascade)
   branchInventories BranchInventory[]
   branchSales       BranchSalesTransaction[]
+  transferLines     BranchTransferLine[]
+  pulloutLines      BranchPulloutLine[]
+  stockCountLines   StockCountLine[]
 
   @@unique([tenantId, serialNo])
   @@index([tenantId])
@@ -682,6 +750,7 @@ model BranchInventory {
   serialNumber SerialNumber     @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
   statusCode   ReasonStatusCode @relation(fields: [statusCodeId], references: [id])
   updatedBy    User?            @relation("BranchInventoryUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  stockCountLines StockCountLine[]
 
   @@unique([branchId, serialNumberId])
   @@index([tenantId, branchId, statusCodeId])
@@ -801,6 +870,7 @@ model BranchOrder {
   spaRemarks      String?           @map("spa_remarks")
   deliveryDueDate DateTime?         @map("delivery_due_date")
   processedAt     DateTime?         @map("processed_at")
+  sapDocRef       String?           @map("sap_doc_ref")
   createdById     String            @map("created_by_id")
   approvedById    String?           @map("approved_by_id")
   createdAt       DateTime          @default(now()) @map("created_at")
@@ -861,6 +931,7 @@ model BranchDelivery {
   deliveryNo   String    @map("delivery_no")
   statusCodeId String    @map("status_code_id")
   acceptedAt   DateTime? @map("accepted_at")
+  sapDocRef    String?   @map("sap_doc_ref")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
 
@@ -870,6 +941,7 @@ model BranchDelivery {
   statusCode ReasonStatusCode @relation(fields: [statusCodeId], references: [id])
 
   @@unique([tenantId, deliveryNo])
+  @@index([tenantId, sapDocRef])
   @@index([tenantId, branchId, statusCodeId])
   @@index([tenantId, orderId])
   @@map("branch_deliveries")
@@ -890,10 +962,24 @@ model BranchTransfer {
   fromBranch Branch           @relation("TransferFromBranch", fields: [fromBranchId], references: [id], onDelete: Cascade)
   toBranch   Branch           @relation("TransferToBranch", fields: [toBranchId], references: [id], onDelete: Cascade)
   statusCode ReasonStatusCode @relation(fields: [statusCodeId], references: [id])
+  lines      BranchTransferLine[]
 
   @@unique([tenantId, transferNo])
   @@index([tenantId, statusCodeId])
   @@map("branch_transfers")
+}
+
+model BranchTransferLine {
+  id             String @id @default(cuid())
+  transferId     String @map("transfer_id")
+  serialNumberId String @map("serial_number_id")
+  quantity       Int    @default(1)
+
+  transfer     BranchTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  serialNumber SerialNumber   @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
+
+  @@unique([transferId, serialNumberId])
+  @@map("branch_transfer_lines")
 }
 
 model BranchPullout {
@@ -906,6 +992,7 @@ model BranchPullout {
   reasonStatusId     String?  @map("reason_status_id")
   reasonStatusCodeId String?  @map("reason_status_code_id")
   notes              String?
+  sapDocRef          String?  @map("sap_doc_ref")
   createdAt          DateTime @default(now()) @map("created_at")
   updatedAt          DateTime @updatedAt @map("updated_at")
 
@@ -915,10 +1002,23 @@ model BranchPullout {
   statusCode       ReasonStatusCode  @relation("PulloutWorkflowStatus", fields: [statusCodeId], references: [id])
   reasonStatus     ReasonStatus?     @relation("PulloutReasonStatus", fields: [reasonStatusId], references: [id], onDelete: SetNull)
   reasonStatusCode ReasonStatusCode? @relation("PulloutReasonCode", fields: [reasonStatusCodeId], references: [id], onDelete: SetNull)
+  lines            BranchPulloutLine[]
 
   @@unique([tenantId, pulloutNo])
   @@index([tenantId, branchId, statusCodeId])
   @@map("branch_pullouts")
+}
+
+model BranchPulloutLine {
+  id             String @id @default(cuid())
+  pulloutId      String @map("pullout_id")
+  serialNumberId String @map("serial_number_id")
+
+  pullout      BranchPullout  @relation(fields: [pulloutId], references: [id], onDelete: Cascade)
+  serialNumber SerialNumber   @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
+
+  @@unique([pulloutId, serialNumberId])
+  @@map("branch_pullout_lines")
 }
 
 model BranchSalesTransaction {
@@ -936,10 +1036,158 @@ model BranchSalesTransaction {
   tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branch       Branch        @relation(fields: [branchId], references: [id], onDelete: Cascade)
   serialNumber SerialNumber? @relation(fields: [serialNumberId], references: [id], onDelete: SetNull)
+  returnRequest BranchReturnRequest?
 
   @@unique([tenantId, transactionNo])
   @@index([tenantId, branchId])
   @@index([tenantId, atrStatus])
   @@map("branch_sales_transactions")
+}
+
+// --- Physical inventory audit (CSV steps 37–41) ---
+
+model StockCountSession {
+  id          String                  @id @default(cuid())
+  tenantId    String                  @map("tenant_id")
+  branchId    String                  @map("branch_id")
+  sessionNo   String                  @map("session_no")
+  status      StockCountSessionStatus @default(draft)
+  createdById String                  @map("created_by_id")
+  closedAt    DateTime?               @map("closed_at")
+  createdAt   DateTime                @default(now()) @map("created_at")
+  updatedAt   DateTime                @updatedAt @map("updated_at")
+
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch    Branch           @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  createdBy User             @relation("StockCountSessionCreatedBy", fields: [createdById], references: [id])
+  lines     StockCountLine[]
+  variances StockVariance[]
+
+  @@unique([tenantId, sessionNo])
+  @@index([tenantId, branchId, status])
+  @@map("stock_count_sessions")
+}
+
+model StockCountLine {
+  id                  String               @id @default(cuid())
+  sessionId           String               @map("session_id")
+  branchInventoryId   String?              @map("branch_inventory_id")
+  serialNumberId      String               @map("serial_number_id")
+  modelId             String               @map("model_id")
+  systemStatusCodeId  String               @map("system_status_code_id")
+  expectedInCount     Boolean              @default(true) @map("expected_in_count")
+  status              StockCountLineStatus @default(pending)
+  countedAt           DateTime?            @map("counted_at")
+  countedById         String?              @map("counted_by_id")
+  notes               String?
+
+  session         StockCountSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  branchInventory BranchInventory?  @relation(fields: [branchInventoryId], references: [id], onDelete: SetNull)
+  serialNumber    SerialNumber      @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
+  model           ProductModel      @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  countedBy       User?             @relation("StockCountLineCountedBy", fields: [countedById], references: [id], onDelete: SetNull)
+  variance        StockVariance?
+
+  @@index([sessionId, status])
+  @@map("stock_count_lines")
+}
+
+model StockVariance {
+  id                      String              @id @default(cuid())
+  tenantId                String              @map("tenant_id")
+  sessionId               String              @map("session_id")
+  lineId                  String?             @unique @map("line_id")
+  varianceType            String              @map("variance_type")
+  status                  StockVarianceStatus @default(open)
+  description             String?
+  investigatedById        String?             @map("investigated_by_id")
+  investigatedAt          DateTime?           @map("investigated_at")
+  investigationNotes      String?             @map("investigation_notes")
+  adjustmentRequestedAt   DateTime?           @map("adjustment_requested_at")
+  adjustmentRequestedById String?             @map("adjustment_requested_by_id")
+  sapDocRef               String?             @map("sap_doc_ref")
+  createdAt               DateTime            @default(now()) @map("created_at")
+  updatedAt               DateTime            @updatedAt @map("updated_at")
+
+  tenant                  Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  session                 StockCountSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  line                    StockCountLine?   @relation(fields: [lineId], references: [id], onDelete: SetNull)
+  investigatedBy          User?             @relation("StockVarianceInvestigatedBy", fields: [investigatedById], references: [id], onDelete: SetNull)
+  adjustmentRequestedBy   User?             @relation("StockVarianceAdjustmentRequestedBy", fields: [adjustmentRequestedById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, sessionId, status])
+  @@map("stock_variances")
+}
+
+// --- SAP integration queue ---
+
+model SapIntegrationJob {
+  id             String                  @id @default(cuid())
+  tenantId       String                  @map("tenant_id")
+  jobType        SapIntegrationJobType   @map("job_type")
+  status         SapIntegrationJobStatus @default(pending)
+  idempotencyKey String                  @map("idempotency_key")
+  payload        Json
+  referenceType  String?                 @map("reference_type")
+  referenceId    String?                 @map("reference_id")
+  sapDocRef      String?                 @map("sap_doc_ref")
+  attemptCount   Int                     @default(0) @map("attempt_count")
+  maxAttempts    Int                     @default(5) @map("max_attempts")
+  lastError      String?                 @map("last_error")
+  processedAt    DateTime?               @map("processed_at")
+  nextRetryAt    DateTime?               @map("next_retry_at")
+  createdAt      DateTime                @default(now()) @map("created_at")
+  updatedAt      DateTime                @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, status, nextRetryAt])
+  @@index([tenantId, referenceType, referenceId])
+  @@map("sap_integration_jobs")
+}
+
+model SapServiceLayerConfig {
+  id                 String   @id @default(cuid())
+  tenantId           String   @unique @map("tenant_id")
+  baseUrlEncrypted   String   @map("base_url_encrypted")
+  companyDbEncrypted String   @map("company_db_encrypted")
+  usernameEncrypted  String   @map("username_encrypted")
+  passwordEncrypted  String   @map("password_encrypted")
+  isEnabled          Boolean  @default(false) @map("is_enabled")
+  verifySsl          Boolean  @default(true) @map("verify_ssl")
+  languageCode       String   @default("23") @map("language_code")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("sap_service_layer_configs")
+}
+
+model BranchReturnRequest {
+  id              String              @id @default(cuid())
+  tenantId        String              @map("tenant_id")
+  saleId          String              @unique @map("sale_id")
+  status          ReturnRequestStatus @default(pending_cs)
+  requestNotes    String?             @map("request_notes")
+  evaluationNotes String?             @map("evaluation_notes")
+  requestedById   String              @map("requested_by_id")
+  evaluatedById   String?             @map("evaluated_by_id")
+  approvedById    String?             @map("approved_by_id")
+  evaluatedAt     DateTime?           @map("evaluated_at")
+  approvedAt      DateTime?           @map("approved_at")
+  completedAt     DateTime?           @map("completed_at")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+
+  tenant      Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sale        BranchSalesTransaction @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  requestedBy User                   @relation("ReturnRequestedBy", fields: [requestedById], references: [id])
+  evaluatedBy User?                  @relation("ReturnEvaluatedBy", fields: [evaluatedById], references: [id], onDelete: SetNull)
+  approvedBy  User?                  @relation("ReturnApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, status])
+  @@map("branch_return_requests")
 }
 

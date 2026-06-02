@@ -11,6 +11,7 @@ import {
   releasePulloutAction,
   schedulePulloutAction,
 } from "@/features/logistics/actions/logistics.actions";
+import { listStkSerialsForBranchAction } from "@/features/sales/actions/sales.actions";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import {
   DataTableScroll,
@@ -75,6 +76,12 @@ export function PulloutsPanel({ pullouts }: PulloutsPanelProps) {
     loadRefs,
   } = useLogisticsRefs();
 
+  const [selectedBranchId, setSelectedBranchId] = useState("");
+  const [pulloutSerials, setPulloutSerials] = useState<
+    { id: string; serialNo: string; skuCode: string }[]
+  >([]);
+  const [selectedPulloutSerialIds, setSelectedPulloutSerialIds] = useState<string[]>([]);
+
   const filtered = useMemo(
     () =>
       pullouts.items.filter((p) =>
@@ -121,7 +128,36 @@ export function PulloutsPanel({ pullouts }: PulloutsPanelProps) {
             ))}
           </select>
         ) : null}
-        <LogisticsLoadRefsButton onClick={loadRefs} />
+        <LogisticsLoadRefsButton
+          onClick={async () => {
+            await loadRefs();
+            if (branches[0]) {
+              setSelectedBranchId(branches[0].id);
+              const serials = await listStkSerialsForBranchAction(branches[0].id);
+              setPulloutSerials(serials);
+              setSelectedPulloutSerialIds(serials.slice(0, 1).map((s) => s.id));
+            }
+          }}
+        />
+        {branches.length > 0 ? (
+          <select
+            className="h-9 rounded-md border px-2 text-sm"
+            value={selectedBranchId || branches[0]?.id || ""}
+            onChange={async (e) => {
+              setSelectedBranchId(e.target.value);
+              const serials = await listStkSerialsForBranchAction(e.target.value);
+              setPulloutSerials(serials);
+              setSelectedPulloutSerialIds(serials.slice(0, 1).map((s) => s.id));
+            }}
+            aria-label="Branch"
+          >
+            {branches.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        ) : null}
         {branches[0] && warehouses[0] ? (
           <Button
             size="sm"
@@ -130,9 +166,13 @@ export function PulloutsPanel({ pullouts }: PulloutsPanelProps) {
               runAction(
                 () =>
                   createPulloutAction({
-                    branchId: branches[0].id,
+                    branchId: selectedBranchId || branches[0].id,
                     warehouseId: warehouses[0].id,
                     reasonStatusCodeId: selectedReasonId || undefined,
+                    serialNumberIds:
+                      selectedPulloutSerialIds.length > 0
+                        ? selectedPulloutSerialIds
+                        : undefined,
                   }),
                 "Pull-out request submitted",
               )
@@ -142,6 +182,25 @@ export function PulloutsPanel({ pullouts }: PulloutsPanelProps) {
           </Button>
         ) : null}
       </TableSearchToolbar>
+      {pulloutSerials.length > 0 ? (
+        <div className="border-b px-4 py-2 text-sm">
+          <span className="text-muted-foreground">Serials to pull out: </span>
+          {pulloutSerials.map((s) => (
+            <label key={s.id} className="mr-3 inline-flex items-center gap-1">
+              <input
+                type="checkbox"
+                checked={selectedPulloutSerialIds.includes(s.id)}
+                onChange={(e) =>
+                  setSelectedPulloutSerialIds((prev) =>
+                    e.target.checked ? [...prev, s.id] : prev.filter((id) => id !== s.id),
+                  )
+                }
+              />
+              {s.serialNo}
+            </label>
+          ))}
+        </div>
+      ) : null}
       <DataTableScroll>
         <Table>
           <TableHeader>

@@ -167,24 +167,14 @@ export const reportsService = {
     const modelIds = [...new Set(planogramRows.map((row) => row.modelId))];
     const branchIds = [...new Set(planogramRows.map((row) => row.branchId))];
 
-    const [stkCode, sldCode] = await Promise.all([
-      prisma.reasonStatusCode.findFirst({
-        where: {
-          tenantId,
-          code: "STK",
-          reasonStatus: { category: "inventory_system" },
-        },
-        select: { id: true },
-      }),
-      prisma.reasonStatusCode.findFirst({
-        where: {
-          tenantId,
-          code: "SLD",
-          reasonStatus: { category: "inventory_system" },
-        },
-        select: { id: true },
-      }),
-    ]);
+    const stkCode = await prisma.reasonStatusCode.findFirst({
+      where: {
+        tenantId,
+        code: "STK",
+        reasonStatus: { category: "inventory_system" },
+      },
+      select: { id: true },
+    });
 
     const [stockRows, soldRows] = await Promise.all([
       stkCode

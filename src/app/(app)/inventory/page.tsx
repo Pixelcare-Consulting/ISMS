@@ -3,7 +3,7 @@ import {
   listInventoryStatusOptionsAction,
 } from "@/features/inventory/actions/inventory.actions";
 import { requirePermission } from "@/lib/auth/permissions";
-import { PageHeader } from "@/app/(app)/_components/page-header";
+import { SectionPageLead } from "@/components/navigation/section-page-lead";
 import { InventoryTable } from "@/app/(app)/inventory/_components/inventory-table";
 
 interface InventoryPageProps {
@@ -30,11 +30,10 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
   ]);
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Inventory"
-        description="Serialized units by branch. Planogram badge shows whether each SKU is authorized at that branch."
-      />
+    <div className="space-y-4">
+      <SectionPageLead>
+        Serialized units by branch. Planogram badge shows authorized SKUs per branch.
+      </SectionPageLead>
       <InventoryTable
         result={result}
         statusOptions={statusOptions}

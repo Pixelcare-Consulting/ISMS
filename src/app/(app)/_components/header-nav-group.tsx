@@ -33,7 +33,7 @@ export function HeaderNavGroup({ group, items }: HeaderNavGroupProps) {
     <DropdownMenu>
       <DropdownMenuTrigger
         className={cn(
-          "group relative flex shrink-0 items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] font-medium transition-colors outline-none sm:px-3",
+          "group relative flex shrink-0 cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] font-medium transition-colors outline-none sm:px-3",
           isChildActive
             ? "bg-sidebar-accent text-sidebar-accent-foreground"
             : "text-sidebar-muted hover:bg-sidebar-accent/60 hover:text-sidebar-foreground data-[state=open]:bg-sidebar-accent/60 data-[state=open]:text-sidebar-foreground",

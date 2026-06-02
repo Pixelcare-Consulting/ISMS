@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -37,7 +38,7 @@ interface OrderRow {
   orderNumber: string;
   orderType: string;
   status: string;
-  branch: { name: string };
+  branch: { name: string; deliverySchedule?: unknown };
   createdBy: { name: string | null; email: string };
   details: {
     id: string;
@@ -182,6 +183,7 @@ export function OrdersTable({ result }: OrdersTableProps) {
           orderNumber={workflowOrder.orderNumber}
           orderType={workflowOrder.orderType as "auto_replenish" | "manual" | "special"}
           branchName={workflowOrder.branch.name}
+          deliverySchedule={workflowOrder.branch.deliverySchedule}
           lines={workflowOrder.details.map((d) => ({
             detailId: d.id,
             skuCode: d.model.skuCode,
@@ -291,9 +293,23 @@ function CreateOrderDialog({ onClose }: { onClose: () => void }) {
                 <option value="auto_replenish">Auto replenish (planogram SKUs)</option>
                 <option value="special">Special (off-planogram allowed)</option>
               </select>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Bulk auto-replenish drafts: Planning → Suggested orders.
-              </p>
+              {orderType === "auto_replenish" ? (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Single-line auto-replenish here, or{" "}
+                  <Link href="/planning/suggested-orders" className="underline">
+                    bulk drafts from suggested orders
+                  </Link>
+                  .
+                </p>
+              ) : (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Auto-replenish bulk path:{" "}
+                  <Link href="/planning/suggested-orders" className="underline">
+                    Planning → Suggested orders
+                  </Link>
+                  .
+                </p>
+              )}
             </div>
             <div>
               <Label>Model</Label>

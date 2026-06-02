@@ -54,6 +54,32 @@ export const opsService = {
     return delivery;
   },
 
+  async rejectDelivery(input: {
+    tenantId: string;
+    actorUserId: string;
+    deliveryId: string;
+  }) {
+    const delivery = await opsRepository.rejectDelivery(
+      input.tenantId,
+      input.deliveryId,
+    );
+
+    await auditService.log({
+      tenantId: input.tenantId,
+      userId: input.actorUserId,
+      action: "delivery.rejected",
+      entityType: "BranchDelivery",
+      entityId: delivery.id,
+      metadata: {
+        deliveryNo: delivery.deliveryNo,
+        branchName: delivery.branch.name,
+        ...(delivery.order ? { orderNumber: delivery.order.orderNumber } : {}),
+      },
+    });
+
+    return delivery;
+  },
+
   async createTransfer(input: {
     tenantId: string;
     actorUserId: string;

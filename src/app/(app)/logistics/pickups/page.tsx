@@ -1,6 +1,6 @@
 import { listPulloutsAction } from "@/features/logistics/actions/logistics.actions";
 import { requireAnyPermission } from "@/lib/auth/permissions";
-import { PageHeader } from "@/app/(app)/_components/page-header";
+import { SectionPageLead } from "@/components/navigation/section-page-lead";
 import { PulloutsPanel } from "@/app/(app)/logistics/_components/pullouts-panel";
 
 interface PickupsPageProps {
@@ -14,11 +14,10 @@ export default async function PickupsPage({ searchParams }: PickupsPageProps) {
   const pullouts = await listPulloutsAction({ page });
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Pull-outs"
-        description="PS creates → TL approves → logistics schedules → branch releases → warehouse validates."
-      />
+    <div className="space-y-4">
+      <SectionPageLead>
+        PS creates → TL approves → logistics schedules → branch releases → warehouse validates.
+      </SectionPageLead>
       <PulloutsPanel pullouts={pullouts} />
     </div>
   );

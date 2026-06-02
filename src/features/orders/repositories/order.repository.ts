@@ -9,7 +9,7 @@ import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
 
 const orderListInclude = {
-  branch: { select: { id: true, name: true, sapCode: true } },
+  branch: { select: { id: true, name: true, sapCode: true, deliverySchedule: true } },
   createdBy: { select: { id: true, name: true, email: true } },
   details: {
     include: {

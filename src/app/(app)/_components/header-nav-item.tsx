@@ -25,7 +25,7 @@ export function HeaderNavItem({
     <Link
       href={href}
       className={cn(
-        "group relative flex shrink-0 items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] font-medium transition-colors sm:px-3",
+        "group relative flex shrink-0 cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] font-medium transition-colors sm:px-3",
         isActive
           ? "bg-sidebar-accent text-sidebar-accent-foreground"
           : "text-sidebar-muted hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",

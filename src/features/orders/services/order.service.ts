@@ -10,10 +10,11 @@ import {
   nextStatusAfterApprove,
 } from "@/features/orders/constants/order-workflow";
 import { orderRepository } from "@/features/orders/repositories/order.repository";
-import { logisticsService } from "@/features/logistics/services/logistics.service";
+import { sapService } from "@/features/sap/services/sap.service";
 import { planogramRepository } from "@/features/planogram/repositories/planogram.repository";
 import { masterDataRepository } from "@/features/master-data/repositories/master-data.repository";
 import { getUserBranchIds } from "@/lib/aor/scope";
+import { resolveDeliveryDueDate } from "@/features/orders/utils/delivery-schedule";
 import { sendWorkflowEmail } from "@/lib/notifications/workflow-email";
 
 function buildLinesSummary(
@@ -235,6 +236,14 @@ export const orderService = {
     const nextStatus = nextStatusAfterApprove(order.status, order.orderType);
     const isFinal = nextStatus === "approved";
 
+    const deliveryResolution =
+      isFinal && input?.deliveryDueDate
+        ? resolveDeliveryDueDate(
+            input.deliveryDueDate.toISOString().slice(0, 10),
+            order.branch.deliverySchedule,
+          )
+        : { dueDate: null as Date | null, rescheduled: false, rescheduledFrom: undefined as string | undefined };
+
     if (isFinal) {
       const adjustmentMap = new Map(
         (input?.lineAdjustments ?? []).map((l) => [l.detailId, l.approvedQty]),
@@ -267,17 +276,27 @@ export const orderService = {
       await orderRepository.finalizeApproved(tenantId, orderId, {
         approvedById: userId,
         spaRemarks: comment,
-        deliveryDueDate: input?.deliveryDueDate,
+        deliveryDueDate: deliveryResolution.dueDate ?? undefined,
         brandId,
         lineApprovedQty,
       });
 
-      await logisticsService.createDeliveryFromApprovedOrder(tenantId, userId, {
-        id: order.id,
-        branchId: order.branchId,
-        branchName: order.branch.name,
-        orderNumber: order.orderNumber,
-      });
+      const refreshed = await orderRepository.findById(tenantId, orderId);
+      if (refreshed) {
+        await sapService.emitApprovedOrder(tenantId, {
+          id: refreshed.id,
+          orderNumber: refreshed.orderNumber,
+          branchId: refreshed.branchId,
+          branchSapCode: refreshed.branch.sapCode,
+          processedAt: refreshed.processedAt,
+          lines: refreshed.details.map((d) => ({
+            skuCode: d.model.skuCode,
+            approvedQty: d.approvedQty,
+            quantity: d.quantity,
+          })),
+        });
+        await sapService.processPendingJobs(tenantId, userId);
+      }
     } else {
       await orderRepository.updateStatus(tenantId, orderId, nextStatus);
     }
@@ -293,6 +312,18 @@ export const orderService = {
         from: order.status,
         to: nextStatus,
         roleSlug,
+        ...(isFinal && input?.deliveryDueDate
+          ? {
+              deliveryDueDateRequested: input.deliveryDueDate.toISOString().slice(0, 10),
+              deliveryDueDateRescheduled: deliveryResolution.rescheduled,
+              ...(deliveryResolution.rescheduledFrom
+                ? { deliveryDueDateRescheduledFrom: deliveryResolution.rescheduledFrom }
+                : {}),
+              ...(deliveryResolution.dueDate
+                ? { deliveryDueDateFinal: deliveryResolution.dueDate.toISOString().slice(0, 10) }
+                : {}),
+            }
+          : {}),
       },
     });
 

@@ -60,6 +60,22 @@ export async function acceptDeliveryAction(deliveryId: string) {
   }
 }
 
+export async function rejectDeliveryAction(deliveryId: string) {
+  const session = await requirePermission("inventory.view");
+  try {
+    await opsService.rejectDelivery({
+      tenantId: session.user.tenantId,
+      actorUserId: session.user.id,
+      deliveryId,
+    });
+    revalidatePath("/operations");
+    revalidatePath("/logistics/deliveries");
+    return { success: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to reject delivery" };
+  }
+}
+
 export async function createTransferAction(formData: FormData) {
   const session = await requirePermission("orders.create");
   try {

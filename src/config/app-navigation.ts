@@ -61,11 +61,23 @@ export const appNavigation: NavEntry[] = [
     anyPermissions: ["policies.view", "policies.create", "policies.approve"],
   },
   {
-    type: "link",
-    href: "/inventory",
+    type: "group",
     label: "Inventory",
     icon: Package,
-    permission: "inventory.view",
+    items: [
+      {
+        href: "/inventory",
+        label: "Stock units",
+        icon: Package,
+        permission: "inventory.view",
+      },
+      {
+        href: "/inventory/stock-count",
+        label: "Stock count",
+        icon: ClipboardList,
+        permission: "inventory.view",
+      },
+    ],
   },
   {
     type: "link",
@@ -130,6 +142,12 @@ export const appNavigation: NavEntry[] = [
         anyPermissions: ["reports.view", "logistics.manage"],
       },
       {
+        href: "/reports/sales",
+        label: "Sales",
+        icon: Store,
+        anyPermissions: ["reports.view", "sales.create"],
+      },
+      {
         href: "/settings/audit-log",
         label: "Audit logs",
         icon: ClipboardList,
@@ -185,6 +203,12 @@ export const appNavigation: NavEntry[] = [
         permission: "branches.manage",
       },
       {
+        href: "/settings/warehouses",
+        label: "Warehouses",
+        icon: Building2,
+        permission: "branches.manage",
+      },
+      {
         href: "/settings/planning",
         label: "Planning & Forecast",
         icon: LayoutGrid,
@@ -207,6 +231,12 @@ export const appNavigation: NavEntry[] = [
         label: "AORs",
         icon: Network,
         permission: "aors.manage",
+      },
+      {
+        href: "/settings/sap-integration",
+        label: "SAP integration",
+        icon: Truck,
+        permission: "logistics.manage",
       },
     ],
   },
