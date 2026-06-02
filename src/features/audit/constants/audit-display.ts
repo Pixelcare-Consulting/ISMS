@@ -42,6 +42,7 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   "transfer.created": "Branch transfer created",
   "pullout.created": "Pull-out created",
   "sale.created": "Sale recorded",
+  "sale.return_requested": "Return request submitted",
 };
 
 const ENTITY_TYPE_LABELS: Record<string, string> = {

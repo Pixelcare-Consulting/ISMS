@@ -25,8 +25,11 @@ export async function listOrdersAction(input?: { page?: number }) {
     ...result,
     items: result.items.map((o) => ({
       ...o,
+      orderNumber: o.orderNumber,
       details: o.details.map((d) => ({
-        ...d,
+        id: d.id,
+        quantity: d.quantity,
+        approvedQty: d.approvedQty,
         model: { ...d.model, sku: d.model.skuCode },
       })),
     })),
@@ -67,7 +70,14 @@ export async function createOrderAction(input: {
   }
 }
 
-export async function approveOrderAction(orderId: string, comment?: string) {
+export async function approveOrderAction(
+  orderId: string,
+  input?: {
+    comment?: string;
+    lineAdjustments?: { detailId: string; approvedQty: number }[];
+    deliveryDueDate?: string;
+  },
+) {
   const session = await requirePermission("orders.approve");
   try {
     await orderService.approve(
@@ -75,7 +85,15 @@ export async function approveOrderAction(orderId: string, comment?: string) {
       session.user.id,
       orderId,
       session.user.roleSlugs ?? [],
-      comment,
+      input
+        ? {
+            comment: input.comment,
+            lineAdjustments: input.lineAdjustments,
+            deliveryDueDate: input.deliveryDueDate
+              ? new Date(input.deliveryDueDate)
+              : undefined,
+          }
+        : undefined,
     );
     revalidatePath("/orders");
     revalidatePath("/logistics/deliveries");

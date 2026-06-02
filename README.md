@@ -2,7 +2,7 @@
 
 Single Next.js 16 SaaS app for ISO-aligned information security management.
 
-**Current version:** `0.8.0` (Hybrid BRS inventory ops — Sprints 3–8 MVP)
+**Current version:** `0.9.7` (Planning/reporting gap-closure release)
 
 ## Stack
 
@@ -19,7 +19,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | **Inventory** | Serialized `BranchInventory`, AOR-scoped `/inventory`, audited status changes |
 | **Orders** | Branch orders with PS → TL → SP → Logistics approval workflow |
 | **Logistics** | Delivery acceptance, branch transfer, pull-out (MVP) |
-| **Sales** | Branch sales stub with ATR status |
+| **Sales** | Branch sales with ATR status + return-request action (`atrStatus=reserve`) |
 | **RBAC** | ISO roles + BRS roles (PS, TL, SP, Logistics, AE), permission-gated sidebar |
 | **Docs** | [`/README.md`](README.md) — BRS PDF index and hybrid Tenant/Branch mapping |
 
@@ -124,6 +124,17 @@ Or register at `/register` to create a new tenant (Tenant Admin on a fresh org).
 3. Deploy — login footer and What's new dialog update automatically
 
 Full workflow: [`docs/release-notes.md`](docs/release-notes.md).
+
+## Returns/Replacement (planned)
+
+Current release keeps returns intentionally minimal through ATR status updates and `sale.return_requested` audit logs.
+
+Future expansion will introduce dedicated return entities for:
+
+- return request
+- replacement / service decision
+- fulfillment and closure states
+- report-grade return and replacement summaries
 
 ## Route groups vs Master Plan
 

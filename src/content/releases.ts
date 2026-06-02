@@ -24,6 +24,38 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.9.7",
+    date: "2026-06-01",
+    title: "Processed orders report, SO# format, and xlsx workflow gaps",
+    highlights: [
+      "Processed Order Summary CSV export with approved qty, SPA remarks, CBM, and geography",
+      "Sales order numbers use SO#{YYYY}-{MM}-#####; SP approval sets processedAt and line approvedQty",
+      "Daily stock and transfer CSV reports; SPA/supply planning roles; SAP MVP documented",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Reports — /reports/processed-orders, /reports/daily-stock, /reports/transfers CSV exports",
+      },
+      {
+        type: "feature",
+        description:
+          "Orders — SO# monthly sequencer, approvedQty per line, spaRemarks, deliveryDueDate, brand on header",
+      },
+      {
+        type: "improvement",
+        description:
+          "RBAC — supply_planning, supply_planning_associate, and spa roles; xlsx-aligned workflow status codes",
+      },
+      {
+        type: "improvement",
+        description:
+          "Docs — traceability tables in docs/README.md; SAP integration MVP in docs/sap-integration.md",
+      },
+    ],
+  },
+  {
     version: "0.9.6",
     date: "2026-06-01",
     title: "Planning tables — pagination and filters",

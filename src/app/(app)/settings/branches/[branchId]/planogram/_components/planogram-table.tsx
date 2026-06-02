@@ -34,6 +34,7 @@ import {
 interface PlanogramRow {
   id: string;
   maxQty: number;
+  effectiveFrom?: string | null;
   stockCount: number;
   ditCount: number;
   daysThreshold: number | null;
@@ -158,6 +159,7 @@ export function PlanogramTable({
                 <TableHead>Series</TableHead>
                 <TableHead>SRP</TableHead>
                 <TableHead>Brand</TableHead>
+                <TableHead>Effective</TableHead>
                 <TableHead>Stock / Max</TableHead>
                 <TableHead title="Minimum inventory life — alert when oldest stock exceeds this age">
                   MIL (days)
@@ -259,6 +261,9 @@ function PlanogramRowEditor({
       <TableCell>{row.model.series ?? "—"}</TableCell>
       <TableCell className="tabular-nums">{formatPeso(row.model.srp)}</TableCell>
       <TableCell>{row.model.brand?.name ?? "—"}</TableCell>
+      <TableCell className="text-sm text-muted-foreground">
+        {row.effectiveFrom ?? "—"}
+      </TableCell>
       <TableCell>
         <span className={belowCapacity ? "font-medium text-amber-600" : ""}>
           STK {row.stockCount} · DIT {row.ditCount} / max{" "}

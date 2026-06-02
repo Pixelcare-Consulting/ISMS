@@ -12,6 +12,7 @@ export const DEMO_USERS = [
   { email: "ps@demo.local", name: "Branch PS", roleSlug: "ps" },
   { email: "tl@demo.local", name: "Team Leader", roleSlug: "tl" },
   { email: "sp@demo.local", name: "Sales Planner", roleSlug: "sp" },
+  { email: "spa@demo.local", name: "Supply Planning Associate", roleSlug: "spa" },
   { email: "logistics@demo.local", name: "Logistics", roleSlug: "logistics" },
   { email: "ae@demo.local", name: "Area Executive", roleSlug: "ae" },
 ] as const;
@@ -137,8 +138,8 @@ export const ROLES = [
   },
   {
     slug: "sp",
-    name: "Sales Planner",
-    description: "Planogram and SP order approval",
+    name: "Supply Planning",
+    description: "Supply Planning — order approval and forecast (xlsx SP)",
     permissions: [
       "dashboard.manage",
       "master_data.manage",
@@ -147,6 +148,45 @@ export const ROLES = [
       "orders.approve",
       "planogram.manage",
       "forecast.manage",
+      "reports.view",
+    ],
+  },
+  {
+    slug: "spa",
+    name: "Supply Planning Associate",
+    description: "SPA — same approval scope as SP for processed-order reporting",
+    permissions: [
+      "dashboard.manage",
+      "inventory.view",
+      "orders.view",
+      "orders.approve",
+      "planogram.view",
+      "forecast.manage",
+      "reports.view",
+    ],
+  },
+  {
+    slug: "supply_planning",
+    name: "Supply Planning (role alias)",
+    description: "Alias for SP permissions",
+    permissions: [
+      "dashboard.manage",
+      "orders.view",
+      "orders.approve",
+      "forecast.manage",
+      "reports.view",
+    ],
+  },
+  {
+    slug: "supply_planning_associate",
+    name: "Supply Planning Associate (role alias)",
+    description: "Alias for SPA permissions",
+    permissions: [
+      "dashboard.manage",
+      "orders.view",
+      "orders.approve",
+      "forecast.manage",
+      "reports.view",
     ],
   },
   {
@@ -180,6 +220,7 @@ export const USER_DEPARTMENTS: Record<string, (typeof DEPARTMENTS)[number]> = {
   "ps@demo.local": "Operations",
   "tl@demo.local": "Operations",
   "sp@demo.local": "Operations",
+  "spa@demo.local": "Operations",
   "logistics@demo.local": "Operations",
   "ae@demo.local": "Operations",
 };

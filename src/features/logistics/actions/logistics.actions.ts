@@ -31,6 +31,25 @@ function revalidateLogisticsPaths() {
   revalidatePath("/logistics/pickups");
 }
 
+async function requireFirstCodeId(
+  tenantId: string,
+  category: "transfer_workflow" | "pullout_workflow" | "delivery_workflow",
+  codes: string[],
+) {
+  for (const code of codes) {
+    const row = await prisma.reasonStatusCode.findFirst({
+      where: {
+        tenantId,
+        code,
+        reasonStatus: { category },
+      },
+      select: { id: true },
+    });
+    if (row) return row.id;
+  }
+  throw new Error(`Status code not configured: ${category}/${codes[0]}`);
+}
+
 export async function listDeliveriesAction(input?: { page?: number }) {
   const session = await requireAnyPermission(["logistics.manage", "orders.create", "orders.view"]);
   return logisticsRepository.listDeliveries(session.user.tenantId, {
@@ -143,11 +162,10 @@ export async function createTransferAction(input: unknown) {
   const parsed = transferSchema.safeParse(input);
   if (!parsed.success) return { error: "Invalid input" };
 
-  const statusCodeId = await reasonStatusService.requireCodeId(
-    session.user.tenantId,
-    "transfer_workflow",
+  const statusCodeId = await requireFirstCodeId(session.user.tenantId, "transfer_workflow", [
+    "requested",
     "pending_tl",
-  );
+  ]);
 
   const row = await prisma.branchTransfer.create({
     data: {
@@ -183,11 +201,25 @@ export async function createTransferAction(input: unknown) {
 
 export async function approveTransferAction(id: string) {
   const session = await requirePermission("orders.approve");
-  const statusCodeId = await reasonStatusService.requireCodeId(
-    session.user.tenantId,
-    "transfer_workflow",
+  const statusCodeId = await requireFirstCodeId(session.user.tenantId, "transfer_workflow", [
+    "approved",
     "for_transfer",
-  );
+  ]);
+  await prisma.branchTransfer.update({
+    where: { id, tenantId: session.user.tenantId },
+    data: { statusCodeId },
+  });
+  revalidateLogisticsPaths();
+  revalidatePath("/operations");
+  return { success: true as const };
+}
+
+export async function rejectTransferAction(id: string) {
+  const session = await requirePermission("orders.approve");
+  const statusCodeId = await requireFirstCodeId(session.user.tenantId, "transfer_workflow", [
+    "rejected",
+    "cancelled",
+  ]);
   await prisma.branchTransfer.update({
     where: { id, tenantId: session.user.tenantId },
     data: { statusCodeId },
@@ -215,11 +247,10 @@ export async function executeTransferAction(id: string) {
 
 export async function receiveTransferAction(id: string) {
   const session = await requirePermission("orders.create");
-  const statusCodeId = await reasonStatusService.requireCodeId(
-    session.user.tenantId,
-    "transfer_workflow",
+  const statusCodeId = await requireFirstCodeId(session.user.tenantId, "transfer_workflow", [
+    "accepted",
     "completed",
-  );
+  ]);
   await prisma.branchTransfer.update({
     where: { id, tenantId: session.user.tenantId },
     data: { statusCodeId },

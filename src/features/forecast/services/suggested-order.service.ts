@@ -2,6 +2,7 @@ import { auditService } from "@/features/audit/services/audit.service";
 import { forecastRepository } from "@/features/forecast/repositories/forecast.repository";
 import { orderRepository } from "@/features/orders/repositories/order.repository";
 import { getOrderApprovalChain } from "@/features/orders/constants/order-workflow";
+import { nextSalesOrderNumber } from "@/features/orders/utils/next-sales-order-number";
 import { prisma } from "@/lib/database/client";
 import {
   resolvePagination,
@@ -34,10 +35,6 @@ function draftSuggestedOrdersWhere(
         }
       : {}),
   };
-}
-
-function nextOrderNumber() {
-  return `ORD-${Date.now().toString(36).toUpperCase()}`;
 }
 
 export const suggestedOrderService = {
@@ -78,12 +75,13 @@ export const suggestedOrderService = {
       if (existingDraft) continue;
 
       const approvalChain = getOrderApprovalChain("auto_replenish");
+      const orderNumber = await nextSalesOrderNumber(tenantId);
       const order = await prisma.branchOrder.create({
         data: {
           tenantId,
           branchId,
           orderType: "auto_replenish",
-          orderNumber: nextOrderNumber(),
+          orderNumber,
           status: "draft",
           createdById,
           notes: `Suggested replenishment (${period.label})`,

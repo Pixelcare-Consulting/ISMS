@@ -209,7 +209,11 @@ export const orderService = {
     userId: string,
     orderId: string,
     roleSlugs: string[],
-    comment?: string,
+    input?: {
+      comment?: string;
+      lineAdjustments?: { detailId: string; approvedQty: number }[];
+      deliveryDueDate?: Date;
+    },
   ) {
     const order = await orderRepository.findById(tenantId, orderId);
     if (!order) throw new Error("Order not found");
@@ -219,6 +223,7 @@ export const orderService = {
 
     const roleSlug = getRoleSlugForApproval(order.status, order.orderType);
     const level = getApprovalLevelForStatus(order.status, order.orderType);
+    const comment = input?.comment;
 
     await orderRepository.addApproval(orderId, {
       level,
@@ -230,17 +235,51 @@ export const orderService = {
     const nextStatus = nextStatusAfterApprove(order.status, order.orderType);
     const isFinal = nextStatus === "approved";
 
-    await orderRepository.updateStatus(tenantId, orderId, nextStatus, {
-      ...(isFinal ? { approvedById: userId } : {}),
-    });
-
     if (isFinal) {
+      const adjustmentMap = new Map(
+        (input?.lineAdjustments ?? []).map((l) => [l.detailId, l.approvedQty]),
+      );
+
+      for (const line of order.details) {
+        const qty = adjustmentMap.get(line.id);
+        if (qty != null && (qty < 1 || qty > line.quantity)) {
+          throw new Error(
+            `Approved quantity must be between 1 and ordered quantity (${line.quantity})`,
+          );
+        }
+      }
+
+      const lineApprovedQty = order.details.map((line) => ({
+        detailId: line.id,
+        approvedQty: adjustmentMap.get(line.id) ?? line.quantity,
+      }));
+
+      const brandIds = order.details
+        .map((d) => d.model.brandId)
+        .filter((id): id is string => Boolean(id));
+      const brandId =
+        brandIds.length > 0
+          ? [...new Set(brandIds)].length === 1
+            ? brandIds[0]
+            : null
+          : null;
+
+      await orderRepository.finalizeApproved(tenantId, orderId, {
+        approvedById: userId,
+        spaRemarks: comment,
+        deliveryDueDate: input?.deliveryDueDate,
+        brandId,
+        lineApprovedQty,
+      });
+
       await logisticsService.createDeliveryFromApprovedOrder(tenantId, userId, {
         id: order.id,
         branchId: order.branchId,
         branchName: order.branch.name,
         orderNumber: order.orderNumber,
       });
+    } else {
+      await orderRepository.updateStatus(tenantId, orderId, nextStatus);
     }
 
     await auditService.log({

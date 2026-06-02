@@ -1,9 +1,7 @@
 import {
-  ArrowBigRight,
   ArrowLeftRight,
   ArrowUpToLine,
   Building2,
-  CircleDot,
   ClipboardList,
   Clock,
   KeyRound,
@@ -23,7 +21,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { getModuleNavPermission } from "@/config/app-modules";
-import { Arrow } from "@radix-ui/react-dropdown-menu";
 
 export interface NavLinkItem {
   href: string;
@@ -110,11 +107,35 @@ export const appNavigation: NavEntry[] = [
     permission: "sales.create",
   },
   {
-    type: "link",
-    href: "/settings/audit-log",
-    label: "Audit logs",
+    type: "group",
+    label: "Reports",
     icon: ClipboardList,
-    permission: "reports.view",
+    items: [
+      {
+        href: "/reports/processed-orders",
+        label: "Processed orders",
+        icon: ClipboardList,
+        anyPermissions: ["reports.view", "orders.view"],
+      },
+      {
+        href: "/reports/daily-stock",
+        label: "Daily stock",
+        icon: Package,
+        anyPermissions: ["reports.view", "orders.view"],
+      },
+      {
+        href: "/reports/transfers",
+        label: "Transfers",
+        icon: ArrowLeftRight,
+        anyPermissions: ["reports.view", "logistics.manage"],
+      },
+      {
+        href: "/settings/audit-log",
+        label: "Audit logs",
+        icon: ClipboardList,
+        permission: "reports.view",
+      },
+    ],
   },
   {
     type: "group",
