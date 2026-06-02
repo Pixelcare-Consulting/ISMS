@@ -1,13 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import {
-  useEffect,
-  useMemo,
-  useState,
-  useTransition,
-  type ReactNode,
-} from "react";
+import { useMemo, useState, useTransition, type ReactNode } from "react";
 
 import { Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -76,7 +70,6 @@ export function UsersTable({
   toolbarActions,
 }: UsersTableProps) {
   const router = useRouter();
-  const [rows, setRows] = useState(users);
   const [query, setQuery] = useState("");
   const [editingUser, setEditingUser] = useState<UserRow | null>(null);
   const [deletingUser, setDeletingUser] = useState<UserRow | null>(null);
@@ -87,20 +80,13 @@ export function UsersTable({
       <CreateUserDialog
         roles={roles}
         departments={departments}
-        onCreated={(user) => {
-          setRows((currentRows) => [user, ...currentRows]);
-          router.refresh();
-        }}
+        onCreated={() => router.refresh()}
       />
     );
 
-  useEffect(() => {
-    setRows(users);
-  }, [users]);
-
   const filteredUsers = useMemo(
     () =>
-      rows.filter((user) =>
+      users.filter((user) =>
         matchesTableSearch(query, [
           user.name,
           user.email,
@@ -108,7 +94,7 @@ export function UsersTable({
           ...user.userRoles.map((userRole) => userRole.role.name),
         ]),
       ),
-    [query, rows],
+    [query, users],
   );
 
   function handleDeleteConfirm() {
@@ -124,15 +110,12 @@ export function UsersTable({
       }
 
       toast.success("User deleted");
-      setRows((currentRows) =>
-        currentRows.filter((user) => user.id !== deletingUser.id),
-      );
       setDeletingUser(null);
       router.refresh();
     });
   }
 
-  if (rows.length === 0) {
+  if (users.length === 0) {
     return (
       <DataTableShell>
         <TableSearchToolbar
@@ -282,12 +265,7 @@ export function UsersTable({
           user={editingUser}
           roles={roles}
           departments={departments}
-          onUpdated={(user) => {
-            setRows((currentRows) =>
-              currentRows.map((row) => (row.id === user.id ? user : row)),
-            );
-            router.refresh();
-          }}
+          onUpdated={() => router.refresh()}
         />
       ) : null}
 

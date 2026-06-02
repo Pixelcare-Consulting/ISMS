@@ -7,20 +7,16 @@ const { auth } = NextAuth({
   secret: process.env.AUTH_SECRET,
 });
 
+// Deny-by-default: every route requires auth except those listed here, so new
+// app sections are protected automatically.
+const PUBLIC_PATHS = new Set(["/", "/login", "/register"]);
+
 export default auth((req) => {
   const isLoggedIn = !!req.auth;
   const { pathname } = req.nextUrl;
+  const isPublic = PUBLIC_PATHS.has(pathname);
 
-  const isAppRoute =
-    pathname.startsWith("/dashboard") ||
-    pathname.startsWith("/settings") ||
-    pathname.startsWith("/policies") ||
-    pathname.startsWith("/inventory") ||
-    pathname.startsWith("/orders") ||
-    pathname.startsWith("/logistics") ||
-    pathname.startsWith("/sales");
-
-  if (isAppRoute && !isLoggedIn) {
+  if (!isPublic && !isLoggedIn) {
     const loginUrl = new URL("/login", req.nextUrl.origin);
     loginUrl.searchParams.set("callbackUrl", pathname);
     return Response.redirect(loginUrl);
@@ -32,15 +28,6 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: [
-    "/dashboard/:path*",
-    "/settings/:path*",
-    "/policies/:path*",
-    "/inventory/:path*",
-    "/orders/:path*",
-    "/logistics/:path*",
-    "/sales/:path*",
-    "/login",
-    "/register",
-  ],
+  // Run on everything except Next internals, auth API, and static asset files.
+  matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico|.*\\.[\\w]+$).*)"],
 };

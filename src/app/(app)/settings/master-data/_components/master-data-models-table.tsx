@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import {
@@ -27,8 +27,7 @@ import { formatPeso } from "@/utils/format-currency";
 
 export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) {
   const router = useRouter();
-  const [optimisticRows, setOptimisticRows] = useState<ClientModelRow[]>([]);
-  const [statusOverrides, setStatusOverrides] = useState<Record<string, string>>({});
+  const rows = models;
   const [pending, startTransition] = useTransition();
   const [brandId, setBrandId] = useState("");
   const [categoryId, setCategoryId] = useState("");
@@ -38,15 +37,6 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
     brands: { id: string; name: string }[];
     categories: { id: string; name: string }[];
   } | null>(null);
-
-  const rows = useMemo(() => {
-    const modelIds = new Set(models.map((model) => model.id));
-    const merged = [...optimisticRows.filter((row) => !modelIds.has(row.id)), ...models];
-    return merged.map((row) => ({
-      ...row,
-      status: statusOverrides[row.id] ?? row.status,
-    }));
-  }, [models, optimisticRows, statusOverrides]);
 
   async function loadOptions() {
     if (options) return;
@@ -67,25 +57,6 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
         return;
       }
       toast.success("Model added");
-      if (result.model) {
-        const selectedBrand = options?.brands.find((brand) => brand.id === brandId);
-        const selectedCategory = options?.categories.find(
-          (category) => category.id === categoryId,
-        );
-        setOptimisticRows((currentRows) => [
-          {
-            id: result.model.id,
-            skuCode: result.model.skuCode,
-            name: result.model.name,
-            status: result.model.status,
-            srp: null,
-            cbm: null,
-            brand: selectedBrand ? { name: selectedBrand.name } : null,
-            category: selectedCategory ? { name: selectedCategory.name } : null,
-          },
-          ...currentRows,
-        ]);
-      }
       setSkuCode("");
       setName("");
       router.refresh();
@@ -177,13 +148,7 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
                       <ModelStatusSelect
                         modelId={m.id}
                         status={m.status}
-                        onUpdated={(nextStatus) => {
-                          setStatusOverrides((current) => ({
-                            ...current,
-                            [m.id]: nextStatus,
-                          }));
-                          router.refresh();
-                        }}
+                        onUpdated={() => router.refresh()}
                       />
                     </TableCell>
                   </TableRow>

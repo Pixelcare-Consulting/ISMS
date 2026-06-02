@@ -1,3 +1,5 @@
+import { Prisma } from "@/lib/database/generated/prisma/client";
+
 import { auditService } from "@/features/audit/services/audit.service";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { prisma } from "@/lib/database/client";
@@ -24,16 +26,29 @@ export const logisticsService = {
       "pending",
     );
 
-    const row = await prisma.branchDelivery.create({
-      data: {
-        tenantId,
-        branchId: order.branchId,
-        orderId: order.id,
-        deliveryNo: nextDeliveryNo(),
-        statusCodeId,
-      },
-      include: { branch: { select: { name: true } } },
-    });
+    let row;
+    try {
+      row = await prisma.branchDelivery.create({
+        data: {
+          tenantId,
+          branchId: order.branchId,
+          orderId: order.id,
+          deliveryNo: nextDeliveryNo(),
+          statusCodeId,
+        },
+        include: { branch: { select: { name: true } } },
+      });
+    } catch (e) {
+      // Unique (tenantId, orderId) violation → a concurrent run already created
+      // the delivery. Return the existing one instead of failing.
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+        const created = await prisma.branchDelivery.findFirst({
+          where: { tenantId, orderId: order.id },
+        });
+        if (created) return created;
+      }
+      throw e;
+    }
 
     await auditService.log({
       tenantId,

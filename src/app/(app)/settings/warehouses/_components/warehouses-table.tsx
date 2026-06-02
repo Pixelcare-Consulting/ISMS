@@ -2,13 +2,13 @@
 
 import { Fragment } from "react";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
+  addWarehouseLocationAction,
   createWarehouseAction,
-  createWarehouseLocationAction,
   deleteWarehouseAction,
   deleteWarehouseLocationAction,
 } from "@/features/warehouses/actions/warehouse.actions";
@@ -48,7 +48,6 @@ interface WarehouseRow {
 
 export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) {
   const router = useRouter();
-  const [rows, setRows] = useState(warehouses);
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
   const [deleting, setDeleting] = useState<WarehouseRow | null>(null);
@@ -58,16 +57,12 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
   const [locCode, setLocCode] = useState("");
   const [locName, setLocName] = useState("");
 
-  useEffect(() => {
-    setRows(warehouses);
-  }, [warehouses]);
-
   const filtered = useMemo(
     () =>
-      rows.filter((w) =>
+      warehouses.filter((w) =>
         matchesTableSearch(query, [w.code, w.name, ...w.locations.map((l) => l.code)]),
       ),
-    [rows, query],
+    [warehouses, query],
   );
 
   function createWarehouse() {
@@ -78,16 +73,6 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
         return;
       }
       toast.success("Warehouse created");
-      if (result.warehouse) {
-        setRows((currentRows) => [
-          {
-            ...result.warehouse,
-            locations: [],
-            _count: { aors: 0, pulloutsDestination: 0 },
-          },
-          ...currentRows,
-        ]);
-      }
       setNewCode("");
       setNewName("");
       router.refresh();
@@ -103,9 +88,6 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
         return;
       }
       toast.success("Warehouse removed");
-      setRows((currentRows) =>
-        currentRows.filter((warehouse) => warehouse.id !== deleting.id),
-      );
       setDeleting(null);
       router.refresh();
     });
@@ -113,7 +95,7 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
 
   function addLocation(warehouseId: string) {
     startTransition(async () => {
-      const result = await createWarehouseLocationAction({
+      const result = await addWarehouseLocationAction({
         warehouseId,
         code: locCode,
         name: locName,
@@ -123,18 +105,6 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
         return;
       }
       toast.success("Location added");
-      if (result.location) {
-        setRows((currentRows) =>
-          currentRows.map((warehouse) =>
-            warehouse.id === warehouseId
-              ? {
-                  ...warehouse,
-                  locations: [...warehouse.locations, result.location],
-                }
-              : warehouse,
-          ),
-        );
-      }
       setLocCode("");
       setLocName("");
       router.refresh();
@@ -149,16 +119,6 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
         return;
       }
       toast.success("Location removed");
-      setRows((currentRows) =>
-        currentRows.map((warehouse) =>
-          warehouse.id === warehouseId
-            ? {
-                ...warehouse,
-                locations: warehouse.locations.filter((location) => location.id !== locationId),
-              }
-            : warehouse,
-        ),
-      );
       router.refresh();
     });
   }

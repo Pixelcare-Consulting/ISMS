@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 
 import { Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -40,22 +40,17 @@ interface DepartmentsTableProps {
 
 export function DepartmentsTable({ departments }: DepartmentsTableProps) {
   const router = useRouter();
-  const [rows, setRows] = useState(departments);
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<DepartmentRow | null>(null);
   const [deleting, setDeleting] = useState<DepartmentRow | null>(null);
   const [pending, startTransition] = useTransition();
 
-  useEffect(() => {
-    setRows(departments);
-  }, [departments]);
-
   const filtered = useMemo(
     () =>
-      rows.filter((department) =>
+      departments.filter((department) =>
         matchesTableSearch(query, [department.name]),
       ),
-    [rows, query],
+    [departments, query],
   );
 
   function handleDeleteConfirm() {
@@ -68,15 +63,12 @@ export function DepartmentsTable({ departments }: DepartmentsTableProps) {
         return;
       }
       toast.success("Department deleted");
-      setRows((currentRows) =>
-        currentRows.filter((department) => department.id !== deleting.id),
-      );
       setDeleting(null);
       router.refresh();
     });
   }
 
-  if (rows.length === 0) {
+  if (departments.length === 0) {
     return (
       <DataTableShell>
         <TableSearchToolbar
@@ -84,15 +76,7 @@ export function DepartmentsTable({ departments }: DepartmentsTableProps) {
           onChange={setQuery}
           placeholder="Search departments…"
         >
-          <CreateDepartmentDialog
-            onCreated={(department) => {
-              setRows((currentRows) => [
-                { ...department, _count: { users: 0 } },
-                ...currentRows,
-              ]);
-              router.refresh();
-            }}
-          />
+          <CreateDepartmentDialog onCreated={() => router.refresh()} />
         </TableSearchToolbar>
         <DataTableEmpty message="No departments yet. Add one or register a new organization to get defaults." />
       </DataTableShell>
@@ -107,15 +91,7 @@ export function DepartmentsTable({ departments }: DepartmentsTableProps) {
           onChange={setQuery}
           placeholder="Search departments…"
         >
-          <CreateDepartmentDialog
-            onCreated={(department) => {
-              setRows((currentRows) => [
-                { ...department, _count: { users: 0 } },
-                ...currentRows,
-              ]);
-              router.refresh();
-            }}
-          />
+          <CreateDepartmentDialog onCreated={() => router.refresh()} />
         </TableSearchToolbar>
         <DataTableScroll>
           <Table>
@@ -173,14 +149,7 @@ export function DepartmentsTable({ departments }: DepartmentsTableProps) {
       <EditDepartmentDialog
         department={editing}
         onClose={() => setEditing(null)}
-        onUpdated={(department) => {
-          setRows((currentRows) =>
-            currentRows.map((row) =>
-              row.id === department.id ? { ...row, name: department.name } : row,
-            ),
-          );
-          router.refresh();
-        }}
+        onUpdated={() => router.refresh()}
       />
 
       <DeleteConfirmDialog

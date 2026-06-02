@@ -115,37 +115,57 @@ export async function createSaleAction(input: unknown) {
   }
 
   const transactionNo = `SAL-${Date.now().toString(36).toUpperCase()}`;
-  const row = await prisma.branchSalesTransaction.create({
-    data: {
-      tenantId: session.user.tenantId,
-      branchId: parsed.data.branchId,
-      serialNumberId: parsed.data.serialNumberId ?? null,
-      transactionNo,
-      amount: parsed.data.amount,
-      notes: parsed.data.notes,
-      atrStatus: "open",
-    },
-  });
+  const serialNumberId = parsed.data.serialNumberId;
 
-  if (parsed.data.serialNumberId) {
-    const statusCode = parsed.data.reserved ? "RSV" : "SLD";
-    const statusCodeId = await reasonStatusService.requireCodeId(
+  let stkCodeId: string | undefined;
+  let targetStatusCodeId: string | undefined;
+  if (serialNumberId) {
+    stkCodeId = await reasonStatusService.requireCodeId(
       session.user.tenantId,
       "inventory_system",
-      statusCode,
+      "STK",
     );
-    const updated = await prisma.branchInventory.updateMany({
-      where: {
-        tenantId: session.user.tenantId,
-        serialNumberId: parsed.data.serialNumberId,
-        branchId: parsed.data.branchId,
-      },
-      data: { statusCodeId, updatedById: session.user.id },
+    targetStatusCodeId = await reasonStatusService.requireCodeId(
+      session.user.tenantId,
+      "inventory_system",
+      parsed.data.reserved ? "RSV" : "SLD",
+    );
+  }
+
+  let row;
+  try {
+    row = await prisma.$transaction(async (tx) => {
+      const created = await tx.branchSalesTransaction.create({
+        data: {
+          tenantId: session.user.tenantId,
+          branchId: parsed.data.branchId,
+          serialNumberId: serialNumberId ?? null,
+          transactionNo,
+          amount: parsed.data.amount,
+          notes: parsed.data.notes,
+          atrStatus: "open",
+        },
+      });
+
+      if (serialNumberId) {
+        const updated = await tx.branchInventory.updateMany({
+          where: {
+            tenantId: session.user.tenantId,
+            serialNumberId,
+            branchId: parsed.data.branchId,
+            statusCodeId: stkCodeId,
+          },
+          data: { statusCodeId: targetStatusCodeId, updatedById: session.user.id },
+        });
+        if (updated.count === 0) {
+          throw new Error("Serial is not in sellable stock at this branch");
+        }
+      }
+
+      return created;
     });
-    if (updated.count === 0) {
-      await prisma.branchSalesTransaction.delete({ where: { id: row.id } });
-      return { error: "Serial not available at branch" };
-    }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to record sale" };
   }
 
   await auditService.log({
@@ -320,42 +340,35 @@ export async function completeReturnRestoreAction(returnRequestId: string) {
     "STK",
   );
 
-  if (row.sale.serialNumberId) {
-    const existing = await prisma.branchInventory.findFirst({
-      where: {
-        tenantId: session.user.tenantId,
-        branchId: row.sale.branchId,
-        serialNumberId: row.sale.serialNumberId,
-      },
-    });
-    if (existing) {
-      await prisma.branchInventory.update({
-        where: { id: existing.id },
-        data: { statusCodeId: stkCodeId, updatedById: session.user.id },
-      });
-    } else {
-      await prisma.branchInventory.create({
-        data: {
+  const serialNumberId = row.sale.serialNumberId;
+  await prisma.$transaction(async (tx) => {
+    if (serialNumberId) {
+      await tx.branchInventory.upsert({
+        where: {
+          branchId_serialNumberId: {
+            branchId: row.sale.branchId,
+            serialNumberId,
+          },
+        },
+        update: { statusCodeId: stkCodeId, updatedById: session.user.id },
+        create: {
           tenantId: session.user.tenantId,
           branchId: row.sale.branchId,
-          serialNumberId: row.sale.serialNumberId,
+          serialNumberId,
           statusCodeId: stkCodeId,
           updatedById: session.user.id,
         },
       });
     }
-  }
-
-  await prisma.$transaction([
-    prisma.branchReturnRequest.update({
+    await tx.branchReturnRequest.update({
       where: { id: returnRequestId },
       data: { status: "completed", completedAt: new Date() },
-    }),
-    prisma.branchSalesTransaction.update({
+    });
+    await tx.branchSalesTransaction.update({
       where: { id: row.saleId },
       data: { atrStatus: "closed" },
-    }),
-  ]);
+    });
+  });
 
   await auditService.log({
     tenantId: session.user.tenantId,
@@ -368,17 +381,6 @@ export async function completeReturnRestoreAction(returnRequestId: string) {
 
   revalidatePath("/sales");
   revalidatePath("/inventory");
-  return { success: true as const };
-}
-
-/** @deprecated Use workflow actions instead */
-export async function updateAtrStatusAction(id: string, atrStatus: "open" | "reserve" | "closed") {
-  const session = await requirePermission("sales.create");
-  await prisma.branchSalesTransaction.update({
-    where: { id, tenantId: session.user.tenantId },
-    data: { atrStatus },
-  });
-  revalidatePath("/sales");
   return { success: true as const };
 }
 

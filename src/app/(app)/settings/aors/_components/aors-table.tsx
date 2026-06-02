@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -39,14 +39,10 @@ export function AorsTable({
   branches: { id: string; name: string; sapCode: string; label: string }[];
 }) {
   const router = useRouter();
-  const [rows, setRows] = useState(aors);
+  const rows = aors;
   const [pending, startTransition] = useTransition();
   const [userId, setUserId] = useState(users[0]?.id ?? "");
   const [branchId, setBranchId] = useState(branches[0]?.id ?? "");
-
-  useEffect(() => {
-    setRows(aors);
-  }, [aors]);
 
   function assign() {
     startTransition(async () => {
@@ -59,24 +55,6 @@ export function AorsTable({
         return;
       }
       toast.success("AOR assigned");
-      if (result.aor) {
-        const selectedUser = users.find((user) => user.id === userId);
-        const selectedBranch = branches.find((branch) => branch.id === branchId);
-        setRows((currentRows) => [
-          {
-            id: result.aor.id,
-            user: {
-              name: selectedUser?.name ?? null,
-              email: selectedUser?.email ?? "unknown@email.local",
-            },
-            branch: selectedBranch
-              ? { name: selectedBranch.name, sapCode: selectedBranch.sapCode }
-              : null,
-            warehouse: null,
-          },
-          ...currentRows,
-        ]);
-      }
       router.refresh();
     });
   }
@@ -89,7 +67,6 @@ export function AorsTable({
         return;
       }
       toast.success("AOR removed");
-      setRows((currentRows) => currentRows.filter((row) => row.id !== id));
       router.refresh();
     });
   }

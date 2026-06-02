@@ -1,5 +1,6 @@
 import { planogramRepository } from "@/features/planogram/repositories/planogram.repository";
 import { forecastRepository } from "@/features/forecast/repositories/forecast.repository";
+import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
 
 export const allocationService = {
   async runAllocation(tenantId: string, periodId: string) {
@@ -10,6 +11,16 @@ export const allocationService = {
       tenantId,
       null,
     );
+
+    // Batch the per-entry stock counts into one query (was N+1).
+    const stk = await reasonStatusRepository.findCodeId(tenantId, "inventory_system", "STK");
+    const stockByPair = stk
+      ? await planogramRepository.countStockByBranchModelPairs(
+          tenantId,
+          stk.id,
+          planogramEntries.map((e) => ({ branchId: e.branchId, modelId: e.modelId })),
+        )
+      : new Map<string, number>();
 
     const computedAt = new Date();
     const allocationRows: {
@@ -22,11 +33,7 @@ export const allocationService = {
     }[] = [];
 
     for (const entry of planogramEntries) {
-      const stockCount = await planogramRepository.countStockForModel(
-        tenantId,
-        entry.branchId,
-        entry.modelId,
-      );
+      const stockCount = stockByPair.get(`${entry.branchId}:${entry.modelId}`) ?? 0;
       const gapQty = Math.max(0, entry.maxQty - stockCount);
       if (gapQty <= 0) continue;
 
@@ -40,8 +47,7 @@ export const allocationService = {
       });
     }
 
-    await forecastRepository.deleteAllocationsForPeriod(tenantId, periodId);
-    await forecastRepository.createAllocations(tenantId, periodId, allocationRows);
+    await forecastRepository.replaceAllocationsForPeriod(tenantId, periodId, allocationRows);
 
     return {
       computedAt,

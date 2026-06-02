@@ -111,6 +111,7 @@ export async function rejectOrderAction(orderId: string, comment?: string) {
       session.user.tenantId,
       session.user.id,
       orderId,
+      session.user.roleSlugs ?? [],
       comment,
     );
     revalidatePath("/orders");

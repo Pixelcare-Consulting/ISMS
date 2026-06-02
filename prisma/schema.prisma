@@ -941,9 +941,9 @@ model BranchDelivery {
   statusCode ReasonStatusCode @relation(fields: [statusCodeId], references: [id])
 
   @@unique([tenantId, deliveryNo])
+  @@unique([tenantId, orderId])
   @@index([tenantId, sapDocRef])
   @@index([tenantId, branchId, statusCodeId])
-  @@index([tenantId, orderId])
   @@map("branch_deliveries")
 }
 

@@ -24,6 +24,71 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.12.0",
+    date: "2026-06-03",
+    title: "Codebase QC hardening — data integrity, security, and performance",
+    highlights: [
+      "Sales, returns, deliveries, and transfers now save as all-or-nothing steps — no more half-finished records or stock that doesn't match reality",
+      "An item can no longer be sold twice, and a delivery can't be marked received unless the stock actually moved",
+      "Order rejection now requires the same approval rights as approving, with an accurate record of who acted",
+      "SAP background jobs can no longer be processed twice, and a brief SAP outage no longer shows a false \"approve failed\" message",
+      "Login and sign-up now have attempt limits; stronger password rules and standard browser security headers added",
+      "Faster, correct inventory and planning screens; settings pages refresh cleanly without flicker or stale values",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Sales — sale only completes for items in sellable stock; sale + inventory update are now atomic (prevents double-selling)",
+      },
+      {
+        type: "fix",
+        description:
+          "Returns — inventory restore + status updates run as one transaction (no double-restore on retry)",
+      },
+      {
+        type: "fix",
+        description:
+          "Orders — line quantities validated before the approval is recorded; rejection now gated by per-step authorization with the real approver role",
+      },
+      {
+        type: "fix",
+        description:
+          "Logistics — accept-delivery and receive-transfer are transactional and verify the expected stock actually moved",
+      },
+      {
+        type: "fix",
+        description:
+          "SAP — jobs are claimed atomically (no double-processing); one-delivery-per-order constraint; post-commit SAP errors no longer fail order approval",
+      },
+      {
+        type: "fix",
+        description:
+          "SAP credentials — decryption now fails loudly instead of returning scrambled text; supports a dedicated SAP_ENCRYPTION_KEY",
+      },
+      {
+        type: "fix",
+        description:
+          "Inventory — off-planogram filter applied in the database so paging and totals are correct",
+      },
+      {
+        type: "improvement",
+        description:
+          "Performance — batched inventory/allocation queries (removed N+1); stock-audit and allocation rebuilds wrapped in transactions",
+      },
+      {
+        type: "improvement",
+        description:
+          "Security — login/sign-up rate limiting (Upstash), stronger password policy, security response headers, RFC 5987 attachment filenames + nosniff, deny-by-default route guard, generic registration errors, production AUTH_URL host pinning, body size limit reconciled to 10 MB",
+      },
+      {
+        type: "improvement",
+        description:
+          "Settings tables — converted to clean refresh-only updates (removed the redundant local-mirror anti-pattern and a stale-status bug); warehouse delete routed through its service",
+      },
+    ],
+  },
+  {
     version: "0.11.11",
     date: "2026-06-02",
     title: "Instant CRUD updates for remaining settings tables",

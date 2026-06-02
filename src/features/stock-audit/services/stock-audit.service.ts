@@ -152,25 +152,22 @@ export const stockAuditService = {
     }
 
     const pendingLines = session.lines.filter((l) => l.status === "pending");
-    for (const line of pendingLines) {
-      await prisma.stockCountLine.update({
-        where: { id: line.id },
-        data: { status: "variance" },
-      });
-      await stockAuditRepository.createVariance({
-        tenantId,
-        sessionId,
-        lineId: line.id,
-        varianceType: VARIANCE_TYPES.missing,
-        status: "open",
-        description: "Expected unit not scanned during physical count",
-      });
-    }
-
     const nextStatus =
       pendingLines.length > 0 ? "variances_under_investigation" : "counting_complete";
 
-    await stockAuditRepository.updateSessionStatus(tenantId, sessionId, nextStatus);
+    await stockAuditRepository.completeCountingTx(
+      tenantId,
+      sessionId,
+      pendingLines.map((l) => l.id),
+      {
+        tenantId,
+        sessionId,
+        varianceType: VARIANCE_TYPES.missing,
+        status: "open",
+        description: "Expected unit not scanned during physical count",
+      },
+      nextStatus,
+    );
 
     await auditService.log({
       tenantId,

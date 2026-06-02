@@ -50,18 +50,7 @@ export const inventoryService = {
       pagination,
       filters,
     );
-    const enriched = await this.enrichWithPlanogramFlags(tenantId, result);
-    if (!filters?.offPlanogramOnly) return enriched;
-
-    const filteredItems = enriched.items.filter(
-      (item) => !("onPlanogram" in item && item.onPlanogram),
-    );
-    return {
-      ...enriched,
-      items: filteredItems,
-      total: filteredItems.length,
-      totalPages: 1,
-    };
+    return this.enrichWithPlanogramFlags(tenantId, result);
   },
 
   async enrichWithPlanogramFlags<
@@ -73,22 +62,20 @@ export const inventoryService = {
       "@/features/planogram/repositories/planogram.repository"
     );
 
-    const flags = await Promise.all(
-      result.items.map(async (item) => {
-        const onPlanogram = await planogramRepository.isModelOnBranchPlanogram(
-          tenantId,
-          item.branchId,
-          item.serialNumber.model.id,
-        );
-        return Boolean(onPlanogram);
-      }),
-    );
+    // Batch: one query for all (branch, model) pairs on the page instead of N.
+    const pairs = result.items.map((item) => ({
+      branchId: item.branchId,
+      modelId: item.serialNumber.model.id,
+    }));
+    const onPlanogramKeys = await planogramRepository.findOnPlanogramPairs(tenantId, pairs);
 
     return {
       ...result,
-      items: result.items.map((item, index) => ({
+      items: result.items.map((item) => ({
         ...item,
-        onPlanogram: flags[index] ?? false,
+        onPlanogram: onPlanogramKeys.has(
+          `${item.branchId}:${item.serialNumber.model.id}`,
+        ),
       })),
     };
   },

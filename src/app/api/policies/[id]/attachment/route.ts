@@ -45,10 +45,14 @@ export async function GET(request: Request, context: RouteContext) {
       attachmentId,
     );
 
+    // RFC 5987 encoding prevents header injection/corruption from quotes or
+    // CRLF in the stored filename.
+    const encodedName = encodeURIComponent(file.fileName).replace(/['()*]/g, escape);
     return new NextResponse(new Uint8Array(file.buffer), {
       headers: {
         "Content-Type": file.mimeType,
-        "Content-Disposition": `attachment; filename="${file.fileName}"`,
+        "Content-Disposition": `attachment; filename*=UTF-8''${encodedName}`,
+        "X-Content-Type-Options": "nosniff",
       },
     });
   } catch (error) {

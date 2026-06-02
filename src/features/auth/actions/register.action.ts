@@ -1,6 +1,7 @@
 "use server";
 
 import bcrypt from "bcryptjs";
+import { headers } from "next/headers";
 
 import { auditService } from "@/features/audit/services/audit.service";
 import { registerSchema } from "@/features/auth/schemas/auth.schema";
@@ -10,6 +11,8 @@ import { tenantService } from "@/features/tenants/services/tenant.service";
 import { roleRepository } from "@/features/users/repositories/role.repository";
 import { userRepository } from "@/features/users/repositories/user.repository";
 import { prisma } from "@/lib/database/client";
+import { rateLimit } from "@/lib/cache/redis";
+import { logger } from "@/lib/shared/logger";
 
 const SYSTEM_ROLES = [
   { slug: "tenant_admin", name: "Tenant Admin", description: "Tenant administrator" },
@@ -112,6 +115,13 @@ export async function registerAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
 
+  const ip =
+    (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const { allowed } = await rateLimit(`register:${ip}`, 5, 3600);
+  if (!allowed) {
+    return { error: "Too many sign-up attempts. Please try again later." };
+  }
+
   const { organizationName, name, email, password } = parsed.data;
 
   try {
@@ -146,8 +156,7 @@ export async function registerAction(
 
     return { success: true };
   } catch (e) {
-    return {
-      error: e instanceof Error ? e.message : "Registration failed",
-    };
+    logger.error({ err: e }, "Registration failed");
+    return { error: "Registration failed. Please try again." };
   }
 }

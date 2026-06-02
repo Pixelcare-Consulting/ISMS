@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import {
@@ -46,17 +46,13 @@ interface StatusGroupRow {
 
 export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
   const router = useRouter();
-  const [rows, setRows] = useState(groups);
+  const rows = groups;
   const [pending, startTransition] = useTransition();
   const [expanded, setExpanded] = useState<ReasonStatusCategory | null>(
     groups[0]?.category ?? null,
   );
   const [newCode, setNewCode] = useState("");
   const [newName, setNewName] = useState("");
-
-  useEffect(() => {
-    setRows(groups);
-  }, [groups]);
 
   const activeGroup = useMemo(
     () => rows.find((g) => g.category === expanded),
@@ -72,14 +68,6 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
         return;
       }
       toast.success(next === "active" ? "Status code activated" : "Status code deactivated");
-      setRows((currentRows) =>
-        currentRows.map((group) => ({
-          ...group,
-          codes: group.codes.map((entry) =>
-            entry.id === code.id ? { ...entry, recordStatus: next } : entry,
-          ),
-        })),
-      );
       router.refresh();
     });
   }
@@ -97,28 +85,6 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
         return;
       }
       toast.success("Status code added");
-      if (result.code) {
-        setRows((currentRows) =>
-          currentRows.map((group) =>
-            group.category === activeGroup.category
-              ? {
-                  ...group,
-                  codes: [
-                    ...group.codes,
-                    {
-                      id: result.code.id,
-                      code: result.code.code,
-                      name: result.code.name,
-                      sortOrder: result.code.sortOrder,
-                      isSystem: result.code.isSystem,
-                      recordStatus: result.code.recordStatus,
-                    },
-                  ],
-                }
-              : group,
-          ),
-        );
-      }
       setNewCode("");
       setNewName("");
       router.refresh();

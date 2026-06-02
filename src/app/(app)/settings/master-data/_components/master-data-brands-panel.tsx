@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import {
@@ -28,21 +28,13 @@ interface MasterDataBrandsPanelProps {
 
 export function MasterDataBrandsPanel({ brands, categories }: MasterDataBrandsPanelProps) {
   const router = useRouter();
-  const [brandRows, setBrandRows] = useState(brands);
-  const [categoryRows, setCategoryRows] = useState(categories);
+  const brandRows = brands;
+  const categoryRows = categories;
   const [pending, startTransition] = useTransition();
   const [brandCode, setBrandCode] = useState("");
   const [brandName, setBrandName] = useState("");
   const [catCode, setCatCode] = useState("");
   const [catName, setCatName] = useState("");
-
-  useEffect(() => {
-    setBrandRows(brands);
-  }, [brands]);
-
-  useEffect(() => {
-    setCategoryRows(categories);
-  }, [categories]);
 
   function addBrand() {
     startTransition(async () => {
@@ -52,9 +44,6 @@ export function MasterDataBrandsPanel({ brands, categories }: MasterDataBrandsPa
         return;
       }
       toast.success("Brand added");
-      if (result.brand) {
-        setBrandRows((currentRows) => [result.brand, ...currentRows]);
-      }
       setBrandCode("");
       setBrandName("");
       router.refresh();
@@ -69,9 +58,6 @@ export function MasterDataBrandsPanel({ brands, categories }: MasterDataBrandsPa
         return;
       }
       toast.success("Category added");
-      if (result.category) {
-        setCategoryRows((currentRows) => [result.category, ...currentRows]);
-      }
       setCatCode("");
       setCatName("");
       router.refresh();
