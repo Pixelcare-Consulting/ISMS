@@ -18,7 +18,9 @@ import {
   DataTableScroll,
   DataTableShell,
 } from "@/components/data-table/data-table-shell";
+import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { TableSearchToolbar } from "@/components/data-table/table-search-bar";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -62,6 +64,7 @@ export function PermissionsTable({
       ),
     [permissions, query],
   );
+  const selection = useTableSelection(filteredPermissions.map((permission) => permission.id));
 
   function handleDeleteConfirm() {
     if (!deletingPermission) {
@@ -89,6 +92,9 @@ export function PermissionsTable({
           onChange={setQuery}
           placeholder="Search by name, slug, or description…"
         >
+          {selection.selectedCount > 0 ? (
+            <Badge variant="secondary">{selection.selectedCount} selected</Badge>
+          ) : null}
           {addPermissionAction}
         </TableSearchToolbar>
         {filteredPermissions.length === 0 ? (
@@ -104,6 +110,13 @@ export function PermissionsTable({
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/30 hover:bg-muted/30">
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
+                      onCheckedChange={(checked) => selection.toggleAll(checked === true)}
+                      aria-label="Select all permissions"
+                    />
+                  </TableHead>
                   <TableHead className="w-12 text-center text-muted-foreground">
                     #
                   </TableHead>
@@ -123,8 +136,16 @@ export function PermissionsTable({
                   return (
                     <TableRow
                       key={permission.id}
+                      data-state={selection.isRowSelected(permission.id) ? "selected" : undefined}
                       className={cn(index % 2 === 1 && "bg-table-stripe")}
                     >
+                      <TableCell>
+                        <Checkbox
+                          checked={selection.isRowSelected(permission.id)}
+                          onCheckedChange={(checked) => selection.toggleRow(permission.id, checked === true)}
+                          aria-label={`Select permission ${permission.name}`}
+                        />
+                      </TableCell>
                       <TableCell className="text-center tabular-nums text-muted-foreground">
                         {index + 1}
                       </TableCell>

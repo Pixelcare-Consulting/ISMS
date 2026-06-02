@@ -12,7 +12,9 @@ import {
 } from "@/features/master-data/actions/master-data.actions";
 import type { ClientModelRow } from "@/features/master-data/types/client-model";
 import { AppDataTable, AppDataTableBody, DataTableEmpty } from "@/components/data-table";
+import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -36,6 +38,7 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
     brands: { id: string; name: string }[];
     categories: { id: string; name: string }[];
   } | null>(null);
+  const selection = useTableSelection(models.map((model) => model.id));
 
   async function loadOptions() {
     if (options) return;
@@ -122,9 +125,24 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
       ) : (
         <AppDataTable title="Product models">
           <AppDataTableBody>
+            {selection.selectedCount > 0 ? (
+              <div className="px-4 pb-2">
+                <Button variant="secondary" size="sm" onClick={selection.clearSelection}>
+                  {selection.selectedCount} selected
+                </Button>
+              </div>
+            ) : null}
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
+                      onCheckedChange={(checked) => selection.toggleAll(checked === true)}
+                      aria-label="Select all models"
+                    />
+                  </TableHead>
+                  <TableHead className="w-12">#</TableHead>
                   <TableHead>SKU</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Brand</TableHead>
@@ -134,8 +152,16 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {models.map((m) => (
-                  <TableRow key={m.id}>
+                {models.map((m, index) => (
+                  <TableRow key={m.id} data-state={selection.isRowSelected(m.id) ? "selected" : undefined}>
+                    <TableCell>
+                      <Checkbox
+                        checked={selection.isRowSelected(m.id)}
+                        onCheckedChange={(checked) => selection.toggleRow(m.id, checked === true)}
+                        aria-label={`Select model ${m.skuCode}`}
+                      />
+                    </TableCell>
+                    <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
                     <TableCell className="font-mono text-sm">{m.skuCode}</TableCell>
                     <TableCell className="font-medium">{m.name}</TableCell>
                     <TableCell>{m.brand?.name ?? "—"}</TableCell>

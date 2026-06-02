@@ -19,7 +19,9 @@ import {
   DataTableScroll,
   DataTableShell,
 } from "@/components/data-table/data-table-shell";
+import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { TableSearchToolbar } from "@/components/data-table/table-search-bar";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -64,6 +66,7 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
       ),
     [warehouses, query],
   );
+  const selection = useTableSelection(filtered.map((warehouse) => warehouse.id));
 
   function createWarehouse() {
     startTransition(async () => {
@@ -126,6 +129,11 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
   return (
     <DataTableShell>
       <TableSearchToolbar value={query} onChange={setQuery} placeholder="Search warehouses…">
+        {selection.selectedCount > 0 ? (
+          <Button variant="secondary" onClick={selection.clearSelection}>
+            {selection.selectedCount} selected
+          </Button>
+        ) : null}
         <div className="flex flex-wrap items-center gap-2">
           <Input
             placeholder="Code"
@@ -149,6 +157,14 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10">
+                <Checkbox
+                  checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
+                  onCheckedChange={(checked) => selection.toggleAll(checked === true)}
+                  aria-label="Select all warehouses"
+                />
+              </TableHead>
+              <TableHead className="w-12">#</TableHead>
               <TableHead>Code</TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Locations</TableHead>
@@ -159,14 +175,22 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-muted-foreground text-center">
+                <TableCell colSpan={7} className="text-muted-foreground text-center">
                   No warehouses yet.
                 </TableCell>
               </TableRow>
             ) : (
-              filtered.map((w) => (
+              filtered.map((w, index) => (
                 <Fragment key={w.id}>
-                  <TableRow>
+                  <TableRow data-state={selection.isRowSelected(w.id) ? "selected" : undefined}>
+                    <TableCell>
+                      <Checkbox
+                        checked={selection.isRowSelected(w.id)}
+                        onCheckedChange={(checked) => selection.toggleRow(w.id, checked === true)}
+                        aria-label={`Select warehouse ${w.name}`}
+                      />
+                    </TableCell>
+                    <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
                     <TableCell className="font-mono text-sm">
                       {w.code}
                       {w.isMain ? (
@@ -201,7 +225,7 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
                   </TableRow>
                   {expandedId === w.id ? (
                     <TableRow key={`${w.id}-locations`}>
-                      <TableCell colSpan={5} className="bg-muted/30">
+                      <TableCell colSpan={7} className="bg-muted/30">
                         <div className="space-y-2 py-2">
                           {w.locations.map((loc) => (
                             <div

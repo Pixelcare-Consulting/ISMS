@@ -151,7 +151,7 @@ model Tenant {
   stockCountSessions  StockCountSession[]
   stockVariances      StockVariance[]
   sapIntegrationJobs  SapIntegrationJob[]
-  sapServiceLayerConfig SapServiceLayerConfig?
+  sapServiceLayerConfigs SapServiceLayerConfig[]
 
   @@map("tenants")
 }
@@ -1149,7 +1149,7 @@ model SapIntegrationJob {
 
 model SapServiceLayerConfig {
   id                 String   @id @default(cuid())
-  tenantId           String   @unique @map("tenant_id")
+  tenantId           String   @map("tenant_id")
   baseUrlEncrypted   String   @map("base_url_encrypted")
   companyDbEncrypted String   @map("company_db_encrypted")
   usernameEncrypted  String   @map("username_encrypted")
@@ -1162,6 +1162,8 @@ model SapServiceLayerConfig {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
+  @@index([tenantId, isEnabled])
+  @@index([tenantId, updatedAt])
   @@map("sap_service_layer_configs")
 }
 

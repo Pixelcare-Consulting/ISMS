@@ -1,4 +1,5 @@
 import { PageHeader } from "@/app/(app)/_components/page-header";
+import type { PageTutorialContent } from "@/components/page-tutorial/types";
 import {
   RouteTabs,
   type RouteTabItem,
@@ -7,6 +8,7 @@ import {
 interface SectionLayoutProps {
   title: string;
   description?: string;
+  tutorial?: PageTutorialContent;
   /** Omit when the top nav dropdown already lists the same routes. */
   tabs?: RouteTabItem[];
   actions?: React.ReactNode;
@@ -22,6 +24,7 @@ interface SectionLayoutProps {
 export function SectionLayout({
   title,
   description,
+  tutorial,
   tabs,
   actions,
   children,
@@ -33,6 +36,7 @@ export function SectionLayout({
       <PageHeader
         title={title}
         description={description}
+        tutorial={tutorial}
         actions={actions}
         sticky={false}
       />

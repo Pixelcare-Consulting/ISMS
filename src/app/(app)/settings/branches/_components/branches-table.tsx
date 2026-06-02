@@ -17,7 +17,9 @@ import {
   DataTableScroll,
   DataTableShell,
 } from "@/components/data-table/data-table-shell";
+import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { TableSearchToolbar } from "@/components/data-table/table-search-bar";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -55,6 +57,7 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
       ),
     [rows, query],
   );
+  const selection = useTableSelection(filtered.map((branch) => branch.id));
 
   function handleDelete() {
     if (!deleting) return;
@@ -76,6 +79,11 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
   return (
     <DataTableShell>
       <TableSearchToolbar value={query} onChange={setQuery} placeholder="Search branches…">
+        {selection.selectedCount > 0 ? (
+          <Button variant="secondary" onClick={selection.clearSelection}>
+            {selection.selectedCount} selected
+          </Button>
+        ) : null}
         <CreateBranchDialog
           onCreated={(branch) => {
             setRows((currentRows) => [branch, ...currentRows]);
@@ -87,6 +95,14 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10">
+                <Checkbox
+                  checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
+                  onCheckedChange={(checked) => selection.toggleAll(checked === true)}
+                  aria-label="Select all branches"
+                />
+              </TableHead>
+              <TableHead className="w-12">#</TableHead>
               <TableHead>SAP code</TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Area</TableHead>
@@ -98,8 +114,16 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
             {filtered.length === 0 ? (
               <DataTableEmpty message="No branches found" />
             ) : (
-              filtered.map((branch) => (
-                <TableRow key={branch.id}>
+              filtered.map((branch, index) => (
+                <TableRow key={branch.id} data-state={selection.isRowSelected(branch.id) ? "selected" : undefined}>
+                  <TableCell>
+                    <Checkbox
+                      checked={selection.isRowSelected(branch.id)}
+                      onCheckedChange={(checked) => selection.toggleRow(branch.id, checked === true)}
+                      aria-label={`Select branch ${branch.name}`}
+                    />
+                  </TableCell>
+                  <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
                   <TableCell className="font-mono text-sm">{branch.sapCode}</TableCell>
                   <TableCell>{branch.name}</TableCell>
                   <TableCell>{branch.branchArea?.name ?? "—"}</TableCell>

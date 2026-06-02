@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { LogOut, UserCircle } from "lucide-react";
+import { CircleHelp, LogOut, UserCircle } from "lucide-react";
 import { signOut } from "next-auth/react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -19,6 +19,7 @@ import { isNavItemActive } from "@/config/app-navigation";
 import { getInitials } from "@/utils/get-initials";
 
 const PROFILE_HREF = "/settings/profile";
+const HELP_HREF = "/help";
 
 interface HeaderUserNavProps {
   name?: string | null;
@@ -29,6 +30,7 @@ interface HeaderUserNavProps {
 export function HeaderUserNav({ name, email, image }: HeaderUserNavProps) {
   const pathname = usePathname();
   const isProfileActive = isNavItemActive(pathname, PROFILE_HREF);
+  const isHelpActive = isNavItemActive(pathname, HELP_HREF);
 
   return (
     <DropdownMenu>
@@ -60,6 +62,12 @@ export function HeaderUserNav({ name, email, image }: HeaderUserNavProps) {
           >
             <UserCircle className="size-4" />
             Profile Settings
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href={HELP_HREF} className={isHelpActive ? "bg-accent text-accent-foreground" : undefined}>
+            <CircleHelp className="size-4" />
+            Help & Support
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />

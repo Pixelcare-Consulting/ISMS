@@ -13,6 +13,7 @@ import {
   DataTableScroll,
   DataTableShell,
 } from "@/components/data-table/data-table-shell";
+import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { TablePagination } from "@/components/data-table/table-pagination";
 import { TableSearchToolbar } from "@/components/data-table/table-search-bar";
 import {
@@ -34,6 +35,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   buildLogisticsPageHref,
   LOGISTICS_DELIVERIES_PATH,
@@ -93,6 +95,7 @@ export function DeliveriesPanel({ deliveries }: DeliveriesPanelProps) {
       ),
     [deliveries.items, query],
   );
+  const selection = useTableSelection(filtered.map((d) => d.id));
 
   function confirmPendingAction() {
     if (!pendingConfirm) return;
@@ -117,11 +120,25 @@ export function DeliveriesPanel({ deliveries }: DeliveriesPanelProps) {
           value={query}
           onChange={setQuery}
           placeholder="Search deliveries…"
-        />
+        >
+          {selection.selectedCount > 0 ? (
+            <Button variant="secondary" onClick={selection.clearSelection}>
+              {selection.selectedCount} selected
+            </Button>
+          ) : null}
+        </TableSearchToolbar>
         <DataTableScroll>
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
+                    onCheckedChange={(checked) => selection.toggleAll(checked === true)}
+                    aria-label="Select all deliveries"
+                  />
+                </TableHead>
+                <TableHead className="w-12">#</TableHead>
                 <TableHead>No.</TableHead>
                 <TableHead>Order</TableHead>
                 <TableHead>Branch</TableHead>
@@ -130,8 +147,16 @@ export function DeliveriesPanel({ deliveries }: DeliveriesPanelProps) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((d) => (
-                <TableRow key={d.id}>
+              {filtered.map((d, index) => (
+                <TableRow key={d.id} data-state={selection.isRowSelected(d.id) ? "selected" : undefined}>
+                  <TableCell>
+                    <Checkbox
+                      checked={selection.isRowSelected(d.id)}
+                      onCheckedChange={(checked) => selection.toggleRow(d.id, checked === true)}
+                      aria-label={`Select delivery ${d.deliveryNo}`}
+                    />
+                  </TableCell>
+                  <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
                   <TableCell>{d.deliveryNo}</TableCell>
                   <TableCell>{d.order?.orderNumber ?? "—"}</TableCell>
                   <TableCell>{d.branch.name}</TableCell>

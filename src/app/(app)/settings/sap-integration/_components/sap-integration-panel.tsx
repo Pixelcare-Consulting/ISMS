@@ -16,9 +16,11 @@ import {
   DataTableScroll,
   DataTableShell,
 } from "@/components/data-table/data-table-shell";
+import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { TablePagination } from "@/components/data-table/table-pagination";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -59,6 +61,7 @@ interface SapIntegrationPanelProps {
 export function SapIntegrationPanel({ jobs }: SapIntegrationPanelProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const selection = useTableSelection(jobs.items.map((job) => job.id));
 
   function runQueue() {
     startTransition(async () => {
@@ -91,10 +94,25 @@ export function SapIntegrationPanel({ jobs }: SapIntegrationPanelProps) {
       </div>
 
       <DataTableShell>
+        {selection.selectedCount > 0 ? (
+          <div className="px-4 pb-2">
+            <Button variant="secondary" size="sm" onClick={selection.clearSelection}>
+              {selection.selectedCount} selected
+            </Button>
+          </div>
+        ) : null}
         <DataTableScroll>
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
+                    onCheckedChange={(checked) => selection.toggleAll(checked === true)}
+                    aria-label="Select all SAP jobs"
+                  />
+                </TableHead>
+                <TableHead className="w-12">#</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Reference</TableHead>
@@ -106,13 +124,21 @@ export function SapIntegrationPanel({ jobs }: SapIntegrationPanelProps) {
             <TableBody>
               {jobs.items.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-muted-foreground text-center">
+                  <TableCell colSpan={8} className="text-muted-foreground text-center">
                     No integration jobs yet. Approve an order to enqueue an approved_order job.
                   </TableCell>
                 </TableRow>
               ) : (
-                jobs.items.map((job) => (
-                  <TableRow key={job.id}>
+                jobs.items.map((job, index) => (
+                  <TableRow key={job.id} data-state={selection.isRowSelected(job.id) ? "selected" : undefined}>
+                    <TableCell>
+                      <Checkbox
+                        checked={selection.isRowSelected(job.id)}
+                        onCheckedChange={(checked) => selection.toggleRow(job.id, checked === true)}
+                        aria-label={`Select SAP job ${job.id.slice(-8)}`}
+                      />
+                    </TableCell>
+                    <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
                     <TableCell className="text-sm">
                       {SAP_JOB_TYPE_LABELS[job.jobType]}
                     </TableCell>

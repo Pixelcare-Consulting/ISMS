@@ -18,7 +18,9 @@ import {
 import { AllocationGapsTable } from "@/features/forecast/components/allocation-gaps-table";
 
 import { AppDataTable, AppDataTableBody } from "@/components/data-table";
+import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -102,6 +104,7 @@ export function PlanningPanel({
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [pending, startTransition] = useTransition();
+  const targetSelection = useTableSelection(targets.map((target) => target.id));
 
   function runAction(
     label: string,
@@ -236,17 +239,40 @@ export function PlanningPanel({
             emptyMessage="No branch revenue targets for this period."
           >
             <AppDataTableBody>
+              {targetSelection.selectedCount > 0 ? (
+                <div className="px-4 pb-2">
+                  <Button variant="secondary" size="sm" onClick={targetSelection.clearSelection}>
+                    {targetSelection.selectedCount} selected
+                  </Button>
+                </div>
+              ) : null}
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={targetSelection.isAllSelected || (targetSelection.isPartiallySelected ? "indeterminate" : false)}
+                        onCheckedChange={(checked) => targetSelection.toggleAll(checked === true)}
+                        aria-label="Select all revenue targets"
+                      />
+                    </TableHead>
+                    <TableHead className="w-12">#</TableHead>
                     <TableHead>Branch</TableHead>
                     <TableHead>SAP</TableHead>
                     <TableHead className="text-right">Target</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {targets.map((t) => (
-                    <TableRow key={t.id}>
+                  {targets.map((t, index) => (
+                    <TableRow key={t.id} data-state={targetSelection.isRowSelected(t.id) ? "selected" : undefined}>
+                      <TableCell>
+                        <Checkbox
+                          checked={targetSelection.isRowSelected(t.id)}
+                          onCheckedChange={(checked) => targetSelection.toggleRow(t.id, checked === true)}
+                          aria-label={`Select target for ${t.branch.name}`}
+                        />
+                      </TableCell>
+                      <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
                       <TableCell className="font-medium">{t.branch.name}</TableCell>
                       <TableCell className="font-mono text-sm">{t.branch.sapCode}</TableCell>
                       <TableCell className="text-right tabular-nums">{t.revenueLabel}</TableCell>

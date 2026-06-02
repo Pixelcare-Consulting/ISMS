@@ -10,9 +10,11 @@ import {
   DataTableScroll,
   DataTableShell,
 } from "@/components/data-table/data-table-shell";
+import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { TablePagination } from "@/components/data-table/table-pagination";
 import { TableSearchBar } from "@/components/data-table/table-search-bar";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -91,6 +93,7 @@ export function DraftSuggestedOrdersTable({
   const router = useRouter();
   const [branch, setBranch] = useState(currentBranch ?? "");
   const [q, setQ] = useState(currentQ ?? "");
+  const selection = useTableSelection(result.items.map((item) => item.id));
 
   const hasActiveFilters = Boolean(currentBranch || currentQ);
 
@@ -171,6 +174,14 @@ export function DraftSuggestedOrdersTable({
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
+                        onCheckedChange={(checked) => selection.toggleAll(checked === true)}
+                        aria-label="Select all draft orders"
+                      />
+                    </TableHead>
+                    <TableHead className="w-12">#</TableHead>
                     <TableHead>Order #</TableHead>
                     <TableHead>Branch</TableHead>
                     <TableHead>Type</TableHead>
@@ -179,8 +190,16 @@ export function DraftSuggestedOrdersTable({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {result.items.map((o) => (
-                    <TableRow key={o.id}>
+                  {result.items.map((o, index) => (
+                    <TableRow key={o.id} data-state={selection.isRowSelected(o.id) ? "selected" : undefined}>
+                      <TableCell>
+                        <Checkbox
+                          checked={selection.isRowSelected(o.id)}
+                          onCheckedChange={(checked) => selection.toggleRow(o.id, checked === true)}
+                          aria-label={`Select draft order ${o.orderNumber}`}
+                        />
+                      </TableCell>
+                      <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
                       <TableCell className="font-mono text-sm">
                         <Link href="/orders" className="underline">
                           {o.orderNumber}

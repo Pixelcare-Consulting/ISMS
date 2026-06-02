@@ -9,7 +9,9 @@ import {
   createCategoryAction,
 } from "@/features/master-data/actions/master-data.actions";
 import { AppDataTable, AppDataTableBody, DataTableEmpty } from "@/components/data-table";
+import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -33,6 +35,8 @@ export function MasterDataBrandsPanel({ brands, categories }: MasterDataBrandsPa
   const [brandName, setBrandName] = useState("");
   const [catCode, setCatCode] = useState("");
   const [catName, setCatName] = useState("");
+  const brandSelection = useTableSelection(brands.map((brand) => brand.id));
+  const categorySelection = useTableSelection(categories.map((category) => category.id));
 
   function addBrand() {
     startTransition(async () => {
@@ -83,16 +87,39 @@ export function MasterDataBrandsPanel({ brands, categories }: MasterDataBrandsPa
         ) : (
           <AppDataTable title="Brands">
             <AppDataTableBody>
+              {brandSelection.selectedCount > 0 ? (
+                <div className="px-4 pb-2">
+                  <Button variant="secondary" size="sm" onClick={brandSelection.clearSelection}>
+                    {brandSelection.selectedCount} selected
+                  </Button>
+                </div>
+              ) : null}
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={brandSelection.isAllSelected || (brandSelection.isPartiallySelected ? "indeterminate" : false)}
+                        onCheckedChange={(checked) => brandSelection.toggleAll(checked === true)}
+                        aria-label="Select all brands"
+                      />
+                    </TableHead>
+                    <TableHead className="w-12">#</TableHead>
                     <TableHead>Code</TableHead>
                     <TableHead>Name</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {brands.map((b) => (
-                    <TableRow key={b.id}>
+                  {brands.map((b, index) => (
+                    <TableRow key={b.id} data-state={brandSelection.isRowSelected(b.id) ? "selected" : undefined}>
+                      <TableCell>
+                        <Checkbox
+                          checked={brandSelection.isRowSelected(b.id)}
+                          onCheckedChange={(checked) => brandSelection.toggleRow(b.id, checked === true)}
+                          aria-label={`Select brand ${b.name}`}
+                        />
+                      </TableCell>
+                      <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
                       <TableCell className="font-mono text-sm">{b.code ?? "—"}</TableCell>
                       <TableCell className="font-medium">{b.name}</TableCell>
                     </TableRow>
@@ -123,15 +150,38 @@ export function MasterDataBrandsPanel({ brands, categories }: MasterDataBrandsPa
         ) : (
           <AppDataTable title="Categories">
             <AppDataTableBody>
+              {categorySelection.selectedCount > 0 ? (
+                <div className="px-4 pb-2">
+                  <Button variant="secondary" size="sm" onClick={categorySelection.clearSelection}>
+                    {categorySelection.selectedCount} selected
+                  </Button>
+                </div>
+              ) : null}
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={categorySelection.isAllSelected || (categorySelection.isPartiallySelected ? "indeterminate" : false)}
+                        onCheckedChange={(checked) => categorySelection.toggleAll(checked === true)}
+                        aria-label="Select all categories"
+                      />
+                    </TableHead>
+                    <TableHead className="w-12">#</TableHead>
                     <TableHead>Name</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {categories.map((c) => (
-                    <TableRow key={c.id}>
+                  {categories.map((c, index) => (
+                    <TableRow key={c.id} data-state={categorySelection.isRowSelected(c.id) ? "selected" : undefined}>
+                      <TableCell>
+                        <Checkbox
+                          checked={categorySelection.isRowSelected(c.id)}
+                          onCheckedChange={(checked) => categorySelection.toggleRow(c.id, checked === true)}
+                          aria-label={`Select category ${c.name}`}
+                        />
+                      </TableCell>
+                      <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
                       <TableCell className="font-medium">{c.name}</TableCell>
                     </TableRow>
                   ))}

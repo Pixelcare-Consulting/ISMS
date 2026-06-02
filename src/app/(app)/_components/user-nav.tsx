@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 
-import { ChevronDown, LogOut, UserCircle } from "lucide-react";
+import { ChevronDown, CircleHelp, LogOut, UserCircle } from "lucide-react";
 import { signOut } from "next-auth/react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -13,6 +13,7 @@ import { getInitials } from "@/utils/get-initials";
 import { cn } from "@/utils/cn";
 
 const PROFILE_HREF = "/settings/profile";
+const HELP_HREF = "/help";
 
 interface UserNavProps {
   name?: string | null;
@@ -23,6 +24,7 @@ interface UserNavProps {
 export function UserNav({ name, email, image }: UserNavProps) {
   const pathname = usePathname();
   const isProfileActive = isNavItemActive(pathname, PROFILE_HREF);
+  const isHelpActive = isNavItemActive(pathname, HELP_HREF);
   const [isOpen, setIsOpen] = useState(true);
 
   return (
@@ -78,6 +80,26 @@ export function UserNav({ name, email, image }: UserNavProps) {
                 )}
               />
               Profile Settings
+            </Link>
+            <Link
+              href={HELP_HREF}
+              className={cn(
+                "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors",
+                isHelpActive
+                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                  : "text-sidebar-muted hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+              )}
+            >
+              {isHelpActive ? (
+                <span className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-primary" />
+              ) : null}
+              <CircleHelp
+                className={cn(
+                  "size-4 shrink-0",
+                  isHelpActive ? "text-primary" : "text-sidebar-muted group-hover:text-sidebar-foreground",
+                )}
+              />
+              Help & Support
             </Link>
             <button
               type="button"

@@ -16,6 +16,8 @@ import {
   DataTableScroll,
   DataTableShell,
 } from "@/components/data-table/data-table-shell";
+import { useTableSelection } from "@/components/data-table/use-table-selection";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -57,6 +59,7 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
     () => groups.find((g) => g.category === expanded),
     [groups, expanded],
   );
+  const selection = useTableSelection(activeGroup?.codes.map((code) => code.id) ?? []);
 
   function toggleCodeStatus(code: StatusCodeRow) {
     const next: LookupRecordStatus = code.recordStatus === "active" ? "inactive" : "active";
@@ -114,11 +117,26 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
               Tenant-configurable custom codes. System codes cannot be
               deleted; deactivate instead.
             </p>
+            {selection.selectedCount > 0 ? (
+              <div className="mt-2">
+                <Button variant="secondary" size="sm" onClick={selection.clearSelection}>
+                  {selection.selectedCount} selected
+                </Button>
+              </div>
+            ) : null}
           </div>
           <DataTableScroll>
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
+                      onCheckedChange={(checked) => selection.toggleAll(checked === true)}
+                      aria-label="Select all status codes"
+                    />
+                  </TableHead>
+                  <TableHead className="w-12">#</TableHead>
                   <TableHead>Code</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Type</TableHead>
@@ -127,8 +145,16 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {activeGroup.codes.map((code) => (
-                  <TableRow key={code.id}>
+                {activeGroup.codes.map((code, index) => (
+                  <TableRow key={code.id} data-state={selection.isRowSelected(code.id) ? "selected" : undefined}>
+                    <TableCell>
+                      <Checkbox
+                        checked={selection.isRowSelected(code.id)}
+                        onCheckedChange={(checked) => selection.toggleRow(code.id, checked === true)}
+                        aria-label={`Select status code ${code.code}`}
+                      />
+                    </TableCell>
+                    <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
                     <TableCell className="font-mono text-sm">{code.code}</TableCell>
                     <TableCell>{code.name}</TableCell>
                     <TableCell>

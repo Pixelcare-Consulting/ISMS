@@ -24,6 +24,510 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.11.39",
+    date: "2026-06-02",
+    title: "Reusable page tutorials",
+    highlights: [
+      "Page headers can show a ? button that opens a guided tutorial modal",
+      "Branch orders page includes workflow and review guidance",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Added reusable PageTutorialTrigger and PageTutorialDialog for in-app page guides",
+      },
+      {
+        type: "improvement",
+        description:
+          "Branch orders header includes tutorial modal with order types, review steps, and Help link",
+      },
+    ],
+  },
+  {
+    version: "0.11.38",
+    date: "2026-06-02",
+    title: "Order review UX improvements",
+    highlights: [
+      "Loading modal while approve/reject is saving",
+      "Review button disabled with tooltip when user is not the designated approver",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Order approval and rejection show a blocking loading modal until the server finishes",
+      },
+      {
+        type: "improvement",
+        description:
+          "Orders table Review action is disabled with role-specific tooltip when not your approval step",
+      },
+      {
+        type: "fix",
+        description:
+          "Order review denial tooltip sizes to content instead of leaving excess empty width",
+      },
+      {
+        type: "improvement",
+        description:
+          "Order approve/reject loading modal holds through all progress steps before closing",
+      },
+    ],
+  },
+  {
+    version: "0.11.37",
+    date: "2026-06-02",
+    title: "Help portal and top loader polish",
+    highlights: [
+      "Full-width top loading bar without slanted shadow artifact",
+      "Help page: sticky quick actions sidebar, essential links only, expanded FAQ",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Removed nprogress peg glow and enforced full-width progress bar under the app header",
+      },
+      {
+        type: "improvement",
+        description:
+          "Help & Support: removed system map section, solid page headers, trimmed quick actions, more FAQ categories",
+      },
+    ],
+  },
+  {
+    version: "0.11.36",
+    date: "2026-06-02",
+    title: "Help portal system map and sidebar",
+    highlights: [
+      "Help & Support now uses a two-column layout with quick actions on the right",
+      "Added full system map and expanded workflow guides across all major modules",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Help portal includes module-by-module navigation guide, 11 workflow guides, and 20 quick-action links grouped by area",
+      },
+    ],
+  },
+  {
+    version: "0.11.35",
+    date: "2026-06-02",
+    title: "Top loader shadow fix",
+    highlights: [
+      "Removed dark glow artifact shown below top navigation during route loading",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Disabled NextTopLoader default shadow to prevent black strip/blur under the header",
+      },
+    ],
+  },
+  {
+    version: "0.11.34",
+    date: "2026-06-02",
+    title: "Help & Support layout polish",
+    highlights: [
+      "Replaced tabbed Help portal layout with a cleaner single-page support flow",
+      "Added section jump actions, clearer hierarchy, and improved content scanning",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Help & Support page now uses anchored sections for quick actions, workflow guides, FAQ accordion, and contact escalation",
+      },
+    ],
+  },
+  {
+    version: "0.11.33",
+    date: "2026-06-02",
+    title: "Help & Support portal",
+    highlights: [
+      "User menu now includes Help & Support linking to an in-app support portal",
+      "FAQ, workflow guides, quick links, and contact options on /help",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Help & Support page with Overview, Workflows, FAQ accordion, and Contact tabs",
+      },
+      {
+        type: "improvement",
+        description:
+          "Help & Support added to header and sidebar user menus with active route highlighting",
+      },
+    ],
+  },
+  {
+    version: "0.11.32",
+    date: "2026-06-02",
+    title: "Final index and checkbox table rollout",
+    highlights: [
+      "Completed selection rollout for permissions, roles matrix, forecast gaps/drafts, branch planogram table, and stock-count detail tables",
+      "All remaining major table surfaces now include consistent row index and checkbox selection behavior",
+      "Sticky role matrix columns now preserve alignment with added selection columns",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Finished app-wide table selection standardization using the shared useTableSelection pattern across feature and detail tables",
+      },
+    ],
+  },
+  {
+    version: "0.11.31",
+    date: "2026-06-02",
+    title: "Additional table selection coverage",
+    highlights: [
+      "Operations deliveries/transfers/pull-outs tables now include index and checkbox selection",
+      "Policy version history now supports row selection with select-all checkbox",
+      "Selection behavior remains aligned with existing table highlight state",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Expanded reusable table selection rollout to operations and policy version tables",
+      },
+    ],
+  },
+  {
+    version: "0.11.30",
+    date: "2026-06-02",
+    title: "Extended table selection rollout",
+    highlights: [
+      "Added index and checkbox selection to additional app tables including policies and dashboard users",
+      "Stock-count session list and SAP service-layer config table now support select-all behavior",
+      "Selection UX remains consistent with row highlight and indeterminate header checkbox state",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Expanded shared table selection pattern to more modules for bulk-action readiness across app surfaces",
+      },
+    ],
+  },
+  {
+    version: "0.11.29",
+    date: "2026-06-02",
+    title: "Settings and admin tables now support selection",
+    highlights: [
+      "Added index + checkbox columns to settings/admin tables for consistent row selection UX",
+      "Select-all headers now support indeterminate state across filtered table rows",
+      "Selection count and clear action added to table toolbars for bulk-action readiness",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Branches, departments, warehouses, status codes, AORs, users, planning, SAP jobs, planogram branches, master-data, and audit-log tables now use shared row selection behavior",
+      },
+    ],
+  },
+  {
+    version: "0.11.28",
+    date: "2026-06-02",
+    title: "Operational tables now support row selection",
+    highlights: [
+      "Added shared table-selection hook for reusable select-all and row checkbox behavior",
+      "Operational tables now include index column and checkbox selection column",
+      "Selection state is bulk-action ready with selected-count and clear-selection control",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Orders, sales, logistics, and inventory tables now use a consistent index-plus-checkbox selection pattern",
+      },
+    ],
+  },
+  {
+    version: "0.11.27",
+    date: "2026-06-02",
+    title: "In-app confirmation modal for order actions",
+    highlights: [
+      "Approve and Reject now use an in-app confirmation modal instead of browser confirm dialogs",
+      "Reject still enforces required comment validation before confirmation",
+      "Confirmation actions are disabled while request is pending to prevent duplicate submits",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Order workflow dialog — replaced native window confirmation with styled AlertDialog confirmation flow",
+      },
+    ],
+  },
+  {
+    version: "0.11.26",
+    date: "2026-06-02",
+    title: "Order approval safeguards and comment spacing tweak",
+    highlights: [
+      "Approve and Reject actions now require explicit confirmation before submission",
+      "Reject action now requires a comment to reduce accidental cancellation",
+      "Details pane adds extra left spacing to prevent comment field edge clipping",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Order review dialog — added action confirmation and reject validation, plus left-pane spacing adjustment for textarea rendering",
+      },
+    ],
+  },
+  {
+    version: "0.11.25",
+    date: "2026-06-02",
+    title: "Order review panel width and comment clipping fix",
+    highlights: [
+      "Order lines table area is now wider than the details pane for better SKU scanning",
+      "Left details/comment pane now scrolls internally when content is tall",
+      "Comment textarea is no longer cut off near the footer on constrained viewport heights",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Order review dialog — rebalanced split layout and added independent left-pane scrolling to prevent form clipping",
+      },
+    ],
+  },
+  {
+    version: "0.11.24",
+    date: "2026-06-02",
+    title: "Scrollable order lines table",
+    highlights: [
+      "Order lines now render as a table with index, SKU, and quantity columns",
+      "Order lines panel now supports internal scrolling while modal stays fixed",
+      "SPA flow supports inline approved quantity input per table row",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Order review dialog — replaced line list with a scrollable table to improve readability on large orders",
+      },
+    ],
+  },
+  {
+    version: "0.11.23",
+    date: "2026-06-02",
+    title: "Order review status badges and line summary",
+    highlights: [
+      "Order review modal now displays status as a color-coded badge",
+      "Order lines preview now shows indexed top 10 entries for faster scanning",
+      "Added total line and quantity summary in the order lines panel",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Orders workflow review dialog — added status badge styling, indexed 10-line preview, and totals summary metadata",
+      },
+    ],
+  },
+  {
+    version: "0.11.22",
+    date: "2026-06-02",
+    title: "Order review dialog layout and scroll fix",
+    highlights: [
+      "Order lines now render in a dedicated right-side panel for easier review",
+      "Only the order lines panel scrolls, while dialog header/form/actions stay fixed",
+      "Approve and Reject buttons now align consistently at the dialog footer",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Orders workflow modal — two-column layout with isolated order-line scrolling and corrected action button alignment",
+      },
+    ],
+  },
+  {
+    version: "0.11.21",
+    date: "2026-06-02",
+    title: "Live feed SAP connection tester",
+    highlights: [
+      "SAP Test connection modal now shows live progress feed with elapsed timer and current step",
+      "Users get context on potential delays (network, SSL handshake, SAP authentication load)",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Loading modal supports staged feed items; SAP connection test now surfaces real-time status and duration",
+      },
+    ],
+  },
+  {
+    version: "0.11.20",
+    date: "2026-06-02",
+    title: "Reusable loading modal for SAP testing",
+    highlights: [
+      "Added shared LoadingModal component for blocking in-progress actions",
+      "SAP Service Layer Test connection now shows a loading modal while testing credentials",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "SAP integration UX — replaced test-only button spinner with reusable loading modal feedback",
+      },
+    ],
+  },
+  {
+    version: "0.11.19",
+    date: "2026-06-02",
+    title: "Consistent page header separators",
+    highlights: [
+      "All pages using shared PageHeader now show the same bottom divider line",
+      "Section pages and regular pages match on header separation styling",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description: "PageHeader now applies a consistent border-bottom for sticky and non-sticky modes",
+      },
+    ],
+  },
+  {
+    version: "0.11.18",
+    date: "2026-06-02",
+    title: "Wider side gutters on app pages",
+    highlights: [
+      "Added slightly larger left/right page padding so full-width layout has breathing room",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description: "App layout horizontal padding increased across breakpoints",
+      },
+    ],
+  },
+  {
+    version: "0.11.17",
+    date: "2026-06-02",
+    title: "Full-width app content layout",
+    highlights: [
+      "Removed the global max-width cap so app pages can use the full available viewport width",
+      "SAP integration and dashboard now expand across wide screens",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description: "App layout container switched from max-w-7xl to full-width responsive padding",
+      },
+    ],
+  },
+  {
+    version: "0.11.16",
+    date: "2026-06-02",
+    title: "SAP DB config CRUD actions",
+    highlights: [
+      "Service Layer table now supports Edit and Delete per SAP DB configuration",
+      "Form switches between Add and Update mode with cancel support",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "SAP Service Layer settings — added update and delete server actions with optimistic table updates",
+      },
+    ],
+  },
+  {
+    version: "0.11.15",
+    date: "2026-06-02",
+    title: "Instant SAP DB table updates",
+    highlights: [
+      "SAP DB table now updates immediately after Add configuration and active/inactive toggle",
+      "Server refresh still runs in background for consistency",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "SAP Service Layer form — optimistic local table state to remove post-save UI delay",
+      },
+    ],
+  },
+  {
+    version: "0.11.14",
+    date: "2026-06-02",
+    title: "Reusable loading indicator",
+    highlights: [
+      "Added shared LoadingIndicator component for consistent spinner + label states",
+      "SAP Service Layer form now shows separate loading states for test, save, and status update actions",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "UI — reusable loading indicator introduced in components/ui and adopted by SAP Service Layer actions",
+      },
+    ],
+  },
+  {
+    version: "0.11.13",
+    date: "2026-06-02",
+    title: "SAP self-signed connection fallback",
+    highlights: [
+      "Service Layer test connection now auto-retries without strict cert validation when self-signed cert is detected",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "SAP Service Layer connection test — automatic self-signed certificate fallback for on-prem environments",
+      },
+    ],
+  },
+  {
+    version: "0.11.12",
+    date: "2026-06-02",
+    title: "Unified SAP card and connection test",
+    highlights: [
+      "Service Layer config and SAP DB table now render inside one section card with left/right panes",
+      "Added Test connection button using SAP Service Layer login check",
+      "Inactive SAP DB status now uses red badge styling",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "SAP integration UI — unified single-card layout and destructive inactive status badge",
+      },
+      {
+        type: "feature",
+        description: "SAP Service Layer — server action connection test via /Login endpoint",
+      },
+    ],
+  },
+  {
+    version: "0.11.11",
+    date: "2026-06-02",
+    title: "Multi-SAP DB table with active switch",
+    highlights: [
+      "Service Layer settings now support multiple SAP company DB configurations per tenant",
+      "Right-side table shows saved SAP DB entries with Active/Inactive actions",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "SAP integration — add multi-configuration Service Layer management with activate/deactivate controls",
+      },
+    ],
+  },
+  {
     version: "0.11.10",
     date: "2026-06-02",
     title: "Instant CRUD updates on more settings pages",

@@ -111,17 +111,23 @@ body {
   color: hsl(var(--foreground));
 }
 
-/* nextjs-toploader — below header dropdowns (z-50), above page content */
+/* nextjs-toploader — full-width bar under header; no peg glow (avoids slanted shadow) */
+body:has(.app-shell) #nprogress {
+  pointer-events: none;
+}
+
 body:has(.app-shell) #nprogress .bar {
   top: 3.5rem;
+  left: 0;
+  right: 0;
+  width: 100% !important;
   z-index: 40;
   background: hsl(var(--primary));
+  border-radius: 0;
 }
 
 body:has(.app-shell) #nprogress .peg {
-  box-shadow:
-    0 0 10px hsl(var(--primary)),
-    0 0 5px hsl(var(--primary));
+  display: none;
 }
 
 @layer utilities {

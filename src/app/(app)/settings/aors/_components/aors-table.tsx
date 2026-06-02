@@ -11,7 +11,9 @@ import {
   DataTableScroll,
   DataTableShell,
 } from "@/components/data-table/data-table-shell";
+import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import {
   Table,
@@ -47,6 +49,7 @@ export function AorsTable({
   useEffect(() => {
     setRows(aors);
   }, [aors]);
+  const selection = useTableSelection(rows.map((row) => row.id));
 
   function assign() {
     startTransition(async () => {
@@ -130,10 +133,25 @@ export function AorsTable({
         </Button>
       </div>
       <DataTableShell>
+        {selection.selectedCount > 0 ? (
+          <div className="px-4 pb-2">
+            <Button variant="secondary" onClick={selection.clearSelection}>
+              {selection.selectedCount} selected
+            </Button>
+          </div>
+        ) : null}
         <DataTableScroll>
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
+                    onCheckedChange={(checked) => selection.toggleAll(checked === true)}
+                    aria-label="Select all AOR rows"
+                  />
+                </TableHead>
+                <TableHead className="w-12">#</TableHead>
                 <TableHead>User</TableHead>
                 <TableHead>Branch</TableHead>
                 <TableHead>Warehouse</TableHead>
@@ -141,8 +159,16 @@ export function AorsTable({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((a) => (
-                <TableRow key={a.id}>
+              {rows.map((a, index) => (
+                <TableRow key={a.id} data-state={selection.isRowSelected(a.id) ? "selected" : undefined}>
+                  <TableCell>
+                    <Checkbox
+                      checked={selection.isRowSelected(a.id)}
+                      onCheckedChange={(checked) => selection.toggleRow(a.id, checked === true)}
+                      aria-label={`Select AOR ${a.user.name ?? a.user.email}`}
+                    />
+                  </TableCell>
+                  <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
                   <TableCell>{a.user.name ?? a.user.email}</TableCell>
                   <TableCell>
                     {a.branch ? `${a.branch.name} (${a.branch.sapCode})` : "—"}
