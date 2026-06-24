@@ -126,11 +126,7 @@ export function MasterDataBrandsPanel({ brands, categories }: MasterDataBrandsPa
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-<<<<<<< HEAD
-                  {brandRows.map((b) => (
-                    <TableRow key={b.id}>
-=======
-                  {brands.map((b, index) => (
+                  {brandRows.map((b, index) => (
                     <TableRow key={b.id} data-state={brandSelection.isRowSelected(b.id) ? "selected" : undefined}>
                       <TableCell>
                         <Checkbox
@@ -140,7 +136,6 @@ export function MasterDataBrandsPanel({ brands, categories }: MasterDataBrandsPa
                         />
                       </TableCell>
                       <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
->>>>>>> feature/fix_minor_bugs_implement_SAP_service_layer_connection
                       <TableCell className="font-mono text-sm">{b.code ?? "—"}</TableCell>
                       <TableCell className="font-medium">{b.name}</TableCell>
                     </TableRow>
@@ -193,11 +188,7 @@ export function MasterDataBrandsPanel({ brands, categories }: MasterDataBrandsPa
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-<<<<<<< HEAD
-                  {categoryRows.map((c) => (
-                    <TableRow key={c.id}>
-=======
-                  {categories.map((c, index) => (
+                  {categoryRows.map((c, index) => (
                     <TableRow key={c.id} data-state={categorySelection.isRowSelected(c.id) ? "selected" : undefined}>
                       <TableCell>
                         <Checkbox
@@ -207,7 +198,6 @@ export function MasterDataBrandsPanel({ brands, categories }: MasterDataBrandsPa
                         />
                       </TableCell>
                       <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
->>>>>>> feature/fix_minor_bugs_implement_SAP_service_layer_connection
                       <TableCell className="font-medium">{c.name}</TableCell>
                     </TableRow>
                   ))}

@@ -182,11 +182,7 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
                 </TableRow>
               </TableHeader>
               <TableBody>
-<<<<<<< HEAD
-                {rows.map((m) => (
-                  <TableRow key={m.id}>
-=======
-                {models.map((m, index) => (
+                {rows.map((m, index) => (
                   <TableRow key={m.id} data-state={selection.isRowSelected(m.id) ? "selected" : undefined}>
                     <TableCell>
                       <Checkbox
@@ -196,7 +192,6 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
                       />
                     </TableCell>
                     <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
->>>>>>> feature/fix_minor_bugs_implement_SAP_service_layer_connection
                     <TableCell className="font-mono text-sm">{m.skuCode}</TableCell>
                     <TableCell className="font-medium">{m.name}</TableCell>
                     <TableCell>{m.brand?.name ?? "—"}</TableCell>

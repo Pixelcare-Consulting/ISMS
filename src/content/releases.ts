@@ -24,14 +24,22 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
-<<<<<<< HEAD
-    version: "0.11.11",
+    version: "0.11.40",
     date: "2026-06-02",
     title: "Instant CRUD updates for remaining settings tables",
     highlights: [
       "Warehouses, status settings, and master-data create/update flows now reflect instantly in table UI",
       "Server revalidation and background refresh remain in place for consistency",
-=======
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Settings UX — optimistic updates expanded to warehouse/location, status codes, and master-data entries",
+      },
+    ],
+  },
+  {
     version: "0.11.39",
     date: "2026-06-02",
     title: "Reusable page tutorials",
@@ -59,15 +67,11 @@ export const RELEASES: ReleaseNote[] = [
     highlights: [
       "Loading modal while approve/reject is saving",
       "Review button disabled with tooltip when user is not the designated approver",
->>>>>>> feature/fix_minor_bugs_implement_SAP_service_layer_connection
     ],
     changes: [
       {
         type: "improvement",
         description:
-<<<<<<< HEAD
-          "Settings UX — optimistic updates expanded to warehouse/location, status codes, and master-data entries",
-=======
           "Order approval and rejection show a blocking loading modal until the server finishes",
       },
       {
@@ -536,7 +540,6 @@ export const RELEASES: ReleaseNote[] = [
         type: "feature",
         description:
           "SAP integration — add multi-configuration Service Layer management with activate/deactivate controls",
->>>>>>> feature/fix_minor_bugs_implement_SAP_service_layer_connection
       },
     ],
   },
