@@ -1,6 +1,8 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { useTableSelection } from "@/components/data-table/use-table-selection";
 import {
   Table,
   TableBody,
@@ -40,6 +42,7 @@ export function PolicyVersionHistory({
   selectedVersion,
   onSelectVersion,
 }: PolicyVersionHistoryProps) {
+  const selection = useTableSelection(versions.map((version) => version.id));
   if (versions.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">No versions recorded yet.</p>
@@ -51,6 +54,14 @@ export function PolicyVersionHistory({
       <Table>
         <TableHeader>
           <TableRow className="bg-muted/30 hover:bg-muted/30">
+            <TableHead className="w-10">
+              <Checkbox
+                checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
+                onCheckedChange={(checked) => selection.toggleAll(checked === true)}
+                aria-label="Select all policy versions"
+              />
+            </TableHead>
+            <TableHead className="w-12">#</TableHead>
             <TableHead>Version</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Author</TableHead>
@@ -58,13 +69,23 @@ export function PolicyVersionHistory({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {versions.map((row) => (
+          {versions.map((row, index) => (
             <TableRow
               key={row.id}
               className="cursor-pointer"
-              data-state={row.version === selectedVersion ? "selected" : undefined}
+              data-state={
+                selection.isRowSelected(row.id) || row.version === selectedVersion ? "selected" : undefined
+              }
               onClick={() => onSelectVersion(row.version)}
             >
+              <TableCell onClick={(event) => event.stopPropagation()}>
+                <Checkbox
+                  checked={selection.isRowSelected(row.id)}
+                  onCheckedChange={(checked) => selection.toggleRow(row.id, checked === true)}
+                  aria-label={`Select version ${row.version}`}
+                />
+              </TableCell>
+              <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
               <TableCell className="font-medium">v{row.version}</TableCell>
               <TableCell>
                 <Badge variant={statusVariant(row.status)}>

@@ -25,9 +25,11 @@ import {
   DataTableEmpty,
   DataTableShell,
 } from "@/components/data-table/data-table-shell";
+import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { DeleteConfirmDialog } from "@/components/data-table/delete-confirm-dialog";
 import { TableSearchToolbar } from "@/components/data-table/table-search-bar";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -45,15 +47,19 @@ interface RolesPermissionsTableProps {
   toolbarActions?: ReactNode;
 }
 
+const stickyHeadCheckboxClassName =
+  "sticky left-0 top-0 z-40 w-10 min-w-10 border-r border-border/60 bg-muted text-center";
 const stickyHeadIndexClassName =
-  "sticky left-0 top-0 z-40 w-12 min-w-12 border-r border-border/60 bg-muted text-center";
+  "sticky left-10 top-0 z-40 w-12 min-w-12 border-r border-border/60 bg-muted text-center";
 const stickyHeadRoleClassName =
-  "sticky left-12 top-0 z-30 min-w-[220px] border-r border-border/60 bg-muted shadow-[4px_0_8px_-4px_rgba(0,0,0,0.08)]";
+  "sticky left-22 top-0 z-30 min-w-[220px] border-r border-border/60 bg-muted shadow-[4px_0_8px_-4px_rgba(0,0,0,0.08)]";
 const stickyHeadDefaultClassName = "sticky top-0 z-20 bg-muted";
+const stickyCellCheckboxClassName =
+  "sticky left-0 z-10 w-10 min-w-10 border-r border-border/60";
 const stickyCellIndexClassName =
-  "sticky left-0 z-10 w-12 min-w-12 border-r border-border/60";
+  "sticky left-10 z-10 w-12 min-w-12 border-r border-border/60";
 const stickyCellRoleClassName =
-  "sticky left-12 z-[9] min-w-[220px] border-r border-border/60 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.06)]";
+  "sticky left-22 z-[9] min-w-[220px] border-r border-border/60 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.06)]";
 
 export function RolesPermissionsTable({
   matrix,
@@ -79,6 +85,7 @@ export function RolesPermissionsTable({
       ),
     [query, roles],
   );
+  const selection = useTableSelection(filteredRoles.map((role) => role.id));
 
   const {
     pendingChange,
@@ -123,6 +130,11 @@ export function RolesPermissionsTable({
           onChange={setQuery}
           placeholder="Search by role name, slug, or description…"
         >
+          {selection.selectedCount > 0 ? (
+            <Button variant="secondary" size="sm" onClick={selection.clearSelection}>
+              {selection.selectedCount} selected
+            </Button>
+          ) : null}
           {addRoleAction}
         </TableSearchToolbar>
         <DataTableEmpty
@@ -154,6 +166,18 @@ export function RolesPermissionsTable({
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/30 hover:bg-muted/30">
+                <TableHead
+                  className={cn(
+                    stickyHeadCheckboxClassName,
+                    "text-muted-foreground",
+                  )}
+                >
+                  <Checkbox
+                    checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
+                    onCheckedChange={(checked) => selection.toggleAll(checked === true)}
+                    aria-label="Select all roles"
+                  />
+                </TableHead>
                 <TableHead
                   className={cn(
                     stickyHeadIndexClassName,
@@ -196,8 +220,21 @@ export function RolesPermissionsTable({
                 return (
                   <TableRow
                     key={role.id}
+                    data-state={selection.isRowSelected(role.id) ? "selected" : undefined}
                     className={cn(index % 2 === 1 && "bg-table-stripe")}
                   >
+                    <TableCell
+                      className={cn(
+                        stickyCellCheckboxClassName,
+                        rowBg,
+                      )}
+                    >
+                      <Checkbox
+                        checked={selection.isRowSelected(role.id)}
+                        onCheckedChange={(checked) => selection.toggleRow(role.id, checked === true)}
+                        aria-label={`Select role ${role.name}`}
+                      />
+                    </TableCell>
                     <TableCell
                       className={cn(
                         stickyCellIndexClassName,

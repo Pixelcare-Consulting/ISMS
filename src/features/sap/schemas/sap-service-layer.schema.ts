@@ -16,6 +16,7 @@ export const sapServiceLayerSchema = z.object({
 export type SapServiceLayerInput = z.infer<typeof sapServiceLayerSchema>;
 
 export interface SapServiceLayerSettings {
+  id: string;
   baseUrl: string;
   companyDb: string;
   username: string;

@@ -8,10 +8,12 @@ import { toast } from "sonner";
 import { updateInventoryStatusAction } from "@/features/inventory/actions/inventory.actions";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { DataTableScroll, DataTableShell } from "@/components/data-table/data-table-shell";
+import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { TablePagination } from "@/components/data-table/table-pagination";
 import { TableSearchToolbar } from "@/components/data-table/table-search-bar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import {
   Table,
@@ -87,6 +89,7 @@ export function InventoryTable({
       ),
     [result.items, query],
   );
+  const selection = useTableSelection(filtered.map((r) => r.id));
 
   function toggleOffPlanogram(checked: boolean) {
     setOffPlanogramOnly(checked);
@@ -117,6 +120,11 @@ export function InventoryTable({
         onChange={setQuery}
         placeholder="Search serial, SKU, branch…"
       >
+        {selection.selectedCount > 0 ? (
+          <Button variant="secondary" onClick={selection.clearSelection}>
+            {selection.selectedCount} selected
+          </Button>
+        ) : null}
         <div className="flex items-center gap-2 text-sm">
           <input
             id="off-planogram"
@@ -143,6 +151,14 @@ export function InventoryTable({
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10">
+                <Checkbox
+                  checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
+                  onCheckedChange={(checked) => selection.toggleAll(checked === true)}
+                  aria-label="Select all inventory rows"
+                />
+              </TableHead>
+              <TableHead className="w-12">#</TableHead>
               <TableHead>Serial</TableHead>
               <TableHead>Model</TableHead>
               <TableHead>Branch</TableHead>
@@ -151,8 +167,16 @@ export function InventoryTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.map((r) => (
-              <TableRow key={r.id}>
+            {filtered.map((r, index) => (
+              <TableRow key={r.id} data-state={selection.isRowSelected(r.id) ? "selected" : undefined}>
+                <TableCell>
+                  <Checkbox
+                    checked={selection.isRowSelected(r.id)}
+                    onCheckedChange={(checked) => selection.toggleRow(r.id, checked === true)}
+                    aria-label={`Select serial ${r.serialNumber.serialNo}`}
+                  />
+                </TableCell>
+                <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
                 <TableCell className="font-mono text-sm">{r.serialNumber.serialNo}</TableCell>
                 <TableCell>
                   <Link

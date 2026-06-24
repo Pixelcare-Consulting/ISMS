@@ -7,6 +7,7 @@ export function AppTopLoader() {
     <NextTopLoader
       color="hsl(174 58% 39%)"
       height={3}
+      shadow={false}
       showSpinner={false}
       crawl
       crawlSpeed={120}

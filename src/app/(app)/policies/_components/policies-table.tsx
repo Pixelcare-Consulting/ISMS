@@ -8,8 +8,10 @@ import {
   DataTableScroll,
   DataTableShell,
 } from "@/components/data-table/data-table-shell";
+import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { TableSearchToolbar } from "@/components/data-table/table-search-bar";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -63,6 +65,7 @@ export function PoliciesTable({
       ),
     [policies, query],
   );
+  const selection = useTableSelection(filtered.map((policy) => policy.id));
 
   const emptyMessage = viewOnly
     ? "No approved policies are available yet."
@@ -87,7 +90,11 @@ export function PoliciesTable({
         value={query}
         onChange={setQuery}
         placeholder="Search policies…"
-      />
+      >
+        {selection.selectedCount > 0 ? (
+          <Badge variant="secondary">{selection.selectedCount} selected</Badge>
+        ) : null}
+      </TableSearchToolbar>
       {filtered.length === 0 ? (
         <div className="py-12 text-center text-muted-foreground">
           No policies match your search.
@@ -97,6 +104,13 @@ export function PoliciesTable({
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/30 hover:bg-muted/30">
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
+                    onCheckedChange={(checked) => selection.toggleAll(checked === true)}
+                    aria-label="Select all policies"
+                  />
+                </TableHead>
                 <TableHead className="w-12 text-center text-muted-foreground">
                   #
                 </TableHead>
@@ -110,8 +124,16 @@ export function PoliciesTable({
               {filtered.map((policy, index) => (
                 <TableRow
                   key={policy.id}
+                  data-state={selection.isRowSelected(policy.id) ? "selected" : undefined}
                   className={cn(index % 2 === 1 && "bg-table-stripe")}
                 >
+                  <TableCell>
+                    <Checkbox
+                      checked={selection.isRowSelected(policy.id)}
+                      onCheckedChange={(checked) => selection.toggleRow(policy.id, checked === true)}
+                      aria-label={`Select policy ${policy.title}`}
+                    />
+                  </TableCell>
                   <TableCell className="text-center tabular-nums text-muted-foreground">
                     {index + 1}
                   </TableCell>

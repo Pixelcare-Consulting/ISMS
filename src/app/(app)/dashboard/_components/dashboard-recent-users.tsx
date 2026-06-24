@@ -8,7 +8,9 @@ import {
   DataTableScroll,
   DataTableShell,
 } from "@/components/data-table/data-table-shell";
+import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { TableSearchBar } from "@/components/data-table/table-search-bar";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -47,12 +49,16 @@ export function DashboardRecentUsers({ users }: DashboardRecentUsersProps) {
       ),
     [query, users],
   );
+  const selection = useTableSelection(filteredUsers.map((user) => user.id));
 
   return (
     <DataTableShell>
       <div className="flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="font-semibold">Recent team members</h2>
         <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
+          {selection.selectedCount > 0 ? (
+            <span className="text-xs text-muted-foreground">{selection.selectedCount} selected</span>
+          ) : null}
           <TableSearchBar
             value={query}
             onChange={setQuery}
@@ -76,6 +82,13 @@ export function DashboardRecentUsers({ users }: DashboardRecentUsersProps) {
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/30 hover:bg-muted/30">
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
+                    onCheckedChange={(checked) => selection.toggleAll(checked === true)}
+                    aria-label="Select all recent users"
+                  />
+                </TableHead>
                 <TableHead className="w-12 min-w-12 text-center text-muted-foreground">
                   #
                 </TableHead>
@@ -88,8 +101,16 @@ export function DashboardRecentUsers({ users }: DashboardRecentUsersProps) {
               {filteredUsers.map((user, index) => (
                 <TableRow
                   key={user.id}
+                  data-state={selection.isRowSelected(user.id) ? "selected" : undefined}
                   className={cn(index % 2 === 1 && "bg-table-stripe")}
                 >
+                  <TableCell>
+                    <Checkbox
+                      checked={selection.isRowSelected(user.id)}
+                      onCheckedChange={(checked) => selection.toggleRow(user.id, checked === true)}
+                      aria-label={`Select user ${user.name ?? user.email}`}
+                    />
+                  </TableCell>
                   <TableCell className="text-center tabular-nums text-muted-foreground">
                     {index + 1}
                   </TableCell>

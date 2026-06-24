@@ -16,9 +16,11 @@ import {
   DataTableScroll,
   DataTableShell,
 } from "@/components/data-table/data-table-shell";
+import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { TablePagination } from "@/components/data-table/table-pagination";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -63,6 +65,7 @@ export function StockCountListPanel({ sessions }: StockCountListPanelProps) {
   const [branches, setBranches] = useState<{ id: string; name: string }[]>([]);
   const [selectedBranchId, setSelectedBranchId] = useState("");
   const [refsLoaded, setRefsLoaded] = useState(false);
+  const selection = useTableSelection(sessions.items.map((session) => session.id));
 
   async function loadBranches() {
     if (refsLoaded) return;
@@ -121,6 +124,14 @@ export function StockCountListPanel({ sessions }: StockCountListPanelProps) {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10">
+                <Checkbox
+                  checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
+                  onCheckedChange={(checked) => selection.toggleAll(checked === true)}
+                  aria-label="Select all stock count sessions"
+                />
+              </TableHead>
+              <TableHead className="w-12">#</TableHead>
               <TableHead>Session</TableHead>
               <TableHead>Branch</TableHead>
               <TableHead>Status</TableHead>
@@ -132,13 +143,21 @@ export function StockCountListPanel({ sessions }: StockCountListPanelProps) {
           <TableBody>
             {sessions.items.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-muted-foreground text-center">
+                <TableCell colSpan={8} className="text-muted-foreground text-center">
                   No count sessions yet.
                 </TableCell>
               </TableRow>
             ) : (
-              sessions.items.map((row) => (
-                <TableRow key={row.id}>
+              sessions.items.map((row, index) => (
+                <TableRow key={row.id} data-state={selection.isRowSelected(row.id) ? "selected" : undefined}>
+                  <TableCell>
+                    <Checkbox
+                      checked={selection.isRowSelected(row.id)}
+                      onCheckedChange={(checked) => selection.toggleRow(row.id, checked === true)}
+                      aria-label={`Select session ${row.sessionNo}`}
+                    />
+                  </TableCell>
+                  <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
                   <TableCell>
                     <Link
                       href={`/inventory/stock-count/${row.id}`}

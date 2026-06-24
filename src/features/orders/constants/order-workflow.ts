@@ -131,6 +131,21 @@ export function getCurrentApproverLabel(
   return step ? `Awaiting: ${step.label}` : "";
 }
 
+/** User-facing message when Review is disabled for the current viewer role. */
+export function getOrderReviewDenialReason(
+  status: BranchOrderStatus,
+  orderType: BranchOrderType,
+): string {
+  if (status === "pending_logistics") {
+    return "Only Logistics can review orders at this step.";
+  }
+  const step = getOrderApprovalChain(orderType).find((s) => s.status === status);
+  if (!step) {
+    return "You are not the designated approver for this order step.";
+  }
+  return `Only ${step.label} can review and approve this order right now.`;
+}
+
 export function getAfterApproveHint(
   status: BranchOrderStatus,
   orderType: BranchOrderType,

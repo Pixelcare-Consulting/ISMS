@@ -18,8 +18,10 @@ import {
   DataTableScroll,
   DataTableShell,
 } from "@/components/data-table/data-table-shell";
+import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -73,6 +75,7 @@ export function PlanogramTable({
   const fileRef = useRef<HTMLInputElement>(null);
   const [pending, startTransition] = useTransition();
   const [showAdd, setShowAdd] = useState(false);
+  const selection = useTableSelection(rows.map((row) => row.id));
 
   function handleRemove(planogramId: string) {
     startTransition(async () => {
@@ -154,6 +157,14 @@ export function PlanogramTable({
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
+                    onCheckedChange={(checked) => selection.toggleAll(checked === true)}
+                    aria-label="Select all planogram rows"
+                  />
+                </TableHead>
+                <TableHead className="w-12">#</TableHead>
                 <TableHead>SKU</TableHead>
                 <TableHead>Model</TableHead>
                 <TableHead>Series</TableHead>
@@ -169,9 +180,12 @@ export function PlanogramTable({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((row) => (
+              {rows.map((row, index) => (
                 <PlanogramRowEditor
                   key={row.id}
+                  index={index}
+                  selected={selection.isRowSelected(row.id)}
+                  onSelect={(checked) => selection.toggleRow(row.id, checked)}
                   branchId={branchId}
                   row={row}
                   canManage={canManage}
@@ -199,6 +213,9 @@ export function PlanogramTable({
 }
 
 function PlanogramRowEditor({
+  index,
+  selected,
+  onSelect,
   branchId,
   row,
   canManage,
@@ -206,6 +223,9 @@ function PlanogramRowEditor({
   onRemove,
   onSaved,
 }: {
+  index: number;
+  selected: boolean;
+  onSelect: (checked: boolean) => void;
   branchId: string;
   row: PlanogramRow;
   canManage: boolean;
@@ -255,7 +275,15 @@ function PlanogramRowEditor({
   }
 
   return (
-    <TableRow>
+    <TableRow data-state={selected ? "selected" : undefined}>
+      <TableCell>
+        <Checkbox
+          checked={selected}
+          onCheckedChange={(checked) => onSelect(checked === true)}
+          aria-label={`Select planogram row ${row.model.skuCode}`}
+        />
+      </TableCell>
+      <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
       <TableCell className="font-mono text-sm">{row.model.skuCode}</TableCell>
       <TableCell>{row.model.name}</TableCell>
       <TableCell>{row.model.series ?? "—"}</TableCell>

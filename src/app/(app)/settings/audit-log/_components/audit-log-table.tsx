@@ -18,8 +18,10 @@ import {
   DataTableScroll,
   DataTableShell,
 } from "@/components/data-table/data-table-shell";
+import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { TableSearchBar } from "@/components/data-table/table-search-bar";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -125,6 +127,7 @@ export function AuditLogTable({
   const [dateTo, setDateTo] = useState(currentDateTo ?? "");
 
   const rows = useMemo(() => result.items, [result.items]);
+  const selection = useTableSelection(rows.map((row) => row.id));
   const activeFilters: AuditLogFilters = {
     action: currentAction,
     entityType: currentEntityType,
@@ -260,10 +263,25 @@ export function AuditLogTable({
         />
       ) : (
         <>
+          {selection.selectedCount > 0 ? (
+            <div className="px-4 pb-2">
+              <Button variant="secondary" size="sm" onClick={selection.clearSelection}>
+                {selection.selectedCount} selected
+              </Button>
+            </div>
+          ) : null}
           <DataTableScroll>
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/30 hover:bg-muted/30">
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
+                      onCheckedChange={(checked) => selection.toggleAll(checked === true)}
+                      aria-label="Select all audit log rows"
+                    />
+                  </TableHead>
+                  <TableHead className="w-12">#</TableHead>
                   <TableHead>Date & time</TableHead>
                   <TableHead>User</TableHead>
                   <TableHead>Activity</TableHead>
@@ -282,8 +300,17 @@ export function AuditLogTable({
                   return (
                     <TableRow
                       key={row.id}
+                      data-state={selection.isRowSelected(row.id) ? "selected" : undefined}
                       className={cn(index % 2 === 1 && "bg-table-stripe")}
                     >
+                      <TableCell>
+                        <Checkbox
+                          checked={selection.isRowSelected(row.id)}
+                          onCheckedChange={(checked) => selection.toggleRow(row.id, checked === true)}
+                          aria-label={`Select audit row ${row.id}`}
+                        />
+                      </TableCell>
+                      <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
                       <TableCell className="whitespace-nowrap text-muted-foreground">
                         {formatAuditTimestamp(row.createdAt)}
                       </TableCell>

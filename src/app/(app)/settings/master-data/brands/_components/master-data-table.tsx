@@ -16,7 +16,9 @@ import {
   DataTableScroll,
   DataTableShell,
 } from "@/components/data-table/data-table-shell";
+import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { TableSearchToolbar } from "@/components/data-table/table-search-bar";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -62,6 +64,7 @@ export function MasterDataTable({ brands, models }: MasterDataTableProps) {
   const [brandOpen, setBrandOpen] = useState(false);
   const [modelOpen, setModelOpen] = useState(false);
   const [pending, startTransition] = useTransition();
+  const brandSelection = useTableSelection(brands.map((brand) => brand.id));
 
   const filteredModels = useMemo(
     () =>
@@ -70,6 +73,7 @@ export function MasterDataTable({ brands, models }: MasterDataTableProps) {
       ),
     [models, query],
   );
+  const modelSelection = useTableSelection(filteredModels.map((model) => model.id));
 
   function submitBrand(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -104,18 +108,41 @@ export function MasterDataTable({ brands, models }: MasterDataTableProps) {
             <Plus className="size-4" /> Add brand
           </Button>
         </div>
+        {brandSelection.selectedCount > 0 ? (
+          <div className="px-4 pb-2">
+            <Button variant="secondary" size="sm" onClick={brandSelection.clearSelection}>
+              {brandSelection.selectedCount} selected
+            </Button>
+          </div>
+        ) : null}
         <DataTableScroll>
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={brandSelection.isAllSelected || (brandSelection.isPartiallySelected ? "indeterminate" : false)}
+                    onCheckedChange={(checked) => brandSelection.toggleAll(checked === true)}
+                    aria-label="Select all brands"
+                  />
+                </TableHead>
+                <TableHead className="w-12">#</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Code</TableHead>
                 <TableHead className="text-right">Models</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {brands.map((brand) => (
-                <TableRow key={brand.id}>
+              {brands.map((brand, index) => (
+                <TableRow key={brand.id} data-state={brandSelection.isRowSelected(brand.id) ? "selected" : undefined}>
+                  <TableCell>
+                    <Checkbox
+                      checked={brandSelection.isRowSelected(brand.id)}
+                      onCheckedChange={(checked) => brandSelection.toggleRow(brand.id, checked === true)}
+                      aria-label={`Select brand ${brand.name}`}
+                    />
+                  </TableCell>
+                  <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
                   <TableCell className="font-medium">{brand.name}</TableCell>
                   <TableCell>{brand.code ?? "—"}</TableCell>
                   <TableCell className="text-right">
@@ -130,6 +157,11 @@ export function MasterDataTable({ brands, models }: MasterDataTableProps) {
 
       <DataTableShell>
         <TableSearchToolbar value={query} onChange={setQuery} placeholder="Search models…">
+          {modelSelection.selectedCount > 0 ? (
+            <Button variant="secondary" size="sm" onClick={modelSelection.clearSelection}>
+              {modelSelection.selectedCount} selected
+            </Button>
+          ) : null}
           <Button onClick={() => setModelOpen(true)}>
             <Plus className="size-4" /> Add model
           </Button>
@@ -141,6 +173,14 @@ export function MasterDataTable({ brands, models }: MasterDataTableProps) {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={modelSelection.isAllSelected || (modelSelection.isPartiallySelected ? "indeterminate" : false)}
+                      onCheckedChange={(checked) => modelSelection.toggleAll(checked === true)}
+                      aria-label="Select all models"
+                    />
+                  </TableHead>
+                  <TableHead className="w-12">#</TableHead>
                   <TableHead>SKU</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Brand</TableHead>
@@ -148,8 +188,16 @@ export function MasterDataTable({ brands, models }: MasterDataTableProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredModels.map((model) => (
-                  <TableRow key={model.id}>
+                {filteredModels.map((model, index) => (
+                  <TableRow key={model.id} data-state={modelSelection.isRowSelected(model.id) ? "selected" : undefined}>
+                    <TableCell>
+                      <Checkbox
+                        checked={modelSelection.isRowSelected(model.id)}
+                        onCheckedChange={(checked) => modelSelection.toggleRow(model.id, checked === true)}
+                        aria-label={`Select model ${model.skuCode}`}
+                      />
+                    </TableCell>
+                    <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
                     <TableCell className="font-mono text-sm">{model.skuCode}</TableCell>
                     <TableCell>{model.name}</TableCell>
                     <TableCell>{model.brand?.name ?? "—"}</TableCell>

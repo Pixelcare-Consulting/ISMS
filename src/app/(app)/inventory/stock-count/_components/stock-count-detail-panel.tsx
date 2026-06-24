@@ -19,6 +19,7 @@ import {
 } from "@/features/stock-audit/constants/stock-count-workflow";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -32,6 +33,7 @@ import {
   DataTableScroll,
   DataTableShell,
 } from "@/components/data-table/data-table-shell";
+import { useTableSelection } from "@/components/data-table/use-table-selection";
 
 interface StockCountDetailPanelProps {
   session: {
@@ -65,6 +67,8 @@ export function StockCountDetailPanel({ session }: StockCountDetailPanelProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [investigationNotes, setInvestigationNotes] = useState<Record<string, string>>({});
+  const lineSelection = useTableSelection(session.lines.map((line) => line.id));
+  const varianceSelection = useTableSelection(session.variances.map((variance) => variance.id));
 
   function runAction(action: () => Promise<{ error?: string; success?: boolean }>, message: string) {
     startTransition(async () => {
@@ -152,6 +156,14 @@ export function StockCountDetailPanel({ session }: StockCountDetailPanelProps) {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={lineSelection.isAllSelected || (lineSelection.isPartiallySelected ? "indeterminate" : false)}
+                    onCheckedChange={(checked) => lineSelection.toggleAll(checked === true)}
+                    aria-label="Select all count lines"
+                  />
+                </TableHead>
+                <TableHead className="w-12">#</TableHead>
                 <TableHead>Serial</TableHead>
                 <TableHead>SKU</TableHead>
                 <TableHead>Status</TableHead>
@@ -159,8 +171,16 @@ export function StockCountDetailPanel({ session }: StockCountDetailPanelProps) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {session.lines.map((line) => (
-                <TableRow key={line.id}>
+              {session.lines.map((line, index) => (
+                <TableRow key={line.id} data-state={lineSelection.isRowSelected(line.id) ? "selected" : undefined}>
+                  <TableCell>
+                    <Checkbox
+                      checked={lineSelection.isRowSelected(line.id)}
+                      onCheckedChange={(checked) => lineSelection.toggleRow(line.id, checked === true)}
+                      aria-label={`Select line ${line.serialNumber.serialNo}`}
+                    />
+                  </TableCell>
+                  <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
                   <TableCell className="font-mono text-sm">{line.serialNumber.serialNo}</TableCell>
                   <TableCell>
                     <div>{line.model.skuCode}</div>
@@ -210,6 +230,14 @@ export function StockCountDetailPanel({ session }: StockCountDetailPanelProps) {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={varianceSelection.isAllSelected || (varianceSelection.isPartiallySelected ? "indeterminate" : false)}
+                      onCheckedChange={(checked) => varianceSelection.toggleAll(checked === true)}
+                      aria-label="Select all variances"
+                    />
+                  </TableHead>
+                  <TableHead className="w-12">#</TableHead>
                   <TableHead>Serial / SKU</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Status</TableHead>
@@ -218,8 +246,16 @@ export function StockCountDetailPanel({ session }: StockCountDetailPanelProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {session.variances.map((v) => (
-                  <TableRow key={v.id}>
+                {session.variances.map((v, index) => (
+                  <TableRow key={v.id} data-state={varianceSelection.isRowSelected(v.id) ? "selected" : undefined}>
+                    <TableCell>
+                      <Checkbox
+                        checked={varianceSelection.isRowSelected(v.id)}
+                        onCheckedChange={(checked) => varianceSelection.toggleRow(v.id, checked === true)}
+                        aria-label={`Select variance ${v.id}`}
+                      />
+                    </TableCell>
+                    <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
                     <TableCell>
                       {v.line ? (
                         <>

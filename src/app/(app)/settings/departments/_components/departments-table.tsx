@@ -17,7 +17,9 @@ import {
   DataTableScroll,
   DataTableShell,
 } from "@/components/data-table/data-table-shell";
+import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { TableSearchToolbar } from "@/components/data-table/table-search-bar";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -57,6 +59,7 @@ export function DepartmentsTable({ departments }: DepartmentsTableProps) {
       ),
     [rows, query],
   );
+  const selection = useTableSelection(filtered.map((department) => department.id));
 
   function handleDeleteConfirm() {
     if (!deleting) return;
@@ -84,6 +87,11 @@ export function DepartmentsTable({ departments }: DepartmentsTableProps) {
           onChange={setQuery}
           placeholder="Search departments…"
         >
+          {selection.selectedCount > 0 ? (
+            <Button variant="secondary" onClick={selection.clearSelection}>
+              {selection.selectedCount} selected
+            </Button>
+          ) : null}
           <CreateDepartmentDialog
             onCreated={(department) => {
               setRows((currentRows) => [
@@ -121,6 +129,14 @@ export function DepartmentsTable({ departments }: DepartmentsTableProps) {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
+                    onCheckedChange={(checked) => selection.toggleAll(checked === true)}
+                    aria-label="Select all departments"
+                  />
+                </TableHead>
+                <TableHead className="w-12">#</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead className="w-24 text-right">Users</TableHead>
                 <TableHead className="w-28 text-right">Actions</TableHead>
@@ -129,13 +145,21 @@ export function DepartmentsTable({ departments }: DepartmentsTableProps) {
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={3} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
                     No departments match your search.
                   </TableCell>
                 </TableRow>
               ) : (
-                filtered.map((department) => (
-                  <TableRow key={department.id}>
+                filtered.map((department, index) => (
+                  <TableRow key={department.id} data-state={selection.isRowSelected(department.id) ? "selected" : undefined}>
+                    <TableCell>
+                      <Checkbox
+                        checked={selection.isRowSelected(department.id)}
+                        onCheckedChange={(checked) => selection.toggleRow(department.id, checked === true)}
+                        aria-label={`Select department ${department.name}`}
+                      />
+                    </TableCell>
+                    <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
                     <TableCell className="font-medium">{department.name}</TableCell>
                     <TableCell className="text-right">
                       <Badge variant="secondary">{department._count.users}</Badge>

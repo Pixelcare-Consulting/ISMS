@@ -18,8 +18,10 @@ import {
   DataTableScroll,
   DataTableShell,
 } from "@/components/data-table/data-table-shell";
+import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { TablePagination } from "@/components/data-table/table-pagination";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -65,6 +67,7 @@ function buildSalesHref(page: number): string {
 export function SalesTable({ result }: SalesTableProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const selection = useTableSelection(result.items.map((s) => s.id));
 
   function runReturnAction(
     action: () => Promise<{ error?: string; success?: boolean }>,
@@ -85,10 +88,25 @@ export function SalesTable({ result }: SalesTableProps) {
     <div className="space-y-4">
       <RecordSaleForm pending={pending} />
       <DataTableShell>
+        {selection.selectedCount > 0 ? (
+          <div className="px-4 pb-2">
+            <Button variant="secondary" onClick={selection.clearSelection}>
+              {selection.selectedCount} selected
+            </Button>
+          </div>
+        ) : null}
         <DataTableScroll>
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
+                    onCheckedChange={(checked) => selection.toggleAll(checked === true)}
+                    aria-label="Select all sales rows"
+                  />
+                </TableHead>
+                <TableHead className="w-12">#</TableHead>
                 <TableHead>Transaction</TableHead>
                 <TableHead>Branch</TableHead>
                 <TableHead>Amount</TableHead>
@@ -99,8 +117,16 @@ export function SalesTable({ result }: SalesTableProps) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {result.items.map((s) => (
-                <TableRow key={s.id}>
+              {result.items.map((s, index) => (
+                <TableRow key={s.id} data-state={selection.isRowSelected(s.id) ? "selected" : undefined}>
+                  <TableCell>
+                    <Checkbox
+                      checked={selection.isRowSelected(s.id)}
+                      onCheckedChange={(checked) => selection.toggleRow(s.id, checked === true)}
+                      aria-label={`Select sale ${s.id.slice(-8)}`}
+                    />
+                  </TableCell>
+                  <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
                   <TableCell className="font-mono text-sm">{s.id.slice(-8)}</TableCell>
                   <TableCell>{s.branch.name}</TableCell>
                   <TableCell>{s.amount}</TableCell>

@@ -17,9 +17,11 @@ import {
   DataTableScroll,
   DataTableShell,
 } from "@/components/data-table/data-table-shell";
+import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { TablePagination } from "@/components/data-table/table-pagination";
 import { TableSearchToolbar } from "@/components/data-table/table-search-bar";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -109,6 +111,7 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
       ),
     [transfers.items, query],
   );
+  const selection = useTableSelection(filtered.map((t) => t.id));
 
   async function openExecuteConfirm(transfer: TransferRow) {
     const serials = await listStkSerialsForBranchAction(transfer.fromBranch.id);
@@ -182,6 +185,11 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
           onChange={setQuery}
           placeholder="Search transfers…"
         >
+          {selection.selectedCount > 0 ? (
+            <Button variant="secondary" onClick={selection.clearSelection}>
+              {selection.selectedCount} selected
+            </Button>
+          ) : null}
           <LogisticsLoadRefsButton onClick={loadRefs} />
           {branches.length >= 2 ? (
             <Button
@@ -205,6 +213,14 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
+                    onCheckedChange={(checked) => selection.toggleAll(checked === true)}
+                    aria-label="Select all transfers"
+                  />
+                </TableHead>
+                <TableHead className="w-12">#</TableHead>
                 <TableHead>No.</TableHead>
                 <TableHead>From → To</TableHead>
                 <TableHead>Status</TableHead>
@@ -212,8 +228,16 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((t) => (
-                <TableRow key={t.id}>
+              {filtered.map((t, index) => (
+                <TableRow key={t.id} data-state={selection.isRowSelected(t.id) ? "selected" : undefined}>
+                  <TableCell>
+                    <Checkbox
+                      checked={selection.isRowSelected(t.id)}
+                      onCheckedChange={(checked) => selection.toggleRow(t.id, checked === true)}
+                      aria-label={`Select transfer ${t.transferNo}`}
+                    />
+                  </TableCell>
+                  <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
                   <TableCell>{t.transferNo}</TableCell>
                   <TableCell>
                     {t.fromBranch.name} → {t.toBranch.name}

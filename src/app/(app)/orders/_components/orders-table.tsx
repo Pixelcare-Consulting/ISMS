@@ -12,16 +12,22 @@ import {
   listModelsForOrderAction,
   rejectOrderAction,
 } from "@/features/orders/actions/order.actions";
-import type { BranchOrderStatus } from "@prisma/client";
-import { isOrderPendingApproval } from "@/features/orders/constants/order-workflow";
+import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
+import {
+  canApproveOrder,
+  getOrderReviewDenialReason,
+  isOrderPendingApproval,
+} from "@/features/orders/constants/order-workflow";
 import { OrderWorkflowDialog } from "@/app/(app)/orders/_components/order-workflow-dialog";
 import { Button } from "@/components/ui/button";
 import { BRANCH_ORDER_STATUS_LABELS } from "@/features/orders/constants/order-status";
 import { OrderTypeBadge } from "@/features/orders/components/order-type-badge";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { DataTableScroll, DataTableShell } from "@/components/data-table/data-table-shell";
+import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { TablePagination } from "@/components/data-table/table-pagination";
 import { TableSearchToolbar } from "@/components/data-table/table-search-bar";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import {
   Table,
@@ -31,6 +37,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { LoadingModal } from "@/components/ui/loading-modal";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
 interface OrderRow {
@@ -65,17 +78,44 @@ interface OrdersTableProps {
     limit: number;
     totalPages: number;
   };
+  viewerRoleSlugs: string[];
+}
+
+const ORDER_APPROVE_FEED = [
+  { atSecond: 0, label: "Recording approval", hint: "Saving your decision to the order." },
+  { atSecond: 1, label: "Updating workflow status", hint: "Applying the next step in the chain." },
+  { atSecond: 2, label: "Syncing logistics queue", hint: "Preparing fulfillment handoff when applicable." },
+  { atSecond: 3, label: "Refreshing orders list" },
+] as const;
+
+const ORDER_REJECT_FEED = [
+  { atSecond: 0, label: "Recording rejection", hint: "Saving your comment and status." },
+  { atSecond: 1, label: "Updating order record" },
+  { atSecond: 2, label: "Refreshing orders list" },
+] as const;
+
+/** Keep loading modal open until feed steps can play out (even if API is fast). */
+function getMinLoadingDurationMs(feed: readonly { atSecond: number }[]): number {
+  const lastAt = feed.reduce((max, item) => Math.max(max, item.atSecond), 0);
+  return (lastAt + 2) * 1000;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function buildOrdersHref(page: number): string {
   return page > 1 ? `/orders?page=${page}` : "/orders";
 }
 
-export function OrdersTable({ result }: OrdersTableProps) {
+export function OrdersTable({ result, viewerRoleSlugs }: OrdersTableProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [workflowOrder, setWorkflowOrder] = useState<OrderRow | null>(null);
   const [pending, startTransition] = useTransition();
+  const [processingAction, setProcessingAction] = useState<"approve" | "reject" | null>(
+    null,
+  );
   const [showCreate, setShowCreate] = useState(false);
 
   const filtered = useMemo(
@@ -85,6 +125,7 @@ export function OrdersTable({ result }: OrdersTableProps) {
       ),
     [result.items, query],
   );
+  const selection = useTableSelection(filtered.map((o) => o.id));
 
   function handleApprove(input?: {
     comment?: string;
@@ -92,8 +133,15 @@ export function OrdersTable({ result }: OrdersTableProps) {
     deliveryDueDate?: string;
   }) {
     if (!workflowOrder) return;
+    setProcessingAction("approve");
     startTransition(async () => {
+      const feed = ORDER_APPROVE_FEED;
+      const minMs = getMinLoadingDurationMs(feed);
+      const started = Date.now();
       const result = await approveOrderAction(workflowOrder.id, input);
+      const waitMs = minMs - (Date.now() - started);
+      if (waitMs > 0) await delay(waitMs);
+      setProcessingAction(null);
       if (result.error) {
         toast.error(result.error);
         return;
@@ -106,8 +154,15 @@ export function OrdersTable({ result }: OrdersTableProps) {
 
   function handleReject(comment?: string) {
     if (!workflowOrder) return;
+    setProcessingAction("reject");
     startTransition(async () => {
+      const feed = ORDER_REJECT_FEED;
+      const minMs = getMinLoadingDurationMs(feed);
+      const started = Date.now();
       const result = await rejectOrderAction(workflowOrder.id, comment);
+      const waitMs = minMs - (Date.now() - started);
+      if (waitMs > 0) await delay(waitMs);
+      setProcessingAction(null);
       if (result.error) {
         toast.error("Could not reject");
         return;
@@ -121,6 +176,11 @@ export function OrdersTable({ result }: OrdersTableProps) {
   return (
     <DataTableShell>
       <TableSearchToolbar value={query} onChange={setQuery} placeholder="Search orders…">
+        {selection.selectedCount > 0 ? (
+          <Button variant="secondary" onClick={selection.clearSelection}>
+            {selection.selectedCount} selected
+          </Button>
+        ) : null}
         <Button variant="outline" asChild>
           <a href="/planning/suggested-orders">Suggested orders</a>
         </Button>
@@ -130,6 +190,14 @@ export function OrdersTable({ result }: OrdersTableProps) {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10">
+                <Checkbox
+                  checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
+                  onCheckedChange={(checked) => selection.toggleAll(checked === true)}
+                  aria-label="Select all orders"
+                />
+              </TableHead>
+              <TableHead className="w-12">#</TableHead>
               <TableHead>Order #</TableHead>
               <TableHead>Branch</TableHead>
               <TableHead>Type</TableHead>
@@ -139,8 +207,16 @@ export function OrdersTable({ result }: OrdersTableProps) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.map((o) => (
-              <TableRow key={o.id}>
+            {filtered.map((o, index) => (
+              <TableRow key={o.id} data-state={selection.isRowSelected(o.id) ? "selected" : undefined}>
+                <TableCell>
+                  <Checkbox
+                    checked={selection.isRowSelected(o.id)}
+                    onCheckedChange={(checked) => selection.toggleRow(o.id, checked === true)}
+                    aria-label={`Select order ${o.orderNumber}`}
+                  />
+                </TableCell>
+                <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
                 <TableCell className="font-mono text-sm">{o.orderNumber}</TableCell>
                 <TableCell>{o.branch.name}</TableCell>
                 <TableCell>
@@ -159,9 +235,11 @@ export function OrdersTable({ result }: OrdersTableProps) {
                 </TableCell>
                 <TableCell>
                   {isOrderPendingApproval(o.status as BranchOrderStatus) ? (
-                    <Button size="sm" variant="outline" onClick={() => setWorkflowOrder(o)}>
-                      Review
-                    </Button>
+                    <OrderReviewButton
+                      order={o}
+                      viewerRoleSlugs={viewerRoleSlugs}
+                      onReview={() => setWorkflowOrder(o)}
+                    />
                   ) : null}
                 </TableCell>
               </TableRow>
@@ -200,7 +278,64 @@ export function OrdersTable({ result }: OrdersTableProps) {
       {showCreate ? (
         <CreateOrderDialog onClose={() => setShowCreate(false)} />
       ) : null}
+      <LoadingModal
+        open={pending && processingAction !== null}
+        title={
+          processingAction === "reject" ? "Rejecting order" : "Processing approval"
+        }
+        description="Please wait while the order is saved."
+        feedItems={
+          processingAction === "reject" ? [...ORDER_REJECT_FEED] : [...ORDER_APPROVE_FEED]
+        }
+      />
     </DataTableShell>
+  );
+}
+
+interface OrderReviewButtonProps {
+  order: OrderRow;
+  viewerRoleSlugs: string[];
+  onReview: () => void;
+}
+
+function OrderReviewButton({ order, viewerRoleSlugs, onReview }: OrderReviewButtonProps) {
+  const status = order.status as BranchOrderStatus;
+  const orderType = order.orderType as BranchOrderType;
+  const canReview = canApproveOrder(status, orderType, viewerRoleSlugs);
+  const denialReason = getOrderReviewDenialReason(status, orderType);
+
+  const button = (
+    <Button
+      size="sm"
+      variant="outline"
+      disabled={!canReview}
+      onClick={() => {
+        if (canReview) onReview();
+      }}
+    >
+      Review
+    </Button>
+  );
+
+  if (canReview) {
+    return button;
+  }
+
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-block w-fit cursor-not-allowed">{button}</span>
+        </TooltipTrigger>
+        <TooltipContent
+          side="left"
+          sideOffset={8}
+          className="w-max max-w-[14rem] text-left text-pretty"
+        >
+          {denialReason}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 

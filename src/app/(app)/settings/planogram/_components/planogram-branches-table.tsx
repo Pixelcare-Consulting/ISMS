@@ -10,7 +10,9 @@ import {
   DataTableScroll,
   DataTableShell,
 } from "@/components/data-table/data-table-shell";
+import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { TableSearchToolbar } from "@/components/data-table/table-search-bar";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -41,6 +43,7 @@ export function PlanogramBranchesTable({ branches }: PlanogramBranchesTableProps
       ),
     [branches, query],
   );
+  const selection = useTableSelection(filtered.map((branch) => branch.id));
 
   if (branches.length === 0) {
     return (
@@ -61,11 +64,25 @@ export function PlanogramBranchesTable({ branches }: PlanogramBranchesTableProps
         value={query}
         onChange={setQuery}
         placeholder="Search by branch name or SAP code…"
-      />
+      >
+        {selection.selectedCount > 0 ? (
+          <Button variant="secondary" size="sm" onClick={selection.clearSelection}>
+            {selection.selectedCount} selected
+          </Button>
+        ) : null}
+      </TableSearchToolbar>
       <DataTableScroll>
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/30 hover:bg-muted/30">
+              <TableHead className="w-10">
+                <Checkbox
+                  checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
+                  onCheckedChange={(checked) => selection.toggleAll(checked === true)}
+                  aria-label="Select all branches"
+                />
+              </TableHead>
+              <TableHead className="w-12">#</TableHead>
               <TableHead className="w-[45%]">Branch</TableHead>
               <TableHead className="w-[35%]">SAP code</TableHead>
               <TableHead className="w-[20%] text-right"> </TableHead>
@@ -74,13 +91,21 @@ export function PlanogramBranchesTable({ branches }: PlanogramBranchesTableProps
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={3} className="h-24 text-center text-muted-foreground">
+                <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
                   No branches match your search.
                 </TableCell>
               </TableRow>
             ) : (
-              filtered.map((branch) => (
-                <TableRow key={branch.id}>
+              filtered.map((branch, index) => (
+                <TableRow key={branch.id} data-state={selection.isRowSelected(branch.id) ? "selected" : undefined}>
+                  <TableCell>
+                    <Checkbox
+                      checked={selection.isRowSelected(branch.id)}
+                      onCheckedChange={(checked) => selection.toggleRow(branch.id, checked === true)}
+                      aria-label={`Select branch ${branch.name}`}
+                    />
+                  </TableCell>
+                  <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
                   <TableCell className="font-medium">{branch.name}</TableCell>
                   <TableCell className="font-mono text-sm text-muted-foreground">
                     {branch.sapCode}

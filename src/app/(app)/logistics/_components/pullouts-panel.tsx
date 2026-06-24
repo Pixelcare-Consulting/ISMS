@@ -17,9 +17,11 @@ import {
   DataTableScroll,
   DataTableShell,
 } from "@/components/data-table/data-table-shell";
+import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { TablePagination } from "@/components/data-table/table-pagination";
 import { TableSearchToolbar } from "@/components/data-table/table-search-bar";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -98,6 +100,7 @@ export function PulloutsPanel({ pullouts }: PulloutsPanelProps) {
       ),
     [pullouts.items, query],
   );
+  const selection = useTableSelection(filtered.map((p) => p.id));
 
   function runAction(action: () => Promise<unknown>, message: string) {
     startTransition(async () => {
@@ -114,6 +117,11 @@ export function PulloutsPanel({ pullouts }: PulloutsPanelProps) {
         onChange={setQuery}
         placeholder="Search pull-outs…"
       >
+        {selection.selectedCount > 0 ? (
+          <Button variant="secondary" onClick={selection.clearSelection}>
+            {selection.selectedCount} selected
+          </Button>
+        ) : null}
         {pulloutReasons.length > 0 ? (
           <select
             className="h-9 rounded-md border px-2 text-sm"
@@ -205,6 +213,14 @@ export function PulloutsPanel({ pullouts }: PulloutsPanelProps) {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10">
+                <Checkbox
+                  checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
+                  onCheckedChange={(checked) => selection.toggleAll(checked === true)}
+                  aria-label="Select all pull-outs"
+                />
+              </TableHead>
+              <TableHead className="w-12">#</TableHead>
               <TableHead>No.</TableHead>
               <TableHead>Branch</TableHead>
               <TableHead>Warehouse</TableHead>
@@ -214,8 +230,16 @@ export function PulloutsPanel({ pullouts }: PulloutsPanelProps) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.map((p) => (
-              <TableRow key={p.id}>
+            {filtered.map((p, index) => (
+              <TableRow key={p.id} data-state={selection.isRowSelected(p.id) ? "selected" : undefined}>
+                <TableCell>
+                  <Checkbox
+                    checked={selection.isRowSelected(p.id)}
+                    onCheckedChange={(checked) => selection.toggleRow(p.id, checked === true)}
+                    aria-label={`Select pull-out ${p.pulloutNo}`}
+                  />
+                </TableCell>
+                <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
                 <TableCell>{p.pulloutNo}</TableCell>
                 <TableCell>{p.branch.name}</TableCell>
                 <TableCell>{p.warehouse.name}</TableCell>

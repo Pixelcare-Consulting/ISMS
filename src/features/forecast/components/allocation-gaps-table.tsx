@@ -7,9 +7,11 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AppDataTable, AppDataTableBody } from "@/components/data-table";
+import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { TablePagination } from "@/components/data-table/table-pagination";
 import { TableSearchBar } from "@/components/data-table/table-search-bar";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -95,6 +97,7 @@ export function AllocationGapsTable({
   const router = useRouter();
   const [branch, setBranch] = useState(currentBranch ?? "");
   const [q, setQ] = useState(currentQ ?? "");
+  const selection = useTableSelection(result.items.map((item) => item.id));
 
   const hasActiveFilters = Boolean(currentBranch || currentQ);
 
@@ -176,9 +179,24 @@ export function AllocationGapsTable({
         emptyMessage={emptyMessage}
       >
         <AppDataTableBody>
+          {selection.selectedCount > 0 ? (
+            <div className="px-4 pb-2">
+              <Button variant="secondary" size="sm" onClick={selection.clearSelection}>
+                {selection.selectedCount} selected
+              </Button>
+            </div>
+          ) : null}
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
+                    onCheckedChange={(checked) => selection.toggleAll(checked === true)}
+                    aria-label="Select all allocation gaps"
+                  />
+                </TableHead>
+                <TableHead className="w-12">#</TableHead>
                 <TableHead>Branch</TableHead>
                 <TableHead>SKU</TableHead>
                 {showStockColumns ? (
@@ -191,8 +209,16 @@ export function AllocationGapsTable({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {result.items.map((g) => (
-                <TableRow key={g.id}>
+              {result.items.map((g, index) => (
+                <TableRow key={g.id} data-state={selection.isRowSelected(g.id) ? "selected" : undefined}>
+                  <TableCell>
+                    <Checkbox
+                      checked={selection.isRowSelected(g.id)}
+                      onCheckedChange={(checked) => selection.toggleRow(g.id, checked === true)}
+                      aria-label={`Select gap ${g.model.skuCode}`}
+                    />
+                  </TableCell>
+                  <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
                   <TableCell>{g.branch.name}</TableCell>
                   <TableCell className="font-mono text-sm">{g.model.skuCode}</TableCell>
                   {showStockColumns ? (

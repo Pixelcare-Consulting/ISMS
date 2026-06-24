@@ -26,6 +26,7 @@ import {
   DataTableScroll,
   DataTableShell,
 } from "@/components/data-table/data-table-shell";
+import { useTableSelection } from "@/components/data-table/use-table-selection";
 import {
   Dialog,
   DialogContent,
@@ -34,6 +35,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -82,6 +84,9 @@ export function OpsPanel({ deliveries, transfers, pullouts, branches }: OpsPanel
     null,
   );
   const [pending, startTransition] = useTransition();
+  const deliverySelection = useTableSelection(deliveries.map((delivery) => delivery.id));
+  const transferSelection = useTableSelection(transfers.map((transfer) => transfer.id));
+  const pulloutSelection = useTableSelection(pullouts.map((pullout) => pullout.id));
 
   function confirmDeliveryAction() {
     if (!pendingDelivery) return;
@@ -139,6 +144,14 @@ export function OpsPanel({ deliveries, transfers, pullouts, branches }: OpsPanel
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={deliverySelection.isAllSelected || (deliverySelection.isPartiallySelected ? "indeterminate" : false)}
+                    onCheckedChange={(checked) => deliverySelection.toggleAll(checked === true)}
+                    aria-label="Select all deliveries"
+                  />
+                </TableHead>
+                <TableHead className="w-12">#</TableHead>
                 <TableHead>Branch</TableHead>
                 <TableHead>Reference</TableHead>
                 <TableHead>Status</TableHead>
@@ -146,8 +159,16 @@ export function OpsPanel({ deliveries, transfers, pullouts, branches }: OpsPanel
               </TableRow>
             </TableHeader>
             <TableBody>
-              {deliveries.map((d) => (
-                <TableRow key={d.id}>
+              {deliveries.map((d, index) => (
+                <TableRow key={d.id} data-state={deliverySelection.isRowSelected(d.id) ? "selected" : undefined}>
+                  <TableCell>
+                    <Checkbox
+                      checked={deliverySelection.isRowSelected(d.id)}
+                      onCheckedChange={(checked) => deliverySelection.toggleRow(d.id, checked === true)}
+                      aria-label={`Select delivery ${d.deliveryNo}`}
+                    />
+                  </TableCell>
+                  <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
                   <TableCell>{d.branch.name}</TableCell>
                   <TableCell>{d.deliveryNo}</TableCell>
                   <TableCell>
@@ -205,14 +226,30 @@ export function OpsPanel({ deliveries, transfers, pullouts, branches }: OpsPanel
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={transferSelection.isAllSelected || (transferSelection.isPartiallySelected ? "indeterminate" : false)}
+                    onCheckedChange={(checked) => transferSelection.toggleAll(checked === true)}
+                    aria-label="Select all transfers"
+                  />
+                </TableHead>
+                <TableHead className="w-12">#</TableHead>
                 <TableHead>From</TableHead>
                 <TableHead>To</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {transfers.map((t) => (
-                <TableRow key={t.id}>
+              {transfers.map((t, index) => (
+                <TableRow key={t.id} data-state={transferSelection.isRowSelected(t.id) ? "selected" : undefined}>
+                  <TableCell>
+                    <Checkbox
+                      checked={transferSelection.isRowSelected(t.id)}
+                      onCheckedChange={(checked) => transferSelection.toggleRow(t.id, checked === true)}
+                      aria-label={`Select transfer ${t.id}`}
+                    />
+                  </TableCell>
+                  <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
                   <TableCell>{t.fromBranch.name}</TableCell>
                   <TableCell>{t.toBranch.name}</TableCell>
                   <TableCell>
@@ -234,13 +271,29 @@ export function OpsPanel({ deliveries, transfers, pullouts, branches }: OpsPanel
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={pulloutSelection.isAllSelected || (pulloutSelection.isPartiallySelected ? "indeterminate" : false)}
+                    onCheckedChange={(checked) => pulloutSelection.toggleAll(checked === true)}
+                    aria-label="Select all pull-outs"
+                  />
+                </TableHead>
+                <TableHead className="w-12">#</TableHead>
                 <TableHead>Branch</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {pullouts.map((p) => (
-                <TableRow key={p.id}>
+              {pullouts.map((p, index) => (
+                <TableRow key={p.id} data-state={pulloutSelection.isRowSelected(p.id) ? "selected" : undefined}>
+                  <TableCell>
+                    <Checkbox
+                      checked={pulloutSelection.isRowSelected(p.id)}
+                      onCheckedChange={(checked) => pulloutSelection.toggleRow(p.id, checked === true)}
+                      aria-label={`Select pull-out ${p.id}`}
+                    />
+                  </TableCell>
+                  <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
                   <TableCell>{p.branch.name}</TableCell>
                   <TableCell>
                     <StatusCodeBadge code={p.statusCode.code} name={p.statusCode.name} />
