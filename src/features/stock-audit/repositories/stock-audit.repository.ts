@@ -133,6 +133,29 @@ export const stockAuditRepository = {
     return prisma.stockVariance.create({ data });
   },
 
+  /** Atomically mark all pending lines as variances and advance session status. */
+  completeCountingTx(
+    tenantId: string,
+    sessionId: string,
+    pendingLineIds: string[],
+    variance: Omit<Prisma.StockVarianceUncheckedCreateInput, "lineId">,
+    nextStatus: Prisma.StockCountSessionUpdateInput["status"],
+  ) {
+    return prisma.$transaction(async (tx) => {
+      for (const lineId of pendingLineIds) {
+        await tx.stockCountLine.update({
+          where: { id: lineId },
+          data: { status: "variance" },
+        });
+        await tx.stockVariance.create({ data: { ...variance, lineId } });
+      }
+      await tx.stockCountSession.update({
+        where: { id: sessionId, tenantId },
+        data: { status: nextStatus },
+      });
+    });
+  },
+
   updateVariance(
     tenantId: string,
     varianceId: string,

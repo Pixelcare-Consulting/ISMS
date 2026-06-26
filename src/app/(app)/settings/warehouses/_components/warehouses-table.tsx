@@ -8,7 +8,7 @@ import { toast } from "sonner";
 
 import {
   createWarehouseAction,
-  createWarehouseLocationAction,
+  addWarehouseLocationAction,
   deleteWarehouseAction,
   deleteWarehouseLocationAction,
 } from "@/features/warehouses/actions/warehouse.actions";
@@ -116,7 +116,7 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
 
   function addLocation(warehouseId: string) {
     startTransition(async () => {
-      const result = await createWarehouseLocationAction({
+      const result = await addWarehouseLocationAction({
         warehouseId,
         code: locCode,
         name: locName,

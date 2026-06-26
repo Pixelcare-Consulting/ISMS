@@ -127,6 +127,23 @@ export const planogramRepository = {
     });
   },
 
+  async findOnPlanogramPairs(
+    tenantId: string,
+    pairs: { branchId: string; modelId: string }[],
+  ): Promise<Set<string>> {
+    if (pairs.length === 0) return new Set();
+
+    const branchIds = [...new Set(pairs.map((p) => p.branchId))];
+    const modelIds = [...new Set(pairs.map((p) => p.modelId))];
+
+    const rows = await prisma.branchPlanogram.findMany({
+      where: { tenantId, branchId: { in: branchIds }, modelId: { in: modelIds } },
+      select: { branchId: true, modelId: true },
+    });
+
+    return new Set(rows.map((r) => `${r.branchId}:${r.modelId}`));
+  },
+
   isModelOnBranchPlanogram(tenantId: string, branchId: string, modelId: string) {
     return prisma.branchPlanogram.findFirst({
       where: { tenantId, branchId, modelId },

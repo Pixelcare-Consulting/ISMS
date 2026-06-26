@@ -6,7 +6,6 @@ import { z } from "zod";
 import { warehouseService } from "@/features/warehouses/services/warehouse.service";
 import { warehouseRepository } from "@/features/warehouses/repositories/warehouse.repository";
 import { requirePermission } from "@/lib/auth/permissions";
-import { prisma } from "@/lib/database/client";
 
 const warehouseSchema = z.object({
   code: z.string().min(1),
@@ -84,23 +83,14 @@ export async function addWarehouseLocationAction(input: unknown) {
   }
 }
 
-export async function createWarehouseLocationAction(input: unknown) {
-  return addWarehouseLocationAction(input);
-}
-
 export async function deleteWarehouseAction(warehouseId: string) {
   const session = await requirePermission("master_data.manage");
   try {
-    const linked = await prisma.warehouse.findFirst({
-      where: { id: warehouseId, tenantId: session.user.tenantId },
-      include: { _count: { select: { pulloutsDestination: true, aors: true } } },
+    await warehouseService.deleteWarehouse({
+      tenantId: session.user.tenantId,
+      actorUserId: session.user.id,
+      warehouseId,
     });
-    if (!linked) return { error: "Warehouse not found" };
-    if (linked._count.pulloutsDestination > 0 || linked._count.aors > 0) {
-      return { error: "Warehouse is linked to pull-outs or AORs and cannot be deleted" };
-    }
-    await prisma.warehouseLocation.deleteMany({ where: { warehouseId } });
-    await prisma.warehouse.delete({ where: { id: warehouseId, tenantId: session.user.tenantId } });
     revalidatePath("/settings/warehouses");
     return { success: true as const, warehouseId };
   } catch (e) {
@@ -110,13 +100,13 @@ export async function deleteWarehouseAction(warehouseId: string) {
 
 export async function deleteWarehouseLocationAction(warehouseId: string, locationId: string) {
   const session = await requirePermission("master_data.manage");
-  const warehouse = await prisma.warehouse.findFirst({
-    where: { id: warehouseId, tenantId: session.user.tenantId },
-  });
-  if (!warehouse) return { error: "Warehouse not found" };
-
   try {
-    await warehouseRepository.deleteLocation(warehouseId, locationId);
+    await warehouseService.deleteLocation({
+      tenantId: session.user.tenantId,
+      actorUserId: session.user.id,
+      warehouseId,
+      locationId,
+    });
     revalidatePath("/settings/warehouses");
     return { success: true as const, warehouseId, locationId };
   } catch (e) {

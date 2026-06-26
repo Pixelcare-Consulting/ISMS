@@ -49,10 +49,21 @@ export const inventoryRepository = {
 
     const where: Prisma.BranchInventoryWhereInput = {
       tenantId,
-      branchId: { in: effectiveBranchIds },
       ...(filters?.skuCode
         ? { serialNumber: { model: { skuCode: filters.skuCode } } }
         : {}),
+      ...(filters?.offPlanogramOnly
+        ? {
+            // Off-planogram = model not in THIS branch's planogram. Build a
+            // per-branch OR so the filter (and paging/totals) run in the DB.
+            OR: effectiveBranchIds.map((branchId) => ({
+              branchId,
+              serialNumber: {
+                model: { branchPlanograms: { none: { branchId } } },
+              },
+            })),
+          }
+        : { branchId: { in: effectiveBranchIds } }),
     };
 
     const [items, total] = await Promise.all([

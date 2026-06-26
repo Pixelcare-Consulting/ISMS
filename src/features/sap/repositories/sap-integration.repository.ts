@@ -60,7 +60,7 @@ export const sapIntegrationRepository = {
 
   async claimPendingJobsSafe(tenantId: string, limit = 10) {
     const now = new Date();
-    return prisma.sapIntegrationJob.findMany({
+    const candidates = await prisma.sapIntegrationJob.findMany({
       where: {
         tenantId,
         status: { in: ["pending", "failed"] },
@@ -68,17 +68,23 @@ export const sapIntegrationRepository = {
       },
       orderBy: { createdAt: "asc" },
       take: limit,
-    }).then((jobs) => jobs.filter((j) => j.attemptCount < j.maxAttempts));
-  },
-
-  markProcessing(jobId: string) {
-    return prisma.sapIntegrationJob.update({
-      where: { id: jobId },
-      data: {
-        status: "processing",
-        attemptCount: { increment: 1 },
-      },
     });
+
+    // Claim each job atomically: only the worker whose conditional updateMany
+    // actually flips the row out of pending/failed owns it. A concurrent worker
+    // sees count === 0 and skips, preventing double-processing.
+    const claimed: typeof candidates = [];
+    for (const job of candidates) {
+      if (job.attemptCount >= job.maxAttempts) continue;
+      const result = await prisma.sapIntegrationJob.updateMany({
+        where: { id: job.id, status: { in: ["pending", "failed"] } },
+        data: { status: "processing", attemptCount: { increment: 1 } },
+      });
+      if (result.count === 1) {
+        claimed.push({ ...job, status: "processing", attemptCount: job.attemptCount + 1 });
+      }
+    }
+    return claimed;
   },
 
   markCompleted(jobId: string, sapDocRef: string) {

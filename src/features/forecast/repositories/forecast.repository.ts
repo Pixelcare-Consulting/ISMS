@@ -125,6 +125,27 @@ export const forecastRepository = {
     });
   },
 
+  replaceAllocationsForPeriod(
+    tenantId: string,
+    periodId: string,
+    rows: {
+      branchId: string;
+      modelId: string;
+      planogramMax: number;
+      currentStock: number;
+      gapQty: number;
+      computedAt: Date;
+    }[],
+  ) {
+    return prisma.$transaction(async (tx) => {
+      await tx.branchAllocation.deleteMany({ where: { tenantId, periodId } });
+      if (rows.length === 0) return { count: 0 };
+      return tx.branchAllocation.createMany({
+        data: rows.map((row) => ({ tenantId, periodId, ...row })),
+      });
+    });
+  },
+
   getPlanningSummary(tenantId: string) {
     return prisma.planningPeriod.findFirst({
       where: { tenantId, isActive: true },

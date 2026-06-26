@@ -3,9 +3,12 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync }
 const KEY_SALT = "isms-sap-service-layer-v1";
 
 function getEncryptionKey(): Buffer {
-  const secret = process.env.AUTH_SECRET;
+  // Prefer a dedicated key so credential encryption is decoupled from the JWT
+  // signing secret. Falls back to AUTH_SECRET for backward compatibility with
+  // already-encrypted data (rotate by setting SAP_ENCRYPTION_KEY + re-encrypting).
+  const secret = process.env.SAP_ENCRYPTION_KEY ?? process.env.AUTH_SECRET;
   if (!secret) {
-    throw new Error("AUTH_SECRET is not configured");
+    throw new Error("SAP_ENCRYPTION_KEY or AUTH_SECRET must be configured");
   }
   return scryptSync(secret, KEY_SALT, 32);
 }
@@ -28,18 +31,21 @@ export function encryptSecret(plaintext: string): string {
 }
 
 export function decryptSecret(ciphertext: string): string {
+  if (ciphertext === "") return "";
+
   const buffer = Buffer.from(ciphertext, "base64");
   if (buffer.length < 29) {
-    return ciphertext;
+    // Too short to be a valid iv|tag|payload envelope. For a credential vault we
+    // fail loudly rather than silently handing back unusable data.
+    throw new Error("Stored secret is not in the expected encrypted format");
   }
-  try {
-    const iv = buffer.subarray(0, 12);
-    const tag = buffer.subarray(12, 28);
-    const encrypted = buffer.subarray(28);
-    const decipher = createDecipheriv("aes-256-gcm", getEncryptionKey(), iv);
-    decipher.setAuthTag(tag);
-    return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString("utf8");
-  } catch {
-    return ciphertext;
-  }
+
+  const iv = buffer.subarray(0, 12);
+  const tag = buffer.subarray(12, 28);
+  const encrypted = buffer.subarray(28);
+  const decipher = createDecipheriv("aes-256-gcm", getEncryptionKey(), iv);
+  decipher.setAuthTag(tag);
+  // A wrong key or tampered data throws here (GCM auth-tag mismatch) — let it
+  // propagate so misconfiguration/tampering surfaces instead of leaking garbage.
+  return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString("utf8");
 }

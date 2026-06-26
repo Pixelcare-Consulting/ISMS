@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import { prisma } from "@/lib/database/client";
 import { logger } from "@/lib/shared/logger";
+import { rateLimit } from "@/lib/cache/redis";
 import { isPlatformOperator as checkPlatformOperator } from "@/features/roles/constants/role.constants";
 
 const credentialsSchema = z.object({
@@ -85,13 +86,21 @@ export const authConfig: NextAuthConfig = {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         const parsed = credentialsSchema.safeParse(credentials);
         if (!parsed.success) {
           return null;
         }
 
         const { email, password } = parsed.data;
+
+        const ip =
+          request?.headers?.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+        const { allowed } = await rateLimit(`login:${ip}:${email.toLowerCase()}`, 5, 300);
+        if (!allowed) {
+          throw new Error("Too many login attempts. Please try again in a few minutes.");
+        }
+
         const user = await findUserByEmailAndPassword(email, password);
 
         if (!user) return null;
@@ -174,5 +183,7 @@ export const authConfig: NextAuthConfig = {
       logger.info({ userId: user.id }, "User signed in");
     },
   },
-  trustHost: true,
+  // Trust the host only in non-production. In production set AUTH_URL so the
+  // host header can't be spoofed.
+  trustHost: process.env.NODE_ENV !== "production" || !process.env.AUTH_URL,
 };

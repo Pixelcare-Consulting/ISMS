@@ -226,15 +226,30 @@ export const orderService = {
     const level = getApprovalLevelForStatus(order.status, order.orderType);
     const comment = input?.comment;
 
+    const nextStatus = nextStatusAfterApprove(order.status, order.orderType);
+    const isFinal = nextStatus === "approved";
+
+    const adjustmentMap = new Map(
+      (input?.lineAdjustments ?? []).map((l) => [l.detailId, l.approvedQty]),
+    );
+
+    if (isFinal) {
+      for (const line of order.details) {
+        const qty = adjustmentMap.get(line.id);
+        if (qty != null && (qty < 1 || qty > line.quantity)) {
+          throw new Error(
+            `Approved quantity must be between 1 and ordered quantity (${line.quantity})`,
+          );
+        }
+      }
+    }
+
     await orderRepository.addApproval(orderId, {
       level,
       roleSlug,
       approvedById: userId,
       comment,
     });
-
-    const nextStatus = nextStatusAfterApprove(order.status, order.orderType);
-    const isFinal = nextStatus === "approved";
 
     const deliveryResolution =
       isFinal && input?.deliveryDueDate
@@ -245,19 +260,6 @@ export const orderService = {
         : { dueDate: null as Date | null, rescheduled: false, rescheduledFrom: undefined as string | undefined };
 
     if (isFinal) {
-      const adjustmentMap = new Map(
-        (input?.lineAdjustments ?? []).map((l) => [l.detailId, l.approvedQty]),
-      );
-
-      for (const line of order.details) {
-        const qty = adjustmentMap.get(line.id);
-        if (qty != null && (qty < 1 || qty > line.quantity)) {
-          throw new Error(
-            `Approved quantity must be between 1 and ordered quantity (${line.quantity})`,
-          );
-        }
-      }
-
       const lineApprovedQty = order.details.map((line) => ({
         detailId: line.id,
         approvedQty: adjustmentMap.get(line.id) ?? line.quantity,
@@ -283,19 +285,32 @@ export const orderService = {
 
       const refreshed = await orderRepository.findById(tenantId, orderId);
       if (refreshed) {
-        await sapService.emitApprovedOrder(tenantId, {
-          id: refreshed.id,
-          orderNumber: refreshed.orderNumber,
-          branchId: refreshed.branchId,
-          branchSapCode: refreshed.branch.sapCode,
-          processedAt: refreshed.processedAt,
-          lines: refreshed.details.map((d) => ({
-            skuCode: d.model.skuCode,
-            approvedQty: d.approvedQty,
-            quantity: d.quantity,
-          })),
-        });
-        await sapService.processPendingJobs(tenantId, userId);
+        // Order is already committed as approved — SAP emission/processing must
+        // never fail the approval. Capture errors instead of bubbling them up.
+        try {
+          await sapService.emitApprovedOrder(tenantId, {
+            id: refreshed.id,
+            orderNumber: refreshed.orderNumber,
+            branchId: refreshed.branchId,
+            branchSapCode: refreshed.branch.sapCode,
+            processedAt: refreshed.processedAt,
+            lines: refreshed.details.map((d) => ({
+              skuCode: d.model.skuCode,
+              approvedQty: d.approvedQty,
+              quantity: d.quantity,
+            })),
+          });
+          await sapService.processPendingJobs(tenantId, userId);
+        } catch (e) {
+          await auditService.log({
+            tenantId,
+            userId,
+            action: "order.sap_emit_failed",
+            entityType: "BranchOrder",
+            entityId: orderId,
+            metadata: { error: e instanceof Error ? e.message : "unknown" },
+          });
+        }
       }
     } else {
       await orderRepository.updateStatus(tenantId, orderId, nextStatus);
@@ -335,16 +350,26 @@ export const orderService = {
     });
   },
 
-  async reject(tenantId: string, userId: string, orderId: string, comment?: string) {
+  async reject(
+    tenantId: string,
+    userId: string,
+    orderId: string,
+    roleSlugs: string[],
+    comment?: string,
+  ) {
     const order = await orderRepository.findById(tenantId, orderId);
     if (!order) throw new Error("Order not found");
+    if (!canApproveOrder(order.status, order.orderType, roleSlugs)) {
+      throw new Error("Not authorized to reject at this approval step");
+    }
 
     const level = getApprovalLevelForStatus(order.status, order.orderType);
+    const roleSlug = getRoleSlugForApproval(order.status, order.orderType);
 
     await orderRepository.updateStatus(tenantId, orderId, "rejected");
     await orderRepository.addRejection(orderId, {
       level,
-      roleSlug: "reviewer",
+      roleSlug,
       comment,
     });
 

@@ -69,6 +69,30 @@ export async function deleteCache(key: string): Promise<void> {
   }
 }
 
+/**
+ * Fixed-window rate limiter. Returns whether the action is allowed. Fails open
+ * (allows) when Upstash isn't configured or errors, so it never blocks logins
+ * due to infra issues.
+ */
+export async function rateLimit(
+  key: string,
+  limit: number,
+  windowSeconds: number,
+): Promise<{ allowed: boolean; remaining: number }> {
+  const client = getRedisClient();
+  if (!client) return { allowed: true, remaining: limit };
+
+  try {
+    const count = await client.incr(key);
+    if (count === 1) {
+      await client.expire(key, windowSeconds);
+    }
+    return { allowed: count <= limit, remaining: Math.max(0, limit - count) };
+  } catch {
+    return { allowed: true, remaining: limit };
+  }
+}
+
 export const CACHE_TTL = {
   masterData: 300,
   reasonCodes: 120,

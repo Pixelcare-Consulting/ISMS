@@ -256,7 +256,9 @@ export const sapService = {
     const results: { jobId: string; status: string; sapDocRef?: string; error?: string }[] = [];
 
     for (const job of jobs) {
-      const updated = await sapIntegrationRepository.markProcessing(job.id);
+      // Job is already claimed (status=processing, attemptCount incremented) by
+      // claimPendingJobsSafe — no separate markProcessing step.
+      const updated = job;
       try {
         let sapDocRef: string;
         switch (updated.jobType) {
