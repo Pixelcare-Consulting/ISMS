@@ -32,7 +32,7 @@ export function TablePagination({
   const resolvedLabel = meta?.itemLabel ?? label;
 
   return (
-    <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground">
+    <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-3 text-sm text-muted-foreground">
       <span>
         {resolvedTotal} {resolvedLabel}
         {resolvedTotal === 1 ? "" : "s"} · page {resolvedPage} of {resolvedTotalPages}
