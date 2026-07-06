@@ -1,66 +1,74 @@
 "use client";
 
-import { ChevronDown } from "lucide-react";
-import { usePathname } from "next/navigation";
+import { ChevronRight } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 
-import { SidebarNavItem } from "@/app/(app)/_components/sidebar-nav-item";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
+} from "@/components/ui/sidebar";
 import {
   isNavGroupActive,
+  isNavItemActive,
   type NavGroupEntry,
   type NavLinkItem,
 } from "@/config/app-navigation";
-import { cn } from "@/utils/cn";
 
 interface SidebarNavGroupProps {
   group: NavGroupEntry;
   items: NavLinkItem[];
+  pathname: string;
 }
 
-export function SidebarNavGroup({ group, items }: SidebarNavGroupProps) {
-  const pathname = usePathname();
+export function SidebarNavGroup({ group, items, pathname }: SidebarNavGroupProps) {
   const isChildActive = isNavGroupActive(pathname, items);
-  const [isOpen, setIsOpen] = useState(true);
-  const showItems = isOpen || isChildActive;
+  const [isOpen, setIsOpen] = useState(isChildActive);
   const Icon = group.icon;
 
   return (
-    <div className="space-y-1">
-      <button
-        type="button"
-        onClick={() => setIsOpen((open) => !open)}
-        className={cn(
-          "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-          isChildActive
-            ? "text-sidebar-foreground"
-            : "text-sidebar-muted hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
-        )}
-        aria-expanded={showItems}
-      >
-        <Icon className="size-[18px] shrink-0" />
-        <span className="flex-1 text-left">{group.label}</span>
-        <ChevronDown
-          className={cn(
-            "size-4 shrink-0 transition-transform",
-            showItems && "rotate-180",
-          )}
-        />
-      </button>
+    <Collapsible
+      asChild
+      open={isOpen || isChildActive}
+      onOpenChange={setIsOpen}
+      className="group/collapsible"
+    >
+      <SidebarMenuItem>
+        <CollapsibleTrigger asChild>
+          <SidebarMenuButton tooltip={group.label} isActive={isChildActive}>
+            <Icon />
+            <span>{group.label}</span>
+            <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+          </SidebarMenuButton>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <SidebarMenuSub>
+            {items.map((item) => {
+              const ItemIcon = item.icon;
+              const active = isNavItemActive(pathname, item.href);
 
-      {showItems ? (
-        <div className="ml-4 space-y-0.5 border-l border-white/10 pl-2">
-          {items.map((item) => (
-            <SidebarNavItem
-              key={item.href}
-              href={item.href}
-              label={item.label}
-              icon={item.icon}
-              pathname={pathname}
-              isSubmenu
-            />
-          ))}
-        </div>
-      ) : null}
-    </div>
+              return (
+                <SidebarMenuSubItem key={item.href}>
+                  <SidebarMenuSubButton asChild isActive={active}>
+                    <Link href={item.href}>
+                      <ItemIcon />
+                      <span>{item.label}</span>
+                    </Link>
+                  </SidebarMenuSubButton>
+                </SidebarMenuSubItem>
+              );
+            })}
+          </SidebarMenuSub>
+        </CollapsibleContent>
+      </SidebarMenuItem>
+    </Collapsible>
   );
 }

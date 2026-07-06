@@ -1,6 +1,12 @@
 import { SidebarBrand } from "@/app/(app)/_components/sidebar-brand";
 import { SidebarNav } from "@/app/(app)/_components/sidebar-nav";
 import { UserNav } from "@/app/(app)/_components/user-nav";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarHeader,
+} from "@/components/ui/sidebar";
 
 interface AppSidebarProps {
   branding: {
@@ -17,29 +23,27 @@ interface AppSidebarProps {
   };
 }
 
-function SidebarDivider() {
-  return <div className="mx-4 h-px bg-white/10" aria-hidden />;
-}
-
 export function AppSidebar({ branding, user }: AppSidebarProps) {
   return (
-    <aside className="app-sidebar flex h-full w-[260px] shrink-0 flex-col bg-sidebar text-sidebar-foreground">
-      <SidebarBrand
-        name={branding.name}
-        tagline={branding.tagline}
-        logo={branding.logo}
-      />
+    <Sidebar collapsible="icon" className="app-sidebar">
+      <SidebarHeader className="h-14 justify-center border-b border-sidebar-border">
+        <SidebarBrand
+          name={branding.name}
+          tagline={branding.tagline}
+          logo={branding.logo}
+        />
+      </SidebarHeader>
 
-      <SidebarDivider />
+      <SidebarContent>
+        <SidebarNav
+          permissions={user.permissions}
+          isPlatformOperator={user.isPlatformOperator}
+        />
+      </SidebarContent>
 
-      <SidebarNav
-        permissions={user.permissions}
-        isPlatformOperator={user.isPlatformOperator}
-      />
-
-      <SidebarDivider />
-
-      <UserNav name={user.name} email={user.email} image={user.image} />
-    </aside>
+      <SidebarFooter className="border-t border-sidebar-border">
+        <UserNav name={user.name} email={user.email} image={user.image} />
+      </SidebarFooter>
+    </Sidebar>
   );
 }

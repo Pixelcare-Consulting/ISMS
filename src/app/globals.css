@@ -30,6 +30,9 @@
   --sidebar-accent-foreground: 0 0% 100%;
   --sidebar-border: 248 24% 24%;
   --table-stripe: 230 60% 98%;
+  --sidebar-primary: 174 58% 39%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-ring: 174 58% 39%;
 }
 
 .dark {
@@ -59,6 +62,9 @@
   --sidebar-accent-foreground: 0 0% 100%;
   --sidebar-border: 248 24% 18%;
   --table-stripe: 240 10% 10%;
+  --sidebar-primary: 174 58% 45%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-ring: 174 58% 45%;
 }
 
 @theme inline {
@@ -93,6 +99,9 @@
   --radius-sm: calc(var(--radius) - 4px);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --color-sidebar-primary: hsl(var(--sidebar-primary));
+  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
+  --color-sidebar-ring: hsl(var(--sidebar-ring));
 }
 
 * {
