@@ -105,7 +105,7 @@ export function StockCountListPanel({ sessions }: StockCountListPanelProps) {
             if (open) void loadBranches();
           }}
         >
-          <SelectTrigger className="w-[200px]">
+          <SelectTrigger className="w-full sm:w-[200px]">
             <SelectValue placeholder="Branch" />
           </SelectTrigger>
           <SelectContent>
@@ -116,7 +116,7 @@ export function StockCountListPanel({ sessions }: StockCountListPanelProps) {
             ))}
           </SelectContent>
         </Select>
-        <Button disabled={pending} onClick={createSession}>
+        <Button className="w-full sm:w-auto" disabled={pending} onClick={createSession}>
           New count session
         </Button>
       </div>
