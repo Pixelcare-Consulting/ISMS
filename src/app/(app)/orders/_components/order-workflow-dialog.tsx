@@ -146,14 +146,14 @@ export function OrderWorkflowDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="max-h-[90vh] overflow-hidden sm:max-w-4xl">
+        <DialogContent className="max-h-[90svh] overflow-hidden sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Review order {orderNumber}</DialogTitle>
           <DialogDescription>
             Approve to advance the workflow chain or reject to cancel.
           </DialogDescription>
         </DialogHeader>
-        <div className="grid max-h-[calc(90vh-9.5rem)] min-h-0 gap-4 overflow-hidden md:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+        <div className="grid max-h-[calc(90svh-9.5rem)] min-h-0 gap-4 overflow-hidden md:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
           <div className="min-h-0 space-y-4 overflow-y-auto pl-1 pr-2">
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between gap-4">
