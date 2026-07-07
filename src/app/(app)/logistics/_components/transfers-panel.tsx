@@ -194,6 +194,7 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
           {branches.length >= 2 ? (
             <Button
               size="sm"
+              className="w-full sm:w-auto"
               disabled={pending}
               onClick={() =>
                 startTransition(async () => {

@@ -124,7 +124,7 @@ export function PulloutsPanel({ pullouts }: PulloutsPanelProps) {
         ) : null}
         {pulloutReasons.length > 0 ? (
           <select
-            className="h-9 rounded-md border px-2 text-sm"
+            className="h-9 w-full rounded-md border px-2 text-sm sm:w-auto"
             value={selectedReasonId}
             onChange={(e) => setSelectedReasonId(e.target.value)}
             aria-label="Pull-out reason"
@@ -149,7 +149,7 @@ export function PulloutsPanel({ pullouts }: PulloutsPanelProps) {
         />
         {branches.length > 0 ? (
           <select
-            className="h-9 rounded-md border px-2 text-sm"
+            className="h-9 w-full rounded-md border px-2 text-sm sm:w-auto"
             value={selectedBranchId || branches[0]?.id || ""}
             onChange={async (e) => {
               setSelectedBranchId(e.target.value);
@@ -169,6 +169,7 @@ export function PulloutsPanel({ pullouts }: PulloutsPanelProps) {
         {branches[0] && warehouses[0] ? (
           <Button
             size="sm"
+            className="w-full sm:w-auto"
             disabled={pending}
             onClick={() =>
               runAction(
