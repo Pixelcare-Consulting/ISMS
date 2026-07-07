@@ -293,6 +293,7 @@ function RecordSaleForm({ pending }: { pending: boolean }) {
         <Button
           type="button"
           variant="outline"
+          className="w-full sm:w-auto"
           onClick={async () => {
             const b = await listBranchesForOrderAction();
             setBranches(b);
@@ -307,7 +308,7 @@ function RecordSaleForm({ pending }: { pending: boolean }) {
         {branches.length > 0 ? (
           <>
             <select
-              className="h-9 rounded-md border px-2 text-sm"
+              className="h-9 w-full rounded-md border px-2 text-sm sm:w-auto"
               value={branchId}
               onChange={(e) => {
                 const id = e.target.value;
@@ -322,13 +323,13 @@ function RecordSaleForm({ pending }: { pending: boolean }) {
                 </option>
               ))}
             </select>
-            <div className="space-y-1">
+            <div className="w-full space-y-1 sm:w-auto">
               <Label htmlFor="sale-serial" className="text-xs text-muted-foreground">
                 Serial (STK, AOR-scoped)
               </Label>
               <select
                 id="sale-serial"
-                className="h-9 rounded-md border px-2 text-sm"
+                className="h-9 w-full rounded-md border px-2 text-sm sm:w-auto"
                 value={serialNumberId}
                 onChange={(e) => setSerialNumberId(e.target.value)}
                 disabled={serials.length === 0}
@@ -345,7 +346,7 @@ function RecordSaleForm({ pending }: { pending: boolean }) {
               type="number"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="w-32"
+              className="w-full sm:w-32"
               aria-label="Amount"
             />
             <label className="flex items-center gap-2 text-sm">
@@ -356,7 +357,7 @@ function RecordSaleForm({ pending }: { pending: boolean }) {
               />
               Reserved (RSV)
             </label>
-            <Button disabled={pending || !branchId} onClick={submit}>
+            <Button className="w-full sm:w-auto" disabled={pending || !branchId} onClick={submit}>
               Record sale
             </Button>
           </>
