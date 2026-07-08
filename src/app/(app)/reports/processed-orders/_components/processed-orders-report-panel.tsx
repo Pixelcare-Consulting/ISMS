@@ -42,7 +42,7 @@ export function ProcessedOrdersReportPanel() {
   }
 
   return (
-    <div className="max-w-xl space-y-4 rounded-xl border bg-card p-6 shadow-sm">
+    <div className="max-w-xl space-y-4 rounded-xl border bg-card p-4 shadow-sm sm:p-6">
       <p className="text-sm text-muted-foreground">
         Export approved branch order lines matching the ISMS-v2 Processed Order Summary layout.
       </p>

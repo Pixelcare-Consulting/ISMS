@@ -39,7 +39,7 @@ export function DailyStockReportPanel() {
   }
 
   return (
-    <div className="max-w-xl space-y-4 rounded-xl border bg-card p-6 shadow-sm">
+    <div className="max-w-xl space-y-4 rounded-xl border bg-card p-4 shadow-sm sm:p-6">
       <p className="text-sm text-muted-foreground">
         Branch × planogram SKU matrix with INV (STK) and SOLD (SLD) counts for the selected day.
       </p>

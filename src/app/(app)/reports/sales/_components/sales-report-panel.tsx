@@ -30,7 +30,7 @@ export function SalesReportPanel() {
   }
 
   return (
-    <div className="max-w-xl space-y-4 rounded-xl border bg-card p-6 shadow-sm">
+    <div className="max-w-xl space-y-4 rounded-xl border bg-card p-4 shadow-sm sm:p-6">
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor="sales-from">From date</Label>
