@@ -2,6 +2,10 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DataTableScroll,
+  DataTableShell,
+} from "@/components/data-table/data-table-shell";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
 import {
   Table,
@@ -50,58 +54,60 @@ export function PolicyVersionHistory({
   }
 
   return (
-    <div className="rounded-xl border bg-card shadow-sm">
-      <Table>
-        <TableHeader>
-          <TableRow className="bg-muted/30 hover:bg-muted/30">
-            <TableHead className="w-10">
-              <Checkbox
-                checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
-                onCheckedChange={(checked) => selection.toggleAll(checked === true)}
-                aria-label="Select all policy versions"
-              />
-            </TableHead>
-            <TableHead className="w-12">#</TableHead>
-            <TableHead>Version</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Author</TableHead>
-            <TableHead>Date</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {versions.map((row, index) => (
-            <TableRow
-              key={row.id}
-              className="cursor-pointer"
-              data-state={
-                selection.isRowSelected(row.id) || row.version === selectedVersion ? "selected" : undefined
-              }
-              onClick={() => onSelectVersion(row.version)}
-            >
-              <TableCell onClick={(event) => event.stopPropagation()}>
+    <DataTableShell>
+      <DataTableScroll>
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-muted/30 hover:bg-muted/30">
+              <TableHead className="w-10">
                 <Checkbox
-                  checked={selection.isRowSelected(row.id)}
-                  onCheckedChange={(checked) => selection.toggleRow(row.id, checked === true)}
-                  aria-label={`Select version ${row.version}`}
+                  checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
+                  onCheckedChange={(checked) => selection.toggleAll(checked === true)}
+                  aria-label="Select all policy versions"
                 />
-              </TableCell>
-              <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
-              <TableCell className="font-medium">v{row.version}</TableCell>
-              <TableCell>
-                <Badge variant={statusVariant(row.status)}>
-                  {POLICY_STATUS_LABELS[row.status as PolicyStatus] ?? row.status}
-                </Badge>
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {row.authorName}
-              </TableCell>
-              <TableCell className="whitespace-nowrap text-muted-foreground">
-                {new Date(row.createdAt).toLocaleDateString()}
-              </TableCell>
+              </TableHead>
+              <TableHead className="w-12">#</TableHead>
+              <TableHead>Version</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Author</TableHead>
+              <TableHead>Date</TableHead>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+          </TableHeader>
+          <TableBody>
+            {versions.map((row, index) => (
+              <TableRow
+                key={row.id}
+                className="cursor-pointer"
+                data-state={
+                  selection.isRowSelected(row.id) || row.version === selectedVersion ? "selected" : undefined
+                }
+                onClick={() => onSelectVersion(row.version)}
+              >
+                <TableCell onClick={(event) => event.stopPropagation()}>
+                  <Checkbox
+                    checked={selection.isRowSelected(row.id)}
+                    onCheckedChange={(checked) => selection.toggleRow(row.id, checked === true)}
+                    aria-label={`Select version ${row.version}`}
+                  />
+                </TableCell>
+                <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
+                <TableCell className="font-medium">v{row.version}</TableCell>
+                <TableCell>
+                  <Badge variant={statusVariant(row.status)}>
+                    {POLICY_STATUS_LABELS[row.status as PolicyStatus] ?? row.status}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {row.authorName}
+                </TableCell>
+                <TableCell className="whitespace-nowrap text-muted-foreground">
+                  {new Date(row.createdAt).toLocaleDateString()}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </DataTableScroll>
+    </DataTableShell>
   );
 }

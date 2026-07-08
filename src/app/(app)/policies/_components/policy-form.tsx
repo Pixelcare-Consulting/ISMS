@@ -66,7 +66,7 @@ export function PolicyForm({ mode, policy }: PolicyFormProps) {
   return (
     <form
       onSubmit={onSubmit}
-      className="mx-auto max-w-2xl space-y-4 rounded-xl border bg-card p-6 shadow-sm"
+      className="mx-auto max-w-2xl space-y-4 rounded-xl border bg-card p-4 shadow-sm sm:p-6"
       encType="multipart/form-data"
     >
       <div className="space-y-2">

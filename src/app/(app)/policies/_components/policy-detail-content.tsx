@@ -97,14 +97,14 @@ export function PolicyDetailContent({
       ) : null}
 
       {panel === "activity" ? (
-        <div className="rounded-xl border bg-card p-6 shadow-sm">
+        <div className="rounded-xl border bg-card p-4 shadow-sm sm:p-6">
           <PolicyActivityTimeline events={reviewEvents} />
         </div>
       ) : null}
 
       {panel === "current" ? (
         <div className="space-y-4">
-          <div className="rounded-xl border bg-card p-6 shadow-sm">
+          <div className="rounded-xl border bg-card p-4 shadow-sm sm:p-6">
             <div className="mb-4 flex items-center justify-between gap-2 text-sm text-muted-foreground">
               <span>
                 Viewing version <strong className="text-foreground">v{selected?.version}</strong>
