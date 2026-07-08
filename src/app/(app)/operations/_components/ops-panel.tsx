@@ -137,7 +137,7 @@ export function OpsPanel({ deliveries, transfers, pullouts, branches }: OpsPanel
   return (
     <div className="space-y-8">
       <DataTableShell>
-        <div className="flex items-center justify-between border-b px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
           <h3 className="font-medium">Deliveries (accept DIT → Stock)</h3>
         </div>
         <DataTableScroll>
@@ -218,7 +218,7 @@ export function OpsPanel({ deliveries, transfers, pullouts, branches }: OpsPanel
       </DataTableShell>
 
       <DataTableShell>
-        <div className="flex items-center justify-between border-b px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
           <h3 className="font-medium">Branch transfers</h3>
           <Button size="sm" onClick={() => setTransferOpen(true)}>New transfer</Button>
         </div>
@@ -263,7 +263,7 @@ export function OpsPanel({ deliveries, transfers, pullouts, branches }: OpsPanel
       </DataTableShell>
 
       <DataTableShell>
-        <div className="flex items-center justify-between border-b px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
           <h3 className="font-medium">Pull-outs</h3>
           <Button size="sm" onClick={() => setPulloutOpen(true)}>New pull-out</Button>
         </div>
