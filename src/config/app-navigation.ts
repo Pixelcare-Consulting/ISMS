@@ -221,7 +221,7 @@ export const appNavigation: NavEntry[] = [
         anyPermissions: ["planogram.view", "planogram.manage"],
       },
       {
-        href: "/settings/master-data/brands",
+        href: "/settings/master-data",
         label: "Master data",
         icon: Tags,
         permission: "master_data.manage",

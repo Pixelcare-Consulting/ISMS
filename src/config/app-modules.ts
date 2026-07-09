@@ -106,7 +106,7 @@ export const appModules: AppModule[] = [
   {
     id: "master_data",
     name: "Master Data",
-    route: "/settings/master-data/brands",
+    route: "/settings/master-data",
     slugPrefix: "master_data",
     navPermission: "master_data.manage",
     description: "Brands, categories, and product models",

@@ -1,7 +1,9 @@
 import { PageHeader } from "@/app/(app)/_components/page-header";
 import type { PageTutorialContent } from "@/components/page-tutorial/types";
 import {
+  GroupedRouteTabs,
   RouteTabs,
+  type RouteTabGroup,
   type RouteTabItem,
 } from "@/components/navigation/route-tabs";
 
@@ -11,6 +13,8 @@ interface SectionLayoutProps {
   tutorial?: PageTutorialContent;
   /** Omit when the top nav dropdown already lists the same routes. */
   tabs?: RouteTabItem[];
+  /** Grouped, horizontally scrollable tab bar (takes precedence over `tabs`). */
+  tabGroups?: RouteTabGroup[];
   actions?: React.ReactNode;
   children: React.ReactNode;
   tabVariant?: "pill" | "underline";
@@ -26,6 +30,7 @@ export function SectionLayout({
   description,
   tutorial,
   tabs,
+  tabGroups,
   actions,
   children,
   tabVariant = "pill",
@@ -40,7 +45,12 @@ export function SectionLayout({
         actions={actions}
         sticky={false}
       />
-      {tabs && tabs.length > 0 ? (
+      {tabGroups && tabGroups.length > 0 ? (
+        <GroupedRouteTabs
+          groups={tabGroups}
+          aria-label={tabsAriaLabel ?? `${title} sections`}
+        />
+      ) : tabs && tabs.length > 0 ? (
         <RouteTabs
           items={tabs}
           variant={tabVariant}

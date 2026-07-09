@@ -130,6 +130,20 @@ model Tenant {
   packageTypes        PackageType[]
   paymentTypes        PaymentType[]
   saleTypes           SaleType[]
+  features            Feature[]
+  sizes               Size[]
+  actualSizes         ActualSize[]
+  resolutions         Resolution[]
+  dealerAreas         DealerArea[]
+  branchAreas         BranchArea[]
+  modeOfPayments      ModeOfPayment[]
+  promoTypes          PromoType[]
+  dealerTypes         DealerType[]
+  customerDeliveryMethods CustomerDeliveryMethod[]
+  problemDescriptions ProblemDescription[]
+  documentTypes       DocumentType[]
+  returnTypes         ReturnType[]
+  branchStatusTypes   BranchStatusType[]
   branches            Branch[]
   warehouses          Warehouse[]
   aors                Aor[]
@@ -429,13 +443,14 @@ model Brand {
 }
 
 model Category {
-  id        String   @id @default(cuid())
-  tenantId  String   @map("tenant_id")
-  brandId   String?  @map("brand_id")
-  code      String?
-  name      String
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id           String             @id @default(cuid())
+  tenantId     String             @map("tenant_id")
+  brandId      String?            @map("brand_id")
+  code         String?
+  name         String
+  recordStatus LookupRecordStatus @default(active) @map("record_status")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
 
   tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   brand  Brand?         @relation(fields: [brandId], references: [id], onDelete: SetNull)
@@ -476,12 +491,13 @@ model ProductModel {
 }
 
 model Area {
-  id        String   @id @default(cuid())
-  tenantId  String   @map("tenant_id")
-  code      String
-  name      String
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id           String             @id @default(cuid())
+  tenantId     String             @map("tenant_id")
+  code         String
+  name         String
+  recordStatus LookupRecordStatus @default(active) @map("record_status")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
 
   tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branches Branch[]
@@ -492,11 +508,12 @@ model Area {
 }
 
 model Region {
-  id        String   @id @default(cuid())
-  tenantId  String   @map("tenant_id")
-  name      String
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id           String             @id @default(cuid())
+  tenantId     String             @map("tenant_id")
+  name         String
+  recordStatus LookupRecordStatus @default(active) @map("record_status")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
 
   tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   provinces Province[]
@@ -507,12 +524,13 @@ model Region {
 }
 
 model Province {
-  id        String   @id @default(cuid())
-  tenantId  String   @map("tenant_id")
-  regionId  String?  @map("region_id")
-  name      String
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id           String             @id @default(cuid())
+  tenantId     String             @map("tenant_id")
+  regionId     String?            @map("region_id")
+  name         String
+  recordStatus LookupRecordStatus @default(active) @map("record_status")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
 
   tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   region Region? @relation(fields: [regionId], references: [id], onDelete: SetNull)
@@ -537,11 +555,12 @@ model PackageType {
 }
 
 model PaymentType {
-  id        String   @id @default(cuid())
-  tenantId  String   @map("tenant_id")
-  name      String
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id           String             @id @default(cuid())
+  tenantId     String             @map("tenant_id")
+  name         String
+  recordStatus LookupRecordStatus @default(active) @map("record_status")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -551,17 +570,237 @@ model PaymentType {
 }
 
 model SaleType {
-  id        String   @id @default(cuid())
-  tenantId  String   @map("tenant_id")
-  name      String
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id           String             @id @default(cuid())
+  tenantId     String             @map("tenant_id")
+  name         String
+  recordStatus LookupRecordStatus @default(active) @map("record_status")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, name])
   @@index([tenantId])
   @@map("sale_types")
+}
+
+// --- Master-data lookups ---
+
+model Feature {
+  id           String             @id @default(cuid())
+  tenantId     String             @map("tenant_id")
+  name         String
+  recordStatus LookupRecordStatus @default(active) @map("record_status")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("features")
+}
+
+model Size {
+  id           String             @id @default(cuid())
+  tenantId     String             @map("tenant_id")
+  name         String
+  recordStatus LookupRecordStatus @default(active) @map("record_status")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  actualSizes ActualSize[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("sizes")
+}
+
+model ActualSize {
+  id           String             @id @default(cuid())
+  tenantId     String             @map("tenant_id")
+  sizeId       String             @map("size_id")
+  name         String
+  class        String?
+  recordStatus LookupRecordStatus @default(active) @map("record_status")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  size   Size   @relation(fields: [sizeId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, sizeId, name])
+  @@index([tenantId])
+  @@map("actual_sizes")
+}
+
+model Resolution {
+  id           String             @id @default(cuid())
+  tenantId     String             @map("tenant_id")
+  name         String
+  recordStatus LookupRecordStatus @default(active) @map("record_status")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("resolutions")
+}
+
+model DealerArea {
+  id           String             @id @default(cuid())
+  tenantId     String             @map("tenant_id")
+  name         String
+  recordStatus LookupRecordStatus @default(active) @map("record_status")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("dealer_areas")
+}
+
+model BranchArea {
+  id           String             @id @default(cuid())
+  tenantId     String             @map("tenant_id")
+  name         String
+  recordStatus LookupRecordStatus @default(active) @map("record_status")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("branch_areas")
+}
+
+model ModeOfPayment {
+  id           String             @id @default(cuid())
+  tenantId     String             @map("tenant_id")
+  name         String
+  recordStatus LookupRecordStatus @default(active) @map("record_status")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("mode_of_payments")
+}
+
+model PromoType {
+  id           String             @id @default(cuid())
+  tenantId     String             @map("tenant_id")
+  name         String
+  recordStatus LookupRecordStatus @default(active) @map("record_status")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("promo_types")
+}
+
+model DealerType {
+  id           String             @id @default(cuid())
+  tenantId     String             @map("tenant_id")
+  name         String
+  recordStatus LookupRecordStatus @default(active) @map("record_status")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("dealer_types")
+}
+
+model CustomerDeliveryMethod {
+  id           String             @id @default(cuid())
+  tenantId     String             @map("tenant_id")
+  name         String
+  recordStatus LookupRecordStatus @default(active) @map("record_status")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("customer_delivery_methods")
+}
+
+model ProblemDescription {
+  id           String             @id @default(cuid())
+  tenantId     String             @map("tenant_id")
+  name         String
+  recordStatus LookupRecordStatus @default(active) @map("record_status")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("problem_descriptions")
+}
+
+model DocumentType {
+  id           String             @id @default(cuid())
+  tenantId     String             @map("tenant_id")
+  name         String
+  recordStatus LookupRecordStatus @default(active) @map("record_status")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  returnTypes ReturnType[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("document_types")
+}
+
+model ReturnType {
+  id             String             @id @default(cuid())
+  tenantId       String             @map("tenant_id")
+  documentTypeId String             @map("document_type_id")
+  name           String
+  recordStatus   LookupRecordStatus @default(active) @map("record_status")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  documentType DocumentType @relation(fields: [documentTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, documentTypeId, name])
+  @@index([tenantId])
+  @@map("return_types")
+}
+
+model BranchStatusType {
+  id           String             @id @default(cuid())
+  tenantId     String             @map("tenant_id")
+  name         String
+  recordStatus LookupRecordStatus @default(active) @map("record_status")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("branch_status_types")
 }
 
 // --- BRS organization ---

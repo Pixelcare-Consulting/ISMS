@@ -13,7 +13,7 @@ export function WhatsNewHeaderAction() {
           type="button"
           variant="outline"
           size="sm"
-          className="gap-2 border-white/20 bg-white/10 text-sidebar-foreground hover:bg-white/15 hover:text-sidebar-foreground"
+          className="gap-2 bg-sidebar text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
         >
           <Sparkles className="size-4 shrink-0" />
           <span className="hidden sm:inline">What&apos;s new</span>

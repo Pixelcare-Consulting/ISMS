@@ -45,8 +45,8 @@ export default async function AppLayout({
       <AppSidebar branding={branding} user={user} />
 
       <SidebarInset className="h-svh overflow-hidden">
-        <header className="app-header flex h-14 shrink-0 items-center gap-2 border-b border-sidebar-border bg-sidebar px-3 text-sidebar-foreground sm:px-4 lg:px-6">
-          <SidebarTrigger className="text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground" />
+        <header className="app-header flex h-14 shrink-0 items-cpwenter gap-2 bg-white px-3 text-sidebar-foreground sm:px-4 lg:px-6">
+          <SidebarTrigger className="text-sidebar hover:bg-sidebar-accent/60 hover:text-sidebar-foreground" />
           <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
             <WhatsNewHeaderAction />
           </div>
