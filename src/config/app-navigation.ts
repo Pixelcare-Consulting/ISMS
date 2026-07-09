@@ -5,6 +5,7 @@ import {
   Building2,
   ClipboardList,
   Clock,
+  History,
   KeyRound,
   LayoutDashboard,
   LayoutGrid,
@@ -154,12 +155,6 @@ export const appNavigation: NavEntry[] = [
         icon: Store,
         anyPermissions: ["reports.view", "sales.create"],
       },
-      {
-        href: "/settings/audit-log",
-        label: "System logs",
-        icon: ClipboardList,
-        permission: "reports.view",
-      },
     ],
   },
   {
@@ -244,6 +239,25 @@ export const appNavigation: NavEntry[] = [
         label: "SAP integration",
         icon: Truck,
         permission: "logistics.manage",
+      },
+    ],
+  },
+  {
+    type: "group",
+    label: "Audit Logs",
+    icon: History,
+    items: [
+      {
+        href: "/audit-logs/system",
+        label: "System logs",
+        icon: ClipboardList,
+        permission: "reports.view",
+      },
+      {
+        href: "/audit-logs/serial-numbers",
+        label: "Serial number logs",
+        icon: Barcode,
+        permission: "inventory.view",
       },
     ],
   },

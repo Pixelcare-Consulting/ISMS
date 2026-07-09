@@ -4,7 +4,7 @@ import {
 } from "@/features/audit/actions/audit-log.actions";
 import { requirePermission } from "@/lib/auth/permissions";
 import { PageHeader } from "@/app/(app)/_components/page-header";
-import { AuditLogTable } from "@/app/(app)/settings/audit-log/_components/audit-log-table";
+import { AuditLogTable } from "@/app/(app)/audit-logs/system/_components/audit-log-table";
 
 interface AuditLogPageProps {
   searchParams: Promise<{
@@ -47,7 +47,7 @@ export default async function SettingsAuditLogPage({
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Audit log"
+        title="System logs"
         description="A clear, read-only timeline of who did what in your organization."
       />
       <AuditLogTable

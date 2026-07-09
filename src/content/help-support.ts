@@ -507,7 +507,7 @@ export const HELP_FAQ_CATEGORIES: HelpFaqCategory[] = [
         id: "sales-4",
         question: "Who can view the audit log?",
         answer:
-          "Users with reports.view (or equivalent) can open Settings → Audit log under Reports in the menu.",
+          "Users with reports.view (or equivalent) can open Audit Logs → System logs in the menu.",
       },
       {
         id: "sales-5",

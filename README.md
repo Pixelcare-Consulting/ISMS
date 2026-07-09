@@ -44,7 +44,8 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/policies`, `/policies/[id]`, `/policies/new` | Policy permissions |
 | `/settings/company` | Tenant Admin / Super Admin |
 | `/settings/users`, `/departments`, `/roles` | `users.manage` / `roles.manage` |
-| `/settings/audit-log` | `reports.view` |
+| `/audit-logs/system` | `reports.view` |
+| `/audit-logs/serial-numbers` | `inventory.view` |
 | `/settings/branches`, `/warehouses`, `/aors` | `branches.manage` / `aors.manage` |
 | `/settings/planning`, `/planogram` | `forecast.manage` / `planogram.*` |
 | `/settings/master-data/*` | `master_data.manage` |

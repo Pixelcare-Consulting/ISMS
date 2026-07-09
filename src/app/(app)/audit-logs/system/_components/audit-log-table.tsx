@@ -107,7 +107,7 @@ function buildAuditLogHref(page: number, filters: AuditLogFilters = {}): string 
   }
 
   const query = params.toString();
-  return query ? `/settings/audit-log?${query}` : "/settings/audit-log";
+  return query ? `/audit-logs/system?${query}` : "/audit-logs/system";
 }
 
 export function AuditLogTable({
@@ -154,7 +154,7 @@ export function AuditLogTable({
     setSearch("");
     setDateFrom("");
     setDateTo("");
-    router.push("/settings/audit-log");
+    router.push("/audit-logs/system");
   }
 
   const hasActiveFilters = Boolean(
