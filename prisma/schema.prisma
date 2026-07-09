@@ -953,12 +953,13 @@ model ReasonStatusCode {
 // --- BRS inventory ---
 
 model SerialNumber {
-  id        String   @id @default(cuid())
-  tenantId  String   @map("tenant_id")
-  serialNo  String   @map("serial_no")
-  modelId   String   @map("model_id")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id           String             @id @default(cuid())
+  tenantId     String             @map("tenant_id")
+  serialNo     String             @map("serial_no")
+  modelId      String             @map("model_id")
+  recordStatus LookupRecordStatus @default(active) @map("record_status")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
 
   tenant            Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   model             ProductModel              @relation(fields: [modelId], references: [id], onDelete: Cascade)

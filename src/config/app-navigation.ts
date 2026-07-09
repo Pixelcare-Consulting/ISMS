@@ -1,6 +1,7 @@
 import {
   ArrowLeftRight,
   ArrowUpToLine,
+  Barcode,
   Building2,
   ClipboardList,
   Clock,
@@ -77,6 +78,12 @@ export const appNavigation: NavEntry[] = [
         icon: ClipboardList,
         permission: "inventory.view",
       },
+      {
+        href: "/inventory/serial-numbers",
+        label: "Serial numbers",
+        icon: Barcode,
+        permission: "inventory.view",
+      },
     ],
   },
   {
@@ -149,7 +156,7 @@ export const appNavigation: NavEntry[] = [
       },
       {
         href: "/settings/audit-log",
-        label: "Audit logs",
+        label: "System logs",
         icon: ClipboardList,
         permission: "reports.view",
       },
