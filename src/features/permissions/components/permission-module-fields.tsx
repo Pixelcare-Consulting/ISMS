@@ -25,13 +25,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { cn } from "@/utils/cn";
 
 interface PermissionModuleFieldsProps {
@@ -223,26 +217,20 @@ export function PermissionModuleFields({
         ) : null}
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="permission-action">Action</Label>
-        <Select
-          value={action}
-          onValueChange={onActionChange}
-          disabled={!moduleId}
-          required
-        >
-          <SelectTrigger id="permission-action" className="w-full">
-            <SelectValue placeholder="Select an action" />
-          </SelectTrigger>
-          <SelectContent>
-            {actions.map((item) => (
-              <SelectItem key={item.value} value={item.value}>
-                {item.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <SearchableSelect
+        label="Action"
+        id="permission-action"
+        options={actions.map((item) => ({
+          id: item.value,
+          label: item.label,
+        }))}
+        value={action}
+        onChange={onActionChange}
+        placeholder="Select an action"
+        searchPlaceholder="Search actions…"
+        disabled={!moduleId}
+        emptyMessage="Select a module first."
+      />
 
       <div className="space-y-2">
         <Label htmlFor="permission-slug">Slug</Label>

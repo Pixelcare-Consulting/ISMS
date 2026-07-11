@@ -33,6 +33,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Table,
   TableBody,
@@ -496,20 +497,17 @@ function AddPlanogramDialog({
           </Button>
         ) : (
           <>
-            <div>
-              <Label>Model</Label>
-              <select
-                className="flex h-9 w-full rounded-md border px-2 text-sm"
-                value={modelId}
-                onChange={(e) => setModelId(e.target.value)}
-              >
-                {models.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.skuCode} — {m.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <SearchableSelect
+              label="Model"
+              options={models.map((m) => ({
+                id: m.id,
+                label: `${m.skuCode} — ${m.name}`,
+              }))}
+              value={modelId}
+              onChange={setModelId}
+              placeholder="Select model…"
+              searchPlaceholder="Search models…"
+            />
             <div>
               <Label>Max qty</Label>
               <Input

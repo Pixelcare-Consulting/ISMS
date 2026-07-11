@@ -22,6 +22,7 @@ import { TablePagination } from "@/components/data-table/table-pagination";
 import { TableSearchToolbar, uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Table,
   TableBody,
@@ -140,18 +141,17 @@ export function PulloutsPanel({ pullouts }: PulloutsPanelProps) {
           </Button>
         ) : null}
         {pulloutReasons.length > 0 ? (
-          <select
-            className="h-9 w-full rounded-md border px-2 text-sm sm:w-auto"
+          <SearchableSelect
+            className="w-full sm:w-[200px]"
+            options={pulloutReasons.map((r) => ({
+              id: r.id,
+              label: `${r.name} (${r.code})`,
+            }))}
             value={selectedReasonId}
-            onChange={(e) => setSelectedReasonId(e.target.value)}
-            aria-label="Pull-out reason"
-          >
-            {pulloutReasons.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name} ({r.code})
-              </option>
-            ))}
-          </select>
+            onChange={setSelectedReasonId}
+            placeholder="Pull-out reason"
+            searchPlaceholder="Search reasons…"
+          />
         ) : null}
         <LogisticsLoadRefsButton
           onClick={async () => {
@@ -165,23 +165,19 @@ export function PulloutsPanel({ pullouts }: PulloutsPanelProps) {
           }}
         />
         {branches.length > 0 ? (
-          <select
-            className="h-9 w-full rounded-md border px-2 text-sm sm:w-auto"
+          <SearchableSelect
+            className="w-full sm:w-[200px]"
+            options={branches.map((b) => ({ id: b.id, label: b.name }))}
             value={selectedBranchId || branches[0]?.id || ""}
-            onChange={async (e) => {
-              setSelectedBranchId(e.target.value);
-              const serials = await listStkSerialsForBranchAction(e.target.value);
+            onChange={async (next) => {
+              setSelectedBranchId(next);
+              const serials = await listStkSerialsForBranchAction(next);
               setPulloutSerials(serials);
               setSelectedPulloutSerialIds(serials.slice(0, 1).map((s) => s.id));
             }}
-            aria-label="Branch"
-          >
-            {branches.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
+            placeholder="Branch"
+            searchPlaceholder="Search branches…"
+          />
         ) : null}
         {branches[0] && warehouses[0] ? (
           <Button

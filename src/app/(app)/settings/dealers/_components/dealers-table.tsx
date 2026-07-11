@@ -23,6 +23,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Sheet,
   SheetContent,
@@ -222,25 +223,27 @@ export function DealersTable({ dealers }: { dealers: DealerRow[] }) {
                     <TableCell>{row.modeOfPayment?.name ?? "—"}</TableCell>
                     <TableCell>{row._count.branches}</TableCell>
                     <TableCell>
-                      <select
-                        className="h-8 rounded-md border bg-background px-2 text-sm"
+                      <SearchableSelect
+                        className="min-w-[8rem]"
+                        options={[
+                          { id: "active", label: "Active" },
+                          { id: "inactive", label: "Inactive" },
+                        ]}
                         value={row.status}
                         disabled={pending}
-                        onChange={(e) => {
+                        searchPlaceholder="Search status…"
+                        onChange={(next) => {
                           startTransition(async () => {
                             const result = await updateDealerAction({
                               dealerId: row.id,
                               name: row.name,
-                              status: e.target.value as "active" | "inactive",
+                              status: next as "active" | "inactive",
                             });
                             if (result.error) toast.error(String(result.error));
                             else router.refresh();
                           });
                         }}
-                      >
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
-                      </select>
+                      />
                     </TableCell>
                     <TableRowActions onDelete={() => setDeleting(row)} />
                   </TableRow>
@@ -281,70 +284,62 @@ export function DealersTable({ dealers }: { dealers: DealerRow[] }) {
                   onChange={(e) => setSapCode(e.target.value)}
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="dealer-area">Area</Label>
-                <select
-                  id="dealer-area"
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                  value={areaId}
-                  onChange={(e) => setAreaId(e.target.value)}
-                >
-                  <option value="">—</option>
-                  {(options?.areas ?? []).map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="dealer-type">Dealer type</Label>
-                <select
-                  id="dealer-type"
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                  value={dealerTypeId}
-                  onChange={(e) => setDealerTypeId(e.target.value)}
-                >
-                  <option value="">—</option>
-                  {(options?.dealerTypes ?? []).map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="dealer-dealer-area">Dealer area</Label>
-                <select
-                  id="dealer-dealer-area"
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                  value={dealerAreaId}
-                  onChange={(e) => setDealerAreaId(e.target.value)}
-                >
-                  <option value="">—</option>
-                  {(options?.dealerAreas ?? []).map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="dealer-payment">Mode of payment</Label>
-                <select
-                  id="dealer-payment"
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                  value={modeOfPaymentId}
-                  onChange={(e) => setModeOfPaymentId(e.target.value)}
-                >
-                  <option value="">—</option>
-                  {(options?.modes ?? []).map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <SearchableSelect
+                label="Area"
+                id="dealer-area"
+                options={(options?.areas ?? []).map((a) => ({
+                  id: a.id,
+                  label: a.name,
+                }))}
+                value={areaId}
+                onChange={setAreaId}
+                allowClear
+                placeholder="—"
+                searchPlaceholder="Search areas…"
+                disabled={pending}
+              />
+              <SearchableSelect
+                label="Dealer type"
+                id="dealer-type"
+                options={(options?.dealerTypes ?? []).map((a) => ({
+                  id: a.id,
+                  label: a.name,
+                }))}
+                value={dealerTypeId}
+                onChange={setDealerTypeId}
+                allowClear
+                placeholder="—"
+                searchPlaceholder="Search dealer types…"
+                disabled={pending}
+              />
+              <SearchableSelect
+                label="Dealer area"
+                id="dealer-dealer-area"
+                options={(options?.dealerAreas ?? []).map((a) => ({
+                  id: a.id,
+                  label: a.name,
+                }))}
+                value={dealerAreaId}
+                onChange={setDealerAreaId}
+                allowClear
+                placeholder="—"
+                searchPlaceholder="Search dealer areas…"
+                disabled={pending}
+              />
+              <SearchableSelect
+                label="Mode of payment"
+                id="dealer-payment"
+                options={(options?.modes ?? []).map((a) => ({
+                  id: a.id,
+                  label: a.name,
+                }))}
+                value={modeOfPaymentId}
+                onChange={setModeOfPaymentId}
+                allowClear
+                placeholder="—"
+                searchPlaceholder="Search payment modes…"
+                disabled={pending}
+              />
             </div>
             <SheetFooter className="border-t border-border/60">
               <Button

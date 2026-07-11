@@ -30,7 +30,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Table,
   TableBody,
@@ -372,20 +372,16 @@ export function AorsTable({
   return (
     <div className="space-y-4">
       <div className="space-y-3 rounded-xl border bg-card p-4 shadow-sm">
-        <div>
-          <Label>User</Label>
-          <select
-            className="mt-1 flex h-9 min-w-[200px] rounded-md border px-2 text-sm"
-            value={userId}
-            onChange={(e) => setUserId(e.target.value)}
-          >
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        <SearchableSelect
+          label="User"
+          className="min-w-[200px]"
+          options={users.map((u) => ({ id: u.id, label: u.label }))}
+          value={userId}
+          onChange={setUserId}
+          placeholder="Select user…"
+          searchPlaceholder="Search users…"
+          disabled={pending}
+        />
 
         <div className="grid gap-3 md:grid-cols-2">
           <SearchableMultiSelect

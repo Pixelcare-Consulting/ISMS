@@ -14,13 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Textarea } from "@/components/ui/textarea";
 
 interface ApproverOption {
@@ -107,27 +101,23 @@ export function PolicyWorkflowDialog({
 
         <div className="space-y-4">
           {mode === "submit" && approvers.length > 0 ? (
-            <div className="space-y-2">
-              <Label>Reviewer (optional)</Label>
-              <Select
-                value={reviewerId || "none"}
-                onValueChange={(value) =>
-                  setReviewerId(value === "none" ? "" : value)
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Any approver" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Any approver</SelectItem>
-                  {approvers.map((approver) => (
-                    <SelectItem key={approver.id} value={approver.id}>
-                      {approver.name ?? approver.email}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <SearchableSelect
+              label="Reviewer (optional)"
+              options={[
+                { id: "none", label: "Any approver" },
+                ...approvers.map((approver) => ({
+                  id: approver.id,
+                  label: approver.name ?? approver.email,
+                })),
+              ]}
+              value={reviewerId || "none"}
+              onChange={(value) =>
+                setReviewerId(value === "none" ? "" : value)
+              }
+              placeholder="Any approver"
+              searchPlaceholder="Search reviewers…"
+              disabled={pending}
+            />
           ) : null}
 
           <div className="space-y-2">

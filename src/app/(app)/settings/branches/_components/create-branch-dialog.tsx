@@ -19,11 +19,9 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 type FormOptions = Awaited<ReturnType<typeof listBranchFormOptionsAction>>;
-
-const selectClassName =
-  "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm";
 
 interface CreateBranchDialogProps {
   onCreated?: (branch: {
@@ -41,6 +39,11 @@ export function CreateBranchDialog({ onCreated }: CreateBranchDialogProps) {
   const [options, setOptions] = useState<FormOptions | null>(null);
   const [alternateIds, setAlternateIds] = useState<string[]>([]);
   const [primaryWarehouseId, setPrimaryWarehouseId] = useState("");
+  const [dealerId, setDealerId] = useState("");
+  const [branchAreaId, setBranchAreaId] = useState("");
+  const [areaId, setAreaId] = useState("");
+  const [regionId, setRegionId] = useState("");
+  const [provinceId, setProvinceId] = useState("");
 
   const warehouseOptions = useMemo(() => {
     if (!options) return [];
@@ -53,9 +56,74 @@ export function CreateBranchDialog({ onCreated }: CreateBranchDialogProps) {
       }));
   }, [options, primaryWarehouseId]);
 
+  const dealerOptions = useMemo(
+    () =>
+      (options?.dealers ?? []).map((d) => ({
+        id: d.id,
+        label: d.name,
+      })),
+    [options],
+  );
+
+  const primaryWarehouseOptions = useMemo(
+    () =>
+      (options?.warehouses ?? []).map((w) => ({
+        id: w.id,
+        label: `${w.code} — ${w.name}`,
+        description: w.name,
+      })),
+    [options],
+  );
+
+  const branchAreaOptions = useMemo(
+    () =>
+      (options?.branchAreas ?? []).map((a) => ({
+        id: a.id,
+        label: a.name,
+      })),
+    [options],
+  );
+
+  const areaOptions = useMemo(
+    () =>
+      (options?.areas ?? []).map((a) => ({
+        id: a.id,
+        label: `${a.code} — ${a.name}`,
+      })),
+    [options],
+  );
+
+  const regionOptions = useMemo(
+    () =>
+      (options?.regions ?? []).map((a) => ({
+        id: a.id,
+        label: a.name,
+      })),
+    [options],
+  );
+
+  const provinceOptions = useMemo(
+    () =>
+      (options?.provinces ?? []).map((a) => ({
+        id: a.id,
+        label: a.name,
+      })),
+    [options],
+  );
+
   async function ensureOptions() {
     if (options) return;
     setOptions(await listBranchFormOptionsAction());
+  }
+
+  function resetSelects() {
+    setAlternateIds([]);
+    setPrimaryWarehouseId("");
+    setDealerId("");
+    setBranchAreaId("");
+    setAreaId("");
+    setRegionId("");
+    setProvinceId("");
   }
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -66,12 +134,12 @@ export function CreateBranchDialog({ onCreated }: CreateBranchDialogProps) {
         sapCode: String(fd.get("sapCode") ?? ""),
         name: String(fd.get("name") ?? ""),
         status: "active",
-        areaId: String(fd.get("areaId") || "") || null,
-        branchAreaId: String(fd.get("branchAreaId") || "") || null,
-        dealerId: String(fd.get("dealerId") || "") || null,
-        primaryWarehouseId: String(fd.get("primaryWarehouseId") || "") || null,
-        regionId: String(fd.get("regionId") || "") || null,
-        provinceId: String(fd.get("provinceId") || "") || null,
+        areaId: areaId || null,
+        branchAreaId: branchAreaId || null,
+        dealerId: dealerId || null,
+        primaryWarehouseId: primaryWarehouseId || null,
+        regionId: regionId || null,
+        provinceId: provinceId || null,
         alternateWarehouseIds: alternateIds,
       });
       if (result.error) {
@@ -88,8 +156,7 @@ export function CreateBranchDialog({ onCreated }: CreateBranchDialogProps) {
           branchArea: result.branch.branchArea ?? null,
         });
       }
-      setAlternateIds([]);
-      setPrimaryWarehouseId("");
+      resetSelects();
       setOpen(false);
     });
   }
@@ -109,10 +176,7 @@ export function CreateBranchDialog({ onCreated }: CreateBranchDialogProps) {
         open={open}
         onOpenChange={(next) => {
           setOpen(next);
-          if (!next) {
-            setAlternateIds([]);
-            setPrimaryWarehouseId("");
-          }
+          if (!next) resetSelects();
         }}
       >
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
@@ -131,85 +195,73 @@ export function CreateBranchDialog({ onCreated }: CreateBranchDialogProps) {
             {options ? (
               <>
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-1">
-                    <Label>Dealer</Label>
-                    <select name="dealerId" className={selectClassName}>
-                      <option value="">—</option>
-                      {options.dealers.map((d) => (
-                        <option key={d.id} value={d.id}>
-                          {d.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Primary warehouse</Label>
-                    <select
-                      name="primaryWarehouseId"
-                      className={selectClassName}
-                      value={primaryWarehouseId}
-                      onChange={(e) => {
-                        const next = e.target.value;
-                        setPrimaryWarehouseId(next);
-                        if (next) {
-                          setAlternateIds((current) =>
-                            current.filter((id) => id !== next),
-                          );
-                        }
-                      }}
-                    >
-                      <option value="">—</option>
-                      {options.warehouses.map((w) => (
-                        <option key={w.id} value={w.id}>
-                          {w.code} — {w.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Branch area</Label>
-                    <select name="branchAreaId" className={selectClassName}>
-                      <option value="">—</option>
-                      {options.branchAreas.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Area</Label>
-                    <select name="areaId" className={selectClassName}>
-                      <option value="">—</option>
-                      {options.areas.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.code} — {a.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Region</Label>
-                    <select name="regionId" className={selectClassName}>
-                      <option value="">—</option>
-                      {options.regions.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Province</Label>
-                    <select name="provinceId" className={selectClassName}>
-                      <option value="">—</option>
-                      {options.provinces.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  <SearchableSelect
+                    label="Dealer"
+                    options={dealerOptions}
+                    value={dealerId}
+                    onChange={setDealerId}
+                    allowClear
+                    placeholder="—"
+                    searchPlaceholder="Search dealers…"
+                    disabled={pending}
+                  />
+                  <SearchableSelect
+                    label="Primary warehouse"
+                    options={primaryWarehouseOptions}
+                    value={primaryWarehouseId}
+                    onChange={(next) => {
+                      setPrimaryWarehouseId(next);
+                      if (next) {
+                        setAlternateIds((current) =>
+                          current.filter((id) => id !== next),
+                        );
+                      }
+                    }}
+                    allowClear
+                    placeholder="—"
+                    searchPlaceholder="Search warehouses…"
+                    disabled={pending}
+                  />
+                  <SearchableSelect
+                    label="Branch area"
+                    options={branchAreaOptions}
+                    value={branchAreaId}
+                    onChange={setBranchAreaId}
+                    allowClear
+                    placeholder="—"
+                    searchPlaceholder="Search branch areas…"
+                    disabled={pending}
+                  />
+                  <SearchableSelect
+                    label="Area"
+                    options={areaOptions}
+                    value={areaId}
+                    onChange={setAreaId}
+                    allowClear
+                    placeholder="—"
+                    searchPlaceholder="Search areas…"
+                    disabled={pending}
+                  />
+                  <SearchableSelect
+                    label="Region"
+                    options={regionOptions}
+                    value={regionId}
+                    onChange={setRegionId}
+                    allowClear
+                    placeholder="—"
+                    searchPlaceholder="Search regions…"
+                    disabled={pending}
+                  />
+                  <SearchableSelect
+                    label="Province"
+                    options={provinceOptions}
+                    value={provinceId}
+                    onChange={setProvinceId}
+                    allowClear
+                    placeholder="—"
+                    searchPlaceholder="Search provinces…"
+                    disabled={pending}
+                  />
                 </div>
                 <SearchableMultiSelect
                   label="Alternate warehouses"

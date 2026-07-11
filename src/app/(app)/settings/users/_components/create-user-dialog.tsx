@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -17,13 +17,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { PasswordInput } from "@/components/ui/password-input";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 interface RoleOption {
   slug: string;
@@ -58,6 +53,22 @@ export function CreateUserDialog({
   const [roleSlug, setRoleSlug] = useState(roles[0]?.slug ?? "");
   const [departmentId, setDepartmentId] = useState<string>("none");
   const [pending, startTransition] = useTransition();
+
+  const roleOptions = useMemo(
+    () => roles.map((role) => ({ id: role.slug, label: role.name })),
+    [roles],
+  );
+
+  const departmentOptions = useMemo(
+    () => [
+      { id: "none", label: "No department" },
+      ...departments.map((department) => ({
+        id: department.id,
+        label: department.name,
+      })),
+    ],
+    [departments],
+  );
 
   useEffect(() => {
     return () => setUserDialogOpen(false);
@@ -128,46 +139,34 @@ export function CreateUserDialog({
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
-              <Input
+              <PasswordInput
                 id="password"
                 name="password"
-                type="password"
                 required
                 minLength={8}
               />
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="roleSlug">Role</Label>
-                <Select value={roleSlug} onValueChange={setRoleSlug} required>
-                  <SelectTrigger id="roleSlug" className="w-full">
-                    <SelectValue placeholder="Select role" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {roles.map((role) => (
-                      <SelectItem key={role.slug} value={role.slug}>
-                        {role.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="departmentId">Department</Label>
-                <Select value={departmentId} onValueChange={setDepartmentId}>
-                  <SelectTrigger id="departmentId" className="w-full">
-                    <SelectValue placeholder="Select department" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">No department</SelectItem>
-                    {departments.map((department) => (
-                      <SelectItem key={department.id} value={department.id}>
-                        {department.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <SearchableSelect
+                label="Role"
+                id="roleSlug"
+                options={roleOptions}
+                value={roleSlug}
+                onChange={setRoleSlug}
+                placeholder="Select role"
+                searchPlaceholder="Search roles…"
+                disabled={pending}
+              />
+              <SearchableSelect
+                label="Department"
+                id="departmentId"
+                options={departmentOptions}
+                value={departmentId}
+                onChange={setDepartmentId}
+                placeholder="Select department"
+                searchPlaceholder="Search departments…"
+                disabled={pending}
+              />
             </div>
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
             <DialogFooter>

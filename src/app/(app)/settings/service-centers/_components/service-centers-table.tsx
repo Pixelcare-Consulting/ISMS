@@ -24,6 +24,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Sheet,
   SheetContent,
@@ -341,22 +342,17 @@ export function ServiceCentersTable({ centers }: { centers: CenterRow[] }) {
                   required
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="sc-area">Area</Label>
-                <select
-                  id="sc-area"
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                  value={areaId}
-                  onChange={(e) => setAreaId(e.target.value)}
-                >
-                  <option value="">—</option>
-                  {areas.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <SearchableSelect
+                label="Area"
+                id="sc-area"
+                options={areas.map((a) => ({ id: a.id, label: a.name }))}
+                value={areaId}
+                onChange={setAreaId}
+                allowClear
+                placeholder="—"
+                searchPlaceholder="Search areas…"
+                disabled={pending}
+              />
             </div>
             <SheetFooter className="border-t border-border/60">
               <Button

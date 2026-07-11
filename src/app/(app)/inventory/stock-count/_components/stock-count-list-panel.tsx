@@ -21,13 +21,7 @@ import { TablePagination } from "@/components/data-table/table-pagination";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Table,
   TableBody,
@@ -98,24 +92,18 @@ export function StockCountListPanel({ sessions }: StockCountListPanelProps) {
   return (
     <DataTableShell>
       <div className="flex flex-wrap items-center justify-end gap-2 border-b p-4">
-        <Select
+        <SearchableSelect
+          className="w-full sm:w-[200px]"
+          options={branches.map((b) => ({ id: b.id, label: b.name }))}
           value={selectedBranchId}
-          onValueChange={setSelectedBranchId}
+          onChange={setSelectedBranchId}
+          placeholder="Branch"
+          searchPlaceholder="Search branches…"
+          emptyMessage="Load branches first."
           onOpenChange={(open) => {
             if (open) void loadBranches();
           }}
-        >
-          <SelectTrigger className="w-full sm:w-[200px]">
-            <SelectValue placeholder="Branch" />
-          </SelectTrigger>
-          <SelectContent>
-            {branches.map((b) => (
-              <SelectItem key={b.id} value={b.id}>
-                {b.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        />
         <Button className="w-full sm:w-auto" disabled={pending} onClick={createSession}>
           New count session
         </Button>

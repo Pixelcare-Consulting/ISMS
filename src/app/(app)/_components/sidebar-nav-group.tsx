@@ -32,7 +32,9 @@ interface SidebarNavGroupProps {
 
 export function SidebarNavGroup({ group, items, pathname }: SidebarNavGroupProps) {
   const isChildActive = isNavGroupActive(pathname, items);
-  const [isOpen, setIsOpen] = useState(isChildActive);
+  const [isOpen, setIsOpen] = useState(
+    () => isChildActive || Boolean(group.defaultOpen),
+  );
   const Icon = group.icon;
 
   return (

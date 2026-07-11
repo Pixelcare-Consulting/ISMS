@@ -30,6 +30,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Sheet,
   SheetContent,
@@ -312,86 +313,74 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
           </SheetHeader>
           <form onSubmit={handleCreate} className="flex min-h-0 flex-1 flex-col">
             <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="model-brand">Brand</Label>
-                <select
-                  id="model-brand"
-                  className="flex h-9 w-full cursor-pointer rounded-md border border-input bg-background px-2 text-sm"
-                  value={brandId}
-                  onChange={(e) => setBrandId(e.target.value)}
-                  required
-                >
-                  {(options?.brands ?? []).map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="model-category">Category</Label>
-                <select
-                  id="model-category"
-                  className="flex h-9 w-full cursor-pointer rounded-md border border-input bg-background px-2 text-sm"
-                  value={categoryId}
-                  onChange={(e) => setCategoryId(e.target.value)}
-                  required
-                >
-                  {(options?.categories ?? []).map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="model-feature">Feature</Label>
-                <select
-                  id="model-feature"
-                  className="flex h-9 w-full cursor-pointer rounded-md border border-input bg-background px-2 text-sm"
-                  value={featureId}
-                  onChange={(e) => setFeatureId(e.target.value)}
-                >
-                  <option value="">—</option>
-                  {(options?.features ?? []).map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="model-resolution">Resolution</Label>
-                <select
-                  id="model-resolution"
-                  className="flex h-9 w-full cursor-pointer rounded-md border border-input bg-background px-2 text-sm"
-                  value={resolutionId}
-                  onChange={(e) => setResolutionId(e.target.value)}
-                >
-                  <option value="">—</option>
-                  {(options?.resolutions ?? []).map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="model-actual-size">Actual size</Label>
-                <select
-                  id="model-actual-size"
-                  className="flex h-9 w-full cursor-pointer rounded-md border border-input bg-background px-2 text-sm"
-                  value={actualSizeId}
-                  onChange={(e) => setActualSizeId(e.target.value)}
-                >
-                  <option value="">—</option>
-                  {(options?.actualSizes ?? []).map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <SearchableSelect
+                label="Brand"
+                id="model-brand"
+                options={(options?.brands ?? []).map((b) => ({
+                  id: b.id,
+                  label: b.name,
+                }))}
+                value={brandId}
+                onChange={setBrandId}
+                placeholder="Select brand…"
+                searchPlaceholder="Search brands…"
+                disabled={pending}
+              />
+              <SearchableSelect
+                label="Category"
+                id="model-category"
+                options={(options?.categories ?? []).map((c) => ({
+                  id: c.id,
+                  label: c.name,
+                }))}
+                value={categoryId}
+                onChange={setCategoryId}
+                placeholder="Select category…"
+                searchPlaceholder="Search categories…"
+                disabled={pending}
+              />
+              <SearchableSelect
+                label="Feature"
+                id="model-feature"
+                options={(options?.features ?? []).map((c) => ({
+                  id: c.id,
+                  label: c.name,
+                }))}
+                value={featureId}
+                onChange={setFeatureId}
+                allowClear
+                placeholder="—"
+                searchPlaceholder="Search features…"
+                disabled={pending}
+              />
+              <SearchableSelect
+                label="Resolution"
+                id="model-resolution"
+                options={(options?.resolutions ?? []).map((c) => ({
+                  id: c.id,
+                  label: c.name,
+                }))}
+                value={resolutionId}
+                onChange={setResolutionId}
+                allowClear
+                placeholder="—"
+                searchPlaceholder="Search resolutions…"
+                disabled={pending}
+              />
+              <SearchableSelect
+                label="Actual size"
+                id="model-actual-size"
+                options={(options?.actualSizes ?? []).map((c) => ({
+                  id: c.id,
+                  label: c.name,
+                }))}
+                value={actualSizeId}
+                onChange={setActualSizeId}
+                allowClear
+                placeholder="—"
+                searchPlaceholder="Search sizes…"
+                disabled={pending}
+              />
               <div className="space-y-2">
                 <Label htmlFor="model-sku">SKU</Label>
                 <Input
@@ -460,18 +449,16 @@ function ModelStatusSelect({
   }
 
   return (
-    <select
-      className="flex h-8 cursor-pointer rounded-md border bg-background px-2 text-sm capitalize disabled:cursor-not-allowed disabled:opacity-50"
+    <SearchableSelect
+      className="min-w-[7rem] capitalize"
+      options={SKU_STATUSES.map((s) => ({
+        id: s,
+        label: s,
+      }))}
       value={status}
       disabled={pending}
-      onChange={(e) => onChange(e.target.value)}
-      aria-label="SKU status"
-    >
-      {SKU_STATUSES.map((s) => (
-        <option key={s} value={s}>
-          {s}
-        </option>
-      ))}
-    </select>
+      searchPlaceholder="Search status…"
+      onChange={onChange}
+    />
   );
 }

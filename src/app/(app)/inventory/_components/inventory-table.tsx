@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Table,
   TableBody,
@@ -223,18 +224,17 @@ export function InventoryTable({
                   )}
                 </TableCell>
                 <TableCell>
-                  <select
-                    className="rounded-md border px-2 py-1 text-sm"
+                  <SearchableSelect
+                    className="min-w-[10rem]"
+                    options={statusOptions.map((s) => ({
+                      id: s.id,
+                      label: `${s.name} (${s.code})`,
+                    }))}
                     value={r.statusCode.id}
                     disabled={pending}
-                    onChange={(e) => changeStatus(r.id, e.target.value)}
-                  >
-                    {statusOptions.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name} ({s.code})
-                      </option>
-                    ))}
-                  </select>
+                    searchPlaceholder="Search status…"
+                    onChange={(next) => changeStatus(r.id, next)}
+                  />
                   <div className="mt-1">
                     <StatusCodeBadge
                       code={r.statusCode.code}

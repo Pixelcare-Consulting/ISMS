@@ -22,7 +22,7 @@ import {
   uniqueSearchSuggestions,
 } from "@/components/data-table";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Table,
   TableBody,
@@ -155,42 +155,28 @@ export function CompetitorsTable({
               ) : null}
             </div>
             <div className="flex flex-wrap gap-3">
-              <div className="space-y-1">
-                <Label htmlFor="filter-branch" className="text-xs text-muted-foreground">
-                  Branch
-                </Label>
-                <select
-                  id="filter-branch"
-                  className="flex h-9 min-w-[10rem] rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                  value={branchFilter}
-                  onChange={(e) => setBranchFilter(e.target.value)}
-                >
-                  <option value="">All branches</option>
-                  {branches.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="filter-brand" className="text-xs text-muted-foreground">
-                  Brand
-                </Label>
-                <select
-                  id="filter-brand"
-                  className="flex h-9 min-w-[10rem] rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                  value={brandFilter}
-                  onChange={(e) => setBrandFilter(e.target.value)}
-                >
-                  <option value="">All brands</option>
-                  {brands.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <SearchableSelect
+                label="Branch"
+                id="filter-branch"
+                className="min-w-[10rem]"
+                options={branches.map((b) => ({ id: b.id, label: b.label }))}
+                value={branchFilter}
+                onChange={setBranchFilter}
+                allowClear
+                placeholder="All branches"
+                searchPlaceholder="Search branches…"
+              />
+              <SearchableSelect
+                label="Brand"
+                id="filter-brand"
+                className="min-w-[10rem]"
+                options={brands.map((b) => ({ id: b.id, label: b.label }))}
+                value={brandFilter}
+                onChange={setBrandFilter}
+                allowClear
+                placeholder="All brands"
+                searchPlaceholder="Search brands…"
+              />
             </div>
           </div>
         }

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   exportProcessedOrdersCsvAction,
   listBranchesForReportsAction,
@@ -72,22 +73,16 @@ export function ProcessedOrdersReportPanel() {
               />
             </div>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="branch-filter">Branch (optional)</Label>
-            <select
-              id="branch-filter"
-              className="flex h-9 w-full rounded-md border px-2 text-sm"
-              value={branchId}
-              onChange={(e) => setBranchId(e.target.value)}
-            >
-              <option value="">All branches</option>
-              {branches.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          <SearchableSelect
+            label="Branch (optional)"
+            id="branch-filter"
+            options={branches.map((b) => ({ id: b.id, label: b.name }))}
+            value={branchId}
+            onChange={setBranchId}
+            allowClear
+            placeholder="All branches"
+            searchPlaceholder="Search branches…"
+          />
           <Button disabled={pending} onClick={handleExport}>
             {pending ? "Exporting…" : "Download CSV"}
           </Button>

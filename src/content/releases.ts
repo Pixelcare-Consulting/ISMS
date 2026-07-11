@@ -24,117 +24,94 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
-    version: "0.11.69",
+    version: "0.12.1",
     date: "2026-07-12",
-    title: "Module picker scrolls inside Add permission",
+    title: "New Settings modules, searchable lists, and clearer access",
     highlights: [
-      "Mouse wheel and trackpad scroll work again on the Module list when adding a permission",
+      "Look for the green NEW labels in the sidebar on Dealers, Service centers, Departments, Warehouses, and more",
+      "Dealers, Service centers, Price lists, SAP, and Audit Logs — easier to find and control who can use them",
+      "Type-to-search on dropdowns; Settings stays open by default; quicker sign-in and page guides",
     ],
     changes: [
+      {
+        type: "feature",
+        description:
+          "Green NEW badges in the menu mark Dealers, Service centers, Departments, Warehouses, SAP, Audit Logs, Roles, Branches, Planogram, Master data, AORs, Announcements, Competitors, and P-Count",
+      },
+      {
+        type: "feature",
+        description:
+          "Dealers — manage dealer records from Settings; Search + Add opens a right-side form",
+      },
+      {
+        type: "feature",
+        description:
+          "Service centers — manage service centers from Settings; Search + Add opens a right-side form",
+      },
+      {
+        type: "feature",
+        description:
+          "Price lists — its own Master data area with add and history in side panels, plus model cards with period history",
+      },
+      {
+        type: "feature",
+        description:
+          "You can grant access separately for Departments, Dealers, Service centers, Warehouses, SAP integration, and Audit Logs",
+      },
+      {
+        type: "feature",
+        description:
+          "Audit Logs (system and serial number logs) in the sidebar when you have Audit Logs access",
+      },
+      {
+        type: "feature",
+        description:
+          "Most dropdowns let you type to find an option (branches, warehouses, roles, filters, and more)",
+      },
+      {
+        type: "feature",
+        description:
+          "When adding a permission, search modules by name and scroll the list smoothly",
+      },
+      {
+        type: "feature",
+        description:
+          "Quick guides on many pages can open once on first visit; use the ? button anytime to reopen them",
+      },
+      {
+        type: "feature",
+        description:
+          "Search boxes in tables suggest matching rows from what is already on the page",
+      },
+      {
+        type: "improvement",
+        description:
+          "Settings in the left menu starts expanded so Dealers, Service centers, Warehouses, and the rest are easier to reach",
+      },
+      {
+        type: "improvement",
+        description:
+          "On Models and Brands/Categories, Search + Add also opens a right-side form panel",
+      },
+      {
+        type: "improvement",
+        description:
+          "When adding or editing a user, show or hide the password with the eye icon (same as sign-in)",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sign-in and register keep a loading screen until the dashboard opens",
+      },
+      {
+        type: "improvement",
+        description:
+          "Small polish: closer page titles, clearer close and Done actions, and dropdowns that look ready to use",
+      },
       {
         type: "fix",
         description:
-          "Popover + Command module combobox (and AOR SearchableMultiSelect) use modal Popover and stop wheel propagation so Dialog scroll-lock no longer blocks the list",
-      },
-    ],
-  },
-  {
-    version: "0.11.68",
-    date: "2026-07-12",
-    title: "Audit Logs serial list uses audit_logs.view",
-    highlights: [
-      "Serial number logs action now requires audit_logs.view (same as nav and page)",
-    ],
-    changes: [
-      {
-        type: "fix",
-        description:
-          "listSerialActivityAction gated on audit_logs.view instead of inventory.view so Audit Logs access is consistent end-to-end",
-      },
-    ],
-  },
-  {
-    version: "0.11.67",
-    date: "2026-07-12",
-    title: "Searchable module picker when adding permissions",
-    highlights: [
-      "Add permission Module field is now a type-to-filter combobox",
-      "Search by module name or route instead of scrolling a long list",
-    ],
-    changes: [
-      {
-        type: "improvement",
-        description:
-          "Permissions create dialog: Module select uses Popover + Command searchable combobox (same pattern as AOR pickers)",
-      },
-    ],
-  },
-  {
-    version: "0.11.66",
-    date: "2026-07-12",
-    title: "Dedicated permission modules for Settings and Audit Logs",
-    highlights: [
-      "Dealers, Service centers, Departments, Warehouses, SAP, and Audit Logs each have their own permission slugs",
-      "Add permission Module catalog and sidebar gates match the new modules",
-      "Re-seed (or assign on custom roles) so system roles pick up the new grants",
-    ],
-    changes: [
-      {
-        type: "feature",
-        description:
-          "New permission slugs: departments.manage, dealers.manage, service_centers.manage, warehouses.manage, sap.manage, audit_logs.view",
-      },
-      {
-        type: "improvement",
-        description:
-          "Settings pages, SAP integration, and Audit Logs (system + serial) gate on the dedicated slugs instead of shared branches/users/logistics/reports permissions",
-      },
-      {
-        type: "improvement",
-        description:
-          "System role seed grants include the new slugs; custom tenant roles that relied on shared gates need those permissions assigned manually after re-seed",
-      },
-    ],
-  },
-  {
-    version: "0.11.65",
-    date: "2026-07-12",
-    title: "Smoother sign-in, guides, and Settings forms",
-    highlights: [
-      "Sign-in and register show a loading screen until the dashboard opens",
-      "Page quick guides can open on first visit; Search + Add opens a right-side form on key Settings pages",
-      "Price lists as its own Master data area; table search suggests matching rows as you type",
-    ],
-    changes: [
-      {
-        type: "improvement",
-        description:
-          "Sign-in and register keep a loading screen through dashboard open so you are not left on a blank form",
-      },
-      {
-        type: "feature",
-        description:
-          "Quick guides on many pages can auto-open once on first visit; the ? button still reopens them anytime",
-      },
-      {
-        type: "improvement",
-        description:
-          "Dealers, Service centers, Models, and Brands/Categories: Search + Add opens a right-side form panel",
-      },
-      {
-        type: "feature",
-        description:
-          "Price lists is its own Master data area with add and history in side panels, plus model cards with period history",
-      },
-      {
-        type: "feature",
-        description:
-          "Search boxes in tables suggest matching rows from what is already loaded",
-      },
-      {
-        type: "improvement",
-        description:
-          "Small UI polish: closer page titles, clickable close cursors, clearer Done buttons, and dropdowns that look enabled",
+          "Audit Logs (including serial number logs) shows correctly again when you have Audit Logs access",
       },
     ],
   },
@@ -143,45 +120,50 @@ export const RELEASES: ReleaseNote[] = [
     date: "2026-07-11",
     title: "Announcements, Competitors, P-Count, and Settings upgrades",
     highlights: [
-      "Announcements with a dashboard banner; Competitors Dashboard for market observations",
+      "New: Announcements (with dashboard banner) and Competitors for market price notes",
       "P-Count stock count history and Reports → P-Count; friendlier Roles and bulk AOR assign",
-      "Header shows current version · date next to What’s new; clearer pickers and confirms",
+      "Settings polish for Branches, Planogram, Master data, and AORs; header shows version · date",
     ],
     changes: [
       {
         type: "feature",
         description:
-          "Announcements you can manage, with an active banner on the dashboard",
+          "Announcements — create and manage posts, with an active banner on the dashboard",
       },
       {
         type: "feature",
         description:
-          "Competitors Dashboard for recording and reviewing market price observations",
+          "Competitors — record and review market price observations",
       },
       {
         type: "feature",
         description:
-          "P-Count saves stock-count history on close; Reports → P-Count shows a summary",
+          "P-Count — keep stock-count history when you close a count; open Reports → P-Count for a summary",
       },
       {
         type: "feature",
         description:
-          "Friendlier Roles with cards and grouped permissions; advanced matrix still available for power users",
+          "Roles — easier setup with cards and grouped permissions; advanced matrix still available if you need it",
       },
       {
         type: "feature",
         description:
-          "AORs: assign many branches or dealers at once; table grouped by user; searchable pickers; clearer remove confirms",
+          "AORs — assign many branches or dealers at once; table grouped by user; searchable pickers",
+      },
+      {
+        type: "feature",
+        description:
+          "Settings areas for Branches, Planogram, and Master data are easier to work with day to day",
       },
       {
         type: "improvement",
         description:
-          "Header shows current version · date next to What’s new; New badges and sidebar polish; date field icons align cleanly",
+          "Header shows the current version and date next to What’s new; New badges and sidebar polish",
       },
       {
         type: "fix",
         description:
-          "Removed a duplicate P-Count link in Inventory navigation",
+          "Removed a duplicate P-Count link under Inventory",
       },
     ],
   },

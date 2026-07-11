@@ -30,13 +30,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Table,
   TableBody,
@@ -195,22 +189,19 @@ export function SerialNumberTable({
               className="sm:w-64"
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="serial-status">Status</Label>
-            <Select
-              value={status || "all"}
-              onValueChange={(value) => setStatus(value === "all" ? "" : value)}
-            >
-              <SelectTrigger id="serial-status" className="sm:w-40">
-                <SelectValue placeholder="All statuses" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="inactive">Inactive</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <SearchableSelect
+            label="Status"
+            id="serial-status"
+            className="sm:w-40"
+            options={[
+              { id: "all", label: "All statuses" },
+              { id: "active", label: "Active" },
+              { id: "inactive", label: "Inactive" },
+            ]}
+            value={status || "all"}
+            onChange={(value) => setStatus(value === "all" ? "" : value)}
+            searchPlaceholder="Search status…"
+          />
           <div className="flex gap-2">
             <Button type="button" variant="outline" onClick={clearFilters}>
               Clear
@@ -364,23 +355,19 @@ export function SerialNumberTable({
                   required
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="serial-model">Model</Label>
-                <select
-                  id="serial-model"
-                  value={formModelId}
-                  onChange={(e) => setFormModelId(e.target.value)}
-                  required
-                  className="flex h-9 w-full rounded-md border bg-transparent px-3 text-sm"
-                >
-                  <option value="">Select model…</option>
-                  {modelOptions.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {modelLabelById.get(model.id)}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <SearchableSelect
+                label="Model"
+                id="serial-model"
+                options={modelOptions.map((model) => ({
+                  id: model.id,
+                  label: modelLabelById.get(model.id) ?? model.id,
+                }))}
+                value={formModelId}
+                onChange={setFormModelId}
+                placeholder="Select model…"
+                searchPlaceholder="Search models…"
+                disabled={pending}
+              />
               <DialogFooter>
                 <Button type="submit" disabled={pending || !formModelId}>
                   {editing ? "Save changes" : "Create"}

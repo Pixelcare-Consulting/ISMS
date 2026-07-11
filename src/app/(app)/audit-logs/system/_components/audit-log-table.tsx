@@ -24,13 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Table,
   TableBody,
@@ -191,49 +185,35 @@ export function AuditLogTable({
 
         <div className="flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-end lg:gap-3">
           <div className="grid shrink-0 gap-3 sm:grid-cols-2 lg:max-w-md">
-            <div className="space-y-2">
-              <Label htmlFor="audit-action-filter">Activity</Label>
-              <Select
-                value={action || "all"}
-                onValueChange={(value) =>
-                  setAction(value === "all" ? "" : value)
-                }
-              >
-                <SelectTrigger id="audit-action-filter">
-                  <SelectValue placeholder="All activities" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All activities</SelectItem>
-                  {filterOptions.actions.map((item) => (
-                    <SelectItem key={item} value={item}>
-                      {formatAuditActionLabel(item)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <SearchableSelect
+              label="Activity"
+              id="audit-action-filter"
+              options={[
+                { id: "all", label: "All activities" },
+                ...filterOptions.actions.map((item) => ({
+                  id: item,
+                  label: formatAuditActionLabel(item),
+                })),
+              ]}
+              value={action || "all"}
+              onChange={(value) => setAction(value === "all" ? "" : value)}
+              searchPlaceholder="Search activities…"
+            />
 
-            <div className="space-y-2">
-              <Label htmlFor="audit-entity-filter">Area</Label>
-              <Select
-                value={entityType || "all"}
-                onValueChange={(value) =>
-                  setEntityType(value === "all" ? "" : value)
-                }
-              >
-                <SelectTrigger id="audit-entity-filter">
-                  <SelectValue placeholder="All areas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All areas</SelectItem>
-                  {filterOptions.entityTypes.map((item) => (
-                    <SelectItem key={item} value={item}>
-                      {formatAuditEntityTypeLabel(item)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <SearchableSelect
+              label="Area"
+              id="audit-entity-filter"
+              options={[
+                { id: "all", label: "All areas" },
+                ...filterOptions.entityTypes.map((item) => ({
+                  id: item,
+                  label: formatAuditEntityTypeLabel(item),
+                })),
+              ]}
+              value={entityType || "all"}
+              onChange={(value) => setEntityType(value === "all" ? "" : value)}
+              searchPlaceholder="Search areas…"
+            />
           </div>
 
           <div className="space-y-2 lg:w-40">

@@ -23,7 +23,7 @@ import { TablePagination } from "@/components/data-table/table-pagination";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Table,
   TableBody,
@@ -307,41 +307,33 @@ function RecordSaleForm({ pending }: { pending: boolean }) {
         </Button>
         {branches.length > 0 ? (
           <>
-            <select
-              className="h-9 w-full rounded-md border px-2 text-sm sm:w-auto"
+            <SearchableSelect
+              className="w-full sm:w-[200px]"
+              options={branches.map((b) => ({ id: b.id, label: b.name }))}
               value={branchId}
-              onChange={(e) => {
-                const id = e.target.value;
+              onChange={(id) => {
                 setBranchId(id);
                 void loadSerialsForBranch(id);
               }}
-              aria-label="Branch"
-            >
-              {branches.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-            <div className="w-full space-y-1 sm:w-auto">
-              <Label htmlFor="sale-serial" className="text-xs text-muted-foreground">
-                Serial (STK, AOR-scoped)
-              </Label>
-              <select
-                id="sale-serial"
-                className="h-9 w-full rounded-md border px-2 text-sm sm:w-auto"
-                value={serialNumberId}
-                onChange={(e) => setSerialNumberId(e.target.value)}
-                disabled={serials.length === 0}
-              >
-                <option value="">— No serial —</option>
-                {serials.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.serialNo} · {s.skuCode}
-                  </option>
-                ))}
-              </select>
-            </div>
+              placeholder="Select branch…"
+              searchPlaceholder="Search branches…"
+            />
+            <SearchableSelect
+              label="Serial (STK, AOR-scoped)"
+              id="sale-serial"
+              className="w-full sm:w-[240px]"
+              options={serials.map((s) => ({
+                id: s.id,
+                label: `${s.serialNo} · ${s.skuCode}`,
+              }))}
+              value={serialNumberId}
+              onChange={setSerialNumberId}
+              allowClear
+              placeholder="— No serial —"
+              searchPlaceholder="Search serials…"
+              emptyMessage="No serials for this branch."
+              disabled={serials.length === 0}
+            />
             <Input
               type="number"
               value={amount}

@@ -20,13 +20,7 @@ import { TableSearchBar, uniqueSearchSuggestions } from "@/components/data-table
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Table,
   TableBody,
@@ -142,25 +136,21 @@ export function SerialActivityTable({
         />
 
         <div className="flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-end lg:gap-3">
-          <div className="space-y-2 lg:w-56">
-            <Label htmlFor="serial-activity-type">Event</Label>
-            <Select
-              value={type || "all"}
-              onValueChange={(value) => setType(value === "all" ? "" : value)}
-            >
-              <SelectTrigger id="serial-activity-type">
-                <SelectValue placeholder="All events" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All events</SelectItem>
-                {SERIAL_ACTIVITY_TYPES.map((item) => (
-                  <SelectItem key={item} value={item}>
-                    {SERIAL_ACTIVITY_LABELS[item]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <SearchableSelect
+            label="Event"
+            id="serial-activity-type"
+            className="lg:w-56"
+            options={[
+              { id: "all", label: "All events" },
+              ...SERIAL_ACTIVITY_TYPES.map((item) => ({
+                id: item,
+                label: SERIAL_ACTIVITY_LABELS[item],
+              })),
+            ]}
+            value={type || "all"}
+            onChange={(value) => setType(value === "all" ? "" : value)}
+            searchPlaceholder="Search events…"
+          />
 
           <div className="space-y-2 lg:w-40">
             <Label htmlFor="serial-activity-date-from">From date</Label>

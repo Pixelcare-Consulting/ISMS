@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Table,
   TableBody,
@@ -364,25 +365,24 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
               </div>
             ) : null}
             {config.parent ? (
-              <div className="space-y-2">
-                <Label htmlFor={`${entity}-parent`}>{config.parent.label}</Label>
-                <select
-                  id={`${entity}-parent`}
-                  value={formParentId}
-                  onChange={(e) => setFormParentId(e.target.value)}
-                  required={config.parent.required}
-                  className="flex h-9 w-full rounded-md border bg-transparent px-3 text-sm"
-                >
-                  <option value="">
-                    {config.parent.required ? `Select ${config.parent.label.toLowerCase()}…` : "None"}
-                  </option>
-                  {(parentOptions ?? []).map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <SearchableSelect
+                label={config.parent.label}
+                id={`${entity}-parent`}
+                options={(parentOptions ?? []).map((option) => ({
+                  id: option.id,
+                  label: option.name,
+                }))}
+                value={formParentId}
+                onChange={setFormParentId}
+                allowClear={!config.parent.required}
+                placeholder={
+                  config.parent.required
+                    ? `Select ${config.parent.label.toLowerCase()}…`
+                    : "None"
+                }
+                searchPlaceholder={`Search ${config.parent.label.toLowerCase()}…`}
+                disabled={pending}
+              />
             ) : null}
             <DialogFooter>
               <Button type="submit" disabled={pending}>

@@ -47,6 +47,8 @@ export interface NavGroupEntry {
   label: string;
   icon: LucideIcon;
   items: NavLinkItem[];
+  /** Open on first load when no child route is active (in-session toggle still works) */
+  defaultOpen?: boolean;
 }
 
 export type NavEntry = NavLinkEntry | NavGroupEntry;
@@ -195,12 +197,14 @@ export const appNavigation: NavEntry[] = [
         label: "System logs",
         icon: ClipboardList,
         permission: "audit_logs.view",
+        badge: "new",
       },
       {
         href: "/audit-logs/serial-numbers",
         label: "Serial number logs",
         icon: Barcode,
         permission: "audit_logs.view",
+        badge: "new",
       },
     ],
   },
@@ -208,6 +212,7 @@ export const appNavigation: NavEntry[] = [
     type: "group",
     label: "Settings",
     icon: Settings,
+    defaultOpen: true,
     items: [
       {
         href: "/settings/company",
@@ -265,6 +270,7 @@ export const appNavigation: NavEntry[] = [
         label: "Warehouses",
         icon: Building2,
         permission: "warehouses.manage",
+        badge: "new",
       },
       {
         href: "/settings/service-centers",

@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Textarea } from "@/components/ui/textarea";
 
 export interface CompetitorFormOption {
@@ -146,22 +147,17 @@ export function CompetitorFormDialog({
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="branchId">Branch (optional)</Label>
-              <select
-                id="branchId"
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                value={branchId}
-                onChange={(e) => setBranchId(e.target.value)}
-              >
-                <option value="">—</option>
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <SearchableSelect
+              label="Branch (optional)"
+              id="branchId"
+              options={branches.map((b) => ({ id: b.id, label: b.label }))}
+              value={branchId}
+              onChange={setBranchId}
+              allowClear
+              placeholder="—"
+              searchPlaceholder="Search branches…"
+              disabled={pending}
+            />
             <div className="space-y-2">
               <Label htmlFor="observedAt">Observed date</Label>
               <Input
@@ -175,41 +171,31 @@ export function CompetitorFormDialog({
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="brandId">Brand (optional)</Label>
-              <select
-                id="brandId"
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                value={brandId}
-                onChange={(e) => {
-                  setBrandId(e.target.value);
-                  setModelId("");
-                }}
-              >
-                <option value="">—</option>
-                {brands.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="modelId">Model (optional)</Label>
-              <select
-                id="modelId"
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                value={modelId}
-                onChange={(e) => setModelId(e.target.value)}
-              >
-                <option value="">—</option>
-                {filteredModels.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <SearchableSelect
+              label="Brand (optional)"
+              id="brandId"
+              options={brands.map((b) => ({ id: b.id, label: b.label }))}
+              value={brandId}
+              onChange={(next) => {
+                setBrandId(next);
+                setModelId("");
+              }}
+              allowClear
+              placeholder="—"
+              searchPlaceholder="Search brands…"
+              disabled={pending}
+            />
+            <SearchableSelect
+              label="Model (optional)"
+              id="modelId"
+              options={filteredModels.map((m) => ({ id: m.id, label: m.label }))}
+              value={modelId}
+              onChange={setModelId}
+              allowClear
+              placeholder="—"
+              searchPlaceholder="Search models…"
+              disabled={pending}
+            />
           </div>
 
           <div className="space-y-2">

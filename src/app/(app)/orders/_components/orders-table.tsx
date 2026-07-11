@@ -29,6 +29,7 @@ import { TablePagination } from "@/components/data-table/table-pagination";
 import { TableSearchToolbar, uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Table,
   TableBody,
@@ -417,33 +418,28 @@ function CreateOrderDialog({ onClose }: { onClose: () => void }) {
           </Button>
         ) : (
           <>
+            <SearchableSelect
+              label="Branch"
+              options={branches.map((b) => ({ id: b.id, label: b.name }))}
+              value={branchId}
+              onChange={setBranchId}
+              placeholder="Select branch…"
+              searchPlaceholder="Search branches…"
+            />
             <div>
-              <Label>Branch</Label>
-              <select
-                className="flex h-9 w-full rounded-md border px-2 text-sm"
-                value={branchId}
-                onChange={(e) => setBranchId(e.target.value)}
-              >
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label>Order type</Label>
-              <select
-                className="flex h-9 w-full rounded-md border px-2 text-sm"
+              <SearchableSelect
+                label="Order type"
+                options={[
+                  { id: "manual", label: "Manual (planogram SKUs)" },
+                  { id: "auto_replenish", label: "Auto replenish (planogram SKUs)" },
+                  { id: "special", label: "Special (off-planogram allowed)" },
+                ]}
                 value={orderType}
-                onChange={(e) =>
-                  setOrderType(e.target.value as "manual" | "special" | "auto_replenish")
+                onChange={(next) =>
+                  setOrderType(next as "manual" | "special" | "auto_replenish")
                 }
-              >
-                <option value="manual">Manual (planogram SKUs)</option>
-                <option value="auto_replenish">Auto replenish (planogram SKUs)</option>
-                <option value="special">Special (off-planogram allowed)</option>
-              </select>
+                searchPlaceholder="Search order types…"
+              />
               {orderType === "auto_replenish" ? (
                 <p className="mt-1 text-xs text-muted-foreground">
                   Single-line auto-replenish here, or{" "}
@@ -463,19 +459,18 @@ function CreateOrderDialog({ onClose }: { onClose: () => void }) {
               )}
             </div>
             <div>
-              <Label>Model</Label>
-              <select
-                className="flex h-9 w-full rounded-md border px-2 text-sm"
+              <SearchableSelect
+                label="Model"
+                options={models.map((m) => ({
+                  id: m.id,
+                  label: `${m.skuCode} — ${m.name}${m.maxQty != null ? ` (max ${m.maxQty})` : ""}`,
+                }))}
                 value={modelId}
-                onChange={(e) => setModelId(e.target.value)}
-              >
-                {models.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.skuCode} — {m.name}
-                    {m.maxQty != null ? ` (max ${m.maxQty})` : ""}
-                  </option>
-                ))}
-              </select>
+                onChange={setModelId}
+                placeholder="Select model…"
+                searchPlaceholder="Search models…"
+                emptyMessage="No eligible SKUs for this branch and order type."
+              />
               {models.length === 0 ? (
                 <p className="mt-1 text-xs text-muted-foreground">
                   No eligible SKUs for this branch and order type.

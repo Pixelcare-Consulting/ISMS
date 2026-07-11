@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 
 import { toast } from "sonner";
 
@@ -16,13 +16,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { PasswordInput } from "@/components/ui/password-input";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 interface RoleOption {
   slug: string;
@@ -72,6 +67,29 @@ export function EditUserDialog({
     user?.department?.id ?? "none",
   );
   const [pending, startTransition] = useTransition();
+
+  const roleOptions = useMemo(
+    () => roles.map((role) => ({ id: role.slug, label: role.name })),
+    [roles],
+  );
+
+  const departmentOptions = useMemo(
+    () => [
+      { id: "none", label: "No department" },
+      ...departments.map((department) => ({
+        id: department.id,
+        label: department.name,
+      })),
+    ],
+    [departments],
+  );
+
+  useEffect(() => {
+    if (!open || !user) return;
+    setRoleSlug(user.userRoles[0]?.role.slug ?? roles[0]?.slug ?? "");
+    setDepartmentId(user.department?.id ?? "none");
+    setError(null);
+  }, [open, user, roles]);
 
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -131,46 +149,34 @@ export function EditUserDialog({
           </div>
           <div className="space-y-2">
             <Label htmlFor="edit-user-password">New password</Label>
-            <Input
+            <PasswordInput
               id="edit-user-password"
               name="password"
-              type="password"
               minLength={8}
               placeholder="Leave blank to keep current password"
             />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="edit-user-role">Role</Label>
-              <Select value={roleSlug} onValueChange={setRoleSlug} required>
-                <SelectTrigger id="edit-user-role" className="w-full">
-                  <SelectValue placeholder="Select role" />
-                </SelectTrigger>
-                <SelectContent>
-                  {roles.map((role) => (
-                    <SelectItem key={role.slug} value={role.slug}>
-                      {role.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-user-department">Department</Label>
-              <Select value={departmentId} onValueChange={setDepartmentId}>
-                <SelectTrigger id="edit-user-department" className="w-full">
-                  <SelectValue placeholder="Select department" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No department</SelectItem>
-                  {departments.map((department) => (
-                    <SelectItem key={department.id} value={department.id}>
-                      {department.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <SearchableSelect
+              label="Role"
+              id="edit-user-role"
+              options={roleOptions}
+              value={roleSlug}
+              onChange={setRoleSlug}
+              placeholder="Select role"
+              searchPlaceholder="Search roles…"
+              disabled={pending}
+            />
+            <SearchableSelect
+              label="Department"
+              id="edit-user-department"
+              options={departmentOptions}
+              value={departmentId}
+              onChange={setDepartmentId}
+              placeholder="Select department"
+              searchPlaceholder="Search departments…"
+              disabled={pending}
+            />
           </div>
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
           <DialogFooter>

@@ -19,13 +19,12 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  type SearchableOption,
+} from "@/components/ui/searchable-select";
 import { cn } from "@/utils/cn";
 
-export type SearchableOption = {
-  id: string;
-  label: string;
-  description?: string;
-};
+export type { SearchableOption };
 
 type SearchableMultiSelectProps = {
   label: string;

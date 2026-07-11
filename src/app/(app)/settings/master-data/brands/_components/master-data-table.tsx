@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Table,
   TableBody,
@@ -71,6 +72,7 @@ export function MasterDataTable({ brands, models }: MasterDataTableProps) {
   const [query, setQuery] = useState("");
   const [brandOpen, setBrandOpen] = useState(false);
   const [modelOpen, setModelOpen] = useState(false);
+  const [modelBrandId, setModelBrandId] = useState("");
   const [pending, startTransition] = useTransition();
 
   const filteredBrands = useMemo(
@@ -301,19 +303,30 @@ export function MasterDataTable({ brands, models }: MasterDataTableProps) {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={modelOpen} onOpenChange={setModelOpen}>
+      <Dialog
+        open={modelOpen}
+        onOpenChange={(next) => {
+          setModelOpen(next);
+          if (!next) setModelBrandId("");
+        }}
+      >
         <DialogContent>
           <DialogHeader><DialogTitle>Add model</DialogTitle></DialogHeader>
           <form onSubmit={submitModel} className="space-y-4">
             <div className="space-y-2"><Label htmlFor="skuCode">SKU code</Label><Input id="skuCode" name="skuCode" required /></div>
             <div className="space-y-2"><Label htmlFor="model-name">Name</Label><Input id="model-name" name="name" required /></div>
-            <div className="space-y-2">
-              <Label htmlFor="brandId">Brand</Label>
-              <select id="brandId" name="brandId" className="flex h-9 w-full rounded-md border bg-transparent px-3 text-sm">
-                <option value="">None</option>
-                {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-              </select>
-            </div>
+            <SearchableSelect
+              label="Brand"
+              id="brandId"
+              name="brandId"
+              options={brands.map((b) => ({ id: b.id, label: b.name }))}
+              value={modelBrandId}
+              onChange={setModelBrandId}
+              allowClear
+              placeholder="None"
+              searchPlaceholder="Search brands…"
+              disabled={pending}
+            />
             <DialogFooter><Button type="submit" disabled={pending}>Create</Button></DialogFooter>
           </form>
         </DialogContent>

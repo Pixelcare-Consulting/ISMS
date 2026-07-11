@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Table,
   TableBody,
@@ -148,27 +149,26 @@ export function PcountReportPanel({
       <DataTableShell>
         <div className="space-y-4 border-b px-4 py-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-end lg:gap-3">
-            <div className="space-y-2 lg:w-56">
-              <Label htmlFor="pcount-branch">Branch</Label>
-              <select
-                id="pcount-branch"
-                className="flex h-9 w-full rounded-md border bg-background px-2 text-sm"
-                value={branchId}
-                onFocus={() => void loadBranches()}
-                onChange={(e) => setBranchId(e.target.value)}
-              >
-                <option value="">All branches</option>
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-                {currentBranchId &&
-                !branches.some((b) => b.id === currentBranchId) ? (
-                  <option value={currentBranchId}>Selected branch</option>
-                ) : null}
-              </select>
-            </div>
+            <SearchableSelect
+              label="Branch"
+              id="pcount-branch"
+              className="lg:w-56"
+              options={[
+                ...branches.map((b) => ({ id: b.id, label: b.name })),
+                ...(currentBranchId &&
+                !branches.some((b) => b.id === currentBranchId)
+                  ? [{ id: currentBranchId, label: "Selected branch" }]
+                  : []),
+              ]}
+              value={branchId}
+              onChange={setBranchId}
+              allowClear
+              placeholder="All branches"
+              searchPlaceholder="Search branches…"
+              onOpenChange={(open) => {
+                if (open) void loadBranches();
+              }}
+            />
             <div className="space-y-2 lg:w-40">
               <Label htmlFor="pcount-from">Closed from</Label>
               <Input

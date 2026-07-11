@@ -21,6 +21,7 @@ import { TableSearchToolbar, uniqueSearchSuggestions } from "@/components/data-t
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Sheet,
   SheetContent,
@@ -234,22 +235,19 @@ export function PriceListsPanel({
             className="flex min-h-0 flex-1 flex-col"
           >
             <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="price-model">Model</Label>
-                <select
-                  id="price-model"
-                  className="flex h-9 w-full cursor-pointer rounded-md border border-input bg-background px-2 text-sm"
-                  value={modelId}
-                  onChange={(e) => setModelId(e.target.value)}
-                  required
-                >
-                  {models.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.skuCode} — {model.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <SearchableSelect
+                label="Model"
+                id="price-model"
+                options={models.map((model) => ({
+                  id: model.id,
+                  label: `${model.skuCode} — ${model.name}`,
+                }))}
+                value={modelId}
+                onChange={setModelId}
+                placeholder="Select model…"
+                searchPlaceholder="Search models…"
+                disabled={pending}
+              />
               <div className="space-y-2">
                 <Label htmlFor="price-amount">Amount</Label>
                 <Input
@@ -284,22 +282,20 @@ export function PriceListsPanel({
                   />
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="price-package">Package type</Label>
-                <select
-                  id="price-package"
-                  className="flex h-9 w-full cursor-pointer rounded-md border border-input bg-background px-2 text-sm"
-                  value={packageTypeId}
-                  onChange={(e) => setPackageTypeId(e.target.value)}
-                >
-                  <option value="">—</option>
-                  {packageTypes.map((pkg) => (
-                    <option key={pkg.id} value={pkg.id}>
-                      {pkg.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <SearchableSelect
+                label="Package type"
+                id="price-package"
+                options={packageTypes.map((pkg) => ({
+                  id: pkg.id,
+                  label: pkg.name,
+                }))}
+                value={packageTypeId}
+                onChange={setPackageTypeId}
+                allowClear
+                placeholder="—"
+                searchPlaceholder="Search package types…"
+                disabled={pending}
+              />
             </div>
             <SheetFooter className="border-t border-border/60">
               <Button

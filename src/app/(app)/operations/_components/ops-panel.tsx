@@ -34,7 +34,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
@@ -80,6 +80,9 @@ export function OpsPanel({ deliveries, transfers, pullouts, branches }: OpsPanel
   const router = useRouter();
   const [transferOpen, setTransferOpen] = useState(false);
   const [pulloutOpen, setPulloutOpen] = useState(false);
+  const [fromBranchId, setFromBranchId] = useState(branches[0]?.id ?? "");
+  const [toBranchId, setToBranchId] = useState(branches[1]?.id ?? branches[0]?.id ?? "");
+  const [pulloutBranchId, setPulloutBranchId] = useState(branches[0]?.id ?? "");
   const [pendingDelivery, setPendingDelivery] = useState<PendingDeliveryAction | null>(
     null,
   );
@@ -309,18 +312,26 @@ export function OpsPanel({ deliveries, transfers, pullouts, branches }: OpsPanel
         <DialogContent>
           <DialogHeader><DialogTitle>New branch transfer</DialogTitle></DialogHeader>
           <form onSubmit={submitTransfer} className="space-y-4">
-            <div className="space-y-2">
-              <Label>From branch</Label>
-              <select name="fromBranchId" required className="flex h-9 w-full rounded-md border bg-transparent px-3 text-sm">
-                {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <Label>To branch</Label>
-              <select name="toBranchId" required className="flex h-9 w-full rounded-md border bg-transparent px-3 text-sm">
-                {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-              </select>
-            </div>
+            <SearchableSelect
+              label="From branch"
+              name="fromBranchId"
+              options={branches.map((b) => ({ id: b.id, label: b.name }))}
+              value={fromBranchId}
+              onChange={setFromBranchId}
+              placeholder="Select branch…"
+              searchPlaceholder="Search branches…"
+              disabled={pending}
+            />
+            <SearchableSelect
+              label="To branch"
+              name="toBranchId"
+              options={branches.map((b) => ({ id: b.id, label: b.name }))}
+              value={toBranchId}
+              onChange={setToBranchId}
+              placeholder="Select branch…"
+              searchPlaceholder="Search branches…"
+              disabled={pending}
+            />
             <DialogFooter><Button type="submit" disabled={pending}>Create</Button></DialogFooter>
           </form>
         </DialogContent>
@@ -330,12 +341,16 @@ export function OpsPanel({ deliveries, transfers, pullouts, branches }: OpsPanel
         <DialogContent>
           <DialogHeader><DialogTitle>New pull-out</DialogTitle></DialogHeader>
           <form onSubmit={submitPullout} className="space-y-4">
-            <div className="space-y-2">
-              <Label>Branch</Label>
-              <select name="branchId" required className="flex h-9 w-full rounded-md border bg-transparent px-3 text-sm">
-                {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-              </select>
-            </div>
+            <SearchableSelect
+              label="Branch"
+              name="branchId"
+              options={branches.map((b) => ({ id: b.id, label: b.name }))}
+              value={pulloutBranchId}
+              onChange={setPulloutBranchId}
+              placeholder="Select branch…"
+              searchPlaceholder="Search branches…"
+              disabled={pending}
+            />
             <DialogFooter><Button type="submit" disabled={pending}>Create</Button></DialogFooter>
           </form>
         </DialogContent>

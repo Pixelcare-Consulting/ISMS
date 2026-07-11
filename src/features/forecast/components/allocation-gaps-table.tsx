@@ -12,13 +12,7 @@ import { TablePagination } from "@/components/data-table/table-pagination";
 import { TableSearchBar, uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Table,
   TableBody,
@@ -144,25 +138,17 @@ export function AllocationGapsTable({
           <div className="space-y-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
               <div className="grid flex-1 gap-3 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="gaps-branch">Branch</Label>
-                  <Select
-                    value={branch || "all"}
-                    onValueChange={(value) => setBranch(value === "all" ? "" : value)}
-                  >
-                    <SelectTrigger id="gaps-branch">
-                      <SelectValue placeholder="All branches" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All branches</SelectItem>
-                      {branches.map((b) => (
-                        <SelectItem key={b.id} value={b.id}>
-                          {b.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <SearchableSelect
+                  label="Branch"
+                  id="gaps-branch"
+                  options={[
+                    { id: "all", label: "All branches" },
+                    ...branches.map((b) => ({ id: b.id, label: b.name })),
+                  ]}
+                  value={branch || "all"}
+                  onChange={(value) => setBranch(value === "all" ? "" : value)}
+                  searchPlaceholder="Search branches…"
+                />
                 <div className="space-y-1.5">
                   <Label htmlFor="gaps-q">Search</Label>
                   <TableSearchBar
