@@ -141,6 +141,7 @@ export function PermissionModuleFields({
       <div className="space-y-2">
         <Label htmlFor="permission-module">Module</Label>
         <Popover
+          modal
           open={moduleOpen}
           onOpenChange={(next) => {
             setModuleOpen(next);
@@ -182,7 +183,8 @@ export function PermissionModuleFields({
                 value={moduleQuery}
                 onValueChange={setModuleQuery}
               />
-              <CommandList>
+              {/* stopPropagation: Dialog RemoveScroll otherwise steals wheel events */}
+              <CommandList onWheel={(event) => event.stopPropagation()}>
                 <CommandEmpty>No modules found.</CommandEmpty>
                 <CommandGroup>
                   {filteredModules.map((appModule) => {

@@ -103,6 +103,7 @@ export function SearchableMultiSelect({
         </p>
       ) : (
         <Popover
+          modal
           open={open}
           onOpenChange={(next) => {
             setOpen(next);
@@ -167,7 +168,8 @@ export function SearchableMultiSelect({
                   Clear
                 </Button>
               </div>
-              <CommandList>
+              {/* stopPropagation: Dialog RemoveScroll otherwise steals wheel events */}
+              <CommandList onWheel={(event) => event.stopPropagation()}>
                 <CommandEmpty>No matches.</CommandEmpty>
                 <CommandGroup>
                   {filtered.map((option) => {

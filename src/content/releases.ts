@@ -24,6 +24,21 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.11.69",
+    date: "2026-07-12",
+    title: "Module picker scrolls inside Add permission",
+    highlights: [
+      "Mouse wheel and trackpad scroll work again on the Module list when adding a permission",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Popover + Command module combobox (and AOR SearchableMultiSelect) use modal Popover and stop wheel propagation so Dialog scroll-lock no longer blocks the list",
+      },
+    ],
+  },
+  {
     version: "0.11.68",
     date: "2026-07-12",
     title: "Audit Logs serial list uses audit_logs.view",
