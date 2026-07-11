@@ -8,13 +8,25 @@ import {
   createModelAction,
   listBrandsAction,
   listCategoriesAction,
+  listModelFormLookupsAction,
   updateModelStatusAction,
 } from "@/features/master-data/actions/master-data.actions";
 import type { ClientModelRow } from "@/features/master-data/types/client-model";
-import { AppDataTable, AppDataTableBody, DataTableEmpty } from "@/components/data-table";
-import { useTableSelection } from "@/components/data-table/use-table-selection";
+import {
+  AppDataTable,
+  AppDataTableBody,
+  DataTableEmptyState,
+  TableEmptyRow,
+  TableIndexCell,
+  TableIndexHead,
+  TableRowCheckbox,
+  TableSearchBar,
+  TableSelectAllCheckbox,
+  TableSelectionBadge,
+  uniqueSearchSuggestions,
+  useTableSelection,
+} from "@/components/data-table";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -26,21 +38,31 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatPeso } from "@/utils/format-currency";
+import { matchesTableSearch } from "@/utils/match-table-search";
+import { cn } from "@/utils/cn";
+
+const COL_COUNT = 8;
 
 export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) {
   const router = useRouter();
   const [optimisticRows, setOptimisticRows] = useState<ClientModelRow[]>([]);
   const [statusOverrides, setStatusOverrides] = useState<Record<string, string>>({});
+  const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
   const [brandId, setBrandId] = useState("");
   const [categoryId, setCategoryId] = useState("");
+  const [featureId, setFeatureId] = useState("");
+  const [resolutionId, setResolutionId] = useState("");
+  const [actualSizeId, setActualSizeId] = useState("");
   const [skuCode, setSkuCode] = useState("");
   const [name, setName] = useState("");
   const [options, setOptions] = useState<{
     brands: { id: string; name: string }[];
     categories: { id: string; name: string }[];
+    features: { id: string; name: string }[];
+    resolutions: { id: string; name: string }[];
+    actualSizes: { id: string; name: string }[];
   } | null>(null);
-  const selection = useTableSelection(models.map((model) => model.id));
 
   const rows = useMemo(() => {
     const modelIds = new Set(models.map((model) => model.id));
@@ -51,20 +73,63 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
     }));
   }, [models, optimisticRows, statusOverrides]);
 
+  const filtered = useMemo(
+    () =>
+      rows.filter((row) =>
+        matchesTableSearch(query, [
+          row.skuCode,
+          row.name,
+          row.brand?.name ?? "",
+          row.category?.name ?? "",
+          row.status,
+        ]),
+      ),
+    [rows, query],
+  );
+
+  const suggestions = useMemo(
+    () =>
+      uniqueSearchSuggestions(
+        rows.map((row) => row.skuCode),
+        rows.map((row) => row.name),
+        rows.map((row) => row.brand?.name),
+        rows.map((row) => row.category?.name),
+        rows.map((row) => row.status),
+      ),
+    [rows],
+  );
+
+  const selection = useTableSelection(filtered.map((model) => model.id));
+
   async function loadOptions() {
     if (options) return;
-    const [brands, categories] = await Promise.all([
+    const [brands, categories, lookups] = await Promise.all([
       listBrandsAction(),
       listCategoriesAction(),
+      listModelFormLookupsAction(),
     ]);
-    setOptions({ brands, categories });
+    setOptions({
+      brands,
+      categories,
+      features: lookups.features,
+      resolutions: lookups.resolutions,
+      actualSizes: lookups.actualSizes,
+    });
     if (brands[0]) setBrandId(brands[0].id);
     if (categories[0]) setCategoryId(categories[0].id);
   }
 
   function addModel() {
     startTransition(async () => {
-      const result = await createModelAction({ brandId, categoryId, skuCode, name });
+      const result = await createModelAction({
+        brandId,
+        categoryId,
+        featureId: featureId || undefined,
+        resolutionId: resolutionId || undefined,
+        actualSizeId: actualSizeId || undefined,
+        skuCode,
+        name,
+      });
       if (result.error) {
         toast.error("Could not add model");
         return;
@@ -131,10 +196,55 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
                 ))}
               </select>
             </div>
+            <div>
+              <Label>Feature</Label>
+              <select
+                className="flex h-9 cursor-pointer rounded-md border bg-background px-2 text-sm"
+                value={featureId}
+                onChange={(e) => setFeatureId(e.target.value)}
+              >
+                <option value="">—</option>
+                {options.features.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label>Resolution</Label>
+              <select
+                className="flex h-9 cursor-pointer rounded-md border bg-background px-2 text-sm"
+                value={resolutionId}
+                onChange={(e) => setResolutionId(e.target.value)}
+              >
+                <option value="">—</option>
+                {options.resolutions.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label>Actual size</Label>
+              <select
+                className="flex h-9 cursor-pointer rounded-md border bg-background px-2 text-sm"
+                value={actualSizeId}
+                onChange={(e) => setActualSizeId(e.target.value)}
+              >
+                <option value="">—</option>
+                {options.actualSizes.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </>
         ) : (
           <Button variant="secondary" type="button" onClick={loadOptions}>
-            Load brand/category lists
+            Load lookup lists
           </Button>
         )}
         <div>
@@ -151,28 +261,38 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
       </div>
 
       {rows.length === 0 ? (
-        <DataTableEmpty message="No product models yet." />
+        <DataTableEmptyState message="No product models yet." />
       ) : (
-        <AppDataTable title="Product models">
+        <AppDataTable
+          title="Product models"
+          shellHeader={
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <TableSearchBar
+                value={query}
+                onChange={setQuery}
+                placeholder="Search models by SKU, name, brand…"
+                suggestions={suggestions}
+                className="sm:max-w-sm"
+              />
+              <TableSelectionBadge
+                count={selection.selectedCount}
+                onClear={selection.clearSelection}
+                size="sm"
+              />
+            </div>
+          }
+        >
           <AppDataTableBody>
-            {selection.selectedCount > 0 ? (
-              <div className="px-4 pb-2">
-                <Button variant="secondary" size="sm" onClick={selection.clearSelection}>
-                  {selection.selectedCount} selected
-                </Button>
-              </div>
-            ) : null}
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead className="w-10">
-                    <Checkbox
-                      checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
-                      onCheckedChange={(checked) => selection.toggleAll(checked === true)}
-                      aria-label="Select all models"
-                    />
-                  </TableHead>
-                  <TableHead className="w-12">#</TableHead>
+                <TableRow className="bg-muted/30 hover:bg-muted/30">
+                  <TableSelectAllCheckbox
+                    isAllSelected={selection.isAllSelected}
+                    isPartiallySelected={selection.isPartiallySelected}
+                    onToggleAll={selection.toggleAll}
+                    aria-label="Select all models"
+                  />
+                  <TableIndexHead />
                   <TableHead>SKU</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Brand</TableHead>
@@ -182,38 +302,47 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rows.map((m, index) => (
-                  <TableRow key={m.id} data-state={selection.isRowSelected(m.id) ? "selected" : undefined}>
-                    <TableCell>
-                      <Checkbox
+                {filtered.length === 0 ? (
+                  <TableEmptyRow
+                    colSpan={COL_COUNT}
+                    message="No models match your search."
+                  />
+                ) : (
+                  filtered.map((m, index) => (
+                    <TableRow
+                      key={m.id}
+                      data-state={selection.isRowSelected(m.id) ? "selected" : undefined}
+                      className={cn(index % 2 === 1 && "bg-table-stripe")}
+                    >
+                      <TableRowCheckbox
                         checked={selection.isRowSelected(m.id)}
-                        onCheckedChange={(checked) => selection.toggleRow(m.id, checked === true)}
+                        onCheckedChange={(checked) => selection.toggleRow(m.id, checked)}
                         aria-label={`Select model ${m.skuCode}`}
                       />
-                    </TableCell>
-                    <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
-                    <TableCell className="font-mono text-sm">{m.skuCode}</TableCell>
-                    <TableCell className="font-medium">{m.name}</TableCell>
-                    <TableCell>{m.brand?.name ?? "—"}</TableCell>
-                    <TableCell>{m.category?.name ?? "—"}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatPeso(m.srp)}
-                    </TableCell>
-                    <TableCell>
-                      <ModelStatusSelect
-                        modelId={m.id}
-                        status={m.status}
-                        onUpdated={(nextStatus) => {
-                          setStatusOverrides((current) => ({
-                            ...current,
-                            [m.id]: nextStatus,
-                          }));
-                          router.refresh();
-                        }}
-                      />
-                    </TableCell>
-                  </TableRow>
-                ))}
+                      <TableIndexCell index={index + 1} />
+                      <TableCell className="font-mono text-sm">{m.skuCode}</TableCell>
+                      <TableCell className="font-medium">{m.name}</TableCell>
+                      <TableCell>{m.brand?.name ?? "—"}</TableCell>
+                      <TableCell>{m.category?.name ?? "—"}</TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatPeso(m.srp)}
+                      </TableCell>
+                      <TableCell>
+                        <ModelStatusSelect
+                          modelId={m.id}
+                          status={m.status}
+                          onUpdated={(nextStatus) => {
+                            setStatusOverrides((current) => ({
+                              ...current,
+                              [m.id]: nextStatus,
+                            }));
+                            router.refresh();
+                          }}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </AppDataTableBody>

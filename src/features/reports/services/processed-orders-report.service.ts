@@ -63,7 +63,8 @@ export const processedOrdersReportService = {
       include: {
         branch: {
           include: {
-            branchArea: { select: { name: true, code: true } },
+            area: { select: { name: true, code: true } },
+            branchArea: { select: { name: true } },
           },
         },
         brand: { select: { name: true } },
@@ -127,7 +128,8 @@ export const processedOrdersReportService = {
         ? spaUserById.get(spLevel.approvedById)
         : order.approvedBy;
       const spaName = spaUser?.name ?? spaUser?.email ?? "";
-      const areaName = order.branch.branchArea?.name ?? "";
+      const areaName =
+        order.branch.area?.name ?? order.branch.branchArea?.name ?? "";
 
       for (const detail of order.details) {
         const approvedQty = detail.approvedQty ?? detail.quantity;

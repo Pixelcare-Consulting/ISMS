@@ -19,7 +19,7 @@ import {
   DataTableShell,
 } from "@/components/data-table/data-table-shell";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
-import { TableSearchBar } from "@/components/data-table/table-search-bar";
+import { TableSearchBar, uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -128,6 +128,20 @@ export function AuditLogTable({
 
   const rows = useMemo(() => result.items, [result.items]);
   const selection = useTableSelection(rows.map((row) => row.id));
+
+  const suggestions = useMemo(
+    () =>
+      uniqueSearchSuggestions(
+        rows.map((row) => row.user?.name),
+        rows.map((row) => row.user?.email),
+        rows.map((row) => row.action),
+        rows.map((row) => formatAuditActionLabel(row.action)),
+        rows.map((row) => row.entityType),
+        rows.map((row) => formatAuditEntityTypeLabel(row.entityType)),
+      ),
+    [rows],
+  );
+
   const activeFilters: AuditLogFilters = {
     action: currentAction,
     entityType: currentEntityType,
@@ -172,6 +186,7 @@ export function AuditLogTable({
           value={search}
           onChange={setSearch}
           placeholder="Search by user, activity, or area…"
+          suggestions={suggestions}
         />
 
         <div className="flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-end lg:gap-3">

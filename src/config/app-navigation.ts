@@ -3,6 +3,7 @@ import {
   ArrowUpToLine,
   Barcode,
   Building2,
+  ChartColumn,
   ClipboardList,
   Clock,
   History,
@@ -10,6 +11,7 @@ import {
   LayoutDashboard,
   LayoutGrid,
   MapPin,
+  Megaphone,
   Network,
   Package,
   ScrollText,
@@ -32,6 +34,8 @@ export interface NavLinkItem {
   /** Show link when user has any of these permissions */
   anyPermissions?: string[];
   platformOperatorOnly?: boolean;
+  /** Compact sidebar badge (e.g. recently added menus) */
+  badge?: "new";
 }
 
 export interface NavLinkEntry extends NavLinkItem {
@@ -57,6 +61,22 @@ export const appNavigation: NavEntry[] = [
   },
   {
     type: "link",
+    href: "/announcements",
+    label: "Announcements",
+    icon: Megaphone,
+    permission: "announcements.view",
+    badge: "new",
+  },
+  {
+    type: "link",
+    href: "/competitors",
+    label: "Competitors",
+    icon: ChartColumn,
+    permission: "competitors.view",
+    badge: "new",
+  },
+  {
+    type: "link",
     href: "/policies",
     label: "Policies",
     icon: ScrollText,
@@ -75,9 +95,10 @@ export const appNavigation: NavEntry[] = [
       },
       {
         href: "/inventory/stock-count",
-        label: "Stock count",
+        label: "P-Count",
         icon: ClipboardList,
         permission: "inventory.view",
+        badge: "new",
       },
       {
         href: "/inventory/serial-numbers",
@@ -155,6 +176,32 @@ export const appNavigation: NavEntry[] = [
         icon: Store,
         anyPermissions: ["reports.view", "sales.create"],
       },
+      {
+        href: "/reports/pcount",
+        label: "P-Count",
+        icon: ClipboardList,
+        anyPermissions: ["reports.view", "inventory.view"],
+        badge: "new",
+      },
+    ],
+  },
+  {
+    type: "group",
+    label: "Audit Logs",
+    icon: History,
+    items: [
+      {
+        href: "/audit-logs/system",
+        label: "System logs",
+        icon: ClipboardList,
+        permission: "reports.view",
+      },
+      {
+        href: "/audit-logs/serial-numbers",
+        label: "Serial number logs",
+        icon: Barcode,
+        permission: "inventory.view",
+      },
     ],
   },
   {
@@ -184,6 +231,7 @@ export const appNavigation: NavEntry[] = [
         label: "Roles",
         icon: Shield,
         permission: "roles.manage",
+        badge: "new",
       },
       {
         href: "/settings/permissions",
@@ -203,12 +251,27 @@ export const appNavigation: NavEntry[] = [
         label: "Branches",
         icon: MapPin,
         permission: "branches.manage",
+        badge: "new",
+      },
+      {
+        href: "/settings/dealers",
+        label: "Dealers",
+        icon: Store,
+        permission: "branches.manage",
+        badge: "new",
       },
       {
         href: "/settings/warehouses",
         label: "Warehouses",
         icon: Building2,
         permission: "branches.manage",
+      },
+      {
+        href: "/settings/service-centers",
+        label: "Service centers",
+        icon: Building2,
+        permission: "branches.manage",
+        badge: "new",
       },
       {
         href: "/settings/planning",
@@ -221,43 +284,27 @@ export const appNavigation: NavEntry[] = [
         label: "Planogram",
         icon: LayoutGrid,
         anyPermissions: ["planogram.view", "planogram.manage"],
+        badge: "new",
       },
       {
         href: "/settings/master-data",
         label: "Master data",
         icon: Tags,
         permission: "master_data.manage",
+        badge: "new",
       },
       {
         href: "/settings/aors",
         label: "AORs",
         icon: Network,
         permission: "aors.manage",
+        badge: "new",
       },
       {
         href: "/settings/sap-integration",
         label: "SAP integration",
         icon: Truck,
         permission: "logistics.manage",
-      },
-    ],
-  },
-  {
-    type: "group",
-    label: "Audit Logs",
-    icon: History,
-    items: [
-      {
-        href: "/audit-logs/system",
-        label: "System logs",
-        icon: ClipboardList,
-        permission: "reports.view",
-      },
-      {
-        href: "/audit-logs/serial-numbers",
-        label: "Serial number logs",
-        icon: Barcode,
-        permission: "inventory.view",
       },
     ],
   },

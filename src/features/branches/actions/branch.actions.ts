@@ -8,22 +8,24 @@ import { requirePermission } from "@/lib/auth/permissions";
 const branchInputSchema = z.object({
   sapCode: z.string().min(1),
   name: z.string().min(1),
+  areaId: z.string().optional().nullable(),
   branchAreaId: z.string().optional().nullable(),
+  dealerId: z.string().optional().nullable(),
+  primaryWarehouseId: z.string().optional().nullable(),
+  regionId: z.string().optional().nullable(),
+  provinceId: z.string().optional().nullable(),
+  alternateWarehouseIds: z.array(z.string()).optional(),
   status: z.enum(["active", "inactive"]).optional(),
 });
 
 export async function listBranchesAction() {
   const session = await requirePermission("branches.manage");
-  const branches = await branchService.listBranches(session.user.tenantId);
-  return branches.map((b) => ({
-    ...b,
-    area: b.branchArea,
-  }));
+  return branchService.listBranches(session.user.tenantId);
 }
 
-export async function listBranchAreasAction() {
+export async function listBranchFormOptionsAction() {
   const session = await requirePermission("branches.manage");
-  return branchService.listAreas(session.user.tenantId);
+  return branchService.listFormOptions(session.user.tenantId);
 }
 
 export async function createBranchAction(input: unknown) {

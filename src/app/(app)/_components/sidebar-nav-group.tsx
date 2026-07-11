@@ -4,6 +4,7 @@ import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
+import { SidebarNavNewBadge } from "@/app/(app)/_components/sidebar-nav-new-badge";
 import {
   Collapsible,
   CollapsibleContent,
@@ -60,7 +61,8 @@ export function SidebarNavGroup({ group, items, pathname }: SidebarNavGroupProps
                   <SidebarMenuSubButton asChild isActive={active}>
                     <Link href={item.href}>
                       <ItemIcon />
-                      <span>{item.label}</span>
+                      <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                      {item.badge === "new" ? <SidebarNavNewBadge /> : null}
                     </Link>
                   </SidebarMenuSubButton>
                 </SidebarMenuSubItem>

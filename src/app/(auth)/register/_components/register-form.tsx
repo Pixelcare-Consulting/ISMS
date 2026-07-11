@@ -1,7 +1,6 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
-import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useActionState, useEffect } from "react";
 
@@ -9,6 +8,7 @@ import { registerAction } from "@/features/auth/actions/register.action";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { authClient } from "@/lib/auth/client";
 import { cn } from "@/utils/cn";
 
 const inputClassName = cn(
@@ -38,16 +38,17 @@ export function RegisterForm() {
     const email = (form.elements.namedItem("email") as HTMLInputElement).value;
     const password = (form.elements.namedItem("password") as HTMLInputElement).value;
 
-    void signIn("credentials", {
-      email,
-      password,
-      redirect: false,
-    }).then((result) => {
-      if (!result?.error) {
-        router.push("/dashboard");
-        router.refresh();
-      }
-    });
+    void authClient.signIn
+      .email({
+        email,
+        password,
+      })
+      .then((result) => {
+        if (!result.error) {
+          router.push("/dashboard");
+          router.refresh();
+        }
+      });
   }, [state, router]);
 
   return (

@@ -9,7 +9,7 @@ import {
   DataTableShell,
 } from "@/components/data-table/data-table-shell";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
-import { TableSearchToolbar } from "@/components/data-table/table-search-bar";
+import { TableSearchToolbar, uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -65,6 +65,18 @@ export function PoliciesTable({
       ),
     [policies, query],
   );
+
+  const suggestions = useMemo(
+    () =>
+      uniqueSearchSuggestions(
+        policies.map((policy) => policy.title),
+        policies.map((policy) => policy.description),
+        policies.map((policy) => policy.statusLabel),
+        policies.map((policy) => policy.createdByName),
+      ),
+    [policies],
+  );
+
   const selection = useTableSelection(filtered.map((policy) => policy.id));
 
   const emptyMessage = viewOnly
@@ -78,6 +90,7 @@ export function PoliciesTable({
           value={query}
           onChange={setQuery}
           placeholder="Search policies…"
+          suggestions={suggestions}
         />
         <DataTableEmpty message={emptyMessage} />
       </DataTableShell>
@@ -90,6 +103,7 @@ export function PoliciesTable({
         value={query}
         onChange={setQuery}
         placeholder="Search policies…"
+        suggestions={suggestions}
       >
         {selection.selectedCount > 0 ? (
           <Badge variant="secondary">{selection.selectedCount} selected</Badge>

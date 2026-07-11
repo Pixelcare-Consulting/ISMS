@@ -273,6 +273,9 @@ export const stockAuditService = {
   async closeSession(tenantId: string, userId: string, sessionId: string) {
     const session = await stockAuditRepository.findSessionById(tenantId, sessionId);
     if (!session) throw new Error("Count session not found");
+    if (session.status === "closed") {
+      throw new Error("Session is already closed");
+    }
 
     const openVariances = session.variances.filter(
       (v) => !["closed", "rejected"].includes(v.status),
@@ -281,9 +284,14 @@ export const stockAuditService = {
       throw new Error("All variances must be resolved before closing");
     }
 
-    await stockAuditRepository.updateSessionStatus(tenantId, sessionId, "closed", {
-      closedAt: new Date(),
-    });
+    const closedAt = new Date();
+    const { historyCount } = await stockAuditRepository.closeSessionWithPcountHistory(
+      tenantId,
+      sessionId,
+      userId,
+      session.sessionNo,
+      closedAt,
+    );
 
     await auditService.log({
       tenantId,
@@ -291,7 +299,46 @@ export const stockAuditService = {
       action: "stock_count.session_closed",
       entityType: "StockCountSession",
       entityId: sessionId,
-      metadata: { sessionNo: session.sessionNo },
+      metadata: {
+        sessionNo: session.sessionNo,
+        pcountHistoryCount: historyCount,
+      },
     });
+  },
+
+  /** Closed sessions summary for /reports/pcount. */
+  async listClosedForReport(
+    tenantId: string,
+    userId: string,
+    isUnrestricted: boolean,
+    filters?: {
+      branchId?: string;
+      from?: Date;
+      to?: Date;
+      page?: number;
+    },
+  ) {
+    const branchIds = isUnrestricted
+      ? undefined
+      : await aorService.getBranchIdsForUser(tenantId, userId);
+
+    if (!isUnrestricted && (!branchIds || branchIds.length === 0)) {
+      return stockAuditRepository.listClosedSessions(
+        tenantId,
+        { branchIds: [] },
+        { page: filters?.page },
+      );
+    }
+
+    return stockAuditRepository.listClosedSessions(
+      tenantId,
+      {
+        branchIds,
+        branchId: filters?.branchId,
+        from: filters?.from,
+        to: filters?.to,
+      },
+      { page: filters?.page },
+    );
   },
 };

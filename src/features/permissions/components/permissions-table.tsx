@@ -19,7 +19,7 @@ import {
   DataTableShell,
 } from "@/components/data-table/data-table-shell";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
-import { TableSearchToolbar } from "@/components/data-table/table-search-bar";
+import { TableSearchToolbar, uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
@@ -64,6 +64,19 @@ export function PermissionsTable({
       ),
     [permissions, query],
   );
+
+  const suggestions = useMemo(
+    () =>
+      uniqueSearchSuggestions(
+        permissions.map((p) => p.name),
+        permissions.map((p) => p.slug),
+        permissions.map((p) => p.description),
+        permissions.map((p) => p.moduleName),
+        permissions.map((p) => p.moduleRoute),
+      ),
+    [permissions],
+  );
+
   const selection = useTableSelection(filteredPermissions.map((permission) => permission.id));
 
   function handleDeleteConfirm() {
@@ -91,6 +104,7 @@ export function PermissionsTable({
           value={query}
           onChange={setQuery}
           placeholder="Search by name, slug, or description…"
+          suggestions={suggestions}
         >
           {selection.selectedCount > 0 ? (
             <Badge variant="secondary">{selection.selectedCount} selected</Badge>

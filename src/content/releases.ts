@@ -24,6 +24,431 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.11.60",
+    date: "2026-07-12",
+    title: "White outline triggers + search autosuggest",
+    highlights: [
+      "Outline buttons (Branches/Dealers multi-select) use a white background like native selects",
+      "Table search bars show client-side suggestions from loaded row data across Settings, Orders, Inventory, Logistics, and more",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Button outline variant uses bg-background; className merges correctly so SearchableMultiSelect stays white",
+      },
+      {
+        type: "feature",
+        description:
+          "TableSearchBar/Toolbar optional suggestions dropdown (keyboard + click) wired on all shared table search consumers",
+      },
+    ],
+  },
+  {
+    version: "0.11.59",
+    date: "2026-07-12",
+    title: "Dialog and Sheet close cursor",
+    highlights: [
+      "Dialog and Sheet X close buttons use a hand cursor so they feel clickable",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Shared DialogContent and SheetContent close buttons include cursor-pointer",
+      },
+    ],
+  },
+  {
+    version: "0.11.58",
+    date: "2026-07-12",
+    title: "Sheet Done button primary contrast",
+    highlights: [
+      "History and Roles Access Sheet footers use solid primary Done (full-width teal) instead of muted outline",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Price list history and role permissions drawers: Done uses default primary Button with w-full",
+      },
+    ],
+  },
+
+  {
+    version: "0.11.57",
+    date: "2026-07-12",
+    title: "Price lists Sheets + model history",
+    highlights: [
+      "Add price row and model period history open in Roles-style right Sheets",
+      "Price list grid groups by model (latest amount + period count); click a card for full history",
+      "Fixed create-price Decimal serialize crash; removed Manage price lists text CTA",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "createPriceListAction returns success only; listPriceListsAction serializes Decimal via toClientPriceListRow",
+      },
+      {
+        type: "feature",
+        description:
+          "Grouped model cards with history Sheet (period timeline + icon Remove) and Add price Sheet",
+      },
+      {
+        type: "improvement",
+        description:
+          "Replaced text-as-button CTAs (Models Manage price lists, Planning View suggested orders) with proper Buttons; added no-text-as-button workspace rule",
+      },
+    ],
+  },
+  {
+    version: "0.11.56",
+    date: "2026-07-12",
+    title: "Master data dialog accessibility",
+    highlights: [
+      "Master data Add/Edit lookup dialogs include a description so Radix no longer warns about missing DialogDescription",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Added DialogDescription to shared lookup-table create/edit dialogs (Categories and other master-data lookups)",
+      },
+    ],
+  },
+  {
+    version: "0.11.55",
+    date: "2026-07-12",
+    title: "Price lists page + Master data NEW badges",
+    highlights: [
+      "Price lists is its own Master data module with Roles-style search, cards, add dialog, and confirmed remove",
+      "Models page no longer embeds the cramped inline price block — link to Manage price lists instead",
+      "NEW badges on Master data in Settings nav and on Models / Price lists hub cards",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Added /settings/master-data/price-lists with card grid, search, create dialog, and DeleteConfirmDialog remove",
+      },
+      {
+        type: "improvement",
+        description:
+          "Surfaced NEW badges for Master data (sidebar) and Models/Price lists hub cards so today’s updates are visible",
+      },
+    ],
+  },
+  {
+    version: "0.11.54",
+    date: "2026-07-11",
+    title: "Branch alternate warehouses picker",
+    highlights: [
+      "Branch Add/Edit uses a searchable multi-select for alternate warehouses (scales past checkbox lists)",
+      "Dealer, warehouse, and geo dropdowns use enabled white/background styling",
+      "Primary warehouse is excluded from alternate options",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Replaced bordered checkbox list with SearchableMultiSelect (filter by code/name, chips, select-all filtered)",
+      },
+      {
+        type: "fix",
+        description:
+          "Native selects in branch dialogs use border-input bg-background so they no longer look disabled",
+      },
+    ],
+  },
+  {
+    version: "0.11.53",
+    date: "2026-07-11",
+    title: "AOR table preview cleanup",
+    highlights: [
+      "AOR Branches column preview no longer shows per-branch trash icons",
+      "Remove a single branch from the View all dialog (with confirmation); remove all still uses the row action",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Compact max-3 Branches cell is display-only; delete remains in View-all modal and row-level remove-all",
+      },
+    ],
+  },
+  {
+    version: "0.11.52",
+    date: "2026-07-11",
+    title: "AOR branches list UI",
+    highlights: [
+      "AOR Branches column uses a compact name + code preview (max 3) instead of dense chips",
+      "View all opens a table dialog with branch, SAP code, assigned at/by, and confirmed remove",
+      "Branches and Dealers multi-select triggers match enabled form inputs (no muted gray)",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Replaced chip-only View-all modal with a scrollable settings-style table; single-branch remove still confirms via DeleteConfirmDialog",
+      },
+      {
+        type: "fix",
+        description:
+          "SearchableMultiSelect outline trigger uses bg-background when enabled so Branches/Dealers no longer look disabled",
+      },
+    ],
+  },
+  {
+    version: "0.11.51",
+    date: "2026-07-11",
+    title: "Header version date format",
+    highlights: [
+      "App header shows version as vX.Y.Z · DD.MM.YY next to What's new",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Header uses getVersionWithDateLabel (same format as login footer / release cards)",
+      },
+    ],
+  },
+  {
+    version: "0.11.50",
+    date: "2026-07-11",
+    title: "Header build date stamp",
+    highlights: [
+      "App header version shows ISMS vX.Y.Z (Build M-D-YY) from the current release date",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Header What's new area uses getHeaderBuildLabel so the build date stays in sync with package.json / releases.ts",
+      },
+    ],
+  },
+  {
+    version: "0.11.49",
+    date: "2026-07-11",
+    title: "AOR chips + delete confirms",
+    highlights: [
+      "AOR Branches column shows up to 3 chips with View all for overflow",
+      "Delete confirmation covers nested removes (locations, price rows, planogram, AOR chip X)",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "AOR branch chips capped at 3 with a View-all dialog; chip remove requires confirm; pointer cursor on chip X",
+      },
+      {
+        type: "improvement",
+        description:
+          "DeleteConfirmDialog supports optional confirmLabel; warehouse/SC locations, price list rows, and planogram removes use the shared confirm dialog",
+      },
+    ],
+  },
+  {
+    version: "0.11.48",
+    date: "2026-07-11",
+    title: "Fix duplicate Inventory P-Count nav",
+    highlights: [
+      "Removed duplicate Stock count / P-Count sidebar links that shared the same route",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Inventory nav keeps a single P-Count entry for /inventory/stock-count so React keys stay unique",
+      },
+    ],
+  },
+  {
+    version: "0.11.47",
+    date: "2026-07-11",
+    title: "Header build version",
+    highlights: [
+      "App header shows the current build version next to What's new",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Latest package version (vX.Y.Z) displayed to the left of the What's new button in the page header",
+      },
+    ],
+  },
+  {
+    version: "0.11.46",
+    date: "2026-07-11",
+    title: "Date input calendar icon alignment",
+    highlights: [
+      "Date, time, and related inputs right-align the calendar/clock picker icon",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "WebKit calendar-picker-indicator uses ml-auto on temporal input types so the icon sits flush to the right",
+      },
+    ],
+  },
+  {
+    version: "0.11.45",
+    date: "2026-07-11",
+    title: "AOR table grouped by user",
+    highlights: [
+      "Settings → AORs groups assignments by user with removable branch chips",
+      "Assigned at shows the latest assignment; Assigned by shows one actor or Multiple",
+      "Per-chip remove plus optional Remove all for a user’s AORs",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "AOR list groups one-row-per-branch records by user so multi-branch assignments appear on a single row",
+      },
+      {
+        type: "improvement",
+        description:
+          "Branch chips call existing delete; row action can remove all AORs for a user with confirm",
+      },
+    ],
+  },
+  {
+    version: "0.12.0",
+    date: "2026-07-11",
+    title: "Announcements, Competitors Dashboard, and P-Count",
+    highlights: [
+      "Tenant announcements with CRUD and an active banner on the dashboard",
+      "Competitors Dashboard for market price observations with KPIs and filters",
+      "P-Count: stock-count close writes serial history; Reports → P-Count summary",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Announcements module (`/announcements`) with view/manage RBAC and dashboard banner for active posts",
+      },
+      {
+        type: "feature",
+        description:
+          "Competitors Dashboard (`/competitors`) for manual market observations with KPIs and CRUD",
+      },
+      {
+        type: "feature",
+        description:
+          "P-Count: SerialNumberHistory `pcount` on stock-count close; `/reports/pcount` plus Inventory/Reports nav aliases",
+      },
+    ],
+  },
+  {
+    version: "0.11.44",
+    date: "2026-07-11",
+    title: "AOR assign attribution and searchable pickers",
+    highlights: [
+      "AOR table shows when each assignment was made and who assigned it",
+      "Branch and dealer pickers use searchable Popover/Command multi-select with removable chips",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "AOR rows store and display Assigned at / Assigned by (createdById)",
+      },
+      {
+        type: "improvement",
+        description:
+          "Settings → AORs replaces checkbox lists with searchable combobox multi-select, select-all filtered, and clear",
+      },
+    ],
+  },
+  {
+    version: "0.11.43",
+    date: "2026-07-11",
+    title: "AOR multi-branch and multi-dealer assign",
+    highlights: [
+      "Assign a user to many branches at once from Settings → AORs",
+      "Select dealers to fan out AOR rows to all of their active branches",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "AOR assign form supports multi-select Branches and Dealers with bulk create",
+      },
+      {
+        type: "feature",
+        description:
+          "Dealer selection resolves to active branch AOR rows (not dealerId-only scoping)",
+      },
+      {
+        type: "improvement",
+        description:
+          "Toast reports assigned and skipped counts; already-assigned branches are skipped",
+      },
+    ],
+  },
+  {
+    version: "0.11.42",
+    date: "2026-07-11",
+    title: "Sidebar polish and New badges",
+    highlights: [
+      "New badges call out Roles, Dealers, and Service centers in Settings",
+      "Sidebar scrollbar, expand cursor, and drawer trigger spacing match the dark theme",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Settings nav shows New badges on Roles, Dealers, and Service centers",
+      },
+      {
+        type: "fix",
+        description:
+          "Service centers sub-item stays on one line with badge (no wrap or clipped New label)",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sidebar uses themed scrollbar; expand/collapse parents show pointer cursor",
+      },
+      {
+        type: "improvement",
+        description:
+          "Header drawer trigger sits closer to the sidebar edge",
+      },
+      {
+        type: "fix",
+        description:
+          "Better Auth nextCookies plugin ordered last so Set-Cookie headers forward correctly",
+      },
+    ],
+  },
+  {
+    version: "0.11.41",
+    date: "2026-07-11",
+    title: "Friendlier Roles access management",
+    highlights: [
+      "Roles Settings uses cards, grouped permissions, and a create wizard instead of the checkbox matrix by default",
+      "Advanced matrix view kept at /settings/roles/matrix for power users",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Simple Roles UI with role cards, module-grouped permission drawer, templates, and create wizard",
+      },
+      {
+        type: "improvement",
+        description:
+          "Existing roles permission matrix preserved as Advanced matrix backup",
+      },
+    ],
+  },
+  {
     version: "0.11.40",
     date: "2026-06-02",
     title: "Instant CRUD updates for remaining settings tables",

@@ -11,6 +11,7 @@ import {
 
 import { requirePermission } from "@/lib/auth/permissions";
 import { MASTER_DATA_TAB_GROUPS } from "@/config/section-tabs";
+import { SidebarNavNewBadge } from "@/app/(app)/_components/sidebar-nav-new-badge";
 
 const GROUP_ICONS: Record<string, LucideIcon> = {
   Products: Package,
@@ -47,7 +48,10 @@ export default async function MasterDataPage() {
                   className="group flex items-start gap-3 rounded-xl border border-border/60 bg-card p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="font-medium text-foreground">{item.label}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-medium text-foreground">{item.label}</p>
+                      {item.badge === "new" ? <SidebarNavNewBadge /> : null}
+                    </div>
                     {item.description ? (
                       <p className="mt-1 text-sm text-muted-foreground">
                         {item.description}

@@ -105,6 +105,22 @@ enum SkuStatus {
   retired
 }
 
+/// SN movement ledger types from Excel Schema (Historical Details).
+enum SerialHistoryTxnType {
+  grpo
+  delivery
+  backload
+  inv_acknowledgement
+  inv_status_update
+  transfer
+  pullout
+  sales
+  reserved_sold
+  return
+  replacement
+  pcount
+}
+
 model Tenant {
   id        String    @id @default(cuid())
   name      String
@@ -144,6 +160,9 @@ model Tenant {
   documentTypes       DocumentType[]
   returnTypes         ReturnType[]
   branchStatusTypes   BranchStatusType[]
+  dealers             Dealer[]
+  serviceCenters      ServiceCenter[]
+  priceLists          PriceList[]
   branches            Branch[]
   warehouses          Warehouse[]
   aors                Aor[]
@@ -157,6 +176,17 @@ model Tenant {
   branchPullouts      BranchPullout[]
   branchSales         BranchSalesTransaction[]
   branchReturnRequests BranchReturnRequest[]
+  branchBackloads     BranchBackload[]
+  branchQuotas        BranchQuota[]
+  salesReplacements   SalesReplacement[]
+  warehouseInventories WarehouseInventory[]
+  serialNumberHistories SerialNumberHistory[]
+  serviceCenterInventories ServiceCenterInventory[]
+  serviceCenterOrders ServiceCenterOrder[]
+  serviceCenterDeliveries ServiceCenterDelivery[]
+  serviceBackloads    ServiceBackload[]
+  serviceCenterSales  ServiceCenterSalesTransaction[]
+  serviceCenterPullouts ServiceCenterPullout[]
   reasonStatuses      ReasonStatus[]
   reasonStatusCodes   ReasonStatusCode[]
   planningPeriods     PlanningPeriod[]
@@ -166,6 +196,8 @@ model Tenant {
   stockVariances      StockVariance[]
   sapIntegrationJobs  SapIntegrationJob[]
   sapServiceLayerConfigs SapServiceLayerConfig[]
+  announcements       Announcement[]
+  competitorObservations CompetitorObservation[]
 
   @@map("tenants")
 }
@@ -174,9 +206,10 @@ model User {
   id            String    @id @default(cuid())
   tenantId      String    @map("tenant_id")
   email         String
-  name          String?
+  name          String    @default("")
+  /// App-managed hash; Better Auth credential accounts mirror this in Account.password.
   passwordHash  String    @map("password_hash")
-  emailVerified DateTime? @map("email_verified")
+  emailVerified Boolean   @default(false) @map("email_verified")
   image         String?
   departmentId  String?   @map("department_id")
   createdAt     DateTime  @default(now()) @map("created_at")
@@ -195,16 +228,24 @@ model User {
   policyReviewEvents PolicyReviewEvent[]
   policyAttachmentsUploaded PolicyAttachment[] @relation("PolicyAttachmentUploadedBy")
   aors                      Aor[]
+  aorsCreated               Aor[]               @relation("AorCreatedBy")
   branchOrdersCreated       BranchOrder[]       @relation("BranchOrderCreatedBy")
   branchOrdersApproved      BranchOrder[]       @relation("BranchOrderApprovedBy")
   branchInventoriesUpdated  BranchInventory[]   @relation("BranchInventoryUpdatedBy")
+  branchPulloutsCreated     BranchPullout[]     @relation("BranchPulloutCreatedBy")
+  branchPulloutsScheduled   BranchPullout[]     @relation("BranchPulloutScheduledBy")
   returnRequestsSubmitted   BranchReturnRequest[] @relation("ReturnRequestedBy")
   returnRequestsEvaluated   BranchReturnRequest[] @relation("ReturnEvaluatedBy")
   returnRequestsApproved    BranchReturnRequest[] @relation("ReturnApprovedBy")
+  returnRequestsAccepted    BranchReturnRequest[] @relation("ReturnAcceptedBy")
+  salesReplacementsTransacted SalesReplacement[] @relation("SalesReplacementTransactedBy")
+  serialNumberHistoriesCreated SerialNumberHistory[] @relation("SerialNumberHistoryCreatedBy")
   stockCountSessionsCreated StockCountSession[]   @relation("StockCountSessionCreatedBy")
   stockCountLinesCounted    StockCountLine[]      @relation("StockCountLineCountedBy")
   stockVariancesInvestigated StockVariance[]      @relation("StockVarianceInvestigatedBy")
   stockVariancesAdjustmentRequested StockVariance[] @relation("StockVarianceAdjustmentRequestedBy")
+  announcementsCreated      Announcement[]        @relation("AnnouncementCreatedBy")
+  competitorObservationsCreated CompetitorObservation[] @relation("CompetitorObservationCreatedBy")
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -381,45 +422,54 @@ model PolicyAttachment {
   @@map("policy_attachments")
 }
 
-// Auth.js adapter tables
+// Better Auth adapter tables
 model Account {
-  id                String  @id @default(cuid())
-  userId            String  @map("user_id")
-  type              String
-  provider          String
-  providerAccountId String  @map("provider_account_id")
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
-  expires_at        Int?
-  token_type        String?
-  scope             String?
-  id_token          String? @db.Text
-  session_state     String?
+  id                    String    @id @default(cuid())
+  accountId             String    @map("account_id")
+  providerId            String    @map("provider_id")
+  userId                String    @map("user_id")
+  accessToken           String?   @map("access_token") @db.Text
+  refreshToken          String?   @map("refresh_token") @db.Text
+  idToken               String?   @map("id_token") @db.Text
+  accessTokenExpiresAt  DateTime? @map("access_token_expires_at")
+  refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at")
+  scope                 String?
+  password              String?   @db.Text
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([provider, providerAccountId])
+  @@index([userId])
   @@map("accounts")
 }
 
 model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique @map("session_token")
-  userId       String   @map("user_id")
-  expires      DateTime
+  id        String   @id @default(cuid())
+  expiresAt DateTime @map("expires_at")
+  token     String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  userId    String   @map("user_id")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
   @@map("sessions")
 }
 
-model VerificationToken {
+model Verification {
+  id         String   @id @default(cuid())
   identifier String
-  token      String
-  expires    DateTime
+  value      String
+  expiresAt  DateTime @map("expires_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
 
-  @@unique([identifier, token])
-  @@map("verification_tokens")
+  @@index([identifier])
+  @@map("verifications")
 }
 
 // --- BRS reference data ---
@@ -430,12 +480,14 @@ model Brand {
   name      String
   code      String?
   createdAt DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   models       ProductModel[]
-  categories   Category[]
   branchOrders BranchOrder[]
+  branchQuotas BranchQuota[]
+  serviceCenterOrders ServiceCenterOrder[]
+  competitorObservations CompetitorObservation[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -445,7 +497,6 @@ model Brand {
 model Category {
   id           String             @id @default(cuid())
   tenantId     String             @map("tenant_id")
-  brandId      String?            @map("brand_id")
   code         String?
   name         String
   recordStatus LookupRecordStatus @default(active) @map("record_status")
@@ -453,7 +504,6 @@ model Category {
   updatedAt    DateTime           @updatedAt @map("updated_at")
 
   tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  brand  Brand?         @relation(fields: [brandId], references: [id], onDelete: SetNull)
   models ProductModel[]
 
   @@unique([tenantId, name])
@@ -462,27 +512,38 @@ model Category {
 }
 
 model ProductModel {
-  id         String    @id @default(cuid())
-  tenantId   String    @map("tenant_id")
-  brandId    String?   @map("brand_id")
-  categoryId String?   @map("category_id")
-  skuCode    String    @map("sku_code")
-  name       String
-  srp        Decimal?  @db.Decimal(12, 2)
-  cbm        Decimal?  @db.Decimal(10, 4)
-  status     SkuStatus @default(active)
-  createdAt  DateTime  @default(now()) @map("created_at")
-  updatedAt  DateTime  @updatedAt @map("updated_at")
+  id           String    @id @default(cuid())
+  tenantId     String    @map("tenant_id")
+  brandId      String?   @map("brand_id")
+  categoryId   String?   @map("category_id")
+  featureId    String?   @map("feature_id")
+  resolutionId String?   @map("resolution_id")
+  actualSizeId String?   @map("actual_size_id")
+  skuCode      String    @map("sku_code")
+  name         String
+  description  String?
+  srp          Decimal?  @db.Decimal(12, 2)
+  cbm          Decimal?  @db.Decimal(10, 4)
+  status       SkuStatus @default(active)
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
 
-  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  brand             Brand?              @relation(fields: [brandId], references: [id], onDelete: SetNull)
-  category          Category?           @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  serialNumbers     SerialNumber[]
-  branchPlanograms  BranchPlanogram[]
-  branchMilSettings BranchMilSetting[]
+  tenant             Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  brand              Brand?               @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  category           Category?            @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  feature            Feature?             @relation(fields: [featureId], references: [id], onDelete: SetNull)
+  resolution         Resolution?          @relation(fields: [resolutionId], references: [id], onDelete: SetNull)
+  actualSize         ActualSize?          @relation(fields: [actualSizeId], references: [id], onDelete: SetNull)
+  serialNumbers      SerialNumber[]
+  branchPlanograms   BranchPlanogram[]
+  branchMilSettings  BranchMilSetting[]
   branchOrderDetails BranchOrderDetail[]
-  branchAllocations BranchAllocation[]
-  stockCountLines   StockCountLine[]
+  branchAllocations  BranchAllocation[]
+  stockCountLines    StockCountLine[]
+  priceLists         PriceList[]
+  salesTransactionDetails BranchSalesTransactionDetail[]
+  serviceCenterOrderDetails ServiceCenterOrderDetail[]
+  competitorObservations CompetitorObservation[]
 
   @@unique([tenantId, skuCode])
   @@index([tenantId])
@@ -499,8 +560,11 @@ model Area {
   createdAt    DateTime           @default(now()) @map("created_at")
   updatedAt    DateTime           @updatedAt @map("updated_at")
 
-  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  branches Branch[]
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branches       Branch[]
+  dealers        Dealer[]
+  serviceCenters ServiceCenter[]
+  serviceCenterLocations ServiceCenterLocation[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -515,8 +579,10 @@ model Region {
   createdAt    DateTime           @default(now()) @map("created_at")
   updatedAt    DateTime           @updatedAt @map("updated_at")
 
-  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  provinces Province[]
+  tenant                 Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  provinces              Province[]
+  branches               Branch[]
+  serviceCenterLocations ServiceCenterLocation[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -532,8 +598,10 @@ model Province {
   createdAt    DateTime           @default(now()) @map("created_at")
   updatedAt    DateTime           @updatedAt @map("updated_at")
 
-  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  region Region? @relation(fields: [regionId], references: [id], onDelete: SetNull)
+  tenant                 Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  region                 Region?                 @relation(fields: [regionId], references: [id], onDelete: SetNull)
+  branches               Branch[]
+  serviceCenterLocations ServiceCenterLocation[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -541,13 +609,19 @@ model Province {
 }
 
 model PackageType {
-  id        String   @id @default(cuid())
-  tenantId  String   @map("tenant_id")
-  name      String
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id           String             @id @default(cuid())
+  tenantId     String             @map("tenant_id")
+  name         String
+  recordStatus LookupRecordStatus @default(active) @map("record_status")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant       Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branchOrders BranchOrder[]
+  branchSales  BranchSalesTransaction[]
+  priceLists   PriceList[]
+  serviceCenterOrders ServiceCenterOrder[]
+  serviceCenterSales  ServiceCenterSalesTransaction[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -562,7 +636,9 @@ model PaymentType {
   createdAt    DateTime           @default(now()) @map("created_at")
   updatedAt    DateTime           @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant       Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branchSales  BranchSalesTransaction[]
+  serviceCenterSales ServiceCenterSalesTransaction[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -577,7 +653,9 @@ model SaleType {
   createdAt    DateTime           @default(now()) @map("created_at")
   updatedAt    DateTime           @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant       Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branchSales  BranchSalesTransaction[]
+  serviceCenterSales ServiceCenterSalesTransaction[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -594,7 +672,8 @@ model Feature {
   createdAt    DateTime           @default(now()) @map("created_at")
   updatedAt    DateTime           @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  models ProductModel[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -627,8 +706,9 @@ model ActualSize {
   createdAt    DateTime           @default(now()) @map("created_at")
   updatedAt    DateTime           @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  size   Size   @relation(fields: [sizeId], references: [id], onDelete: Cascade)
+  tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  size   Size           @relation(fields: [sizeId], references: [id], onDelete: Cascade)
+  models ProductModel[]
 
   @@unique([tenantId, sizeId, name])
   @@index([tenantId])
@@ -643,7 +723,8 @@ model Resolution {
   createdAt    DateTime           @default(now()) @map("created_at")
   updatedAt    DateTime           @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  models ProductModel[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -658,7 +739,10 @@ model DealerArea {
   createdAt    DateTime           @default(now()) @map("created_at")
   updatedAt    DateTime           @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant                 Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  dealers                Dealer[]
+  serviceCenters         ServiceCenter[]
+  serviceCenterLocations ServiceCenterLocation[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -673,7 +757,9 @@ model BranchArea {
   createdAt    DateTime           @default(now()) @map("created_at")
   updatedAt    DateTime           @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant                 Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branches               Branch[]
+  serviceCenterLocations ServiceCenterLocation[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -688,7 +774,10 @@ model ModeOfPayment {
   createdAt    DateTime           @default(now()) @map("created_at")
   updatedAt    DateTime           @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  dealers        Dealer[]
+  warehouses     Warehouse[]
+  serviceCenters ServiceCenter[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -703,7 +792,9 @@ model PromoType {
   createdAt    DateTime           @default(now()) @map("created_at")
   updatedAt    DateTime           @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant       Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branchSales  BranchSalesTransaction[]
+  serviceCenterSales ServiceCenterSalesTransaction[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -718,7 +809,9 @@ model DealerType {
   createdAt    DateTime           @default(now()) @map("created_at")
   updatedAt    DateTime           @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  dealers        Dealer[]
+  serviceCenters ServiceCenter[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -733,7 +826,9 @@ model CustomerDeliveryMethod {
   createdAt    DateTime           @default(now()) @map("created_at")
   updatedAt    DateTime           @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant       Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branchSales  BranchSalesTransaction[]
+  serviceCenterSales ServiceCenterSalesTransaction[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -748,7 +843,8 @@ model ProblemDescription {
   createdAt    DateTime           @default(now()) @map("created_at")
   updatedAt    DateTime           @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branchReturnRequests BranchReturnRequest[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -763,8 +859,9 @@ model DocumentType {
   createdAt    DateTime           @default(now()) @map("created_at")
   updatedAt    DateTime           @updatedAt @map("updated_at")
 
-  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  returnTypes ReturnType[]
+  tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  returnTypes          ReturnType[]
+  branchReturnRequests BranchReturnRequest[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -780,8 +877,9 @@ model ReturnType {
   createdAt      DateTime           @default(now()) @map("created_at")
   updatedAt      DateTime           @updatedAt @map("updated_at")
 
-  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  documentType DocumentType @relation(fields: [documentTypeId], references: [id], onDelete: Cascade)
+  tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  documentType         DocumentType          @relation(fields: [documentTypeId], references: [id], onDelete: Cascade)
+  branchReturnRequests BranchReturnRequest[]
 
   @@unique([tenantId, documentTypeId, name])
   @@index([tenantId])
@@ -796,7 +894,8 @@ model BranchStatusType {
   createdAt    DateTime           @default(now()) @map("created_at")
   updatedAt    DateTime           @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branches Branch[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -805,34 +904,164 @@ model BranchStatusType {
 
 // --- BRS organization ---
 
-model Branch {
-  id               String       @id @default(cuid())
-  tenantId         String       @map("tenant_id")
-  sapCode          String       @map("sap_code")
-  name             String
-  branchAreaId     String?      @map("branch_area_id")
-  deliverySchedule Json?        @map("delivery_schedule")
-  status           BranchStatus @default(active)
-  createdAt        DateTime     @default(now()) @map("created_at")
-  updatedAt        DateTime     @updatedAt @map("updated_at")
-  deletedAt        DateTime?    @map("deleted_at")
+model Dealer {
+  id              String       @id @default(cuid())
+  tenantId        String       @map("tenant_id")
+  name            String
+  sapCode         String?      @map("sap_code")
+  status          BranchStatus @default(active)
+  areaId          String?      @map("area_id")
+  dealerTypeId    String?      @map("dealer_type_id")
+  dealerAreaId    String?      @map("dealer_area_id")
+  modeOfPaymentId String?      @map("mode_of_payment_id")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+  deletedAt       DateTime?    @map("deleted_at")
 
-  tenant              Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  branchArea          Area?               @relation(fields: [branchAreaId], references: [id], onDelete: SetNull)
-  alternateWarehouses AlternateWarehouse[]
-  aors                Aor[]
-  branchInventories   BranchInventory[]
-  branchPlanograms    BranchPlanogram[]
-  branchMilSettings   BranchMilSetting[]
-  branchOrders        BranchOrder[]
-  branchDeliveries    BranchDelivery[]
-  transfersFrom       BranchTransfer[]    @relation("TransferFromBranch")
-  transfersTo         BranchTransfer[]    @relation("TransferToBranch")
-  branchPullouts      BranchPullout[]
-  branchSales         BranchSalesTransaction[]
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  area          Area?          @relation(fields: [areaId], references: [id], onDelete: SetNull)
+  dealerType    DealerType?    @relation(fields: [dealerTypeId], references: [id], onDelete: SetNull)
+  dealerArea    DealerArea?    @relation(fields: [dealerAreaId], references: [id], onDelete: SetNull)
+  modeOfPayment ModeOfPayment? @relation(fields: [modeOfPaymentId], references: [id], onDelete: SetNull)
+  branches      Branch[]
+  aors          Aor[]
+  salesReplacements SalesReplacement[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("dealers")
+}
+
+model ServiceCenter {
+  id              String       @id @default(cuid())
+  tenantId        String       @map("tenant_id")
+  sapCode         String       @map("sap_code")
+  name            String
+  status          BranchStatus @default(active)
+  areaId          String?      @map("area_id")
+  dealerTypeId    String?      @map("dealer_type_id")
+  dealerAreaId    String?      @map("dealer_area_id")
+  modeOfPaymentId String?      @map("mode_of_payment_id")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+  deletedAt       DateTime?    @map("deleted_at")
+
+  tenant        Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  area          Area?                   @relation(fields: [areaId], references: [id], onDelete: SetNull)
+  dealerType    DealerType?             @relation(fields: [dealerTypeId], references: [id], onDelete: SetNull)
+  dealerArea    DealerArea?             @relation(fields: [dealerAreaId], references: [id], onDelete: SetNull)
+  modeOfPayment ModeOfPayment?          @relation(fields: [modeOfPaymentId], references: [id], onDelete: SetNull)
+  locations     ServiceCenterLocation[]
+  aors          Aor[]
+  inventories   ServiceCenterInventory[]
+  orders        ServiceCenterOrder[]
+  deliveries    ServiceCenterDelivery[]
+  backloads     ServiceBackload[]
+  sales         ServiceCenterSalesTransaction[]
+  pullouts      ServiceCenterPullout[]
+
+  @@unique([tenantId, sapCode])
+  @@index([tenantId])
+  @@map("service_centers")
+}
+
+model ServiceCenterLocation {
+  id              String   @id @default(cuid())
+  serviceCenterId String   @map("service_center_id")
+  code            String
+  name            String
+  areaId          String?  @map("area_id")
+  dealerAreaId    String?  @map("dealer_area_id")
+  regionId        String?  @map("region_id")
+  provinceId      String?  @map("province_id")
+  branchAreaId    String?  @map("branch_area_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  serviceCenter ServiceCenter @relation(fields: [serviceCenterId], references: [id], onDelete: Cascade)
+  area          Area?         @relation(fields: [areaId], references: [id], onDelete: SetNull)
+  dealerArea    DealerArea?   @relation(fields: [dealerAreaId], references: [id], onDelete: SetNull)
+  region        Region?       @relation(fields: [regionId], references: [id], onDelete: SetNull)
+  province      Province?     @relation(fields: [provinceId], references: [id], onDelete: SetNull)
+  branchArea    BranchArea?   @relation(fields: [branchAreaId], references: [id], onDelete: SetNull)
+  aors          Aor[]
+  inventories   ServiceCenterInventory[]
+  orders        ServiceCenterOrder[]
+  deliveries    ServiceCenterDelivery[]
+  backloads     ServiceBackload[]
+  sales         ServiceCenterSalesTransaction[]
+  pullouts      ServiceCenterPullout[]
+  branchReturnRequests BranchReturnRequest[]
+
+  @@unique([serviceCenterId, code])
+  @@map("service_center_locations")
+}
+
+model PriceList {
+  id            String   @id @default(cuid())
+  tenantId      String   @map("tenant_id")
+  modelId       String   @map("model_id")
+  amount        Decimal  @db.Decimal(12, 2)
+  periodStart   DateTime @map("period_start")
+  periodEnd     DateTime @map("period_end")
+  packageTypeId String?  @map("package_type_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  model       ProductModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  packageType PackageType? @relation(fields: [packageTypeId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, modelId])
+  @@index([tenantId, periodStart, periodEnd])
+  @@map("price_lists")
+}
+
+model Branch {
+  id                 String       @id @default(cuid())
+  tenantId           String       @map("tenant_id")
+  sapCode            String       @map("sap_code")
+  name               String
+  /// Legacy geography FK (was incorrectly named branch_area_id → Area).
+  areaId             String?      @map("area_id")
+  branchAreaId       String?      @map("branch_area_id")
+  dealerId           String?      @map("dealer_id")
+  primaryWarehouseId String?      @map("primary_warehouse_id")
+  regionId           String?      @map("region_id")
+  provinceId         String?      @map("province_id")
+  branchStatusTypeId String?      @map("branch_status_type_id")
+  deliverySchedule   Json?        @map("delivery_schedule")
+  status             BranchStatus @default(active)
+  createdAt          DateTime     @default(now()) @map("created_at")
+  updatedAt          DateTime     @updatedAt @map("updated_at")
+  deletedAt          DateTime?    @map("deleted_at")
+
+  tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  area                  Area?                  @relation(fields: [areaId], references: [id], onDelete: SetNull)
+  branchArea            BranchArea?            @relation(fields: [branchAreaId], references: [id], onDelete: SetNull)
+  dealer                Dealer?                @relation(fields: [dealerId], references: [id], onDelete: SetNull)
+  primaryWarehouse      Warehouse?             @relation("BranchPrimaryWarehouse", fields: [primaryWarehouseId], references: [id], onDelete: SetNull)
+  region                Region?                @relation(fields: [regionId], references: [id], onDelete: SetNull)
+  province              Province?              @relation(fields: [provinceId], references: [id], onDelete: SetNull)
+  branchStatusType      BranchStatusType?      @relation(fields: [branchStatusTypeId], references: [id], onDelete: SetNull)
+  alternateWarehouses   AlternateWarehouse[]
+  aors                  Aor[]
+  branchInventories     BranchInventory[]
+  branchPlanograms      BranchPlanogram[]
+  branchMilSettings     BranchMilSetting[]
+  branchOrders          BranchOrder[]
+  branchDeliveries      BranchDelivery[]
+  transfersFrom         BranchTransfer[]       @relation("TransferFromBranch")
+  transfersTo           BranchTransfer[]       @relation("TransferToBranch")
+  branchPullouts        BranchPullout[]
+  branchSales           BranchSalesTransaction[]
   branchForecastTargets BranchForecastTarget[]
-  branchAllocations   BranchAllocation[]
-  stockCountSessions  StockCountSession[]
+  branchAllocations     BranchAllocation[]
+  stockCountSessions    StockCountSession[]
+  branchBackloads       BranchBackload[]
+  branchQuotas          BranchQuota[]
+  salesReplacements     SalesReplacement[]
+  competitorObservations CompetitorObservation[]
 
   @@unique([tenantId, sapCode])
   @@index([tenantId])
@@ -840,17 +1069,20 @@ model Branch {
 }
 
 model Warehouse {
-  id        String   @id @default(cuid())
-  tenantId  String   @map("tenant_id")
-  code      String
-  name      String
-  isMain    Boolean  @default(false) @map("is_main")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id              String   @id @default(cuid())
+  tenantId        String   @map("tenant_id")
+  code            String
+  name            String
+  isMain          Boolean  @default(false) @map("is_main")
+  modeOfPaymentId String?  @map("mode_of_payment_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  modeOfPayment       ModeOfPayment?       @relation(fields: [modeOfPaymentId], references: [id], onDelete: SetNull)
   locations           WarehouseLocation[]
   alternateWarehouses AlternateWarehouse[]
+  primaryBranches     Branch[]             @relation("BranchPrimaryWarehouse")
   aors                Aor[]
   pulloutsDestination BranchPullout[]
 
@@ -867,7 +1099,11 @@ model WarehouseLocation {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  warehouse            Warehouse            @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  inventories          WarehouseInventory[]
+  aors                 Aor[]
+  branchPullouts       BranchPullout[]
+  deliveryLinesFrom    BranchDeliveryLine[] @relation("DeliveryLineWarehouseFrom")
 
   @@unique([warehouseId, code])
   @@map("warehouse_locations")
@@ -887,20 +1123,33 @@ model AlternateWarehouse {
 }
 
 model Aor {
-  id          String   @id @default(cuid())
-  tenantId    String   @map("tenant_id")
-  userId      String   @map("user_id")
-  branchId    String?  @map("branch_id")
-  warehouseId String?  @map("warehouse_id")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id                      String              @id @default(cuid())
+  tenantId                String              @map("tenant_id")
+  userId                  String              @map("user_id")
+  name                    String?
+  branchId                String?             @map("branch_id")
+  warehouseId             String?             @map("warehouse_id")
+  warehouseLocationId     String?             @map("warehouse_location_id")
+  dealerId                String?             @map("dealer_id")
+  serviceCenterId         String?             @map("service_center_id")
+  serviceCenterLocationId String?             @map("service_center_location_id")
+  status                  LookupRecordStatus  @default(active)
+  createdById             String?             @map("created_by_id")
+  createdAt               DateTime            @default(now()) @map("created_at")
+  updatedAt               DateTime            @updatedAt @map("updated_at")
 
-  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  branch    Branch?    @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  warehouse Warehouse? @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdBy             User?                  @relation("AorCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  branch                Branch?                @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  warehouse             Warehouse?             @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  warehouseLocation     WarehouseLocation?     @relation(fields: [warehouseLocationId], references: [id], onDelete: SetNull)
+  dealer                Dealer?                @relation(fields: [dealerId], references: [id], onDelete: SetNull)
+  serviceCenter         ServiceCenter?         @relation(fields: [serviceCenterId], references: [id], onDelete: SetNull)
+  serviceCenterLocation ServiceCenterLocation? @relation(fields: [serviceCenterLocationId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, userId])
+  @@index([createdById])
   @@map("aors")
 }
 
@@ -919,6 +1168,7 @@ model ReasonStatus {
   tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   codes               ReasonStatusCode[]
   pulloutsAsReason    BranchPullout[]      @relation("PulloutReasonStatus")
+  scPulloutsAsReason  ServiceCenterPullout[] @relation("ScPulloutReasonStatus")
 
   @@unique([tenantId, category, code])
   @@index([tenantId, category])
@@ -944,6 +1194,10 @@ model ReasonStatusCode {
   branchTransfers           BranchTransfer[]
   branchPulloutsWorkflow    BranchPullout[]   @relation("PulloutWorkflowStatus")
   branchPulloutsReasonCode  BranchPullout[]   @relation("PulloutReasonCode")
+  serviceCenterInventories  ServiceCenterInventory[]
+  serviceCenterDeliveries   ServiceCenterDelivery[]
+  scPulloutsWorkflow        ServiceCenterPullout[] @relation("ScPulloutWorkflowStatus")
+  scPulloutsReasonCode      ServiceCenterPullout[] @relation("ScPulloutReasonCode")
 
   @@unique([tenantId, reasonStatusId, code])
   @@index([tenantId])
@@ -968,6 +1222,17 @@ model SerialNumber {
   transferLines     BranchTransferLine[]
   pulloutLines      BranchPulloutLine[]
   stockCountLines   StockCountLine[]
+  salesDetails      BranchSalesTransactionDetail[]
+  salesReplacementsOriginal SalesReplacement[] @relation("SalesReplacementOriginalSn")
+  salesReplacementsReplacement SalesReplacement[] @relation("SalesReplacementReplacementSn")
+  branchBackloads   BranchBackload[]
+  warehouseInventories WarehouseInventory[]
+  deliveryLines     BranchDeliveryLine[]
+  history           SerialNumberHistory[]
+  serviceCenterInventories ServiceCenterInventory[]
+  serviceCenterSales ServiceCenterSalesTransaction[]
+  serviceCenterPulloutDetails ServiceCenterPulloutDetail[]
+  serviceBackloads  ServiceBackload[]
 
   @@unique([tenantId, serialNo])
   @@index([tenantId])
@@ -1103,6 +1368,7 @@ model BranchOrder {
   tenantId        String            @map("tenant_id")
   branchId        String            @map("branch_id")
   brandId         String?           @map("brand_id")
+  packageTypeId   String?           @map("package_type_id")
   orderType       BranchOrderType   @map("order_type")
   status          BranchOrderStatus @default(pending_tl)
   orderNumber     String            @map("order_number")
@@ -1119,6 +1385,7 @@ model BranchOrder {
   tenant         Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branch         Branch                     @relation(fields: [branchId], references: [id], onDelete: Cascade)
   brand          Brand?                     @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  packageType    PackageType?               @relation(fields: [packageTypeId], references: [id], onDelete: SetNull)
   createdBy      User                       @relation("BranchOrderCreatedBy", fields: [createdById], references: [id])
   approvedBy     User?                      @relation("BranchOrderApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
   details        BranchOrderDetail[]
@@ -1132,11 +1399,13 @@ model BranchOrder {
 }
 
 model BranchOrderDetail {
-  id          String @id @default(cuid())
-  orderId     String @map("order_id")
-  modelId     String @map("model_id")
+  id          String   @id @default(cuid())
+  orderId     String   @map("order_id")
+  modelId     String   @map("model_id")
   quantity    Int
-  approvedQty Int?   @map("approved_qty")
+  approvedQty Int?     @map("approved_qty")
+  remarks     String?
+  amount      Decimal? @db.Decimal(12, 2)
 
   order BranchOrder  @relation(fields: [orderId], references: [id], onDelete: Cascade)
   model ProductModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
@@ -1179,6 +1448,8 @@ model BranchDelivery {
   branch     Branch           @relation(fields: [branchId], references: [id], onDelete: Cascade)
   order      BranchOrder?     @relation(fields: [orderId], references: [id], onDelete: SetNull)
   statusCode ReasonStatusCode @relation(fields: [statusCodeId], references: [id])
+  lines      BranchDeliveryLine[]
+  backloads  BranchBackload[]
 
   @@unique([tenantId, deliveryNo])
   @@unique([tenantId, orderId])
@@ -1203,6 +1474,7 @@ model BranchTransfer {
   toBranch   Branch           @relation("TransferToBranch", fields: [toBranchId], references: [id], onDelete: Cascade)
   statusCode ReasonStatusCode @relation(fields: [statusCodeId], references: [id])
   lines      BranchTransferLine[]
+  approvalLevels BranchTransferApprovalLevel[]
 
   @@unique([tenantId, transferNo])
   @@index([tenantId, statusCodeId])
@@ -1223,26 +1495,36 @@ model BranchTransferLine {
 }
 
 model BranchPullout {
-  id                 String   @id @default(cuid())
-  tenantId           String   @map("tenant_id")
-  branchId           String   @map("branch_id")
-  warehouseId        String   @map("warehouse_id")
-  pulloutNo          String   @map("pullout_no")
-  statusCodeId       String   @map("status_code_id")
-  reasonStatusId     String?  @map("reason_status_id")
-  reasonStatusCodeId String?  @map("reason_status_code_id")
-  notes              String?
-  sapDocRef          String?  @map("sap_doc_ref")
-  createdAt          DateTime @default(now()) @map("created_at")
-  updatedAt          DateTime @updatedAt @map("updated_at")
+  id                  String    @id @default(cuid())
+  tenantId            String    @map("tenant_id")
+  branchId            String    @map("branch_id")
+  warehouseId         String    @map("warehouse_id")
+  warehouseLocationId String?   @map("warehouse_location_id")
+  pulloutNo           String    @map("pullout_no")
+  statusCodeId        String    @map("status_code_id")
+  reasonStatusId      String?   @map("reason_status_id")
+  reasonStatusCodeId  String?   @map("reason_status_code_id")
+  waybillNo           String?   @map("waybill_no")
+  scheduledAt         DateTime? @map("scheduled_at")
+  actualScheduledDate DateTime? @map("actual_scheduled_date")
+  scheduledById       String?   @map("scheduled_by_id")
+  createdById         String?   @map("created_by_id")
+  notes               String?
+  sapDocRef           String?   @map("sap_doc_ref")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
 
-  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  branch           Branch            @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  warehouse        Warehouse         @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
-  statusCode       ReasonStatusCode  @relation("PulloutWorkflowStatus", fields: [statusCodeId], references: [id])
-  reasonStatus     ReasonStatus?     @relation("PulloutReasonStatus", fields: [reasonStatusId], references: [id], onDelete: SetNull)
-  reasonStatusCode ReasonStatusCode? @relation("PulloutReasonCode", fields: [reasonStatusCodeId], references: [id], onDelete: SetNull)
-  lines            BranchPulloutLine[]
+  tenant            Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch            Branch            @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  warehouse         Warehouse         @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  warehouseLocation WarehouseLocation? @relation(fields: [warehouseLocationId], references: [id], onDelete: SetNull)
+  statusCode        ReasonStatusCode  @relation("PulloutWorkflowStatus", fields: [statusCodeId], references: [id])
+  reasonStatus      ReasonStatus?     @relation("PulloutReasonStatus", fields: [reasonStatusId], references: [id], onDelete: SetNull)
+  reasonStatusCode  ReasonStatusCode? @relation("PulloutReasonCode", fields: [reasonStatusCodeId], references: [id], onDelete: SetNull)
+  scheduledBy       User?             @relation("BranchPulloutScheduledBy", fields: [scheduledById], references: [id], onDelete: SetNull)
+  createdBy         User?             @relation("BranchPulloutCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  lines             BranchPulloutLine[]
+  approvalLevels    BranchPulloutApprovalLevel[]
 
   @@unique([tenantId, pulloutNo])
   @@index([tenantId, branchId, statusCodeId])
@@ -1262,21 +1544,42 @@ model BranchPulloutLine {
 }
 
 model BranchSalesTransaction {
-  id             String    @id @default(cuid())
-  tenantId       String    @map("tenant_id")
-  branchId       String    @map("branch_id")
-  serialNumberId String?   @map("serial_number_id")
-  transactionNo  String    @map("transaction_no")
-  amount         Decimal   @default(0) @db.Decimal(12, 2)
-  atrStatus      AtrStatus @default(open) @map("atr_status")
-  notes          String?
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
+  id                         String    @id @default(cuid())
+  tenantId                   String    @map("tenant_id")
+  branchId                   String    @map("branch_id")
+  serialNumberId             String?   @map("serial_number_id")
+  packageTypeId              String?   @map("package_type_id")
+  paymentTypeId              String?   @map("payment_type_id")
+  saleTypeId                 String?   @map("sale_type_id")
+  promoTypeId                String?   @map("promo_type_id")
+  customerDeliveryMethodId   String?   @map("customer_delivery_method_id")
+  transactionNo              String    @map("transaction_no")
+  transactionDate            DateTime? @map("transaction_date")
+  customerName               String?   @map("customer_name")
+  siTrans                    String?   @map("si_trans")
+  infoSlipVsoRrReleased      Boolean?  @map("info_slip_vso_rr_released")
+  rrReceiveDeliver           Boolean?  @map("rr_receive_deliver")
+  proof                      String?
+  deliveryNo                 String?   @map("delivery_no")
+  deliveryDate               DateTime? @map("delivery_date")
+  modelPrice                 Decimal?  @map("model_price") @db.Decimal(12, 2)
+  amount                     Decimal   @default(0) @db.Decimal(12, 2)
+  atrStatus                  AtrStatus @default(open) @map("atr_status")
+  notes                      String?
+  createdAt                  DateTime  @default(now()) @map("created_at")
+  updatedAt                  DateTime  @updatedAt @map("updated_at")
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  branch       Branch        @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  serialNumber SerialNumber? @relation(fields: [serialNumberId], references: [id], onDelete: SetNull)
-  returnRequest BranchReturnRequest?
+  tenant                   Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch                   Branch                     @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  serialNumber             SerialNumber?              @relation(fields: [serialNumberId], references: [id], onDelete: SetNull)
+  packageType              PackageType?               @relation(fields: [packageTypeId], references: [id], onDelete: SetNull)
+  paymentType              PaymentType?               @relation(fields: [paymentTypeId], references: [id], onDelete: SetNull)
+  saleType                 SaleType?                  @relation(fields: [saleTypeId], references: [id], onDelete: SetNull)
+  promoType                PromoType?                 @relation(fields: [promoTypeId], references: [id], onDelete: SetNull)
+  customerDeliveryMethod   CustomerDeliveryMethod?    @relation(fields: [customerDeliveryMethodId], references: [id], onDelete: SetNull)
+  returnRequest            BranchReturnRequest?
+  details                  BranchSalesTransactionDetail[]
+  replacements             SalesReplacement[]
 
   @@unique([tenantId, transactionNo])
   @@index([tenantId, branchId])
@@ -1359,6 +1662,52 @@ model StockVariance {
   @@map("stock_variances")
 }
 
+// --- Announcements & competitor observations ---
+
+model Announcement {
+  id          String    @id @default(cuid())
+  tenantId    String    @map("tenant_id")
+  title       String
+  body        String    @db.Text
+  publishedAt DateTime  @map("published_at")
+  expiresAt   DateTime? @map("expires_at")
+  isActive    Boolean   @default(true) @map("is_active")
+  createdById String    @map("created_by_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy User   @relation("AnnouncementCreatedBy", fields: [createdById], references: [id])
+
+  @@index([tenantId, isActive, publishedAt])
+  @@map("announcements")
+}
+
+model CompetitorObservation {
+  id             String    @id @default(cuid())
+  tenantId       String    @map("tenant_id")
+  competitorName String    @map("competitor_name")
+  branchId       String?   @map("branch_id")
+  brandId        String?   @map("brand_id")
+  modelId        String?   @map("model_id")
+  price          Decimal?  @db.Decimal(12, 2)
+  notes          String?   @db.Text
+  observedAt     DateTime  @map("observed_at")
+  createdById    String    @map("created_by_id")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  tenant    Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy User          @relation("CompetitorObservationCreatedBy", fields: [createdById], references: [id])
+  branch    Branch?       @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  brand     Brand?        @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  model     ProductModel? @relation(fields: [modelId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, observedAt])
+  @@index([tenantId, competitorName])
+  @@map("competitor_observations")
+}
+
 // --- SAP integration queue ---
 
 model SapIntegrationJob {
@@ -1408,28 +1757,444 @@ model SapServiceLayerConfig {
 }
 
 model BranchReturnRequest {
-  id              String              @id @default(cuid())
-  tenantId        String              @map("tenant_id")
-  saleId          String              @unique @map("sale_id")
-  status          ReturnRequestStatus @default(pending_cs)
-  requestNotes    String?             @map("request_notes")
-  evaluationNotes String?             @map("evaluation_notes")
-  requestedById   String              @map("requested_by_id")
-  evaluatedById   String?             @map("evaluated_by_id")
-  approvedById    String?             @map("approved_by_id")
-  evaluatedAt     DateTime?           @map("evaluated_at")
-  approvedAt      DateTime?           @map("approved_at")
-  completedAt     DateTime?           @map("completed_at")
-  createdAt       DateTime            @default(now()) @map("created_at")
-  updatedAt       DateTime            @updatedAt @map("updated_at")
+  id                      String              @id @default(cuid())
+  tenantId                String              @map("tenant_id")
+  saleId                  String              @unique @map("sale_id")
+  status                  ReturnRequestStatus @default(pending_cs)
+  requestNotes            String?             @map("request_notes")
+  evaluationNotes         String?             @map("evaluation_notes")
+  problemDescriptionId    String?             @map("problem_description_id")
+  documentTypeId          String?             @map("document_type_id")
+  returnTypeId            String?             @map("return_type_id")
+  serviceCenterLocationId String?             @map("service_center_location_id")
+  dealerRsNo              String?             @map("dealer_rs_no")
+  serviceApprovalCode     String?             @map("service_approval_code")
+  actualDateReturned      DateTime?           @map("actual_date_returned")
+  acceptedAt              DateTime?           @map("accepted_at")
+  acceptedById            String?             @map("accepted_by_id")
+  requestedById           String              @map("requested_by_id")
+  evaluatedById           String?             @map("evaluated_by_id")
+  approvedById            String?             @map("approved_by_id")
+  evaluatedAt             DateTime?           @map("evaluated_at")
+  approvedAt              DateTime?           @map("approved_at")
+  completedAt             DateTime?           @map("completed_at")
+  createdAt               DateTime            @default(now()) @map("created_at")
+  updatedAt               DateTime            @updatedAt @map("updated_at")
 
-  tenant      Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  sale        BranchSalesTransaction @relation(fields: [saleId], references: [id], onDelete: Cascade)
-  requestedBy User                   @relation("ReturnRequestedBy", fields: [requestedById], references: [id])
-  evaluatedBy User?                  @relation("ReturnEvaluatedBy", fields: [evaluatedById], references: [id], onDelete: SetNull)
-  approvedBy  User?                  @relation("ReturnApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sale                  BranchSalesTransaction @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  problemDescription    ProblemDescription?    @relation(fields: [problemDescriptionId], references: [id], onDelete: SetNull)
+  documentType          DocumentType?          @relation(fields: [documentTypeId], references: [id], onDelete: SetNull)
+  returnType            ReturnType?            @relation(fields: [returnTypeId], references: [id], onDelete: SetNull)
+  serviceCenterLocation ServiceCenterLocation? @relation(fields: [serviceCenterLocationId], references: [id], onDelete: SetNull)
+  requestedBy           User                   @relation("ReturnRequestedBy", fields: [requestedById], references: [id])
+  evaluatedBy           User?                  @relation("ReturnEvaluatedBy", fields: [evaluatedById], references: [id], onDelete: SetNull)
+  approvedBy            User?                  @relation("ReturnApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  acceptedBy            User?                  @relation("ReturnAcceptedBy", fields: [acceptedById], references: [id], onDelete: SetNull)
 
   @@index([tenantId, status])
   @@map("branch_return_requests")
+}
+
+// --- Excel Schema gap: branch/warehouse ledger + sales depth ---
+
+model BranchSalesTransactionDetail {
+  id             String   @id @default(cuid())
+  salesId        String   @map("sales_id")
+  modelId        String?  @map("model_id")
+  serialNumberId String   @map("serial_number_id")
+  modelPrice     Decimal? @map("model_price") @db.Decimal(12, 2)
+  saleAmount     Decimal? @map("sale_amount") @db.Decimal(12, 2)
+  amount         Decimal? @db.Decimal(12, 2)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  sale         BranchSalesTransaction @relation(fields: [salesId], references: [id], onDelete: Cascade)
+  model        ProductModel?          @relation(fields: [modelId], references: [id], onDelete: SetNull)
+  serialNumber SerialNumber           @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
+
+  @@index([salesId])
+  @@index([serialNumberId])
+  @@map("branch_sales_transaction_details")
+}
+
+model SalesReplacement {
+  id                       String    @id @default(cuid())
+  tenantId                 String    @map("tenant_id")
+  saleId                   String    @map("sale_id")
+  replacementNo            String    @map("replacement_no")
+  originalSerialNumberId   String?   @map("original_serial_number_id")
+  originalModelPrice       Decimal?  @map("original_model_price") @db.Decimal(12, 2)
+  originalInvoiceDate      DateTime? @map("original_invoice_date")
+  originalInvoiceNo        String?   @map("original_invoice_no")
+  replacementSerialNumberId String?  @map("replacement_serial_number_id")
+  replacementDealerId      String?   @map("replacement_dealer_id")
+  replacementBranchId      String?   @map("replacement_branch_id")
+  replacementAmount        Decimal?  @map("replacement_amount") @db.Decimal(12, 2)
+  replacementModelPrice    Decimal?  @map("replacement_model_price") @db.Decimal(12, 2)
+  replacementInvoiceDate   DateTime? @map("replacement_invoice_date")
+  replacementInvoiceNo     String?   @map("replacement_invoice_no")
+  transactedById           String?   @map("transacted_by_id")
+  transactedAt             DateTime? @map("transacted_at")
+  createdAt                DateTime  @default(now()) @map("created_at")
+  updatedAt                DateTime  @updatedAt @map("updated_at")
+
+  tenant                  Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sale                    BranchSalesTransaction @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  originalSerialNumber    SerialNumber?          @relation("SalesReplacementOriginalSn", fields: [originalSerialNumberId], references: [id], onDelete: SetNull)
+  replacementSerialNumber SerialNumber?          @relation("SalesReplacementReplacementSn", fields: [replacementSerialNumberId], references: [id], onDelete: SetNull)
+  replacementDealer       Dealer?                @relation(fields: [replacementDealerId], references: [id], onDelete: SetNull)
+  replacementBranch       Branch?                @relation(fields: [replacementBranchId], references: [id], onDelete: SetNull)
+  transactedBy            User?                  @relation("SalesReplacementTransactedBy", fields: [transactedById], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, replacementNo])
+  @@index([tenantId, saleId])
+  @@map("sales_replacements")
+}
+
+model BranchBackload {
+  id             String   @id @default(cuid())
+  tenantId       String   @map("tenant_id")
+  branchId       String?  @map("branch_id")
+  deliveryId     String?  @map("delivery_id")
+  serialNumberId String   @map("serial_number_id")
+  remarks        String?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  tenant       Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch       Branch?         @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  delivery     BranchDelivery? @relation(fields: [deliveryId], references: [id], onDelete: SetNull)
+  serialNumber SerialNumber    @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([deliveryId])
+  @@map("branch_backloads")
+}
+
+model BranchTransferApprovalLevel {
+  id           String    @id @default(cuid())
+  transferId   String    @map("transfer_id")
+  level        Int
+  roleSlug     String    @map("role_slug")
+  approvedAt   DateTime? @map("approved_at")
+  approvedById String?   @map("approved_by_id")
+  rejectedAt   DateTime? @map("rejected_at")
+  comment      String?
+
+  transfer BranchTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+
+  @@unique([transferId, level])
+  @@map("branch_transfer_approval_levels")
+}
+
+model BranchPulloutApprovalLevel {
+  id           String    @id @default(cuid())
+  pulloutId    String    @map("pullout_id")
+  level        Int
+  roleSlug     String    @map("role_slug")
+  approvedAt   DateTime? @map("approved_at")
+  approvedById String?   @map("approved_by_id")
+  rejectedAt   DateTime? @map("rejected_at")
+  comment      String?
+
+  pullout BranchPullout @relation(fields: [pulloutId], references: [id], onDelete: Cascade)
+
+  @@unique([pulloutId, level])
+  @@map("branch_pullout_approval_levels")
+}
+
+model WarehouseInventory {
+  id                  String    @id @default(cuid())
+  tenantId            String    @map("tenant_id")
+  serialNumberId      String    @map("serial_number_id")
+  warehouseLocationId String    @map("warehouse_location_id")
+  systemStatus        String?   @map("system_status")
+  systemUpdatedAt     DateTime? @map("system_updated_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  tenant            Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  serialNumber      SerialNumber      @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
+  warehouseLocation WarehouseLocation @relation(fields: [warehouseLocationId], references: [id], onDelete: Cascade)
+
+  @@unique([warehouseLocationId, serialNumberId])
+  @@index([tenantId])
+  @@map("warehouse_inventories")
+}
+
+/// Excel "Historical Details" — append-only SN movement ledger.
+model SerialNumberHistory {
+  id             String               @id @default(cuid())
+  tenantId       String               @map("tenant_id")
+  serialNumberId String               @map("serial_number_id")
+  txnType        SerialHistoryTxnType @map("txn_type")
+  details        String?
+  status         String?
+  createdById    String?              @map("created_by_id")
+  createdAt      DateTime             @default(now()) @map("created_at")
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  serialNumber SerialNumber @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
+  createdBy    User?        @relation("SerialNumberHistoryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, serialNumberId, createdAt])
+  @@map("serial_number_histories")
+}
+
+model BranchQuota {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+  branchId    String   @map("branch_id")
+  brandId     String   @map("brand_id")
+  quotaDate   DateTime @map("quota_date") @db.Date
+  quotaAmount Decimal  @map("quota_amount") @db.Decimal(14, 2)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  brand  Brand  @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, brandId, quotaDate])
+  @@index([tenantId])
+  @@map("branch_quotas")
+}
+
+model BranchDeliveryLine {
+  id                      String  @id @default(cuid())
+  deliveryId              String  @map("delivery_id")
+  serialNumberId          String  @map("serial_number_id")
+  warehouseLocationFromId String? @map("warehouse_location_from_id")
+
+  delivery              BranchDelivery     @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  serialNumber          SerialNumber       @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
+  warehouseLocationFrom WarehouseLocation? @relation("DeliveryLineWarehouseFrom", fields: [warehouseLocationFromId], references: [id], onDelete: SetNull)
+
+  @@unique([deliveryId, serialNumberId])
+  @@map("branch_delivery_lines")
+}
+
+// --- Excel Schema gap: Service Center ops mirror ---
+
+model ServiceCenterInventory {
+  id                      String   @id @default(cuid())
+  tenantId                String   @map("tenant_id")
+  serviceCenterId         String   @map("service_center_id")
+  serviceCenterLocationId String   @map("service_center_location_id")
+  serialNumberId          String   @map("serial_number_id")
+  statusCodeId            String?  @map("status_code_id")
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  serviceCenter         ServiceCenter          @relation(fields: [serviceCenterId], references: [id], onDelete: Cascade)
+  serviceCenterLocation ServiceCenterLocation  @relation(fields: [serviceCenterLocationId], references: [id], onDelete: Cascade)
+  serialNumber          SerialNumber           @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
+  statusCode            ReasonStatusCode?      @relation(fields: [statusCodeId], references: [id], onDelete: SetNull)
+
+  @@unique([serviceCenterLocationId, serialNumberId])
+  @@index([tenantId, serviceCenterId])
+  @@map("service_center_inventories")
+}
+
+model ServiceCenterOrder {
+  id                      String            @id @default(cuid())
+  tenantId                String            @map("tenant_id")
+  serviceCenterId         String            @map("service_center_id")
+  serviceCenterLocationId String?           @map("service_center_location_id")
+  brandId                 String?           @map("brand_id")
+  packageTypeId           String?           @map("package_type_id")
+  orderType               BranchOrderType   @map("order_type")
+  status                  BranchOrderStatus @default(pending_tl)
+  orderNumber             String            @map("order_number")
+  notes                   String?
+  createdById             String?           @map("created_by_id")
+  createdAt               DateTime          @default(now()) @map("created_at")
+  updatedAt               DateTime          @updatedAt @map("updated_at")
+
+  tenant                Tenant                           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  serviceCenter         ServiceCenter                    @relation(fields: [serviceCenterId], references: [id], onDelete: Cascade)
+  serviceCenterLocation ServiceCenterLocation?           @relation(fields: [serviceCenterLocationId], references: [id], onDelete: SetNull)
+  brand                 Brand?                           @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  packageType           PackageType?                     @relation(fields: [packageTypeId], references: [id], onDelete: SetNull)
+  details               ServiceCenterOrderDetail[]
+  approvalLevels        ServiceCenterOrderApprovalLevel[]
+  deliveries            ServiceCenterDelivery[]
+
+  @@unique([tenantId, orderNumber])
+  @@index([tenantId, serviceCenterId, status])
+  @@map("service_center_orders")
+}
+
+model ServiceCenterOrderDetail {
+  id          String   @id @default(cuid())
+  orderId     String   @map("order_id")
+  modelId     String   @map("model_id")
+  quantity    Int
+  approvedQty Int?     @map("approved_qty")
+  remarks     String?
+  amount      Decimal? @db.Decimal(12, 2)
+
+  order ServiceCenterOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  model ProductModel       @relation(fields: [modelId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("service_center_order_details")
+}
+
+model ServiceCenterOrderApprovalLevel {
+  id           String    @id @default(cuid())
+  orderId      String    @map("order_id")
+  level        Int
+  roleSlug     String    @map("role_slug")
+  approvedAt   DateTime? @map("approved_at")
+  approvedById String?   @map("approved_by_id")
+  rejectedAt   DateTime? @map("rejected_at")
+  comment      String?
+
+  order ServiceCenterOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, level])
+  @@map("service_center_order_approval_levels")
+}
+
+model ServiceCenterDelivery {
+  id                      String   @id @default(cuid())
+  tenantId                String   @map("tenant_id")
+  serviceCenterId         String   @map("service_center_id")
+  serviceCenterLocationId String?  @map("service_center_location_id")
+  orderId                 String?  @map("order_id")
+  deliveryNo              String   @map("delivery_no")
+  statusCodeId            String?  @map("status_code_id")
+  dueDate                 DateTime? @map("due_date")
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  tenant                Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  serviceCenter         ServiceCenter         @relation(fields: [serviceCenterId], references: [id], onDelete: Cascade)
+  serviceCenterLocation ServiceCenterLocation? @relation(fields: [serviceCenterLocationId], references: [id], onDelete: SetNull)
+  order                 ServiceCenterOrder?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  statusCode            ReasonStatusCode?     @relation(fields: [statusCodeId], references: [id], onDelete: SetNull)
+  backloads             ServiceBackload[]
+
+  @@unique([tenantId, deliveryNo])
+  @@index([tenantId, serviceCenterId])
+  @@map("service_center_deliveries")
+}
+
+model ServiceBackload {
+  id                      String   @id @default(cuid())
+  tenantId                String   @map("tenant_id")
+  serviceCenterId         String?  @map("service_center_id")
+  serviceCenterLocationId String?  @map("service_center_location_id")
+  deliveryId              String?  @map("delivery_id")
+  serialNumberId          String   @map("serial_number_id")
+  remarks                 String?
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  serviceCenter         ServiceCenter?         @relation(fields: [serviceCenterId], references: [id], onDelete: SetNull)
+  serviceCenterLocation ServiceCenterLocation? @relation(fields: [serviceCenterLocationId], references: [id], onDelete: SetNull)
+  delivery              ServiceCenterDelivery? @relation(fields: [deliveryId], references: [id], onDelete: SetNull)
+  serialNumber          SerialNumber           @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([deliveryId])
+  @@map("service_backloads")
+}
+
+model ServiceCenterSalesTransaction {
+  id                       String    @id @default(cuid())
+  tenantId                 String    @map("tenant_id")
+  serviceCenterId          String    @map("service_center_id")
+  serviceCenterLocationId  String?   @map("service_center_location_id")
+  serialNumberId           String?   @map("serial_number_id")
+  packageTypeId            String?   @map("package_type_id")
+  paymentTypeId            String?   @map("payment_type_id")
+  saleTypeId               String?   @map("sale_type_id")
+  promoTypeId              String?   @map("promo_type_id")
+  customerDeliveryMethodId String?   @map("customer_delivery_method_id")
+  transactionNo            String    @map("transaction_no")
+  transactionDate          DateTime? @map("transaction_date")
+  customerName             String?   @map("customer_name")
+  siTrans                  String?   @map("si_trans")
+  amount                   Decimal   @default(0) @db.Decimal(12, 2)
+  atrStatus                AtrStatus @default(open) @map("atr_status")
+  notes                    String?
+  createdAt                DateTime  @default(now()) @map("created_at")
+  updatedAt                DateTime  @updatedAt @map("updated_at")
+
+  tenant                 Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  serviceCenter          ServiceCenter           @relation(fields: [serviceCenterId], references: [id], onDelete: Cascade)
+  serviceCenterLocation  ServiceCenterLocation?  @relation(fields: [serviceCenterLocationId], references: [id], onDelete: SetNull)
+  serialNumber           SerialNumber?           @relation(fields: [serialNumberId], references: [id], onDelete: SetNull)
+  packageType            PackageType?            @relation(fields: [packageTypeId], references: [id], onDelete: SetNull)
+  paymentType            PaymentType?            @relation(fields: [paymentTypeId], references: [id], onDelete: SetNull)
+  saleType               SaleType?               @relation(fields: [saleTypeId], references: [id], onDelete: SetNull)
+  promoType              PromoType?              @relation(fields: [promoTypeId], references: [id], onDelete: SetNull)
+  customerDeliveryMethod CustomerDeliveryMethod? @relation(fields: [customerDeliveryMethodId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, transactionNo])
+  @@index([tenantId, serviceCenterId])
+  @@map("service_center_sales_transactions")
+}
+
+model ServiceCenterPullout {
+  id                      String    @id @default(cuid())
+  tenantId                String    @map("tenant_id")
+  serviceCenterId         String    @map("service_center_id")
+  serviceCenterLocationId String?   @map("service_center_location_id")
+  pulloutNo               String    @map("pullout_no")
+  statusCodeId            String?   @map("status_code_id")
+  reasonStatusId          String?   @map("reason_status_id")
+  reasonStatusCodeId      String?   @map("reason_status_code_id")
+  waybillNo               String?   @map("waybill_no")
+  scheduledAt             DateTime? @map("scheduled_at")
+  notes                   String?
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+
+  tenant                Tenant                           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  serviceCenter         ServiceCenter                    @relation(fields: [serviceCenterId], references: [id], onDelete: Cascade)
+  serviceCenterLocation ServiceCenterLocation?           @relation(fields: [serviceCenterLocationId], references: [id], onDelete: SetNull)
+  statusCode            ReasonStatusCode?                @relation("ScPulloutWorkflowStatus", fields: [statusCodeId], references: [id], onDelete: SetNull)
+  reasonStatus          ReasonStatus?                    @relation("ScPulloutReasonStatus", fields: [reasonStatusId], references: [id], onDelete: SetNull)
+  reasonStatusCode      ReasonStatusCode?                @relation("ScPulloutReasonCode", fields: [reasonStatusCodeId], references: [id], onDelete: SetNull)
+  details               ServiceCenterPulloutDetail[]
+  approvalLevels        ServiceCenterPulloutApprovalLevel[]
+
+  @@unique([tenantId, pulloutNo])
+  @@index([tenantId, serviceCenterId])
+  @@map("service_center_pullouts")
+}
+
+model ServiceCenterPulloutDetail {
+  id             String @id @default(cuid())
+  pulloutId      String @map("pullout_id")
+  serialNumberId String @map("serial_number_id")
+
+  pullout      ServiceCenterPullout @relation(fields: [pulloutId], references: [id], onDelete: Cascade)
+  serialNumber SerialNumber         @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
+
+  @@unique([pulloutId, serialNumberId])
+  @@map("service_center_pullout_details")
+}
+
+model ServiceCenterPulloutApprovalLevel {
+  id           String    @id @default(cuid())
+  pulloutId    String    @map("pullout_id")
+  level        Int
+  roleSlug     String    @map("role_slug")
+  approvedAt   DateTime? @map("approved_at")
+  approvedById String?   @map("approved_by_id")
+  rejectedAt   DateTime? @map("rejected_at")
+  comment      String?
+
+  pullout ServiceCenterPullout @relation(fields: [pulloutId], references: [id], onDelete: Cascade)
+
+  @@unique([pulloutId, level])
+  @@map("service_center_pullout_approval_levels")
 }
 

@@ -26,7 +26,7 @@ import { StatusCodeBadge } from "@/features/reason-status/components/status-code
 import { DataTableScroll, DataTableShell } from "@/components/data-table/data-table-shell";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { TablePagination } from "@/components/data-table/table-pagination";
-import { TableSearchToolbar } from "@/components/data-table/table-search-bar";
+import { TableSearchToolbar, uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import {
@@ -121,10 +121,21 @@ export function OrdersTable({ result, viewerRoleSlugs }: OrdersTableProps) {
   const filtered = useMemo(
     () =>
       result.items.filter((o) =>
-        matchesTableSearch(query, [o.id, o.branch.name, o.status]),
+        matchesTableSearch(query, [o.id, o.orderNumber, o.branch.name, o.status]),
       ),
     [result.items, query],
   );
+
+  const suggestions = useMemo(
+    () =>
+      uniqueSearchSuggestions(
+        result.items.map((o) => o.orderNumber),
+        result.items.map((o) => o.branch.name),
+        result.items.map((o) => o.status),
+      ),
+    [result.items],
+  );
+
   const selection = useTableSelection(filtered.map((o) => o.id));
 
   function handleApprove(input?: {
@@ -175,7 +186,12 @@ export function OrdersTable({ result, viewerRoleSlugs }: OrdersTableProps) {
 
   return (
     <DataTableShell>
-      <TableSearchToolbar value={query} onChange={setQuery} placeholder="Search orders…">
+      <TableSearchToolbar
+        value={query}
+        onChange={setQuery}
+        placeholder="Search orders…"
+        suggestions={suggestions}
+      >
         {selection.selectedCount > 0 ? (
           <Button variant="secondary" onClick={selection.clearSelection}>
             {selection.selectedCount} selected

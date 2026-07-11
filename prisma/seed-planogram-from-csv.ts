@@ -186,6 +186,12 @@ export function readPlanogramCsvContent(csvPath?: string): string {
       "docs",
       "BRS Planogram & Forecast(Planogram & Target).csv",
     );
+  if (!fs.existsSync(resolvedPath)) {
+    throw new Error(
+      `BRS planogram CSV not found at "${resolvedPath}". ` +
+        `Place the file under docs/ (see database/seed-users.md) and re-run the seed.`,
+    );
+  }
   return fs.readFileSync(resolvedPath, "utf8");
 }
 

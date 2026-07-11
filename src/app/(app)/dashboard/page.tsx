@@ -3,6 +3,8 @@ import { hasPermission, requireAuth, requirePermission } from "@/lib/auth/permis
 import { listUsersAction } from "@/features/users/actions/user.actions";
 import { PageHeader } from "@/app/(app)/_components/page-header";
 import { getDashboardKpisAction } from "@/features/dashboard/actions/dashboard-kpi.actions";
+import { listActiveAnnouncementsAction } from "@/features/announcements/actions/announcement.actions";
+import { ActiveAnnouncementBanner } from "@/features/announcements/components/active-announcement-banner";
 import { DashboardOpsKpis } from "@/app/(app)/dashboard/_components/dashboard-ops-kpis";
 import { DashboardStats } from "@/app/(app)/dashboard/_components/dashboard-stats";
 import { DashboardRecentUsers } from "@/app/(app)/dashboard/_components/dashboard-recent-users";
@@ -16,7 +18,10 @@ export default async function DashboardPage() {
   const users = canManageUsers
     ? (await listUsersAction()).slice(0, 5)
     : [];
-  const opsKpis = await getDashboardKpisAction();
+  const [opsKpis, activeAnnouncements] = await Promise.all([
+    getDashboardKpisAction(),
+    listActiveAnnouncementsAction(),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -24,6 +29,7 @@ export default async function DashboardPage() {
         title="Dashboard"
         description={`Welcome back, ${session.user.name ?? session.user.email}.`}
       />
+      <ActiveAnnouncementBanner announcements={activeAnnouncements} />
       {opsKpis ? <DashboardOpsKpis kpis={opsKpis} /> : null}
       <DashboardStats permissions={session.user.permissions} />
       {canManageUsers ? <DashboardRecentUsers users={users} /> : null}

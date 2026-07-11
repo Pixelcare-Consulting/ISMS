@@ -35,6 +35,7 @@ export function SidebarNav({ permissions, isPlatformOperator }: SidebarNavProps)
                 label={entry.label}
                 icon={entry.icon}
                 pathname={pathname}
+                badge={entry.badge}
               />
             );
           }

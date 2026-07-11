@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { ChevronsUpDown, CircleHelp, LogOut, UserCircle } from "lucide-react";
-import { signOut } from "next-auth/react";
+import { useRouter } from "next/navigation";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -23,6 +23,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { isNavItemActive } from "@/config/app-navigation";
+import { authClient } from "@/lib/auth/client";
 import { getInitials } from "@/utils/get-initials";
 import { cn } from "@/utils/cn";
 
@@ -37,11 +38,18 @@ interface UserNavProps {
 
 export function UserNav({ name, email, image }: UserNavProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const { isMobile } = useSidebar();
   const isProfileActive = isNavItemActive(pathname, PROFILE_HREF);
   const isHelpActive = isNavItemActive(pathname, HELP_HREF);
 
   const displayName = name ?? "User";
+
+  async function handleSignOut() {
+    await authClient.signOut();
+    router.push("/");
+    router.refresh();
+  }
 
   return (
     <SidebarMenu>
@@ -116,7 +124,9 @@ export function UserNav({ name, email, image }: UserNavProps) {
             <DropdownMenuSeparator />
             <DropdownMenuItem
               variant="destructive"
-              onSelect={() => signOut({ callbackUrl: "/" })}
+              onSelect={() => {
+                void handleSignOut();
+              }}
             >
               <LogOut className="size-4" />
               Sign out

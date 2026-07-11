@@ -5,24 +5,37 @@ import { z } from "zod";
 
 import { masterDataRepository } from "@/features/master-data/repositories/master-data.repository";
 import { toClientModelRow } from "@/features/master-data/types/client-model";
+import { toClientPriceListRow } from "@/features/master-data/types/client-price-list";
 import { requirePermission } from "@/lib/auth/permissions";
+import { prisma } from "@/lib/database/client";
 
 const brandSchema = z.object({ name: z.string().min(1), code: z.string().optional() });
 const categorySchema = z.object({
   name: z.string().min(1),
   code: z.string().optional(),
-  brandId: z.string().optional(),
 });
 const modelSchema = z.object({
   brandId: z.string().optional(),
   categoryId: z.string().optional(),
+  featureId: z.string().optional(),
+  resolutionId: z.string().optional(),
+  actualSizeId: z.string().optional(),
   skuCode: z.string().min(1),
   name: z.string().min(1),
+});
+
+const priceListSchema = z.object({
+  modelId: z.string().min(1),
+  amount: z.coerce.number().positive(),
+  periodStart: z.string().min(1),
+  periodEnd: z.string().min(1),
+  packageTypeId: z.string().optional().nullable(),
 });
 
 function revalidateMasterData() {
   revalidatePath("/settings/master-data/brands");
   revalidatePath("/settings/master-data/models");
+  revalidatePath("/settings/master-data/price-lists");
 }
 
 export async function listBrandsAction() {
@@ -106,5 +119,56 @@ export async function updateModelStatusAction(input: unknown) {
     return { success: true as const, modelId: parsed.data.modelId, status: parsed.data.status };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to update status" };
+  }
+}
+
+export async function listModelFormLookupsAction() {
+  const session = await requirePermission("master_data.manage");
+  const tenantId = session.user.tenantId;
+  const [features, resolutions, actualSizes, packageTypes] = await Promise.all([
+    prisma.feature.findMany({ where: { tenantId }, orderBy: { name: "asc" } }),
+    prisma.resolution.findMany({ where: { tenantId }, orderBy: { name: "asc" } }),
+    prisma.actualSize.findMany({ where: { tenantId }, orderBy: { name: "asc" } }),
+    prisma.packageType.findMany({ where: { tenantId }, orderBy: { name: "asc" } }),
+  ]);
+  return { features, resolutions, actualSizes, packageTypes };
+}
+
+export async function listPriceListsAction(modelId?: string) {
+  const session = await requirePermission("master_data.manage");
+  const rows = await masterDataRepository.listPriceLists(
+    session.user.tenantId,
+    modelId,
+  );
+  return rows.map(toClientPriceListRow);
+}
+
+export async function createPriceListAction(input: unknown) {
+  const session = await requirePermission("master_data.manage");
+  const parsed = priceListSchema.safeParse(input);
+  if (!parsed.success) return { error: "Invalid input" };
+  try {
+    await masterDataRepository.createPriceList(session.user.tenantId, {
+      modelId: parsed.data.modelId,
+      amount: parsed.data.amount,
+      periodStart: new Date(parsed.data.periodStart),
+      periodEnd: new Date(parsed.data.periodEnd),
+      packageTypeId: parsed.data.packageTypeId ?? null,
+    });
+    revalidateMasterData();
+    return { success: true as const };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to create price list" };
+  }
+}
+
+export async function deletePriceListAction(id: string) {
+  const session = await requirePermission("master_data.manage");
+  try {
+    await masterDataRepository.deletePriceList(session.user.tenantId, id);
+    revalidateMasterData();
+    return { success: true as const };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to delete price list" };
   }
 }

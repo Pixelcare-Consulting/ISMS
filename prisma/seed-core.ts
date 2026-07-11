@@ -18,6 +18,11 @@ export interface CoreSeedResult {
   usersByEmail: Record<string, { id: string }>;
 }
 
+/**
+ * Additive core seed — creates missing demo rows only.
+ * Does not delete tenants/users/roles/data, and does not overwrite existing
+ * passwords or custom role-permission grants already in the DB.
+ */
 export async function seedCore(prisma: PrismaClient): Promise<CoreSeedResult> {
   await Promise.all(
     PERMISSIONS.map((perm) =>
@@ -41,10 +46,8 @@ export async function seedCore(prisma: PrismaClient): Promise<CoreSeedResult> {
       slug: "demo",
       tagline: "BRS inventory ops + ISMS compliance",
     },
-    update: {
-      name: "Finden Technology",
-      tagline: "BRS inventory ops + ISMS compliance",
-    },
+    // Preserve any local renames / tagline edits
+    update: {},
   });
 
   const departmentsByName: Record<string, { id: string }> = {};
@@ -79,10 +82,11 @@ export async function seedCore(prisma: PrismaClient): Promise<CoreSeedResult> {
         .map((slug) => permissionBySlug[slug]?.id)
         .filter((id): id is string => Boolean(id));
 
-      await prisma.rolePermission.deleteMany({ where: { roleId: role.id } });
+      // Add missing grants only — never wipe custom permissions on system roles
       if (permissionIds.length > 0) {
         await prisma.rolePermission.createMany({
           data: permissionIds.map((permissionId) => ({ roleId: role.id, permissionId })),
+          skipDuplicates: true,
         });
       }
     }),
@@ -103,12 +107,28 @@ export async function seedCore(prisma: PrismaClient): Promise<CoreSeedResult> {
           email: userDef.email,
           name: userDef.name,
           passwordHash,
-          emailVerified: new Date(),
+          emailVerified: true,
           departmentId: department?.id ?? null,
         },
-        update: { name: userDef.name, passwordHash, departmentId: department?.id ?? null },
+        // Keep existing name / password / department — seed must not clobber DB users
+        update: {},
       });
       usersByEmail[userDef.email] = user;
+
+      const credentialAccount = await prisma.account.findFirst({
+        where: { userId: user.id, providerId: "credential" },
+      });
+      if (!credentialAccount) {
+        // Backfill Better Auth credential row using the user's current hash
+        await prisma.account.create({
+          data: {
+            userId: user.id,
+            accountId: user.id,
+            providerId: "credential",
+            password: user.passwordHash || passwordHash,
+          },
+        });
+      }
 
       const role = rolesBySlug[userDef.roleSlug];
       if (!role) return;

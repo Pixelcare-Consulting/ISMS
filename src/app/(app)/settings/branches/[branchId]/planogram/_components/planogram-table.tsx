@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState, useTransition } from "react";
-import { Trash2, Upload } from "lucide-react";
+import { useMemo, useRef, useState, useTransition } from "react";
+import { Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -15,13 +15,22 @@ import {
   updatePlanogramMilAction,
 } from "@/features/planogram/actions/planogram.actions";
 import {
-  DataTableScroll,
-  DataTableShell,
-} from "@/components/data-table/data-table-shell";
-import { useTableSelection } from "@/components/data-table/use-table-selection";
+  AppDataTable,
+  AppDataTableBody,
+  DeleteConfirmDialog,
+  TableEmptyRow,
+  TableIndexCell,
+  TableIndexHead,
+  TableRowActions,
+  TableRowCheckbox,
+  TableSearchBar,
+  TableSelectAllCheckbox,
+  TableSelectionBadge,
+  uniqueSearchSuggestions,
+  useTableSelection,
+} from "@/components/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -32,6 +41,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { matchesTableSearch } from "@/utils/match-table-search";
+import { cn } from "@/utils/cn";
 
 interface PlanogramRow {
   id: string;
@@ -75,9 +86,40 @@ export function PlanogramTable({
   const fileRef = useRef<HTMLInputElement>(null);
   const [pending, startTransition] = useTransition();
   const [showAdd, setShowAdd] = useState(false);
-  const selection = useTableSelection(rows.map((row) => row.id));
+  const [query, setQuery] = useState("");
+  const [deleting, setDeleting] = useState<PlanogramRow | null>(null);
 
-  function handleRemove(planogramId: string) {
+  const filtered = useMemo(
+    () =>
+      rows.filter((row) =>
+        matchesTableSearch(query, [
+          row.model.skuCode,
+          row.model.name,
+          row.model.series,
+          row.model.brand?.name,
+        ]),
+      ),
+    [rows, query],
+  );
+
+  const suggestions = useMemo(
+    () =>
+      uniqueSearchSuggestions(
+        rows.map((row) => row.model.skuCode),
+        rows.map((row) => row.model.name),
+        rows.map((row) => row.model.series),
+        rows.map((row) => row.model.brand?.name),
+      ),
+    [rows],
+  );
+
+  const selection = useTableSelection(filtered.map((row) => row.id));
+  const colCount = canManage ? 12 : 11;
+
+  function handleRemove() {
+    if (!deleting) return;
+    const planogramId = deleting.id;
+
     startTransition(async () => {
       const result = await removePlanogramModelAction(planogramId, branchId);
       if (result.error) {
@@ -85,6 +127,7 @@ export function PlanogramTable({
         return;
       }
       toast.success("Model removed from planogram");
+      setDeleting(null);
       router.refresh();
     });
   }
@@ -126,45 +169,76 @@ export function PlanogramTable({
         </div>
       ) : null}
 
-      <DataTableShell>
-        {canManage ? (
-          <div className="flex flex-wrap items-center justify-end gap-2 border-b px-4 py-3">
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".csv,text/csv"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                const fd = new FormData();
-                fd.set("file", file);
-                handleImport(fd);
-                e.target.value = "";
-              }}
+      <AppDataTable
+        title="Planogram"
+        shellHeader={
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <TableSearchBar
+              value={query}
+              onChange={setQuery}
+              placeholder="Search by SKU, model, series…"
+              suggestions={suggestions}
+              className="sm:max-w-sm"
             />
-            <Button variant="outline" size="sm" disabled={pending} onClick={() => fileRef.current?.click()}>
-              <Upload className="mr-1 size-4" />
-              Import CSV
-            </Button>
-            <Button variant="outline" size="sm" disabled={pending} onClick={importBundledCsv}>
-              Sync BRS CSV
-            </Button>
-            <Button onClick={() => setShowAdd(true)}>Add model</Button>
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <TableSelectionBadge
+                count={selection.selectedCount}
+                onClear={selection.clearSelection}
+                size="sm"
+              />
+              {canManage ? (
+                <>
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept=".csv,text/csv"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const fd = new FormData();
+                      fd.set("file", file);
+                      handleImport(fd);
+                      e.target.value = "";
+                    }}
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={pending}
+                    onClick={() => fileRef.current?.click()}
+                  >
+                    <Upload className="mr-1 size-4" />
+                    Import CSV
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={pending}
+                    onClick={importBundledCsv}
+                  >
+                    Sync BRS CSV
+                  </Button>
+                  <Button size="sm" onClick={() => setShowAdd(true)}>
+                    Add model
+                  </Button>
+                </>
+              ) : null}
+            </div>
           </div>
-        ) : null}
-        <DataTableScroll>
+        }
+      >
+        <AppDataTableBody>
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead className="w-10">
-                  <Checkbox
-                    checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
-                    onCheckedChange={(checked) => selection.toggleAll(checked === true)}
-                    aria-label="Select all planogram rows"
-                  />
-                </TableHead>
-                <TableHead className="w-12">#</TableHead>
+              <TableRow className="bg-muted/30 hover:bg-muted/30">
+                <TableSelectAllCheckbox
+                  isAllSelected={selection.isAllSelected}
+                  isPartiallySelected={selection.isPartiallySelected}
+                  onToggleAll={selection.toggleAll}
+                  aria-label="Select all planogram rows"
+                />
+                <TableIndexHead />
                 <TableHead>SKU</TableHead>
                 <TableHead>Model</TableHead>
                 <TableHead>Series</TableHead>
@@ -180,24 +254,35 @@ export function PlanogramTable({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((row, index) => (
-                <PlanogramRowEditor
-                  key={row.id}
-                  index={index}
-                  selected={selection.isRowSelected(row.id)}
-                  onSelect={(checked) => selection.toggleRow(row.id, checked)}
-                  branchId={branchId}
-                  row={row}
-                  canManage={canManage}
-                  pending={pending}
-                  onRemove={() => handleRemove(row.id)}
-                  onSaved={() => router.refresh()}
+              {filtered.length === 0 ? (
+                <TableEmptyRow
+                  colSpan={colCount}
+                  message={
+                    rows.length === 0
+                      ? "No models on this planogram yet."
+                      : "No planogram rows match your search."
+                  }
                 />
-              ))}
+              ) : (
+                filtered.map((row, index) => (
+                  <PlanogramRowEditor
+                    key={row.id}
+                    index={index}
+                    selected={selection.isRowSelected(row.id)}
+                    onSelect={(checked) => selection.toggleRow(row.id, checked)}
+                    branchId={branchId}
+                    row={row}
+                    canManage={canManage}
+                    pending={pending}
+                    onRemove={() => setDeleting(row)}
+                    onSaved={() => router.refresh()}
+                  />
+                ))
+              )}
             </TableBody>
           </Table>
-        </DataTableScroll>
-      </DataTableShell>
+        </AppDataTableBody>
+      </AppDataTable>
       {showAdd ? (
         <AddPlanogramDialog
           branchId={branchId}
@@ -208,6 +293,20 @@ export function PlanogramTable({
           }}
         />
       ) : null}
+
+      <DeleteConfirmDialog
+        open={Boolean(deleting)}
+        onOpenChange={(open) => !open && setDeleting(null)}
+        title="Remove model from planogram?"
+        description={
+          deleting
+            ? `Remove ${deleting.model.skuCode} (${deleting.model.name}) from this planogram?`
+            : "Remove this model from the planogram?"
+        }
+        confirmLabel="Remove"
+        onConfirm={handleRemove}
+        pending={pending}
+      />
     </div>
   );
 }
@@ -275,15 +374,16 @@ function PlanogramRowEditor({
   }
 
   return (
-    <TableRow data-state={selected ? "selected" : undefined}>
-      <TableCell>
-        <Checkbox
-          checked={selected}
-          onCheckedChange={(checked) => onSelect(checked === true)}
-          aria-label={`Select planogram row ${row.model.skuCode}`}
-        />
-      </TableCell>
-      <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
+    <TableRow
+      data-state={selected ? "selected" : undefined}
+      className={cn(index % 2 === 1 && "bg-table-stripe")}
+    >
+      <TableRowCheckbox
+        checked={selected}
+        onCheckedChange={onSelect}
+        aria-label={`Select planogram row ${row.model.skuCode}`}
+      />
+      <TableIndexCell index={index + 1} />
       <TableCell className="font-mono text-sm">{row.model.skuCode}</TableCell>
       <TableCell>{row.model.name}</TableCell>
       <TableCell>{row.model.series ?? "—"}</TableCell>
@@ -336,11 +436,11 @@ function PlanogramRowEditor({
         </Button>
       </TableCell>
       {canManage ? (
-        <TableCell>
-          <Button variant="ghost" size="icon" disabled={pending} onClick={onRemove}>
-            <Trash2 className="size-4" />
-          </Button>
-        </TableCell>
+        <TableRowActions
+          onDelete={onRemove}
+          deleteDisabled={pending}
+          deleteTitle="Remove from planogram"
+        />
       ) : null}
     </TableRow>
   );

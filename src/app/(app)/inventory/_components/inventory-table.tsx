@@ -10,7 +10,7 @@ import { StatusCodeBadge } from "@/features/reason-status/components/status-code
 import { DataTableScroll, DataTableShell } from "@/components/data-table/data-table-shell";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { TablePagination } from "@/components/data-table/table-pagination";
-import { TableSearchToolbar } from "@/components/data-table/table-search-bar";
+import { TableSearchToolbar, uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -89,6 +89,19 @@ export function InventoryTable({
       ),
     [result.items, query],
   );
+
+  const suggestions = useMemo(
+    () =>
+      uniqueSearchSuggestions(
+        result.items.map((r) => r.serialNumber.serialNo),
+        result.items.map((r) => r.serialNumber.model.sku),
+        result.items.map((r) => r.branch.name),
+        result.items.map((r) => r.statusCode.name),
+        result.items.map((r) => r.statusCode.code),
+      ),
+    [result.items],
+  );
+
   const selection = useTableSelection(filtered.map((r) => r.id));
 
   function toggleOffPlanogram(checked: boolean) {
@@ -119,6 +132,7 @@ export function InventoryTable({
         value={query}
         onChange={setQuery}
         placeholder="Search serial, SKU, branch…"
+        suggestions={suggestions}
       >
         {selection.selectedCount > 0 ? (
           <Button variant="secondary" onClick={selection.clearSelection}>

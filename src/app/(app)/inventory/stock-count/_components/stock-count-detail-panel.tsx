@@ -130,7 +130,7 @@ export function StockCountDetailPanel({ session }: StockCountDetailPanelProps) {
             {pendingLines > 0 ? ` (${pendingLines} unscanned)` : ""}
           </Button>
         )}
-        {["counting_complete", "adjustment_requested", "closed"].includes(session.status) &&
+        {["counting_complete", "adjustment_requested"].includes(session.status) &&
           session.variances.every((v) => ["closed", "rejected"].includes(v.status)) && (
             <Button
               disabled={pending}

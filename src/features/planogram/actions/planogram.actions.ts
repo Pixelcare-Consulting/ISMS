@@ -113,8 +113,8 @@ export async function importPlanogramCsvForBranchAction(
     const categoryName = series || "General";
     const category = await prisma.category.upsert({
       where: { tenantId_name: { tenantId: session.user.tenantId, name: categoryName } },
-      create: { tenantId: session.user.tenantId, name: categoryName, brandId },
-      update: { brandId },
+      create: { tenantId: session.user.tenantId, name: categoryName },
+      update: {},
     });
     categoryRecords.set(key, category.id);
     return category.id;

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import {
+  DataTableEmptyContent,
   DataTableScroll,
   DataTableShell,
 } from "@/components/data-table/data-table-shell";
@@ -54,7 +55,7 @@ export function AppDataTable({
           <div className="border-b px-4 py-3">{shellHeader}</div>
         ) : null}
         {empty ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">{emptyMessage}</p>
+          <DataTableEmptyContent message={emptyMessage} />
         ) : (
           children
         )}

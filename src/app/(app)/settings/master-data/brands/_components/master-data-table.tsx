@@ -12,13 +12,19 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  DataTableEmpty,
-  DataTableScroll,
-  DataTableShell,
-} from "@/components/data-table/data-table-shell";
-import { useTableSelection } from "@/components/data-table/use-table-selection";
-import { TableSearchToolbar } from "@/components/data-table/table-search-bar";
-import { Checkbox } from "@/components/ui/checkbox";
+  AppDataTable,
+  AppDataTableBody,
+  TableEmptyRow,
+  TableIndexCell,
+  TableIndexHead,
+  TableRowCheckbox,
+  TableSearchBar,
+  TableSelectAllCheckbox,
+  TableSelectionBadge,
+  TableStatusBadge,
+  uniqueSearchSuggestions,
+  useTableSelection,
+} from "@/components/data-table";
 import {
   Dialog,
   DialogContent,
@@ -37,6 +43,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { matchesTableSearch } from "@/utils/match-table-search";
+import { cn } from "@/utils/cn";
 
 interface BrandRow {
   id: string;
@@ -60,11 +67,30 @@ interface MasterDataTableProps {
 
 export function MasterDataTable({ brands, models }: MasterDataTableProps) {
   const router = useRouter();
+  const [brandQuery, setBrandQuery] = useState("");
   const [query, setQuery] = useState("");
   const [brandOpen, setBrandOpen] = useState(false);
   const [modelOpen, setModelOpen] = useState(false);
   const [pending, startTransition] = useTransition();
-  const brandSelection = useTableSelection(brands.map((brand) => brand.id));
+
+  const filteredBrands = useMemo(
+    () =>
+      brands.filter((brand) =>
+        matchesTableSearch(brandQuery, [brand.name, brand.code ?? ""]),
+      ),
+    [brands, brandQuery],
+  );
+
+  const brandSuggestions = useMemo(
+    () =>
+      uniqueSearchSuggestions(
+        brands.map((brand) => brand.name),
+        brands.map((brand) => brand.code),
+      ),
+    [brands],
+  );
+
+  const brandSelection = useTableSelection(filteredBrands.map((brand) => brand.id));
 
   const filteredModels = useMemo(
     () =>
@@ -73,6 +99,17 @@ export function MasterDataTable({ brands, models }: MasterDataTableProps) {
       ),
     [models, query],
   );
+
+  const modelSuggestions = useMemo(
+    () =>
+      uniqueSearchSuggestions(
+        models.map((m) => m.skuCode),
+        models.map((m) => m.name),
+        models.map((m) => m.brand?.name),
+      ),
+    [models],
+  );
+
   const modelSelection = useTableSelection(filteredModels.map((model) => model.id));
 
   function submitBrand(e: React.FormEvent<HTMLFormElement>) {
@@ -101,114 +138,157 @@ export function MasterDataTable({ brands, models }: MasterDataTableProps) {
 
   return (
     <div className="space-y-8">
-      <DataTableShell>
-        <div className="flex items-center justify-between border-b px-4 py-3">
-          <h3 className="font-medium">Brands</h3>
-          <Button size="sm" onClick={() => setBrandOpen(true)}>
-            <Plus className="size-4" /> Add brand
-          </Button>
-        </div>
-        {brandSelection.selectedCount > 0 ? (
-          <div className="px-4 pb-2">
-            <Button variant="secondary" size="sm" onClick={brandSelection.clearSelection}>
-              {brandSelection.selectedCount} selected
-            </Button>
+      <AppDataTable
+        title="Brands"
+        shellHeader={
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <TableSearchBar
+              value={brandQuery}
+              onChange={setBrandQuery}
+              placeholder="Search brands…"
+              suggestions={brandSuggestions}
+              className="sm:max-w-sm"
+            />
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <TableSelectionBadge
+                count={brandSelection.selectedCount}
+                onClear={brandSelection.clearSelection}
+                size="sm"
+              />
+              <Button size="sm" onClick={() => setBrandOpen(true)}>
+                <Plus className="size-4" /> Add brand
+              </Button>
+            </div>
           </div>
-        ) : null}
-        <DataTableScroll>
+        }
+        empty={brands.length === 0}
+        emptyMessage="No brands yet."
+      >
+        <AppDataTableBody>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-10">
-                  <Checkbox
-                    checked={brandSelection.isAllSelected || (brandSelection.isPartiallySelected ? "indeterminate" : false)}
-                    onCheckedChange={(checked) => brandSelection.toggleAll(checked === true)}
-                    aria-label="Select all brands"
-                  />
-                </TableHead>
-                <TableHead className="w-12">#</TableHead>
+                <TableSelectAllCheckbox
+                  isAllSelected={brandSelection.isAllSelected}
+                  isPartiallySelected={brandSelection.isPartiallySelected}
+                  onToggleAll={brandSelection.toggleAll}
+                  aria-label="Select all brands"
+                />
+                <TableIndexHead />
                 <TableHead>Name</TableHead>
                 <TableHead>Code</TableHead>
                 <TableHead className="text-right">Models</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {brands.map((brand, index) => (
-                <TableRow key={brand.id} data-state={brandSelection.isRowSelected(brand.id) ? "selected" : undefined}>
-                  <TableCell>
-                    <Checkbox
+              {filteredBrands.length === 0 ? (
+                <TableEmptyRow colSpan={5} message="No brands match your search." />
+              ) : (
+                filteredBrands.map((brand, index) => (
+                  <TableRow
+                    key={brand.id}
+                    data-state={
+                      brandSelection.isRowSelected(brand.id) ? "selected" : undefined
+                    }
+                    className={cn(index % 2 === 1 && "bg-table-stripe")}
+                  >
+                    <TableRowCheckbox
                       checked={brandSelection.isRowSelected(brand.id)}
-                      onCheckedChange={(checked) => brandSelection.toggleRow(brand.id, checked === true)}
+                      onCheckedChange={(checked) =>
+                        brandSelection.toggleRow(brand.id, checked)
+                      }
                       aria-label={`Select brand ${brand.name}`}
                     />
-                  </TableCell>
-                  <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
-                  <TableCell className="font-medium">{brand.name}</TableCell>
-                  <TableCell>{brand.code ?? "—"}</TableCell>
-                  <TableCell className="text-right">
-                    <Badge variant="secondary">{brand._count.models}</Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
+                    <TableIndexCell index={index + 1} />
+                    <TableCell className="font-medium">{brand.name}</TableCell>
+                    <TableCell>{brand.code ?? "—"}</TableCell>
+                    <TableCell className="text-right">
+                      <Badge variant="secondary">{brand._count.models}</Badge>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
-        </DataTableScroll>
-      </DataTableShell>
+        </AppDataTableBody>
+      </AppDataTable>
 
-      <DataTableShell>
-        <TableSearchToolbar value={query} onChange={setQuery} placeholder="Search models…">
-          {modelSelection.selectedCount > 0 ? (
-            <Button variant="secondary" size="sm" onClick={modelSelection.clearSelection}>
-              {modelSelection.selectedCount} selected
-            </Button>
-          ) : null}
-          <Button onClick={() => setModelOpen(true)}>
-            <Plus className="size-4" /> Add model
-          </Button>
-        </TableSearchToolbar>
-        {models.length === 0 ? (
-          <DataTableEmpty message="No product models yet." />
-        ) : (
-          <DataTableScroll>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-10">
-                    <Checkbox
-                      checked={modelSelection.isAllSelected || (modelSelection.isPartiallySelected ? "indeterminate" : false)}
-                      onCheckedChange={(checked) => modelSelection.toggleAll(checked === true)}
-                      aria-label="Select all models"
+      <AppDataTable
+        title="Models"
+        shellHeader={
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <TableSearchBar
+              value={query}
+              onChange={setQuery}
+              placeholder="Search models…"
+              suggestions={modelSuggestions}
+              className="sm:max-w-sm"
+            />
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <TableSelectionBadge
+                count={modelSelection.selectedCount}
+                onClear={modelSelection.clearSelection}
+                size="sm"
+              />
+              <Button onClick={() => setModelOpen(true)}>
+                <Plus className="size-4" /> Add model
+              </Button>
+            </div>
+          </div>
+        }
+        empty={models.length === 0}
+        emptyMessage="No product models yet."
+      >
+        <AppDataTableBody>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableSelectAllCheckbox
+                  isAllSelected={modelSelection.isAllSelected}
+                  isPartiallySelected={modelSelection.isPartiallySelected}
+                  onToggleAll={modelSelection.toggleAll}
+                  aria-label="Select all models"
+                />
+                <TableIndexHead />
+                <TableHead>SKU</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Brand</TableHead>
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredModels.length === 0 ? (
+                <TableEmptyRow colSpan={6} message="No models match your search." />
+              ) : (
+                filteredModels.map((model, index) => (
+                  <TableRow
+                    key={model.id}
+                    data-state={
+                      modelSelection.isRowSelected(model.id) ? "selected" : undefined
+                    }
+                    className={cn(index % 2 === 1 && "bg-table-stripe")}
+                  >
+                    <TableRowCheckbox
+                      checked={modelSelection.isRowSelected(model.id)}
+                      onCheckedChange={(checked) =>
+                        modelSelection.toggleRow(model.id, checked)
+                      }
+                      aria-label={`Select model ${model.skuCode}`}
                     />
-                  </TableHead>
-                  <TableHead className="w-12">#</TableHead>
-                  <TableHead>SKU</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Brand</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredModels.map((model, index) => (
-                  <TableRow key={model.id} data-state={modelSelection.isRowSelected(model.id) ? "selected" : undefined}>
-                    <TableCell>
-                      <Checkbox
-                        checked={modelSelection.isRowSelected(model.id)}
-                        onCheckedChange={(checked) => modelSelection.toggleRow(model.id, checked === true)}
-                        aria-label={`Select model ${model.skuCode}`}
-                      />
-                    </TableCell>
-                    <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
+                    <TableIndexCell index={index + 1} />
                     <TableCell className="font-mono text-sm">{model.skuCode}</TableCell>
                     <TableCell>{model.name}</TableCell>
                     <TableCell>{model.brand?.name ?? "—"}</TableCell>
-                    <TableCell><Badge variant="outline">{model.status}</Badge></TableCell>
+                    <TableCell>
+                      <TableStatusBadge status={model.status} />
+                    </TableCell>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </DataTableScroll>
-        )}
-      </DataTableShell>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </AppDataTableBody>
+      </AppDataTable>
 
       <Dialog open={brandOpen} onOpenChange={setBrandOpen}>
         <DialogContent>

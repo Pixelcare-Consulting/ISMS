@@ -3,23 +3,29 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { LayoutGrid, Pencil, Trash2 } from "lucide-react";
+import { LayoutGrid } from "lucide-react";
 import { toast } from "sonner";
 
 import { deleteBranchAction } from "@/features/branches/actions/branch.actions";
 import { CreateBranchDialog } from "@/app/(app)/settings/branches/_components/create-branch-dialog";
 import { EditBranchDialog } from "@/app/(app)/settings/branches/_components/edit-branch-dialog";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { DeleteConfirmDialog } from "@/components/data-table/delete-confirm-dialog";
 import {
-  DataTableEmpty,
-  DataTableScroll,
-  DataTableShell,
-} from "@/components/data-table/data-table-shell";
-import { useTableSelection } from "@/components/data-table/use-table-selection";
-import { TableSearchToolbar } from "@/components/data-table/table-search-bar";
-import { Checkbox } from "@/components/ui/checkbox";
+  AppDataTable,
+  AppDataTableBody,
+  DeleteConfirmDialog,
+  TableEmptyRow,
+  TableIndexCell,
+  TableIndexHead,
+  TableRowActions,
+  TableRowCheckbox,
+  TableSearchBar,
+  TableSelectAllCheckbox,
+  TableSelectionBadge,
+  TableStatusBadge,
+  uniqueSearchSuggestions,
+  useTableSelection,
+} from "@/components/data-table";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -30,12 +36,22 @@ import {
 } from "@/components/ui/table";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
+const COLUMN_COUNT = 7;
+
 interface BranchRow {
   id: string;
   sapCode: string;
   name: string;
   status: string;
+  areaId?: string | null;
+  branchAreaId?: string | null;
+  dealerId?: string | null;
+  primaryWarehouseId?: string | null;
+  regionId?: string | null;
+  provinceId?: string | null;
   branchArea: { name: string } | null;
+  dealer?: { name: string } | null;
+  alternateWarehouses?: { warehouseId: string }[];
 }
 
 export function BranchesTable({ branches }: { branches: BranchRow[] }) {
@@ -57,6 +73,17 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
       ),
     [rows, query],
   );
+
+  const suggestions = useMemo(
+    () =>
+      uniqueSearchSuggestions(
+        rows.map((b) => b.name),
+        rows.map((b) => b.sapCode),
+        rows.map((b) => b.branchArea?.name),
+      ),
+    [rows],
+  );
+
   const selection = useTableSelection(filtered.map((branch) => branch.id));
 
   function handleDelete() {
@@ -77,80 +104,91 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
   }
 
   return (
-    <DataTableShell>
-      <TableSearchToolbar value={query} onChange={setQuery} placeholder="Search branches…">
-        {selection.selectedCount > 0 ? (
-          <Button variant="secondary" onClick={selection.clearSelection}>
-            {selection.selectedCount} selected
-          </Button>
-        ) : null}
-        <CreateBranchDialog
-          onCreated={(branch) => {
-            setRows((currentRows) => [branch, ...currentRows]);
-            router.refresh();
-          }}
-        />
-      </TableSearchToolbar>
-      <DataTableScroll>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-10">
-                <Checkbox
-                  checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
-                  onCheckedChange={(checked) => selection.toggleAll(checked === true)}
+    <>
+      <AppDataTable
+        shellHeader={
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <TableSearchBar
+              value={query}
+              onChange={setQuery}
+              placeholder="Search branches…"
+              suggestions={suggestions}
+              className="sm:max-w-sm"
+            />
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <TableSelectionBadge
+                count={selection.selectedCount}
+                onClear={selection.clearSelection}
+              />
+              <CreateBranchDialog
+                onCreated={(branch) => {
+                  setRows((currentRows) => [branch, ...currentRows]);
+                  router.refresh();
+                }}
+              />
+            </div>
+          </div>
+        }
+      >
+        <AppDataTableBody>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableSelectAllCheckbox
+                  isAllSelected={selection.isAllSelected}
+                  isPartiallySelected={selection.isPartiallySelected}
+                  onToggleAll={selection.toggleAll}
                   aria-label="Select all branches"
                 />
-              </TableHead>
-              <TableHead className="w-12">#</TableHead>
-              <TableHead>SAP code</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Area</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="w-32" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filtered.length === 0 ? (
-              <DataTableEmpty message="No branches found" />
-            ) : (
-              filtered.map((branch, index) => (
-                <TableRow key={branch.id} data-state={selection.isRowSelected(branch.id) ? "selected" : undefined}>
-                  <TableCell>
-                    <Checkbox
+                <TableIndexHead />
+                <TableHead>SAP code</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Area</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="w-32" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.length === 0 ? (
+                <TableEmptyRow colSpan={COLUMN_COUNT} message="No branches found" />
+              ) : (
+                filtered.map((branch, index) => (
+                  <TableRow
+                    key={branch.id}
+                    data-state={selection.isRowSelected(branch.id) ? "selected" : undefined}
+                    className={index % 2 === 1 ? "bg-table-stripe" : undefined}
+                  >
+                    <TableRowCheckbox
                       checked={selection.isRowSelected(branch.id)}
-                      onCheckedChange={(checked) => selection.toggleRow(branch.id, checked === true)}
+                      onCheckedChange={(checked) =>
+                        selection.toggleRow(branch.id, checked)
+                      }
                       aria-label={`Select branch ${branch.name}`}
                     />
-                  </TableCell>
-                  <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
-                  <TableCell className="font-mono text-sm">{branch.sapCode}</TableCell>
-                  <TableCell>{branch.name}</TableCell>
-                  <TableCell>{branch.branchArea?.name ?? "—"}</TableCell>
-                  <TableCell>
-                    <Badge variant={branch.status === "active" ? "default" : "secondary"}>
-                      {branch.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" asChild title="Planogram">
-                      <Link href={`/settings/branches/${branch.id}/planogram`}>
-                        <LayoutGrid className="size-4" />
-                      </Link>
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => setEditing(branch)}>
-                      <Pencil className="size-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => setDeleting(branch)}>
-                      <Trash2 className="size-4" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </DataTableScroll>
+                    <TableIndexCell index={index + 1} />
+                    <TableCell className="font-mono text-sm">{branch.sapCode}</TableCell>
+                    <TableCell>{branch.name}</TableCell>
+                    <TableCell>{branch.branchArea?.name ?? "—"}</TableCell>
+                    <TableCell>
+                      <TableStatusBadge status={branch.status} />
+                    </TableCell>
+                    <TableRowActions
+                      onEdit={() => setEditing(branch)}
+                      onDelete={() => setDeleting(branch)}
+                    >
+                      <Button variant="ghost" size="icon" className="size-8" asChild title="Planogram">
+                        <Link href={`/settings/branches/${branch.id}/planogram`}>
+                          <LayoutGrid className="size-4" />
+                        </Link>
+                      </Button>
+                    </TableRowActions>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </AppDataTableBody>
+      </AppDataTable>
       {editing ? (
         <EditBranchDialog
           branch={editing}
@@ -172,6 +210,6 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
         onConfirm={handleDelete}
         pending={pending}
       />
-    </DataTableShell>
+    </>
   );
 }

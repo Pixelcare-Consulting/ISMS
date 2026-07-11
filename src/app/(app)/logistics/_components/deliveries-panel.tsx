@@ -15,7 +15,7 @@ import {
 } from "@/components/data-table/data-table-shell";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { TablePagination } from "@/components/data-table/table-pagination";
-import { TableSearchToolbar } from "@/components/data-table/table-search-bar";
+import { TableSearchToolbar, uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -95,6 +95,19 @@ export function DeliveriesPanel({ deliveries }: DeliveriesPanelProps) {
       ),
     [deliveries.items, query],
   );
+
+  const suggestions = useMemo(
+    () =>
+      uniqueSearchSuggestions(
+        deliveries.items.map((d) => d.deliveryNo),
+        deliveries.items.map((d) => d.branch.name),
+        deliveries.items.map((d) => d.order?.orderNumber),
+        deliveries.items.map((d) => d.statusCode.name),
+        deliveries.items.map((d) => d.statusCode.code),
+      ),
+    [deliveries.items],
+  );
+
   const selection = useTableSelection(filtered.map((d) => d.id));
 
   function confirmPendingAction() {
@@ -120,6 +133,7 @@ export function DeliveriesPanel({ deliveries }: DeliveriesPanelProps) {
           value={query}
           onChange={setQuery}
           placeholder="Search deliveries…"
+          suggestions={suggestions}
         >
           {selection.selectedCount > 0 ? (
             <Button variant="secondary" onClick={selection.clearSelection}>

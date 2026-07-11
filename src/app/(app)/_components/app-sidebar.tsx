@@ -34,7 +34,7 @@ export function AppSidebar({ branding, user }: AppSidebarProps) {
         />
       </SidebarHeader>
 
-      <SidebarContent>
+      <SidebarContent className="themed-scrollbar">
         <SidebarNav
           permissions={user.permissions}
           isPlatformOperator={user.isPlatformOperator}

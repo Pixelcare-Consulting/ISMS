@@ -47,6 +47,7 @@ const delegates: Record<LookupEntityKey | "brand", LookupDelegate> = {
   size: prisma.size as unknown as LookupDelegate,
   actualSize: prisma.actualSize as unknown as LookupDelegate,
   resolution: prisma.resolution as unknown as LookupDelegate,
+  packageType: prisma.packageType as unknown as LookupDelegate,
   area: prisma.area as unknown as LookupDelegate,
   region: prisma.region as unknown as LookupDelegate,
   province: prisma.province as unknown as LookupDelegate,
@@ -80,7 +81,7 @@ export const lookupRepository = {
     return delegates[parent].findMany({
       where: {
         tenantId,
-        ...(parent === "brand" ? {} : { recordStatus: "active" }),
+        recordStatus: "active",
       },
       orderBy: { name: "asc" },
     });

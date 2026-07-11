@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { OrderTypeBadge } from "@/features/orders/components/order-type-badge";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,7 @@ import {
 } from "@/components/data-table/data-table-shell";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { TablePagination } from "@/components/data-table/table-pagination";
-import { TableSearchBar } from "@/components/data-table/table-search-bar";
+import { TableSearchBar, uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -95,6 +95,18 @@ export function DraftSuggestedOrdersTable({
   const [q, setQ] = useState(currentQ ?? "");
   const selection = useTableSelection(result.items.map((item) => item.id));
 
+  const suggestions = useMemo(
+    () =>
+      uniqueSearchSuggestions(
+        result.items.map((item) => item.orderNumber),
+        result.items.map((item) => item.branch.name),
+        result.items.flatMap((item) =>
+          item.details.flatMap((detail) => [detail.model.skuCode, detail.model.name]),
+        ),
+      ),
+    [result.items],
+  );
+
   const hasActiveFilters = Boolean(currentBranch || currentQ);
 
   function applyFilters() {
@@ -148,6 +160,7 @@ export function DraftSuggestedOrdersTable({
                   value={q}
                   onChange={setQ}
                   placeholder="Order #, branch, SKU…"
+                  suggestions={suggestions}
                 />
               </div>
             </div>

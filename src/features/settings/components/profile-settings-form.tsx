@@ -1,7 +1,6 @@
 "use client";
 
 import { Camera, Loader2 } from "lucide-react";
-import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -30,7 +29,6 @@ interface ProfileSettingsFormProps {
 
 export function ProfileSettingsForm({ initialValues }: ProfileSettingsFormProps) {
   const router = useRouter();
-  const { update } = useSession();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [name, setName] = useState(initialValues.name);
@@ -51,7 +49,6 @@ export function ProfileSettingsForm({ initialValues }: ProfileSettingsFormProps)
       throw new Error(result.error);
     }
 
-    await update({ name: result.user?.name ?? input.name });
     router.refresh();
     return result;
   }

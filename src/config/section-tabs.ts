@@ -14,6 +14,8 @@ export interface SectionTabDefinition {
   exact?: boolean;
   /** Short summary shown on hub/landing cards. */
   description?: string;
+  /** Compact awareness pill on hub cards / nav (same as sidebar). */
+  badge?: "new";
 }
 
 export interface SectionTabGroupDefinition {
@@ -44,11 +46,23 @@ export const MASTER_DATA_TAB_GROUPS: SectionTabGroupDefinition[] = [
         href: "/settings/master-data/models",
         label: "Models",
         description: "SKUs for branch planograms and orders (active / hold / retired).",
+        badge: "new",
+      },
+      {
+        href: "/settings/master-data/price-lists",
+        label: "Price lists",
+        description: "Period-based SRP rows by model and package type.",
+        badge: "new",
       },
       {
         href: "/settings/master-data/categories",
         label: "Categories",
-        description: "Product categories, optionally linked to a brand.",
+        description: "Product categories linked to models (not brands).",
+      },
+      {
+        href: "/settings/master-data/package-types",
+        label: "Package types",
+        description: "Package type lookup for orders, sales, and price lists.",
       },
       {
         href: "/settings/master-data/features",
@@ -113,7 +127,7 @@ export const MASTER_DATA_TAB_GROUPS: SectionTabGroupDefinition[] = [
       {
         href: "/settings/master-data/mode-of-payments",
         label: "Modes of payment",
-        description: "Mode of payment lookup for sales transactions.",
+        description: "Mode of payment lookup for dealers (outright / consignment).",
       },
       {
         href: "/settings/master-data/promo-types",

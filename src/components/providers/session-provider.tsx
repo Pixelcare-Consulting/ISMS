@@ -1,11 +1,10 @@
 "use client";
 
-import { SessionProvider } from "next-auth/react";
-
+/** Better Auth client does not require a React SessionProvider. */
 export function AuthSessionProvider({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return <SessionProvider>{children}</SessionProvider>;
+  return <>{children}</>;
 }

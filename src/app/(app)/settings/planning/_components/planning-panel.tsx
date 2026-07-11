@@ -226,8 +226,8 @@ export function PlanningPanel({
           </>
         ) : null}
 
-        <Button variant="link" asChild>
-          <Link href="/planning/suggested-orders">View suggested orders →</Link>
+        <Button variant="outline" asChild>
+          <Link href="/planning/suggested-orders">View suggested orders</Link>
         </Button>
       </div>
 

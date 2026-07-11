@@ -1,9 +1,5 @@
 import { auditLogRepository } from "@/features/audit/repositories/audit-log.repository";
-import {
-  AUDIT_ARCHIVES_BUCKET,
-  buildAuditArchivePath,
-  getSupabaseAdmin,
-} from "@/lib/storage/supabase-server";
+import { buildAuditArchivePath, getObjectStorage } from "@/lib/storage";
 import { logger } from "@/lib/shared/logger";
 
 /** Rows older than this stay in Postgres; older rows are archived to object storage. */
@@ -25,7 +21,7 @@ export interface AuditArchiveResult {
 
 export const auditArchiveService = {
   /**
-   * Export audit logs older than AUDIT_LOG_HOT_DAYS (default 90) to Supabase Storage
+   * Export audit logs older than AUDIT_LOG_HOT_DAYS (default 90) to local storage
    * under audit-archives/, then delete archived rows from Postgres.
    */
   async archiveColdLogs(tenantId: string): Promise<AuditArchiveResult> {
@@ -33,12 +29,7 @@ export const auditArchiveService = {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - hotDays);
 
-    const supabase = await getSupabaseAdmin();
-    if (!supabase) {
-      throw new Error(
-        "Audit archive requires Supabase Storage. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.",
-      );
-    }
+    const storage = getObjectStorage();
 
     let archivedCount = 0;
     let batches = 0;
@@ -66,16 +57,11 @@ export const auditArchiveService = {
         logs: rows,
       };
 
-      const { error } = await supabase.storage
-        .from(AUDIT_ARCHIVES_BUCKET)
-        .upload(storagePath, JSON.stringify(payload), {
-          contentType: "application/json",
-          upsert: false,
-        });
-
-      if (error) {
-        throw new Error(`Failed to upload audit archive: ${error.message}`);
-      }
+      await storage.upload({
+        path: storagePath,
+        body: JSON.stringify(payload),
+        contentType: "application/json",
+      });
 
       await auditLogRepository.deleteByIds(
         tenantId,

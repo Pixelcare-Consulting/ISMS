@@ -10,14 +10,19 @@ import {
 } from "@/features/reason-status/actions/reason-status.actions";
 import { REASON_STATUS_CATEGORY_LABELS } from "@/features/reason-status/constants/defaults";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
+import {
+  AppDataTable,
+  AppDataTableBody,
+  TableEmptyRow,
+  TableIndexCell,
+  TableIndexHead,
+  TableRowCheckbox,
+  TableSelectAllCheckbox,
+  TableSelectionBadge,
+  useTableSelection,
+} from "@/components/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  DataTableScroll,
-  DataTableShell,
-} from "@/components/data-table/data-table-shell";
-import { useTableSelection } from "@/components/data-table/use-table-selection";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -28,6 +33,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { cn } from "@/utils/cn";
 import type { LookupRecordStatus, ReasonStatusCategory } from "@prisma/client";
 
 interface StatusCodeRow {
@@ -45,6 +51,8 @@ interface StatusGroupRow {
   name: string;
   codes: StatusCodeRow[];
 }
+
+const COL_COUNT = 7;
 
 export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
   const router = useRouter();
@@ -145,33 +153,33 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
       </div>
 
       {activeGroup ? (
-        <DataTableShell>
-          <div className="border-b px-4 py-3">
-            <h3 className="font-medium">{activeGroup.name}</h3>
-            <p className="text-sm text-muted-foreground">
-              Tenant-configurable custom codes. System codes cannot be
-              deleted; deactivate instead.
-            </p>
-            {selection.selectedCount > 0 ? (
-              <div className="mt-2">
-                <Button variant="secondary" size="sm" onClick={selection.clearSelection}>
-                  {selection.selectedCount} selected
-                </Button>
-              </div>
-            ) : null}
-          </div>
-          <DataTableScroll>
+        <AppDataTable
+          title={activeGroup.name}
+          shellHeader={
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-muted-foreground">
+                Tenant-configurable custom codes. System codes cannot be deleted;
+                deactivate instead.
+              </p>
+              <TableSelectionBadge
+                count={selection.selectedCount}
+                onClear={selection.clearSelection}
+                size="sm"
+              />
+            </div>
+          }
+        >
+          <AppDataTableBody>
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead className="w-10">
-                    <Checkbox
-                      checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
-                      onCheckedChange={(checked) => selection.toggleAll(checked === true)}
-                      aria-label="Select all status codes"
-                    />
-                  </TableHead>
-                  <TableHead className="w-12">#</TableHead>
+                <TableRow className="bg-muted/30 hover:bg-muted/30">
+                  <TableSelectAllCheckbox
+                    isAllSelected={selection.isAllSelected}
+                    isPartiallySelected={selection.isPartiallySelected}
+                    onToggleAll={selection.toggleAll}
+                    aria-label="Select all status codes"
+                  />
+                  <TableIndexHead />
                   <TableHead>Code</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Type</TableHead>
@@ -180,46 +188,55 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {activeGroup.codes.map((code, index) => (
-                  <TableRow key={code.id} data-state={selection.isRowSelected(code.id) ? "selected" : undefined}>
-                    <TableCell>
-                      <Checkbox
+                {activeGroup.codes.length === 0 ? (
+                  <TableEmptyRow
+                    colSpan={COL_COUNT}
+                    message="No status codes in this category yet."
+                  />
+                ) : (
+                  activeGroup.codes.map((code, index) => (
+                    <TableRow
+                      key={code.id}
+                      data-state={selection.isRowSelected(code.id) ? "selected" : undefined}
+                      className={cn(index % 2 === 1 && "bg-table-stripe")}
+                    >
+                      <TableRowCheckbox
                         checked={selection.isRowSelected(code.id)}
-                        onCheckedChange={(checked) => selection.toggleRow(code.id, checked === true)}
+                        onCheckedChange={(checked) => selection.toggleRow(code.id, checked)}
                         aria-label={`Select status code ${code.code}`}
                       />
-                    </TableCell>
-                    <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
-                    <TableCell className="font-mono text-sm">{code.code}</TableCell>
-                    <TableCell>{code.name}</TableCell>
-                    <TableCell>
-                      {code.isSystem ? (
-                        <Badge variant="secondary">System</Badge>
-                      ) : (
-                        <Badge variant="outline">Custom</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <StatusCodeBadge
-                        code={code.code}
-                        name={code.recordStatus === "active" ? "Active" : "Inactive"}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={pending}
-                        onClick={() => toggleCodeStatus(code)}
-                      >
-                        {code.recordStatus === "active" ? "Deactivate" : "Activate"}
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                      <TableIndexCell index={index + 1} />
+                      <TableCell className="font-mono text-sm">{code.code}</TableCell>
+                      <TableCell>{code.name}</TableCell>
+                      <TableCell>
+                        {code.isSystem ? (
+                          <Badge variant="secondary">System</Badge>
+                        ) : (
+                          <Badge variant="outline">Custom</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <StatusCodeBadge
+                          code={code.code}
+                          name={code.recordStatus === "active" ? "Active" : "Inactive"}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={pending}
+                          onClick={() => toggleCodeStatus(code)}
+                        >
+                          {code.recordStatus === "active" ? "Deactivate" : "Activate"}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
-          </DataTableScroll>
+          </AppDataTableBody>
           <div className="flex flex-wrap items-end gap-2 border-t px-4 py-3">
             <div>
               <Label htmlFor="new-code">Code</Label>
@@ -245,7 +262,7 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
               Add code
             </Button>
           </div>
-        </DataTableShell>
+        </AppDataTable>
       ) : null}
     </div>
   );

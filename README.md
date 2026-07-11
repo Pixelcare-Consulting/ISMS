@@ -2,27 +2,29 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.11.3`
+**Current version:** `0.11.60`
 
 ## Stack
 
-Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand · Auth.js v5 · Prisma · PostgreSQL (Supabase) · Pino · Resend · Supabase Storage · React PDF
+Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand · Better Auth · Prisma 7 · PostgreSQL (Docker / self-hosted) · Pino · Resend · Local filesystem storage · React PDF
 
 ## What's shipped
 
 | Area | Features |
 |------|----------|
-| **Auth** | Email/password (Auth.js), tenant-scoped sessions, demo seed users |
-| **Dashboard** | Ops KPIs (approvals, DIT, stock, ATR, planogram/MIL alerts) |
-| **Settings** | Company, users, departments, roles, branches, warehouses, AORs, master data, status codes |
+| **Auth** | Email/password (Better Auth), tenant-scoped sessions, demo seed users |
+| **Dashboard** | Ops KPIs (approvals, DIT, stock, ATR, planogram/MIL alerts); active announcement banner |
+| **Announcements** | Tenant posts (title, body, publish/expiry); list + CRUD (`/announcements`) |
+| **Competitors** | Manual market observations; KPIs + filterable CRUD (`/competitors`) |
+| **Settings** | Company, users, departments, roles, branches, warehouses, dealers, AORs, master data, status codes |
 | **Planning** | BRS CSV forecast import, allocation, suggested auto-replenish orders (`/settings/planning`, `/planning/suggested-orders`) |
 | **Planogram** | Per-branch SKU shelf capacity, MIL, order enforcement |
 | **Policies** | Full document control (ISO track) |
-| **Inventory** | Serialized stock, AOR-scoped list, **physical stock count** (`/inventory/stock-count`) |
+| **Inventory** | Serialized stock, AOR-scoped list, **physical stock count / P-Count** (`/inventory/stock-count`) |
 | **Orders** | Manual / special / auto-replenish; PS → TL → SP; SO#, processed orders, delivery-due auto-reschedule |
 | **Logistics** | Deliveries (accept/reject), transfers, pull-outs with SN movement |
 | **Sales** | SN picker, reserved (RSV) sales, **BranchReturnRequest** ATR workflow |
-| **Reports** | Processed orders, daily stock, transfers, sales (CSV export) |
+| **Reports** | Processed orders, daily stock, transfers, sales (CSV export), **P-Count** (`/reports/pcount`) |
 | **SAP** | Outbound job queue + mock processor; **Service Layer** settings (all credentials encrypted at rest) |
 | **RBAC** | ISO + BRS roles (PS, TL, SP/SPA, Logistics, AE), permission-gated sidebar |
 
@@ -33,20 +35,23 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/` | Marketing landing |
 | `/login`, `/register` | Auth |
 | `/dashboard` | Authenticated app |
+| `/announcements` | `announcements.view` / `announcements.manage` |
+| `/competitors` | `competitors.view` / `competitors.manage` |
 | `/inventory` | `inventory.view` |
-| `/inventory/stock-count` | `inventory.view` |
+| `/inventory/stock-count` | `inventory.view` (nav alias: P-Count) |
 | `/orders` | `orders.view` / `orders.create` / `orders.approve` |
 | `/planning/suggested-orders` | `forecast.manage` / `planogram.manage` |
 | `/logistics/deliveries`, `/transfers`, `/pickups` | `logistics.manage` |
 | `/operations` | `inventory.view` (combined ops view) |
 | `/sales` | `sales.create` |
-| `/reports/processed-orders`, `/daily-stock`, `/transfers`, `/sales` | `reports.view` (+ module-specific) |
+| `/reports/processed-orders`, `/daily-stock`, `/transfers`, `/sales`, `/pcount` | `reports.view` (+ module-specific) |
 | `/policies`, `/policies/[id]`, `/policies/new` | Policy permissions |
 | `/settings/company` | Tenant Admin / Super Admin |
 | `/settings/users`, `/departments`, `/roles` | `users.manage` / `roles.manage` |
 | `/audit-logs/system` | `reports.view` |
 | `/audit-logs/serial-numbers` | `inventory.view` |
-| `/settings/branches`, `/warehouses`, `/aors` | `branches.manage` / `aors.manage` |
+| `/settings/branches`, `/warehouses`, `/dealers`, `/aors` | `branches.manage` / `aors.manage` |
+| `/settings/service-centers` | `branches.manage` |
 | `/settings/planning`, `/planogram` | `forecast.manage` / `planogram.*` |
 | `/settings/master-data/*` | `master_data.manage` |
 | `/settings/sap-integration` | `logistics.manage` (queue) |
@@ -61,6 +66,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | [`docs/DEVELOPMENT_README.md`](docs/DEVELOPMENT_README.md) | Spec index, Process Flow v1.0 traceability, BRS ↔ app mapping |
 | [`docs/sap-integration.md`](docs/sap-integration.md) | SAP queue, Service Layer config, implemented vs stub |
 | [`database/seed-users.md`](database/seed-users.md) | Demo accounts and seed profiles |
+| [`database/postgres.example.md`](database/postgres.example.md) | Docker Postgres, env, migrate, storage |
 | [`docs/release-notes.md`](docs/release-notes.md) | Release workflow |
 | [`src/content/releases.ts`](src/content/releases.ts) | In-app What's New |
 
@@ -79,25 +85,25 @@ src/
 ├── config/              # app-navigation, app-modules
 ├── content/             # releases.ts
 ├── features/            # Domain modules (actions, repositories, services)
-├── lib/                 # auth, database, crypto, notifications
+├── lib/                 # auth, database, crypto, notifications, storage
 └── proxy.ts             # Route protection
 ```
 
 ## Setup
 
-1. Copy env: `cp .env.example .env.local`
-2. Set `DATABASE_URL`, `DIRECT_URL`, `AUTH_SECRET` (required for sessions and SAP credential encryption)
+1. Start Postgres: `docker compose up -d`
+2. Copy env: `cp .env.example .env.local` — set `DATABASE_URL`, `DIRECT_URL`, `AUTH_SECRET` / `BETTER_AUTH_SECRET`
 3. Install: `pnpm install`
 4. Database:
    - `pnpm run db:generate`
    - `pnpm run db:migrate`
    - `pnpm run db:seed` (or `pnpm run db:seed:full` for BRS planogram demo data)
-   - Run [`database/extensions.sql`](database/extensions.sql) in Supabase SQL editor
-5. (Optional) Policy attachments: Supabase bucket `policy-documents`
+   - Run [`database/extensions.sql`](database/extensions.sql) against local Postgres (`psql` or `docker compose exec`)
+5. (Optional) Policy / audit files land under `STORAGE_ROOT` (default `.data/uploads`)
 6. (Optional) Workflow email: Resend
 7. Dev: `pnpm run dev`
 
-See [`database/supabase.example.md`](database/supabase.example.md) for connection details.
+See [`database/postgres.example.md`](database/postgres.example.md) for connection details and cutover notes.
 
 ### Demo login
 
@@ -134,9 +140,9 @@ Or register at `/register` for a new tenant.
 
 | Variable | Purpose |
 |----------|---------|
-| `AUTH_SECRET` | Sessions + AES-256-GCM encryption for SAP Service Layer credentials |
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL (policy attachments) |
-| `SUPABASE_SERVICE_ROLE_KEY` | Server-only storage access |
+| `AUTH_SECRET` / `BETTER_AUTH_SECRET` | Sessions + AES-256-GCM encryption for SAP Service Layer credentials |
+| `BETTER_AUTH_URL` / `AUTH_URL` | App origin for Better Auth |
+| `STORAGE_ROOT` | Local uploads directory (default `.data/uploads`) |
 | `RESEND_API_KEY` | Workflow email |
 | `EMAIL_FROM` | Verified sender for Resend |
 | `PRISMA_LOG_QUERIES=1` | SQL query logging in dev |

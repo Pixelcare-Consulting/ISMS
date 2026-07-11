@@ -45,13 +45,14 @@ export const forecastService = {
     async function getCategoryId(brandName: string, series: string) {
       const key = `${brandName}:${series}`;
       if (categoryRecords.has(key)) return categoryRecords.get(key)!;
-      const brandId = brandRecords.get(brandName)?.id;
-      if (!brandId) throw new Error(`Brand not found: ${brandName}`);
+      if (!brandRecords.get(brandName)?.id) {
+        throw new Error(`Brand not found: ${brandName}`);
+      }
       const categoryName = series || "General";
       const category = await prisma.category.upsert({
         where: { tenantId_name: { tenantId, name: categoryName } },
-        create: { tenantId, name: categoryName, brandId },
-        update: { brandId },
+        create: { tenantId, name: categoryName },
+        update: {},
       });
       categoryRecords.set(key, category.id);
       return category.id;

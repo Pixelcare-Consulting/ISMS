@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AppDataTable, AppDataTableBody } from "@/components/data-table";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { TablePagination } from "@/components/data-table/table-pagination";
-import { TableSearchBar } from "@/components/data-table/table-search-bar";
+import { TableSearchBar, uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -99,6 +99,16 @@ export function AllocationGapsTable({
   const [q, setQ] = useState(currentQ ?? "");
   const selection = useTableSelection(result.items.map((item) => item.id));
 
+  const suggestions = useMemo(
+    () =>
+      uniqueSearchSuggestions(
+        result.items.map((item) => item.branch.name),
+        result.items.map((item) => item.model.skuCode),
+        result.items.map((item) => item.model.name),
+      ),
+    [result.items],
+  );
+
   const hasActiveFilters = Boolean(currentBranch || currentQ);
 
   function applyFilters() {
@@ -159,6 +169,7 @@ export function AllocationGapsTable({
                     value={q}
                     onChange={setQ}
                     placeholder="Branch or SKU…"
+                    suggestions={suggestions}
                   />
                 </div>
               </div>

@@ -27,7 +27,7 @@ import {
 } from "@/components/data-table/data-table-shell";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { DeleteConfirmDialog } from "@/components/data-table/delete-confirm-dialog";
-import { TableSearchToolbar } from "@/components/data-table/table-search-bar";
+import { TableSearchToolbar, uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -85,6 +85,17 @@ export function RolesPermissionsTable({
       ),
     [query, roles],
   );
+
+  const suggestions = useMemo(
+    () =>
+      uniqueSearchSuggestions(
+        roles.map((role) => role.name),
+        roles.map((role) => role.slug),
+        roles.map((role) => role.description),
+      ),
+    [roles],
+  );
+
   const selection = useTableSelection(filteredRoles.map((role) => role.id));
 
   const {
@@ -129,6 +140,7 @@ export function RolesPermissionsTable({
           value={query}
           onChange={setQuery}
           placeholder="Search by role name, slug, or description…"
+          suggestions={suggestions}
         >
           {selection.selectedCount > 0 ? (
             <Button variant="secondary" size="sm" onClick={selection.clearSelection}>
@@ -155,6 +167,7 @@ export function RolesPermissionsTable({
           value={query}
           onChange={setQuery}
           placeholder="Search by role name, slug, or description…"
+          suggestions={suggestions}
         >
           {addRoleAction}
         </TableSearchToolbar>

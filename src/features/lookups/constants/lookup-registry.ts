@@ -1,8 +1,8 @@
 export type LookupGroup = "Products" | "Geography" | "Sales" | "Service" | "Operations";
 
-export type LookupParentField = "brandId" | "regionId" | "sizeId" | "documentTypeId";
+export type LookupParentField = "regionId" | "sizeId" | "documentTypeId";
 
-export type LookupParentKey = "brand" | "region" | "size" | "documentType";
+export type LookupParentKey = "region" | "size" | "documentType";
 
 export interface LookupParentConfig {
   /** Delegate key of the parent model (brand is managed outside this slice). */
@@ -10,7 +10,7 @@ export interface LookupParentConfig {
   /** FK column on the child row. */
   field: LookupParentField;
   /** Relation property included on list rows. */
-  relation: "brand" | "region" | "size" | "documentType";
+  relation: "region" | "size" | "documentType";
   label: string;
   required: boolean;
 }
@@ -40,6 +40,7 @@ export type LookupEntityKey =
   | "size"
   | "actualSize"
   | "resolution"
+  | "packageType"
   | "area"
   | "region"
   | "province"
@@ -66,13 +67,6 @@ export const LOOKUP_ENTITIES: Record<LookupEntityKey, LookupEntityConfig> = {
     auditEntity: "Category",
     auditKey: "category",
     code: { required: false },
-    parent: {
-      key: "brand",
-      field: "brandId",
-      relation: "brand",
-      label: "Brand",
-      required: false,
-    },
   },
   feature: {
     key: "feature",
@@ -118,6 +112,15 @@ export const LOOKUP_ENTITIES: Record<LookupEntityKey, LookupEntityConfig> = {
     group: "Products",
     auditEntity: "Resolution",
     auditKey: "resolution",
+  },
+  packageType: {
+    key: "packageType",
+    label: "Package types",
+    singular: "package type",
+    slug: "package-types",
+    group: "Products",
+    auditEntity: "PackageType",
+    auditKey: "package_type",
   },
   area: {
     key: "area",

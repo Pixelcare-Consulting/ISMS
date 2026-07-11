@@ -1,3 +1,4 @@
+import { TableCell, TableRow } from "@/components/ui/table";
 import { cn } from "@/utils/cn";
 
 interface DataTableShellProps {
@@ -18,15 +19,64 @@ export function DataTableShell({ children, className }: DataTableShellProps) {
   );
 }
 
-interface DataTableEmptyProps {
+interface DataTableEmptyContentProps {
   message: string;
+  className?: string;
 }
 
-export function DataTableEmpty({ message }: DataTableEmptyProps) {
+/** Inner empty copy — use inside an existing card/shell (e.g. AppDataTable). */
+export function DataTableEmptyContent({
+  message,
+  className,
+}: DataTableEmptyContentProps) {
   return (
-    <DataTableShell>
-      <div className="py-12 text-center text-muted-foreground">{message}</div>
+    <div className={cn("py-12 text-center text-muted-foreground", className)}>
+      {message}
+    </div>
+  );
+}
+
+interface DataTableEmptyStateProps {
+  message: string;
+  className?: string;
+}
+
+/** Standalone card empty — whole page empty, no table yet. */
+export function DataTableEmptyState({
+  message,
+  className,
+}: DataTableEmptyStateProps) {
+  return (
+    <DataTableShell className={className}>
+      <DataTableEmptyContent message={message} />
     </DataTableShell>
+  );
+}
+
+/** @deprecated Prefer `DataTableEmptyState` — alias kept for existing imports. */
+export const DataTableEmpty = DataTableEmptyState;
+
+interface TableEmptyRowProps {
+  colSpan: number;
+  message: string;
+  className?: string;
+}
+
+/** Filtered / no-results row inside an existing `<TableBody>`. */
+export function TableEmptyRow({
+  colSpan,
+  message,
+  className,
+}: TableEmptyRowProps) {
+  return (
+    <TableRow>
+      <TableCell
+        colSpan={colSpan}
+        className={cn("h-24 text-center text-muted-foreground", className)}
+      >
+        {message}
+      </TableCell>
+    </TableRow>
   );
 }
 

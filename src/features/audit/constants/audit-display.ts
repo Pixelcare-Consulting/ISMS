@@ -69,6 +69,9 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   "sap.inventory_adjustment_processed": "SAP inventory adjustment processed",
   "sap.job_failed": "SAP job failed",
   "sap.job_dead_letter": "SAP job dead letter",
+  "announcement.created": "Announcement created",
+  "announcement.updated": "Announcement updated",
+  "announcement.deleted": "Announcement deleted",
 };
 
 const ENTITY_TYPE_LABELS: Record<string, string> = {
@@ -93,6 +96,7 @@ const ENTITY_TYPE_LABELS: Record<string, string> = {
   StockVariance: "Stock variance",
   SapIntegrationJob: "SAP integration job",
   SapServiceLayerConfig: "SAP Service Layer config",
+  Announcement: "Announcement",
 };
 
 const OPERATIONAL_SUMMARY_KEYS = [

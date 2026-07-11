@@ -2,7 +2,6 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
-import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -20,6 +19,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
+import { authClient } from "@/lib/auth/client";
 import { cn } from "@/utils/cn";
 
 const inputClassName = cn(
@@ -51,14 +51,17 @@ export function LoginForm() {
 
   async function onSubmit(values: LoginInput) {
     setError(null);
-    const result = await signIn("credentials", {
+    const result = await authClient.signIn.email({
       email: values.email,
       password: values.password,
-      redirect: false,
     });
 
-    if (result?.error) {
-      setError("Invalid email or password. Please try again.");
+    if (result.error) {
+      setError(
+        result.error.message?.includes("Too many")
+          ? result.error.message
+          : "Invalid email or password. Please try again.",
+      );
       return;
     }
 

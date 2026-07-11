@@ -50,6 +50,7 @@ export async function toggleRolePermissionAction(input: {
       ...parsed.data,
     });
     revalidatePath("/settings/roles");
+    revalidatePath("/settings/roles/matrix");
     return { success: true };
   } catch (e) {
     return {
@@ -72,14 +73,15 @@ export async function createRoleAction(formData: FormData) {
 
   try {
     resolveRoleSlug(parsed.data);
-    await roleService.createRole({
+    const role = await roleService.createRole({
       tenantId: session.user.tenantId,
       actorUserId: session.user.id,
       ...parsed.data,
     });
     revalidatePath("/settings/roles");
+    revalidatePath("/settings/roles/matrix");
     revalidatePath("/settings/users");
-    return { success: true };
+    return { success: true, roleId: role.id };
   } catch (e) {
     return {
       error: e instanceof Error ? e.message : "Failed to create role",
@@ -108,6 +110,7 @@ export async function updateRoleAction(formData: FormData) {
       ...parsed.data,
     });
     revalidatePath("/settings/roles");
+    revalidatePath("/settings/roles/matrix");
     revalidatePath("/settings/users");
     return { success: true };
   } catch (e) {
@@ -131,6 +134,7 @@ export async function deleteRoleAction(roleId: string) {
       roleId,
     });
     revalidatePath("/settings/roles");
+    revalidatePath("/settings/roles/matrix");
     revalidatePath("/settings/users");
     return { success: true };
   } catch (e) {

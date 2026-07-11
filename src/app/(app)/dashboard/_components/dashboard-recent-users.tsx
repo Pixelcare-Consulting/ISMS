@@ -9,7 +9,7 @@ import {
   DataTableShell,
 } from "@/components/data-table/data-table-shell";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
-import { TableSearchBar } from "@/components/data-table/table-search-bar";
+import { TableSearchBar, uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
@@ -49,6 +49,17 @@ export function DashboardRecentUsers({ users }: DashboardRecentUsersProps) {
       ),
     [query, users],
   );
+
+  const suggestions = useMemo(
+    () =>
+      uniqueSearchSuggestions(
+        users.map((user) => user.name),
+        users.map((user) => user.email),
+        users.flatMap((user) => user.userRoles.map((userRole) => userRole.role.name)),
+      ),
+    [users],
+  );
+
   const selection = useTableSelection(filteredUsers.map((user) => user.id));
 
   return (
@@ -63,6 +74,7 @@ export function DashboardRecentUsers({ users }: DashboardRecentUsersProps) {
             value={query}
             onChange={setQuery}
             placeholder="Search team members…"
+            suggestions={suggestions}
             className="sm:w-64"
           />
           <Link

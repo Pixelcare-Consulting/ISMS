@@ -5,7 +5,13 @@ import { z } from "zod";
 const createBranchSchema = z.object({
   sapCode: z.string().min(1).max(32),
   name: z.string().min(1).max(120),
+  areaId: z.string().optional().nullable(),
   branchAreaId: z.string().optional().nullable(),
+  dealerId: z.string().optional().nullable(),
+  primaryWarehouseId: z.string().optional().nullable(),
+  regionId: z.string().optional().nullable(),
+  provinceId: z.string().optional().nullable(),
+  alternateWarehouseIds: z.array(z.string()).optional(),
   status: z.enum(["active", "inactive"]).optional(),
 });
 
@@ -27,8 +33,8 @@ export const branchService = {
     return branchRepository.listByTenant(tenantId);
   },
 
-  listAreas(tenantId: string) {
-    return branchRepository.listAreas(tenantId);
+  listFormOptions(tenantId: string) {
+    return branchRepository.listFormOptions(tenantId);
   },
 
   async createBranch(input: {
@@ -36,7 +42,13 @@ export const branchService = {
     actorUserId: string;
     sapCode: string;
     name: string;
+    areaId?: string | null;
     branchAreaId?: string | null;
+    dealerId?: string | null;
+    primaryWarehouseId?: string | null;
+    regionId?: string | null;
+    provinceId?: string | null;
+    alternateWarehouseIds?: string[];
     status?: "active" | "inactive";
   }) {
     const parsed = createBranchSchema.safeParse(input);
@@ -69,7 +81,13 @@ export const branchService = {
     branchId: string;
     sapCode: string;
     name: string;
+    areaId?: string | null;
     branchAreaId?: string | null;
+    dealerId?: string | null;
+    primaryWarehouseId?: string | null;
+    regionId?: string | null;
+    provinceId?: string | null;
+    alternateWarehouseIds?: string[];
     status?: "active" | "inactive";
   }) {
     const parsed = updateBranchSchema.safeParse(input);
@@ -81,12 +99,8 @@ export const branchService = {
     if (!existing) throw new Error("Branch not found");
 
     try {
-      const branch = await branchRepository.update(input.tenantId, parsed.data.branchId, {
-        sapCode: parsed.data.sapCode,
-        name: parsed.data.name,
-        branchAreaId: parsed.data.branchAreaId,
-        status: parsed.data.status,
-      });
+      const { branchId, ...data } = parsed.data;
+      const branch = await branchRepository.update(input.tenantId, branchId, data);
       await auditService.log({
         tenantId: input.tenantId,
         userId: input.actorUserId,

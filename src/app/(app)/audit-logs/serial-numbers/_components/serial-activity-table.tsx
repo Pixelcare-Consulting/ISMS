@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import {
   SERIAL_ACTIVITY_LABELS,
@@ -16,7 +16,7 @@ import {
   DataTableScroll,
   DataTableShell,
 } from "@/components/data-table/data-table-shell";
-import { TableSearchBar } from "@/components/data-table/table-search-bar";
+import { TableSearchBar, uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -96,6 +96,12 @@ export function SerialActivityTable({
   const [dateTo, setDateTo] = useState(currentDateTo ?? "");
 
   const rows = result.items;
+
+  const suggestions = useMemo(
+    () => uniqueSearchSuggestions(rows.map((row) => row.serialNo)),
+    [rows],
+  );
+
   const activeFilters: SerialActivityFilters = {
     type: currentType,
     q: currentSearch,
@@ -132,6 +138,7 @@ export function SerialActivityTable({
           value={search}
           onChange={setSearch}
           placeholder="Search by serial number…"
+          suggestions={suggestions}
         />
 
         <div className="flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-end lg:gap-3">

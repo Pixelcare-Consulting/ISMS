@@ -10,6 +10,7 @@ import {
 import { departmentRepository } from "@/features/users/repositories/department.repository";
 import { roleRepository } from "@/features/users/repositories/role.repository";
 import { userRepository } from "@/features/users/repositories/user.repository";
+import { syncCredentialAccountPassword } from "@/lib/auth/auth";
 
 import { updateUserSchema } from "@/features/users/schemas/update-user.schema";
 
@@ -63,6 +64,7 @@ export const userService = {
       passwordHash,
       departmentId: input.departmentId ?? null,
     });
+    await syncCredentialAccountPassword(user.id, passwordHash);
 
     const roleSlug = input.roleSlug ?? "employee";
     if (isProviderOnlyRole(roleSlug)) {
@@ -148,6 +150,7 @@ export const userService = {
         input.userId,
         passwordHash,
       );
+      await syncCredentialAccountPassword(input.userId, passwordHash);
     }
 
     await auditService.log({

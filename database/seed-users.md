@@ -90,7 +90,9 @@ pnpm run db:seed        # fast — users + status codes
 pnpm run db:seed:full   # includes BRS demo inventory
 ```
 
-Upserts users and resets passwords to `DemoPass123`.
+Additive upserts only — creates missing demo users/roles/permissions.
+Does **not** delete existing rows or overwrite existing passwords / custom role grants.
+New demo users get password `DemoPass123`.
 
 ## Security
 

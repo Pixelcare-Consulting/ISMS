@@ -3,23 +3,27 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 
-import { Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { deleteDepartmentAction } from "@/features/users/actions/department.actions";
 import { CreateDepartmentDialog } from "@/app/(app)/settings/departments/_components/create-department-dialog";
 import { EditDepartmentDialog } from "@/app/(app)/settings/departments/_components/edit-department-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { DeleteConfirmDialog } from "@/components/data-table/delete-confirm-dialog";
 import {
-  DataTableEmpty,
-  DataTableScroll,
-  DataTableShell,
-} from "@/components/data-table/data-table-shell";
-import { useTableSelection } from "@/components/data-table/use-table-selection";
-import { TableSearchToolbar } from "@/components/data-table/table-search-bar";
-import { Checkbox } from "@/components/ui/checkbox";
+  AppDataTable,
+  AppDataTableBody,
+  DeleteConfirmDialog,
+  TableEmptyRow,
+  TableIndexCell,
+  TableIndexHead,
+  TableRowActions,
+  TableRowCheckbox,
+  TableSearchBar,
+  TableSelectAllCheckbox,
+  TableSelectionBadge,
+  uniqueSearchSuggestions,
+  useTableSelection,
+} from "@/components/data-table";
 import {
   Table,
   TableBody,
@@ -29,6 +33,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { matchesTableSearch } from "@/utils/match-table-search";
+import { cn } from "@/utils/cn";
 
 interface DepartmentRow {
   id: string;
@@ -59,6 +64,12 @@ export function DepartmentsTable({ departments }: DepartmentsTableProps) {
       ),
     [rows, query],
   );
+
+  const suggestions = useMemo(
+    () => uniqueSearchSuggestions(rows.map((department) => department.name)),
+    [rows],
+  );
+
   const selection = useTableSelection(filtered.map((department) => department.id));
 
   function handleDeleteConfirm() {
@@ -79,64 +90,53 @@ export function DepartmentsTable({ departments }: DepartmentsTableProps) {
     });
   }
 
-  if (rows.length === 0) {
-    return (
-      <DataTableShell>
-        <TableSearchToolbar
-          value={query}
-          onChange={setQuery}
-          placeholder="Search departments…"
-        >
-          {selection.selectedCount > 0 ? (
-            <Button variant="secondary" onClick={selection.clearSelection}>
-              {selection.selectedCount} selected
-            </Button>
-          ) : null}
-          <CreateDepartmentDialog
-            onCreated={(department) => {
-              setRows((currentRows) => [
-                { ...department, _count: { users: 0 } },
-                ...currentRows,
-              ]);
-              router.refresh();
-            }}
-          />
-        </TableSearchToolbar>
-        <DataTableEmpty message="No departments yet. Add one or register a new organization to get defaults." />
-      </DataTableShell>
-    );
-  }
+  const createAction = (
+    <CreateDepartmentDialog
+      onCreated={(department) => {
+        setRows((currentRows) => [
+          { ...department, _count: { users: 0 } },
+          ...currentRows,
+        ]);
+        router.refresh();
+      }}
+    />
+  );
 
   return (
     <>
-      <DataTableShell>
-        <TableSearchToolbar
-          value={query}
-          onChange={setQuery}
-          placeholder="Search departments…"
-        >
-          <CreateDepartmentDialog
-            onCreated={(department) => {
-              setRows((currentRows) => [
-                { ...department, _count: { users: 0 } },
-                ...currentRows,
-              ]);
-              router.refresh();
-            }}
-          />
-        </TableSearchToolbar>
-        <DataTableScroll>
+      <AppDataTable
+        shellHeader={
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <TableSearchBar
+              value={query}
+              onChange={setQuery}
+              placeholder="Search departments…"
+              suggestions={suggestions}
+              className="sm:max-w-sm"
+            />
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <TableSelectionBadge
+                count={selection.selectedCount}
+                onClear={selection.clearSelection}
+              />
+              {createAction}
+            </div>
+          </div>
+        }
+        empty={rows.length === 0}
+        emptyMessage="No departments yet. Add one or register a new organization to get defaults."
+      >
+        <AppDataTableBody>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-10">
-                  <Checkbox
-                    checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
-                    onCheckedChange={(checked) => selection.toggleAll(checked === true)}
-                    aria-label="Select all departments"
-                  />
-                </TableHead>
-                <TableHead className="w-12">#</TableHead>
+                <TableSelectAllCheckbox
+                  isAllSelected={selection.isAllSelected}
+                  isPartiallySelected={selection.isPartiallySelected}
+                  onToggleAll={selection.toggleAll}
+                  aria-label="Select all departments"
+                />
+                <TableIndexHead />
                 <TableHead>Name</TableHead>
                 <TableHead className="w-24 text-right">Users</TableHead>
                 <TableHead className="w-28 text-right">Actions</TableHead>
@@ -144,55 +144,44 @@ export function DepartmentsTable({ departments }: DepartmentsTableProps) {
             </TableHeader>
             <TableBody>
               {filtered.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
-                    No departments match your search.
-                  </TableCell>
-                </TableRow>
+                <TableEmptyRow
+                  colSpan={5}
+                  message="No departments match your search."
+                />
               ) : (
                 filtered.map((department, index) => (
-                  <TableRow key={department.id} data-state={selection.isRowSelected(department.id) ? "selected" : undefined}>
-                    <TableCell>
-                      <Checkbox
-                        checked={selection.isRowSelected(department.id)}
-                        onCheckedChange={(checked) => selection.toggleRow(department.id, checked === true)}
-                        aria-label={`Select department ${department.name}`}
-                      />
-                    </TableCell>
-                    <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
+                  <TableRow
+                    key={department.id}
+                    data-state={
+                      selection.isRowSelected(department.id) ? "selected" : undefined
+                    }
+                    className={cn(index % 2 === 1 && "bg-table-stripe")}
+                  >
+                    <TableRowCheckbox
+                      checked={selection.isRowSelected(department.id)}
+                      onCheckedChange={(checked) =>
+                        selection.toggleRow(department.id, checked)
+                      }
+                      aria-label={`Select department ${department.name}`}
+                    />
+                    <TableIndexCell index={index + 1} />
                     <TableCell className="font-medium">{department.name}</TableCell>
                     <TableCell className="text-right">
                       <Badge variant="secondary">{department._count.users}</Badge>
                     </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-8"
-                          onClick={() => setEditing(department)}
-                        >
-                          <Pencil className="size-4" />
-                          <span className="sr-only">Edit {department.name}</span>
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-8 text-destructive hover:text-destructive"
-                          onClick={() => setDeleting(department)}
-                        >
-                          <Trash2 className="size-4" />
-                          <span className="sr-only">Delete {department.name}</span>
-                        </Button>
-                      </div>
-                    </TableCell>
+                    <TableRowActions
+                      onEdit={() => setEditing(department)}
+                      onDelete={() => setDeleting(department)}
+                      editTitle={`Edit ${department.name}`}
+                      deleteTitle={`Delete ${department.name}`}
+                    />
                   </TableRow>
                 ))
               )}
             </TableBody>
           </Table>
-        </DataTableScroll>
-      </DataTableShell>
+        </AppDataTableBody>
+      </AppDataTable>
 
       <EditDepartmentDialog
         department={editing}

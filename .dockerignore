@@ -1,0 +1,17 @@
+node_modules
+.next
+out
+build
+coverage
+.data
+.git
+.cursor
+.vercel
+.env
+.env.*
+*.md
+docs
+_bmad
+_bmad-output
+*.tsbuildinfo
+src/lib/database/generated

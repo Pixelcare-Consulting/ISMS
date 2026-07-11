@@ -19,7 +19,7 @@ import {
 } from "@/components/data-table/data-table-shell";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { TablePagination } from "@/components/data-table/table-pagination";
-import { TableSearchToolbar } from "@/components/data-table/table-search-bar";
+import { TableSearchToolbar, uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -111,6 +111,19 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
       ),
     [transfers.items, query],
   );
+
+  const suggestions = useMemo(
+    () =>
+      uniqueSearchSuggestions(
+        transfers.items.map((t) => t.transferNo),
+        transfers.items.map((t) => t.fromBranch.name),
+        transfers.items.map((t) => t.toBranch.name),
+        transfers.items.map((t) => t.statusCode.name),
+        transfers.items.map((t) => t.statusCode.code),
+      ),
+    [transfers.items],
+  );
+
   const selection = useTableSelection(filtered.map((t) => t.id));
 
   async function openExecuteConfirm(transfer: TransferRow) {
@@ -184,6 +197,7 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
           value={query}
           onChange={setQuery}
           placeholder="Search transfers…"
+          suggestions={suggestions}
         >
           {selection.selectedCount > 0 ? (
             <Button variant="secondary" onClick={selection.clearSelection}>

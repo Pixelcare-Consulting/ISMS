@@ -179,4 +179,118 @@ export const stockAuditRepository = {
       where: { sessionId, status: "pending" },
     });
   },
+
+  /**
+   * Close session and write SerialNumberHistory (txnType: pcount) for counted serials.
+   */
+  closeSessionWithPcountHistory(
+    tenantId: string,
+    sessionId: string,
+    userId: string,
+    sessionNo: string,
+    closedAt: Date,
+  ) {
+    return prisma.$transaction(async (tx) => {
+      await tx.stockCountSession.update({
+        where: { id: sessionId, tenantId },
+        data: { status: "closed", closedAt },
+      });
+
+      const countedLines = await tx.stockCountLine.findMany({
+        where: {
+          sessionId,
+          countedAt: { not: null },
+        },
+        select: { serialNumberId: true, status: true },
+      });
+
+      if (countedLines.length === 0) return { historyCount: 0 };
+
+      await tx.serialNumberHistory.createMany({
+        data: countedLines.map((line) => ({
+          tenantId,
+          serialNumberId: line.serialNumberId,
+          txnType: "pcount" as const,
+          details: `P-Count session ${sessionNo}`,
+          status: line.status,
+          createdById: userId,
+          createdAt: closedAt,
+        })),
+      });
+
+      return { historyCount: countedLines.length };
+    });
+  },
+
+  listClosedSessions(
+    tenantId: string,
+    filters: {
+      /** `undefined` = all branches; `[]` = no access (empty result). */
+      branchIds?: string[];
+      branchId?: string;
+      from?: Date;
+      to?: Date;
+    },
+    pagination?: { page?: number },
+  ) {
+    const { limit, page, skip } = resolvePagination(pagination);
+
+    if (filters.branchIds && filters.branchIds.length === 0) {
+      return Promise.resolve(toPaginatedResult([], 0, page, limit));
+    }
+
+    if (
+      filters.branchId &&
+      filters.branchIds &&
+      !filters.branchIds.includes(filters.branchId)
+    ) {
+      return Promise.resolve(toPaginatedResult([], 0, page, limit));
+    }
+
+    const where: Prisma.StockCountSessionWhereInput = {
+      tenantId,
+      status: "closed",
+      ...(filters.branchId
+        ? { branchId: filters.branchId }
+        : filters.branchIds
+          ? { branchId: { in: filters.branchIds } }
+          : {}),
+      ...(filters.from || filters.to
+        ? {
+            closedAt: {
+              ...(filters.from ? { gte: filters.from } : {}),
+              ...(filters.to ? { lte: filters.to } : {}),
+            },
+          }
+        : {}),
+    };
+
+    return Promise.all([
+      prisma.stockCountSession.findMany({
+        where,
+        include: {
+          ...sessionListInclude,
+          lines: {
+            select: { status: true, countedAt: true },
+          },
+        },
+        orderBy: [{ closedAt: "desc" }, { createdAt: "desc" }],
+        skip,
+        take: limit,
+      }),
+      prisma.stockCountSession.count({ where }),
+    ]).then(([items, total]) => {
+      const mapped = items.map((session) => {
+        const countedCount = session.lines.filter((l) => l.countedAt != null).length;
+        const { lines: _lines, ...rest } = session;
+        return {
+          ...rest,
+          countedCount,
+          varianceCount: session._count.variances,
+          lineCount: session._count.lines,
+        };
+      });
+      return toPaginatedResult(mapped, total, page, limit);
+    });
+  },
 };

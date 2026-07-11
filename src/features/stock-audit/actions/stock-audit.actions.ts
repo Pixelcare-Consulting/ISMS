@@ -3,10 +3,16 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { hasPermission, requirePermission } from "@/lib/auth/permissions";
+import {
+  hasPermission,
+  requireAnyPermission,
+  requirePermission,
+} from "@/lib/auth/permissions";
 import { aorService } from "@/features/aors/services/aor.service";
 import { branchRepository } from "@/features/branches/repositories/branch.repository";
 import { stockAuditService } from "@/features/stock-audit/services/stock-audit.service";
+
+const PCOUNT_REPORT_ACCESS = ["reports.view", "inventory.view"] as const;
 
 function isUnrestricted(permissions: string[] | undefined) {
   return (
@@ -17,6 +23,7 @@ function isUnrestricted(permissions: string[] | undefined) {
 
 function revalidateStockCountPaths(sessionId?: string) {
   revalidatePath("/inventory/stock-count");
+  revalidatePath("/reports/pcount");
   if (sessionId) {
     revalidatePath(`/inventory/stock-count/${sessionId}`);
   }
@@ -174,4 +181,43 @@ export async function closeStockCountSessionAction(sessionId: string) {
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to close session" };
   }
+}
+
+export async function listPcountReportAction(input?: {
+  branchId?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+}) {
+  const session = await requireAnyPermission([...PCOUNT_REPORT_ACCESS]);
+  const unrestricted = isUnrestricted(session.user.permissions);
+  return stockAuditService.listClosedForReport(
+    session.user.tenantId,
+    session.user.id,
+    unrestricted,
+    {
+      branchId: input?.branchId || undefined,
+      from: input?.from ? new Date(input.from) : undefined,
+      to: input?.to ? new Date(`${input.to}T23:59:59.999Z`) : undefined,
+      page: input?.page,
+    },
+  );
+}
+
+export async function listBranchesForPcountReportAction() {
+  const session = await requireAnyPermission([...PCOUNT_REPORT_ACCESS]);
+  const unrestricted = isUnrestricted(session.user.permissions);
+  if (unrestricted) {
+    const branches = await branchRepository.listByTenant(session.user.tenantId);
+    return branches.map((b) => ({ id: b.id, name: b.name }));
+  }
+  const branchIds = await aorService.getBranchIdsForUser(
+    session.user.tenantId,
+    session.user.id,
+  );
+  if (!branchIds.length) return [];
+  const branches = await branchRepository.listByTenant(session.user.tenantId);
+  return branches
+    .filter((b) => branchIds.includes(b.id))
+    .map((b) => ({ id: b.id, name: b.name }));
 }

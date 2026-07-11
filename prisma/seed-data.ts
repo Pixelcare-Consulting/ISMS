@@ -42,6 +42,10 @@ export const PERMISSIONS = [
   { slug: "planogram.view", name: "View branch planogram" },
   { slug: "planogram.manage", name: "Manage branch planogram and MIL" },
   { slug: "forecast.manage", name: "Manage forecast, allocation, and suggested orders" },
+  { slug: "announcements.view", name: "View announcements" },
+  { slug: "announcements.manage", name: "Manage announcements" },
+  { slug: "competitors.view", name: "View competitor observations" },
+  { slug: "competitors.manage", name: "Manage competitor observations" },
 ] as const;
 
 export const ROLES = [
@@ -77,6 +81,10 @@ export const ROLES = [
       "sales.create",
       "planogram.manage",
       "forecast.manage",
+      "announcements.view",
+      "announcements.manage",
+      "competitors.view",
+      "competitors.manage",
     ],
   },
   {
@@ -91,25 +99,48 @@ export const ROLES = [
       "audits.create",
       "audits.close",
       "reports.view",
+      "announcements.view",
+      "competitors.view",
     ],
   },
   {
     slug: "auditor",
     name: "Auditor",
     description: "Internal auditor",
-    permissions: ["dashboard.manage", "audits.create", "audits.close", "reports.view", "policies.view"],
+    permissions: [
+      "dashboard.manage",
+      "audits.create",
+      "audits.close",
+      "reports.view",
+      "policies.view",
+      "announcements.view",
+      "competitors.view",
+    ],
   },
   {
     slug: "dept_head",
     name: "Department Head",
     description: "Department head",
-    permissions: ["dashboard.manage", "policies.create", "policies.view", "reports.view"],
+    permissions: [
+      "dashboard.manage",
+      "policies.create",
+      "policies.view",
+      "reports.view",
+      "announcements.view",
+      "competitors.view",
+    ],
   },
   {
     slug: "employee",
     name: "Employee",
     description: "Standard employee",
-    permissions: ["dashboard.manage", "reports.view", "policies.view"],
+    permissions: [
+      "dashboard.manage",
+      "reports.view",
+      "policies.view",
+      "announcements.view",
+      "competitors.view",
+    ],
   },
   {
     slug: "ps",
@@ -122,6 +153,8 @@ export const ROLES = [
       "orders.create",
       "sales.create",
       "planogram.view",
+      "announcements.view",
+      "competitors.view",
     ],
   },
   {
@@ -134,6 +167,8 @@ export const ROLES = [
       "orders.view",
       "orders.approve",
       "planogram.view",
+      "announcements.view",
+      "competitors.view",
     ],
   },
   {
@@ -149,6 +184,8 @@ export const ROLES = [
       "planogram.manage",
       "forecast.manage",
       "reports.view",
+      "announcements.view",
+      "competitors.view",
     ],
   },
   {
@@ -163,6 +200,8 @@ export const ROLES = [
       "planogram.view",
       "forecast.manage",
       "reports.view",
+      "announcements.view",
+      "competitors.view",
     ],
   },
   {
@@ -175,6 +214,8 @@ export const ROLES = [
       "orders.approve",
       "forecast.manage",
       "reports.view",
+      "announcements.view",
+      "competitors.view",
     ],
   },
   {
@@ -187,13 +228,23 @@ export const ROLES = [
       "orders.approve",
       "forecast.manage",
       "reports.view",
+      "announcements.view",
+      "competitors.view",
     ],
   },
   {
     slug: "logistics",
     name: "Logistics",
     description: "Delivery, transfer, pull-out processing",
-    permissions: ["dashboard.manage", "inventory.view", "orders.view", "orders.approve", "logistics.manage"],
+    permissions: [
+      "dashboard.manage",
+      "inventory.view",
+      "orders.view",
+      "orders.approve",
+      "logistics.manage",
+      "announcements.view",
+      "competitors.view",
+    ],
   },
   {
     slug: "ae",
@@ -205,6 +256,8 @@ export const ROLES = [
       "orders.view",
       "reports.view",
       "planogram.view",
+      "announcements.view",
+      "competitors.view",
     ],
   },
 ] as const;

@@ -22,7 +22,12 @@ interface PageTutorialDialogProps {
 export function PageTutorialDialog({ content, open, onOpenChange }: PageTutorialDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[85vh] max-w-lg flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
+      <DialogContent
+        className="flex max-h-[85vh] max-w-lg flex-col gap-0 overflow-hidden p-0 sm:max-w-lg"
+        {...(content.dialogDescription
+          ? {}
+          : { "aria-describedby": undefined })}
+      >
         <DialogHeader className="shrink-0 space-y-1.5 border-b bg-card px-6 py-5 text-left">
           <DialogTitle>{content.dialogTitle}</DialogTitle>
           {content.dialogDescription ? (

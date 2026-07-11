@@ -19,7 +19,7 @@ import {
 } from "@/components/data-table/data-table-shell";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { TablePagination } from "@/components/data-table/table-pagination";
-import { TableSearchToolbar } from "@/components/data-table/table-search-bar";
+import { TableSearchToolbar, uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -100,6 +100,22 @@ export function PulloutsPanel({ pullouts }: PulloutsPanelProps) {
       ),
     [pullouts.items, query],
   );
+
+  const suggestions = useMemo(
+    () =>
+      uniqueSearchSuggestions(
+        pullouts.items.map((p) => p.pulloutNo),
+        pullouts.items.map((p) => p.branch.name),
+        pullouts.items.map((p) => p.warehouse.name),
+        pullouts.items.map((p) => p.warehouse.code),
+        pullouts.items.map((p) => p.reasonStatusCode?.name),
+        pullouts.items.map((p) => p.reasonStatusCode?.code),
+        pullouts.items.map((p) => p.statusCode.name),
+        pullouts.items.map((p) => p.statusCode.code),
+      ),
+    [pullouts.items],
+  );
+
   const selection = useTableSelection(filtered.map((p) => p.id));
 
   function runAction(action: () => Promise<unknown>, message: string) {
@@ -116,6 +132,7 @@ export function PulloutsPanel({ pullouts }: PulloutsPanelProps) {
         value={query}
         onChange={setQuery}
         placeholder="Search pull-outs…"
+        suggestions={suggestions}
       >
         {selection.selectedCount > 0 ? (
           <Button variant="secondary" onClick={selection.clearSelection}>

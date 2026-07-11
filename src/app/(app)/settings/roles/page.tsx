@@ -1,5 +1,5 @@
 import { getRolesPermissionsMatrixAction } from "@/features/roles/actions/role.actions";
-import { RolesPermissionsTable } from "@/features/roles/components/roles-permissions-table";
+import { RolesSimpleView } from "@/features/roles/components/roles-simple-view";
 import {
   requirePermission,
   resolveSessionPlatformOperator,
@@ -19,11 +19,11 @@ export default async function SettingsRolesPage() {
         title="Roles"
         description={
           isPlatformOperator
-            ? "Manage all tenant roles and permissions, including built-in system roles."
-            : "Create custom roles and configure their permissions. Built-in system roles are not shown here."
+            ? "Manage roles with plain-language access. Built-in system roles are included for platform operators."
+            : "Create custom roles and choose what people can see and do. Built-in system roles are not shown here."
         }
       />
-      <RolesPermissionsTable
+      <RolesSimpleView
         matrix={matrix}
         isPlatformOperator={isPlatformOperator}
       />

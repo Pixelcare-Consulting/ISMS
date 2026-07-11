@@ -1,12 +1,13 @@
-import { auth, signOut } from "@/lib/auth";
-import { prisma } from "@/lib/database/client";
-import type { Session } from "next-auth";
 import { cache } from "react";
 import { redirect } from "next/navigation";
+
 import {
   isPlatformOperator as hasPlatformOperatorRole,
   PROVIDER_ONLY_ROLE_SLUGS,
 } from "@/features/roles/constants/role.constants";
+import { auth, signOutServer } from "@/lib/auth";
+import { prisma } from "@/lib/database/client";
+import { toAppSession, type AppSession } from "@/lib/auth/session";
 
 export async function resolveIsPlatformOperator(userId: string): Promise<boolean> {
   const match = await prisma.userRole.findFirst({
@@ -40,10 +41,10 @@ export async function resolveSessionPlatformOperator(user: {
 }
 
 export async function getSession() {
-  return auth();
+  return toAppSession(await auth());
 }
 
-async function sessionUserExists(session: Session): Promise<boolean> {
+async function sessionUserExists(session: AppSession): Promise<boolean> {
   const user = await prisma.user.findFirst({
     where: {
       id: session.user.id,
@@ -56,29 +57,29 @@ async function sessionUserExists(session: Session): Promise<boolean> {
 }
 
 /** Deduped per RSC request — layout, page, and server actions share one auth check. */
-const getRequiredSession = cache(async (): Promise<Session> => {
-  const session = await auth();
+const getRequiredSession = cache(async (): Promise<AppSession> => {
+  const session = toAppSession(await auth());
   if (!session?.user) {
     redirect("/login");
   }
 
   if (!session.user.id || !session.user.tenantId) {
-    await signOut({ redirectTo: "/login?error=session-expired" });
+    await signOutServer({ redirectTo: "/login?error=session-expired" });
   }
 
   const exists = await sessionUserExists(session);
   if (!exists) {
-    await signOut({ redirectTo: "/login?error=session-expired" });
+    await signOutServer({ redirectTo: "/login?error=session-expired" });
   }
 
   return session;
 });
 
-export async function requireAuth(): Promise<Session> {
+export async function requireAuth(): Promise<AppSession> {
   return getRequiredSession();
 }
 
-export async function requirePermission(permission: string): Promise<Session> {
+export async function requirePermission(permission: string): Promise<AppSession> {
   const session = await requireAuth();
   const permissions = session.user.permissions ?? [];
   if (!permissions.includes(permission)) {
@@ -87,7 +88,7 @@ export async function requirePermission(permission: string): Promise<Session> {
   return session;
 }
 
-export async function requireAnyPermission(required: string[]): Promise<Session> {
+export async function requireAnyPermission(required: string[]): Promise<AppSession> {
   const session = await requireAuth();
   const permissions = session.user.permissions ?? [];
   if (!required.some((permission) => permissions.includes(permission))) {
@@ -96,7 +97,7 @@ export async function requireAnyPermission(required: string[]): Promise<Session>
   return session;
 }
 
-export async function requirePlatformOperator(): Promise<Session> {
+export async function requirePlatformOperator(): Promise<AppSession> {
   const session = await requireAuth();
   const isPlatformOperator = await resolveSessionPlatformOperator(session.user);
 
@@ -141,7 +142,7 @@ export function canViewPolicy(
   );
 }
 
-export async function requirePolicyAccess(): Promise<Session> {
+export async function requirePolicyAccess(): Promise<AppSession> {
   const session = await requireAuth();
   if (!canAccessPolicies(session.user.permissions)) {
     redirect("/dashboard?error=forbidden");
@@ -156,7 +157,7 @@ export function canManageCompanySettings(
   return isPlatformOperator || hasPermission(permissions, "company.manage");
 }
 
-export async function requireCompanyManage(): Promise<Session> {
+export async function requireCompanyManage(): Promise<AppSession> {
   const session = await requireAuth();
   const isPlatformOperator = await resolveSessionPlatformOperator(session.user);
 
@@ -178,7 +179,7 @@ export function canManagePlanogram(permissions: string[] | undefined) {
   return hasPermission(permissions, "planogram.manage");
 }
 
-export async function requirePlanogramView(): Promise<Session> {
+export async function requirePlanogramView(): Promise<AppSession> {
   const session = await requireAuth();
   if (!canViewPlanogram(session.user.permissions)) {
     redirect("/dashboard?error=forbidden");

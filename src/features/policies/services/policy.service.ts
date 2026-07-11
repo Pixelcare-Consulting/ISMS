@@ -12,9 +12,8 @@ import {
 import { sendPolicyReviewEmail } from "@/lib/notifications";
 import {
   buildPolicyAttachmentPath,
-  getSupabaseAdmin,
-  POLICY_DOCUMENTS_BUCKET,
-} from "@/lib/storage/supabase-server";
+  getObjectStorage,
+} from "@/lib/storage";
 
 function policyUrl(policyId: string) {
   const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
@@ -433,12 +432,7 @@ export const policyService = {
       throw new Error("Policy version not found");
     }
 
-    const supabase = await getSupabaseAdmin();
-    if (!supabase) {
-      throw new Error(
-        "File storage is not configured. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.",
-      );
-    }
+    const storage = getObjectStorage();
 
     const fileId = crypto.randomUUID();
     const storagePath = buildPolicyAttachmentPath({
@@ -449,15 +443,16 @@ export const policyService = {
       fileId,
     });
 
-    const { error } = await supabase.storage
-      .from(POLICY_DOCUMENTS_BUCKET)
-      .upload(storagePath, input.fileBuffer, {
+    try {
+      await storage.upload({
+        path: storagePath,
+        body: input.fileBuffer,
         contentType: input.mimeType,
-        upsert: false,
       });
-
-    if (error) {
-      throw new Error(error.message);
+    } catch (error) {
+      throw new Error(
+        error instanceof Error ? error.message : "Failed to store attachment",
+      );
     }
 
     const attachment = await policyRepository.createAttachment({
@@ -495,26 +490,19 @@ export const policyService = {
       throw new Error("Attachment not found");
     }
 
-    const supabase = await getSupabaseAdmin();
-    if (!supabase) {
-      throw new Error("File storage is not configured");
+    const storage = getObjectStorage();
+    try {
+      const { buffer } = await storage.download(attachment.storagePath);
+      return {
+        buffer,
+        fileName: attachment.fileName,
+        mimeType: attachment.mimeType,
+      };
+    } catch (error) {
+      throw new Error(
+        error instanceof Error ? error.message : "Could not download file",
+      );
     }
-
-    const { data, error } = await supabase.storage
-      .from(POLICY_DOCUMENTS_BUCKET)
-      .download(attachment.storagePath);
-
-    if (error || !data) {
-      throw new Error(error?.message ?? "Could not download file");
-    }
-
-    const buffer = Buffer.from(await data.arrayBuffer());
-
-    return {
-      buffer,
-      fileName: attachment.fileName,
-      mimeType: attachment.mimeType,
-    };
   },
 
   async transitionStatus(

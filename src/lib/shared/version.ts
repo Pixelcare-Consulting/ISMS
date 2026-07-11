@@ -26,7 +26,7 @@ export function getVersionWithDateLabel(): string {
     return versionLabel;
   }
 
-  return `${versionLabel} ${formatReleaseDate(release.date)}`;
+  return `${versionLabel} · ${formatReleaseDate(release.date)}`;
 }
 
 export function getReleaseForVersion(version: string): ReleaseNote | undefined {

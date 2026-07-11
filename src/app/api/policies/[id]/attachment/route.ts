@@ -6,14 +6,15 @@ import {
   canViewPolicy,
 } from "@/lib/auth/permissions";
 import { auth } from "@/lib/auth";
+import { toAppSession } from "@/lib/auth/session";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
 export async function GET(request: Request, context: RouteContext) {
-  const session = await auth();
-  if (!session?.user) {
+  const session = toAppSession(await auth());
+  if (!session?.user?.tenantId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const { id } = await context.params;

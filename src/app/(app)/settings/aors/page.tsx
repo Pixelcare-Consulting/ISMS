@@ -17,10 +17,27 @@ export default async function SettingsAorsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Areas of responsibility"
-        description="Scope users to branches for inventory and order visibility."
+        description="Assignments are stored per branch. The table groups them by user so you can see every branch in one place."
       />
       <AorsTable
-        aors={aors}
+        aors={aors.map((aor) => ({
+          id: aor.id,
+          createdAt: aor.createdAt.toISOString(),
+          user: {
+            id: aor.user.id,
+            name: aor.user.name,
+            email: aor.user.email,
+          },
+          createdBy: aor.createdBy
+            ? { name: aor.createdBy.name, email: aor.createdBy.email }
+            : null,
+          branch: aor.branch
+            ? { name: aor.branch.name, sapCode: aor.branch.sapCode }
+            : null,
+          warehouse: aor.warehouse
+            ? { name: aor.warehouse.name, code: aor.warehouse.code }
+            : null,
+        }))}
         users={options.users.map((u) => ({
           id: u.id,
           name: u.name,
@@ -31,7 +48,15 @@ export default async function SettingsAorsPage() {
           id: b.id,
           name: b.name,
           sapCode: b.sapCode,
+          dealerId: b.dealerId,
           label: `${b.name} (${b.sapCode})`,
+        }))}
+        dealers={options.dealers.map((d) => ({
+          id: d.id,
+          name: d.name,
+          sapCode: d.sapCode,
+          branchCount: d._count.branches,
+          label: d.sapCode ? `${d.name} (${d.sapCode})` : d.name,
         }))}
       />
     </div>

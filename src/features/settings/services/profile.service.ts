@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 
 import { auditService } from "@/features/audit/services/audit.service";
 import { userRepository } from "@/features/users/repositories/user.repository";
+import { syncCredentialAccountPassword } from "@/lib/auth/auth";
 
 export const profileService = {
   async getProfile(tenantId: string, userId: string) {
@@ -61,6 +62,7 @@ export const profileService = {
       user.id,
       passwordHash,
     );
+    await syncCredentialAccountPassword(user.id, passwordHash);
 
     await auditService.log({
       tenantId: input.tenantId,

@@ -17,7 +17,6 @@ export const masterDataRepository = {
       () =>
         prisma.category.findMany({
           where: { tenantId },
-          include: { brand: true },
           orderBy: { name: "asc" },
         }),
     );
@@ -54,13 +53,12 @@ export const masterDataRepository = {
     return prisma.brand.create({ data: { tenantId, name: data.name, code: data.code } });
   },
 
-  createCategory(tenantId: string, data: { name: string; code?: string; brandId?: string }) {
+  createCategory(tenantId: string, data: { name: string; code?: string }) {
     return prisma.category.create({
       data: {
         tenantId,
         name: data.name,
         code: data.code,
-        brandId: data.brandId ?? null,
       },
     });
   },
@@ -70,6 +68,9 @@ export const masterDataRepository = {
     data: {
       brandId?: string | null;
       categoryId?: string | null;
+      featureId?: string | null;
+      resolutionId?: string | null;
+      actualSizeId?: string | null;
       skuCode: string;
       name: string;
       status?: "active" | "hold" | "retired";
@@ -80,10 +81,50 @@ export const masterDataRepository = {
         tenantId,
         brandId: data.brandId ?? null,
         categoryId: data.categoryId ?? null,
+        featureId: data.featureId ?? null,
+        resolutionId: data.resolutionId ?? null,
+        actualSizeId: data.actualSizeId ?? null,
         skuCode: data.skuCode,
         name: data.name,
         status: data.status,
       },
     });
+  },
+
+  listPriceLists(tenantId: string, modelId?: string) {
+    return prisma.priceList.findMany({
+      where: { tenantId, ...(modelId ? { modelId } : {}) },
+      include: {
+        model: { select: { id: true, skuCode: true, name: true } },
+        packageType: { select: { id: true, name: true } },
+      },
+      orderBy: [{ periodStart: "desc" }, { createdAt: "desc" }],
+    });
+  },
+
+  createPriceList(
+    tenantId: string,
+    data: {
+      modelId: string;
+      amount: number;
+      periodStart: Date;
+      periodEnd: Date;
+      packageTypeId?: string | null;
+    },
+  ) {
+    return prisma.priceList.create({
+      data: {
+        tenantId,
+        modelId: data.modelId,
+        amount: data.amount,
+        periodStart: data.periodStart,
+        periodEnd: data.periodEnd,
+        packageTypeId: data.packageTypeId ?? null,
+      },
+    });
+  },
+
+  deletePriceList(tenantId: string, id: string) {
+    return prisma.priceList.deleteMany({ where: { id, tenantId } });
   },
 };

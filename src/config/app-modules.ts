@@ -194,6 +194,30 @@ export const appModules: AppModule[] = [
       { value: "manage", label: "Manage" },
     ],
   },
+  {
+    id: "announcements",
+    name: "Announcements",
+    route: "/announcements",
+    slugPrefix: "announcements",
+    navPermission: "announcements.view",
+    description: "Tenant announcements and dashboard banners",
+    actions: [
+      { value: "view", label: "View" },
+      { value: "manage", label: "Manage" },
+    ],
+  },
+  {
+    id: "competitors",
+    name: "Competitors",
+    route: "/competitors",
+    slugPrefix: "competitors",
+    navPermission: "competitors.view",
+    description: "Competitor price and market observations",
+    actions: [
+      { value: "view", label: "View" },
+      { value: "manage", label: "Manage" },
+    ],
+  },
 ];
 
 export function getAppModuleById(id: string): AppModule | undefined {

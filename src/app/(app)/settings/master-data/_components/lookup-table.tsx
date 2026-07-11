@@ -14,16 +14,22 @@ import {
   LOOKUP_ENTITIES,
   type LookupEntityKey,
 } from "@/features/lookups/constants/lookup-registry";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  DataTableScroll,
-  DataTableShell,
-} from "@/components/data-table/data-table-shell";
-import { TableSearchToolbar } from "@/components/data-table/table-search-bar";
+  AppDataTable,
+  AppDataTableBody,
+  TableEmptyRow,
+  TableIndexCell,
+  TableIndexHead,
+  TableRowActions,
+  TableSearchBar,
+  TableStatusBadge,
+  uniqueSearchSuggestions,
+} from "@/components/data-table";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -39,6 +45,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { matchesTableSearch } from "@/utils/match-table-search";
+import { cn } from "@/utils/cn";
 import type { LookupRecordStatus } from "@prisma/client";
 
 export interface LookupRowData {
@@ -149,6 +156,17 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
     [rows, query, parentNameOf],
   );
 
+  const suggestions = useMemo(
+    () =>
+      uniqueSearchSuggestions(
+        rows.map((row) => row.name),
+        rows.map((row) => row.code),
+        rows.map((row) => row.class),
+        rows.map((row) => parentNameOf(row)),
+      ),
+    [rows, parentNameOf],
+  );
+
   function openCreate() {
     setEditing(null);
     setFormName("");
@@ -214,34 +232,40 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
     config.parent?.required && (parentOptions?.length ?? 0) === 0,
   );
 
+  const colSpan =
+    3 +
+    (config.code ? 1 : 0) +
+    (config.classField ? 1 : 0) +
+    (config.parent ? 1 : 0);
+
   return (
-    <DataTableShell>
-      {title ? (
-        <div className="border-b px-4 py-3">
-          <h3 className="font-medium">{title}</h3>
-        </div>
-      ) : null}
-      <TableSearchToolbar
-        value={query}
-        onChange={setQuery}
-        placeholder={`Search ${config.label.toLowerCase()}…`}
+    <>
+      <AppDataTable
+        title={title}
+        shellHeader={
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <TableSearchBar
+              value={query}
+              onChange={setQuery}
+              placeholder={`Search ${config.label.toLowerCase()}…`}
+              suggestions={suggestions}
+              className="sm:max-w-sm"
+            />
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <Button onClick={openCreate} disabled={addDisabled}>
+                <Plus className="size-4" /> Add {config.singular}
+              </Button>
+            </div>
+          </div>
+        }
+        empty={rows.length === 0}
+        emptyMessage={`No ${config.label.toLowerCase()} yet.`}
       >
-        <Button onClick={openCreate} disabled={addDisabled}>
-          <Plus className="size-4" /> Add {config.singular}
-        </Button>
-      </TableSearchToolbar>
-      {filtered.length === 0 ? (
-        <div className="py-12 text-center text-muted-foreground">
-          {rows.length === 0
-            ? `No ${config.label.toLowerCase()} yet.`
-            : "No results match your search."}
-        </div>
-      ) : (
-        <DataTableScroll>
+        <AppDataTableBody>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-12">#</TableHead>
+                <TableIndexHead />
                 <TableHead>Name</TableHead>
                 {config.code ? <TableHead>Code</TableHead> : null}
                 {config.classField ? <TableHead>Class</TableHead> : null}
@@ -251,36 +275,32 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((row, index) => (
-                <TableRow key={row.id}>
-                  <TableCell className="tabular-nums text-muted-foreground">
-                    {index + 1}
-                  </TableCell>
-                  <TableCell className="font-medium">{row.name}</TableCell>
-                  {config.code ? (
-                    <TableCell className="font-mono text-sm">{row.code ?? "—"}</TableCell>
-                  ) : null}
-                  {config.classField ? (
-                    <TableCell>{row.class ?? "—"}</TableCell>
-                  ) : null}
-                  {config.parent ? (
-                    <TableCell>{parentNameOf(row) ?? "—"}</TableCell>
-                  ) : null}
-                  <TableCell>
-                    <Badge variant={row.recordStatus === "active" ? "default" : "secondary"}>
-                      {row.recordStatus === "active" ? "Active" : "Inactive"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-end gap-2 whitespace-nowrap">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={pending}
-                        onClick={() => openEdit(row)}
-                      >
-                        Edit
-                      </Button>
+              {filtered.length === 0 ? (
+                <TableEmptyRow colSpan={colSpan} message="No results match your search." />
+              ) : (
+                filtered.map((row, index) => (
+                  <TableRow
+                    key={row.id}
+                    className={cn(index % 2 === 1 && "bg-table-stripe")}
+                  >
+                    <TableIndexCell index={index + 1} />
+                    <TableCell className="font-medium">{row.name}</TableCell>
+                    {config.code ? (
+                      <TableCell className="font-mono text-sm">{row.code ?? "—"}</TableCell>
+                    ) : null}
+                    {config.classField ? (
+                      <TableCell>{row.class ?? "—"}</TableCell>
+                    ) : null}
+                    {config.parent ? (
+                      <TableCell>{parentNameOf(row) ?? "—"}</TableCell>
+                    ) : null}
+                    <TableCell>
+                      <TableStatusBadge
+                        status={row.recordStatus}
+                        label={row.recordStatus === "active" ? "Active" : "Inactive"}
+                      />
+                    </TableCell>
+                    <TableRowActions onEdit={() => openEdit(row)} editDisabled={pending}>
                       <Button
                         size="sm"
                         variant="outline"
@@ -289,14 +309,14 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
                       >
                         {row.recordStatus === "active" ? "Deactivate" : "Activate"}
                       </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+                    </TableRowActions>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
-        </DataTableScroll>
-      )}
+        </AppDataTableBody>
+      </AppDataTable>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
@@ -306,6 +326,11 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
                 ? `Edit ${config.singular}`
                 : `Add ${config.singular}`}
             </DialogTitle>
+            <DialogDescription>
+              {editing
+                ? `Update this ${config.singular} record.`
+                : `Create a new ${config.singular} record.`}
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={submit} className="space-y-4">
             <div className="space-y-2">
@@ -367,6 +392,6 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
           </form>
         </DialogContent>
       </Dialog>
-    </DataTableShell>
+    </>
   );
 }

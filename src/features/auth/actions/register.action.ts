@@ -10,6 +10,7 @@ import { departmentService } from "@/features/users/services/department.service"
 import { tenantService } from "@/features/tenants/services/tenant.service";
 import { roleRepository } from "@/features/users/repositories/role.repository";
 import { userRepository } from "@/features/users/repositories/user.repository";
+import { syncCredentialAccountPassword } from "@/lib/auth/auth";
 import { prisma } from "@/lib/database/client";
 import { rateLimit } from "@/lib/cache/redis";
 import { logger } from "@/lib/shared/logger";
@@ -139,6 +140,7 @@ export async function registerAction(
       name,
       passwordHash,
     });
+    await syncCredentialAccountPassword(user.id, passwordHash);
 
     const adminRole = await roleRepository.findBySlug(tenant.id, "tenant_admin");
     if (adminRole) {

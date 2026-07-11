@@ -2,7 +2,11 @@
 
 import Link from "next/link";
 
-import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
+import { SidebarNavNewBadge } from "@/app/(app)/_components/sidebar-nav-new-badge";
+import {
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from "@/components/ui/sidebar";
 import { isNavItemActive } from "@/config/app-navigation";
 import type { LucideIcon } from "lucide-react";
 
@@ -11,6 +15,7 @@ interface SidebarNavItemProps {
   label: string;
   icon: LucideIcon;
   pathname: string;
+  badge?: "new";
 }
 
 export function SidebarNavItem({
@@ -18,6 +23,7 @@ export function SidebarNavItem({
   label,
   icon: Icon,
   pathname,
+  badge,
 }: SidebarNavItemProps) {
   const isActive = isNavItemActive(pathname, href);
 
@@ -32,7 +38,8 @@ export function SidebarNavItem({
             />
           ) : null}
           <Icon />
-          <span>{label}</span>
+          <span className="min-w-0 flex-1 truncate">{label}</span>
+          {badge === "new" ? <SidebarNavNewBadge /> : null}
         </Link>
       </SidebarMenuButton>
     </SidebarMenuItem>
