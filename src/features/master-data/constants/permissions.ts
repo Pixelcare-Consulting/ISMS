@@ -1,5 +1,8 @@
 export const BRS_PERMISSIONS = [
   { slug: "branches.manage", name: "Manage branches" },
+  { slug: "dealers.manage", name: "Manage dealers" },
+  { slug: "service_centers.manage", name: "Manage service centers" },
+  { slug: "warehouses.manage", name: "Manage warehouses" },
   { slug: "master_data.manage", name: "Manage master data" },
   { slug: "aors.manage", name: "Manage areas of responsibility" },
   { slug: "inventory.view", name: "View inventory" },
@@ -8,5 +11,6 @@ export const BRS_PERMISSIONS = [
   { slug: "orders.approve", name: "Approve branch orders" },
   { slug: "orders.view", name: "View branch orders" },
   { slug: "logistics.manage", name: "Manage logistics transactions" },
+  { slug: "sap.manage", name: "Manage SAP integration" },
   { slug: "sales.create", name: "Record branch sales" },
 ] as const;

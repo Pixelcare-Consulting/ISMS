@@ -25,6 +25,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import {
   Table,
   TableBody,
   TableCell,
@@ -62,6 +70,7 @@ export function ServiceCentersTable({ centers }: { centers: CenterRow[] }) {
     centerId: string;
     location: LocationRow;
   } | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
   const [sapCode, setSapCode] = useState("");
   const [name, setName] = useState("");
   const [areaId, setAreaId] = useState("");
@@ -104,7 +113,23 @@ export function ServiceCentersTable({ centers }: { centers: CenterRow[] }) {
     setAreas(opts.areas);
   }
 
-  function createCenter() {
+  function resetAddForm() {
+    setSapCode("");
+    setName("");
+    setAreaId("");
+  }
+
+  function onAddOpenChange(open: boolean) {
+    setAddOpen(open);
+    if (open) {
+      void loadAreas();
+    } else {
+      resetAddForm();
+    }
+  }
+
+  function handleCreate(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     startTransition(async () => {
       const result = await createServiceCenterAction({
         sapCode,
@@ -116,8 +141,7 @@ export function ServiceCentersTable({ centers }: { centers: CenterRow[] }) {
         return;
       }
       toast.success("Service center created");
-      setSapCode("");
-      setName("");
+      onAddOpenChange(false);
       router.refresh();
     });
   }
@@ -173,50 +197,23 @@ export function ServiceCentersTable({ centers }: { centers: CenterRow[] }) {
 
   return (
     <div className="space-y-4">
-      <div
-        className="flex flex-wrap gap-2 rounded-xl border bg-card p-4 shadow-sm"
-        onFocus={() => {
-          void loadAreas();
-        }}
-      >
-        <div>
-          <Label>SAP code</Label>
-          <Input value={sapCode} onChange={(e) => setSapCode(e.target.value)} />
-        </div>
-        <div>
-          <Label>Name</Label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} />
-        </div>
-        <div>
-          <Label>Area</Label>
-          <select
-            className="flex h-9 rounded-md border bg-background px-2 text-sm"
-            value={areaId}
-            onChange={(e) => setAreaId(e.target.value)}
-          >
-            <option value="">—</option>
-            {areas.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <Button className="self-end" disabled={pending || !sapCode || !name} onClick={createCenter}>
-          <Plus className="size-4" />
-          Add center
-        </Button>
-      </div>
-
       <AppDataTable
         shellHeader={
-          <TableSearchBar
-            value={query}
-            onChange={setQuery}
-            placeholder="Search service centers…"
-            suggestions={suggestions}
-            className="sm:max-w-sm"
-          />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <TableSearchBar
+              value={query}
+              onChange={setQuery}
+              placeholder="Search service centers…"
+              suggestions={suggestions}
+              className="sm:max-w-sm"
+            />
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <Button type="button" size="sm" onClick={() => onAddOpenChange(true)}>
+                <Plus className="size-3.5" />
+                Add center
+              </Button>
+            </div>
+          </div>
         }
       >
         <AppDataTableBody>
@@ -242,8 +239,8 @@ export function ServiceCentersTable({ centers }: { centers: CenterRow[] }) {
                       <TableCell>{row.area?.name ?? "—"}</TableCell>
                       <TableCell>
                         <Button
-                          variant="link"
-                          className="h-auto p-0"
+                          variant="outline"
+                          size="sm"
                           onClick={() =>
                             setExpandedId((current) => (current === row.id ? null : row.id))
                           }
@@ -312,6 +309,70 @@ export function ServiceCentersTable({ centers }: { centers: CenterRow[] }) {
           </Table>
         </AppDataTableBody>
       </AppDataTable>
+
+      <Sheet open={addOpen} onOpenChange={onAddOpenChange}>
+        <SheetContent
+          side="right"
+          className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-md"
+        >
+          <SheetHeader className="border-b border-border/60 px-4 py-4 text-left">
+            <SheetTitle>Add service center</SheetTitle>
+            <SheetDescription>
+              Create a service center with SAP code, name, and optional area.
+            </SheetDescription>
+          </SheetHeader>
+          <form onSubmit={handleCreate} className="flex min-h-0 flex-1 flex-col">
+            <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="sc-sap">SAP code</Label>
+                <Input
+                  id="sc-sap"
+                  value={sapCode}
+                  onChange={(e) => setSapCode(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="sc-name">Name</Label>
+                <Input
+                  id="sc-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="sc-area">Area</Label>
+                <select
+                  id="sc-area"
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                  value={areaId}
+                  onChange={(e) => setAreaId(e.target.value)}
+                >
+                  <option value="">—</option>
+                  {areas.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <SheetFooter className="border-t border-border/60">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onAddOpenChange(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={pending || !sapCode || !name}>
+                Add center
+              </Button>
+            </SheetFooter>
+          </form>
+        </SheetContent>
+      </Sheet>
 
       <DeleteConfirmDialog
         open={Boolean(deleting)}

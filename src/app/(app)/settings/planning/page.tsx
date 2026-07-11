@@ -16,6 +16,7 @@ import { forecastService } from "@/features/forecast/services/forecast.service";
 
 import { requireAnyPermission } from "@/lib/auth/permissions";
 
+import { PLANNING_PAGE_TUTORIAL } from "@/content/page-tutorials/planning";
 import { PageHeader } from "@/app/(app)/_components/page-header";
 
 import { PlanningPanel } from "@/app/(app)/settings/planning/_components/planning-panel";
@@ -147,6 +148,8 @@ export default async function PlanningPage({ searchParams }: PlanningPageProps) 
       <PageHeader
 
         title="Planning & Forecast"
+
+        tutorial={PLANNING_PAGE_TUTORIAL}
 
         description="Run shelf allocation, and generate suggested auto-replenish orders."
 

@@ -5,6 +5,7 @@ import {
 } from "@/lib/auth/permissions";
 import { tenantService } from "@/features/tenants/services/tenant.service";
 import { resolveTenantTagline } from "@/features/tenants/types/tenant-branding";
+import { COMPANY_PAGE_TUTORIAL } from "@/content/page-tutorials/company";
 import { PageHeader } from "@/app/(app)/_components/page-header";
 import { CompanySettingsForm } from "@/features/settings/components/company-settings-form";
 import { SettingsSection } from "@/features/settings/components/settings-section";
@@ -22,6 +23,7 @@ export default async function CompanySettingsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Company Settings"
+        tutorial={COMPANY_PAGE_TUTORIAL}
         description="Customize your organization logo, name, and ISMS tagline shown in the sidebar."
       />
       <SettingsSection

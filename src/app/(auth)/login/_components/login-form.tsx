@@ -18,6 +18,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { LoadingModal } from "@/components/ui/loading-modal";
 import { PasswordInput } from "@/components/ui/password-input";
 import { authClient } from "@/lib/auth/client";
 import { cn } from "@/utils/cn";
@@ -37,6 +38,7 @@ export function LoginForm() {
       ? "Your session is no longer valid. Sign in again."
       : null,
   );
+  const [isRedirecting, setIsRedirecting] = useState(false);
   const callbackUrl = searchParams.get("callbackUrl") ?? "/dashboard";
 
   const form = useForm<LoginInput>({
@@ -48,15 +50,19 @@ export function LoginForm() {
   });
 
   const isSubmitting = form.formState.isSubmitting;
+  const isBusy = isSubmitting || isRedirecting;
 
   async function onSubmit(values: LoginInput) {
     setError(null);
+    setIsRedirecting(true);
+
     const result = await authClient.signIn.email({
       email: values.email,
       password: values.password,
     });
 
     if (result.error) {
+      setIsRedirecting(false);
       setError(
         result.error.message?.includes("Too many")
           ? result.error.message
@@ -70,69 +76,83 @@ export function LoginForm() {
   }
 
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
-        <FormField
-          control={form.control}
-          name="email"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel className="text-sm font-medium">Email</FormLabel>
-              <FormControl>
-                <Input
-                  type="email"
-                  autoComplete="email"
-                  placeholder="you@company.com"
-                  className={inputClassName}
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <FormField
-          control={form.control}
-          name="password"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel className="text-sm font-medium">Password</FormLabel>
-              <FormControl>
-                <PasswordInput
-                  autoComplete="current-password"
-                  placeholder="••••••••"
-                  className={inputClassName}
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+    <>
+      <LoadingModal
+        open={isRedirecting}
+        title="Signing you in"
+        description="Please wait while we verify your credentials and load your workspace."
+        feedItems={[
+          { atSecond: 0, label: "Verifying credentials", hint: "Checking email and password" },
+          { atSecond: 1, label: "Starting your session", hint: "Secure cookie and permissions" },
+          { atSecond: 2, label: "Loading your workspace", hint: "Dashboard and role-based access" },
+        ]}
+      />
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+          <FormField
+            control={form.control}
+            name="email"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-sm font-medium">Email</FormLabel>
+                <FormControl>
+                  <Input
+                    type="email"
+                    autoComplete="email"
+                    placeholder="you@company.com"
+                    className={inputClassName}
+                    disabled={isBusy}
+                    {...field}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="password"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-sm font-medium">Password</FormLabel>
+                <FormControl>
+                  <PasswordInput
+                    autoComplete="current-password"
+                    placeholder="••••••••"
+                    className={inputClassName}
+                    disabled={isBusy}
+                    {...field}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
 
-        {error ? (
-          <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-3.5 py-2.5 text-sm text-destructive">
-            {error}
-          </div>
-        ) : null}
+          {error ? (
+            <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-3.5 py-2.5 text-sm text-destructive">
+              {error}
+            </div>
+          ) : null}
 
-        <Button
-          type="submit"
-          className="h-11 w-full rounded-lg text-sm font-semibold shadow-sm"
-          disabled={isSubmitting}
-        >
-          {isSubmitting ? (
-            <>
-              <Loader2 className="size-4 animate-spin" />
-              Signing in…
-            </>
-          ) : (
-            "Sign in"
-          )}
-        </Button>
+          <Button
+            type="submit"
+            className="h-11 w-full rounded-lg text-sm font-semibold shadow-sm"
+            disabled={isBusy}
+          >
+            {isBusy ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                Signing in…
+              </>
+            ) : (
+              "Sign in"
+            )}
+          </Button>
 
-        <AppVersion className="w-full pt-1" />
-      </form>
-    </Form>
+          <AppVersion className="w-full pt-1" />
+        </form>
+      </Form>
+    </>
   );
 }

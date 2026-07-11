@@ -9,6 +9,7 @@ import {
   MASTER_DATA_ROOT,
   MASTER_DATA_TAB_GROUPS,
 } from "@/config/section-tabs";
+import { MASTER_DATA_PAGE_TUTORIAL } from "@/content/page-tutorials/master-data";
 
 function findActiveItem(pathname: string) {
   for (const group of MASTER_DATA_TAB_GROUPS) {
@@ -35,7 +36,12 @@ export function MasterDataHeader() {
 
   if (!active) {
     return (
-      <PageHeader title="Master data" description={HUB_DESCRIPTION} sticky={false} />
+      <PageHeader
+        title="Master data"
+        description={HUB_DESCRIPTION}
+        tutorial={MASTER_DATA_PAGE_TUTORIAL}
+        sticky={false}
+      />
     );
   }
 
@@ -52,7 +58,11 @@ export function MasterDataHeader() {
         </span>
         <span className="text-foreground">{active.group}</span>
       </Link>
-      <PageHeader title={active.label} sticky={false} />
+      <PageHeader
+        title={active.label}
+        tutorial={MASTER_DATA_PAGE_TUTORIAL}
+        sticky={false}
+      />
     </div>
   );
 }

@@ -24,563 +24,279 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
-    version: "0.11.60",
+    version: "0.11.68",
     date: "2026-07-12",
-    title: "White outline triggers + search autosuggest",
+    title: "Audit Logs serial list uses audit_logs.view",
     highlights: [
-      "Outline buttons (Branches/Dealers multi-select) use a white background like native selects",
-      "Table search bars show client-side suggestions from loaded row data across Settings, Orders, Inventory, Logistics, and more",
+      "Serial number logs action now requires audit_logs.view (same as nav and page)",
     ],
     changes: [
       {
         type: "fix",
         description:
-          "Button outline variant uses bg-background; className merges correctly so SearchableMultiSelect stays white",
-      },
-      {
-        type: "feature",
-        description:
-          "TableSearchBar/Toolbar optional suggestions dropdown (keyboard + click) wired on all shared table search consumers",
+          "listSerialActivityAction gated on audit_logs.view instead of inventory.view so Audit Logs access is consistent end-to-end",
       },
     ],
   },
   {
-    version: "0.11.59",
+    version: "0.11.67",
     date: "2026-07-12",
-    title: "Dialog and Sheet close cursor",
+    title: "Searchable module picker when adding permissions",
     highlights: [
-      "Dialog and Sheet X close buttons use a hand cursor so they feel clickable",
+      "Add permission Module field is now a type-to-filter combobox",
+      "Search by module name or route instead of scrolling a long list",
     ],
     changes: [
       {
         type: "improvement",
         description:
-          "Shared DialogContent and SheetContent close buttons include cursor-pointer",
+          "Permissions create dialog: Module select uses Popover + Command searchable combobox (same pattern as AOR pickers)",
       },
     ],
   },
   {
-    version: "0.11.58",
+    version: "0.11.66",
     date: "2026-07-12",
-    title: "Sheet Done button primary contrast",
+    title: "Dedicated permission modules for Settings and Audit Logs",
     highlights: [
-      "History and Roles Access Sheet footers use solid primary Done (full-width teal) instead of muted outline",
-    ],
-    changes: [
-      {
-        type: "fix",
-        description:
-          "Price list history and role permissions drawers: Done uses default primary Button with w-full",
-      },
-    ],
-  },
-
-  {
-    version: "0.11.57",
-    date: "2026-07-12",
-    title: "Price lists Sheets + model history",
-    highlights: [
-      "Add price row and model period history open in Roles-style right Sheets",
-      "Price list grid groups by model (latest amount + period count); click a card for full history",
-      "Fixed create-price Decimal serialize crash; removed Manage price lists text CTA",
-    ],
-    changes: [
-      {
-        type: "fix",
-        description:
-          "createPriceListAction returns success only; listPriceListsAction serializes Decimal via toClientPriceListRow",
-      },
-      {
-        type: "feature",
-        description:
-          "Grouped model cards with history Sheet (period timeline + icon Remove) and Add price Sheet",
-      },
-      {
-        type: "improvement",
-        description:
-          "Replaced text-as-button CTAs (Models Manage price lists, Planning View suggested orders) with proper Buttons; added no-text-as-button workspace rule",
-      },
-    ],
-  },
-  {
-    version: "0.11.56",
-    date: "2026-07-12",
-    title: "Master data dialog accessibility",
-    highlights: [
-      "Master data Add/Edit lookup dialogs include a description so Radix no longer warns about missing DialogDescription",
-    ],
-    changes: [
-      {
-        type: "fix",
-        description:
-          "Added DialogDescription to shared lookup-table create/edit dialogs (Categories and other master-data lookups)",
-      },
-    ],
-  },
-  {
-    version: "0.11.55",
-    date: "2026-07-12",
-    title: "Price lists page + Master data NEW badges",
-    highlights: [
-      "Price lists is its own Master data module with Roles-style search, cards, add dialog, and confirmed remove",
-      "Models page no longer embeds the cramped inline price block — link to Manage price lists instead",
-      "NEW badges on Master data in Settings nav and on Models / Price lists hub cards",
+      "Dealers, Service centers, Departments, Warehouses, SAP, and Audit Logs each have their own permission slugs",
+      "Add permission Module catalog and sidebar gates match the new modules",
+      "Re-seed (or assign on custom roles) so system roles pick up the new grants",
     ],
     changes: [
       {
         type: "feature",
         description:
-          "Added /settings/master-data/price-lists with card grid, search, create dialog, and DeleteConfirmDialog remove",
+          "New permission slugs: departments.manage, dealers.manage, service_centers.manage, warehouses.manage, sap.manage, audit_logs.view",
       },
       {
         type: "improvement",
         description:
-          "Surfaced NEW badges for Master data (sidebar) and Models/Price lists hub cards so today’s updates are visible",
+          "Settings pages, SAP integration, and Audit Logs (system + serial) gate on the dedicated slugs instead of shared branches/users/logistics/reports permissions",
+      },
+      {
+        type: "improvement",
+        description:
+          "System role seed grants include the new slugs; custom tenant roles that relied on shared gates need those permissions assigned manually after re-seed",
       },
     ],
   },
   {
-    version: "0.11.54",
-    date: "2026-07-11",
-    title: "Branch alternate warehouses picker",
+    version: "0.11.65",
+    date: "2026-07-12",
+    title: "Smoother sign-in, guides, and Settings forms",
     highlights: [
-      "Branch Add/Edit uses a searchable multi-select for alternate warehouses (scales past checkbox lists)",
-      "Dealer, warehouse, and geo dropdowns use enabled white/background styling",
-      "Primary warehouse is excluded from alternate options",
+      "Sign-in and register show a loading screen until the dashboard opens",
+      "Page quick guides can open on first visit; Search + Add opens a right-side form on key Settings pages",
+      "Price lists as its own Master data area; table search suggests matching rows as you type",
     ],
     changes: [
       {
         type: "improvement",
         description:
-          "Replaced bordered checkbox list with SearchableMultiSelect (filter by code/name, chips, select-all filtered)",
+          "Sign-in and register keep a loading screen through dashboard open so you are not left on a blank form",
       },
       {
-        type: "fix",
+        type: "feature",
         description:
-          "Native selects in branch dialogs use border-input bg-background so they no longer look disabled",
-      },
-    ],
-  },
-  {
-    version: "0.11.53",
-    date: "2026-07-11",
-    title: "AOR table preview cleanup",
-    highlights: [
-      "AOR Branches column preview no longer shows per-branch trash icons",
-      "Remove a single branch from the View all dialog (with confirmation); remove all still uses the row action",
-    ],
-    changes: [
-      {
-        type: "improvement",
-        description:
-          "Compact max-3 Branches cell is display-only; delete remains in View-all modal and row-level remove-all",
-      },
-    ],
-  },
-  {
-    version: "0.11.52",
-    date: "2026-07-11",
-    title: "AOR branches list UI",
-    highlights: [
-      "AOR Branches column uses a compact name + code preview (max 3) instead of dense chips",
-      "View all opens a table dialog with branch, SAP code, assigned at/by, and confirmed remove",
-      "Branches and Dealers multi-select triggers match enabled form inputs (no muted gray)",
-    ],
-    changes: [
-      {
-        type: "improvement",
-        description:
-          "Replaced chip-only View-all modal with a scrollable settings-style table; single-branch remove still confirms via DeleteConfirmDialog",
-      },
-      {
-        type: "fix",
-        description:
-          "SearchableMultiSelect outline trigger uses bg-background when enabled so Branches/Dealers no longer look disabled",
-      },
-    ],
-  },
-  {
-    version: "0.11.51",
-    date: "2026-07-11",
-    title: "Header version date format",
-    highlights: [
-      "App header shows version as vX.Y.Z · DD.MM.YY next to What's new",
-    ],
-    changes: [
-      {
-        type: "improvement",
-        description:
-          "Header uses getVersionWithDateLabel (same format as login footer / release cards)",
-      },
-    ],
-  },
-  {
-    version: "0.11.50",
-    date: "2026-07-11",
-    title: "Header build date stamp",
-    highlights: [
-      "App header version shows ISMS vX.Y.Z (Build M-D-YY) from the current release date",
-    ],
-    changes: [
-      {
-        type: "improvement",
-        description:
-          "Header What's new area uses getHeaderBuildLabel so the build date stays in sync with package.json / releases.ts",
-      },
-    ],
-  },
-  {
-    version: "0.11.49",
-    date: "2026-07-11",
-    title: "AOR chips + delete confirms",
-    highlights: [
-      "AOR Branches column shows up to 3 chips with View all for overflow",
-      "Delete confirmation covers nested removes (locations, price rows, planogram, AOR chip X)",
-    ],
-    changes: [
-      {
-        type: "improvement",
-        description:
-          "AOR branch chips capped at 3 with a View-all dialog; chip remove requires confirm; pointer cursor on chip X",
+          "Quick guides on many pages can auto-open once on first visit; the ? button still reopens them anytime",
       },
       {
         type: "improvement",
         description:
-          "DeleteConfirmDialog supports optional confirmLabel; warehouse/SC locations, price list rows, and planogram removes use the shared confirm dialog",
+          "Dealers, Service centers, Models, and Brands/Categories: Search + Add opens a right-side form panel",
       },
-    ],
-  },
-  {
-    version: "0.11.48",
-    date: "2026-07-11",
-    title: "Fix duplicate Inventory P-Count nav",
-    highlights: [
-      "Removed duplicate Stock count / P-Count sidebar links that shared the same route",
-    ],
-    changes: [
       {
-        type: "fix",
+        type: "feature",
         description:
-          "Inventory nav keeps a single P-Count entry for /inventory/stock-count so React keys stay unique",
+          "Price lists is its own Master data area with add and history in side panels, plus model cards with period history",
       },
-    ],
-  },
-  {
-    version: "0.11.47",
-    date: "2026-07-11",
-    title: "Header build version",
-    highlights: [
-      "App header shows the current build version next to What's new",
-    ],
-    changes: [
       {
-        type: "improvement",
+        type: "feature",
         description:
-          "Latest package version (vX.Y.Z) displayed to the left of the What's new button in the page header",
-      },
-    ],
-  },
-  {
-    version: "0.11.46",
-    date: "2026-07-11",
-    title: "Date input calendar icon alignment",
-    highlights: [
-      "Date, time, and related inputs right-align the calendar/clock picker icon",
-    ],
-    changes: [
-      {
-        type: "fix",
-        description:
-          "WebKit calendar-picker-indicator uses ml-auto on temporal input types so the icon sits flush to the right",
-      },
-    ],
-  },
-  {
-    version: "0.11.45",
-    date: "2026-07-11",
-    title: "AOR table grouped by user",
-    highlights: [
-      "Settings → AORs groups assignments by user with removable branch chips",
-      "Assigned at shows the latest assignment; Assigned by shows one actor or Multiple",
-      "Per-chip remove plus optional Remove all for a user’s AORs",
-    ],
-    changes: [
-      {
-        type: "improvement",
-        description:
-          "AOR list groups one-row-per-branch records by user so multi-branch assignments appear on a single row",
+          "Search boxes in tables suggest matching rows from what is already loaded",
       },
       {
         type: "improvement",
         description:
-          "Branch chips call existing delete; row action can remove all AORs for a user with confirm",
+          "Small UI polish: closer page titles, clickable close cursors, clearer Done buttons, and dropdowns that look enabled",
       },
     ],
   },
   {
     version: "0.12.0",
     date: "2026-07-11",
-    title: "Announcements, Competitors Dashboard, and P-Count",
+    title: "Announcements, Competitors, P-Count, and Settings upgrades",
     highlights: [
-      "Tenant announcements with CRUD and an active banner on the dashboard",
-      "Competitors Dashboard for market price observations with KPIs and filters",
-      "P-Count: stock-count close writes serial history; Reports → P-Count summary",
+      "Announcements with a dashboard banner; Competitors Dashboard for market observations",
+      "P-Count stock count history and Reports → P-Count; friendlier Roles and bulk AOR assign",
+      "Header shows current version · date next to What’s new; clearer pickers and confirms",
     ],
     changes: [
       {
         type: "feature",
         description:
-          "Announcements module (`/announcements`) with view/manage RBAC and dashboard banner for active posts",
+          "Announcements you can manage, with an active banner on the dashboard",
       },
       {
         type: "feature",
         description:
-          "Competitors Dashboard (`/competitors`) for manual market observations with KPIs and CRUD",
+          "Competitors Dashboard for recording and reviewing market price observations",
       },
       {
         type: "feature",
         description:
-          "P-Count: SerialNumberHistory `pcount` on stock-count close; `/reports/pcount` plus Inventory/Reports nav aliases",
+          "P-Count saves stock-count history on close; Reports → P-Count shows a summary",
       },
-    ],
-  },
-  {
-    version: "0.11.44",
-    date: "2026-07-11",
-    title: "AOR assign attribution and searchable pickers",
-    highlights: [
-      "AOR table shows when each assignment was made and who assigned it",
-      "Branch and dealer pickers use searchable Popover/Command multi-select with removable chips",
-    ],
-    changes: [
       {
         type: "feature",
         description:
-          "AOR rows store and display Assigned at / Assigned by (createdById)",
+          "Friendlier Roles with cards and grouped permissions; advanced matrix still available for power users",
+      },
+      {
+        type: "feature",
+        description:
+          "AORs: assign many branches or dealers at once; table grouped by user; searchable pickers; clearer remove confirms",
       },
       {
         type: "improvement",
         description:
-          "Settings → AORs replaces checkbox lists with searchable combobox multi-select, select-all filtered, and clear",
-      },
-    ],
-  },
-  {
-    version: "0.11.43",
-    date: "2026-07-11",
-    title: "AOR multi-branch and multi-dealer assign",
-    highlights: [
-      "Assign a user to many branches at once from Settings → AORs",
-      "Select dealers to fan out AOR rows to all of their active branches",
-    ],
-    changes: [
-      {
-        type: "feature",
-        description:
-          "AOR assign form supports multi-select Branches and Dealers with bulk create",
-      },
-      {
-        type: "feature",
-        description:
-          "Dealer selection resolves to active branch AOR rows (not dealerId-only scoping)",
-      },
-      {
-        type: "improvement",
-        description:
-          "Toast reports assigned and skipped counts; already-assigned branches are skipped",
-      },
-    ],
-  },
-  {
-    version: "0.11.42",
-    date: "2026-07-11",
-    title: "Sidebar polish and New badges",
-    highlights: [
-      "New badges call out Roles, Dealers, and Service centers in Settings",
-      "Sidebar scrollbar, expand cursor, and drawer trigger spacing match the dark theme",
-    ],
-    changes: [
-      {
-        type: "feature",
-        description:
-          "Settings nav shows New badges on Roles, Dealers, and Service centers",
+          "Header shows current version · date next to What’s new; New badges and sidebar polish; date field icons align cleanly",
       },
       {
         type: "fix",
         description:
-          "Service centers sub-item stays on one line with badge (no wrap or clipped New label)",
-      },
-      {
-        type: "improvement",
-        description:
-          "Sidebar uses themed scrollbar; expand/collapse parents show pointer cursor",
-      },
-      {
-        type: "improvement",
-        description:
-          "Header drawer trigger sits closer to the sidebar edge",
-      },
-      {
-        type: "fix",
-        description:
-          "Better Auth nextCookies plugin ordered last so Set-Cookie headers forward correctly",
-      },
-    ],
-  },
-  {
-    version: "0.11.41",
-    date: "2026-07-11",
-    title: "Friendlier Roles access management",
-    highlights: [
-      "Roles Settings uses cards, grouped permissions, and a create wizard instead of the checkbox matrix by default",
-      "Advanced matrix view kept at /settings/roles/matrix for power users",
-    ],
-    changes: [
-      {
-        type: "feature",
-        description:
-          "Simple Roles UI with role cards, module-grouped permission drawer, templates, and create wizard",
-      },
-      {
-        type: "improvement",
-        description:
-          "Existing roles permission matrix preserved as Advanced matrix backup",
+          "Removed a duplicate P-Count link in Inventory navigation",
       },
     ],
   },
   {
     version: "0.11.40",
     date: "2026-06-02",
-    title: "Instant CRUD updates for remaining settings tables",
+    title: "Faster updates on more Settings tables",
     highlights: [
-      "Warehouses, status settings, and master-data create/update flows now reflect instantly in table UI",
-      "Server revalidation and background refresh remain in place for consistency",
+      "Warehouses, status settings, and master data update in the table as soon as you save",
     ],
     changes: [
       {
         type: "improvement",
         description:
-          "Settings UX — optimistic updates expanded to warehouse/location, status codes, and master-data entries",
+          "Create and edit on warehouses, status codes, and master data now show in the table right away",
       },
     ],
   },
   {
     version: "0.11.39",
     date: "2026-06-02",
-    title: "Reusable page tutorials",
+    title: "Page quick guides",
     highlights: [
-      "Page headers can show a ? button that opens a guided tutorial modal",
-      "Branch orders page includes workflow and review guidance",
+      "Page titles can show a ? button that opens a short guided walkthrough",
+      "Branch orders includes guidance on order types and review steps",
     ],
     changes: [
       {
         type: "feature",
         description:
-          "Added reusable PageTutorialTrigger and PageTutorialDialog for in-app page guides",
+          "You can open a short tutorial from the page header ? button",
       },
       {
         type: "improvement",
         description:
-          "Branch orders header includes tutorial modal with order types, review steps, and Help link",
+          "Branch orders guide covers order types, review steps, and a link to Help",
       },
     ],
   },
   {
     version: "0.11.38",
     date: "2026-06-02",
-    title: "Order review UX improvements",
+    title: "Clearer order review actions",
     highlights: [
-      "Loading modal while approve/reject is saving",
-      "Review button disabled with tooltip when user is not the designated approver",
+      "A loading screen appears while approve or reject is saving",
+      "Review stays disabled with a short tip when it is not your turn to approve",
     ],
     changes: [
       {
         type: "improvement",
         description:
-          "Order approval and rejection show a blocking loading modal until the server finishes",
+          "Approving or rejecting an order shows a loading screen until it finishes",
       },
       {
         type: "improvement",
         description:
-          "Orders table Review action is disabled with role-specific tooltip when not your approval step",
+          "Review is disabled with a tip when you are not the designated approver",
       },
       {
         type: "fix",
         description:
-          "Order review denial tooltip sizes to content instead of leaving excess empty width",
-      },
-      {
-        type: "improvement",
-        description:
-          "Order approve/reject loading modal holds through all progress steps before closing",
+          "The “not your turn” tip no longer leaves a wide empty gap",
       },
     ],
   },
   {
     version: "0.11.37",
     date: "2026-06-02",
-    title: "Help portal and top loader polish",
+    title: "Help portal and loading bar polish",
     highlights: [
-      "Full-width top loading bar without slanted shadow artifact",
-      "Help page: sticky quick actions sidebar, essential links only, expanded FAQ",
+      "Top loading bar spans the full width without a dark shadow under the header",
+      "Help page: sticky quick actions, essential links, and a larger FAQ",
     ],
     changes: [
       {
         type: "fix",
         description:
-          "Removed nprogress peg glow and enforced full-width progress bar under the app header",
+          "Top loading bar no longer shows a dark glow under the header",
       },
       {
         type: "improvement",
         description:
-          "Help & Support: removed system map section, solid page headers, trimmed quick actions, more FAQ categories",
+          "Help & Support focuses on quick actions, clearer headers, and more FAQ topics",
       },
     ],
   },
   {
     version: "0.11.36",
     date: "2026-06-02",
-    title: "Help portal system map and sidebar",
+    title: "Richer Help & Support content",
     highlights: [
-      "Help & Support now uses a two-column layout with quick actions on the right",
-      "Added full system map and expanded workflow guides across all major modules",
+      "Help & Support uses a two-column layout with quick actions on the right",
+      "Added a system overview and more workflow guides across major modules",
     ],
     changes: [
       {
         type: "improvement",
         description:
-          "Help portal includes module-by-module navigation guide, 11 workflow guides, and 20 quick-action links grouped by area",
+          "Help portal adds module navigation tips, more workflow guides, and grouped quick-action links",
       },
     ],
   },
   {
     version: "0.11.35",
     date: "2026-06-02",
-    title: "Top loader shadow fix",
+    title: "Cleaner top loading bar",
     highlights: [
-      "Removed dark glow artifact shown below top navigation during route loading",
+      "Removed the dark strip that appeared under the header while pages loaded",
     ],
     changes: [
       {
         type: "fix",
         description:
-          "Disabled NextTopLoader default shadow to prevent black strip/blur under the header",
+          "Top loading indicator no longer casts a dark shadow under the navigation",
       },
     ],
   },
   {
     version: "0.11.34",
     date: "2026-06-02",
-    title: "Help & Support layout polish",
+    title: "Simpler Help & Support layout",
     highlights: [
-      "Replaced tabbed Help portal layout with a cleaner single-page support flow",
-      "Added section jump actions, clearer hierarchy, and improved content scanning",
+      "Help portal is a single scrolling page instead of tabs",
+      "Jump links and clearer sections make answers easier to find",
     ],
     changes: [
       {
         type: "improvement",
         description:
-          "Help & Support page now uses anchored sections for quick actions, workflow guides, FAQ accordion, and contact escalation",
+          "Help & Support uses anchored sections for quick actions, guides, FAQ, and contact",
       },
     ],
   },
@@ -589,155 +305,147 @@ export const RELEASES: ReleaseNote[] = [
     date: "2026-06-02",
     title: "Help & Support portal",
     highlights: [
-      "User menu now includes Help & Support linking to an in-app support portal",
-      "FAQ, workflow guides, quick links, and contact options on /help",
+      "User menu includes Help & Support for an in-app support page",
+      "FAQ, workflow guides, quick links, and contact options in one place",
     ],
     changes: [
       {
         type: "feature",
         description:
-          "Help & Support page with Overview, Workflows, FAQ accordion, and Contact tabs",
+          "New Help & Support page with overview, workflows, FAQ, and contact",
       },
       {
         type: "improvement",
         description:
-          "Help & Support added to header and sidebar user menus with active route highlighting",
+          "Help & Support is available from the header and sidebar user menus",
       },
     ],
   },
   {
     version: "0.11.32",
     date: "2026-06-02",
-    title: "Final index and checkbox table rollout",
+    title: "Row selection on remaining tables",
     highlights: [
-      "Completed selection rollout for permissions, roles matrix, forecast gaps/drafts, branch planogram table, and stock-count detail tables",
-      "All remaining major table surfaces now include consistent row index and checkbox selection behavior",
-      "Sticky role matrix columns now preserve alignment with added selection columns",
+      "Permissions, roles matrix, planning gaps, planogram, and stock-count detail tables support row checkboxes",
+      "Major tables now share the same index and select-all behavior",
     ],
     changes: [
       {
         type: "improvement",
         description:
-          "Finished app-wide table selection standardization using the shared useTableSelection pattern across feature and detail tables",
+          "Finished rolling out consistent row selection across remaining feature and detail tables",
       },
     ],
   },
   {
     version: "0.11.31",
     date: "2026-06-02",
-    title: "Additional table selection coverage",
+    title: "Selection on ops and policy tables",
     highlights: [
-      "Operations deliveries/transfers/pull-outs tables now include index and checkbox selection",
-      "Policy version history now supports row selection with select-all checkbox",
-      "Selection behavior remains aligned with existing table highlight state",
+      "Deliveries, transfers, and pull-outs tables include index and checkboxes",
+      "Policy version history supports select-all",
     ],
     changes: [
       {
         type: "improvement",
         description:
-          "Expanded reusable table selection rollout to operations and policy version tables",
+          "Row selection extended to operations tables and policy version history",
       },
     ],
   },
   {
     version: "0.11.30",
     date: "2026-06-02",
-    title: "Extended table selection rollout",
+    title: "Selection on more app tables",
     highlights: [
-      "Added index and checkbox selection to additional app tables including policies and dashboard users",
-      "Stock-count session list and SAP service-layer config table now support select-all behavior",
-      "Selection UX remains consistent with row highlight and indeterminate header checkbox state",
+      "Policies, dashboard users, stock-count sessions, and SAP config tables support checkboxes",
+      "Select-all works the same way across these lists",
     ],
     changes: [
       {
         type: "improvement",
         description:
-          "Expanded shared table selection pattern to more modules for bulk-action readiness across app surfaces",
+          "Shared row selection pattern expanded to more modules for bulk actions later",
       },
     ],
   },
   {
     version: "0.11.29",
     date: "2026-06-02",
-    title: "Settings and admin tables now support selection",
+    title: "Selection on Settings and admin tables",
     highlights: [
-      "Added index + checkbox columns to settings/admin tables for consistent row selection UX",
-      "Select-all headers now support indeterminate state across filtered table rows",
-      "Selection count and clear action added to table toolbars for bulk-action readiness",
+      "Settings tables include index and checkbox columns with select-all",
+      "Toolbars show how many rows are selected and let you clear the selection",
     ],
     changes: [
       {
         type: "improvement",
         description:
-          "Branches, departments, warehouses, status codes, AORs, users, planning, SAP jobs, planogram branches, master-data, and audit-log tables now use shared row selection behavior",
+          "Branches, departments, warehouses, users, planning, and other admin tables support row selection",
       },
     ],
   },
   {
     version: "0.11.28",
     date: "2026-06-02",
-    title: "Operational tables now support row selection",
+    title: "Selection on operational tables",
     highlights: [
-      "Added shared table-selection hook for reusable select-all and row checkbox behavior",
-      "Operational tables now include index column and checkbox selection column",
-      "Selection state is bulk-action ready with selected-count and clear-selection control",
+      "Orders, sales, logistics, and inventory tables include an index and checkboxes",
+      "You can see how many rows are selected and clear the selection",
     ],
     changes: [
       {
         type: "improvement",
         description:
-          "Orders, sales, logistics, and inventory tables now use a consistent index-plus-checkbox selection pattern",
+          "Operational tables use a consistent index-plus-checkbox selection pattern",
       },
     ],
   },
   {
     version: "0.11.27",
     date: "2026-06-02",
-    title: "In-app confirmation modal for order actions",
+    title: "In-app confirms for order actions",
     highlights: [
-      "Approve and Reject now use an in-app confirmation modal instead of browser confirm dialogs",
-      "Reject still enforces required comment validation before confirmation",
-      "Confirmation actions are disabled while request is pending to prevent duplicate submits",
+      "Approve and Reject use an in-app confirmation instead of the browser’s built-in prompt",
+      "Reject still requires a comment; buttons stay locked while saving",
     ],
     changes: [
       {
         type: "improvement",
         description:
-          "Order workflow dialog — replaced native window confirmation with styled AlertDialog confirmation flow",
+          "Order approve and reject use a styled confirmation dialog inside the app",
       },
     ],
   },
   {
     version: "0.11.26",
     date: "2026-06-02",
-    title: "Order approval safeguards and comment spacing tweak",
+    title: "Safer order approve and reject",
     highlights: [
-      "Approve and Reject actions now require explicit confirmation before submission",
-      "Reject action now requires a comment to reduce accidental cancellation",
-      "Details pane adds extra left spacing to prevent comment field edge clipping",
+      "Approve and Reject ask you to confirm before submitting",
+      "Reject requires a comment; comment field has more room so it is not clipped",
     ],
     changes: [
       {
         type: "improvement",
         description:
-          "Order review dialog — added action confirmation and reject validation, plus left-pane spacing adjustment for textarea rendering",
+          "Order review asks for confirmation, requires a reject comment, and gives the comment field more space",
       },
     ],
   },
   {
     version: "0.11.25",
     date: "2026-06-02",
-    title: "Order review panel width and comment clipping fix",
+    title: "Roomier order review layout",
     highlights: [
-      "Order lines table area is now wider than the details pane for better SKU scanning",
-      "Left details/comment pane now scrolls internally when content is tall",
-      "Comment textarea is no longer cut off near the footer on constrained viewport heights",
+      "Order lines get more width for easier scanning",
+      "Details and comments scroll on their own so the comment field is not cut off",
     ],
     changes: [
       {
         type: "improvement",
         description:
-          "Order review dialog — rebalanced split layout and added independent left-pane scrolling to prevent form clipping",
+          "Order review gives lines more space and scrolls the details pane separately",
       },
     ],
   },
@@ -746,141 +454,140 @@ export const RELEASES: ReleaseNote[] = [
     date: "2026-06-02",
     title: "Scrollable order lines table",
     highlights: [
-      "Order lines now render as a table with index, SKU, and quantity columns",
-      "Order lines panel now supports internal scrolling while modal stays fixed",
-      "SPA flow supports inline approved quantity input per table row",
+      "Order lines show as a table with index, SKU, and quantity",
+      "Lines scroll inside the panel while the rest of the review stays fixed",
     ],
     changes: [
       {
         type: "improvement",
         description:
-          "Order review dialog — replaced line list with a scrollable table to improve readability on large orders",
+          "Order review shows lines in a scrollable table for large orders",
       },
     ],
   },
   {
     version: "0.11.23",
     date: "2026-06-02",
-    title: "Order review status badges and line summary",
+    title: "Order status badges and line summary",
     highlights: [
-      "Order review modal now displays status as a color-coded badge",
-      "Order lines preview now shows indexed top 10 entries for faster scanning",
-      "Added total line and quantity summary in the order lines panel",
+      "Order review shows status as a color-coded badge",
+      "Lines preview lists the top entries with totals for lines and quantity",
     ],
     changes: [
       {
         type: "improvement",
         description:
-          "Orders workflow review dialog — added status badge styling, indexed 10-line preview, and totals summary metadata",
+          "Order review adds a status badge, indexed line preview, and totals summary",
       },
     ],
   },
   {
     version: "0.11.22",
     date: "2026-06-02",
-    title: "Order review dialog layout and scroll fix",
+    title: "Two-column order review",
     highlights: [
-      "Order lines now render in a dedicated right-side panel for easier review",
-      "Only the order lines panel scrolls, while dialog header/form/actions stay fixed",
-      "Approve and Reject buttons now align consistently at the dialog footer",
+      "Order lines sit in a right-side panel while details stay on the left",
+      "Only the lines panel scrolls; Approve and Reject stay at the bottom",
     ],
     changes: [
       {
         type: "improvement",
         description:
-          "Orders workflow modal — two-column layout with isolated order-line scrolling and corrected action button alignment",
+          "Order review uses a two-column layout with fixed actions at the footer",
       },
     ],
   },
   {
     version: "0.11.21",
     date: "2026-06-02",
-    title: "Live feed SAP connection tester",
+    title: "Live SAP connection test feedback",
     highlights: [
-      "SAP Test connection modal now shows live progress feed with elapsed timer and current step",
-      "Users get context on potential delays (network, SSL handshake, SAP authentication load)",
+      "SAP Test connection shows a live progress feed with elapsed time and current step",
+      "You get context when a test may take longer (network, security handshake, or SAP sign-in)",
     ],
     changes: [
       {
         type: "improvement",
         description:
-          "Loading modal supports staged feed items; SAP connection test now surfaces real-time status and duration",
+          "SAP connection test shows step-by-step status and how long it has been running",
       },
     ],
   },
   {
     version: "0.11.20",
     date: "2026-06-02",
-    title: "Reusable loading modal for SAP testing",
+    title: "Loading screen for SAP testing",
     highlights: [
-      "Added shared LoadingModal component for blocking in-progress actions",
-      "SAP Service Layer Test connection now shows a loading modal while testing credentials",
+      "A shared loading screen covers in-progress actions",
+      "SAP Test connection shows that screen while credentials are checked",
     ],
     changes: [
       {
         type: "improvement",
         description:
-          "SAP integration UX — replaced test-only button spinner with reusable loading modal feedback",
+          "SAP Test connection uses a full loading screen instead of only a button spinner",
       },
     ],
   },
   {
     version: "0.11.19",
     date: "2026-06-02",
-    title: "Consistent page header separators",
+    title: "Consistent page header divider",
     highlights: [
-      "All pages using shared PageHeader now show the same bottom divider line",
-      "Section pages and regular pages match on header separation styling",
+      "Pages share the same divider line under the title area",
     ],
     changes: [
       {
         type: "improvement",
-        description: "PageHeader now applies a consistent border-bottom for sticky and non-sticky modes",
+        description:
+          "Page headers use a consistent bottom divider across the app",
       },
     ],
   },
   {
     version: "0.11.18",
     date: "2026-06-02",
-    title: "Wider side gutters on app pages",
+    title: "More side breathing room",
     highlights: [
-      "Added slightly larger left/right page padding so full-width layout has breathing room",
+      "Slightly wider left and right padding so full-width pages feel less cramped",
     ],
     changes: [
       {
         type: "improvement",
-        description: "App layout horizontal padding increased across breakpoints",
+        description:
+          "App pages gain a bit more horizontal padding on all screen sizes",
       },
     ],
   },
   {
     version: "0.11.17",
     date: "2026-06-02",
-    title: "Full-width app content layout",
+    title: "Full-width app layout",
     highlights: [
-      "Removed the global max-width cap so app pages can use the full available viewport width",
-      "SAP integration and dashboard now expand across wide screens",
+      "Pages can use the full screen width on wide monitors",
+      "SAP integration and the dashboard expand across large screens",
     ],
     changes: [
       {
         type: "improvement",
-        description: "App layout container switched from max-w-7xl to full-width responsive padding",
+        description:
+          "App content is no longer capped at a narrow max width",
       },
     ],
   },
   {
     version: "0.11.16",
     date: "2026-06-02",
-    title: "SAP DB config CRUD actions",
+    title: "Edit and delete SAP DB configs",
     highlights: [
-      "Service Layer table now supports Edit and Delete per SAP DB configuration",
-      "Form switches between Add and Update mode with cancel support",
+      "Each SAP company database row supports Edit and Delete",
+      "The form switches between Add and Update with a clear cancel path",
     ],
     changes: [
       {
         type: "feature",
         description:
-          "SAP Service Layer settings — added update and delete server actions with optimistic table updates",
+          "SAP Service Layer settings let you update or delete saved company database configs",
       },
     ],
   },
@@ -889,173 +596,175 @@ export const RELEASES: ReleaseNote[] = [
     date: "2026-06-02",
     title: "Instant SAP DB table updates",
     highlights: [
-      "SAP DB table now updates immediately after Add configuration and active/inactive toggle",
-      "Server refresh still runs in background for consistency",
+      "The SAP DB table updates as soon as you add a config or toggle active/inactive",
     ],
     changes: [
       {
         type: "improvement",
         description:
-          "SAP Service Layer form — optimistic local table state to remove post-save UI delay",
+          "SAP Service Layer form shows table changes right away after save or status toggle",
       },
     ],
   },
   {
     version: "0.11.14",
     date: "2026-06-02",
-    title: "Reusable loading indicator",
+    title: "Clearer loading spinners",
     highlights: [
-      "Added shared LoadingIndicator component for consistent spinner + label states",
-      "SAP Service Layer form now shows separate loading states for test, save, and status update actions",
+      "Shared spinner-and-label loading states across the app",
+      "SAP Service Layer shows separate loading for test, save, and status update",
     ],
     changes: [
       {
         type: "improvement",
         description:
-          "UI — reusable loading indicator introduced in components/ui and adopted by SAP Service Layer actions",
+          "Consistent loading indicator used on SAP Service Layer actions",
       },
     ],
   },
   {
     version: "0.11.13",
     date: "2026-06-02",
-    title: "SAP self-signed connection fallback",
+    title: "SAP self-signed certificate fallback",
     highlights: [
-      "Service Layer test connection now auto-retries without strict cert validation when self-signed cert is detected",
+      "Test connection can retry when an on-prem SAP server uses a self-signed certificate",
     ],
     changes: [
       {
         type: "improvement",
         description:
-          "SAP Service Layer connection test — automatic self-signed certificate fallback for on-prem environments",
+          "SAP connection test automatically retries for common on-prem certificate setups",
       },
     ],
   },
   {
     version: "0.11.12",
     date: "2026-06-02",
-    title: "Unified SAP card and connection test",
+    title: "Unified SAP setup and connection test",
     highlights: [
-      "Service Layer config and SAP DB table now render inside one section card with left/right panes",
-      "Added Test connection button using SAP Service Layer login check",
-      "Inactive SAP DB status now uses red badge styling",
+      "Service Layer form and SAP DB table sit in one section",
+      "Test connection checks login against SAP; inactive configs show in red",
     ],
     changes: [
       {
         type: "improvement",
         description:
-          "SAP integration UI — unified single-card layout and destructive inactive status badge",
+          "SAP integration shows config and database list together with clearer inactive status",
       },
       {
         type: "feature",
-        description: "SAP Service Layer — server action connection test via /Login endpoint",
+        description:
+          "SAP Service Layer Test connection verifies credentials against SAP",
       },
     ],
   },
   {
     version: "0.11.11",
     date: "2026-06-02",
-    title: "Multi-SAP DB table with active switch",
+    title: "Multiple SAP company databases",
     highlights: [
-      "Service Layer settings now support multiple SAP company DB configurations per tenant",
-      "Right-side table shows saved SAP DB entries with Active/Inactive actions",
+      "Service Layer settings support more than one SAP company database per organization",
+      "A table lists saved entries with Active / Inactive actions",
     ],
     changes: [
       {
         type: "feature",
         description:
-          "SAP integration — add multi-configuration Service Layer management with activate/deactivate controls",
+          "Manage multiple SAP Service Layer company databases and turn them on or off",
       },
     ],
   },
   {
     version: "0.11.10",
     date: "2026-06-02",
-    title: "Instant CRUD updates on more settings pages",
+    title: "Faster updates on more Settings pages",
     highlights: [
-      "Departments, branches, and AOR tables now update immediately after create, edit, and delete",
-      "Background route refresh remains enabled to keep data synchronized with server state",
+      "Departments, branches, and AORs update in the table as soon as you save",
     ],
     changes: [
       {
         type: "improvement",
         description:
-          "Settings CRUD UX — optimistic row updates extended beyond users table",
+          "Create, edit, and delete on departments, branches, and AORs show in the table right away",
       },
     ],
   },
   {
     version: "0.11.9",
     date: "2026-06-02",
-    title: "Faster user table CRUD feedback",
+    title: "Faster user table updates",
     highlights: [
-      "Users table now updates immediately after create, edit, and delete actions",
-      "Background route refresh still runs to keep server state fully synchronized",
+      "Users table updates as soon as you create, edit, or delete someone",
     ],
     changes: [
       {
         type: "improvement",
         description:
-          "Settings users — optimistic local row updates wired to CRUD dialog success callbacks",
+          "Users Settings shows row changes immediately after save",
       },
     ],
   },
   {
     version: "0.11.8",
     date: "2026-06-02",
-    title: "Remove redundant section tabs",
+    title: "Fewer duplicate section tabs",
     highlights: [
-      "Inventory, Logistics, and Reports no longer show pill tabs when the same routes are in the top nav dropdown",
-      "Master data and SAP integration keep in-page tabs (sub-routes not duplicated in header)",
+      "Inventory, Logistics, and Reports no longer show extra pill tabs when the same links are already in the top nav",
+      "Master data and SAP integration keep in-page tabs where they are still useful",
     ],
     changes: [
       {
         type: "improvement",
-        description: "SectionLayout — tabs optional; removed from layouts that mirror header nav groups",
+        description:
+          "Section pages skip redundant tabs when navigation already covers those destinations",
       },
     ],
   },
   {
     version: "0.11.7",
     date: "2026-06-02",
-    title: "AppDataTable and header pointer cursor",
+    title: "Shared data tables and clearer menus",
     highlights: [
-      "Reusable AppDataTable for consistent card-style tables across pages",
-      "Planning branch revenue targets use the same table shell as allocation gaps",
-      "Top navbar links and menus show pointer cursor on hover",
+      "Tables across the app share a consistent card-style layout",
+      "Top navigation links show a hand cursor on hover",
     ],
     changes: [
       {
         type: "feature",
-        description: "components/data-table — AppDataTable + barrel export for shared table layout",
+        description:
+          "Shared table layout used on planning and other list pages",
       },
       {
         type: "improvement",
-        description: "Header nav, user menu, and dropdown items — cursor-pointer on hover",
+        description:
+          "Header menus and links feel clickable with a pointer cursor",
       },
     ],
   },
   {
     version: "0.11.6",
     date: "2026-06-02",
-    title: "Master data tables and Decimal fix",
+    title: "Master data tables and clickable buttons",
     highlights: [
-      "Models page no longer passes Prisma Decimal to client components",
-      "Brands and models tables use shared DataTableShell styling",
-      "Buttons show pointer cursor on hover app-wide",
+      "Brands and models tables use the same card-style layout, including SRP on models",
+      "Buttons show a hand cursor on hover across the app",
+      "Models list no longer breaks when price amounts are shown",
     ],
     changes: [
       {
         type: "fix",
-        description: "listModelsAction serializes srp/cbm to plain numbers before client props",
+        description:
+          "Models list displays prices correctly without a display error",
       },
       {
         type: "improvement",
-        description: "Master data brands/models tables — card shell, headers, SRP column on models",
+        description:
+          "Master data brands and models tables use a clearer card layout",
       },
       {
         type: "improvement",
-        description: "Button component — cursor-pointer on interactive states",
+        description:
+          "Buttons look and feel clickable with a pointer cursor",
       },
     ],
   },
@@ -1064,54 +773,56 @@ export const RELEASES: ReleaseNote[] = [
     date: "2026-06-02",
     title: "Clearer tabs and secondary buttons",
     highlights: [
-      "Active section tabs use primary teal fill for obvious selection",
-      "Outline and secondary buttons have visible borders and background so actions read as clickable",
+      "Active section tabs use a solid teal fill so the selection is obvious",
+      "Outline and secondary buttons have clearer borders so they read as clickable",
     ],
     changes: [
       {
         type: "improvement",
-        description: "RouteTabs — active pill uses primary color; inactive tabs show hover affordance",
+        description:
+          "Active tabs stand out; inactive tabs show a hover state",
       },
       {
         type: "improvement",
-        description: "Button outline/secondary variants — stronger border, shadow, and hover states app-wide",
+        description:
+          "Secondary and outline buttons have stronger borders and hover states",
       },
     ],
   },
   {
     version: "0.11.4",
     date: "2026-06-02",
-    title: "Reusable section tabs across app",
+    title: "Section tabs across major areas",
     highlights: [
-      "Pill-style RouteTabs + SectionLayout for SAP integration, Logistics, Reports, Master data, and Inventory",
-      "Tab labels and routes centralized in src/config/section-tabs.ts",
+      "Pill-style tabs for SAP integration, Logistics, Reports, Master data, and Inventory",
+      "Each tab can show a short intro for that section",
     ],
     changes: [
       {
         type: "improvement",
         description:
-          "Navigation — RouteTabs (pill | underline) and SectionLayout; SectionPageLead for per-tab copy",
+          "Shared section tabs and intro copy for major module areas",
       },
       {
         type: "improvement",
         description:
-          "Layouts — logistics, reports, master-data, inventory sections use shared tab chrome",
+          "Logistics, reports, master data, and inventory use the same tab chrome",
       },
     ],
   },
   {
     version: "0.11.3",
     date: "2026-06-02",
-    title: "Encrypt all SAP Service Layer credentials at rest",
+    title: "Encrypted SAP credentials",
     highlights: [
-      "Service Layer URL, company DB, username, and password are all AES-256-GCM encrypted in the database",
-      "Audit logs record SHA-256 fingerprints only — no plaintext credentials in metadata",
+      "Service Layer URL, company database, username, and password are stored encrypted",
+      "Audit logs keep fingerprints only — credentials stay out of log details",
     ],
     changes: [
       {
         type: "improvement",
         description:
-          "SAP Service Layer — encrypt baseUrl, companyDb, username, and password columns; legacy plaintext rows re-encrypt on save",
+          "All SAP Service Layer credential fields are encrypted at rest; older plain values re-encrypt when you save",
       },
     ],
   },
@@ -1120,291 +831,317 @@ export const RELEASES: ReleaseNote[] = [
     date: "2026-06-02",
     title: "SAP Service Layer settings",
     highlights: [
-      "Settings → SAP integration → Service Layer submenu to configure B1 Service Layer URL, company DB, and credentials",
-      "Per-tenant config stored encrypted in sap_service_layer_configs; integration queue unchanged",
+      "Settings → SAP integration → Service Layer to configure URL, company database, and credentials",
+      "Credentials are stored encrypted per organization",
     ],
     changes: [
       {
         type: "feature",
         description:
-          "SAP — Service Layer setup form at /settings/sap-integration/service-layer with encrypted password storage",
+          "SAP Service Layer setup form with encrypted password storage",
       },
       {
         type: "improvement",
         description:
-          "SAP integration — tab submenu (Integration queue | Service Layer)",
+          "SAP integration splits into Integration queue and Service Layer tabs",
       },
     ],
   },
   {
     version: "0.11.1",
     date: "2026-06-02",
-    title: "Out-of-delivery auto-reschedule at SP approve",
+    title: "Smarter delivery due dates on approval",
     highlights: [
-      "SP delivery due date uses branch deliverySchedule — past or off-window dates auto-reschedule to the next scheduled day",
-      "Review dialog warns before approve; audit log records requested vs final due date",
+      "At final approve, delivery due dates that fall outside the branch schedule move to the next scheduled day",
+      "Review warns before approve; the audit trail keeps requested vs final due date",
     ],
     changes: [
       {
         type: "feature",
         description:
-          "Orders — resolveDeliveryDueDate on SP final approve (Process A out-of-delivery window)",
+          "Final order approval can auto-reschedule delivery due dates to the branch’s next delivery day",
       },
       {
         type: "improvement",
         description:
-          "Docs — README v1.0 traceability updated for shipped Phase 2–3 items",
+          "Documentation updated for shipped Phase 2–3 items",
       },
     ],
   },
   {
     version: "0.11.0",
     date: "2026-06-02",
-    title: "Physical stock count and SAP integration foundation",
+    title: "Physical stock count and SAP foundation",
     highlights: [
-      "Physical inventory audit: count sessions from branch STK, PS scan, variance report, TL investigation, SAP adjustment handoff",
-      "SAP epic foundation: outbound queue with idempotency, sapDocRef on orders/deliveries/pull-outs, mock order→SAP→delivery processor",
-      "Routes at /inventory/stock-count and /settings/sap-integration with full audit trail",
+      "Physical inventory counts: sessions from branch stock, scan, variance review, and SAP adjustment handoff",
+      "SAP outbound queue foundation with references on orders, deliveries, and pull-outs",
+      "Stock count and SAP integration screens with a full audit trail",
     ],
     changes: [
       {
         type: "feature",
         description:
-          "Stock count — StockCountSession/Line/Variance models; workflow CSV steps 37–41",
+          "Stock count sessions, lines, and variance workflow for physical inventory audits",
       },
       {
         type: "feature",
         description:
-          "SAP — SapIntegrationJob queue, emitApprovedOrder/emitPulloutItr/emitSalesSummary/syncInventoryFromSap stubs",
+          "SAP integration queue and first outbound job hooks for approved orders and related docs",
       },
       {
         type: "feature",
         description:
-          "Orders — SP approval enqueues SAP job; mock processor sets sapDocRef and creates delivery",
+          "Approving an order can queue a SAP job; a mock path can set document refs and create deliveries",
       },
       {
         type: "improvement",
         description:
-          "Docs — docs/sap-integration.md updated with implemented vs stub matrix",
+          "SAP integration docs list what is live versus still planned",
       },
     ],
   },
   {
     version: "0.10.0",
     date: "2026-06-02",
-    title: "Sales SN flow, logistics movement, ATR workflow, warehouses",
+    title: "Sales, logistics movement, returns, and warehouses",
     highlights: [
-      "Sales SN picker (AOR-scoped STK), reserved RSV sales, and /reports/sales CSV export",
-      "Transfer and pull-out serial lines move inventory on execute/receive and pull-out lifecycle",
-      "BranchReturnRequest workflow — CS evaluate, TL approve, inventory restore",
-      "Settings → Warehouses admin for warehouse and location setup (CSV step 4)",
+      "Sales serial picker (your branches), reserved sales, and sales CSV export",
+      "Transfers and pull-outs move inventory through their lifecycle",
+      "Branch return workflow with evaluate and approve steps",
+      "Settings → Warehouses for warehouse and location setup",
     ],
     changes: [
       {
         type: "feature",
         description:
-          "Sales — SN picker, reserved sale (RSV), ATR return workflow with BranchReturnRequest",
+          "Sales serial picker, reserved sale, and branch return (ATR) workflow",
       },
       {
         type: "feature",
         description:
-          "Reports — /reports/sales CSV with transaction, serial, ATR, and return status",
+          "Sales report CSV with transaction, serial, and return status",
       },
       {
         type: "feature",
         description:
-          "Logistics — transfer lines, pull-out SN status transitions, optional per-SN delivery accept",
+          "Logistics transfer and pull-out serial movement, with optional per-serial delivery accept",
       },
       {
         type: "feature",
-        description: "Settings — /settings/warehouses CRUD for warehouses and locations",
+        description:
+          "Warehouses Settings for creating and managing warehouses and locations",
       },
     ],
   },
   {
     version: "0.9.8",
     date: "2026-06-02",
-    title: "Process flow quick wins and v1.0 doc traceability",
+    title: "Planning upload, reject delivery, and process-flow polish",
     highlights: [
-      "Planning: visible Upload forecast CSV button on settings planning panel",
-      "Logistics: reject pending deliveries (delivery_workflow.rejected) on deliveries and operations",
-      "Orders: SP delivery due date warning; auto-replenish links to suggested orders",
-      "Docs: PROCESS FLOW v1.0 (A–D) table, SAP pull-out/sales/returns scope, fixed roadmap plan links",
+      "Planning: Upload forecast CSV is visible on the planning panel",
+      "Logistics: reject pending deliveries from deliveries and operations",
+      "Orders: due-date warning at approve; auto-replenish links to suggested orders",
     ],
     changes: [
       {
         type: "feature",
         description:
-          "Planning — Upload forecast CSV button wires hidden file input on /settings/planning",
+          "Upload forecast CSV button on Settings → Planning",
       },
       {
         type: "feature",
         description:
-          "Logistics — rejectDeliveryAction and Reject UI on /logistics/deliveries and /operations",
+          "Reject delivery action on Logistics deliveries and Operations",
       },
       {
         type: "improvement",
         description:
-          "Orders — delivery due date out-of-window warning at SP approve; suggested-orders link in create dialog",
+          "SP approve warns when the delivery due date is outside the branch window; create order links to suggested orders",
       },
       {
         type: "improvement",
         description:
-          "Docs — v1.0 PDF indexed; A–D traceability and gap table in docs/README.md; sap-integration.md extended",
+          "Process-flow and SAP scope documentation updated",
       },
     ],
   },
   {
     version: "0.9.7",
     date: "2026-06-01",
-    title: "Processed orders report, SO# format, and xlsx workflow gaps",
+    title: "Processed orders report and sales order numbers",
     highlights: [
-      "Processed Order Summary CSV export with approved qty, SPA remarks, CBM, and geography",
-      "Sales order numbers use SO#{YYYY}-{MM}-#####; SP approval sets processedAt and line approvedQty",
-      "Daily stock and transfer CSV reports; SPA/supply planning roles; SAP MVP documented",
+      "Processed Order Summary CSV with approved qty, remarks, CBM, and geography",
+      "Sales order numbers use SO# yearly-month sequence; approval records processed time and approved qty",
+      "Daily stock and transfer CSV reports; supply planning roles added",
     ],
     changes: [
       {
         type: "feature",
         description:
-          "Reports — /reports/processed-orders, /reports/daily-stock, /reports/transfers CSV exports",
+          "Reports for processed orders, daily stock, and transfers as CSV downloads",
       },
       {
         type: "feature",
         description:
-          "Orders — SO# monthly sequencer, approvedQty per line, spaRemarks, deliveryDueDate, brand on header",
+          "Orders get SO# numbers, approved quantities per line, SPA remarks, and delivery due date",
       },
       {
         type: "improvement",
         description:
-          "RBAC — supply_planning, supply_planning_associate, and spa roles; xlsx-aligned workflow status codes",
+          "New supply planning and SPA roles aligned with the order workflow",
       },
       {
         type: "improvement",
         description:
-          "Docs — traceability tables in docs/README.md; SAP integration MVP in docs/sap-integration.md",
+          "Docs updated for workflow traceability and SAP MVP scope",
       },
     ],
   },
   {
     version: "0.9.6",
     date: "2026-06-01",
-    title: "Planning tables — pagination and filters",
+    title: "Planning tables with filters and pages",
     highlights: [
-      "Allocation gaps on Planning and Suggested orders paginate at 25 rows per page",
-      "Filter gaps by branch or search by branch name / SKU",
-      "Draft suggested orders table supports branch filter, search, and pagination",
+      "Allocation gaps paginate and can filter by branch or search by name / SKU",
+      "Draft suggested orders support branch filter, search, and pagination",
     ],
     changes: [
       {
         type: "improvement",
         description:
-          "Planning — server-side pagination and branch/SKU filters on allocation gaps table",
+          "Planning allocation gaps support paging and branch/SKU filters",
       },
       {
         type: "improvement",
         description:
-          "Suggested orders — paginated draft orders and open gaps with independent filters",
+          "Suggested orders drafts and open gaps each have their own filters and pages",
       },
     ],
   },
   {
     version: "0.9.5",
     date: "2026-06-01",
-    title: "Full planning pipeline (forecast → allocation → suggested orders)",
+    title: "Full planning pipeline",
     highlights: [
-      "Settings → Planning: branch revenue targets, run allocation, generate auto-replenish drafts",
-      "Planogram import with prune; Series/SRP columns; STK/DIT stock breakdown and inventory cross-links",
-      "Inventory planogram badges, off-planogram filter, and Western Makati-aligned demo seed",
+      "Settings → Planning: branch revenue targets, run allocation, and generate auto-replenish drafts",
+      "Planogram import with Series/SRP columns and stock breakdown links",
+      "Inventory planogram badges and off-planogram filter",
     ],
     changes: [
       {
         type: "feature",
         description:
-          "Forecast schema — PlanningPeriod, BranchForecastTarget, BranchAllocation; gapQty from planogram max minus STK",
+          "Forecast targets and allocation gaps based on planogram max versus on-hand stock",
       },
       {
         type: "feature",
         description:
-          "Suggested orders — draft auto_replenish BranchOrders from allocations; submit for TL → SP approval",
+          "Suggested orders can create auto-replenish drafts ready for TL → SP approval",
       },
       {
         type: "fix",
         description:
-          "Planning page — serialize Prisma Decimal/Date fields before passing props to client components",
+          "Planning page displays amounts and dates without a display error",
       },
     ],
   },
   {
     version: "0.9.4",
     date: "2026-06-01",
-    title: "BRS planogram seed and order UX",
+    title: "Planogram demo data and clearer order dialogs",
     highlights: [
-      "Demo seed aligns Devant/Sonique SKUs and shelf targets with BRS Planogram CSV (Dealer 1)",
-      "Fourth demo branch (Western Pasig) and CSV-driven branch planograms",
-      "Order review/create dialogs show workflow hints and remaining shelf capacity",
+      "Demo seed aligns brands, SKUs, and shelf targets with the BRS planogram sample",
+      "Order review and create dialogs show workflow hints and remaining shelf capacity",
     ],
     changes: [
       {
         type: "feature",
-        description: "BRS seed — CSV parser for Dealer 1 planogram targets; Devant/Sonique brands, ~33 SKUs, 4 branches",
+        description:
+          "Demo data includes planogram targets, more SKUs, and an extra sample branch",
       },
       {
         type: "improvement",
-        description: "Orders — Review dialog shows type, branch, lines, human status, and next approver",
+        description:
+          "Order review shows type, branch, lines, status, and next approver",
       },
       {
         type: "improvement",
-        description: "Orders — Create dialog shows remaining shelf capacity; auto-replenish marked coming soon",
+        description:
+          "Create order shows remaining shelf capacity; auto-replenish marked coming soon",
       },
     ],
   },
   {
     version: "0.9.3",
     date: "2026-06-01",
-    title: "Audit log readability",
+    title: "Clearer audit log and list badges",
     highlights: [
-      "Operational audit entries show branch names, document numbers, and line summaries",
-      "Colored entity badges for orders, deliveries, transfers, pull-outs, and sales",
+      "Audit entries show branch names, document numbers, and line summaries",
+      "Colored badges for orders, deliveries, transfers, pull-outs, and sales",
     ],
     changes: [
       {
         type: "improvement",
-        description: "Audit log — action-specific detail formatters for orders, logistics, and sales events",
+        description:
+          "Audit log formats order, logistics, and sales events in plain language",
       },
       {
         type: "improvement",
-        description: "Audit writers — enrich metadata at log time with branch names, doc numbers, and routes",
+        description:
+          "Audit details include branch names and document numbers when available",
       },
       {
         type: "fix",
-        description: "Audit log — inventory.status_updated label now displays correctly",
+        description:
+          "Inventory status update label displays correctly in the audit log",
       },
       {
         type: "improvement",
-        description: "Orders and logistics lists — shared search toolbar, colored status badges, client-side search on logistics tables",
+        description:
+          "Orders and logistics lists share search toolbars and colored status badges",
       },
       {
         type: "fix",
-        description: "Navigation progress bar — no longer renders above header dropdown menus",
+        description:
+          "Navigation loading bar no longer covers header dropdown menus",
       },
     ],
   },
   {
     version: "0.9.2",
     date: "2026-06-01",
-    title: "Navigation performance",
+    title: "Faster navigation between pages",
     highlights: [
-      "Faster tab switching between Dashboard, Policies, Audit logs, and Settings",
-      "Instant loading skeleton while pages fetch data",
-      "Reduced duplicate auth and database queries on every navigation",
+      "Quicker switching between Dashboard, Policies, Audit logs, and Settings",
+      "A loading skeleton appears while pages fetch data",
+      "Fewer repeated sign-in checks on every navigation",
     ],
     changes: [
-      { type: "fix", description: "Auth JWT — stop reloading permissions from the database on every page navigation" },
-      { type: "improvement", description: "Request-scoped auth deduplication so layout, page, and server actions share one session check" },
-      { type: "improvement", description: "Cached header branding/profile data and Prisma client reuse on Vercel warm instances" },
-      { type: "improvement", description: "App-wide loading skeleton for smoother tab transitions" },
-      { type: "improvement", description: "Unified list toolbar on Orders and logistics pages — search left, actions right, colored status and order-type badges" },
+      {
+        type: "fix",
+        description:
+          "Permissions are not reloaded from the database on every page change",
+      },
+      {
+        type: "improvement",
+        description:
+          "Session checks are shared within a request so navigation feels snappier",
+      },
+      {
+        type: "improvement",
+        description:
+          "Header branding and profile data are reused across page loads",
+      },
+      {
+        type: "improvement",
+        description:
+          "App-wide loading skeleton for smoother tab transitions",
+      },
+      {
+        type: "improvement",
+        description:
+          "Orders and logistics lists use a unified search toolbar with colored badges",
+      },
     ],
   },
   {
@@ -1412,50 +1149,101 @@ export const RELEASES: ReleaseNote[] = [
     date: "2026-06-01",
     title: "Logistics UX polish",
     highlights: [
-      "Cleaner status badges without redundant technical codes",
-      "Color-coded action buttons for Accept vs TL approve",
-      "Confirmation dialogs before delivery acceptance and transfer approval",
+      "Status badges use plain labels instead of redundant technical codes",
+      "Color-coded Accept vs approve buttons; confirm before key logistics actions",
     ],
     changes: [
-      { type: "improvement", description: "Status badges — show human-readable labels only in logistics and ops tables; inventory still shows DIT/STK codes" },
-      { type: "improvement", description: "Logistics actions — emerald Accept and amber TL approve buttons for clearer intent" },
-      { type: "improvement", description: "Confirm before Accept or TL approve on /logistics and /operations with delivery/transfer context" },
+      {
+        type: "improvement",
+        description:
+          "Logistics and ops status badges show human-readable labels",
+      },
+      {
+        type: "improvement",
+        description:
+          "Accept and approve actions use distinct colors so intent is clearer",
+      },
+      {
+        type: "improvement",
+        description:
+          "Confirm before accepting a delivery or approving a transfer",
+      },
     ],
   },
   {
     version: "0.9.0",
     date: "2026-06-01",
-    title: "Planogram, MIL, and SKU governance (Sprint 9)",
+    title: "Planogram, MIL, and SKU status",
     highlights: [
-      "SP-managed branch planogram UI with shelf capacity and MIL thresholds",
-      "SKU status governance (active / hold / retired) with audit trail",
-      "Order enforcement: planogram-only SKUs with special-order exception",
-      "Dashboard alerts for below-capacity and MIL aging breaches",
+      "Branch planogram with shelf capacity and MIL day thresholds",
+      "SKU status (active / hold / retired) with audit trail",
+      "Orders limited to planogram SKUs, with special-order exception",
+      "Dashboard alerts for below-capacity and MIL aging",
     ],
     changes: [
-      { type: "feature", description: "Settings → Planogram — per-branch authorized SKUs, max qty, MIL days (SP manage, TL/PS/AE view)" },
-      { type: "feature", description: "Master data models — edit SKU status with audit logging" },
-      { type: "feature", description: "Orders — model picker filtered by branch planogram; max qty validation; special orders for off-planogram SKUs" },
-      { type: "feature", description: "Dashboard KPIs — below planogram capacity and MIL threshold breach counts (AOR-scoped)" },
-      { type: "improvement", description: "Expanded BRS demo seed with multi-model planogram and MIL scenarios" },
+      {
+        type: "feature",
+        description:
+          "Settings → Planogram for authorized SKUs, max qty, and MIL days per branch",
+      },
+      {
+        type: "feature",
+        description:
+          "Master data models let you set SKU status with audit logging",
+      },
+      {
+        type: "feature",
+        description:
+          "Orders filter models by branch planogram and validate max qty; special orders allow off-planogram SKUs",
+      },
+      {
+        type: "feature",
+        description:
+          "Dashboard shows below-capacity and MIL threshold counts for your branches",
+      },
+      {
+        type: "improvement",
+        description:
+          "Demo seed expanded with multi-model planogram and MIL scenarios",
+      },
     ],
   },
   {
     version: "0.8.0",
     date: "2026-06-01",
-    title: "BRS hybrid inventory ops (Sprints 3–8 MVP)",
+    title: "Inventory ops MVP",
     highlights: [
-      "Org structure: branches, warehouses, master data, and AOR-scoped users",
-      "Serialized inventory, branch orders with PS→TL→SP→Logistics approvals",
-      "Logistics MVP: delivery acceptance, transfers, pull-outs",
-      "Sales stub with ATR status and role dashboards with pending KPIs",
+      "Branches, warehouses, master data, and users scoped to their areas of responsibility",
+      "Serialized inventory and branch orders with multi-step approval",
+      "Logistics MVP: delivery acceptance, transfers, and pull-outs",
+      "Sales stub and dashboard KPIs for pending work",
     ],
     changes: [
-      { type: "feature", description: "Settings → Branches, Master data, AORs with BRS role seeds (PS, TL, SP, Logistics, AE)" },
-      { type: "feature", description: "/inventory — AOR-filtered serial list with audited status changes" },
-      { type: "feature", description: "/orders — create and multi-step approval workflow with optional Resend notifications" },
-      { type: "feature", description: "/logistics and /sales — MVP transaction screens" },
-      { type: "feature", description: "Dashboard ops KPIs: pending approvals, DIT, stock, open ATR" },
+      {
+        type: "feature",
+        description:
+          "Settings for Branches, Master data, and AORs with starter roles",
+      },
+      {
+        type: "feature",
+        description:
+          "Inventory list filtered to your branches with audited status changes",
+      },
+      {
+        type: "feature",
+        description:
+          "Orders create and approval workflow with optional email notifications",
+      },
+      {
+        type: "feature",
+        description:
+          "Logistics and sales transaction screens for day-to-day ops",
+      },
+      {
+        type: "feature",
+        description:
+          "Dashboard KPIs for pending approvals, in-transit, stock, and open returns",
+      },
     ],
   },
   {
@@ -1464,82 +1252,189 @@ export const RELEASES: ReleaseNote[] = [
     title: "Full policy document control",
     highlights: [
       "Read-only policy access for employees and auditors",
-      "ISO-style version history and new revisions on approved policies",
+      "Version history and new revisions on approved policies",
       "Reviewer workflow with comments, email notifications, attachments, and PDF export",
     ],
     changes: [
-      { type: "feature", description: "policies.view permission — browse approved policies without edit rights" },
-      { type: "feature", description: "Version history and New revision — approved policies get a new draft version instead of in-place edits" },
-      { type: "feature", description: "Review activity timeline with optional comments on submit, approve, and revert" },
-      { type: "feature", description: "Resend email notifications to reviewers and authors (no-op when env unset)" },
-      { type: "feature", description: "Supabase Storage attachments (PDF, DOCX, PNG) per policy version" },
-      { type: "feature", description: "Export PDF for in-review and approved policies" },
+      {
+        type: "feature",
+        description:
+          "Browse approved policies without edit rights when you have view access",
+      },
+      {
+        type: "feature",
+        description:
+          "Approved policies get a new draft revision instead of editing in place",
+      },
+      {
+        type: "feature",
+        description:
+          "Review timeline with optional comments on submit, approve, and revert",
+      },
+      {
+        type: "feature",
+        description:
+          "Email notifications to reviewers and authors when configured",
+      },
+      {
+        type: "feature",
+        description:
+          "Attachments (PDF, Word, images) per policy version",
+      },
+      {
+        type: "feature",
+        description:
+          "Export PDF for policies that are in review or approved",
+      },
     ],
   },
   {
     version: "0.1.4",
     date: "2026-06-01",
-    title: "Sprint 1 completion & policies",
+    title: "Departments, audit log, and policies",
     highlights: [
-      "Department CRUD under Settings with default departments on registration",
-      "Paginated audit log viewer for compliance review",
-      "Policy document control with draft → review → approved workflow",
+      "Departments under Settings with defaults on registration",
+      "Paginated audit log for compliance review",
+      "Policy drafts with submit-for-review and approve",
     ],
     changes: [
-      { type: "feature", description: "Settings → Departments — create, edit, and delete with user-count guard" },
-      { type: "feature", description: "Settings → Audit log — filter by action and entity type with pagination" },
-      { type: "feature", description: "Company branding changes write audit events (name, tagline, logo)" },
-      { type: "feature", description: "Policies module — list, create, edit drafts, submit for review, approve" },
+      {
+        type: "feature",
+        description:
+          "Settings → Departments — create, edit, and delete with a guard when users are assigned",
+      },
+      {
+        type: "feature",
+        description:
+          "Settings → Audit log — filter by action and type with pagination",
+      },
+      {
+        type: "feature",
+        description:
+          "Company branding changes (name, tagline, logo) write audit events",
+      },
+      {
+        type: "feature",
+        description:
+          "Policies — list, create, edit drafts, submit for review, and approve",
+      },
     ],
   },
   {
     version: "0.1.3",
     date: "2026-06-01",
-    title: "Branding & UI polish",
+    title: "Branding and What’s new polish",
     highlights: [
-      "Tenant-scoped company logo upload in Company Settings",
-      "What's new in the page header with improved release notes UI",
-      "Add actions moved beside table search on Users, Roles, and Permissions",
+      "Upload a company logo in Company Settings (shown in your sidebar)",
+      "What’s new in the page header with clearer release notes",
+      "Add actions sit beside table search on Users, Roles, and Permissions",
     ],
     changes: [
-      { type: "feature", description: "Company logo upload — JPEG, PNG, or WebP; shown in the sidebar for your tenant only" },
-      { type: "feature", description: "company.manage permission for Tenant Admin; Super Admin can always edit branding" },
-      { type: "improvement", description: "What's new button on every app page header (next to page actions)" },
-      { type: "improvement", description: "Release notes — sticky footer pagination and color-coded Feature / Improvement / Fix badges" },
-      { type: "improvement", description: "Add user, Add role, and Create permission buttons aligned to the right of table search bars" },
+      {
+        type: "feature",
+        description:
+          "Company logo upload (JPEG, PNG, or WebP) for your organization only",
+      },
+      {
+        type: "feature",
+        description:
+          "Company branding managed by Tenant Admin; Super Admin can always edit",
+      },
+      {
+        type: "improvement",
+        description:
+          "What’s new button on every app page header",
+      },
+      {
+        type: "improvement",
+        description:
+          "Release notes with sticky pagination and color-coded Feature / Improvement / Fix badges",
+      },
+      {
+        type: "improvement",
+        description:
+          "Add user, role, and permission actions aligned with table search",
+      },
     ],
   },
   {
     version: "0.1.2",
     date: "2026-06-01",
-    title: "Settings & permissions",
+    title: "Settings and permissions",
     highlights: [
       "Edit and delete users and roles with search on settings tables",
       "Global permissions catalog for platform operators",
-      "Permission-gated sidebar navigation tied to app modules",
+      "Sidebar shows only modules you are allowed to open",
     ],
     changes: [
-      { type: "feature", description: "Edit user dialog — name, email, role, and department" },
-      { type: "feature", description: "Edit and delete roles with user-count badges and protected system roles" },
-      { type: "feature", description: "Permissions settings page — create and manage the global permission catalog (Super Admin)" },
-      { type: "feature", description: "App modules registry — permission slugs linked to routes and sidebar access" },
-      { type: "improvement", description: "Search on Users and Roles tables" },
-      { type: "improvement", description: "Sticky roles & permissions matrix with row actions" },
-      { type: "improvement", description: "Reusable delete confirmation dialog for settings tables" },
-      { type: "improvement", description: "User menu dropdown — profile settings and sign out" },
-      { type: "improvement", description: "Profile photo upload and removal" },
-      { type: "improvement", description: "What's new link on the login screen" },
-      { type: "fix", description: "Platform-operator roles hidden from tenant role pickers and guarded from deletion" },
+      {
+        type: "feature",
+        description:
+          "Edit user — name, email, role, and department",
+      },
+      {
+        type: "feature",
+        description:
+          "Edit and delete roles with user counts; system roles stay protected",
+      },
+      {
+        type: "feature",
+        description:
+          "Permissions catalog for Super Admin to create and manage permission names",
+      },
+      {
+        type: "feature",
+        description:
+          "App modules linked to permissions so the sidebar respects access",
+      },
+      {
+        type: "improvement",
+        description: "Search on Users and Roles tables",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sticky roles and permissions matrix with row actions",
+      },
+      {
+        type: "improvement",
+        description:
+          "Shared delete confirmation for settings tables",
+      },
+      {
+        type: "improvement",
+        description:
+          "User menu with profile settings and sign out",
+      },
+      {
+        type: "improvement",
+        description: "Profile photo upload and removal",
+      },
+      {
+        type: "improvement",
+        description: "What’s new link on the login screen",
+      },
+      {
+        type: "fix",
+        description:
+          "Platform-operator roles hidden from tenant role pickers and protected from deletion",
+      },
     ],
   },
   {
     version: "0.1.1",
     date: "2026-06-01",
-    title: "What's new dialog",
-    highlights: ["Added What's new dialog with paginated release notes"],
+    title: "What’s new dialog",
+    highlights: ["What’s new shows paginated release notes"],
     changes: [
-      { type: "feature", description: "What's new dialog on login and auth sidebar" },
-      { type: "improvement", description: "Paginated release notes (one version per page)" },
+      {
+        type: "feature",
+        description: "What’s new dialog on login and the auth sidebar",
+      },
+      {
+        type: "improvement",
+        description: "Release notes paginate one version at a time",
+      },
     ],
   },
   {
@@ -1547,14 +1442,23 @@ export const RELEASES: ReleaseNote[] = [
     date: "2026-06-01",
     title: "Initial release",
     highlights: [
-      "Role-based authentication with tenant-scoped access",
+      "Sign-in with roles scoped to each organization",
       "User and role management for dealer organizations",
-      "Operational dashboard shell and settings foundation",
+      "Dashboard shell and Settings foundation",
     ],
     changes: [
-      { type: "feature", description: "Email/password sign-in with Auth.js" },
-      { type: "feature", description: "Tenant-scoped RBAC and permissions" },
-      { type: "feature", description: "Settings: users, roles, and profile" },
+      {
+        type: "feature",
+        description: "Email and password sign-in",
+      },
+      {
+        type: "feature",
+        description: "Organization-scoped roles and permissions",
+      },
+      {
+        type: "feature",
+        description: "Settings for users, roles, and profile",
+      },
     ],
   },
 ];

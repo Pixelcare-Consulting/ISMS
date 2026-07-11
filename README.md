@@ -2,7 +2,7 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.11.60`
+**Current version:** `0.11.68`
 
 ## Stack
 
@@ -47,15 +47,18 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/reports/processed-orders`, `/daily-stock`, `/transfers`, `/sales`, `/pcount` | `reports.view` (+ module-specific) |
 | `/policies`, `/policies/[id]`, `/policies/new` | Policy permissions |
 | `/settings/company` | Tenant Admin / Super Admin |
-| `/settings/users`, `/departments`, `/roles` | `users.manage` / `roles.manage` |
-| `/audit-logs/system` | `reports.view` |
-| `/audit-logs/serial-numbers` | `inventory.view` |
-| `/settings/branches`, `/warehouses`, `/dealers`, `/aors` | `branches.manage` / `aors.manage` |
-| `/settings/service-centers` | `branches.manage` |
+| `/settings/users`, `/roles` | `users.manage` / `roles.manage` |
+| `/settings/departments` | `departments.manage` |
+| `/audit-logs/system`, `/audit-logs/serial-numbers` | `audit_logs.view` |
+| `/settings/branches` | `branches.manage` |
+| `/settings/warehouses` | `warehouses.manage` |
+| `/settings/dealers` | `dealers.manage` |
+| `/settings/service-centers` | `service_centers.manage` |
+| `/settings/aors` | `aors.manage` |
 | `/settings/planning`, `/planogram` | `forecast.manage` / `planogram.*` |
 | `/settings/master-data/*` | `master_data.manage` |
-| `/settings/sap-integration` | `logistics.manage` (queue) |
-| `/settings/sap-integration/service-layer` | `logistics.manage` (B1 Service Layer config) |
+| `/settings/sap-integration` | `sap.manage` (queue) |
+| `/settings/sap-integration/service-layer` | `sap.manage` (B1 Service Layer config) |
 | `/settings/permissions` | Super Admin only |
 | `/settings/profile` | All authenticated users |
 

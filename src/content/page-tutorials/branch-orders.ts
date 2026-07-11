@@ -1,6 +1,7 @@
 import type { PageTutorialContent } from "@/components/page-tutorial/types";
 
 export const BRANCH_ORDERS_PAGE_TUTORIAL: PageTutorialContent = {
+  id: "orders-branch-orders",
   triggerLabel: "Open branch orders tutorial",
   dialogTitle: "Branch orders — quick guide",
   dialogDescription:

@@ -8,12 +8,12 @@ import { sapService } from "@/features/sap/services/sap.service";
 import { requirePermission } from "@/lib/auth/permissions";
 
 export async function listSapServiceLayerSettingsAction() {
-  const session = await requirePermission("logistics.manage");
+  const session = await requirePermission("sap.manage");
   return sapServiceLayerService.listSettings(session.user.tenantId);
 }
 
 export async function saveSapServiceLayerSettingsAction(input: unknown) {
-  const session = await requirePermission("logistics.manage");
+  const session = await requirePermission("sap.manage");
   const parsed = sapServiceLayerSchema.safeParse(input);
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -33,7 +33,7 @@ export async function saveSapServiceLayerSettingsAction(input: unknown) {
 }
 
 export async function updateSapServiceLayerSettingsAction(input: unknown & { configId?: string }) {
-  const session = await requirePermission("logistics.manage");
+  const session = await requirePermission("sap.manage");
   if (!input?.configId?.trim()) return { error: "Configuration id is required" };
 
   const parsed = sapServiceLayerSchema.safeParse(input);
@@ -56,7 +56,7 @@ export async function updateSapServiceLayerSettingsAction(input: unknown & { con
 }
 
 export async function deleteSapServiceLayerSettingsAction(input: { configId: string }) {
-  const session = await requirePermission("logistics.manage");
+  const session = await requirePermission("sap.manage");
   if (!input.configId?.trim()) return { error: "Configuration id is required" };
 
   try {
@@ -69,7 +69,7 @@ export async function deleteSapServiceLayerSettingsAction(input: { configId: str
 }
 
 export async function testSapServiceLayerConnectionAction(input: unknown) {
-  await requirePermission("logistics.manage");
+  await requirePermission("sap.manage");
   const parsed = sapServiceLayerSchema.safeParse(input);
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -87,7 +87,7 @@ export async function setSapServiceLayerStatusAction(input: {
   configId: string;
   isEnabled: boolean;
 }) {
-  const session = await requirePermission("logistics.manage");
+  const session = await requirePermission("sap.manage");
 
   if (!input.configId?.trim()) return { error: "Configuration id is required" };
 
@@ -106,12 +106,12 @@ export async function setSapServiceLayerStatusAction(input: {
 }
 
 export async function listSapJobsAction(input?: { page?: number }) {
-  const session = await requirePermission("logistics.manage");
+  const session = await requirePermission("sap.manage");
   return sapService.listJobs(session.user.tenantId, { page: input?.page });
 }
 
 export async function processSapQueueAction() {
-  const session = await requirePermission("logistics.manage");
+  const session = await requirePermission("sap.manage");
   const results = await sapService.processPendingJobs(
     session.user.tenantId,
     session.user.id,
@@ -121,7 +121,7 @@ export async function processSapQueueAction() {
 }
 
 export async function syncInventoryFromSapAction(input?: { warehouseCode?: string }) {
-  const session = await requirePermission("logistics.manage");
+  const session = await requirePermission("sap.manage");
   await sapService.syncInventoryFromSap(session.user.tenantId, {
     warehouseCode: input?.warehouseCode,
   });

@@ -24,6 +24,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import {
   Table,
   TableBody,
   TableCell,
@@ -61,6 +69,7 @@ export function DealersTable({ dealers }: { dealers: DealerRow[] }) {
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
   const [deleting, setDeleting] = useState<DealerRow | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
   const [options, setOptions] = useState<Options | null>(null);
   const [name, setName] = useState("");
   const [sapCode, setSapCode] = useState("");
@@ -106,7 +115,26 @@ export function DealersTable({ dealers }: { dealers: DealerRow[] }) {
     return loaded;
   }
 
-  function createDealer() {
+  function resetAddForm() {
+    setName("");
+    setSapCode("");
+    setAreaId("");
+    setDealerTypeId("");
+    setDealerAreaId("");
+    setModeOfPaymentId("");
+  }
+
+  function onAddOpenChange(open: boolean) {
+    setAddOpen(open);
+    if (open) {
+      void ensureOptions();
+    } else {
+      resetAddForm();
+    }
+  }
+
+  function handleCreate(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     startTransition(async () => {
       await ensureOptions();
       const result = await createDealerAction({
@@ -123,8 +151,7 @@ export function DealersTable({ dealers }: { dealers: DealerRow[] }) {
         return;
       }
       toast.success("Dealer created");
-      setName("");
-      setSapCode("");
+      onAddOpenChange(false);
       router.refresh();
     });
   }
@@ -148,99 +175,23 @@ export function DealersTable({ dealers }: { dealers: DealerRow[] }) {
 
   return (
     <div className="space-y-4">
-      <div
-        className="flex flex-wrap gap-2 rounded-xl border bg-card p-4 shadow-sm"
-        onFocus={() => {
-          void ensureOptions();
-        }}
-      >
-        <div>
-          <Label>Name</Label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} />
-        </div>
-        <div>
-          <Label>SAP code</Label>
-          <Input value={sapCode} onChange={(e) => setSapCode(e.target.value)} />
-        </div>
-        {options ? (
-          <>
-            <div>
-              <Label>Area</Label>
-              <select
-                className="flex h-9 rounded-md border bg-background px-2 text-sm"
-                value={areaId}
-                onChange={(e) => setAreaId(e.target.value)}
-              >
-                <option value="">—</option>
-                {options.areas.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label>Dealer type</Label>
-              <select
-                className="flex h-9 rounded-md border bg-background px-2 text-sm"
-                value={dealerTypeId}
-                onChange={(e) => setDealerTypeId(e.target.value)}
-              >
-                <option value="">—</option>
-                {options.dealerTypes.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label>Dealer area</Label>
-              <select
-                className="flex h-9 rounded-md border bg-background px-2 text-sm"
-                value={dealerAreaId}
-                onChange={(e) => setDealerAreaId(e.target.value)}
-              >
-                <option value="">—</option>
-                {options.dealerAreas.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label>Mode of payment</Label>
-              <select
-                className="flex h-9 rounded-md border bg-background px-2 text-sm"
-                value={modeOfPaymentId}
-                onChange={(e) => setModeOfPaymentId(e.target.value)}
-              >
-                <option value="">—</option>
-                {options.modes.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </>
-        ) : null}
-        <Button className="self-end" disabled={pending || !name} onClick={createDealer}>
-          <Plus className="size-4" />
-          Add dealer
-        </Button>
-      </div>
-
       <AppDataTable
         shellHeader={
-          <TableSearchBar
-            value={query}
-            onChange={setQuery}
-            placeholder="Search dealers…"
-            suggestions={suggestions}
-            className="sm:max-w-sm"
-          />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <TableSearchBar
+              value={query}
+              onChange={setQuery}
+              placeholder="Search dealers…"
+              suggestions={suggestions}
+              className="sm:max-w-sm"
+            />
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <Button type="button" size="sm" onClick={() => onAddOpenChange(true)}>
+                <Plus className="size-3.5" />
+                Add dealer
+              </Button>
+            </div>
+          </div>
         }
       >
         <AppDataTableBody>
@@ -299,6 +250,117 @@ export function DealersTable({ dealers }: { dealers: DealerRow[] }) {
           </Table>
         </AppDataTableBody>
       </AppDataTable>
+
+      <Sheet open={addOpen} onOpenChange={onAddOpenChange}>
+        <SheetContent
+          side="right"
+          className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-md"
+        >
+          <SheetHeader className="border-b border-border/60 px-4 py-4 text-left">
+            <SheetTitle>Add dealer</SheetTitle>
+            <SheetDescription>
+              Create a dealer with optional SAP code and classification lookups.
+            </SheetDescription>
+          </SheetHeader>
+          <form onSubmit={handleCreate} className="flex min-h-0 flex-1 flex-col">
+            <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="dealer-name">Name</Label>
+                <Input
+                  id="dealer-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="dealer-sap">SAP code</Label>
+                <Input
+                  id="dealer-sap"
+                  value={sapCode}
+                  onChange={(e) => setSapCode(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="dealer-area">Area</Label>
+                <select
+                  id="dealer-area"
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                  value={areaId}
+                  onChange={(e) => setAreaId(e.target.value)}
+                >
+                  <option value="">—</option>
+                  {(options?.areas ?? []).map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="dealer-type">Dealer type</Label>
+                <select
+                  id="dealer-type"
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                  value={dealerTypeId}
+                  onChange={(e) => setDealerTypeId(e.target.value)}
+                >
+                  <option value="">—</option>
+                  {(options?.dealerTypes ?? []).map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="dealer-dealer-area">Dealer area</Label>
+                <select
+                  id="dealer-dealer-area"
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                  value={dealerAreaId}
+                  onChange={(e) => setDealerAreaId(e.target.value)}
+                >
+                  <option value="">—</option>
+                  {(options?.dealerAreas ?? []).map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="dealer-payment">Mode of payment</Label>
+                <select
+                  id="dealer-payment"
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                  value={modeOfPaymentId}
+                  onChange={(e) => setModeOfPaymentId(e.target.value)}
+                >
+                  <option value="">—</option>
+                  {(options?.modes ?? []).map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <SheetFooter className="border-t border-border/60">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onAddOpenChange(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={pending || !name}>
+                Add dealer
+              </Button>
+            </SheetFooter>
+          </form>
+        </SheetContent>
+      </Sheet>
 
       <DeleteConfirmDialog
         open={Boolean(deleting)}

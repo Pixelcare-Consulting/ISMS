@@ -8,7 +8,7 @@ interface SapIntegrationPageProps {
 }
 
 export default async function SapIntegrationPage({ searchParams }: SapIntegrationPageProps) {
-  await requirePermission("logistics.manage");
+  await requirePermission("sap.manage");
   const params = await searchParams;
   const page = Number(params.page) || 1;
   const jobs = await listSapJobsAction({ page });

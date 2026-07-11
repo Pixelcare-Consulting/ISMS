@@ -1,16 +1,9 @@
-import { SectionLayout } from "@/components/navigation/section-layout";
+import { LogisticsSectionLayout } from "@/app/(app)/logistics/_components/logistics-section-layout";
 
 export default function LogisticsLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return (
-    <SectionLayout
-      title="Logistics"
-      description="Deliveries from approved orders, branch transfers, and pull-outs."
-    >
-      {children}
-    </SectionLayout>
-  );
+  return <LogisticsSectionLayout>{children}</LogisticsSectionLayout>;
 }

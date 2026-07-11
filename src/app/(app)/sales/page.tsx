@@ -1,5 +1,6 @@
 import { listSalesAction } from "@/features/sales/actions/sales.actions";
 import { requirePermission } from "@/lib/auth/permissions";
+import { SALES_PAGE_TUTORIAL } from "@/content/page-tutorials/sales";
 import { PageHeader } from "@/app/(app)/_components/page-header";
 import { SalesTable } from "@/app/(app)/sales/_components/sales-table";
 
@@ -17,6 +18,7 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
     <div className="space-y-6">
       <PageHeader
         title="Sales & ATR"
+        tutorial={SALES_PAGE_TUTORIAL}
         description="Branch sales with SN picker, reserved (RSV) flow, and ATR return workflow."
       />
       <SalesTable result={result} />

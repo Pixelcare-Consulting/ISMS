@@ -3,6 +3,7 @@ import {
   listAorsAction,
 } from "@/features/aors/actions/aor.actions";
 import { requirePermission } from "@/lib/auth/permissions";
+import { AORS_PAGE_TUTORIAL } from "@/content/page-tutorials/aors";
 import { PageHeader } from "@/app/(app)/_components/page-header";
 import { AorsTable } from "@/app/(app)/settings/aors/_components/aors-table";
 
@@ -17,6 +18,7 @@ export default async function SettingsAorsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Areas of responsibility"
+        tutorial={AORS_PAGE_TUTORIAL}
         description="Assignments are stored per branch. The table groups them by user so you can see every branch in one place."
       />
       <AorsTable

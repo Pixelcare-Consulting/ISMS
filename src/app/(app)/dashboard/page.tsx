@@ -1,6 +1,7 @@
 import { getModuleNavPermission } from "@/config/app-modules";
 import { hasPermission, requireAuth, requirePermission } from "@/lib/auth/permissions";
 import { listUsersAction } from "@/features/users/actions/user.actions";
+import { DASHBOARD_PAGE_TUTORIAL } from "@/content/page-tutorials/dashboard";
 import { PageHeader } from "@/app/(app)/_components/page-header";
 import { getDashboardKpisAction } from "@/features/dashboard/actions/dashboard-kpi.actions";
 import { listActiveAnnouncementsAction } from "@/features/announcements/actions/announcement.actions";
@@ -27,6 +28,7 @@ export default async function DashboardPage() {
     <div className="space-y-6">
       <PageHeader
         title="Dashboard"
+        tutorial={DASHBOARD_PAGE_TUTORIAL}
         description={`Welcome back, ${session.user.name ?? session.user.email}.`}
       />
       <ActiveAnnouncementBanner announcements={activeAnnouncements} />

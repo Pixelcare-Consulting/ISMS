@@ -1,16 +1,9 @@
-import { SectionLayout } from "@/components/navigation/section-layout";
+import { InventorySectionLayout } from "@/app/(app)/inventory/_components/inventory-section-layout";
 
 export default function InventoryLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return (
-    <SectionLayout
-      title="Inventory"
-      description="Serialized branch stock and physical count sessions."
-    >
-      {children}
-    </SectionLayout>
-  );
+  return <InventorySectionLayout>{children}</InventorySectionLayout>;
 }

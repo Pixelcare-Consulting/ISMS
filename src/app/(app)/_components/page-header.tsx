@@ -23,14 +23,14 @@ export function PageHeader({
   return (
     <div
       className={cn(
-        "flex flex-col gap-4 border-b border-border/60 pb-4 sm:flex-row sm:items-center sm:justify-between",
+        "flex flex-col gap-3 border-b border-border/60 pb-3 sm:flex-row sm:items-center sm:justify-between",
         sticky &&
-          "sticky top-0 z-20 -mx-4 mb-2 border-b border-border/60 bg-background px-4 py-4 shadow-sm sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8",
+          "sticky top-0 z-20 -mx-4 mb-2 border-b border-border/60 bg-background px-4 py-2.5 shadow-sm sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8",
         className,
       )}
     >
       <div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <h1 className="text-2xl font-bold tracking-tight text-foreground">{title}</h1>
           {tutorial ? <PageTutorialTrigger content={tutorial} /> : null}
         </div>

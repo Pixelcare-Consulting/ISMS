@@ -20,7 +20,7 @@ interface AuditLogPageProps {
 export default async function SettingsAuditLogPage({
   searchParams,
 }: AuditLogPageProps) {
-  await requirePermission("reports.view");
+  await requirePermission("audit_logs.view");
   const params = await searchParams;
   const page = Number(params.page) || 1;
 

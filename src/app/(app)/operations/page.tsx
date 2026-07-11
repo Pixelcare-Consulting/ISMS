@@ -5,6 +5,7 @@ import {
   listTransfersAction,
 } from "@/features/ops/actions/ops.actions";
 import { requirePermission } from "@/lib/auth/permissions";
+import { OPERATIONS_PAGE_TUTORIAL } from "@/content/page-tutorials/operations";
 import { PageHeader } from "@/app/(app)/_components/page-header";
 import { OpsPanel } from "@/app/(app)/operations/_components/ops-panel";
 
@@ -21,6 +22,7 @@ export default async function OperationsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Operations"
+        tutorial={OPERATIONS_PAGE_TUTORIAL}
         description="Delivery acceptance, branch transfers, and pull-outs."
       />
       <OpsPanel

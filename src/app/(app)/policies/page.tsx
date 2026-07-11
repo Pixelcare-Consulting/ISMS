@@ -11,6 +11,7 @@ import {
   hasPermission,
   requirePolicyAccess,
 } from "@/lib/auth/permissions";
+import { POLICIES_PAGE_TUTORIAL } from "@/content/page-tutorials/policies";
 import { PageHeader } from "@/app/(app)/_components/page-header";
 import { PoliciesTable } from "@/app/(app)/policies/_components/policies-table";
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,7 @@ export default async function PoliciesPage() {
     <div className="space-y-6">
       <PageHeader
         title="Policies"
+        tutorial={POLICIES_PAGE_TUTORIAL}
         description={
           viewOnly
             ? "Approved ISMS policy documents (read-only)."

@@ -4,6 +4,7 @@ import {
   requirePermission,
   resolveSessionPlatformOperator,
 } from "@/lib/auth/permissions";
+import { ROLES_PAGE_TUTORIAL } from "@/content/page-tutorials/roles";
 import { PageHeader } from "@/app/(app)/_components/page-header";
 
 export default async function SettingsRolesPage() {
@@ -17,6 +18,7 @@ export default async function SettingsRolesPage() {
     <div className="space-y-6">
       <PageHeader
         title="Roles"
+        tutorial={ROLES_PAGE_TUTORIAL}
         description={
           isPlatformOperator
             ? "Manage roles with plain-language access. Built-in system roles are included for platform operators."

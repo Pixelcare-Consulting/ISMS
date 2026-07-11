@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
+import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -30,6 +31,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import {
   Table,
   TableBody,
   TableCell,
@@ -49,6 +58,7 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
   const [statusOverrides, setStatusOverrides] = useState<Record<string, string>>({});
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
+  const [addOpen, setAddOpen] = useState(false);
   const [brandId, setBrandId] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [featureId, setFeatureId] = useState("");
@@ -102,25 +112,50 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
   const selection = useTableSelection(filtered.map((model) => model.id));
 
   async function loadOptions() {
-    if (options) return;
+    if (options) return options;
     const [brands, categories, lookups] = await Promise.all([
       listBrandsAction(),
       listCategoriesAction(),
       listModelFormLookupsAction(),
     ]);
-    setOptions({
+    const next = {
       brands,
       categories,
       features: lookups.features,
       resolutions: lookups.resolutions,
       actualSizes: lookups.actualSizes,
-    });
+    };
+    setOptions(next);
     if (brands[0]) setBrandId(brands[0].id);
     if (categories[0]) setCategoryId(categories[0].id);
+    return next;
   }
 
-  function addModel() {
+  function resetAddForm() {
+    setFeatureId("");
+    setResolutionId("");
+    setActualSizeId("");
+    setSkuCode("");
+    setName("");
+    if (options?.brands[0]) setBrandId(options.brands[0].id);
+    else setBrandId("");
+    if (options?.categories[0]) setCategoryId(options.categories[0].id);
+    else setCategoryId("");
+  }
+
+  function onAddOpenChange(open: boolean) {
+    setAddOpen(open);
+    if (open) {
+      void loadOptions();
+    } else {
+      resetAddForm();
+    }
+  }
+
+  function handleCreate(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     startTransition(async () => {
+      const loaded = options ?? (await loadOptions());
       const result = await createModelAction({
         brandId,
         categoryId,
@@ -136,8 +171,8 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
       }
       toast.success("Model added");
       if (result.model) {
-        const selectedBrand = options?.brands.find((brand) => brand.id === brandId);
-        const selectedCategory = options?.categories.find(
+        const selectedBrand = loaded?.brands.find((brand) => brand.id === brandId);
+        const selectedCategory = loaded?.categories.find(
           (category) => category.id === categoryId,
         );
         setOptimisticRows((currentRows) => [
@@ -154,114 +189,23 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
           ...currentRows,
         ]);
       }
-      setSkuCode("");
-      setName("");
+      onAddOpenChange(false);
       router.refresh();
     });
   }
 
   return (
     <div className="space-y-4">
-      <div
-        className="flex flex-wrap gap-2 rounded-xl border bg-card p-4 shadow-sm"
-        onFocus={loadOptions}
-      >
-        {options ? (
-          <>
-            <div>
-              <Label>Brand</Label>
-              <select
-                className="flex h-9 cursor-pointer rounded-md border bg-background px-2 text-sm"
-                value={brandId}
-                onChange={(e) => setBrandId(e.target.value)}
-              >
-                {options.brands.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label>Category</Label>
-              <select
-                className="flex h-9 cursor-pointer rounded-md border bg-background px-2 text-sm"
-                value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
-              >
-                {options.categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label>Feature</Label>
-              <select
-                className="flex h-9 cursor-pointer rounded-md border bg-background px-2 text-sm"
-                value={featureId}
-                onChange={(e) => setFeatureId(e.target.value)}
-              >
-                <option value="">—</option>
-                {options.features.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label>Resolution</Label>
-              <select
-                className="flex h-9 cursor-pointer rounded-md border bg-background px-2 text-sm"
-                value={resolutionId}
-                onChange={(e) => setResolutionId(e.target.value)}
-              >
-                <option value="">—</option>
-                {options.resolutions.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label>Actual size</Label>
-              <select
-                className="flex h-9 cursor-pointer rounded-md border bg-background px-2 text-sm"
-                value={actualSizeId}
-                onChange={(e) => setActualSizeId(e.target.value)}
-              >
-                <option value="">—</option>
-                {options.actualSizes.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </>
-        ) : (
-          <Button variant="secondary" type="button" onClick={loadOptions}>
-            Load lookup lists
-          </Button>
-        )}
-        <div>
-          <Label>SKU</Label>
-          <Input value={skuCode} onChange={(e) => setSkuCode(e.target.value)} />
-        </div>
-        <div>
-          <Label>Name</Label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} />
-        </div>
-        <Button className="self-end" disabled={pending || !brandId} onClick={addModel}>
-          Add model
-        </Button>
-      </div>
-
       {rows.length === 0 ? (
-        <DataTableEmptyState message="No product models yet." />
+        <div className="space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+            <Button type="button" size="sm" onClick={() => onAddOpenChange(true)}>
+              <Plus className="size-3.5" />
+              Add model
+            </Button>
+          </div>
+          <DataTableEmptyState message="No product models yet." />
+        </div>
       ) : (
         <AppDataTable
           title="Product models"
@@ -274,11 +218,17 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
                 suggestions={suggestions}
                 className="sm:max-w-sm"
               />
-              <TableSelectionBadge
-                count={selection.selectedCount}
-                onClear={selection.clearSelection}
-                size="sm"
-              />
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                <TableSelectionBadge
+                  count={selection.selectedCount}
+                  onClear={selection.clearSelection}
+                  size="sm"
+                />
+                <Button type="button" size="sm" onClick={() => onAddOpenChange(true)}>
+                  <Plus className="size-3.5" />
+                  Add model
+                </Button>
+              </div>
             </div>
           }
         >
@@ -348,6 +298,134 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
           </AppDataTableBody>
         </AppDataTable>
       )}
+
+      <Sheet open={addOpen} onOpenChange={onAddOpenChange}>
+        <SheetContent
+          side="right"
+          className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-md"
+        >
+          <SheetHeader className="border-b border-border/60 px-4 py-4 text-left">
+            <SheetTitle>Add model</SheetTitle>
+            <SheetDescription>
+              Create a product model with brand, category, and optional lookups.
+            </SheetDescription>
+          </SheetHeader>
+          <form onSubmit={handleCreate} className="flex min-h-0 flex-1 flex-col">
+            <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="model-brand">Brand</Label>
+                <select
+                  id="model-brand"
+                  className="flex h-9 w-full cursor-pointer rounded-md border border-input bg-background px-2 text-sm"
+                  value={brandId}
+                  onChange={(e) => setBrandId(e.target.value)}
+                  required
+                >
+                  {(options?.brands ?? []).map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="model-category">Category</Label>
+                <select
+                  id="model-category"
+                  className="flex h-9 w-full cursor-pointer rounded-md border border-input bg-background px-2 text-sm"
+                  value={categoryId}
+                  onChange={(e) => setCategoryId(e.target.value)}
+                  required
+                >
+                  {(options?.categories ?? []).map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="model-feature">Feature</Label>
+                <select
+                  id="model-feature"
+                  className="flex h-9 w-full cursor-pointer rounded-md border border-input bg-background px-2 text-sm"
+                  value={featureId}
+                  onChange={(e) => setFeatureId(e.target.value)}
+                >
+                  <option value="">—</option>
+                  {(options?.features ?? []).map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="model-resolution">Resolution</Label>
+                <select
+                  id="model-resolution"
+                  className="flex h-9 w-full cursor-pointer rounded-md border border-input bg-background px-2 text-sm"
+                  value={resolutionId}
+                  onChange={(e) => setResolutionId(e.target.value)}
+                >
+                  <option value="">—</option>
+                  {(options?.resolutions ?? []).map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="model-actual-size">Actual size</Label>
+                <select
+                  id="model-actual-size"
+                  className="flex h-9 w-full cursor-pointer rounded-md border border-input bg-background px-2 text-sm"
+                  value={actualSizeId}
+                  onChange={(e) => setActualSizeId(e.target.value)}
+                >
+                  <option value="">—</option>
+                  {(options?.actualSizes ?? []).map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="model-sku">SKU</Label>
+                <Input
+                  id="model-sku"
+                  value={skuCode}
+                  onChange={(e) => setSkuCode(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="model-name">Name</Label>
+                <Input
+                  id="model-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
+            <SheetFooter className="border-t border-border/60">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onAddOpenChange(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={pending || !brandId || !categoryId || !skuCode || !name}>
+                Add model
+              </Button>
+            </SheetFooter>
+          </form>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

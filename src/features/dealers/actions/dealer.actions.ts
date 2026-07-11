@@ -22,12 +22,12 @@ function revalidateDealers() {
 }
 
 export async function listDealersAction() {
-  const session = await requirePermission("branches.manage");
+  const session = await requirePermission("dealers.manage");
   return dealerRepository.listByTenant(session.user.tenantId);
 }
 
 export async function listDealerFormOptionsAction() {
-  const session = await requirePermission("branches.manage");
+  const session = await requirePermission("dealers.manage");
   const tenantId = session.user.tenantId;
   const [areas, dealerTypes, dealerAreas, modes] = await Promise.all([
     prisma.area.findMany({ where: { tenantId }, orderBy: { name: "asc" } }),
@@ -39,7 +39,7 @@ export async function listDealerFormOptionsAction() {
 }
 
 export async function createDealerAction(input: unknown) {
-  const session = await requirePermission("branches.manage");
+  const session = await requirePermission("dealers.manage");
   const parsed = dealerSchema.safeParse(input);
   if (!parsed.success) return { error: "Invalid input" };
   try {
@@ -52,7 +52,7 @@ export async function createDealerAction(input: unknown) {
 }
 
 export async function updateDealerAction(input: unknown) {
-  const session = await requirePermission("branches.manage");
+  const session = await requirePermission("dealers.manage");
   const schema = dealerSchema.extend({ dealerId: z.string().min(1) });
   const parsed = schema.safeParse(input);
   if (!parsed.success) return { error: "Invalid input" };
@@ -69,7 +69,7 @@ export async function updateDealerAction(input: unknown) {
 }
 
 export async function deleteDealerAction(dealerId: string) {
-  const session = await requirePermission("branches.manage");
+  const session = await requirePermission("dealers.manage");
   try {
     await dealerRepository.softDelete(session.user.tenantId, dealerId);
     revalidateDealers();

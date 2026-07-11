@@ -10,12 +10,12 @@ import {
 import { requirePermission } from "@/lib/auth/permissions";
 
 export async function listDepartmentsManageAction() {
-  const session = await requirePermission("users.manage");
+  const session = await requirePermission("departments.manage");
   return departmentService.listDepartments(session.user.tenantId);
 }
 
 export async function createDepartmentAction(formData: FormData) {
-  const session = await requirePermission("users.manage");
+  const session = await requirePermission("departments.manage");
   const parsed = createDepartmentSchema.safeParse({
     name: formData.get("name"),
   });
@@ -41,7 +41,7 @@ export async function createDepartmentAction(formData: FormData) {
 }
 
 export async function updateDepartmentAction(formData: FormData) {
-  const session = await requirePermission("users.manage");
+  const session = await requirePermission("departments.manage");
   const parsed = updateDepartmentSchema.safeParse({
     departmentId: formData.get("departmentId"),
     name: formData.get("name"),
@@ -68,7 +68,7 @@ export async function updateDepartmentAction(formData: FormData) {
 }
 
 export async function deleteDepartmentAction(departmentId: string) {
-  const session = await requirePermission("users.manage");
+  const session = await requirePermission("departments.manage");
 
   if (!departmentId) {
     return { error: "Department is required" };

@@ -5,6 +5,8 @@ export interface PageTutorialSection {
 }
 
 export interface PageTutorialContent {
+  /** Stable key for localStorage dismiss (e.g. `settings-permissions`) */
+  id: string;
   /** Accessible label for the ? trigger button */
   triggerLabel?: string;
   dialogTitle: string;

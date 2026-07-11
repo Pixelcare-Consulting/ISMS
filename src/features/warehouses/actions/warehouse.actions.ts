@@ -20,12 +20,12 @@ const locationSchema = z.object({
 });
 
 export async function listWarehousesAction() {
-  const session = await requirePermission("master_data.manage");
+  const session = await requirePermission("warehouses.manage");
   return warehouseRepository.listByTenant(session.user.tenantId);
 }
 
 export async function createWarehouseAction(input: unknown) {
-  const session = await requirePermission("master_data.manage");
+  const session = await requirePermission("warehouses.manage");
   const parsed = warehouseSchema.safeParse(input);
   if (!parsed.success) return { error: "Invalid input" };
 
@@ -43,7 +43,7 @@ export async function createWarehouseAction(input: unknown) {
 }
 
 export async function updateWarehouseAction(input: unknown) {
-  const session = await requirePermission("master_data.manage");
+  const session = await requirePermission("warehouses.manage");
   const parsed = warehouseSchema
     .extend({ warehouseId: z.string().min(1) })
     .safeParse(input);
@@ -66,7 +66,7 @@ export async function updateWarehouseAction(input: unknown) {
 }
 
 export async function addWarehouseLocationAction(input: unknown) {
-  const session = await requirePermission("master_data.manage");
+  const session = await requirePermission("warehouses.manage");
   const parsed = locationSchema.safeParse(input);
   if (!parsed.success) return { error: "Invalid input" };
 
@@ -84,7 +84,7 @@ export async function addWarehouseLocationAction(input: unknown) {
 }
 
 export async function deleteWarehouseAction(warehouseId: string) {
-  const session = await requirePermission("master_data.manage");
+  const session = await requirePermission("warehouses.manage");
   try {
     await warehouseService.deleteWarehouse({
       tenantId: session.user.tenantId,
@@ -99,7 +99,7 @@ export async function deleteWarehouseAction(warehouseId: string) {
 }
 
 export async function deleteWarehouseLocationAction(warehouseId: string, locationId: string) {
-  const session = await requirePermission("master_data.manage");
+  const session = await requirePermission("warehouses.manage");
   try {
     await warehouseService.deleteLocation({
       tenantId: session.user.tenantId,

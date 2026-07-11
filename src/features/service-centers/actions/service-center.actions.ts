@@ -12,12 +12,12 @@ function revalidate() {
 }
 
 export async function listServiceCentersAction() {
-  const session = await requirePermission("branches.manage");
+  const session = await requirePermission("service_centers.manage");
   return serviceCenterRepository.listByTenant(session.user.tenantId);
 }
 
 export async function listServiceCenterFormOptionsAction() {
-  const session = await requirePermission("branches.manage");
+  const session = await requirePermission("service_centers.manage");
   const tenantId = session.user.tenantId;
   const [areas, regions, provinces, dealerAreas, branchAreas] = await Promise.all([
     prisma.area.findMany({ where: { tenantId }, orderBy: { name: "asc" } }),
@@ -30,7 +30,7 @@ export async function listServiceCenterFormOptionsAction() {
 }
 
 export async function createServiceCenterAction(input: unknown) {
-  const session = await requirePermission("branches.manage");
+  const session = await requirePermission("service_centers.manage");
   const parsed = z
     .object({
       sapCode: z.string().min(1).max(32),
@@ -49,7 +49,7 @@ export async function createServiceCenterAction(input: unknown) {
 }
 
 export async function addServiceCenterLocationAction(input: unknown) {
-  await requirePermission("branches.manage");
+  await requirePermission("service_centers.manage");
   const parsed = z
     .object({
       serviceCenterId: z.string().min(1),
@@ -74,7 +74,7 @@ export async function addServiceCenterLocationAction(input: unknown) {
 }
 
 export async function deleteServiceCenterAction(id: string) {
-  const session = await requirePermission("branches.manage");
+  const session = await requirePermission("service_centers.manage");
   try {
     await serviceCenterRepository.softDelete(session.user.tenantId, id);
     revalidate();
@@ -85,7 +85,7 @@ export async function deleteServiceCenterAction(id: string) {
 }
 
 export async function deleteServiceCenterLocationAction(id: string) {
-  await requirePermission("branches.manage");
+  await requirePermission("service_centers.manage");
   try {
     await serviceCenterRepository.deleteLocation(id);
     revalidate();

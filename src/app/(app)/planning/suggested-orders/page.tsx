@@ -7,6 +7,7 @@ import {
   listDraftSuggestedOrdersAction,
 } from "@/features/forecast/actions/forecast.actions";
 import { requireAnyPermission } from "@/lib/auth/permissions";
+import { SUGGESTED_ORDERS_PAGE_TUTORIAL } from "@/content/page-tutorials/suggested-orders";
 import { PageHeader } from "@/app/(app)/_components/page-header";
 import { SuggestedOrdersTable } from "@/app/(app)/planning/suggested-orders/_components/suggested-orders-table";
 import { Button } from "@/components/ui/button";
@@ -71,6 +72,7 @@ export default async function SuggestedOrdersPage({ searchParams }: SuggestedOrd
     <div className="space-y-6">
       <PageHeader
         title="Suggested orders"
+        tutorial={SUGGESTED_ORDERS_PAGE_TUTORIAL}
         description="Auto-replenish draft orders generated from allocation gaps. Submit for TL review when ready."
         actions={
           <div className="flex gap-2">

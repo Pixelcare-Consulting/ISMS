@@ -11,7 +11,7 @@ export async function listAuditLogsAction(input?: {
   dateFrom?: string;
   dateTo?: string;
 }) {
-  const session = await requirePermission("reports.view");
+  const session = await requirePermission("audit_logs.view");
 
   return auditService.listForTenant({
     tenantId: session.user.tenantId,
@@ -25,6 +25,6 @@ export async function listAuditLogsAction(input?: {
 }
 
 export async function getAuditLogFilterOptionsAction() {
-  const session = await requirePermission("reports.view");
+  const session = await requirePermission("audit_logs.view");
   return auditService.listFilterOptions(session.user.tenantId);
 }

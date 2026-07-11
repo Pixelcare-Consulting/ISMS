@@ -4,6 +4,7 @@ import {
   listUsersAction,
 } from "@/features/users/actions/user.actions";
 import { requirePermission } from "@/lib/auth/permissions";
+import { USERS_PAGE_TUTORIAL } from "@/content/page-tutorials/users";
 import { PageHeader } from "@/app/(app)/_components/page-header";
 import { UsersTable } from "@/app/(app)/settings/users/_components/users-table";
 
@@ -25,6 +26,7 @@ export default async function SettingsUsersPage() {
     <div className="space-y-6">
       <PageHeader
         title="Users"
+        tutorial={USERS_PAGE_TUTORIAL}
         description="Manage users in your organization."
       />
       <UsersTable
