@@ -34,7 +34,8 @@ async function requirePlanogramManage() {
 
 export async function listBranchesForPlanogramAction() {
   const { session } = await requirePlanogramAccess();
-  const all = await branchService.listBranches(session.user.tenantId);
+  const allBranches = await branchService.listBranches(session.user.tenantId);
+  const all = allBranches.filter((b) => b.status === "active");
 
   const hasFullAccess =
     hasPermission(session.user.permissions, "planogram.manage") ||
