@@ -223,6 +223,85 @@ export async function updatePlanogramMilAction(input: unknown) {
   }
 }
 
+export async function listAllowedModelsForBranchAction(branchId: string) {
+  const session = await requirePlanogramManage();
+  return planogramService.listAllowedModelsForBranch(session.user.tenantId, branchId);
+}
+
+export async function listModelCandidatesForAllowedListAction(branchId: string) {
+  const session = await requirePlanogramManage();
+  return planogramService.listModelCandidatesForAllowedList(session.user.tenantId, branchId);
+}
+
+const addAllowedModelSchema = z.object({
+  branchId: z.string().min(1),
+  modelId: z.string().min(1),
+});
+
+export async function addAllowedModelAction(input: unknown) {
+  const session = await requirePlanogramManage();
+  const parsed = addAllowedModelSchema.safeParse(input);
+  if (!parsed.success) return { error: "Invalid input" };
+
+  try {
+    await planogramService.addAllowedModel({
+      tenantId: session.user.tenantId,
+      actorUserId: session.user.id,
+      ...parsed.data,
+    });
+    revalidatePlanogram(parsed.data.branchId);
+    return { success: true as const };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to add allowed model" };
+  }
+}
+
+const removeAllowedModelSchema = z.object({
+  branchId: z.string().min(1),
+  modelId: z.string().min(1),
+});
+
+export async function removeAllowedModelAction(input: unknown) {
+  const session = await requirePlanogramManage();
+  const parsed = removeAllowedModelSchema.safeParse(input);
+  if (!parsed.success) return { error: "Invalid input" };
+
+  try {
+    await planogramService.removeAllowedModel({
+      tenantId: session.user.tenantId,
+      actorUserId: session.user.id,
+      ...parsed.data,
+    });
+    revalidatePlanogram(parsed.data.branchId);
+    return { success: true as const };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to remove allowed model" };
+  }
+}
+
+const setAllowedModelsSchema = z.object({
+  branchId: z.string().min(1),
+  modelIds: z.array(z.string().min(1)),
+});
+
+export async function setAllowedModelsForBranchAction(input: unknown) {
+  const session = await requirePlanogramManage();
+  const parsed = setAllowedModelsSchema.safeParse(input);
+  if (!parsed.success) return { error: "Invalid input" };
+
+  try {
+    await planogramService.setAllowedModelsForBranch({
+      tenantId: session.user.tenantId,
+      actorUserId: session.user.id,
+      ...parsed.data,
+    });
+    revalidatePlanogram(parsed.data.branchId);
+    return { success: true as const };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to update allowed models" };
+  }
+}
+
 export async function removePlanogramModelAction(planogramId: string, branchId: string) {
   const session = await requirePlanogramManage();
 
