@@ -203,7 +203,7 @@ export const appNavigation: NavEntry[] = [
         href: "/audit-logs/serial-numbers",
         label: "Serial number logs",
         icon: Barcode,
-        permission: "audit_logs.view",
+        permission: "serial_logs.view",
         badge: "new",
       },
     ],

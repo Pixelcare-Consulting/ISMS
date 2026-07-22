@@ -11,7 +11,7 @@ export async function listSerialActivityAction(params: {
   dateFrom?: string;
   dateTo?: string;
 }) {
-  const session = await requirePermission("audit_logs.view");
+  const session = await requirePermission("serial_logs.view");
   return serialActivityRepository.list(session.user.tenantId, {
     page: params.page,
     type: params.type,

@@ -24,7 +24,7 @@ function parseType(value?: string): SerialActivityType | undefined {
 export default async function SerialNumberLogsPage({
   searchParams,
 }: SerialLogsPageProps) {
-  await requirePermission("audit_logs.view");
+  await requirePermission("serial_logs.view");
   const params = await searchParams;
   const page = Number(params.page) || 1;
   const type = parseType(params.type);

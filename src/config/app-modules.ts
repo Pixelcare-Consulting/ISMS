@@ -96,11 +96,20 @@ export const appModules: AppModule[] = [
   },
   {
     id: "audit_logs",
-    name: "Audit Logs",
+    name: "System Logs",
     route: "/audit-logs/system",
     slugPrefix: "audit_logs",
     navPermission: "audit_logs.view",
-    description: "System and serial-number activity logs",
+    description: "System and account activity logs",
+    actions: [{ value: "view", label: "View" }],
+  },
+  {
+    id: "serial_logs",
+    name: "Serial Number Logs",
+    route: "/audit-logs/serial-numbers",
+    slugPrefix: "serial_logs",
+    navPermission: "serial_logs.view",
+    description: "Serial-number lifecycle activity logs",
     actions: [{ value: "view", label: "View" }],
   },
   {
