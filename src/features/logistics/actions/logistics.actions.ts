@@ -287,6 +287,7 @@ export async function createTransferAction(input: unknown) {
       toBranchId: parsed.data.toBranchId,
       transferNo: nextNo("XFR"),
       statusCodeId,
+      createdById: session.user.id,
       ...(serialIds.length
         ? {
             lines: {

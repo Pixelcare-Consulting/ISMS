@@ -9,6 +9,7 @@ import {
   SERIAL_ACTIVITY_TYPES,
   type SerialActivityEvent,
   type SerialActivityType,
+  formatSerialActivityPerformedBy,
   formatSerialActivityTimestamp,
 } from "@/features/serial-activity/constants/serial-activity-display";
 import {
@@ -205,6 +206,7 @@ export function SerialActivityTable({
                   <TableHead>Model</TableHead>
                   <TableHead>Location</TableHead>
                   <TableHead>Reference</TableHead>
+                  <TableHead>Performed by</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -251,6 +253,9 @@ export function SerialActivityTable({
                         ) : null}
                         {!row.reference && !row.status && !row.amount ? "—" : null}
                       </div>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {formatSerialActivityPerformedBy(row.performedBy)}
                     </TableCell>
                   </TableRow>
                 ))}

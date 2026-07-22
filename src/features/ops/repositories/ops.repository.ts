@@ -104,7 +104,12 @@ export const opsRepository = {
 
   async createTransfer(
     tenantId: string,
-    data: { fromBranchId: string; toBranchId: string; notes?: string },
+    data: {
+      fromBranchId: string;
+      toBranchId: string;
+      notes?: string;
+      actorUserId?: string;
+    },
   ) {
     const statusCodeId = await reasonStatusService.requireCodeId(
       tenantId,
@@ -119,6 +124,7 @@ export const opsRepository = {
         transferNo: `XFR-${Date.now().toString(36).toUpperCase()}`,
         notes: data.notes,
         statusCodeId,
+        createdById: data.actorUserId,
       },
       include: {
         fromBranch: { select: { name: true } },

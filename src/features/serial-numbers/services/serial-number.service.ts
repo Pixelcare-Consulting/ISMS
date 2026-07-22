@@ -217,7 +217,10 @@ export const serialNumberService = {
     }
 
     try {
-      const row = await serialNumberRepository.create(ctx.tenantId, parsed.data);
+      const row = await serialNumberRepository.create(ctx.tenantId, {
+        ...parsed.data,
+        createdById: ctx.actorUserId,
+      });
       await auditService.log({
         tenantId: ctx.tenantId,
         userId: ctx.actorUserId,

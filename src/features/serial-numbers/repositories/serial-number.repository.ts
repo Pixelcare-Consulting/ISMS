@@ -169,7 +169,10 @@ export const serialNumberRepository = {
     });
   },
 
-  create(tenantId: string, data: { serialNo: string; modelId: string }) {
+  create(
+    tenantId: string,
+    data: { serialNo: string; modelId: string; createdById?: string },
+  ) {
     return prisma.serialNumber.create({ data: { tenantId, ...data } });
   },
 

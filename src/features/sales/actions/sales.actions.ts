@@ -144,6 +144,7 @@ export async function createSaleAction(input: unknown) {
           amount: parsed.data.amount,
           notes: parsed.data.notes,
           atrStatus: "open",
+          createdById: session.user.id,
         },
       });
 

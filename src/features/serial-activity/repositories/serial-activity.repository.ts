@@ -55,6 +55,16 @@ function modelLabel(model: { skuCode: string; name: string }): string {
   return `${model.skuCode} — ${model.name}`;
 }
 
+const userSelect = {
+  select: { name: true, email: true },
+} as const;
+
+function performedByLabel(
+  user: { name: string | null; email: string } | null,
+): { name: string | null; email: string } | null {
+  return user ? { name: user.name, email: user.email } : null;
+}
+
 /** Case-insensitive serial-number search fragment (or empty when no query). */
 function serialContains(q?: string) {
   return q ? { contains: q, mode: "insensitive" as const } : undefined;
@@ -74,7 +84,13 @@ async function registeredSource(
       where,
       orderBy: { createdAt: "desc" },
       take: window,
-      select: { id: true, serialNo: true, createdAt: true, model: modelSelect },
+      select: {
+        id: true,
+        serialNo: true,
+        createdAt: true,
+        model: modelSelect,
+        createdBy: userSelect,
+      },
     }),
     prisma.serialNumber.count({ where }),
   ]);
@@ -90,6 +106,7 @@ async function registeredSource(
       reference: null,
       status: null,
       amount: null,
+      performedBy: performedByLabel(r.createdBy),
     })),
   };
 }
@@ -114,6 +131,7 @@ async function statusSource(
         branch: { select: { name: true } },
         statusCode: { select: { name: true } },
         serialNumber: { select: { serialNo: true, model: modelSelect } },
+        updatedBy: userSelect,
       },
     }),
     prisma.branchInventory.count({ where }),
@@ -130,6 +148,7 @@ async function statusSource(
       reference: null,
       status: r.statusCode.name,
       amount: null,
+      performedBy: performedByLabel(r.updatedBy),
     })),
   };
 }
@@ -156,6 +175,7 @@ async function transferredSource(
             createdAt: true,
             fromBranch: { select: { name: true } },
             toBranch: { select: { name: true } },
+            createdBy: userSelect,
           },
         },
       },
@@ -174,6 +194,7 @@ async function transferredSource(
       reference: r.transfer.transferNo,
       status: null,
       amount: null,
+      performedBy: performedByLabel(r.transfer.createdBy),
     })),
   };
 }
@@ -200,6 +221,7 @@ async function soldSource(
         transactionNo: true,
         branch: { select: { name: true } },
         serialNumber: { select: { serialNo: true, model: modelSelect } },
+        createdBy: userSelect,
       },
     }),
     prisma.branchSalesTransaction.count({ where }),
@@ -219,6 +241,7 @@ async function soldSource(
               reference: r.transactionNo,
               status: null,
               amount: r.amount.toString(),
+              performedBy: performedByLabel(r.createdBy),
             },
           ]
         : [],
@@ -248,6 +271,7 @@ async function pulledOutSource(
             createdAt: true,
             branch: { select: { name: true } },
             warehouse: { select: { name: true } },
+            createdBy: userSelect,
           },
         },
       },
@@ -266,6 +290,7 @@ async function pulledOutSource(
       reference: r.pullout.pulloutNo,
       status: null,
       amount: null,
+      performedBy: performedByLabel(r.pullout.createdBy),
     })),
   };
 }
@@ -292,6 +317,7 @@ async function countedSource(
           select: { sessionNo: true, branch: { select: { name: true } } },
         },
         serialNumber: { select: { serialNo: true, model: modelSelect } },
+        countedBy: userSelect,
       },
     }),
     prisma.stockCountLine.count({ where }),
@@ -311,6 +337,7 @@ async function countedSource(
               reference: r.session.sessionNo,
               status: r.status,
               amount: null,
+              performedBy: performedByLabel(r.countedBy),
             },
           ]
         : [],

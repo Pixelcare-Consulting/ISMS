@@ -44,6 +44,15 @@ export interface SerialActivityEvent {
   status: string | null;
   /** Sale amount as a raw string, when the event is a sale. */
   amount: string | null;
+  /** User who performed the transaction, when captured. */
+  performedBy: { name: string | null; email: string } | null;
+}
+
+export function formatSerialActivityPerformedBy(
+  performedBy: SerialActivityEvent["performedBy"],
+): string {
+  if (!performedBy) return "—";
+  return performedBy.name ?? performedBy.email;
 }
 
 export function formatSerialActivityType(type: SerialActivityType): string {

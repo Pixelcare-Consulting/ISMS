@@ -233,6 +233,9 @@ model User {
   branchOrdersApproved      BranchOrder[]       @relation("BranchOrderApprovedBy")
   branchInventoriesUpdated  BranchInventory[]   @relation("BranchInventoryUpdatedBy")
   branchPulloutsCreated     BranchPullout[]     @relation("BranchPulloutCreatedBy")
+  serialNumbersCreated      SerialNumber[]      @relation("SerialNumberCreatedBy")
+  branchTransfersCreated    BranchTransfer[]    @relation("BranchTransferCreatedBy")
+  branchSalesTransactionsCreated BranchSalesTransaction[] @relation("BranchSalesTransactionCreatedBy")
   branchPulloutsScheduled   BranchPullout[]     @relation("BranchPulloutScheduledBy")
   returnRequestsSubmitted   BranchReturnRequest[] @relation("ReturnRequestedBy")
   returnRequestsEvaluated   BranchReturnRequest[] @relation("ReturnEvaluatedBy")
@@ -1212,11 +1215,13 @@ model SerialNumber {
   serialNo     String             @map("serial_no")
   modelId      String             @map("model_id")
   recordStatus LookupRecordStatus @default(active) @map("record_status")
+  createdById  String?            @map("created_by_id")
   createdAt    DateTime           @default(now()) @map("created_at")
   updatedAt    DateTime           @updatedAt @map("updated_at")
 
   tenant            Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   model             ProductModel              @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  createdBy         User?                     @relation("SerialNumberCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   branchInventories BranchInventory[]
   branchSales       BranchSalesTransaction[]
   transferLines     BranchTransferLine[]
@@ -1237,6 +1242,7 @@ model SerialNumber {
   @@unique([tenantId, serialNo])
   @@index([tenantId])
   @@index([modelId])
+  @@index([createdById])
   @@map("serial_numbers")
 }
 
@@ -1466,6 +1472,7 @@ model BranchTransfer {
   transferNo   String   @map("transfer_no")
   statusCodeId String   @map("status_code_id")
   notes        String?
+  createdById  String?  @map("created_by_id")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
@@ -1473,11 +1480,13 @@ model BranchTransfer {
   fromBranch Branch           @relation("TransferFromBranch", fields: [fromBranchId], references: [id], onDelete: Cascade)
   toBranch   Branch           @relation("TransferToBranch", fields: [toBranchId], references: [id], onDelete: Cascade)
   statusCode ReasonStatusCode @relation(fields: [statusCodeId], references: [id])
+  createdBy  User?            @relation("BranchTransferCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   lines      BranchTransferLine[]
   approvalLevels BranchTransferApprovalLevel[]
 
   @@unique([tenantId, transferNo])
   @@index([tenantId, statusCodeId])
+  @@index([createdById])
   @@map("branch_transfers")
 }
 
@@ -1566,12 +1575,14 @@ model BranchSalesTransaction {
   amount                     Decimal   @default(0) @db.Decimal(12, 2)
   atrStatus                  AtrStatus @default(open) @map("atr_status")
   notes                      String?
+  createdById                String?   @map("created_by_id")
   createdAt                  DateTime  @default(now()) @map("created_at")
   updatedAt                  DateTime  @updatedAt @map("updated_at")
 
   tenant                   Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branch                   Branch                     @relation(fields: [branchId], references: [id], onDelete: Cascade)
   serialNumber             SerialNumber?              @relation(fields: [serialNumberId], references: [id], onDelete: SetNull)
+  createdBy                User?                      @relation("BranchSalesTransactionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   packageType              PackageType?               @relation(fields: [packageTypeId], references: [id], onDelete: SetNull)
   paymentType              PaymentType?               @relation(fields: [paymentTypeId], references: [id], onDelete: SetNull)
   saleType                 SaleType?                  @relation(fields: [saleTypeId], references: [id], onDelete: SetNull)
@@ -1584,6 +1595,7 @@ model BranchSalesTransaction {
   @@unique([tenantId, transactionNo])
   @@index([tenantId, branchId])
   @@index([tenantId, atrStatus])
+  @@index([createdById])
   @@map("branch_sales_transactions")
 }
 
