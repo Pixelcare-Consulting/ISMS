@@ -142,13 +142,14 @@ export const appNavigation: NavEntry[] = [
       },
     ],
   },
-  {
-    type: "link",
-    href: "/sales",
-    label: "Sales",
-    icon: Store,
-    permission: "sales.create",
-  },
+  // Sales module hidden from the sidebar (kept for future re-enablement)
+  // {
+  //   type: "link",
+  //   href: "/sales",
+  //   label: "Sales",
+  //   icon: Store,
+  //   permission: "sales.create",
+  // },
   {
     type: "group",
     label: "Reports",
@@ -172,12 +173,13 @@ export const appNavigation: NavEntry[] = [
         icon: ArrowLeftRight,
         anyPermissions: ["reports.view", "logistics.manage"],
       },
-      {
-        href: "/reports/sales",
-        label: "Sales",
-        icon: Store,
-        anyPermissions: ["reports.view", "sales.create"],
-      },
+      // Sales report hidden (kept for future re-enablement)
+      // {
+      //   href: "/reports/sales",
+      //   label: "Sales",
+      //   icon: Store,
+      //   anyPermissions: ["reports.view", "sales.create"],
+      // },
       {
         href: "/reports/pcount",
         label: "P-Count",
