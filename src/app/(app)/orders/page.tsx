@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { ORDER_WORKFLOW_DESCRIPTION } from "@/features/orders/constants/order-workflow";
 import { listOrdersAction } from "@/features/orders/actions/order.actions";
-import { requireAuth, requirePermission } from "@/lib/auth/permissions";
+import { hasPermission, requireAuth, requirePermission } from "@/lib/auth/permissions";
 import { BRANCH_ORDERS_PAGE_TUTORIAL } from "@/content/page-tutorials/branch-orders";
 import { PageHeader } from "@/app/(app)/_components/page-header";
 import { OrdersTable } from "@/app/(app)/orders/_components/orders-table";
@@ -19,6 +19,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
   const page = Number(params.page) || 1;
   const result = await listOrdersAction({ page });
   const viewerRoleSlugs = session.user.roleSlugs ?? [];
+  const canEdit = hasPermission(session.user.permissions, "orders.create");
 
   return (
     <div className="space-y-6">
@@ -32,7 +33,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
           </Button>
         }
       />
-      <OrdersTable result={result} viewerRoleSlugs={viewerRoleSlugs} />
+      <OrdersTable result={result} viewerRoleSlugs={viewerRoleSlugs} canEdit={canEdit} />
     </div>
   );
 }

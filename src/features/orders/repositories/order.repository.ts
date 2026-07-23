@@ -96,6 +96,47 @@ export const orderRepository = {
     });
   },
 
+  /** Replace an order's lines and restart its approval chain from the top. */
+  async updateLines(
+    tenantId: string,
+    orderId: string,
+    data: {
+      orderType: BranchOrderType;
+      details: { modelId: string; quantity: number }[];
+    },
+  ) {
+    const approvalChain = getOrderApprovalChain(data.orderType);
+    const initialStatus = getInitialOrderStatus(data.orderType);
+
+    return prisma.$transaction(async (tx) => {
+      await tx.branchOrderDetail.deleteMany({ where: { orderId } });
+      await tx.branchOrderApprovalLevel.deleteMany({ where: { orderId } });
+
+      return tx.branchOrder.update({
+        where: { id: orderId, tenantId },
+        data: {
+          status: initialStatus,
+          approvedById: null,
+          processedAt: null,
+          spaRemarks: null,
+          deliveryDueDate: null,
+          details: { create: data.details },
+          approvalLevels: {
+            create: approvalChain.map((step) => ({
+              level: step.level,
+              roleSlug: step.roleSlug,
+            })),
+          },
+        },
+        include: {
+          branch: { select: { name: true } },
+          details: { include: { model: { select: { skuCode: true } } } },
+          approvalLevels: true,
+        },
+      });
+    });
+  },
+
   updateStatus(
     tenantId: string,
     id: string,

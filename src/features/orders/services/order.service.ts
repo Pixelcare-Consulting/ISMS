@@ -7,6 +7,7 @@ import {
   getApprovalLevelForStatus,
   getInitialOrderStatus,
   getRoleSlugForApproval,
+  isOrderEditable,
   nextStatusAfterApprove,
 } from "@/features/orders/constants/order-workflow";
 import { orderRepository } from "@/features/orders/repositories/order.repository";
@@ -221,6 +222,67 @@ export const orderService = {
     });
 
     return order;
+  },
+
+  async updateLines(
+    tenantId: string,
+    userId: string,
+    orderId: string,
+    opts: {
+      hasFullAccess: boolean;
+      details: { modelId: string; quantity: number }[];
+    },
+  ) {
+    const order = await orderRepository.findById(tenantId, orderId);
+    if (!order) throw new Error("Order not found");
+    if (!isOrderEditable(order.status)) {
+      throw new Error("This order can no longer be edited.");
+    }
+
+    if (!opts.hasFullAccess) {
+      // null = unrestricted (no AOR scope); an explicit list must include the branch.
+      const branchIds = await getUserBranchIds(tenantId, userId);
+      if (branchIds && !branchIds.includes(order.branchId)) {
+        throw new Error("You can only edit orders for your own branch.");
+      }
+    }
+
+    // Editing is only allowed within the branch's ordering window (same day-lock
+    // as creating). On a locked day this throws with the lock reason.
+    const [policy, scheduleCtx] = await Promise.all([
+      orderingPolicyService.getPolicy(tenantId),
+      branchRepository.findScheduleContext(tenantId, order.branchId),
+    ]);
+    assertOrderingAllowed({
+      action: "create",
+      policy,
+      branchName: scheduleCtx?.name,
+      schedule: scheduleCtx?.deliveryScheduleConfig
+        ? { orderDays: scheduleCtx.deliveryScheduleConfig.orderDays }
+        : null,
+    });
+
+    await validateOrderLines(tenantId, order.branchId, order.orderType, opts.details);
+
+    const updated = await orderRepository.updateLines(tenantId, orderId, {
+      orderType: order.orderType,
+      details: opts.details,
+    });
+
+    await auditService.log({
+      tenantId,
+      userId,
+      action: "order.updated",
+      entityType: "BranchOrder",
+      entityId: orderId,
+      metadata: {
+        ...orderAuditMetadata(updated),
+        from: order.status,
+        to: getInitialOrderStatus(order.orderType),
+      },
+    });
+
+    return updated;
   },
 
   async approve(

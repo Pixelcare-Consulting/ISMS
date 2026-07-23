@@ -107,6 +107,23 @@ export async function createOrderAction(input: {
   }
 }
 
+export async function updateOrderAction(
+  orderId: string,
+  input: { details: { modelId: string; quantity: number }[] },
+) {
+  const session = await requirePermission("orders.create");
+  try {
+    await orderService.updateLines(session.user.tenantId, session.user.id, orderId, {
+      hasFullAccess: hasFullOrderAccess(session.user.permissions),
+      details: input.details,
+    });
+    revalidatePath("/orders");
+    return { success: true as const };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to update order" };
+  }
+}
+
 export async function approveOrderAction(
   orderId: string,
   input?: {

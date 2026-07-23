@@ -18,9 +18,14 @@ import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
 import {
   canApproveOrder,
   getOrderReviewDenialReason,
+  isOrderEditable,
   isOrderPendingApproval,
 } from "@/features/orders/constants/order-workflow";
 import { OrderWorkflowDialog } from "@/app/(app)/orders/_components/order-workflow-dialog";
+import {
+  EditOrderDialog,
+  type EditableOrder,
+} from "@/app/(app)/orders/_components/edit-order-dialog";
 import { Button } from "@/components/ui/button";
 import { BRANCH_ORDER_STATUS_LABELS } from "@/features/orders/constants/order-status";
 import { OrderTypeBadge } from "@/features/orders/components/order-type-badge";
@@ -54,12 +59,13 @@ interface OrderRow {
   orderNumber: string;
   orderType: string;
   status: string;
+  branchId: string;
   branch: { name: string; deliverySchedule?: unknown };
   createdBy: { name: string | null; email: string };
   details: {
     id: string;
     quantity: number;
-    model: { skuCode: string };
+    model: { id: string; skuCode: string };
   }[];
 }
 
@@ -82,6 +88,7 @@ interface OrdersTableProps {
     totalPages: number;
   };
   viewerRoleSlugs: string[];
+  canEdit?: boolean;
 }
 
 const ORDER_APPROVE_FEED = [
@@ -111,10 +118,11 @@ function buildOrdersHref(page: number): string {
   return page > 1 ? `/orders?page=${page}` : "/orders";
 }
 
-export function OrdersTable({ result, viewerRoleSlugs }: OrdersTableProps) {
+export function OrdersTable({ result, viewerRoleSlugs, canEdit = false }: OrdersTableProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [workflowOrder, setWorkflowOrder] = useState<OrderRow | null>(null);
+  const [editingOrder, setEditingOrder] = useState<EditableOrder | null>(null);
   const [pending, startTransition] = useTransition();
   const [processingAction, setProcessingAction] = useState<"approve" | "reject" | null>(
     null,
@@ -253,13 +261,37 @@ export function OrdersTable({ result, viewerRoleSlugs }: OrdersTableProps) {
                   {o.details.map((d) => `${d.model.skuCode}×${d.quantity}`).join(", ")}
                 </TableCell>
                 <TableCell>
-                  {isOrderPendingApproval(o.status as BranchOrderStatus) ? (
-                    <OrderReviewButton
-                      order={o}
-                      viewerRoleSlugs={viewerRoleSlugs}
-                      onReview={() => setWorkflowOrder(o)}
-                    />
-                  ) : null}
+                  <div className="flex justify-end gap-2">
+                    {canEdit && isOrderEditable(o.status as BranchOrderStatus) ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() =>
+                          setEditingOrder({
+                            id: o.id,
+                            orderNumber: o.orderNumber,
+                            branchId: o.branchId,
+                            branchName: o.branch.name,
+                            orderType: o.orderType as EditableOrder["orderType"],
+                            lines: o.details.map((d) => ({
+                              modelId: d.model.id,
+                              skuCode: d.model.skuCode,
+                              quantity: d.quantity,
+                            })),
+                          })
+                        }
+                      >
+                        Edit
+                      </Button>
+                    ) : null}
+                    {isOrderPendingApproval(o.status as BranchOrderStatus) ? (
+                      <OrderReviewButton
+                        order={o}
+                        viewerRoleSlugs={viewerRoleSlugs}
+                        onReview={() => setWorkflowOrder(o)}
+                      />
+                    ) : null}
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
@@ -296,6 +328,9 @@ export function OrdersTable({ result, viewerRoleSlugs }: OrdersTableProps) {
       ) : null}
       {showCreate ? (
         <CreateOrderDialog onClose={() => setShowCreate(false)} />
+      ) : null}
+      {editingOrder ? (
+        <EditOrderDialog order={editingOrder} onClose={() => setEditingOrder(null)} />
       ) : null}
       <LoadingModal
         open={pending && processingAction !== null}
