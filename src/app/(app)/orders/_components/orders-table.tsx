@@ -409,12 +409,14 @@ function CreateOrderDialog({ onClose }: { onClose: () => void }) {
   }, [dealerId, loaded]);
 
   useEffect(() => {
-    if (!branchId) {
-      setWindowBlock(null);
-      return;
-    }
     let cancelled = false;
-    void checkOrderWindowAction(branchId).then((res) => {
+    const branch = branchId;
+    void Promise.resolve().then(async () => {
+      if (!branch) {
+        if (!cancelled) setWindowBlock(null);
+        return;
+      }
+      const res = await checkOrderWindowAction(branch);
       if (!cancelled) setWindowBlock(res.blocked ? res.reason : null);
     });
     return () => {

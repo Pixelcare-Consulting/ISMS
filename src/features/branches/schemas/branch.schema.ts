@@ -11,8 +11,7 @@ export const DELIVERY_FREQUENCIES = [
 const weekday = z.number().int().min(0).max(6);
 
 export const branchScheduleSchema = z.object({
-  fCode: z.string().max(16).optional().nullable(),
-  frequency: z.enum(DELIVERY_FREQUENCIES),
+  frequencyCodeId: z.string().min(1, "Select a frequency code"),
   deliveryDays: z.array(weekday).min(1, "Select at least one delivery day"),
   orderDays: z.array(weekday).min(1, "Select at least one ordering day"),
   notes: z.string().max(500).optional().nullable(),

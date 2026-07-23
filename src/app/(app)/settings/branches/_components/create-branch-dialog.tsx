@@ -277,6 +277,7 @@ export function CreateBranchDialog({ onCreated }: CreateBranchDialogProps) {
                 <BranchScheduleFields
                   value={schedule}
                   onChange={setSchedule}
+                  frequencyCodes={options.frequencyCodes}
                   disabled={pending}
                 />
               </>

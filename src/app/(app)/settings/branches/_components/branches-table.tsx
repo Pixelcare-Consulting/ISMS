@@ -54,8 +54,7 @@ interface BranchRow {
   dealer?: { name: string } | null;
   alternateWarehouses?: { alternateBranchId: string }[];
   deliveryScheduleConfig?: {
-    fCode: string | null;
-    frequency: string;
+    frequencyCodeId: string;
     deliveryDays: number[];
     orderDays: number[];
     notes: string | null;

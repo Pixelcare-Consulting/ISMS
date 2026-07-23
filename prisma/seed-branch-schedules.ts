@@ -1,8 +1,25 @@
 import type { PrismaClient, DeliveryFrequency } from "@prisma/client";
 
 /**
+ * Reusable delivery-frequency codes (F-codes). These are configurable in
+ * Settings → Ordering policy; seeded here so branches have codes to pick from.
+ */
+const FREQUENCY_CODES: {
+  code: string;
+  frequency: DeliveryFrequency;
+  description: string;
+}[] = [
+  { code: "F1", frequency: "monthly", description: "Once a month delivery" },
+  { code: "F2", frequency: "biweekly", description: "Once every two weeks" },
+  { code: "F3", frequency: "triweekly", description: "Once every three weeks" },
+  { code: "F4", frequency: "weekly", description: "Once a week delivery" },
+  { code: "F8", frequency: "twice_weekly", description: "Twice a week delivery" },
+];
+
+/**
  * Per-branch delivery cadence + ordering windows, transcribed from the client's
- * schedule notes. Weekdays are 0=Sunday … 6=Saturday.
+ * schedule notes. Weekdays are 0=Sunday … 6=Saturday. `fCode` references one of
+ * the FREQUENCY_CODES above.
  *
  * Branches are matched by name (case-insensitive) within the tenant; any branch
  * that does not yet exist is skipped and logged. Re-running is safe (upsert).
@@ -11,7 +28,6 @@ interface ScheduleSpec {
   /** Name fragment used to locate the branch (case-insensitive contains). */
   match: string;
   fCode: string;
-  frequency: DeliveryFrequency;
   deliveryDays: number[];
   orderDays: number[];
   notes: string;
@@ -22,7 +38,6 @@ const SCHEDULE_SPECS: ScheduleSpec[] = [
   {
     match: "Morato",
     fCode: "F4",
-    frequency: "weekly",
     deliveryDays: [3], // Wednesday
     orderDays: [4, 5, 6, 0, 1], // Thursday → Monday
     notes: "Once a week delivery. Ordering locked Tuesday and Wednesday.",
@@ -31,7 +46,6 @@ const SCHEDULE_SPECS: ScheduleSpec[] = [
   {
     match: "Taguig",
     fCode: "F3",
-    frequency: "triweekly",
     deliveryDays: [5], // Friday
     orderDays: [6, 0, 1, 2, 3], // Saturday → Wednesday
     notes:
@@ -41,7 +55,6 @@ const SCHEDULE_SPECS: ScheduleSpec[] = [
   {
     match: "Recto",
     fCode: "F2",
-    frequency: "biweekly",
     deliveryDays: [1], // Monday
     orderDays: [2, 3, 4, 5], // Tuesday → Friday
     notes: "Once every two weeks. Ordering locked Saturday, Sunday, and Monday.",
@@ -50,7 +63,6 @@ const SCHEDULE_SPECS: ScheduleSpec[] = [
   {
     match: "Pasong Tamo",
     fCode: "F1",
-    frequency: "monthly",
     deliveryDays: [4], // Thursday
     orderDays: [5, 6, 0, 1, 2], // Friday → Tuesday
     notes: "Once a month delivery. Ordering locked Wednesday and Thursday.",
@@ -60,7 +72,6 @@ const SCHEDULE_SPECS: ScheduleSpec[] = [
     // Corrected F8 example: Tuesday & Friday deliveries.
     match: "Branch A",
     fCode: "F8",
-    frequency: "twice_weekly",
     deliveryDays: [2, 5], // Tuesday & Friday
     orderDays: [0, 3, 4], // Sunday, Wednesday, Thursday
     notes:
@@ -82,6 +93,18 @@ const PLACEHOLDER_BRANCHES: { sapCode: string; name: string }[] = [
 ];
 
 export async function seedBranchSchedules(prisma: PrismaClient, tenantId: string) {
+  // 1. Frequency codes (reusable lookup) — build a code → id map.
+  const codeIdByCode = new Map<string, string>();
+  for (const fc of FREQUENCY_CODES) {
+    const record = await prisma.frequencyCode.upsert({
+      where: { tenantId_code: { tenantId, code: fc.code } },
+      create: { tenantId, code: fc.code, frequency: fc.frequency, description: fc.description },
+      update: { frequency: fc.frequency, description: fc.description },
+    });
+    codeIdByCode.set(fc.code, record.id);
+  }
+
+  // 2. Placeholder branches for schedules not yet mapped to a real branch.
   for (const placeholder of PLACEHOLDER_BRANCHES) {
     await prisma.branch.upsert({
       where: { tenantId_sapCode: { tenantId, sapCode: placeholder.sapCode } },
@@ -100,6 +123,7 @@ export async function seedBranchSchedules(prisma: PrismaClient, tenantId: string
     select: { id: true, name: true, sapCode: true },
   });
 
+  // 3. Per-branch schedules.
   let applied = 0;
   const skipped: string[] = [];
 
@@ -109,8 +133,9 @@ export async function seedBranchSchedules(prisma: PrismaClient, tenantId: string
       (b) =>
         b.name.toLowerCase().includes(needle) || b.sapCode.toLowerCase().includes(needle),
     );
+    const frequencyCodeId = codeIdByCode.get(spec.fCode);
 
-    if (!branch) {
+    if (!branch || !frequencyCodeId) {
       skipped.push(spec.match);
       continue;
     }
@@ -120,16 +145,14 @@ export async function seedBranchSchedules(prisma: PrismaClient, tenantId: string
       create: {
         tenantId,
         branchId: branch.id,
-        fCode: spec.fCode,
-        frequency: spec.frequency,
+        frequencyCodeId,
         deliveryDays: spec.deliveryDays,
         orderDays: spec.orderDays,
         notes: spec.notes,
         spRemarks: spec.spRemarks,
       },
       update: {
-        fCode: spec.fCode,
-        frequency: spec.frequency,
+        frequencyCodeId,
         deliveryDays: spec.deliveryDays,
         orderDays: spec.orderDays,
         notes: spec.notes,
@@ -139,7 +162,7 @@ export async function seedBranchSchedules(prisma: PrismaClient, tenantId: string
     applied += 1;
   }
 
-  // Ensure the tenant has an ordering policy row (Sunday locked by default).
+  // 4. Ensure the tenant has an ordering policy row (Sunday locked by default).
   await prisma.orderingPolicy.upsert({
     where: { tenantId },
     create: { tenantId, globalLockedWeekdays: [0] },
@@ -147,7 +170,7 @@ export async function seedBranchSchedules(prisma: PrismaClient, tenantId: string
   });
 
   console.log(
-    `Branch schedules seed: ${applied} applied` +
+    `Branch schedules seed: ${FREQUENCY_CODES.length} frequency codes, ${applied} schedules applied` +
       (skipped.length ? `, skipped (branch not found): ${skipped.join(", ")}` : ""),
   );
 }

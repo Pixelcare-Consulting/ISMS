@@ -1,9 +1,8 @@
 import { prisma } from "@/lib/database/client";
-import type { BranchStatus, DeliveryFrequency } from "@/lib/database/generated/prisma/client";
+import type { BranchStatus } from "@/lib/database/generated/prisma/client";
 
 export interface BranchScheduleInput {
-  fCode?: string | null;
-  frequency: DeliveryFrequency;
+  frequencyCodeId: string;
   deliveryDays: number[];
   orderDays: number[];
   notes?: string | null;
@@ -19,7 +18,7 @@ export const branchRepository = {
         id: true,
         name: true,
         deliveryScheduleConfig: {
-          select: { orderDays: true, deliveryDays: true, frequency: true, fCode: true },
+          select: { orderDays: true, deliveryDays: true },
         },
       },
     });
@@ -122,8 +121,7 @@ export const branchRepository = {
           ? {
               create: {
                 tenantId,
-                fCode: data.schedule.fCode ?? null,
-                frequency: data.schedule.frequency,
+                frequencyCodeId: data.schedule.frequencyCodeId,
                 deliveryDays: data.schedule.deliveryDays,
                 orderDays: data.schedule.orderDays,
                 notes: data.schedule.notes ?? null,
@@ -176,16 +174,14 @@ export const branchRepository = {
           create: {
             tenantId,
             branchId: id,
-            fCode: data.schedule.fCode ?? null,
-            frequency: data.schedule.frequency,
+            frequencyCodeId: data.schedule.frequencyCodeId,
             deliveryDays: data.schedule.deliveryDays,
             orderDays: data.schedule.orderDays,
             notes: data.schedule.notes ?? null,
             spRemarks: data.schedule.spRemarks ?? null,
           },
           update: {
-            fCode: data.schedule.fCode ?? null,
-            frequency: data.schedule.frequency,
+            frequencyCodeId: data.schedule.frequencyCodeId,
             deliveryDays: data.schedule.deliveryDays,
             orderDays: data.schedule.orderDays,
             notes: data.schedule.notes ?? null,
@@ -270,14 +266,22 @@ export const branchRepository = {
         select: { id: true, name: true, sapCode: true },
         orderBy: { name: "asc" },
       }),
-    ]).then(([areas, branchAreas, dealers, warehouses, regions, provinces, branches]) => ({
-      areas,
-      branchAreas,
-      dealers,
-      warehouses,
-      regions,
-      provinces,
-      branches,
-    }));
+      prisma.frequencyCode.findMany({
+        where: { tenantId },
+        select: { id: true, code: true, frequency: true, description: true },
+        orderBy: { code: "asc" },
+      }),
+    ]).then(
+      ([areas, branchAreas, dealers, warehouses, regions, provinces, branches, frequencyCodes]) => ({
+        areas,
+        branchAreas,
+        dealers,
+        warehouses,
+        regions,
+        provinces,
+        branches,
+        frequencyCodes,
+      }),
+    );
   },
 };

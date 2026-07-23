@@ -25,13 +25,11 @@ import {
   buildSchedulePayload,
   type BranchScheduleState,
 } from "@/app/(app)/settings/branches/_components/branch-schedule-fields";
-import { DELIVERY_FREQUENCIES } from "@/features/branches/schemas/branch.schema";
 
 type FormOptions = Awaited<ReturnType<typeof listBranchFormOptionsAction>>;
 
 interface BranchScheduleConfig {
-  fCode: string | null;
-  frequency: string;
+  frequencyCodeId: string;
   deliveryDays: number[];
   orderDays: number[];
   notes: string | null;
@@ -39,13 +37,9 @@ interface BranchScheduleConfig {
 
 function scheduleStateFrom(config?: BranchScheduleConfig | null): BranchScheduleState {
   if (!config) return EMPTY_SCHEDULE;
-  const frequency = (DELIVERY_FREQUENCIES as readonly string[]).includes(config.frequency)
-    ? (config.frequency as BranchScheduleState["frequency"])
-    : "weekly";
   return {
     enabled: true,
-    fCode: config.fCode ?? "",
-    frequency,
+    frequencyCodeId: config.frequencyCodeId,
     deliveryDays: config.deliveryDays ?? [],
     orderDays: config.orderDays ?? [],
     notes: config.notes ?? "",
@@ -337,7 +331,12 @@ function EditBranchForm({
             hint="Other active branches that can fulfill for this location."
             disabled={pending}
           />
-          <BranchScheduleFields value={schedule} onChange={setSchedule} disabled={pending} />
+          <BranchScheduleFields
+            value={schedule}
+            onChange={setSchedule}
+            frequencyCodes={options.frequencyCodes}
+            disabled={pending}
+          />
         </>
       ) : (
         <p className="text-sm text-muted-foreground">Loading options…</p>

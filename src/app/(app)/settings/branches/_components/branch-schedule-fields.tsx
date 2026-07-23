@@ -1,18 +1,26 @@
 "use client";
 
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { WeekdayPicker } from "@/components/ui/weekday-picker";
 import { formatWeekdayList, lockedOrderDays } from "@/features/orders/utils/order-window";
-import { DELIVERY_FREQUENCIES } from "@/features/branches/schemas/branch.schema";
+import {
+  FREQUENCY_LABELS,
+  type DeliveryFrequencyValue,
+} from "@/features/frequency-codes/constants";
+
+export interface FrequencyCodeOption {
+  id: string;
+  code: string;
+  frequency: string;
+  description: string;
+}
 
 export interface BranchScheduleState {
   enabled: boolean;
-  fCode: string;
-  frequency: (typeof DELIVERY_FREQUENCIES)[number];
+  frequencyCodeId: string;
   deliveryDays: number[];
   orderDays: number[];
   notes: string;
@@ -20,27 +28,17 @@ export interface BranchScheduleState {
 
 export const EMPTY_SCHEDULE: BranchScheduleState = {
   enabled: false,
-  fCode: "",
-  frequency: "weekly",
+  frequencyCodeId: "",
   deliveryDays: [],
   orderDays: [],
   notes: "",
 };
 
-const FREQUENCY_OPTIONS = [
-  { id: "weekly", label: "Weekly — once a week (F4)" },
-  { id: "biweekly", label: "Every 2 weeks (F2)" },
-  { id: "triweekly", label: "Every 3 weeks (F3)" },
-  { id: "monthly", label: "Monthly — once a month (F1)" },
-  { id: "twice_weekly", label: "Twice a week (F8)" },
-];
-
 /** Build the server payload, or `null` when the schedule is disabled. */
 export function buildSchedulePayload(s: BranchScheduleState) {
   if (!s.enabled) return null;
   return {
-    fCode: s.fCode.trim() || null,
-    frequency: s.frequency,
+    frequencyCodeId: s.frequencyCodeId,
     deliveryDays: s.deliveryDays,
     orderDays: s.orderDays,
     notes: s.notes.trim() || null,
@@ -50,15 +48,22 @@ export function buildSchedulePayload(s: BranchScheduleState) {
 interface BranchScheduleFieldsProps {
   value: BranchScheduleState;
   onChange: (next: BranchScheduleState) => void;
+  frequencyCodes: FrequencyCodeOption[];
   disabled?: boolean;
 }
 
-export function BranchScheduleFields({ value, onChange, disabled }: BranchScheduleFieldsProps) {
+export function BranchScheduleFields({
+  value,
+  onChange,
+  frequencyCodes,
+  disabled,
+}: BranchScheduleFieldsProps) {
   function patch(next: Partial<BranchScheduleState>) {
     onChange({ ...value, ...next });
   }
 
   const locked = value.orderDays.length > 0 ? lockedOrderDays(value.orderDays) : [];
+  const selectedCode = frequencyCodes.find((c) => c.id === value.frequencyCodeId);
 
   return (
     <div className="space-y-3 rounded-lg border p-3">
@@ -73,26 +78,34 @@ export function BranchScheduleFields({ value, onChange, disabled }: BranchSchedu
 
       {value.enabled ? (
         <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-2">
-            <SearchableSelect
-              label="Frequency"
-              options={FREQUENCY_OPTIONS}
-              value={value.frequency}
-              onChange={(v) => patch({ frequency: v as BranchScheduleState["frequency"] })}
-              searchPlaceholder="Search frequency…"
-              disabled={disabled}
-            />
-            <div className="space-y-2">
-              <Label htmlFor="schedule-fcode">F-code</Label>
-              <Input
-                id="schedule-fcode"
-                value={value.fCode}
-                onChange={(e) => patch({ fCode: e.target.value })}
-                placeholder="e.g. F4"
+          {frequencyCodes.length === 0 ? (
+            <p className="rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+              No frequency codes configured yet. Add them in Settings → Ordering policy first.
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              <SearchableSelect
+                label="Frequency code"
+                options={frequencyCodes.map((c) => ({
+                  id: c.id,
+                  label: c.code,
+                  description: c.description,
+                }))}
+                value={value.frequencyCodeId}
+                onChange={(v) => patch({ frequencyCodeId: v })}
+                placeholder="Select a code…"
+                searchPlaceholder="Search codes…"
                 disabled={disabled}
               />
+              {selectedCode ? (
+                <p className="text-xs text-muted-foreground">
+                  {FREQUENCY_LABELS[selectedCode.frequency as DeliveryFrequencyValue] ??
+                    selectedCode.frequency}{" "}
+                  — {selectedCode.description}
+                </p>
+              ) : null}
             </div>
-          </div>
+          )}
 
           <div className="space-y-1.5">
             <Label>Delivery day(s)</Label>
