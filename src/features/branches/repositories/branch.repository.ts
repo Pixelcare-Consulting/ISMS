@@ -6,7 +6,6 @@ export interface BranchScheduleInput {
   deliveryDays: number[];
   orderDays: number[];
   notes?: string | null;
-  spRemarks?: string | null;
 }
 
 export const branchRepository = {
@@ -18,7 +17,7 @@ export const branchRepository = {
         id: true,
         name: true,
         deliveryScheduleConfig: {
-          select: { orderDays: true, deliveryDays: true },
+          select: { orderDays: true },
         },
       },
     });
@@ -125,7 +124,6 @@ export const branchRepository = {
                 deliveryDays: data.schedule.deliveryDays,
                 orderDays: data.schedule.orderDays,
                 notes: data.schedule.notes ?? null,
-                spRemarks: data.schedule.spRemarks ?? null,
               },
             }
           : undefined,
@@ -178,14 +176,12 @@ export const branchRepository = {
             deliveryDays: data.schedule.deliveryDays,
             orderDays: data.schedule.orderDays,
             notes: data.schedule.notes ?? null,
-            spRemarks: data.schedule.spRemarks ?? null,
           },
           update: {
             frequencyCodeId: data.schedule.frequencyCodeId,
             deliveryDays: data.schedule.deliveryDays,
             orderDays: data.schedule.orderDays,
             notes: data.schedule.notes ?? null,
-            spRemarks: data.schedule.spRemarks ?? null,
           },
         });
       }

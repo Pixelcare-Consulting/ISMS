@@ -136,7 +136,7 @@ export function BranchScheduleFields({
               id="schedule-notes"
               value={value.notes}
               onChange={(e) => patch({ notes: e.target.value })}
-              placeholder="Optional context or client remarks."
+              placeholder="Optional context or remarks."
               disabled={disabled}
               rows={2}
             />

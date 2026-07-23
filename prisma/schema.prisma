@@ -29,7 +29,7 @@ enum BranchOrderType {
   special
 }
 
-/// Delivery cadence for a branch (mirrors client "F-code" schedules).
+/// Delivery cadence for a branch (F-code schedules).
 enum DeliveryFrequency {
   weekly        // F4 — once a week
   biweekly      // F2 — once every two weeks
@@ -1136,7 +1136,6 @@ model BranchDeliverySchedule {
   /// Weekday(s) customers may place orders. Ordering is locked on the rest.
   orderDays       Int[]    @map("order_days")
   notes           String?
-  spRemarks       String?  @map("sp_remarks")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 

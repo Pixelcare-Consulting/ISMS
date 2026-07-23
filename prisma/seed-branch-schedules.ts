@@ -17,9 +17,8 @@ const FREQUENCY_CODES: {
 ];
 
 /**
- * Per-branch delivery cadence + ordering windows, transcribed from the client's
- * schedule notes. Weekdays are 0=Sunday … 6=Saturday. `fCode` references one of
- * the FREQUENCY_CODES above.
+ * Sample per-branch delivery cadence + ordering windows. Weekdays are
+ * 0=Sunday … 6=Saturday. `fCode` references one of the FREQUENCY_CODES above.
  *
  * Branches are matched by name (case-insensitive) within the tenant; any branch
  * that does not yet exist is skipped and logged. Re-running is safe (upsert).
@@ -31,7 +30,6 @@ interface ScheduleSpec {
   deliveryDays: number[];
   orderDays: number[];
   notes: string;
-  spRemarks: string;
 }
 
 const SCHEDULE_SPECS: ScheduleSpec[] = [
@@ -41,16 +39,13 @@ const SCHEDULE_SPECS: ScheduleSpec[] = [
     deliveryDays: [3], // Wednesday
     orderDays: [4, 5, 6, 0, 1], // Thursday → Monday
     notes: "Once a week delivery. Ordering locked Tuesday and Wednesday.",
-    spRemarks: "ALL OK.",
   },
   {
     match: "Taguig",
     fCode: "F3",
     deliveryDays: [5], // Friday
     orderDays: [6, 0, 1, 2, 3], // Saturday → Wednesday
-    notes:
-      "Once every three weeks (3x a month; no fixed week number for Luzon). Ordering locked Thursday and Friday.",
-    spRemarks: "With correction.",
+    notes: "Once every three weeks. Ordering locked Thursday and Friday.",
   },
   {
     match: "Recto",
@@ -58,7 +53,6 @@ const SCHEDULE_SPECS: ScheduleSpec[] = [
     deliveryDays: [1], // Monday
     orderDays: [2, 3, 4, 5], // Tuesday → Friday
     notes: "Once every two weeks. Ordering locked Saturday, Sunday, and Monday.",
-    spRemarks: "With correction.",
   },
   {
     match: "Pasong Tamo",
@@ -66,25 +60,20 @@ const SCHEDULE_SPECS: ScheduleSpec[] = [
     deliveryDays: [4], // Thursday
     orderDays: [5, 6, 0, 1, 2], // Friday → Tuesday
     notes: "Once a month delivery. Ordering locked Wednesday and Thursday.",
-    spRemarks: "ALL OK.",
   },
   {
-    // Corrected F8 example: Tuesday & Friday deliveries.
     match: "Branch A",
     fCode: "F8",
     deliveryDays: [2, 5], // Tuesday & Friday
     orderDays: [0, 3, 4], // Sunday, Wednesday, Thursday
-    notes:
-      "Twice a week delivery (Tue & Fri). Per client correction: Tuesday deliveries order Fri–Sat (lock Mon); Friday deliveries order Tue–Wed (lock Thu). Single ordering window is enforced here.",
-    spRemarks:
-      "No actual F8 schedule with Tuesday & Saturday exists; use Tuesday & Friday with one-day locks to avoid conflicts.",
+    notes: "Twice a week delivery. Ordering locked on the remaining days.",
   },
 ];
 
 /**
- * Branches referenced in the client's schedule notes that have not yet been
- * onboarded with a real SAP code. sapCode values here are placeholders
- * (WTG/WPT/WBA-0xx) and must be replaced once the real codes are known.
+ * Sample branches that have not yet been onboarded with a real SAP code.
+ * sapCode values here are placeholders (WTG/WPT/WBA-0xx) and must be replaced
+ * once the real codes are known.
  */
 const PLACEHOLDER_BRANCHES: { sapCode: string; name: string }[] = [
   { sapCode: "WTG-005", name: "Taguig" },
@@ -149,14 +138,12 @@ export async function seedBranchSchedules(prisma: PrismaClient, tenantId: string
         deliveryDays: spec.deliveryDays,
         orderDays: spec.orderDays,
         notes: spec.notes,
-        spRemarks: spec.spRemarks,
       },
       update: {
         frequencyCodeId,
         deliveryDays: spec.deliveryDays,
         orderDays: spec.orderDays,
         notes: spec.notes,
-        spRemarks: spec.spRemarks,
       },
     });
     applied += 1;

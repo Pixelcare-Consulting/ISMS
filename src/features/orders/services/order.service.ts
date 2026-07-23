@@ -168,10 +168,7 @@ export const orderService = {
       policy,
       branchName: scheduleCtx?.name,
       schedule: scheduleCtx?.deliveryScheduleConfig
-        ? {
-            orderDays: scheduleCtx.deliveryScheduleConfig.orderDays,
-            deliveryDays: scheduleCtx.deliveryScheduleConfig.deliveryDays,
-          }
+        ? { orderDays: scheduleCtx.deliveryScheduleConfig.orderDays }
         : null,
     });
 

@@ -15,7 +15,6 @@ export const branchScheduleSchema = z.object({
   deliveryDays: z.array(weekday).min(1, "Select at least one delivery day"),
   orderDays: z.array(weekday).min(1, "Select at least one ordering day"),
   notes: z.string().max(500).optional().nullable(),
-  spRemarks: z.string().max(500).optional().nullable(),
 });
 
 export type BranchScheduleValues = z.infer<typeof branchScheduleSchema>;

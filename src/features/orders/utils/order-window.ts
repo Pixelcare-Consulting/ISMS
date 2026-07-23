@@ -39,7 +39,6 @@ export function lockedOrderDays(orderDays: number[]): number[] {
 
 export interface BranchOrderingSchedule {
   orderDays: number[];
-  deliveryDays?: number[];
 }
 
 export interface OrderingPolicyConfig {

@@ -85,10 +85,7 @@ export async function checkOrderWindowAction(branchId: string) {
     policy,
     branchName: ctx?.name,
     schedule: ctx?.deliveryScheduleConfig
-      ? {
-          orderDays: ctx.deliveryScheduleConfig.orderDays,
-          deliveryDays: ctx.deliveryScheduleConfig.deliveryDays,
-        }
+      ? { orderDays: ctx.deliveryScheduleConfig.orderDays }
       : null,
   });
   return { blocked: reason !== null, reason };
