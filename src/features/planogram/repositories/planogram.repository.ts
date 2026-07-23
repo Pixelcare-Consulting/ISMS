@@ -403,6 +403,66 @@ export const planogramRepository = {
     });
   },
 
+  listAllowedModelsForBranch(tenantId: string, branchId: string) {
+    return prisma.branchAllowedModel.findMany({
+      where: { tenantId, branchId },
+      include: {
+        model: {
+          select: { id: true, skuCode: true, name: true, status: true },
+        },
+      },
+      orderBy: { model: { skuCode: "asc" } },
+    });
+  },
+
+  async listAllowedModelIds(tenantId: string, branchId: string): Promise<Set<string>> {
+    const rows = await prisma.branchAllowedModel.findMany({
+      where: { tenantId, branchId },
+      select: { modelId: true },
+    });
+    return new Set(rows.map((r) => r.modelId));
+  },
+
+  isModelAllowedForBranch(tenantId: string, branchId: string, modelId: string) {
+    return prisma.branchAllowedModel.findFirst({
+      where: { tenantId, branchId, modelId },
+      select: { id: true },
+    });
+  },
+
+  addAllowedModel(tenantId: string, branchId: string, modelId: string) {
+    return prisma.branchAllowedModel.upsert({
+      where: { branchId_modelId: { branchId, modelId } },
+      create: { tenantId, branchId, modelId },
+      update: {},
+    });
+  },
+
+  removeAllowedModel(tenantId: string, branchId: string, modelId: string) {
+    return prisma.branchAllowedModel.deleteMany({
+      where: { tenantId, branchId, modelId },
+    });
+  },
+
+  bulkSetAllowedModels(tenantId: string, branchId: string, modelIds: string[]) {
+    return prisma.$transaction([
+      prisma.branchAllowedModel.deleteMany({
+        where: {
+          tenantId,
+          branchId,
+          modelId: modelIds.length > 0 ? { notIn: modelIds } : undefined,
+        },
+      }),
+      ...modelIds.map((modelId) =>
+        prisma.branchAllowedModel.upsert({
+          where: { branchId_modelId: { branchId, modelId } },
+          create: { tenantId, branchId, modelId },
+          update: {},
+        }),
+      ),
+    ]);
+  },
+
   listBelowCapacityAndMilBreaches(
     tenantId: string,
     branchIds: string[] | null,

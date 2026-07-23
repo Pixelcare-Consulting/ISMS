@@ -130,6 +130,15 @@ export const planogramService = {
     if (!model) throw new Error(`Model not found: ${input.modelId} (tenant: ${input.tenantId})`);
     if (model.status !== "active") throw new Error("Only active SKUs can be added to a planogram");
 
+    const allowed = await planogramRepository.isModelAllowedForBranch(
+      input.tenantId,
+      input.branchId,
+      input.modelId,
+    );
+    if (!allowed) {
+      throw new Error("Model is not on this branch's allowed-models list");
+    }
+
     const existing = await planogramRepository.findPlanogramEntry(
       input.tenantId,
       input.branchId,
@@ -257,12 +266,155 @@ export const planogramService = {
     });
   },
 
-  listActiveModelsForAdd(tenantId: string, branchId: string) {
-    return masterDataRepository.listModels(tenantId).then(async (models: { id: string; skuCode: string; name: string; status: string }[]) => {
-      const entries = await planogramRepository.listByBranch(tenantId, branchId) as { id: string; branchId: string; modelId: string; maxQty: number; model: { id: string; skuCode: string; name: string; status: string; brand: { name: string } | null } }[] | null;
-      if (!entries) return [];
-      const onPlanogram = new Set(entries.map((e: { modelId: string }) => e.modelId));
-      return models.filter((m: { id: string; status: string; skuCode: string; name: string }) => m.status === "active" && !onPlanogram.has(m.id));
+  async listActiveModelsForAdd(tenantId: string, branchId: string) {
+    const [models, entries, allowedModelIds] = await Promise.all([
+      masterDataRepository.listModels(tenantId) as Promise<
+        { id: string; skuCode: string; name: string; status: string }[]
+      >,
+      planogramRepository.listByBranch(tenantId, branchId) as Promise<
+        { modelId: string }[]
+      >,
+      planogramRepository.listAllowedModelIds(tenantId, branchId),
+    ]);
+
+    const onPlanogram = new Set(entries.map((e) => e.modelId));
+    return models
+      .filter(
+        (m) => m.status === "active" && !onPlanogram.has(m.id) && allowedModelIds.has(m.id),
+      )
+      .map((m) => ({ id: m.id, skuCode: m.skuCode, name: m.name, status: m.status }));
+  },
+
+  async listModelCandidatesForAllowedList(tenantId: string, branchId: string) {
+    const [models, allowedModelIds] = await Promise.all([
+      masterDataRepository.listModels(tenantId) as Promise<
+        { id: string; skuCode: string; name: string; status: string }[]
+      >,
+      planogramRepository.listAllowedModelIds(tenantId, branchId),
+    ]);
+
+    return models
+      .filter((m) => m.status === "active" && !allowedModelIds.has(m.id))
+      .map((m) => ({ id: m.id, skuCode: m.skuCode, name: m.name, status: m.status }));
+  },
+
+  async listAllowedModelsForBranch(tenantId: string, branchId: string) {
+    const rows = await planogramRepository.listAllowedModelsForBranch(tenantId, branchId);
+    return rows.map((r) => ({
+      id: r.id,
+      modelId: r.modelId,
+      model: r.model,
+    }));
+  },
+
+  async addAllowedModel(input: {
+    tenantId: string;
+    actorUserId: string;
+    branchId: string;
+    modelId: string;
+  }) {
+    const model = await masterDataRepository.findModel(input.tenantId, input.modelId);
+    if (!model) throw new Error(`Model not found: ${input.modelId} (tenant: ${input.tenantId})`);
+
+    const entry = await planogramRepository.addAllowedModel(
+      input.tenantId,
+      input.branchId,
+      input.modelId,
+    );
+
+    await auditService.log({
+      tenantId: input.tenantId,
+      userId: input.actorUserId,
+      action: "planogram.allowed_model_added",
+      entityType: "BranchAllowedModel",
+      entityId: entry.id,
+      metadata: { branchId: input.branchId, modelId: input.modelId },
+    });
+
+    return entry;
+  },
+
+  async removeAllowedModel(input: {
+    tenantId: string;
+    actorUserId: string;
+    branchId: string;
+    modelId: string;
+  }) {
+    const onPlanogram = await planogramRepository.isModelOnBranchPlanogram(
+      input.tenantId,
+      input.branchId,
+      input.modelId,
+    );
+    if (onPlanogram) {
+      throw new Error("Cannot remove a model that is still on the branch planogram");
+    }
+
+    const openOrder = await planogramRepository.hasOpenOrdersForModel(
+      input.tenantId,
+      input.branchId,
+      input.modelId,
+    );
+    if (openOrder) {
+      throw new Error("Cannot remove model with open pending orders");
+    }
+
+    await planogramRepository.removeAllowedModel(input.tenantId, input.branchId, input.modelId);
+
+    await auditService.log({
+      tenantId: input.tenantId,
+      userId: input.actorUserId,
+      action: "planogram.allowed_model_removed",
+      entityType: "BranchAllowedModel",
+      entityId: `${input.branchId}:${input.modelId}`,
+      metadata: { branchId: input.branchId, modelId: input.modelId },
+    });
+  },
+
+  async setAllowedModelsForBranch(input: {
+    tenantId: string;
+    actorUserId: string;
+    branchId: string;
+    modelIds: string[];
+  }) {
+    const currentIds = await planogramRepository.listAllowedModelIds(
+      input.tenantId,
+      input.branchId,
+    );
+    const nextIds = new Set(input.modelIds);
+    const removedIds = [...currentIds].filter((id) => !nextIds.has(id));
+
+    for (const modelId of removedIds) {
+      const onPlanogram = await planogramRepository.isModelOnBranchPlanogram(
+        input.tenantId,
+        input.branchId,
+        modelId,
+      );
+      if (onPlanogram) {
+        throw new Error("Cannot remove a model that is still on the branch planogram");
+      }
+      const openOrder = await planogramRepository.hasOpenOrdersForModel(
+        input.tenantId,
+        input.branchId,
+        modelId,
+      );
+      if (openOrder) {
+        throw new Error("Cannot remove model with open pending orders");
+      }
+    }
+
+    await planogramRepository.bulkSetAllowedModels(
+      input.tenantId,
+      input.branchId,
+      input.modelIds,
+    );
+
+    await auditService.log({
+      tenantId: input.tenantId,
+      userId: input.actorUserId,
+      action: "planogram.allowed_model_added",
+      entityType: "BranchAllowedModel",
+      entityId: input.branchId,
+      metadata: { branchId: input.branchId, modelIds: input.modelIds },
     });
   },
 

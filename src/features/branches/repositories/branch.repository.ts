@@ -159,6 +159,37 @@ export const branchRepository = {
     });
   },
 
+  /** Bulk lookup for the CSV import — one query instead of one per row. */
+  findManyBySapCodes(tenantId: string, sapCodes: string[]) {
+    return prisma.branch.findMany({
+      where: { tenantId, deletedAt: null, sapCode: { in: sapCodes } },
+      select: { id: true, sapCode: true, name: true },
+    });
+  },
+
+  findModelsBySkuCodes(tenantId: string, skuCodes: string[]) {
+    return prisma.productModel.findMany({
+      where: { tenantId, skuCode: { in: skuCodes } },
+      select: { id: true, skuCode: true, name: true },
+    });
+  },
+
+  findAllowedModelsByBranchIds(tenantId: string, branchIds: string[]) {
+    return prisma.branchAllowedModel.findMany({
+      where: { tenantId, branchId: { in: branchIds } },
+      select: { branchId: true, modelId: true },
+    });
+  },
+
+  /** Active branches only — inactive ones are excluded from the import template. */
+  listActiveForTemplate(tenantId: string) {
+    return prisma.branch.findMany({
+      where: { tenantId, deletedAt: null, status: "active" },
+      select: { sapCode: true, name: true },
+      orderBy: { sapCode: "asc" },
+    });
+  },
+
   listFormOptions(tenantId: string) {
     return Promise.all([
       prisma.area.findMany({ where: { tenantId }, orderBy: { name: "asc" } }),
