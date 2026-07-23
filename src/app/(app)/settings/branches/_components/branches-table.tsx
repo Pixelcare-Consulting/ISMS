@@ -53,6 +53,13 @@ interface BranchRow {
   branchArea: { name: string } | null;
   dealer?: { name: string } | null;
   alternateWarehouses?: { alternateBranchId: string }[];
+  deliveryScheduleConfig?: {
+    fCode: string | null;
+    frequency: string;
+    deliveryDays: number[];
+    orderDays: number[];
+    notes: string | null;
+  } | null;
 }
 
 export function BranchesTable({ branches }: { branches: BranchRow[] }) {

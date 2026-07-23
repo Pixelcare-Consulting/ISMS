@@ -3,6 +3,7 @@ import {
   ArrowUpToLine,
   Barcode,
   Building2,
+  CalendarClock,
   CalendarDays,
   ChartColumn,
   ClipboardList,
@@ -316,6 +317,13 @@ export const appNavigation: NavEntry[] = [
         label: "Status",
         icon: Clock,
         permission: "status_settings.manage",
+      },
+      {
+        href: "/settings/ordering",
+        label: "Ordering policy",
+        icon: CalendarClock,
+        permission: "ordering_settings.manage",
+        badge: "new",
       },
       {
         href: "/settings/branches",

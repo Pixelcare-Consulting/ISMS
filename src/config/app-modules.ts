@@ -176,6 +176,15 @@ export const appModules: AppModule[] = [
     actions: [{ value: "manage", label: "Manage" }],
   },
   {
+    id: "ordering_settings",
+    name: "Ordering Policy",
+    route: "/settings/ordering",
+    slugPrefix: "ordering_settings",
+    navPermission: "ordering_settings.manage",
+    description: "Global locked ordering days (e.g. no orders on Sundays)",
+    actions: [{ value: "manage", label: "Manage" }],
+  },
+  {
     id: "aors",
     name: "Areas of Responsibility",
     route: "/settings/aors",

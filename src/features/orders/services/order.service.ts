@@ -16,6 +16,9 @@ import { planogramRepository } from "@/features/planogram/repositories/planogram
 import { masterDataRepository } from "@/features/master-data/repositories/master-data.repository";
 import { getUserBranchIds } from "@/lib/aor/scope";
 import { resolveDeliveryDueDate } from "@/features/orders/utils/delivery-schedule";
+import { assertOrderingAllowed } from "@/features/orders/utils/order-window";
+import { branchRepository } from "@/features/branches/repositories/branch.repository";
+import { orderingPolicyService } from "@/features/ordering/services/ordering-policy.service";
 import { sendWorkflowEmail } from "@/lib/notifications/workflow-email";
 
 function buildLinesSummary(
@@ -156,6 +159,22 @@ export const orderService = {
       details: { modelId: string; quantity: number }[];
     },
   ) {
+    const [policy, scheduleCtx] = await Promise.all([
+      orderingPolicyService.getPolicy(tenantId),
+      branchRepository.findScheduleContext(tenantId, data.branchId),
+    ]);
+    assertOrderingAllowed({
+      action: "create",
+      policy,
+      branchName: scheduleCtx?.name,
+      schedule: scheduleCtx?.deliveryScheduleConfig
+        ? {
+            orderDays: scheduleCtx.deliveryScheduleConfig.orderDays,
+            deliveryDays: scheduleCtx.deliveryScheduleConfig.deliveryDays,
+          }
+        : null,
+    });
+
     await validateOrderLines(tenantId, data.branchId, data.orderType, data.details);
     await branchQuotaService.assertWithinQuota(tenantId, data.branchId, data.details);
 
@@ -223,6 +242,14 @@ export const orderService = {
     if (!canApproveOrder(order.status, order.orderType, roleSlugs)) {
       throw new Error("Not authorized for this approval step");
     }
+
+    const policy = await orderingPolicyService.getPolicy(tenantId);
+    assertOrderingAllowed({
+      action: "approve",
+      policy,
+      branchName: order.branch.name,
+      schedule: null,
+    });
 
     const roleSlug = getRoleSlugForApproval(order.status, order.orderType);
     const level = getApprovalLevelForStatus(order.status, order.orderType);

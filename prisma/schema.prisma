@@ -29,6 +29,15 @@ enum BranchOrderType {
   special
 }
 
+/// Delivery cadence for a branch (mirrors client "F-code" schedules).
+enum DeliveryFrequency {
+  weekly        // F4 — once a week
+  biweekly      // F2 — once every two weeks
+  triweekly     // F3 — once every three weeks
+  monthly       // F1 — once a month
+  twice_weekly  // F8 — twice a week
+}
+
 enum ReasonStatusCategory {
   inventory_system
   pullout_reason
@@ -164,6 +173,8 @@ model Tenant {
   serviceCenters      ServiceCenter[]
   priceLists          PriceList[]
   branches            Branch[]
+  branchDeliverySchedules BranchDeliverySchedule[]
+  orderingPolicy      OrderingPolicy?
   warehouses          Warehouse[]
   aors                Aor[]
   serialNumbers       SerialNumber[]
@@ -1059,6 +1070,7 @@ model Branch {
   branchPlanograms      BranchPlanogram[]
   branchMilSettings     BranchMilSetting[]
   branchAllowedModels   BranchAllowedModel[]
+  deliveryScheduleConfig BranchDeliverySchedule?
   branchOrders          BranchOrder[]
   branchDeliveries      BranchDelivery[]
   transfersFrom         BranchTransfer[]       @relation("TransferFromBranch")
@@ -1076,6 +1088,44 @@ model Branch {
   @@unique([tenantId, sapCode])
   @@index([tenantId])
   @@map("branches")
+}
+
+/// Tenant-wide ordering policy. `globalLockedWeekdays` are weekdays (0=Sun … 6=Sat)
+/// on which no order may be created, requested, or approved (default: Sunday).
+model OrderingPolicy {
+  id                   String   @id @default(cuid())
+  tenantId             String   @unique @map("tenant_id")
+  globalLockedWeekdays Int[]    @default([0]) @map("global_locked_weekdays")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("ordering_policies")
+}
+
+/// Per-branch delivery cadence + ordering window used to gate order creation.
+/// Weekdays are stored as integers 0=Sunday … 6=Saturday.
+model BranchDeliverySchedule {
+  id           String            @id @default(cuid())
+  tenantId     String            @map("tenant_id")
+  branchId     String            @unique @map("branch_id")
+  fCode        String?           @map("f_code")
+  frequency    DeliveryFrequency
+  /// Weekday(s) deliveries arrive on this branch.
+  deliveryDays Int[]             @map("delivery_days")
+  /// Weekday(s) customers may place orders. Ordering is locked on the rest.
+  orderDays    Int[]             @map("order_days")
+  notes        String?
+  spRemarks    String?           @map("sp_remarks")
+  createdAt    DateTime          @default(now()) @map("created_at")
+  updatedAt    DateTime          @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("branch_delivery_schedules")
 }
 
 model Warehouse {

@@ -20,6 +20,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import {
+  BranchScheduleFields,
+  EMPTY_SCHEDULE,
+  buildSchedulePayload,
+  type BranchScheduleState,
+} from "@/app/(app)/settings/branches/_components/branch-schedule-fields";
 
 type FormOptions = Awaited<ReturnType<typeof listBranchFormOptionsAction>>;
 
@@ -44,6 +50,7 @@ export function CreateBranchDialog({ onCreated }: CreateBranchDialogProps) {
   const [areaId, setAreaId] = useState("");
   const [regionId, setRegionId] = useState("");
   const [provinceId, setProvinceId] = useState("");
+  const [schedule, setSchedule] = useState<BranchScheduleState>(EMPTY_SCHEDULE);
 
   const alternateBranchOptions = useMemo(() => {
     if (!options) return [];
@@ -122,6 +129,7 @@ export function CreateBranchDialog({ onCreated }: CreateBranchDialogProps) {
     setAreaId("");
     setRegionId("");
     setProvinceId("");
+    setSchedule(EMPTY_SCHEDULE);
   }
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -139,6 +147,7 @@ export function CreateBranchDialog({ onCreated }: CreateBranchDialogProps) {
         regionId: regionId || null,
         provinceId: provinceId || null,
         alternateBranchIds: alternateIds,
+        schedule: buildSchedulePayload(schedule),
       });
       if (result.error) {
         toast.error(typeof result.error === "string" ? result.error : "Could not create branch");
@@ -263,6 +272,11 @@ export function CreateBranchDialog({ onCreated }: CreateBranchDialogProps) {
                   searchPlaceholder="Filter by code or name…"
                   emptyMessage="No branches available."
                   hint="Other active branches that can fulfill for this location."
+                  disabled={pending}
+                />
+                <BranchScheduleFields
+                  value={schedule}
+                  onChange={setSchedule}
                   disabled={pending}
                 />
               </>

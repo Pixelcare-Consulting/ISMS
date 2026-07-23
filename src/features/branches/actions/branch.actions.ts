@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { branchService } from "@/features/branches/services/branch.service";
+import { branchScheduleSchema } from "@/features/branches/schemas/branch.schema";
 import { requirePermission } from "@/lib/auth/permissions";
 
 const branchInputSchema = z.object({
@@ -15,6 +16,7 @@ const branchInputSchema = z.object({
   regionId: z.string().optional().nullable(),
   provinceId: z.string().optional().nullable(),
   alternateBranchIds: z.array(z.string()).optional(),
+  schedule: branchScheduleSchema.optional().nullable(),
   status: z.enum(["active", "inactive"]).optional(),
 });
 

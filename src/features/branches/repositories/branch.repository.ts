@@ -1,7 +1,30 @@
 import { prisma } from "@/lib/database/client";
-import type { BranchStatus } from "@/lib/database/generated/prisma/client";
+import type { BranchStatus, DeliveryFrequency } from "@/lib/database/generated/prisma/client";
+
+export interface BranchScheduleInput {
+  fCode?: string | null;
+  frequency: DeliveryFrequency;
+  deliveryDays: number[];
+  orderDays: number[];
+  notes?: string | null;
+  spRemarks?: string | null;
+}
 
 export const branchRepository = {
+  /** Minimal branch context used to gate order creation. */
+  findScheduleContext(tenantId: string, branchId: string) {
+    return prisma.branch.findFirst({
+      where: { id: branchId, tenantId, deletedAt: null },
+      select: {
+        id: true,
+        name: true,
+        deliveryScheduleConfig: {
+          select: { orderDays: true, deliveryDays: true, frequency: true, fCode: true },
+        },
+      },
+    });
+  },
+
   listByTenant(tenantId: string) {
     return prisma.branch.findMany({
       where: { tenantId, deletedAt: null },
@@ -17,6 +40,7 @@ export const branchRepository = {
             alternateBranch: { select: { id: true, name: true, sapCode: true } },
           },
         },
+        deliveryScheduleConfig: true,
         _count: { select: { aors: true, branchInventories: true } },
       },
       orderBy: { name: "asc" },
@@ -52,6 +76,7 @@ export const branchRepository = {
         region: true,
         province: true,
         alternateWarehouses: true,
+        deliveryScheduleConfig: true,
       },
     });
   },
@@ -69,6 +94,7 @@ export const branchRepository = {
       provinceId?: string | null;
       alternateBranchIds?: string[];
       deliverySchedule?: object | null;
+      schedule?: BranchScheduleInput | null;
       status?: BranchStatus;
     },
   ) {
@@ -90,6 +116,19 @@ export const branchRepository = {
               create: data.alternateBranchIds.map((alternateBranchId) => ({
                 alternateBranchId,
               })),
+            }
+          : undefined,
+        deliveryScheduleConfig: data.schedule
+          ? {
+              create: {
+                tenantId,
+                fCode: data.schedule.fCode ?? null,
+                frequency: data.schedule.frequency,
+                deliveryDays: data.schedule.deliveryDays,
+                orderDays: data.schedule.orderDays,
+                notes: data.schedule.notes ?? null,
+                spRemarks: data.schedule.spRemarks ?? null,
+              },
             }
           : undefined,
       },
@@ -114,6 +153,7 @@ export const branchRepository = {
       provinceId?: string | null;
       alternateBranchIds?: string[];
       deliverySchedule?: object | null;
+      schedule?: BranchScheduleInput | null;
       status?: BranchStatus;
     },
   ) {
@@ -128,6 +168,30 @@ export const branchRepository = {
             })),
           });
         }
+      }
+
+      if (data.schedule) {
+        await tx.branchDeliverySchedule.upsert({
+          where: { branchId: id },
+          create: {
+            tenantId,
+            branchId: id,
+            fCode: data.schedule.fCode ?? null,
+            frequency: data.schedule.frequency,
+            deliveryDays: data.schedule.deliveryDays,
+            orderDays: data.schedule.orderDays,
+            notes: data.schedule.notes ?? null,
+            spRemarks: data.schedule.spRemarks ?? null,
+          },
+          update: {
+            fCode: data.schedule.fCode ?? null,
+            frequency: data.schedule.frequency,
+            deliveryDays: data.schedule.deliveryDays,
+            orderDays: data.schedule.orderDays,
+            notes: data.schedule.notes ?? null,
+            spRemarks: data.schedule.spRemarks ?? null,
+          },
+        });
       }
 
       return tx.branch.update({

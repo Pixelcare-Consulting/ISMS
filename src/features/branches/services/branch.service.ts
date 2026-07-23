@@ -1,5 +1,6 @@
 import { auditService } from "@/features/audit/services/audit.service";
-import { branchRepository } from "@/features/branches/repositories/branch.repository";
+import { branchRepository, type BranchScheduleInput } from "@/features/branches/repositories/branch.repository";
+import { branchScheduleSchema } from "@/features/branches/schemas/branch.schema";
 import { z } from "zod";
 
 const createBranchSchema = z.object({
@@ -12,6 +13,7 @@ const createBranchSchema = z.object({
   regionId: z.string().optional().nullable(),
   provinceId: z.string().optional().nullable(),
   alternateBranchIds: z.array(z.string()).optional(),
+  schedule: branchScheduleSchema.optional().nullable(),
   status: z.enum(["active", "inactive"]).optional(),
 });
 
@@ -53,6 +55,7 @@ export const branchService = {
     regionId?: string | null;
     provinceId?: string | null;
     alternateBranchIds?: string[];
+    schedule?: BranchScheduleInput | null;
     status?: "active" | "inactive";
   }) {
     const parsed = createBranchSchema.safeParse(input);
@@ -92,6 +95,7 @@ export const branchService = {
     regionId?: string | null;
     provinceId?: string | null;
     alternateBranchIds?: string[];
+    schedule?: BranchScheduleInput | null;
     status?: "active" | "inactive";
   }) {
     const parsed = updateBranchSchema.safeParse(input);

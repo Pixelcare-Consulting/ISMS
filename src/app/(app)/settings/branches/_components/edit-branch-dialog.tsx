@@ -19,8 +19,38 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import {
+  BranchScheduleFields,
+  EMPTY_SCHEDULE,
+  buildSchedulePayload,
+  type BranchScheduleState,
+} from "@/app/(app)/settings/branches/_components/branch-schedule-fields";
+import { DELIVERY_FREQUENCIES } from "@/features/branches/schemas/branch.schema";
 
 type FormOptions = Awaited<ReturnType<typeof listBranchFormOptionsAction>>;
+
+interface BranchScheduleConfig {
+  fCode: string | null;
+  frequency: string;
+  deliveryDays: number[];
+  orderDays: number[];
+  notes: string | null;
+}
+
+function scheduleStateFrom(config?: BranchScheduleConfig | null): BranchScheduleState {
+  if (!config) return EMPTY_SCHEDULE;
+  const frequency = (DELIVERY_FREQUENCIES as readonly string[]).includes(config.frequency)
+    ? (config.frequency as BranchScheduleState["frequency"])
+    : "weekly";
+  return {
+    enabled: true,
+    fCode: config.fCode ?? "",
+    frequency,
+    deliveryDays: config.deliveryDays ?? [],
+    orderDays: config.orderDays ?? [],
+    notes: config.notes ?? "",
+  };
+}
 
 const STATUS_OPTIONS = [
   { id: "active", label: "Active" },
@@ -40,6 +70,7 @@ interface EditBranchDialogProps {
     regionId?: string | null;
     provinceId?: string | null;
     alternateWarehouses?: { alternateBranchId: string }[];
+    deliveryScheduleConfig?: BranchScheduleConfig | null;
   };
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -96,6 +127,9 @@ function EditBranchForm({
   const [areaId, setAreaId] = useState(branch.areaId ?? "");
   const [regionId, setRegionId] = useState(branch.regionId ?? "");
   const [provinceId, setProvinceId] = useState(branch.provinceId ?? "");
+  const [schedule, setSchedule] = useState<BranchScheduleState>(() =>
+    scheduleStateFrom(branch.deliveryScheduleConfig),
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -189,6 +223,7 @@ function EditBranchForm({
         regionId: regionId || null,
         provinceId: provinceId || null,
         alternateBranchIds: alternateIds,
+        schedule: buildSchedulePayload(schedule),
       });
       if (result.error) {
         toast.error(typeof result.error === "string" ? result.error : "Could not update branch");
@@ -302,6 +337,7 @@ function EditBranchForm({
             hint="Other active branches that can fulfill for this location."
             disabled={pending}
           />
+          <BranchScheduleFields value={schedule} onChange={setSchedule} disabled={pending} />
         </>
       ) : (
         <p className="text-sm text-muted-foreground">Loading options…</p>

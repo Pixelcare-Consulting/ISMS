@@ -18,6 +18,7 @@
     "db:seed:full": "dotenv -e .env.local -- node scripts/seed-profile.mjs full",
     "db:seed:core": "dotenv -e .env.local -- node scripts/seed-profile.mjs core",
     "db:seed:brs": "dotenv -e .env.local -- node scripts/seed-profile.mjs brs",
+    "db:seed:schedules": "dotenv -e .env.local -- node scripts/seed-profile.mjs schedules",
     "db:seed:status": "dotenv -e .env.local -- node scripts/seed-profile.mjs status",
     "db:studio": "dotenv -e .env.local -- prisma studio",
     "docs:modules-matrix": "node scripts/generate-modules-workflow-excel.mjs"

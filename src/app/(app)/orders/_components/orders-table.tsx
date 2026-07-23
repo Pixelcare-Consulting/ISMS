@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import {
   approveOrderAction,
+  checkOrderWindowAction,
   createOrderAction,
   listActiveDealersForOrderAction,
   listBranchesForOrderAction,
@@ -371,6 +372,7 @@ function CreateOrderDialog({ onClose }: { onClose: () => void }) {
   const [modelId, setModelId] = useState("");
   const [qty, setQty] = useState(1);
   const [loaded, setLoaded] = useState(false);
+  const [windowBlock, setWindowBlock] = useState<string | null>(null);
 
   const selectedModel = models.find((m) => m.id === modelId);
 
@@ -405,6 +407,20 @@ function CreateOrderDialog({ onClose }: { onClose: () => void }) {
       cancelled = true;
     };
   }, [dealerId, loaded]);
+
+  useEffect(() => {
+    if (!branchId) {
+      setWindowBlock(null);
+      return;
+    }
+    let cancelled = false;
+    void checkOrderWindowAction(branchId).then((res) => {
+      if (!cancelled) setWindowBlock(res.blocked ? res.reason : null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [branchId]);
 
   useEffect(() => {
     if (!branchId) return;
@@ -475,6 +491,11 @@ function CreateOrderDialog({ onClose }: { onClose: () => void }) {
               disabled={!dealerId}
               emptyMessage="No active branches for this dealer."
             />
+            {windowBlock ? (
+              <p className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                {windowBlock}
+              </p>
+            ) : null}
             <div>
               <SearchableSelect
                 label="Order type"
@@ -554,7 +575,10 @@ function CreateOrderDialog({ onClose }: { onClose: () => void }) {
               <Button variant="outline" onClick={onClose}>
                 Cancel
               </Button>
-              <Button disabled={pending || !dealerId || !branchId || !modelId} onClick={submit}>
+              <Button
+                disabled={pending || !dealerId || !branchId || !modelId || windowBlock !== null}
+                onClick={submit}
+              >
                 Submit
               </Button>
             </div>

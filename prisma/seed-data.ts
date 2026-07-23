@@ -37,6 +37,7 @@ export const PERMISSIONS = [
   { slug: "warehouses.manage", name: "Manage warehouses" },
   { slug: "master_data.manage", name: "Manage master data" },
   { slug: "status_settings.manage", name: "Manage status settings" },
+  { slug: "ordering_settings.manage", name: "Manage ordering policy" },
   { slug: "aors.manage", name: "Manage areas of responsibility" },
   { slug: "inventory.view", name: "View inventory" },
   { slug: "inventory.manage", name: "Manage inventory" },
@@ -87,6 +88,7 @@ export const ROLES = [
       "warehouses.manage",
       "master_data.manage",
       "status_settings.manage",
+      "ordering_settings.manage",
       "aors.manage",
       "inventory.view",
       "orders.view",
@@ -318,11 +320,18 @@ export const USER_DEPARTMENTS: Record<string, (typeof DEPARTMENTS)[number]> = {
   "ae@demo.local": "Operations",
 };
 
-export type SeedProfile = "minimal" | "full" | "core" | "status" | "brs";
+export type SeedProfile = "minimal" | "full" | "core" | "status" | "brs" | "schedules";
 
 export function resolveSeedProfile(): SeedProfile {
   const raw = process.env.SEED_PROFILE?.trim().toLowerCase();
-  if (raw === "full" || raw === "core" || raw === "status" || raw === "brs" || raw === "minimal") {
+  if (
+    raw === "full" ||
+    raw === "core" ||
+    raw === "status" ||
+    raw === "brs" ||
+    raw === "schedules" ||
+    raw === "minimal"
+  ) {
     return raw;
   }
   return "minimal";
