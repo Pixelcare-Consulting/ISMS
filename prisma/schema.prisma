@@ -170,6 +170,7 @@ model Tenant {
   branchInventories   BranchInventory[]
   branchPlanograms    BranchPlanogram[]
   branchMilSettings   BranchMilSetting[]
+  branchAllowedModels BranchAllowedModel[]
   branchOrders        BranchOrder[]
   branchDeliveries    BranchDelivery[]
   branchTransfers     BranchTransfer[]
@@ -542,6 +543,7 @@ model ProductModel {
   serialNumbers      SerialNumber[]
   branchPlanograms   BranchPlanogram[]
   branchMilSettings  BranchMilSetting[]
+  branchAllowedModels BranchAllowedModel[]
   branchOrderDetails BranchOrderDetail[]
   branchAllocations  BranchAllocation[]
   stockCountLines    StockCountLine[]
@@ -1056,6 +1058,7 @@ model Branch {
   branchInventories     BranchInventory[]
   branchPlanograms      BranchPlanogram[]
   branchMilSettings     BranchMilSetting[]
+  branchAllowedModels   BranchAllowedModel[]
   branchOrders          BranchOrder[]
   branchDeliveries      BranchDelivery[]
   transfersFrom         BranchTransfer[]       @relation("TransferFromBranch")
@@ -1329,6 +1332,23 @@ model BranchPlanogram {
   @@unique([branchId, modelId])
   @@index([tenantId])
   @@map("branch_planograms")
+}
+
+model BranchAllowedModel {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  branchId  String   @map("branch_id")
+  modelId   String   @map("model_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  model  ProductModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, modelId])
+  @@index([tenantId])
+  @@map("branch_allowed_models")
 }
 
 model BranchMilSetting {
