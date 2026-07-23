@@ -228,6 +228,18 @@ export const appModules: AppModule[] = [
     actions: [{ value: "create", label: "Create" }],
   },
   {
+    id: "official_sales",
+    name: "Official Sales",
+    route: "/reports/official-sales",
+    slugPrefix: "official_sales",
+    navPermission: "official_sales.view",
+    description: "Official sales Excel staging and inventory process",
+    actions: [
+      { value: "view", label: "View" },
+      { value: "manage", label: "Manage" },
+    ],
+  },
+  {
     id: "forecast",
     name: "Planning & Forecast",
     route: "/settings/planning",

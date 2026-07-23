@@ -11,6 +11,7 @@ import {
 } from "@/features/orders/constants/order-workflow";
 import { orderRepository } from "@/features/orders/repositories/order.repository";
 import { sapService } from "@/features/sap/services/sap.service";
+import { branchQuotaService } from "@/features/branch-quotas/services/branch-quota.service";
 import { planogramRepository } from "@/features/planogram/repositories/planogram.repository";
 import { masterDataRepository } from "@/features/master-data/repositories/master-data.repository";
 import { getUserBranchIds } from "@/lib/aor/scope";
@@ -156,6 +157,7 @@ export const orderService = {
     },
   ) {
     await validateOrderLines(tenantId, data.branchId, data.orderType, data.details);
+    await branchQuotaService.assertWithinQuota(tenantId, data.branchId, data.details);
 
     const offPlanogramSkus: string[] = [];
     if (data.orderType === "special") {

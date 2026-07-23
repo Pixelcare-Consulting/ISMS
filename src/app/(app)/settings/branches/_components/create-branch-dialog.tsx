@@ -45,16 +45,14 @@ export function CreateBranchDialog({ onCreated }: CreateBranchDialogProps) {
   const [regionId, setRegionId] = useState("");
   const [provinceId, setProvinceId] = useState("");
 
-  const warehouseOptions = useMemo(() => {
+  const alternateBranchOptions = useMemo(() => {
     if (!options) return [];
-    return options.warehouses
-      .filter((w) => w.id !== primaryWarehouseId)
-      .map((w) => ({
-        id: w.id,
-        label: `${w.code} — ${w.name}`,
-        description: w.name,
-      }));
-  }, [options, primaryWarehouseId]);
+    return options.branches.map((b) => ({
+      id: b.id,
+      label: `${b.sapCode} — ${b.name}`,
+      description: b.name,
+    }));
+  }, [options]);
 
   const dealerOptions = useMemo(
     () =>
@@ -140,7 +138,7 @@ export function CreateBranchDialog({ onCreated }: CreateBranchDialogProps) {
         primaryWarehouseId: primaryWarehouseId || null,
         regionId: regionId || null,
         provinceId: provinceId || null,
-        alternateWarehouseIds: alternateIds,
+        alternateBranchIds: alternateIds,
       });
       if (result.error) {
         toast.error(typeof result.error === "string" ? result.error : "Could not create branch");
@@ -209,14 +207,7 @@ export function CreateBranchDialog({ onCreated }: CreateBranchDialogProps) {
                     label="Primary warehouse"
                     options={primaryWarehouseOptions}
                     value={primaryWarehouseId}
-                    onChange={(next) => {
-                      setPrimaryWarehouseId(next);
-                      if (next) {
-                        setAlternateIds((current) =>
-                          current.filter((id) => id !== next),
-                        );
-                      }
-                    }}
+                    onChange={setPrimaryWarehouseId}
                     allowClear
                     placeholder="—"
                     searchPlaceholder="Search warehouses…"
@@ -264,14 +255,14 @@ export function CreateBranchDialog({ onCreated }: CreateBranchDialogProps) {
                   />
                 </div>
                 <SearchableMultiSelect
-                  label="Alternate warehouses"
-                  options={warehouseOptions}
+                  label="Alternate branches"
+                  options={alternateBranchOptions}
                   selectedIds={alternateIds}
                   onChange={setAlternateIds}
-                  placeholder="Search and select warehouses…"
+                  placeholder="Search and select branches…"
                   searchPlaceholder="Filter by code or name…"
-                  emptyMessage="No warehouses available."
-                  hint="Primary warehouse is excluded from alternates."
+                  emptyMessage="No branches available."
+                  hint="Other active branches that can fulfill for this location."
                   disabled={pending}
                 />
               </>

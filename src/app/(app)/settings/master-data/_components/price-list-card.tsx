@@ -49,7 +49,7 @@ export function PriceListCard({ group, onOpen }: PriceListCardProps) {
               variant="outline"
               className="h-5 rounded-md px-1.5 text-[10px] font-medium"
             >
-              {latest.packageType.name}
+              {latest.packageType.name} · qty {latest.packageType.quantity}
             </Badge>
           ) : null}
         </div>

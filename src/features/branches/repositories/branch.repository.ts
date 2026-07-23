@@ -13,9 +13,29 @@ export const branchRepository = {
         region: { select: { id: true, name: true } },
         province: { select: { id: true, name: true } },
         alternateWarehouses: {
-          include: { warehouse: { select: { id: true, name: true, code: true } } },
+          include: {
+            alternateBranch: { select: { id: true, name: true, sapCode: true } },
+          },
         },
         _count: { select: { aors: true, branchInventories: true } },
+      },
+      orderBy: { name: "asc" },
+    });
+  },
+
+  listActiveByTenant(tenantId: string, dealerId?: string | null) {
+    return prisma.branch.findMany({
+      where: {
+        tenantId,
+        deletedAt: null,
+        status: "active",
+        ...(dealerId ? { dealerId } : {}),
+      },
+      select: {
+        id: true,
+        name: true,
+        sapCode: true,
+        dealerId: true,
       },
       orderBy: { name: "asc" },
     });
@@ -47,7 +67,7 @@ export const branchRepository = {
       primaryWarehouseId?: string | null;
       regionId?: string | null;
       provinceId?: string | null;
-      alternateWarehouseIds?: string[];
+      alternateBranchIds?: string[];
       deliverySchedule?: object | null;
       status?: BranchStatus;
     },
@@ -65,9 +85,11 @@ export const branchRepository = {
         provinceId: data.provinceId ?? null,
         deliverySchedule: data.deliverySchedule ?? undefined,
         status: data.status ?? "active",
-        alternateWarehouses: data.alternateWarehouseIds?.length
+        alternateWarehouses: data.alternateBranchIds?.length
           ? {
-              create: data.alternateWarehouseIds.map((warehouseId) => ({ warehouseId })),
+              create: data.alternateBranchIds.map((alternateBranchId) => ({
+                alternateBranchId,
+              })),
             }
           : undefined,
       },
@@ -90,19 +112,19 @@ export const branchRepository = {
       primaryWarehouseId?: string | null;
       regionId?: string | null;
       provinceId?: string | null;
-      alternateWarehouseIds?: string[];
+      alternateBranchIds?: string[];
       deliverySchedule?: object | null;
       status?: BranchStatus;
     },
   ) {
     return prisma.$transaction(async (tx) => {
-      if (data.alternateWarehouseIds) {
+      if (data.alternateBranchIds) {
         await tx.alternateWarehouse.deleteMany({ where: { branchId: id } });
-        if (data.alternateWarehouseIds.length > 0) {
+        if (data.alternateBranchIds.length > 0) {
           await tx.alternateWarehouse.createMany({
-            data: data.alternateWarehouseIds.map((warehouseId) => ({
+            data: data.alternateBranchIds.map((alternateBranchId) => ({
               branchId: id,
-              warehouseId,
+              alternateBranchId,
             })),
           });
         }
@@ -142,19 +164,25 @@ export const branchRepository = {
       prisma.area.findMany({ where: { tenantId }, orderBy: { name: "asc" } }),
       prisma.branchArea.findMany({ where: { tenantId }, orderBy: { name: "asc" } }),
       prisma.dealer.findMany({
-        where: { tenantId, deletedAt: null },
+        where: { tenantId, deletedAt: null, status: "active" },
         orderBy: { name: "asc" },
       }),
       prisma.warehouse.findMany({ where: { tenantId }, orderBy: { name: "asc" } }),
       prisma.region.findMany({ where: { tenantId }, orderBy: { name: "asc" } }),
       prisma.province.findMany({ where: { tenantId }, orderBy: { name: "asc" } }),
-    ]).then(([areas, branchAreas, dealers, warehouses, regions, provinces]) => ({
+      prisma.branch.findMany({
+        where: { tenantId, deletedAt: null, status: "active" },
+        select: { id: true, name: true, sapCode: true },
+        orderBy: { name: "asc" },
+      }),
+    ]).then(([areas, branchAreas, dealers, warehouses, regions, provinces, branches]) => ({
       areas,
       branchAreas,
       dealers,
       warehouses,
       regions,
       provinces,
+      branches,
     }));
   },
 };

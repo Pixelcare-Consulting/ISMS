@@ -5,6 +5,7 @@ export const lookupWriteSchema = z.object({
   code: z.string().trim().max(32).optional(),
   parentId: z.string().trim().max(64).optional(),
   class: z.string().trim().max(80).optional(),
+  quantity: z.coerce.number().int().positive().optional(),
 });
 
 export const lookupStatusSchema = z.object({

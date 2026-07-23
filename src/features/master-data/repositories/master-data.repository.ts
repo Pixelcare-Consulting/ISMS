@@ -96,7 +96,7 @@ export const masterDataRepository = {
       where: { tenantId, ...(modelId ? { modelId } : {}) },
       include: {
         model: { select: { id: true, skuCode: true, name: true } },
-        packageType: { select: { id: true, name: true } },
+        packageType: { select: { id: true, name: true, quantity: true } },
       },
       orderBy: [{ periodStart: "desc" }, { createdAt: "desc" }],
     });

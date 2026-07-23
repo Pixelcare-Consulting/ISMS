@@ -51,7 +51,7 @@ interface BranchRow {
   provinceId?: string | null;
   branchArea: { name: string } | null;
   dealer?: { name: string } | null;
-  alternateWarehouses?: { warehouseId: string }[];
+  alternateWarehouses?: { alternateBranchId: string }[];
 }
 
 export function BranchesTable({ branches }: { branches: BranchRow[] }) {

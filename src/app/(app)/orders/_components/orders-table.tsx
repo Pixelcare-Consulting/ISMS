@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import {
   approveOrderAction,
   createOrderAction,
+  listActiveDealersForOrderAction,
   listBranchesForOrderAction,
   listModelsForOrderAction,
   rejectOrderAction,
@@ -359,8 +360,12 @@ function OrderReviewButton({ order, viewerRoleSlugs, onReview }: OrderReviewButt
 function CreateOrderDialog({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [branches, setBranches] = useState<{ id: string; name: string }[]>([]);
+  const [dealers, setDealers] = useState<{ id: string; name: string }[]>([]);
+  const [branches, setBranches] = useState<
+    { id: string; name: string; dealerId: string | null }[]
+  >([]);
   const [models, setModels] = useState<OrderModelOption[]>([]);
+  const [dealerId, setDealerId] = useState("");
   const [branchId, setBranchId] = useState("");
   const [orderType, setOrderType] = useState<"manual" | "special" | "auto_replenish">("manual");
   const [modelId, setModelId] = useState("");
@@ -369,20 +374,50 @@ function CreateOrderDialog({ onClose }: { onClose: () => void }) {
 
   const selectedModel = models.find((m) => m.id === modelId);
 
-  async function loadBranches() {
-    const b = await listBranchesForOrderAction();
-    setBranches(b);
-    if (b[0]) setBranchId(b[0].id);
-    setLoaded(true);
-  }
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const [dealerRows, branchRows] = await Promise.all([
+        listActiveDealersForOrderAction(),
+        listBranchesForOrderAction(),
+      ]);
+      if (cancelled) return;
+      setDealers(dealerRows);
+      setBranches(branchRows);
+      setLoaded(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!loaded || !dealerId) return;
+    let cancelled = false;
+    void listBranchesForOrderAction(dealerId).then((branchRows) => {
+      if (cancelled) return;
+      setBranches(branchRows);
+      setBranchId((current) =>
+        branchRows.some((b) => b.id === current) ? current : (branchRows[0]?.id ?? ""),
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [dealerId, loaded]);
 
   useEffect(() => {
     if (!branchId) return;
-    listModelsForOrderAction(branchId, orderType).then((m) => {
+    let cancelled = false;
+    void listModelsForOrderAction(branchId, orderType).then((m) => {
+      if (cancelled) return;
       setModels(m);
       if (m[0]) setModelId(m[0].id);
       else setModelId("");
     });
+    return () => {
+      cancelled = true;
+    };
   }, [branchId, orderType]);
 
   function submit() {
@@ -413,18 +448,32 @@ function CreateOrderDialog({ onClose }: { onClose: () => void }) {
       <div className="w-full max-w-md max-h-[calc(100svh-2rem)] overflow-y-auto space-y-4 rounded-xl border bg-card p-4 sm:p-6 shadow-lg">
         <h3 className="font-medium">Create branch order</h3>
         {!loaded ? (
-          <Button variant="outline" type="button" onClick={loadBranches}>
-            Load branches
-          </Button>
+          <p className="text-sm text-muted-foreground">Loading dealers and branches…</p>
         ) : (
           <>
+            <SearchableSelect
+              label="Dealer"
+              options={dealers.map((d) => ({ id: d.id, label: d.name }))}
+              value={dealerId}
+              onChange={(next) => {
+                setDealerId(next);
+                setBranchId("");
+                setModels([]);
+                setModelId("");
+              }}
+              allowClear
+              placeholder="Select dealer…"
+              searchPlaceholder="Search dealers…"
+            />
             <SearchableSelect
               label="Branch"
               options={branches.map((b) => ({ id: b.id, label: b.name }))}
               value={branchId}
               onChange={setBranchId}
-              placeholder="Select branch…"
+              placeholder={dealerId ? "Select branch…" : "Select a dealer first…"}
               searchPlaceholder="Search branches…"
+              disabled={!dealerId}
+              emptyMessage="No active branches for this dealer."
             />
             <div>
               <SearchableSelect
@@ -442,21 +491,16 @@ function CreateOrderDialog({ onClose }: { onClose: () => void }) {
               />
               {orderType === "auto_replenish" ? (
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Single-line auto-replenish here, or{" "}
-                  <Link href="/planning/suggested-orders" className="underline">
-                    bulk drafts from suggested orders
-                  </Link>
-                  .
+                  Single-line auto-replenish here, or use suggested orders.
                 </p>
               ) : (
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Auto-replenish bulk path:{" "}
-                  <Link href="/planning/suggested-orders" className="underline">
-                    Planning → Suggested orders
-                  </Link>
-                  .
+                  Auto-replenish bulk path: Planning → Suggested orders.
                 </p>
               )}
+              <Button variant="outline" size="sm" className="mt-2" asChild>
+                <Link href="/planning/suggested-orders">View suggested orders</Link>
+              </Button>
             </div>
             <div>
               <SearchableSelect
@@ -470,8 +514,9 @@ function CreateOrderDialog({ onClose }: { onClose: () => void }) {
                 placeholder="Select model…"
                 searchPlaceholder="Search models…"
                 emptyMessage="No eligible SKUs for this branch and order type."
+                disabled={!branchId}
               />
-              {models.length === 0 ? (
+              {models.length === 0 && branchId ? (
                 <p className="mt-1 text-xs text-muted-foreground">
                   No eligible SKUs for this branch and order type.
                 </p>
@@ -509,7 +554,7 @@ function CreateOrderDialog({ onClose }: { onClose: () => void }) {
               <Button variant="outline" onClick={onClose}>
                 Cancel
               </Button>
-              <Button disabled={pending || !modelId} onClick={submit}>
+              <Button disabled={pending || !dealerId || !branchId || !modelId} onClick={submit}>
                 Submit
               </Button>
             </div>
@@ -519,3 +564,4 @@ function CreateOrderDialog({ onClose }: { onClose: () => void }) {
     </div>
   );
 }
+

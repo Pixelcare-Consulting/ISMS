@@ -6,7 +6,7 @@ export const warehouseRepository = {
       where: { tenantId },
       include: {
         locations: { orderBy: { code: "asc" } },
-        _count: { select: { aors: true, pulloutsDestination: true, alternateWarehouses: true } },
+        _count: { select: { aors: true, pulloutsDestination: true } },
       },
       orderBy: [{ isMain: "desc" }, { name: "asc" }],
     });

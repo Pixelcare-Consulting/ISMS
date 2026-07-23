@@ -180,6 +180,13 @@ export const appNavigation: NavEntry[] = [
         anyPermissions: ["reports.view", "sales.create"],
       },
       {
+        href: "/reports/official-sales",
+        label: "Official Sales",
+        icon: ScrollText,
+        anyPermissions: ["official_sales.view", "official_sales.manage"],
+        badge: "new",
+      },
+      {
         href: "/reports/pcount",
         label: "P-Count",
         icon: ClipboardList,
@@ -312,6 +319,13 @@ export const appNavigation: NavEntry[] = [
         href: "/settings/branches",
         label: "Branches",
         icon: MapPin,
+        permission: "branches.manage",
+        badge: "new",
+      },
+      {
+        href: "/settings/branch-quotas",
+        label: "Branch quotas",
+        icon: ChartColumn,
         permission: "branches.manage",
         badge: "new",
       },

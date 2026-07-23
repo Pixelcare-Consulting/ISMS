@@ -14,7 +14,7 @@ const branchInputSchema = z.object({
   primaryWarehouseId: z.string().optional().nullable(),
   regionId: z.string().optional().nullable(),
   provinceId: z.string().optional().nullable(),
-  alternateWarehouseIds: z.array(z.string()).optional(),
+  alternateBranchIds: z.array(z.string()).optional(),
   status: z.enum(["active", "inactive"]).optional(),
 });
 

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { orderService } from "@/features/orders/services/order.service";
 import { branchService } from "@/features/branches/services/branch.service";
+import { dealerRepository } from "@/features/dealers/repositories/dealer.repository";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import type { BranchOrderType } from "@prisma/client";
 
@@ -36,10 +37,26 @@ export async function listOrdersAction(input?: { page?: number }) {
   };
 }
 
-export async function listBranchesForOrderAction() {
+export async function listActiveDealersForOrderAction() {
   const session = await requirePermission("orders.create");
-  const branches = await branchService.listBranches(session.user.tenantId);
-  return branches.map((b) => ({ id: b.id, name: b.name }));
+  const dealers = await dealerRepository.listActiveByTenant(session.user.tenantId);
+  return dealers.map((d) => ({
+    id: d.id,
+    name: d.sapCode ? `${d.name} (${d.sapCode})` : d.name,
+  }));
+}
+
+export async function listBranchesForOrderAction(dealerId?: string) {
+  const session = await requirePermission("orders.create");
+  const branches = await branchService.listActiveBranches(
+    session.user.tenantId,
+    dealerId || null,
+  );
+  return branches.map((b) => ({
+    id: b.id,
+    name: b.name,
+    dealerId: b.dealerId,
+  }));
 }
 
 export async function listModelsForOrderAction(

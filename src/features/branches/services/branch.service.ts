@@ -11,7 +11,7 @@ const createBranchSchema = z.object({
   primaryWarehouseId: z.string().optional().nullable(),
   regionId: z.string().optional().nullable(),
   provinceId: z.string().optional().nullable(),
-  alternateWarehouseIds: z.array(z.string()).optional(),
+  alternateBranchIds: z.array(z.string()).optional(),
   status: z.enum(["active", "inactive"]).optional(),
 });
 
@@ -33,6 +33,10 @@ export const branchService = {
     return branchRepository.listByTenant(tenantId);
   },
 
+  listActiveBranches(tenantId: string, dealerId?: string | null) {
+    return branchRepository.listActiveByTenant(tenantId, dealerId);
+  },
+
   listFormOptions(tenantId: string) {
     return branchRepository.listFormOptions(tenantId);
   },
@@ -48,7 +52,7 @@ export const branchService = {
     primaryWarehouseId?: string | null;
     regionId?: string | null;
     provinceId?: string | null;
-    alternateWarehouseIds?: string[];
+    alternateBranchIds?: string[];
     status?: "active" | "inactive";
   }) {
     const parsed = createBranchSchema.safeParse(input);
@@ -87,7 +91,7 @@ export const branchService = {
     primaryWarehouseId?: string | null;
     regionId?: string | null;
     provinceId?: string | null;
-    alternateWarehouseIds?: string[];
+    alternateBranchIds?: string[];
     status?: "active" | "inactive";
   }) {
     const parsed = updateBranchSchema.safeParse(input);

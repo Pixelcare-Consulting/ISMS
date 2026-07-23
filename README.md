@@ -2,7 +2,7 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.12.1`
+**Current version:** `0.13.0`
 
 ## Stack
 
@@ -24,7 +24,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | **Orders** | Manual / special / auto-replenish; PS → TL → SP; SO#, processed orders, delivery-due auto-reschedule |
 | **Logistics** | Deliveries (accept/reject), transfers, pull-outs with SN movement |
 | **Sales** | SN picker, reserved (RSV) sales, **BranchReturnRequest** ATR workflow |
-| **Reports** | Processed orders, daily stock, transfers, sales (CSV export), **P-Count** (`/reports/pcount`) |
+| **Reports** | Processed orders, daily stock, transfers, sales (CSV export), **P-Count** (`/reports/pcount`), **Official Sales** staging (`/reports/official-sales`) |
 | **SAP** | Outbound job queue + mock processor; **Service Layer** settings (all credentials encrypted at rest) |
 | **RBAC** | ISO + BRS roles (PS, TL, SP/SPA, Logistics, AE), permission-gated sidebar |
 
@@ -44,13 +44,13 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/logistics/deliveries`, `/transfers`, `/pickups` | `logistics.manage` |
 | `/operations` | `inventory.view` (combined ops view) |
 | `/sales` | `sales.create` |
-| `/reports/processed-orders`, `/daily-stock`, `/transfers`, `/sales`, `/pcount` | `reports.view` (+ module-specific) |
+| `/reports/processed-orders`, `/daily-stock`, `/transfers`, `/sales`, `/pcount`, `/official-sales` | `reports.view` (+ module-specific) |
 | `/policies`, `/policies/[id]`, `/policies/new` | Policy permissions |
 | `/settings/company` | Tenant Admin / Super Admin |
 | `/settings/users`, `/roles` | `users.manage` / `roles.manage` |
 | `/settings/departments` | `departments.manage` |
 | `/audit-logs/system`, `/audit-logs/serial-numbers` | `audit_logs.view` |
-| `/settings/branches` | `branches.manage` |
+| `/settings/branches`, `/settings/branch-quotas` | `branches.manage` |
 | `/settings/warehouses` | `warehouses.manage` |
 | `/settings/dealers` | `dealers.manage` |
 | `/settings/service-centers` | `service_centers.manage` |
