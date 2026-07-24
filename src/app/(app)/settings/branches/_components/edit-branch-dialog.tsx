@@ -19,8 +19,32 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import {
+  BranchScheduleFields,
+  EMPTY_SCHEDULE,
+  buildSchedulePayload,
+  type BranchScheduleState,
+} from "@/app/(app)/settings/branches/_components/branch-schedule-fields";
 
 type FormOptions = Awaited<ReturnType<typeof listBranchFormOptionsAction>>;
+
+interface BranchScheduleConfig {
+  frequencyCodeId: string;
+  deliveryDays: number[];
+  orderDays: number[];
+  notes: string | null;
+}
+
+function scheduleStateFrom(config?: BranchScheduleConfig | null): BranchScheduleState {
+  if (!config) return EMPTY_SCHEDULE;
+  return {
+    enabled: true,
+    frequencyCodeId: config.frequencyCodeId,
+    deliveryDays: config.deliveryDays ?? [],
+    orderDays: config.orderDays ?? [],
+    notes: config.notes ?? "",
+  };
+}
 
 const STATUS_OPTIONS = [
   { id: "active", label: "Active" },
@@ -39,7 +63,8 @@ interface EditBranchDialogProps {
     primaryWarehouseId?: string | null;
     regionId?: string | null;
     provinceId?: string | null;
-    alternateWarehouses?: { warehouseId: string }[];
+    alternateWarehouses?: { alternateBranchId: string }[];
+    deliveryScheduleConfig?: BranchScheduleConfig | null;
   };
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -58,50 +83,68 @@ export function EditBranchDialog({
   onOpenChange,
   onUpdated,
 }: EditBranchDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Edit branch</DialogTitle>
+        </DialogHeader>
+        {open ? (
+          <EditBranchForm
+            key={branch.id}
+            branch={branch}
+            onOpenChange={onOpenChange}
+            onUpdated={onUpdated}
+          />
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EditBranchForm({
+  branch,
+  onOpenChange,
+  onUpdated,
+}: Omit<EditBranchDialogProps, "open">) {
   const [pending, startTransition] = useTransition();
   const [options, setOptions] = useState<FormOptions | null>(null);
-  const initialPrimary = branch.primaryWarehouseId ?? "";
-  const [alternateIds, setAlternateIds] = useState<string[]>(() =>
-    (branch.alternateWarehouses?.map((row) => row.warehouseId) ?? []).filter(
-      (id) => id !== initialPrimary,
-    ),
+  const [alternateIds, setAlternateIds] = useState<string[]>(
+    () => branch.alternateWarehouses?.map((row) => row.alternateBranchId) ?? [],
   );
-  const [primaryWarehouseId, setPrimaryWarehouseId] = useState(initialPrimary);
+  const [primaryWarehouseId, setPrimaryWarehouseId] = useState(
+    branch.primaryWarehouseId ?? "",
+  );
   const [status, setStatus] = useState(branch.status || "active");
   const [dealerId, setDealerId] = useState(branch.dealerId ?? "");
   const [branchAreaId, setBranchAreaId] = useState(branch.branchAreaId ?? "");
   const [areaId, setAreaId] = useState(branch.areaId ?? "");
   const [regionId, setRegionId] = useState(branch.regionId ?? "");
   const [provinceId, setProvinceId] = useState(branch.provinceId ?? "");
+  const [schedule, setSchedule] = useState<BranchScheduleState>(() =>
+    scheduleStateFrom(branch.deliveryScheduleConfig),
+  );
 
   useEffect(() => {
-    if (!open) return;
-    void listBranchFormOptionsAction().then(setOptions);
-    const nextPrimary = branch.primaryWarehouseId ?? "";
-    setPrimaryWarehouseId(nextPrimary);
-    setAlternateIds(
-      (branch.alternateWarehouses?.map((row) => row.warehouseId) ?? []).filter(
-        (id) => id !== nextPrimary,
-      ),
-    );
-    setStatus(branch.status || "active");
-    setDealerId(branch.dealerId ?? "");
-    setBranchAreaId(branch.branchAreaId ?? "");
-    setAreaId(branch.areaId ?? "");
-    setRegionId(branch.regionId ?? "");
-    setProvinceId(branch.provinceId ?? "");
-  }, [open, branch]);
+    let cancelled = false;
+    void listBranchFormOptionsAction().then((next) => {
+      if (!cancelled) setOptions(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  const warehouseOptions = useMemo(() => {
+  const alternateBranchOptions = useMemo(() => {
     if (!options) return [];
-    return options.warehouses
-      .filter((w) => w.id !== primaryWarehouseId)
-      .map((w) => ({
-        id: w.id,
-        label: `${w.code} — ${w.name}`,
-        description: w.name,
+    return options.branches
+      .filter((b) => b.id !== branch.id)
+      .map((b) => ({
+        id: b.id,
+        label: `${b.sapCode} — ${b.name}`,
+        description: b.name,
       }));
-  }, [options, primaryWarehouseId]);
+  }, [options, branch.id]);
 
   const dealerOptions = useMemo(
     () =>
@@ -173,7 +216,8 @@ export function EditBranchDialog({
         primaryWarehouseId: primaryWarehouseId || null,
         regionId: regionId || null,
         provinceId: provinceId || null,
-        alternateWarehouseIds: alternateIds,
+        alternateBranchIds: alternateIds,
+        schedule: buildSchedulePayload(schedule),
       });
       if (result.error) {
         toast.error(typeof result.error === "string" ? result.error : "Could not update branch");
@@ -194,120 +238,114 @@ export function EditBranchDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Edit branch</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={onSubmit} className="space-y-3">
-          <div className="space-y-2">
-            <Label htmlFor="edit-sapCode">SAP code</Label>
-            <Input id="edit-sapCode" name="sapCode" defaultValue={branch.sapCode} required />
+    <form onSubmit={onSubmit} className="space-y-3">
+      <div className="space-y-2">
+        <Label htmlFor="edit-sapCode">SAP code</Label>
+        <Input id="edit-sapCode" name="sapCode" defaultValue={branch.sapCode} required />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="edit-name">Name</Label>
+        <Input id="edit-name" name="name" defaultValue={branch.name} required />
+      </div>
+      <SearchableSelect
+        label="Status"
+        id="edit-status"
+        options={STATUS_OPTIONS}
+        value={status}
+        onChange={setStatus}
+        searchPlaceholder="Search status…"
+        disabled={pending}
+      />
+      {options ? (
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            <SearchableSelect
+              label="Dealer"
+              options={dealerOptions}
+              value={dealerId}
+              onChange={setDealerId}
+              allowClear
+              placeholder="—"
+              searchPlaceholder="Search dealers…"
+              disabled={pending}
+            />
+            <SearchableSelect
+              label="Primary warehouse"
+              options={primaryWarehouseOptions}
+              value={primaryWarehouseId}
+              onChange={setPrimaryWarehouseId}
+              allowClear
+              placeholder="—"
+              searchPlaceholder="Search warehouses…"
+              disabled={pending}
+            />
+            <SearchableSelect
+              label="Branch area"
+              options={branchAreaOptions}
+              value={branchAreaId}
+              onChange={setBranchAreaId}
+              allowClear
+              placeholder="—"
+              searchPlaceholder="Search branch areas…"
+              disabled={pending}
+            />
+            <SearchableSelect
+              label="Area"
+              options={areaOptions}
+              value={areaId}
+              onChange={setAreaId}
+              allowClear
+              placeholder="—"
+              searchPlaceholder="Search areas…"
+              disabled={pending}
+            />
+            <SearchableSelect
+              label="Region"
+              options={regionOptions}
+              value={regionId}
+              onChange={setRegionId}
+              allowClear
+              placeholder="—"
+              searchPlaceholder="Search regions…"
+              disabled={pending}
+            />
+            <SearchableSelect
+              label="Province"
+              options={provinceOptions}
+              value={provinceId}
+              onChange={setProvinceId}
+              allowClear
+              placeholder="—"
+              searchPlaceholder="Search provinces…"
+              disabled={pending}
+            />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="edit-name">Name</Label>
-            <Input id="edit-name" name="name" defaultValue={branch.name} required />
-          </div>
-          <SearchableSelect
-            label="Status"
-            id="edit-status"
-            options={STATUS_OPTIONS}
-            value={status}
-            onChange={setStatus}
-            searchPlaceholder="Search status…"
+          <SearchableMultiSelect
+            label="Alternate branches"
+            options={alternateBranchOptions}
+            selectedIds={alternateIds}
+            onChange={setAlternateIds}
+            placeholder="Search and select branches…"
+            searchPlaceholder="Filter by code or name…"
+            emptyMessage="No branches available."
+            hint="Other active branches that can fulfill for this location."
             disabled={pending}
           />
-          {options ? (
-            <>
-              <div className="grid grid-cols-2 gap-2">
-                <SearchableSelect
-                  label="Dealer"
-                  options={dealerOptions}
-                  value={dealerId}
-                  onChange={setDealerId}
-                  allowClear
-                  placeholder="—"
-                  searchPlaceholder="Search dealers…"
-                  disabled={pending}
-                />
-                <SearchableSelect
-                  label="Primary warehouse"
-                  options={primaryWarehouseOptions}
-                  value={primaryWarehouseId}
-                  onChange={(next) => {
-                    setPrimaryWarehouseId(next);
-                    if (next) {
-                      setAlternateIds((current) =>
-                        current.filter((id) => id !== next),
-                      );
-                    }
-                  }}
-                  allowClear
-                  placeholder="—"
-                  searchPlaceholder="Search warehouses…"
-                  disabled={pending}
-                />
-                <SearchableSelect
-                  label="Branch area"
-                  options={branchAreaOptions}
-                  value={branchAreaId}
-                  onChange={setBranchAreaId}
-                  allowClear
-                  placeholder="—"
-                  searchPlaceholder="Search branch areas…"
-                  disabled={pending}
-                />
-                <SearchableSelect
-                  label="Area"
-                  options={areaOptions}
-                  value={areaId}
-                  onChange={setAreaId}
-                  allowClear
-                  placeholder="—"
-                  searchPlaceholder="Search areas…"
-                  disabled={pending}
-                />
-                <SearchableSelect
-                  label="Region"
-                  options={regionOptions}
-                  value={regionId}
-                  onChange={setRegionId}
-                  allowClear
-                  placeholder="—"
-                  searchPlaceholder="Search regions…"
-                  disabled={pending}
-                />
-                <SearchableSelect
-                  label="Province"
-                  options={provinceOptions}
-                  value={provinceId}
-                  onChange={setProvinceId}
-                  allowClear
-                  placeholder="—"
-                  searchPlaceholder="Search provinces…"
-                  disabled={pending}
-                />
-              </div>
-              <SearchableMultiSelect
-                label="Alternate warehouses"
-                options={warehouseOptions}
-                selectedIds={alternateIds}
-                onChange={setAlternateIds}
-                placeholder="Search and select warehouses…"
-                searchPlaceholder="Filter by code or name…"
-                emptyMessage="No warehouses available."
-                hint="Primary warehouse is excluded from alternates."
-                disabled={pending}
-              />
-            </>
-          ) : null}
-          <DialogFooter>
-            <Button type="submit" disabled={pending}>
-              {pending ? "Saving…" : "Save"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+          <BranchScheduleFields
+            value={schedule}
+            onChange={setSchedule}
+            frequencyCodes={options.frequencyCodes}
+            disabled={pending}
+          />
+        </>
+      ) : (
+        <p className="text-sm text-muted-foreground">Loading options…</p>
+      )}
+      <DialogFooter>
+        <Button type="submit" disabled={pending}>
+          {pending ? "Saving…" : "Save"}
+        </Button>
+      </DialogFooter>
+    </form>
   );
 }

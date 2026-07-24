@@ -1,5 +1,6 @@
 import { auditService } from "@/features/audit/services/audit.service";
-import { branchRepository } from "@/features/branches/repositories/branch.repository";
+import { branchRepository, type BranchScheduleInput } from "@/features/branches/repositories/branch.repository";
+import { branchScheduleSchema } from "@/features/branches/schemas/branch.schema";
 import { z } from "zod";
 
 const createBranchSchema = z.object({
@@ -11,7 +12,8 @@ const createBranchSchema = z.object({
   primaryWarehouseId: z.string().optional().nullable(),
   regionId: z.string().optional().nullable(),
   provinceId: z.string().optional().nullable(),
-  alternateWarehouseIds: z.array(z.string()).optional(),
+  alternateBranchIds: z.array(z.string()).optional(),
+  schedule: branchScheduleSchema.optional().nullable(),
   status: z.enum(["active", "inactive"]).optional(),
 });
 
@@ -33,6 +35,10 @@ export const branchService = {
     return branchRepository.listByTenant(tenantId);
   },
 
+  listActiveBranches(tenantId: string, dealerId?: string | null) {
+    return branchRepository.listActiveByTenant(tenantId, dealerId);
+  },
+
   listFormOptions(tenantId: string) {
     return branchRepository.listFormOptions(tenantId);
   },
@@ -48,7 +54,8 @@ export const branchService = {
     primaryWarehouseId?: string | null;
     regionId?: string | null;
     provinceId?: string | null;
-    alternateWarehouseIds?: string[];
+    alternateBranchIds?: string[];
+    schedule?: BranchScheduleInput | null;
     status?: "active" | "inactive";
   }) {
     const parsed = createBranchSchema.safeParse(input);
@@ -87,7 +94,8 @@ export const branchService = {
     primaryWarehouseId?: string | null;
     regionId?: string | null;
     provinceId?: string | null;
-    alternateWarehouseIds?: string[];
+    alternateBranchIds?: string[];
+    schedule?: BranchScheduleInput | null;
     status?: "active" | "inactive";
   }) {
     const parsed = updateBranchSchema.safeParse(input);

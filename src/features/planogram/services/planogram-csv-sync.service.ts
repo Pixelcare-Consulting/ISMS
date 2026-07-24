@@ -78,6 +78,13 @@ export async function syncPlanogramFromCsvContent(
             },
             update: { daysThreshold: DEFAULT_MIL_DAYS_EXPORT },
           }),
+          // Import auto-extends the allow-list; never pruned here — an admin may have
+          // hand-added allowed models the CSV doesn't know about.
+          prisma.branchAllowedModel.upsert({
+            where: { branchId_modelId: { branchId: branch.id, modelId } },
+            create: { tenantId, branchId: branch.id, modelId },
+            update: {},
+          }),
         ]),
         { timeout: 30_000 },
       );

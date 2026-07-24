@@ -176,6 +176,15 @@ export const appModules: AppModule[] = [
     actions: [{ value: "manage", label: "Manage" }],
   },
   {
+    id: "ordering_settings",
+    name: "Ordering Policy",
+    route: "/settings/ordering",
+    slugPrefix: "ordering_settings",
+    navPermission: "ordering_settings.manage",
+    description: "Global locked ordering days (e.g. no orders on Sundays)",
+    actions: [{ value: "manage", label: "Manage" }],
+  },
+  {
     id: "aors",
     name: "Areas of Responsibility",
     route: "/settings/aors",
@@ -226,6 +235,18 @@ export const appModules: AppModule[] = [
     navPermission: "sales.create",
     description: "Branch sales and ATR status",
     actions: [{ value: "create", label: "Create" }],
+  },
+  {
+    id: "official_sales",
+    name: "Official Sales",
+    route: "/reports/official-sales",
+    slugPrefix: "official_sales",
+    navPermission: "official_sales.view",
+    description: "Official sales Excel staging and inventory process",
+    actions: [
+      { value: "view", label: "View" },
+      { value: "manage", label: "Manage" },
+    ],
   },
   {
     id: "forecast",

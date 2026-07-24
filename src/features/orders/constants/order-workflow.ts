@@ -116,6 +116,16 @@ export function isOrderPendingApproval(status: BranchOrderStatus): boolean {
   return ["pending_ps", "pending_tl", "pending_sp", "pending_logistics"].includes(status);
 }
 
+/**
+ * Whether a branch may still edit an order's lines. Editable while under review
+ * (before final SP approval); frozen once approved, in logistics, rejected, or
+ * cancelled. Editing also requires the branch to be within its ordering window
+ * (enforced separately in the order service).
+ */
+export function isOrderEditable(status: BranchOrderStatus): boolean {
+  return ["draft", "pending_ps", "pending_tl", "pending_sp"].includes(status);
+}
+
 export const ORDER_WORKFLOW_DESCRIPTION =
   "Auto-replenish: TL → SP. Manual: PS → TL → SP. Special: TL creates → SP. Approved orders queue logistics delivery (DIT → Stock).";
 

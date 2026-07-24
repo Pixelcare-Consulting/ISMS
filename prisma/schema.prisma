@@ -29,6 +29,15 @@ enum BranchOrderType {
   special
 }
 
+/// Delivery cadence for a branch (F-code schedules).
+enum DeliveryFrequency {
+  weekly        // F4 — once a week
+  biweekly      // F2 — once every two weeks
+  triweekly     // F3 — once every three weeks
+  monthly       // F1 — once a month
+  twice_weekly  // F8 — twice a week
+}
+
 enum ReasonStatusCategory {
   inventory_system
   pullout_reason
@@ -164,12 +173,16 @@ model Tenant {
   serviceCenters      ServiceCenter[]
   priceLists          PriceList[]
   branches            Branch[]
+  branchDeliverySchedules BranchDeliverySchedule[]
+  frequencyCodes      FrequencyCode[]
+  orderingPolicy      OrderingPolicy?
   warehouses          Warehouse[]
   aors                Aor[]
   serialNumbers       SerialNumber[]
   branchInventories   BranchInventory[]
   branchPlanograms    BranchPlanogram[]
   branchMilSettings   BranchMilSetting[]
+  branchAllowedModels BranchAllowedModel[]
   branchOrders        BranchOrder[]
   branchDeliveries    BranchDelivery[]
   branchTransfers     BranchTransfer[]
@@ -198,6 +211,7 @@ model Tenant {
   sapServiceLayerConfigs SapServiceLayerConfig[]
   announcements       Announcement[]
   competitorObservations CompetitorObservation[]
+  officialSalesImportBatches OfficialSalesImportBatch[]
 
   @@map("tenants")
 }
@@ -249,6 +263,7 @@ model User {
   stockVariancesAdjustmentRequested StockVariance[] @relation("StockVarianceAdjustmentRequestedBy")
   announcementsCreated      Announcement[]        @relation("AnnouncementCreatedBy")
   competitorObservationsCreated CompetitorObservation[] @relation("CompetitorObservationCreatedBy")
+  officialSalesImportBatchesUploaded OfficialSalesImportBatch[] @relation("OfficialSalesImportBatchUploadedBy")
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -540,6 +555,7 @@ model ProductModel {
   serialNumbers      SerialNumber[]
   branchPlanograms   BranchPlanogram[]
   branchMilSettings  BranchMilSetting[]
+  branchAllowedModels BranchAllowedModel[]
   branchOrderDetails BranchOrderDetail[]
   branchAllocations  BranchAllocation[]
   stockCountLines    StockCountLine[]
@@ -615,6 +631,7 @@ model PackageType {
   id           String             @id @default(cuid())
   tenantId     String             @map("tenant_id")
   name         String
+  quantity     Int                @default(1)
   recordStatus LookupRecordStatus @default(active) @map("record_status")
   createdAt    DateTime           @default(now()) @map("created_at")
   updatedAt    DateTime           @updatedAt @map("updated_at")
@@ -1047,11 +1064,14 @@ model Branch {
   region                Region?                @relation(fields: [regionId], references: [id], onDelete: SetNull)
   province              Province?              @relation(fields: [provinceId], references: [id], onDelete: SetNull)
   branchStatusType      BranchStatusType?      @relation(fields: [branchStatusTypeId], references: [id], onDelete: SetNull)
-  alternateWarehouses   AlternateWarehouse[]
+  alternateWarehouses   AlternateWarehouse[]   @relation("BranchHasAlternates")
+  alternateOf           AlternateWarehouse[]   @relation("BranchIsAlternateOf")
   aors                  Aor[]
   branchInventories     BranchInventory[]
   branchPlanograms      BranchPlanogram[]
   branchMilSettings     BranchMilSetting[]
+  branchAllowedModels   BranchAllowedModel[]
+  deliveryScheduleConfig BranchDeliverySchedule?
   branchOrders          BranchOrder[]
   branchDeliveries      BranchDelivery[]
   transfersFrom         BranchTransfer[]       @relation("TransferFromBranch")
@@ -1071,6 +1091,63 @@ model Branch {
   @@map("branches")
 }
 
+/// Tenant-wide ordering policy. `globalLockedWeekdays` are weekdays (0=Sun … 6=Sat)
+/// on which no order may be created, requested, or approved (default: Sunday).
+model OrderingPolicy {
+  id                   String   @id @default(cuid())
+  tenantId             String   @unique @map("tenant_id")
+  globalLockedWeekdays Int[]    @default([0]) @map("global_locked_weekdays")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("ordering_policies")
+}
+
+/// Configurable delivery-frequency code (e.g. F4 → weekly). Reusable across
+/// branches; the description is shown when a branch selects the code.
+model FrequencyCode {
+  id          String            @id @default(cuid())
+  tenantId    String            @map("tenant_id")
+  code        String
+  frequency   DeliveryFrequency
+  description String
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+
+  tenant          Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branchSchedules BranchDeliverySchedule[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("frequency_codes")
+}
+
+/// Per-branch delivery cadence + ordering window used to gate order creation.
+/// Weekdays are stored as integers 0=Sunday … 6=Saturday.
+model BranchDeliverySchedule {
+  id              String   @id @default(cuid())
+  tenantId        String   @map("tenant_id")
+  branchId        String   @unique @map("branch_id")
+  frequencyCodeId String   @map("frequency_code_id")
+  /// Weekday(s) deliveries arrive on this branch.
+  deliveryDays    Int[]    @map("delivery_days")
+  /// Weekday(s) customers may place orders. Ordering is locked on the rest.
+  orderDays       Int[]    @map("order_days")
+  notes           String?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch        Branch        @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  frequencyCode FrequencyCode @relation(fields: [frequencyCodeId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([frequencyCodeId])
+  @@map("branch_delivery_schedules")
+}
+
 model Warehouse {
   id              String   @id @default(cuid())
   tenantId        String   @map("tenant_id")
@@ -1084,7 +1161,6 @@ model Warehouse {
   tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   modeOfPayment       ModeOfPayment?       @relation(fields: [modeOfPaymentId], references: [id], onDelete: SetNull)
   locations           WarehouseLocation[]
-  alternateWarehouses AlternateWarehouse[]
   primaryBranches     Branch[]             @relation("BranchPrimaryWarehouse")
   aors                Aor[]
   pulloutsDestination BranchPullout[]
@@ -1112,17 +1188,58 @@ model WarehouseLocation {
   @@map("warehouse_locations")
 }
 
+/// Join: branch ↔ alternate fulfillment branches (table name kept for history).
 model AlternateWarehouse {
-  id          String   @id @default(cuid())
-  branchId    String   @map("branch_id")
-  warehouseId String   @map("warehouse_id")
-  createdAt   DateTime @default(now()) @map("created_at")
+  id                String   @id @default(cuid())
+  branchId          String   @map("branch_id")
+  alternateBranchId String   @map("alternate_branch_id")
+  createdAt         DateTime @default(now()) @map("created_at")
 
-  branch    Branch    @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  branch          Branch @relation("BranchHasAlternates", fields: [branchId], references: [id], onDelete: Cascade)
+  alternateBranch Branch @relation("BranchIsAlternateOf", fields: [alternateBranchId], references: [id], onDelete: Cascade)
 
-  @@unique([branchId, warehouseId])
+  @@unique([branchId, alternateBranchId])
   @@map("alternate_warehouses")
+}
+
+enum OfficialSalesImportRowStatus {
+  pending
+  success
+  error
+}
+
+model OfficialSalesImportBatch {
+  id           String   @id @default(cuid())
+  tenantId     String   @map("tenant_id")
+  uploadedById String?  @map("uploaded_by_id")
+  fileName     String?  @map("file_name")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  tenant     Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  uploadedBy User?                    @relation("OfficialSalesImportBatchUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
+  rows       OfficialSalesImportRow[]
+
+  @@index([tenantId, createdAt])
+  @@map("official_sales_import_batches")
+}
+
+model OfficialSalesImportRow {
+  id          String                       @id @default(cuid())
+  tenantId    String                       @map("tenant_id")
+  batchId     String                       @map("batch_id")
+  serial      String
+  drDate      DateTime?                    @map("dr_date") @db.Date
+  drNo        String?                      @map("dr_no")
+  result      String?
+  status      OfficialSalesImportRowStatus @default(pending)
+  processedAt DateTime?                    @map("processed_at")
+  createdAt   DateTime                     @default(now()) @map("created_at")
+
+  batch OfficialSalesImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@index([batchId])
+  @@map("official_sales_import_rows")
 }
 
 model Aor {
@@ -1285,6 +1402,23 @@ model BranchPlanogram {
   @@unique([branchId, modelId])
   @@index([tenantId])
   @@map("branch_planograms")
+}
+
+model BranchAllowedModel {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  branchId  String   @map("branch_id")
+  modelId   String   @map("model_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  model  ProductModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, modelId])
+  @@index([tenantId])
+  @@map("branch_allowed_models")
 }
 
 model BranchMilSetting {

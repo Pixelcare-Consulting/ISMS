@@ -3,6 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { orderService } from "@/features/orders/services/order.service";
 import { branchService } from "@/features/branches/services/branch.service";
+import { branchRepository } from "@/features/branches/repositories/branch.repository";
+import { dealerRepository } from "@/features/dealers/repositories/dealer.repository";
+import { orderingPolicyService } from "@/features/ordering/services/ordering-policy.service";
+import { checkOrderingAllowed } from "@/features/orders/utils/order-window";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import type { BranchOrderType } from "@prisma/client";
 
@@ -36,10 +40,26 @@ export async function listOrdersAction(input?: { page?: number }) {
   };
 }
 
-export async function listBranchesForOrderAction() {
+export async function listActiveDealersForOrderAction() {
   const session = await requirePermission("orders.create");
-  const branches = await branchService.listBranches(session.user.tenantId);
-  return branches.map((b) => ({ id: b.id, name: b.name }));
+  const dealers = await dealerRepository.listActiveByTenant(session.user.tenantId);
+  return dealers.map((d) => ({
+    id: d.id,
+    name: d.sapCode ? `${d.name} (${d.sapCode})` : d.name,
+  }));
+}
+
+export async function listBranchesForOrderAction(dealerId?: string) {
+  const session = await requirePermission("orders.create");
+  const branches = await branchService.listActiveBranches(
+    session.user.tenantId,
+    dealerId || null,
+  );
+  return branches.map((b) => ({
+    id: b.id,
+    name: b.name,
+    dealerId: b.dealerId,
+  }));
 }
 
 export async function listModelsForOrderAction(
@@ -52,6 +72,23 @@ export async function listModelsForOrderAction(
     branchId,
     orderType,
   );
+}
+
+export async function checkOrderWindowAction(branchId: string) {
+  const session = await requirePermission("orders.create");
+  const [policy, ctx] = await Promise.all([
+    orderingPolicyService.getPolicy(session.user.tenantId),
+    branchRepository.findScheduleContext(session.user.tenantId, branchId),
+  ]);
+  const reason = checkOrderingAllowed({
+    action: "create",
+    policy,
+    branchName: ctx?.name,
+    schedule: ctx?.deliveryScheduleConfig
+      ? { orderDays: ctx.deliveryScheduleConfig.orderDays }
+      : null,
+  });
+  return { blocked: reason !== null, reason };
 }
 
 export async function createOrderAction(input: {
@@ -67,6 +104,23 @@ export async function createOrderAction(input: {
     return { success: true as const };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to create order" };
+  }
+}
+
+export async function updateOrderAction(
+  orderId: string,
+  input: { details: { modelId: string; quantity: number }[] },
+) {
+  const session = await requirePermission("orders.create");
+  try {
+    await orderService.updateLines(session.user.tenantId, session.user.id, orderId, {
+      hasFullAccess: hasFullOrderAccess(session.user.permissions),
+      details: input.details,
+    });
+    revalidatePath("/orders");
+    return { success: true as const };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to update order" };
   }
 }
 

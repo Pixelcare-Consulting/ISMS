@@ -6,7 +6,7 @@ export interface ClientPriceListRow {
   periodStart: string;
   periodEnd: string;
   model: { id: string; skuCode: string; name: string };
-  packageType: { id: string; name: string } | null;
+  packageType: { id: string; name: string; quantity: number } | null;
 }
 
 type PrismaPriceListRow = {
@@ -15,7 +15,7 @@ type PrismaPriceListRow = {
   periodStart: Date | string;
   periodEnd: Date | string;
   model: { id: string; skuCode: string; name: string };
-  packageType: { id: string; name: string } | null;
+  packageType: { id: string; name: string; quantity: number } | null;
 };
 
 function formatPeriodDate(value: Date | string): string {
@@ -37,7 +37,11 @@ export function toClientPriceListRow(
       name: row.model.name,
     },
     packageType: row.packageType
-      ? { id: row.packageType.id, name: row.packageType.name }
+      ? {
+          id: row.packageType.id,
+          name: row.packageType.name,
+          quantity: row.packageType.quantity,
+        }
       : null,
   };
 }

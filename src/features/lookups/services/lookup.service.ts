@@ -60,6 +60,10 @@ function buildWriteData(
     data.class = classValue || null;
   }
 
+  if (config.quantityField) {
+    data.quantity = input.quantity ?? 1;
+  }
+
   return data;
 }
 

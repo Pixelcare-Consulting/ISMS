@@ -30,6 +30,8 @@ export interface LookupEntityConfig {
   parent?: LookupParentConfig;
   /** ActualSize-only free-text classification column. */
   classField?: boolean;
+  /** PackageType units / package quantity. */
+  quantityField?: boolean;
   /** Child entity rendered inline on this entity's page. */
   child?: LookupEntityKey;
 }
@@ -121,6 +123,7 @@ export const LOOKUP_ENTITIES: Record<LookupEntityKey, LookupEntityConfig> = {
     group: "Products",
     auditEntity: "PackageType",
     auditKey: "package_type",
+    quantityField: true,
   },
   area: {
     key: "area",

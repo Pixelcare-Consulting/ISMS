@@ -16,6 +16,20 @@ export const dealerRepository = {
     });
   },
 
+  listActiveByTenant(tenantId: string) {
+    return prisma.dealer.findMany({
+      where: { tenantId, deletedAt: null, status: "active" },
+      include: {
+        area: { select: { id: true, name: true, code: true } },
+        dealerType: { select: { id: true, name: true } },
+        dealerArea: { select: { id: true, name: true } },
+        modeOfPayment: { select: { id: true, name: true } },
+        _count: { select: { branches: true } },
+      },
+      orderBy: { name: "asc" },
+    });
+  },
+
   findById(tenantId: string, id: string) {
     return prisma.dealer.findFirst({
       where: { id, tenantId, deletedAt: null },

@@ -24,6 +24,48 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.13.0",
+    date: "2026-07-23",
+    title: "Branch quotas, Official Sales, and order dealer cascade",
+    highlights: [
+      "Alternate fulfillment picks other branches; Branch Quotas enforce monthly brand limits on create",
+      "Official Sales under Reports — upload Excel/CSV, stage rows, process SALE/RETURN on serials",
+      "Create order: pick dealer first, then that dealer’s active branches; package type qty on price list cards",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Alternate warehouses on branches now multi-select other active branches (not warehouse records)",
+      },
+      {
+        type: "improvement",
+        description:
+          "Dealer dropdowns for branches, AORs, and orders only list active dealers",
+      },
+      {
+        type: "feature",
+        description:
+          "Branch Quotas settings (Sheet CRUD) with monthly quota enforcement when creating branch orders",
+      },
+      {
+        type: "feature",
+        description:
+          "Official Sales report: Excel/CSV staging table, clear temp, process STK→SLD sale or SLD/RSV→STK return",
+      },
+      {
+        type: "feature",
+        description:
+          "Create branch order loads dealers and branches automatically; branch list filters by selected dealer",
+      },
+      {
+        type: "feature",
+        description:
+          "Package types include quantity; price list cards show name · qty on the package badge",
+      },
+    ],
+  },
+  {
     version: "0.12.1",
     date: "2026-07-12",
     title: "New Settings modules, searchable lists, and clearer access",

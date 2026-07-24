@@ -24,7 +24,7 @@ export async function listAorFormOptionsAction() {
   const [users, branches, dealers] = await Promise.all([
     userService.listUsers(session.user.tenantId),
     branchService.listBranches(session.user.tenantId),
-    dealerRepository.listByTenant(session.user.tenantId),
+    dealerRepository.listActiveByTenant(session.user.tenantId),
   ]);
   return { users, branches, dealers };
 }

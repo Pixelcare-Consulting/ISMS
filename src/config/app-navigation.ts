@@ -3,6 +3,7 @@ import {
   ArrowUpToLine,
   Barcode,
   Building2,
+  CalendarClock,
   CalendarDays,
   ChartColumn,
   ClipboardList,
@@ -143,13 +144,14 @@ export const appNavigation: NavEntry[] = [
       },
     ],
   },
-  {
-    type: "link",
-    href: "/sales",
-    label: "Sales",
-    icon: Store,
-    permission: "sales.create",
-  },
+  // Sales module hidden from the sidebar (kept for future re-enablement)
+  // {
+  //   type: "link",
+  //   href: "/sales",
+  //   label: "Sales",
+  //   icon: Store,
+  //   permission: "sales.create",
+  // },
   {
     type: "group",
     label: "Reports",
@@ -173,11 +175,19 @@ export const appNavigation: NavEntry[] = [
         icon: ArrowLeftRight,
         anyPermissions: ["reports.view", "logistics.manage"],
       },
+      // Sales report hidden (kept for future re-enablement)
+      // {
+      //   href: "/reports/sales",
+      //   label: "Sales",
+      //   icon: Store,
+      //   anyPermissions: ["reports.view", "sales.create"],
+      // },
       {
-        href: "/reports/sales",
-        label: "Sales",
-        icon: Store,
-        anyPermissions: ["reports.view", "sales.create"],
+        href: "/reports/official-sales",
+        label: "Official Sales",
+        icon: ScrollText,
+        anyPermissions: ["official_sales.view", "official_sales.manage"],
+        badge: "new",
       },
       {
         href: "/reports/pcount",
@@ -309,9 +319,23 @@ export const appNavigation: NavEntry[] = [
         permission: "status_settings.manage",
       },
       {
+        href: "/settings/ordering",
+        label: "Ordering policy",
+        icon: CalendarClock,
+        permission: "ordering_settings.manage",
+        badge: "new",
+      },
+      {
         href: "/settings/branches",
         label: "Branches",
         icon: MapPin,
+        permission: "branches.manage",
+        badge: "new",
+      },
+      {
+        href: "/settings/branch-quotas",
+        label: "Branch quotas",
+        icon: ChartColumn,
         permission: "branches.manage",
         badge: "new",
       },

@@ -55,6 +55,7 @@ export interface LookupRowData {
   recordStatus: LookupRecordStatus;
   code?: string | null;
   class?: string | null;
+  quantity?: number | null;
   brandId?: string | null;
   regionId?: string | null;
   sizeId?: string | null;
@@ -126,6 +127,7 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
   const [formCode, setFormCode] = useState("");
   const [formParentId, setFormParentId] = useState("");
   const [formClass, setFormClass] = useState("");
+  const [formQuantity, setFormQuantity] = useState("1");
   const [pending, startTransition] = useTransition();
 
   const parentNamesById = useMemo(
@@ -174,6 +176,7 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
     setFormCode("");
     setFormParentId("");
     setFormClass("");
+    setFormQuantity("1");
     setOpen(true);
   }
 
@@ -183,6 +186,7 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
     setFormCode(row.code ?? "");
     setFormParentId(config.parent ? row[config.parent.field] ?? "" : "");
     setFormClass(row.class ?? "");
+    setFormQuantity(String(row.quantity ?? 1));
     setOpen(true);
   }
 
@@ -193,6 +197,9 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
       ...(config.code ? { code: formCode || undefined } : {}),
       ...(config.parent ? { parentId: formParentId || undefined } : {}),
       ...(config.classField ? { class: formClass || undefined } : {}),
+      ...(config.quantityField
+        ? { quantity: Number(formQuantity) || 1 }
+        : {}),
     };
     startTransition(async () => {
       const result = editing
@@ -237,6 +244,7 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
     3 +
     (config.code ? 1 : 0) +
     (config.classField ? 1 : 0) +
+    (config.quantityField ? 1 : 0) +
     (config.parent ? 1 : 0);
 
   return (
@@ -270,6 +278,7 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
                 <TableHead>Name</TableHead>
                 {config.code ? <TableHead>Code</TableHead> : null}
                 {config.classField ? <TableHead>Class</TableHead> : null}
+                {config.quantityField ? <TableHead>Qty</TableHead> : null}
                 {config.parent ? <TableHead>{config.parent.label}</TableHead> : null}
                 <TableHead>Status</TableHead>
                 <TableHead className="w-48" />
@@ -291,6 +300,9 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
                     ) : null}
                     {config.classField ? (
                       <TableCell>{row.class ?? "—"}</TableCell>
+                    ) : null}
+                    {config.quantityField ? (
+                      <TableCell className="tabular-nums">{row.quantity ?? 1}</TableCell>
                     ) : null}
                     {config.parent ? (
                       <TableCell>{parentNameOf(row) ?? "—"}</TableCell>
@@ -361,6 +373,20 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
                   id={`${entity}-class`}
                   value={formClass}
                   onChange={(e) => setFormClass(e.target.value)}
+                />
+              </div>
+            ) : null}
+            {config.quantityField ? (
+              <div className="space-y-2">
+                <Label htmlFor={`${entity}-quantity`}>Quantity</Label>
+                <Input
+                  id={`${entity}-quantity`}
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={formQuantity}
+                  onChange={(e) => setFormQuantity(e.target.value)}
+                  required
                 />
               </div>
             ) : null}

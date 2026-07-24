@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { LayoutGrid } from "lucide-react";
+import { LayoutGrid, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import { deleteBranchAction } from "@/features/branches/actions/branch.actions";
 import { CreateBranchDialog } from "@/app/(app)/settings/branches/_components/create-branch-dialog";
 import { EditBranchDialog } from "@/app/(app)/settings/branches/_components/edit-branch-dialog";
+import { ImportBranchesDialog } from "@/app/(app)/settings/branches/_components/import-branches-dialog";
 import {
   AppDataTable,
   AppDataTableBody,
@@ -51,7 +52,13 @@ interface BranchRow {
   provinceId?: string | null;
   branchArea: { name: string } | null;
   dealer?: { name: string } | null;
-  alternateWarehouses?: { warehouseId: string }[];
+  alternateWarehouses?: { alternateBranchId: string }[];
+  deliveryScheduleConfig?: {
+    frequencyCodeId: string;
+    deliveryDays: number[];
+    orderDays: number[];
+    notes: string | null;
+  } | null;
 }
 
 export function BranchesTable({ branches }: { branches: BranchRow[] }) {
@@ -60,6 +67,7 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<BranchRow | null>(null);
   const [deleting, setDeleting] = useState<BranchRow | null>(null);
+  const [importing, setImporting] = useState(false);
   const [pending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -120,6 +128,10 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
                 count={selection.selectedCount}
                 onClear={selection.clearSelection}
               />
+              <Button variant="outline" size="sm" onClick={() => setImporting(true)}>
+                <Upload className="mr-1 size-4" />
+                Import
+              </Button>
               <CreateBranchDialog
                 onCreated={(branch) => {
                   setRows((currentRows) => [branch, ...currentRows]);
@@ -202,6 +214,7 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
           }}
         />
       ) : null}
+      <ImportBranchesDialog open={importing} onOpenChange={setImporting} />
       <DeleteConfirmDialog
         open={!!deleting}
         onOpenChange={() => setDeleting(null)}

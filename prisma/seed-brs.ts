@@ -117,9 +117,21 @@ export async function seedBrsDemoData(
     });
     branchByIndex.set(branchDef.branchIndex, branch.id);
 
+  }
+
+  // Link each branch to the next as an alternate fulfillment branch (demo).
+  for (let i = 0; i < branchRecords.length; i++) {
+    const current = branchRecords[i];
+    const alternate = branchRecords[(i + 1) % branchRecords.length];
+    if (!current || !alternate || current.id === alternate.id) continue;
     await prisma.alternateWarehouse.upsert({
-      where: { branchId_warehouseId: { branchId: branch.id, warehouseId: mainWarehouse.id } },
-      create: { branchId: branch.id, warehouseId: mainWarehouse.id },
+      where: {
+        branchId_alternateBranchId: {
+          branchId: current.id,
+          alternateBranchId: alternate.id,
+        },
+      },
+      create: { branchId: current.id, alternateBranchId: alternate.id },
       update: {},
     });
   }

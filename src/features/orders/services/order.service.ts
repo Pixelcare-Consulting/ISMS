@@ -7,14 +7,19 @@ import {
   getApprovalLevelForStatus,
   getInitialOrderStatus,
   getRoleSlugForApproval,
+  isOrderEditable,
   nextStatusAfterApprove,
 } from "@/features/orders/constants/order-workflow";
 import { orderRepository } from "@/features/orders/repositories/order.repository";
 import { sapService } from "@/features/sap/services/sap.service";
+import { branchQuotaService } from "@/features/branch-quotas/services/branch-quota.service";
 import { planogramRepository } from "@/features/planogram/repositories/planogram.repository";
 import { masterDataRepository } from "@/features/master-data/repositories/master-data.repository";
 import { getUserBranchIds } from "@/lib/aor/scope";
 import { resolveDeliveryDueDate } from "@/features/orders/utils/delivery-schedule";
+import { assertOrderingAllowed } from "@/features/orders/utils/order-window";
+import { branchRepository } from "@/features/branches/repositories/branch.repository";
+import { orderingPolicyService } from "@/features/ordering/services/ordering-policy.service";
 import { sendWorkflowEmail } from "@/lib/notifications/workflow-email";
 
 function buildLinesSummary(
@@ -155,7 +160,21 @@ export const orderService = {
       details: { modelId: string; quantity: number }[];
     },
   ) {
+    const [policy, scheduleCtx] = await Promise.all([
+      orderingPolicyService.getPolicy(tenantId),
+      branchRepository.findScheduleContext(tenantId, data.branchId),
+    ]);
+    assertOrderingAllowed({
+      action: "create",
+      policy,
+      branchName: scheduleCtx?.name,
+      schedule: scheduleCtx?.deliveryScheduleConfig
+        ? { orderDays: scheduleCtx.deliveryScheduleConfig.orderDays }
+        : null,
+    });
+
     await validateOrderLines(tenantId, data.branchId, data.orderType, data.details);
+    await branchQuotaService.assertWithinQuota(tenantId, data.branchId, data.details);
 
     const offPlanogramSkus: string[] = [];
     if (data.orderType === "special") {
@@ -205,6 +224,67 @@ export const orderService = {
     return order;
   },
 
+  async updateLines(
+    tenantId: string,
+    userId: string,
+    orderId: string,
+    opts: {
+      hasFullAccess: boolean;
+      details: { modelId: string; quantity: number }[];
+    },
+  ) {
+    const order = await orderRepository.findById(tenantId, orderId);
+    if (!order) throw new Error("Order not found");
+    if (!isOrderEditable(order.status)) {
+      throw new Error("This order can no longer be edited.");
+    }
+
+    if (!opts.hasFullAccess) {
+      // null = unrestricted (no AOR scope); an explicit list must include the branch.
+      const branchIds = await getUserBranchIds(tenantId, userId);
+      if (branchIds && !branchIds.includes(order.branchId)) {
+        throw new Error("You can only edit orders for your own branch.");
+      }
+    }
+
+    // Editing is only allowed within the branch's ordering window (same day-lock
+    // as creating). On a locked day this throws with the lock reason.
+    const [policy, scheduleCtx] = await Promise.all([
+      orderingPolicyService.getPolicy(tenantId),
+      branchRepository.findScheduleContext(tenantId, order.branchId),
+    ]);
+    assertOrderingAllowed({
+      action: "create",
+      policy,
+      branchName: scheduleCtx?.name,
+      schedule: scheduleCtx?.deliveryScheduleConfig
+        ? { orderDays: scheduleCtx.deliveryScheduleConfig.orderDays }
+        : null,
+    });
+
+    await validateOrderLines(tenantId, order.branchId, order.orderType, opts.details);
+
+    const updated = await orderRepository.updateLines(tenantId, orderId, {
+      orderType: order.orderType,
+      details: opts.details,
+    });
+
+    await auditService.log({
+      tenantId,
+      userId,
+      action: "order.updated",
+      entityType: "BranchOrder",
+      entityId: orderId,
+      metadata: {
+        ...orderAuditMetadata(updated),
+        from: order.status,
+        to: getInitialOrderStatus(order.orderType),
+      },
+    });
+
+    return updated;
+  },
+
   async approve(
     tenantId: string,
     userId: string,
@@ -221,6 +301,14 @@ export const orderService = {
     if (!canApproveOrder(order.status, order.orderType, roleSlugs)) {
       throw new Error("Not authorized for this approval step");
     }
+
+    const policy = await orderingPolicyService.getPolicy(tenantId);
+    assertOrderingAllowed({
+      action: "approve",
+      policy,
+      branchName: order.branch.name,
+      schedule: null,
+    });
 
     const roleSlug = getRoleSlugForApproval(order.status, order.orderType);
     const level = getApprovalLevelForStatus(order.status, order.orderType);
