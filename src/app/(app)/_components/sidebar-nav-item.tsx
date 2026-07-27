@@ -15,6 +15,7 @@ interface SidebarNavItemProps {
   label: string;
   icon: LucideIcon;
   pathname: string;
+  exact?: boolean;
   badge?: "new";
 }
 
@@ -23,9 +24,10 @@ export function SidebarNavItem({
   label,
   icon: Icon,
   pathname,
+  exact,
   badge,
 }: SidebarNavItemProps) {
-  const isActive = isNavItemActive(pathname, href);
+  const isActive = isNavItemActive(pathname, href, exact);
 
   return (
     <SidebarMenuItem>

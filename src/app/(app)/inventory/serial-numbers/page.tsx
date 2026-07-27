@@ -1,9 +1,11 @@
 import type { LookupRecordStatus } from "@prisma/client";
 
 import {
+  getSerialNumberKpisAction,
   listSerialModelOptionsAction,
   listSerialNumbersAction,
 } from "@/features/serial-numbers/actions/serial-number.actions";
+import { SerialNumberKpisStrip } from "@/features/serial-numbers/components/serial-number-kpis";
 import { requirePermission } from "@/lib/auth/permissions";
 import { SectionPageLead } from "@/components/navigation/section-page-lead";
 import { SerialNumberTable } from "@/app/(app)/inventory/serial-numbers/_components/serial-number-table";
@@ -30,9 +32,10 @@ export default async function SerialNumbersPage({
   const page = Number(params.page) || 1;
   const status = parseStatus(params.status);
 
-  const [result, modelOptions] = await Promise.all([
+  const [result, modelOptions, kpis] = await Promise.all([
     listSerialNumbersAction({ page, q: params.q, status }),
     canManage ? listSerialModelOptionsAction() : Promise.resolve([]),
+    getSerialNumberKpisAction(),
   ]);
 
   return (
@@ -41,6 +44,7 @@ export default async function SerialNumbersPage({
         Every serialized unit in your organization. Open a serial to trace its
         full lifecycle across inventory, transfers, sales, pull-outs, and counts.
       </SectionPageLead>
+      <SerialNumberKpisStrip kpis={kpis} />
       <SerialNumberTable
         result={result}
         modelOptions={modelOptions}

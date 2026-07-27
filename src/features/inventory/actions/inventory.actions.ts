@@ -55,6 +55,16 @@ export async function listInventoryStatusOptionsAction() {
   return reasonStatusService.listActiveCodes(session.user.tenantId, "inventory_system");
 }
 
+export async function getInventoryKpisAction() {
+  const session = await requirePermission("inventory.view");
+  const unrestricted = isUnrestricted(session.user.permissions);
+  return inventoryService.getKpis(
+    session.user.tenantId,
+    session.user.id,
+    unrestricted,
+  );
+}
+
 export async function updateInventoryStatusAction(
   inventoryId: string,
   statusCodeId: string,

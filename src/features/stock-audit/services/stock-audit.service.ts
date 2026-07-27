@@ -1,14 +1,34 @@
+import type { StockCountSessionStatus } from "@prisma/client";
+
 import { auditService } from "@/features/audit/services/audit.service";
 import { aorService } from "@/features/aors/services/aor.service";
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
 import { sapService } from "@/features/sap/services/sap.service";
 import { stockAuditRepository } from "@/features/stock-audit/repositories/stock-audit.repository";
-import { VARIANCE_TYPES } from "@/features/stock-audit/constants/stock-count-workflow";
+import {
+  STOCK_COUNT_SESSION_LABELS,
+  VARIANCE_TYPES,
+} from "@/features/stock-audit/constants/stock-count-workflow";
 import { prisma } from "@/lib/database/client";
 
 function nextSessionNo() {
   return `CNT-${Date.now().toString(36).toUpperCase()}`;
 }
+
+export interface StockCountStatusKpi {
+  code: string;
+  name: string;
+  count: number;
+}
+
+export interface StockCountKpis {
+  totalSessions: number;
+  statuses: StockCountStatusKpi[];
+}
+
+const SESSION_STATUS_ORDER = Object.keys(
+  STOCK_COUNT_SESSION_LABELS,
+) as StockCountSessionStatus[];
 
 export const stockAuditService = {
   async listForUser(
@@ -26,6 +46,44 @@ export const stockAuditService = {
     }
 
     return stockAuditRepository.listSessions(tenantId, branchIds, pagination);
+  },
+
+  async getKpis(
+    tenantId: string,
+    userId: string,
+    isUnrestricted: boolean,
+  ): Promise<StockCountKpis> {
+    const emptyStatuses = SESSION_STATUS_ORDER.map((status) => ({
+      code: status,
+      name: STOCK_COUNT_SESSION_LABELS[status],
+      count: 0,
+    }));
+
+    const branchIds = isUnrestricted
+      ? undefined
+      : await aorService.getBranchIdsForUser(tenantId, userId);
+
+    if (!isUnrestricted && (!branchIds || branchIds.length === 0)) {
+      return { totalSessions: 0, statuses: emptyStatuses };
+    }
+
+    const [statusGroups, totalSessions] = await Promise.all([
+      stockAuditRepository.countByStatus(tenantId, branchIds),
+      stockAuditRepository.countAll(tenantId, branchIds),
+    ]);
+
+    const countByStatus = new Map(
+      statusGroups.map((g) => [g.status, g._count.id]),
+    );
+
+    return {
+      totalSessions,
+      statuses: SESSION_STATUS_ORDER.map((status) => ({
+        code: status,
+        name: STOCK_COUNT_SESSION_LABELS[status],
+        count: countByStatus.get(status) ?? 0,
+      })),
+    };
   },
 
   async getSession(tenantId: string, sessionId: string) {

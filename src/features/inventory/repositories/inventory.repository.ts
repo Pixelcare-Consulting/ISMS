@@ -80,6 +80,13 @@ export const inventoryRepository = {
     return toPaginatedResult(items, total, page, limit);
   },
 
+  countAll(tenantId: string, branchIds: string[]) {
+    if (branchIds.length === 0) return Promise.resolve(0);
+    return prisma.branchInventory.count({
+      where: { tenantId, branchId: { in: branchIds } },
+    });
+  },
+
   countByStatus(tenantId: string, branchIds: string[]) {
     if (branchIds.length === 0) return Promise.resolve([]);
     return prisma.branchInventory.groupBy({

@@ -32,6 +32,8 @@ export interface NavLinkItem {
   href: string;
   label: string;
   icon: LucideIcon;
+  /** Only `pathname === href` is active (use for section index routes). */
+  exact?: boolean;
   permission?: string;
   /** Show link when user has any of these permissions */
   anyPermissions?: string[];
@@ -95,6 +97,7 @@ export const appNavigation: NavEntry[] = [
         href: "/inventory",
         label: "Stock units",
         icon: Package,
+        exact: true,
         permission: "inventory.view",
       },
       {
@@ -440,10 +443,16 @@ export function filterNavByPermissions(
     .filter((entry): entry is NavEntry => entry !== null);
 }
 
-export function isNavItemActive(pathname: string, href: string): boolean {
+/** Whether a nav href should show as active for the current pathname. */
+export function isNavItemActive(
+  pathname: string,
+  href: string,
+  exact?: boolean,
+): boolean {
+  if (exact) return pathname === href;
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
 export function isNavGroupActive(pathname: string, items: NavLinkItem[]): boolean {
-  return items.some((item) => isNavItemActive(pathname, item.href));
+  return items.some((item) => isNavItemActive(pathname, item.href, item.exact));
 }

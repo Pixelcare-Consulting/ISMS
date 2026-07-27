@@ -22,6 +22,11 @@ export async function listSerialNumbersAction(params: {
   );
 }
 
+export async function getSerialNumberKpisAction() {
+  const session = await requirePermission("inventory.view");
+  return serialNumberService.getKpis(session.user.tenantId);
+}
+
 export async function listSerialModelOptionsAction() {
   const session = await requirePermission("inventory.manage");
   return serialNumberService.listModelOptions(session.user.tenantId);

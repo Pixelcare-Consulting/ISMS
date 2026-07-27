@@ -45,6 +45,16 @@ const sessionDetailInclude = {
   },
 } satisfies Prisma.StockCountSessionInclude;
 
+function sessionScopeWhere(
+  tenantId: string,
+  branchIds: string[] | undefined,
+): Prisma.StockCountSessionWhereInput {
+  return {
+    tenantId,
+    ...(branchIds?.length ? { branchId: { in: branchIds } } : {}),
+  };
+}
+
 export const stockAuditRepository = {
   listSessions(
     tenantId: string,
@@ -52,10 +62,7 @@ export const stockAuditRepository = {
     pagination?: { page?: number },
   ) {
     const { limit, page, skip } = resolvePagination(pagination);
-    const where: Prisma.StockCountSessionWhereInput = {
-      tenantId,
-      ...(branchIds?.length ? { branchId: { in: branchIds } } : {}),
-    };
+    const where = sessionScopeWhere(tenantId, branchIds);
 
     return Promise.all([
       prisma.stockCountSession.findMany({
@@ -67,6 +74,20 @@ export const stockAuditRepository = {
       }),
       prisma.stockCountSession.count({ where }),
     ]).then(([items, total]) => toPaginatedResult(items, total, page, limit));
+  },
+
+  countAll(tenantId: string, branchIds: string[] | undefined) {
+    return prisma.stockCountSession.count({
+      where: sessionScopeWhere(tenantId, branchIds),
+    });
+  },
+
+  countByStatus(tenantId: string, branchIds: string[] | undefined) {
+    return prisma.stockCountSession.groupBy({
+      by: ["status"],
+      where: sessionScopeWhere(tenantId, branchIds),
+      _count: { id: true },
+    });
   },
 
   findSessionById(tenantId: string, sessionId: string) {
