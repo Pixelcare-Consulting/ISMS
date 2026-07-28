@@ -7,20 +7,17 @@ import { toast } from "sonner";
 
 import { updateInventoryStatusAction } from "@/features/inventory/actions/inventory.actions";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
-import { DataTableScroll, DataTableShell } from "@/components/data-table/data-table-shell";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
-import { TablePagination } from "@/components/data-table/table-pagination";
-import { TableSearchToolbar, uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
+import { uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
+import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
-  Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
@@ -127,139 +124,145 @@ export function InventoryTable({
     });
   }
 
+  const filterBanner =
+    branchFilter || skuFilter ? (
+      <div className="border-b px-4 py-2 text-sm text-muted-foreground">
+        Filtered
+        {branchFilter ? " · branch" : ""}
+        {skuFilter ? ` · SKU ${skuFilter}` : ""}
+        <Button variant="link" className="ml-2 h-auto p-0" asChild>
+          <Link href="/inventory">Clear</Link>
+        </Button>
+      </div>
+    ) : null;
+
   return (
-    <DataTableShell>
-      <TableSearchToolbar
-        value={query}
-        onChange={setQuery}
-        placeholder="Search serial, SKU, branch…"
-        suggestions={suggestions}
-      >
-        {selection.selectedCount > 0 ? (
-          <Button variant="secondary" onClick={selection.clearSelection}>
-            {selection.selectedCount} selected
-          </Button>
-        ) : null}
-        <div className="flex items-center gap-2 text-sm">
-          <input
-            id="off-planogram"
-            type="checkbox"
-            checked={offPlanogramOnly}
-            onChange={(e) => toggleOffPlanogram(e.target.checked)}
-          />
-          <Label htmlFor="off-planogram" className="font-normal">
-            Off-planogram only
-          </Label>
-        </div>
-      </TableSearchToolbar>
-      {(branchFilter || skuFilter) && (
-        <div className="border-b px-4 py-2 text-sm text-muted-foreground">
-          Filtered
-          {branchFilter ? " · branch" : ""}
-          {skuFilter ? ` · SKU ${skuFilter}` : ""}
-          <Button variant="link" className="ml-2 h-auto p-0" asChild>
-            <Link href="/inventory">Clear</Link>
-          </Button>
-        </div>
-      )}
-      <DataTableScroll>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-10">
-                <Checkbox
-                  checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
-                  onCheckedChange={(checked) => selection.toggleAll(checked === true)}
-                  aria-label="Select all inventory rows"
-                />
-              </TableHead>
-              <TableHead className="w-12">#</TableHead>
-              <TableHead>Serial</TableHead>
-              <TableHead>Model</TableHead>
-              <TableHead>Branch</TableHead>
-              <TableHead>Planogram</TableHead>
-              <TableHead>Status</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filtered.map((r, index) => (
-              <TableRow key={r.id} data-state={selection.isRowSelected(r.id) ? "selected" : undefined}>
-                <TableCell>
-                  <Checkbox
-                    checked={selection.isRowSelected(r.id)}
-                    onCheckedChange={(checked) => selection.toggleRow(r.id, checked === true)}
-                    aria-label={`Select serial ${r.serialNumber.serialNo}`}
-                  />
-                </TableCell>
-                <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
-                <TableCell className="font-mono text-sm">{r.serialNumber.serialNo}</TableCell>
-                <TableCell>
-                  <Link
-                    href={`/settings/branches/${r.branch.id}/planogram`}
-                    className="font-mono text-sm underline"
-                  >
-                    {r.serialNumber.model.sku}
-                  </Link>
-                  <span className="block text-xs text-muted-foreground">
-                    {r.serialNumber.model.name}
-                  </span>
-                </TableCell>
-                <TableCell>
-                  <Link
-                    href={`/settings/branches/${r.branch.id}/planogram`}
-                    className="underline"
-                  >
-                    {r.branch.name}
-                  </Link>
-                </TableCell>
-                <TableCell>
-                  {r.onPlanogram ? (
-                    <Badge variant="outline" className="border-green-600 text-green-700">
-                      On planogram
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="border-amber-600 text-amber-700">
-                      Off planogram
-                    </Badge>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <SearchableSelect
-                    className="min-w-[10rem]"
-                    options={statusOptions.map((s) => ({
-                      id: s.id,
-                      label: `${s.name} (${s.code})`,
-                    }))}
-                    value={r.statusCode.id}
-                    disabled={pending}
-                    searchPlaceholder="Search status…"
-                    onChange={(next) => changeStatus(r.id, next)}
-                  />
-                  <div className="mt-1">
-                    <StatusCodeBadge
-                      code={r.statusCode.code}
-                      name={r.statusCode.name}
-                      showCode
-                    />
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </DataTableScroll>
-      {filtered.length === 0 ? (
-        <p className="py-8 text-center text-sm text-muted-foreground">No inventory rows</p>
-      ) : null}
-      <TablePagination
-        meta={{
+    <>
+      <GlobalDataTable
+        scrollable
+        search={{
+          value: query,
+          onChange: setQuery,
+          placeholder: "Search serial, SKU, branch…",
+          suggestions,
+        }}
+        toolbarActions={
+          <>
+            {selection.selectedCount > 0 ? (
+              <Button variant="secondary" onClick={selection.clearSelection}>
+                {selection.selectedCount} selected
+              </Button>
+            ) : null}
+            <div className="flex items-center gap-2 text-sm">
+              <input
+                id="off-planogram"
+                type="checkbox"
+                checked={offPlanogramOnly}
+                onChange={(e) => toggleOffPlanogram(e.target.checked)}
+              />
+              <Label htmlFor="off-planogram" className="font-normal">
+                Off-planogram only
+              </Label>
+            </div>
+          </>
+        }
+        banner={filterBanner}
+        pagination={{
           total: result.total,
           page: result.page,
           totalPages: result.totalPages,
           itemLabel: "unit",
+          buildHref: (page) => buildInventoryHref(page, offPlanogramOnly),
         }}
-        buildHref={(page) => buildInventoryHref(page, offPlanogramOnly)}
-      />
-    </DataTableShell>
+        footer={
+          filtered.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">No inventory rows</p>
+          ) : null
+        }
+      >
+        <TableHeader>
+          <TableRow>
+            <GlobalTableHead className="w-10">
+              <Checkbox
+                checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
+                onCheckedChange={(checked) => selection.toggleAll(checked === true)}
+                aria-label="Select all inventory rows"
+              />
+            </GlobalTableHead>
+            <GlobalTableHead className="w-12">#</GlobalTableHead>
+            <GlobalTableHead>Serial</GlobalTableHead>
+            <GlobalTableHead>Model</GlobalTableHead>
+            <GlobalTableHead>Branch</GlobalTableHead>
+            <GlobalTableHead>Planogram</GlobalTableHead>
+            <GlobalTableHead>Status</GlobalTableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {filtered.map((r, index) => (
+            <TableRow key={r.id} data-state={selection.isRowSelected(r.id) ? "selected" : undefined}>
+              <TableCell>
+                <Checkbox
+                  checked={selection.isRowSelected(r.id)}
+                  onCheckedChange={(checked) => selection.toggleRow(r.id, checked === true)}
+                  aria-label={`Select serial ${r.serialNumber.serialNo}`}
+                />
+              </TableCell>
+              <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
+              <TableCell className="font-mono text-sm">{r.serialNumber.serialNo}</TableCell>
+              <TableCell>
+                <Link
+                  href={`/settings/branches/${r.branch.id}/planogram`}
+                  className="font-mono text-sm underline"
+                >
+                  {r.serialNumber.model.sku}
+                </Link>
+                <span className="block text-xs text-muted-foreground">
+                  {r.serialNumber.model.name}
+                </span>
+              </TableCell>
+              <TableCell>
+                <Link
+                  href={`/settings/branches/${r.branch.id}/planogram`}
+                  className="underline"
+                >
+                  {r.branch.name}
+                </Link>
+              </TableCell>
+              <TableCell>
+                {r.onPlanogram ? (
+                  <Badge variant="outline" className="border-green-600 text-green-700">
+                    On planogram
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="border-amber-600 text-amber-700">
+                    Off planogram
+                  </Badge>
+                )}
+              </TableCell>
+              <TableCell>
+                <SearchableSelect
+                  className="min-w-[10rem]"
+                  options={statusOptions.map((s) => ({
+                    id: s.id,
+                    label: `${s.name} (${s.code})`,
+                  }))}
+                  value={r.statusCode.id}
+                  disabled={pending}
+                  searchPlaceholder="Search status…"
+                  onChange={(next) => changeStatus(r.id, next)}
+                />
+                <div className="mt-1">
+                  <StatusCodeBadge
+                    code={r.statusCode.code}
+                    name={r.statusCode.name}
+                    showCode
+                  />
+                </div>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </GlobalDataTable>
+    </>
   );
 }
