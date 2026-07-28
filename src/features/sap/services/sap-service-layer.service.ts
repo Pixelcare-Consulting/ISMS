@@ -4,24 +4,47 @@ import type {
   SapServiceLayerInput,
   SapServiceLayerSettings,
 } from "@/features/sap/schemas/sap-service-layer.schema";
-import { request as httpRequest } from "node:http";
-import { request as httpsRequest } from "node:https";
-import type { IncomingHttpHeaders } from "node:http";
+import { sapServiceLayerClient } from "@/features/sap/services/sap-service-layer-client";
+import {
+  normalizeBaseUrl,
+  SESSION_SKEW_MS,
+  sapSessionManager,
+} from "@/features/sap/services/sap-session-manager";
+import type {
+  SapServiceLayerCredentials,
+  SapSessionPublicStatus,
+} from "@/features/sap/types/sap-service-layer";
 import {
   decryptSecret,
   encryptSecret,
   fingerprintSecret,
 } from "@/lib/crypto/encrypt-secret";
 
-export interface SapServiceLayerCredentials {
-  id: string;
-  baseUrl: string;
-  companyDb: string;
-  username: string;
-  password: string;
-  isEnabled: boolean;
-  verifySsl: boolean;
-  languageCode: string;
+export type { SapServiceLayerCredentials, SapSessionPublicStatus };
+
+function maskSessionId(sessionId: string): string {
+  const trimmed = sessionId.trim();
+  if (!trimmed) return "…";
+  const last4 = trimmed.slice(-4);
+  return `…${last4}`;
+}
+
+function toPublicSessionStatus(
+  configId: string,
+  companyDb: string,
+): SapSessionPublicStatus {
+  const cached = sapSessionManager.getCached(configId);
+  const now = Date.now();
+  if (!cached || cached.expiresAt <= now + SESSION_SKEW_MS) {
+    return { state: "idle", configId, companyDb };
+  }
+  return {
+    state: "connected",
+    configId,
+    companyDb,
+    sessionIdMasked: maskSessionId(cached.sessionId),
+    expiresAt: cached.expiresAt,
+  };
 }
 
 type ConfigRow = NonNullable<
@@ -30,60 +53,6 @@ type ConfigRow = NonNullable<
 
 function decryptField(stored: string): string {
   return decryptSecret(stored);
-}
-
-function normalizeBaseUrl(baseUrl: string): string {
-  return baseUrl.trim().replace(/\/$/, "");
-}
-
-function postJson(
-  targetUrl: string,
-  payload: Record<string, unknown>,
-  verifySsl: boolean,
-  headers?: Record<string, string>,
-) {
-  return new Promise<{ statusCode: number; body: string; headers: IncomingHttpHeaders }>(
-    (resolve, reject) => {
-      const url = new URL(targetUrl);
-      const body = JSON.stringify(payload);
-      const isHttps = url.protocol === "https:";
-      const requestFn = isHttps ? httpsRequest : httpRequest;
-
-      const req = requestFn(
-        {
-          protocol: url.protocol,
-          hostname: url.hostname,
-          port: url.port ? Number(url.port) : undefined,
-          path: `${url.pathname}${url.search}`,
-          method: "POST",
-          rejectUnauthorized: isHttps ? verifySsl : undefined,
-          headers: {
-            "Content-Type": "application/json",
-            "Content-Length": Buffer.byteLength(body),
-            ...headers,
-          },
-        },
-        (res) => {
-          let responseBody = "";
-          res.setEncoding("utf8");
-          res.on("data", (chunk) => {
-            responseBody += chunk;
-          });
-          res.on("end", () => {
-            resolve({
-              statusCode: res.statusCode ?? 0,
-              body: responseBody,
-              headers: res.headers,
-            });
-          });
-        },
-      );
-
-      req.on("error", reject);
-      req.write(body);
-      req.end();
-    },
-  );
 }
 
 function decryptRow(row: ConfigRow): SapServiceLayerCredentials {
@@ -205,6 +174,8 @@ export const sapServiceLayerService = {
       await sapServiceLayerRepository.setActiveStatus(configId, tenantId, true);
     }
 
+    sapSessionManager.invalidate(configId);
+
     const updated = await sapServiceLayerRepository.findByIdForTenant(configId, tenantId);
     if (!updated) throw new Error("Service Layer configuration not found after update");
 
@@ -233,50 +204,21 @@ export const sapServiceLayerService = {
     const passwordPlain = input.password?.trim();
     if (!passwordPlain) throw new Error("Password is required to test connection");
 
-    const baseUrl = normalizeBaseUrl(input.baseUrl);
-    const loginUrl = `${baseUrl}/Login`;
-    const logoutUrl = `${baseUrl}/Logout`;
-    const verifySsl = input.verifySsl ?? true;
-    const languageCode = input.languageCode?.trim() || "23";
-
-    const loginPayload = {
-      CompanyDB: input.companyDb.trim(),
-      UserName: input.username.trim(),
-      Password: passwordPlain,
-      Language: Number(languageCode),
+    const creds = {
+      baseUrl: normalizeBaseUrl(input.baseUrl),
+      companyDb: input.companyDb.trim(),
+      username: input.username.trim(),
+      password: passwordPlain,
+      verifySsl: input.verifySsl ?? true,
+      languageCode: input.languageCode?.trim() || "23",
     };
 
-    let loginResponse: { statusCode: number; body: string; headers: IncomingHttpHeaders };
-    try {
-      loginResponse = await postJson(loginUrl, loginPayload, verifySsl);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Connection test failed";
-      const isSelfSignedError = /self[- ]signed certificate/i.test(message);
-      if (!verifySsl || !isSelfSignedError) throw error;
-
-      // Auto-fallback for environments using self-signed certificates.
-      loginResponse = await postJson(loginUrl, loginPayload, false);
+    const session = await sapServiceLayerClient.login(creds);
+    if (!session.sessionId) {
+      throw new Error("Connection failed: SAP did not return a session id");
     }
 
-    if (loginResponse.statusCode < 200 || loginResponse.statusCode >= 300) {
-      throw new Error(
-        `Connection failed (${loginResponse.statusCode}): ${loginResponse.body || "Unknown SAP response"}`,
-      );
-    }
-
-    let json: { SessionId?: string };
-    try {
-      json = JSON.parse(loginResponse.body) as { SessionId?: string };
-    } catch {
-      throw new Error("Connection failed: SAP response is not valid JSON");
-    }
-    if (!json?.SessionId) throw new Error("Connection failed: SAP did not return a session id");
-
-    const setCookieRaw = loginResponse.headers["set-cookie"];
-    const setCookie = Array.isArray(setCookieRaw) ? setCookieRaw.join("; ") : setCookieRaw;
-    if (setCookie) {
-      await postJson(logoutUrl, {}, verifySsl, { Cookie: setCookie }).catch(() => undefined);
-    }
+    await sapServiceLayerClient.logout(creds, session.cookies).catch(() => undefined);
 
     return {
       success: true,
@@ -290,6 +232,10 @@ export const sapServiceLayerService = {
     if (!target) throw new Error("Service Layer configuration not found");
 
     await sapServiceLayerRepository.setActiveStatus(configId, tenantId, isEnabled);
+
+    if (!isEnabled) {
+      sapSessionManager.invalidate(configId);
+    }
 
     await auditService.log({
       tenantId,
@@ -310,6 +256,8 @@ export const sapServiceLayerService = {
     const deleted = await sapServiceLayerRepository.delete(configId, tenantId);
     if (deleted.count === 0) throw new Error("Failed to delete Service Layer configuration");
 
+    sapSessionManager.invalidate(configId);
+
     await auditService.log({
       tenantId,
       userId,
@@ -320,5 +268,33 @@ export const sapServiceLayerService = {
         wasEnabled: target.isEnabled,
       },
     });
+  },
+
+  /** Public status for the tenant's enabled config (never exposes cookies or full session id). */
+  async getSessionStatus(tenantId: string): Promise<SapSessionPublicStatus> {
+    const creds = await this.getCredentials(tenantId);
+    if (!creds) return { state: "no_config" };
+    return toPublicSessionStatus(creds.id, creds.companyDb);
+  },
+
+  /** Login and cache a B1 session for a tenant-owned config. */
+  async establishSession(tenantId: string, configId: string): Promise<SapSessionPublicStatus> {
+    const row = await sapServiceLayerRepository.findByIdForTenant(configId, tenantId);
+    if (!row) throw new Error("Service Layer configuration not found");
+    if (!row.isEnabled) throw new Error("Only the active Service Layer configuration can connect");
+
+    const creds = decryptRow(row);
+    await sapServiceLayerClient.login({ ...creds, id: creds.id });
+    return toPublicSessionStatus(creds.id, creds.companyDb);
+  },
+
+  /** Logout and clear the cached session for a tenant-owned config. */
+  async logoutSession(tenantId: string, configId: string): Promise<SapSessionPublicStatus> {
+    const row = await sapServiceLayerRepository.findByIdForTenant(configId, tenantId);
+    if (!row) throw new Error("Service Layer configuration not found");
+
+    const creds = decryptRow(row);
+    await sapServiceLayerClient.logout({ ...creds, id: creds.id });
+    return { state: "idle", configId: creds.id, companyDb: creds.companyDb };
   },
 };
