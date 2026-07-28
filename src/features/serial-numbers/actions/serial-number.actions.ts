@@ -17,7 +17,7 @@ export async function listSerialNumbersAction(params: {
   const session = await requirePermission("inventory.view");
   return serialNumberService.list(
     session.user.tenantId,
-    { page: params.page },
+    { page: params.page, limit: 10 },
     { q: params.q, status: params.status },
   );
 }

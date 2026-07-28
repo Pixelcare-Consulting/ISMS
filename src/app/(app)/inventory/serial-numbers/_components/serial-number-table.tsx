@@ -19,6 +19,7 @@ import {
   DataTableScroll,
   DataTableShell,
 } from "@/components/data-table/data-table-shell";
+import { TablePagination } from "@/components/data-table/table-pagination";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -313,26 +314,15 @@ export function SerialNumberTable({
               </TableBody>
             </Table>
           </DataTableScroll>
-          <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground">
-            <span>
-              {result.total} serial{result.total === 1 ? "" : "s"} · page{" "}
-              {result.page} of {result.totalPages}
-            </span>
-            <div className="flex gap-2">
-              {result.page > 1 ? (
-                <Button variant="outline" size="sm" asChild>
-                  <Link href={buildHref(result.page - 1, activeFilters)}>
-                    Previous
-                  </Link>
-                </Button>
-              ) : null}
-              {result.page < result.totalPages ? (
-                <Button variant="outline" size="sm" asChild>
-                  <Link href={buildHref(result.page + 1, activeFilters)}>Next</Link>
-                </Button>
-              ) : null}
-            </div>
-          </div>
+          <TablePagination
+            meta={{
+              total: result.total,
+              page: result.page,
+              totalPages: result.totalPages,
+              itemLabel: "serial",
+            }}
+            buildHref={(page) => buildHref(page, activeFilters)}
+          />
         </>
       )}
 

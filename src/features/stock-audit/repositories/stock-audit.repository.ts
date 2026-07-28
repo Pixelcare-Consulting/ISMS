@@ -59,7 +59,7 @@ export const stockAuditRepository = {
   listSessions(
     tenantId: string,
     branchIds: string[] | undefined,
-    pagination?: { page?: number },
+    pagination?: { page?: number; limit?: number },
   ) {
     const { limit, page, skip } = resolvePagination(pagination);
     const where = sessionScopeWhere(tenantId, branchIds);

@@ -23,7 +23,7 @@ export async function listOrdersAction(input?: { page?: number }) {
     session.user.tenantId,
     session.user.id,
     hasFullOrderAccess(session.user.permissions),
-    { page: input?.page },
+    { page: input?.page, limit: 10 },
   );
   return {
     ...result,
@@ -38,6 +38,15 @@ export async function listOrdersAction(input?: { page?: number }) {
       })),
     })),
   };
+}
+
+export async function getOrdersKpisAction() {
+  const session = await requirePermission("orders.view");
+  return orderService.getKpis(
+    session.user.tenantId,
+    session.user.id,
+    hasFullOrderAccess(session.user.permissions),
+  );
 }
 
 export async function listActiveDealersForOrderAction() {

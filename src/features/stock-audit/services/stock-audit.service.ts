@@ -35,7 +35,7 @@ export const stockAuditService = {
     tenantId: string,
     userId: string,
     isUnrestricted: boolean,
-    pagination?: { page?: number },
+    pagination?: { page?: number; limit?: number },
   ) {
     const branchIds = isUnrestricted
       ? undefined

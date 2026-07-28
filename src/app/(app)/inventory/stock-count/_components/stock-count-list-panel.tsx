@@ -183,7 +183,9 @@ export function StockCountListPanel({ sessions }: StockCountListPanelProps) {
           totalPages: sessions.totalPages,
           itemLabel: "session",
         }}
-        buildHref={(page) => `/inventory/stock-count?page=${page}`}
+        buildHref={(page) =>
+          page > 1 ? `/inventory/stock-count?page=${page}` : "/inventory/stock-count"
+        }
       />
     </DataTableShell>
   );

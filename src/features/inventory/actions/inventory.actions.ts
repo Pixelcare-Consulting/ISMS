@@ -24,7 +24,7 @@ export async function listInventoryAction(input?: {
     session.user.tenantId,
     session.user.id,
     unrestricted,
-    { page: input?.page },
+    { page: input?.page, limit: 10 },
     {
       branchId: input?.branchId,
       skuCode: input?.sku,

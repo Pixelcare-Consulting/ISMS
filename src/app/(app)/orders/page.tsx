@@ -1,7 +1,11 @@
 import Link from "next/link";
 
 import { ORDER_WORKFLOW_DESCRIPTION } from "@/features/orders/constants/order-workflow";
-import { listOrdersAction } from "@/features/orders/actions/order.actions";
+import {
+  getOrdersKpisAction,
+  listOrdersAction,
+} from "@/features/orders/actions/order.actions";
+import { OrderKpisStrip } from "@/features/orders/components/order-kpis";
 import { hasPermission, requireAuth, requirePermission } from "@/lib/auth/permissions";
 import { BRANCH_ORDERS_PAGE_TUTORIAL } from "@/content/page-tutorials/branch-orders";
 import { PageHeader } from "@/app/(app)/_components/page-header";
@@ -17,7 +21,10 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
   await requirePermission("orders.view");
   const params = await searchParams;
   const page = Number(params.page) || 1;
-  const result = await listOrdersAction({ page });
+  const [result, kpis] = await Promise.all([
+    listOrdersAction({ page }),
+    getOrdersKpisAction(),
+  ]);
   const viewerRoleSlugs = session.user.roleSlugs ?? [];
   const canEdit = hasPermission(session.user.permissions, "orders.create");
 
@@ -33,6 +40,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
           </Button>
         }
       />
+      <OrderKpisStrip kpis={kpis} />
       <OrdersTable result={result} viewerRoleSlugs={viewerRoleSlugs} canEdit={canEdit} />
     </div>
   );
