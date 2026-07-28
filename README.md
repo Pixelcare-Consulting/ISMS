@@ -2,7 +2,7 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.13.0`
+**Current version:** `0.13.2`
 
 ## Stack
 
@@ -25,7 +25,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | **Logistics** | Deliveries (accept/reject), transfers, pull-outs with SN movement |
 | **Sales** | SN picker, reserved (RSV) sales, **BranchReturnRequest** ATR workflow |
 | **Reports** | Processed orders, daily stock, transfers, sales (CSV export), **P-Count** (`/reports/pcount`), **Official Sales** staging (`/reports/official-sales`) |
-| **SAP** | Outbound job queue + mock processor; **Service Layer** settings (all credentials encrypted at rest) |
+| **SAP** | Outbound job queue + mock processor; **Service Layer** settings (encrypted credentials) + in-process session client with status UI (Connect/Logout) and refresh-on-401 |
 | **RBAC** | ISO + BRS roles (PS, TL, SP/SPA, Logistics, AE), permission-gated sidebar |
 
 ### App routes
@@ -163,7 +163,8 @@ Details: [`docs/release-notes.md`](docs/release-notes.md).
 
 - **Queue:** `/settings/sap-integration` — outbound jobs, mock processor (order → `sapDocRef` → delivery)
 - **Service Layer:** `/settings/sap-integration/service-layer` — URL, company DB, username, password (encrypted at rest; audit fingerprints only)
-- **Live SAP transport:** not yet connected — see [`docs/sap-integration.md`](docs/sap-integration.md)
+- **Session client:** in-process B1SESSION cache with TTL + single re-login on 401; Service Layer settings show Connected/Idle status, masked session id, countdown, and Connect/Logout (Test connection still probes without keeping a session)
+- **Live SAP transport:** not yet connected — queue still uses the mock processor; see [`docs/sap-integration.md`](docs/sap-integration.md)
 
 ## Route groups vs Master Plan
 

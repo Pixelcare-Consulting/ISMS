@@ -24,6 +24,50 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.13.2",
+    date: "2026-07-28",
+    title: "SAP Service Layer session status UI",
+    highlights: [
+      "Session status strip on Service Layer settings: Connected / Idle with masked session id and countdown",
+      "Connect and Logout establish or clear the in-process B1 session (separate from Test connection)",
+      "Test connection remains a probe (login → logout) and does not leave a cached session",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Service Layer settings show live session status with Connect/Logout against the enabled company DB",
+      },
+      {
+        type: "improvement",
+        description:
+          "Public session status masks session id (last 4 only); never exposes cookies",
+      },
+    ],
+  },
+  {
+    version: "0.13.1",
+    date: "2026-07-28",
+    title: "SAP Service Layer session client",
+    highlights: [
+      "In-process B1 session cache with TTL and automatic re-login on 401",
+      "Shared Service Layer HTTP client ready for future live document transport",
+      "Connection test and config updates invalidate stale sessions",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "SAP Service Layer client: cookie session reuse, proactive TTL refresh, single retry after Invalid session / 401",
+      },
+      {
+        type: "improvement",
+        description:
+          "Service Layer connection test uses login/logout via the shared client; sessions cleared on config mutate/disable/delete",
+      },
+    ],
+  },
+  {
     version: "0.13.0",
     date: "2026-07-23",
     title: "Branch quotas, Official Sales, and order dealer cascade",

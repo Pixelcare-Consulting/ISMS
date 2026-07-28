@@ -83,6 +83,46 @@ export async function testSapServiceLayerConnectionAction(input: unknown) {
   }
 }
 
+export async function getSapSessionStatusAction() {
+  const session = await requirePermission("sap.manage");
+  try {
+    const status = await sapServiceLayerService.getSessionStatus(session.user.tenantId);
+    return { success: true as const, status };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to read session status" };
+  }
+}
+
+export async function establishSapSessionAction(input: { configId: string }) {
+  const session = await requirePermission("sap.manage");
+  if (!input.configId?.trim()) return { error: "Configuration id is required" };
+
+  try {
+    const status = await sapServiceLayerService.establishSession(
+      session.user.tenantId,
+      input.configId,
+    );
+    return { success: true as const, status };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to establish SAP session" };
+  }
+}
+
+export async function logoutSapSessionAction(input: { configId: string }) {
+  const session = await requirePermission("sap.manage");
+  if (!input.configId?.trim()) return { error: "Configuration id is required" };
+
+  try {
+    const status = await sapServiceLayerService.logoutSession(
+      session.user.tenantId,
+      input.configId,
+    );
+    return { success: true as const, status };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to logout SAP session" };
+  }
+}
+
 export async function setSapServiceLayerStatusAction(input: {
   configId: string;
   isEnabled: boolean;

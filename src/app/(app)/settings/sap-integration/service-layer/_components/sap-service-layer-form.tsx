@@ -29,6 +29,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { SapSessionStatus } from "./sap-session-status";
 
 interface SapServiceLayerFormProps {
   initial: SapServiceLayerSettings[];
@@ -76,7 +77,12 @@ export function SapServiceLayerForm({ initial }: SapServiceLayerFormProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [sessionRefreshKey, setSessionRefreshKey] = useState(0);
   const selection = useTableSelection(configs.map((config) => config.id));
+
+  function bumpSessionStatus() {
+    setSessionRefreshKey((key) => key + 1);
+  }
 
   async function save() {
     setIsSaving(true);
@@ -118,6 +124,7 @@ export function SapServiceLayerForm({ initial }: SapServiceLayerFormProps) {
     setVerifySsl(true);
     setLanguageCode("23");
     setEditingId(null);
+    bumpSessionStatus();
     router.refresh();
   }
 
@@ -163,6 +170,7 @@ export function SapServiceLayerForm({ initial }: SapServiceLayerFormProps) {
     );
 
     toast.success(nextEnabled ? "Configuration activated" : "Configuration marked inactive");
+    bumpSessionStatus();
     router.refresh();
   }
 
@@ -208,6 +216,7 @@ export function SapServiceLayerForm({ initial }: SapServiceLayerFormProps) {
 
     if (editingId === targetId) cancelEdit();
     toast.success("Service Layer configuration deleted");
+    bumpSessionStatus();
     router.refresh();
   }
 
@@ -323,6 +332,7 @@ export function SapServiceLayerForm({ initial }: SapServiceLayerFormProps) {
               Manage multiple SAP company databases and choose which one is active.
             </p>
           </div>
+          <SapSessionStatus refreshKey={sessionRefreshKey} />
           <Table>
             <TableHeader>
               <TableRow>
