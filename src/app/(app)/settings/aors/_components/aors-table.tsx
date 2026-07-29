@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { SearchableMultiSelect } from "@/features/aors/components/searchable-multi-select";
@@ -31,6 +31,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import {
   Table,
   TableBody,
@@ -277,6 +285,7 @@ export function AorsTable({
   const [rows, setRows] = useState(aors);
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [userId, setUserId] = useState("");
   const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
   const [selectedDealerIds, setSelectedDealerIds] = useState<string[]>([]);
@@ -294,10 +303,12 @@ export function AorsTable({
   }, [aors]);
 
   useEffect(() => {
-    if (!userId) {
-      setSelectedBranchIds([]);
-      setSelectedDealerIds([]);
-      setSelectedWarehouseIds([]);
+    if (!sheetOpen || !userId) {
+      if (!userId) {
+        setSelectedBranchIds([]);
+        setSelectedDealerIds([]);
+        setSelectedWarehouseIds([]);
+      }
       return;
     }
 
@@ -306,7 +317,7 @@ export function AorsTable({
     setSelectedBranchIds(next.branchIds);
     setSelectedDealerIds(next.dealerIds);
     setSelectedWarehouseIds(next.warehouseIds);
-  }, [userId, rows, branches, dealers]);
+  }, [sheetOpen, userId, rows, branches, dealers]);
 
   const branchOptions = useMemo(
     () =>
@@ -385,6 +396,14 @@ export function AorsTable({
       selectedDealerIds.length > 0 ||
       selectedWarehouseIds.length > 0);
 
+  function openAssign() {
+    setUserId("");
+    setSelectedBranchIds([]);
+    setSelectedDealerIds([]);
+    setSelectedWarehouseIds([]);
+    setSheetOpen(true);
+  }
+
   function assign() {
     if (!canAssign) return;
 
@@ -439,6 +458,8 @@ export function AorsTable({
       setUserId("");
       setSelectedBranchIds([]);
       setSelectedDealerIds([]);
+      setSelectedWarehouseIds([]);
+      setSheetOpen(false);
       router.refresh();
     });
   }
@@ -504,57 +525,6 @@ export function AorsTable({
 
   return (
     <div className="space-y-4">
-      <div className="space-y-3 rounded-xl border bg-card p-4 shadow-sm">
-        <SearchableSelect
-          label="User"
-          className="min-w-[200px]"
-          options={users.map((u) => ({ id: u.id, label: u.label }))}
-          value={userId}
-          onChange={setUserId}
-          placeholder="Select user…"
-          searchPlaceholder="Search users…"
-          disabled={pending}
-        />
-
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          <SearchableMultiSelect
-            label="Branches"
-            options={branchOptions}
-            selectedIds={selectedBranchIds}
-            onChange={setSelectedBranchIds}
-            placeholder="Search and select branches…"
-            searchPlaceholder="Filter branches…"
-            emptyMessage="No branches available."
-            disabled={pending}
-          />
-          <SearchableMultiSelect
-            label="Dealers"
-            options={dealerOptions}
-            selectedIds={selectedDealerIds}
-            onChange={setSelectedDealerIds}
-            placeholder="Search and select dealers…"
-            searchPlaceholder="Filter dealers…"
-            emptyMessage="No dealers available."
-            hint="Selecting a dealer assigns all of its active branches."
-            disabled={pending}
-          />
-          <SearchableMultiSelect
-            label="Warehouses"
-            options={warehouseOptions}
-            selectedIds={selectedWarehouseIds}
-            onChange={setSelectedWarehouseIds}
-            placeholder="Search and select warehouses…"
-            searchPlaceholder="Filter warehouses…"
-            emptyMessage="No warehouses available."
-            disabled={pending}
-          />
-        </div>
-
-        <Button disabled={pending || !canAssign} onClick={assign}>
-          Save AOR
-        </Button>
-      </div>
-
       <AppDataTable
         shellHeader={
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -571,6 +541,10 @@ export function AorsTable({
                 onClear={selection.clearSelection}
               />
             </div>
+            <Button onClick={openAssign} disabled={pending}>
+              <Plus className="size-4" />
+              Assign AOR
+            </Button>
           </div>
         }
         empty={rows.length === 0}
@@ -682,6 +656,84 @@ export function AorsTable({
           </Table>
         </AppDataTableBody>
       </AppDataTable>
+
+      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+        <SheetContent
+          side="right"
+          className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-md"
+        >
+          <SheetHeader className="border-b border-border/60 px-4 py-4 text-left">
+            <SheetTitle>Assign AOR</SheetTitle>
+            <SheetDescription>
+              Assign branches, dealers, or warehouses to a user. Selecting a
+              dealer assigns all of its active branches.
+            </SheetDescription>
+          </SheetHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              assign();
+            }}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+              <SearchableSelect
+                label="User"
+                options={users.map((u) => ({ id: u.id, label: u.label }))}
+                value={userId}
+                onChange={setUserId}
+                placeholder="Select user…"
+                searchPlaceholder="Search users…"
+                disabled={pending}
+              />
+              <SearchableMultiSelect
+                label="Branches"
+                options={branchOptions}
+                selectedIds={selectedBranchIds}
+                onChange={setSelectedBranchIds}
+                placeholder="Search and select branches…"
+                searchPlaceholder="Filter branches…"
+                emptyMessage="No branches available."
+                disabled={pending}
+              />
+              <SearchableMultiSelect
+                label="Dealers"
+                options={dealerOptions}
+                selectedIds={selectedDealerIds}
+                onChange={setSelectedDealerIds}
+                placeholder="Search and select dealers…"
+                searchPlaceholder="Filter dealers…"
+                emptyMessage="No dealers available."
+                hint="Selecting a dealer assigns all of its active branches."
+                disabled={pending}
+              />
+              <SearchableMultiSelect
+                label="Warehouses"
+                options={warehouseOptions}
+                selectedIds={selectedWarehouseIds}
+                onChange={setSelectedWarehouseIds}
+                placeholder="Search and select warehouses…"
+                searchPlaceholder="Filter warehouses…"
+                emptyMessage="No warehouses available."
+                disabled={pending}
+              />
+            </div>
+            <SheetFooter className="border-t border-border/60">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setSheetOpen(false)}
+                disabled={pending}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={pending || !canAssign}>
+                {pending ? "Saving…" : "Save AOR"}
+              </Button>
+            </SheetFooter>
+          </form>
+        </SheetContent>
+      </Sheet>
 
       <Dialog
         open={Boolean(viewingAll)}
