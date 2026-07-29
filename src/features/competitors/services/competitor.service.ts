@@ -15,11 +15,13 @@ import { prisma } from "@/lib/database/client";
 
 export interface CompetitorObservationDto {
   id: string;
+  competitorId: string;
   competitorName: string;
   branchId: string | null;
   brandId: string | null;
   modelId: string | null;
   price: number | null;
+  promotion: string | null;
   notes: string | null;
   observedAt: string;
   createdAt: string;
@@ -36,14 +38,19 @@ export interface CompetitorKpis {
   avgPrice: number | null;
 }
 
+const WRITE_BRANCH_AOR_ERROR =
+  "Competitor observations require exactly one branch assigned in your AOR";
+
 function toDto(row: CompetitorObservationListItem): CompetitorObservationDto {
   return {
     id: row.id,
+    competitorId: row.competitorId,
     competitorName: row.competitorName,
     branchId: row.branchId,
     brandId: row.brandId,
     modelId: row.modelId,
     price: row.price != null ? Number(row.price) : null,
+    promotion: row.promotion,
     notes: row.notes,
     observedAt: row.observedAt.toISOString(),
     createdAt: row.createdAt.toISOString(),
@@ -68,6 +75,42 @@ function assertBranchInScope(branchId: string | null | undefined, scopedBranchId
   if (!branchId || !scopedBranchIds || scopedBranchIds.length === 0) return;
   if (!scopedBranchIds.includes(branchId)) {
     throw new Error("Branch is outside your area of responsibility");
+  }
+}
+
+/** Writes never bypass AOR via hasFullAccess — exactly one branch required. */
+async function resolveWriteBranchId(tenantId: string, userId: string): Promise<string> {
+  const branchIds = await getUserBranchIds(tenantId, userId);
+  if (!branchIds || branchIds.length !== 1) {
+    throw new Error(WRITE_BRANCH_AOR_ERROR);
+  }
+  return branchIds[0]!;
+}
+
+async function resolveActiveCompetitor(tenantId: string, competitorId: string) {
+  const competitor = await prisma.competitor.findFirst({
+    where: { id: competitorId, tenantId, recordStatus: "active" },
+    select: { id: true, name: true },
+  });
+  if (!competitor) {
+    throw new Error("Competitor not found or inactive");
+  }
+  return competitor;
+}
+
+async function assertModelMatchesBrand(
+  tenantId: string,
+  modelId: string | null | undefined,
+  brandId: string | null | undefined,
+) {
+  if (!modelId) return;
+  const model = await prisma.productModel.findFirst({
+    where: { id: modelId, tenantId },
+    select: { id: true, brandId: true },
+  });
+  if (!model) throw new Error("Model not found");
+  if (brandId && model.brandId && brandId !== model.brandId) {
+    throw new Error("Model does not belong to the selected brand");
   }
 }
 
@@ -96,10 +139,15 @@ export const competitorService = {
 
   async listFormOptions(tenantId: string, userId: string, hasFullAccess: boolean) {
     const scopedBranchIds = await resolveScopedBranchIds(tenantId, userId, hasFullAccess);
-    const [allBranches, brands, models] = await Promise.all([
+    const [allBranches, brands, models, competitors] = await Promise.all([
       branchRepository.listByTenant(tenantId),
       masterDataRepository.listBrands(tenantId),
       masterDataRepository.listModels(tenantId),
+      prisma.competitor.findMany({
+        where: { tenantId, recordStatus: "active" },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      }),
     ]);
 
     const branches =
@@ -126,18 +174,22 @@ export const competitorService = {
         brandId: m.brandId,
         label: `${m.skuCode} — ${m.name}`,
       })),
+      competitors: competitors.map((c) => ({
+        id: c.id,
+        name: c.name,
+        label: c.name,
+      })),
     };
   },
 
   async create(input: {
     tenantId: string;
     actorUserId: string;
-    hasFullAccess: boolean;
-    competitorName: string;
-    branchId?: string | null;
+    competitorId: string;
     brandId?: string | null;
     modelId?: string | null;
     price?: number | null;
+    promotion?: string | null;
     notes?: string | null;
     observedAt: Date;
   }) {
@@ -146,26 +198,20 @@ export const competitorService = {
       throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
     }
 
-    const scopedBranchIds = await resolveScopedBranchIds(
-      input.tenantId,
-      input.actorUserId,
-      input.hasFullAccess,
-    );
-    assertBranchInScope(parsed.data.branchId, scopedBranchIds);
-
-    if (parsed.data.modelId) {
-      const model = await prisma.productModel.findFirst({
-        where: { id: parsed.data.modelId, tenantId: input.tenantId },
-        select: { id: true, brandId: true },
-      });
-      if (!model) throw new Error("Model not found");
-      if (parsed.data.brandId && model.brandId && parsed.data.brandId !== model.brandId) {
-        throw new Error("Model does not belong to the selected brand");
-      }
-    }
+    const branchId = await resolveWriteBranchId(input.tenantId, input.actorUserId);
+    const competitor = await resolveActiveCompetitor(input.tenantId, parsed.data.competitorId);
+    await assertModelMatchesBrand(input.tenantId, parsed.data.modelId, parsed.data.brandId);
 
     const row = await competitorRepository.create(input.tenantId, {
-      ...parsed.data,
+      competitorId: competitor.id,
+      competitorName: competitor.name,
+      branchId,
+      brandId: parsed.data.brandId,
+      modelId: parsed.data.modelId,
+      price: parsed.data.price,
+      promotion: parsed.data.promotion,
+      notes: parsed.data.notes,
+      observedAt: parsed.data.observedAt,
       createdById: input.actorUserId,
     });
 
@@ -175,7 +221,7 @@ export const competitorService = {
       action: "competitor.created",
       entityType: "CompetitorObservation",
       entityId: row.id,
-      metadata: { competitorName: row.competitorName },
+      metadata: { competitorId: row.competitorId, competitorName: row.competitorName },
     });
 
     return toDto(row);
@@ -184,13 +230,12 @@ export const competitorService = {
   async update(input: {
     tenantId: string;
     actorUserId: string;
-    hasFullAccess: boolean;
     id: string;
-    competitorName: string;
-    branchId?: string | null;
+    competitorId: string;
     brandId?: string | null;
     modelId?: string | null;
     price?: number | null;
+    promotion?: string | null;
     notes?: string | null;
     observedAt: Date;
   }) {
@@ -202,26 +247,25 @@ export const competitorService = {
     const existing = await competitorRepository.findById(input.tenantId, parsed.data.id);
     if (!existing) throw new Error("Observation not found");
 
-    const scopedBranchIds = await resolveScopedBranchIds(
-      input.tenantId,
-      input.actorUserId,
-      input.hasFullAccess,
-    );
-    assertBranchInScope(existing.branchId, scopedBranchIds);
-    assertBranchInScope(parsed.data.branchId, scopedBranchIds);
-
-    if (parsed.data.modelId) {
-      const model = await prisma.productModel.findFirst({
-        where: { id: parsed.data.modelId, tenantId: input.tenantId },
-        select: { id: true, brandId: true },
-      });
-      if (!model) throw new Error("Model not found");
-      if (parsed.data.brandId && model.brandId && parsed.data.brandId !== model.brandId) {
-        throw new Error("Model does not belong to the selected brand");
-      }
+    const branchId = await resolveWriteBranchId(input.tenantId, input.actorUserId);
+    if (existing.branchId && existing.branchId !== branchId) {
+      throw new Error("Observation is outside your area of responsibility");
     }
 
-    const row = await competitorRepository.update(input.tenantId, parsed.data.id, parsed.data);
+    const competitor = await resolveActiveCompetitor(input.tenantId, parsed.data.competitorId);
+    await assertModelMatchesBrand(input.tenantId, parsed.data.modelId, parsed.data.brandId);
+
+    const row = await competitorRepository.update(input.tenantId, parsed.data.id, {
+      competitorId: competitor.id,
+      competitorName: competitor.name,
+      branchId,
+      brandId: parsed.data.brandId,
+      modelId: parsed.data.modelId,
+      price: parsed.data.price,
+      promotion: parsed.data.promotion,
+      notes: parsed.data.notes,
+      observedAt: parsed.data.observedAt,
+    });
 
     await auditService.log({
       tenantId: input.tenantId,
@@ -229,27 +273,20 @@ export const competitorService = {
       action: "competitor.updated",
       entityType: "CompetitorObservation",
       entityId: row.id,
-      metadata: { competitorName: row.competitorName },
+      metadata: { competitorId: row.competitorId, competitorName: row.competitorName },
     });
 
     return toDto(row);
   },
 
-  async delete(input: {
-    tenantId: string;
-    actorUserId: string;
-    hasFullAccess: boolean;
-    id: string;
-  }) {
+  async delete(input: { tenantId: string; actorUserId: string; id: string }) {
     const existing = await competitorRepository.findById(input.tenantId, input.id);
     if (!existing) throw new Error("Observation not found");
 
-    const scopedBranchIds = await resolveScopedBranchIds(
-      input.tenantId,
-      input.actorUserId,
-      input.hasFullAccess,
-    );
-    assertBranchInScope(existing.branchId, scopedBranchIds);
+    const branchId = await resolveWriteBranchId(input.tenantId, input.actorUserId);
+    if (existing.branchId && existing.branchId !== branchId) {
+      throw new Error("Observation is outside your area of responsibility");
+    }
 
     await competitorRepository.delete(input.tenantId, input.id);
 
@@ -259,7 +296,7 @@ export const competitorService = {
       action: "competitor.deleted",
       entityType: "CompetitorObservation",
       entityId: input.id,
-      metadata: { competitorName: existing.competitorName },
+      metadata: { competitorId: existing.competitorId, competitorName: existing.competitorName },
     });
 
     return { id: input.id };

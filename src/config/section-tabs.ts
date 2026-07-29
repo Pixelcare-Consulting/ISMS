@@ -46,13 +46,11 @@ export const MASTER_DATA_TAB_GROUPS: SectionTabGroupDefinition[] = [
         href: "/settings/master-data/models",
         label: "Models",
         description: "SKUs for branch planograms and orders (active / hold / retired).",
-        badge: "new",
       },
       {
         href: "/settings/master-data/price-lists",
         label: "Price lists",
         description: "Period-based SRP rows by model and package type.",
-        badge: "new",
       },
       {
         href: "/settings/master-data/categories",
@@ -133,6 +131,12 @@ export const MASTER_DATA_TAB_GROUPS: SectionTabGroupDefinition[] = [
         href: "/settings/master-data/promo-types",
         label: "Promo types",
         description: "Promo type lookup for sales promotions.",
+      },
+      {
+        href: "/settings/master-data/competitors",
+        label: "Competitors",
+        description: "Competitor name lookup for market observations.",
+        badge: "new",
       },
       {
         href: "/settings/master-data/dealer-types",

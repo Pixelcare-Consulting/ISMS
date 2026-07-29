@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -37,7 +37,7 @@ interface CompetitorFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   observation?: CompetitorObservationDto | null;
-  branches: CompetitorFormOption[];
+  competitors: CompetitorFormOption[];
   brands: CompetitorFormOption[];
   models: CompetitorModelOption[];
 }
@@ -55,7 +55,7 @@ export function CompetitorFormDialog({
   open,
   onOpenChange,
   observation,
-  branches,
+  competitors,
   brands,
   models,
 }: CompetitorFormDialogProps) {
@@ -63,38 +63,41 @@ export function CompetitorFormDialog({
   const [pending, startTransition] = useTransition();
   const isEdit = Boolean(observation);
 
-  const [competitorName, setCompetitorName] = useState("");
-  const [branchId, setBranchId] = useState("");
-  const [brandId, setBrandId] = useState("");
-  const [modelId, setModelId] = useState("");
-  const [price, setPrice] = useState("");
-  const [notes, setNotes] = useState("");
-  const [observedAt, setObservedAt] = useState("");
-
-  useEffect(() => {
-    if (!open) return;
-    setCompetitorName(observation?.competitorName ?? "");
-    setBranchId(observation?.branchId ?? "");
-    setBrandId(observation?.brandId ?? "");
-    setModelId(observation?.modelId ?? "");
-    setPrice(observation?.price != null ? String(observation.price) : "");
-    setNotes(observation?.notes ?? "");
-    setObservedAt(
-      observation
-        ? toDateInputValue(observation.observedAt)
-        : toDateInputValue(new Date().toISOString()),
-    );
-  }, [open, observation]);
+  const [competitorId, setCompetitorId] = useState(observation?.competitorId ?? "");
+  const [brandId, setBrandId] = useState(observation?.brandId ?? "");
+  const [modelId, setModelId] = useState(observation?.modelId ?? "");
+  const [price, setPrice] = useState(
+    observation?.price != null ? String(observation.price) : "",
+  );
+  const [promotion, setPromotion] = useState(observation?.promotion ?? "");
+  const [notes, setNotes] = useState(observation?.notes ?? "");
+  const [observedAt, setObservedAt] = useState(
+    observation
+      ? toDateInputValue(observation.observedAt)
+      : toDateInputValue(new Date().toISOString()),
+  );
 
   const filteredModels = useMemo(() => {
     if (!brandId) return models;
     return models.filter((m) => m.brandId === brandId || m.brandId == null);
   }, [models, brandId]);
 
+  const competitorOptions = useMemo(() => {
+    if (!observation?.competitorId) return competitors;
+    if (competitors.some((c) => c.id === observation.competitorId)) return competitors;
+    return [
+      {
+        id: observation.competitorId,
+        label: `${observation.competitorName} (inactive)`,
+      },
+      ...competitors,
+    ];
+  }, [competitors, observation]);
+
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!competitorName.trim()) {
-      toast.error("Competitor name is required");
+    if (!competitorId) {
+      toast.error("Competitor is required");
       return;
     }
     if (!observedAt) {
@@ -103,11 +106,11 @@ export function CompetitorFormDialog({
     }
 
     const payload = {
-      competitorName: competitorName.trim(),
-      branchId: branchId || null,
+      competitorId,
       brandId: brandId || null,
       modelId: modelId || null,
       price: price === "" ? null : price,
+      promotion: promotion.trim() || null,
       notes: notes.trim() || null,
       observedAt: new Date(`${observedAt}T12:00:00`),
     };
@@ -135,39 +138,26 @@ export function CompetitorFormDialog({
           <DialogTitle>{isEdit ? "Edit observation" : "Add observation"}</DialogTitle>
         </DialogHeader>
         <form onSubmit={submit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="competitorName">Competitor name</Label>
-            <Input
-              id="competitorName"
-              value={competitorName}
-              onChange={(e) => setCompetitorName(e.target.value)}
-              required
-              maxLength={120}
-            />
-          </div>
+          <SearchableSelect
+            label="Competitor"
+            id="competitorId"
+            options={competitorOptions.map((c) => ({ id: c.id, label: c.label }))}
+            value={competitorId}
+            onChange={setCompetitorId}
+            placeholder="Select competitor"
+            searchPlaceholder="Search competitors…"
+            disabled={pending}
+          />
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <SearchableSelect
-              label="Branch (optional)"
-              id="branchId"
-              options={branches.map((b) => ({ id: b.id, label: b.label }))}
-              value={branchId}
-              onChange={setBranchId}
-              allowClear
-              placeholder="—"
-              searchPlaceholder="Search branches…"
-              disabled={pending}
+          <div className="space-y-2">
+            <Label htmlFor="observedAt">Observed date</Label>
+            <Input
+              id="observedAt"
+              type="date"
+              value={observedAt}
+              onChange={(e) => setObservedAt(e.target.value)}
+              required
             />
-            <div className="space-y-2">
-              <Label htmlFor="observedAt">Observed date</Label>
-              <Input
-                id="observedAt"
-                type="date"
-                value={observedAt}
-                onChange={(e) => setObservedAt(e.target.value)}
-                required
-              />
-            </div>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -198,17 +188,29 @@ export function CompetitorFormDialog({
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="price">Price (optional)</Label>
-            <Input
-              id="price"
-              type="number"
-              min={0}
-              step="0.01"
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-              placeholder="0.00"
-            />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="price">Price (optional)</Label>
+              <Input
+                id="price"
+                type="number"
+                min={0}
+                step="0.01"
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                placeholder="0.00"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="promotion">Promotion (optional)</Label>
+              <Input
+                id="promotion"
+                value={promotion}
+                onChange={(e) => setPromotion(e.target.value)}
+                maxLength={255}
+                placeholder="Promo name or offer"
+              />
+            </div>
           </div>
 
           <div className="space-y-2">

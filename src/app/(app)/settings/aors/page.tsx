@@ -34,10 +34,25 @@ export default async function SettingsAorsPage() {
             ? { name: aor.createdBy.name, email: aor.createdBy.email }
             : null,
           branch: aor.branch
-            ? { name: aor.branch.name, sapCode: aor.branch.sapCode }
+            ? {
+                id: aor.branch.id,
+                name: aor.branch.name,
+                sapCode: aor.branch.sapCode,
+              }
             : null,
           warehouse: aor.warehouse
-            ? { name: aor.warehouse.name, code: aor.warehouse.code }
+            ? {
+                id: aor.warehouse.id,
+                name: aor.warehouse.name,
+                code: aor.warehouse.code,
+              }
+            : null,
+          dealer: aor.dealer
+            ? {
+                id: aor.dealer.id,
+                name: aor.dealer.name,
+                sapCode: aor.dealer.sapCode,
+              }
             : null,
         }))}
         users={options.users.map((u) => ({
@@ -59,6 +74,12 @@ export default async function SettingsAorsPage() {
           sapCode: d.sapCode,
           branchCount: d._count.branches,
           label: d.sapCode ? `${d.name} (${d.sapCode})` : d.name,
+        }))}
+        warehouses={options.warehouses.map((w) => ({
+          id: w.id,
+          name: w.name,
+          code: w.code,
+          label: `${w.name} (${w.code})`,
         }))}
       />
     </div>

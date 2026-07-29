@@ -24,6 +24,33 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.13.3",
+    date: "2026-07-28",
+    title: "AOR sync, Sales nav, Competitors master",
+    highlights: [
+      "AOR assign form hydrates existing branch/dealer/warehouse selections and syncs add/remove on submit",
+      "Sales encode (`/sales`) and Sales report (`/reports/sales`) re-enabled in the sidebar",
+      "Competitors: master lookup dropdown, AOR-bound branch on write, optional promotion field",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "AOR assign pre-selects the user’s current AORs and syncs create/delete instead of append-only re-pick",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sales and Sales report nav links restored for users with sales.create / reports access",
+      },
+      {
+        type: "feature",
+        description:
+          "Competitor master data lookup; observations pick competitor + promotion; branch set from exactly one AOR branch",
+      },
+    ],
+  },
+  {
     version: "0.13.2",
     date: "2026-07-28",
     title: "SAP Service Layer session status UI",

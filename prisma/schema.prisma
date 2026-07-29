@@ -163,6 +163,7 @@ model Tenant {
   branchAreas         BranchArea[]
   modeOfPayments      ModeOfPayment[]
   promoTypes          PromoType[]
+  competitors         Competitor[]
   dealerTypes         DealerType[]
   customerDeliveryMethods CustomerDeliveryMethod[]
   problemDescriptions ProblemDescription[]
@@ -819,6 +820,22 @@ model PromoType {
   @@unique([tenantId, name])
   @@index([tenantId])
   @@map("promo_types")
+}
+
+model Competitor {
+  id           String             @id @default(cuid())
+  tenantId     String             @map("tenant_id")
+  name         String
+  recordStatus LookupRecordStatus @default(active) @map("record_status")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+
+  tenant       Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  observations CompetitorObservation[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("competitors")
 }
 
 model DealerType {
@@ -1832,25 +1849,29 @@ model Announcement {
 model CompetitorObservation {
   id             String    @id @default(cuid())
   tenantId       String    @map("tenant_id")
+  competitorId   String    @map("competitor_id")
   competitorName String    @map("competitor_name")
   branchId       String?   @map("branch_id")
   brandId        String?   @map("brand_id")
   modelId        String?   @map("model_id")
   price          Decimal?  @db.Decimal(12, 2)
+  promotion      String?   @db.VarChar(255)
   notes          String?   @db.Text
   observedAt     DateTime  @map("observed_at")
   createdById    String    @map("created_by_id")
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
-  tenant    Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  createdBy User          @relation("CompetitorObservationCreatedBy", fields: [createdById], references: [id])
-  branch    Branch?       @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  brand     Brand?        @relation(fields: [brandId], references: [id], onDelete: SetNull)
-  model     ProductModel? @relation(fields: [modelId], references: [id], onDelete: SetNull)
+  tenant     Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  competitor Competitor    @relation(fields: [competitorId], references: [id], onDelete: Restrict)
+  createdBy  User          @relation("CompetitorObservationCreatedBy", fields: [createdById], references: [id])
+  branch     Branch?       @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  brand      Brand?        @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  model      ProductModel? @relation(fields: [modelId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, observedAt])
   @@index([tenantId, competitorName])
+  @@index([tenantId, competitorId])
   @@map("competitor_observations")
 }
 
