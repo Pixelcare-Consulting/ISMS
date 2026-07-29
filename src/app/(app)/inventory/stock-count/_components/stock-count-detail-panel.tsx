@@ -22,18 +22,14 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
-  Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  DataTableScroll,
-  DataTableShell,
-} from "@/components/data-table/data-table-shell";
+import { TableIndexCell, TableIndexHead } from "@/components/data-table";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
+import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
 
 interface StockCountDetailPanelProps {
   session: {
@@ -151,23 +147,21 @@ export function StockCountDetailPanel({ session }: StockCountDetailPanelProps) {
         <h3 className="text-sm font-medium">Count lines</h3>
         <p className="text-muted-foreground text-sm">PS scans / records each expected unit.</p>
       </div>
-      <DataTableShell>
-        <DataTableScroll>
-          <Table>
+      <GlobalDataTable stickyHeader scrollable>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-10">
+                <GlobalTableHead className="w-10">
                   <Checkbox
                     checked={lineSelection.isAllSelected || (lineSelection.isPartiallySelected ? "indeterminate" : false)}
                     onCheckedChange={(checked) => lineSelection.toggleAll(checked === true)}
                     aria-label="Select all count lines"
                   />
-                </TableHead>
-                <TableHead className="w-12">#</TableHead>
-                <TableHead>Serial</TableHead>
-                <TableHead>SKU</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Action</TableHead>
+                </GlobalTableHead>
+                <TableIndexHead />
+                <GlobalTableHead>Serial</GlobalTableHead>
+                <GlobalTableHead>SKU</GlobalTableHead>
+                <GlobalTableHead>Status</GlobalTableHead>
+                <GlobalTableHead className="text-right">Action</GlobalTableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -180,7 +174,7 @@ export function StockCountDetailPanel({ session }: StockCountDetailPanelProps) {
                       aria-label={`Select line ${line.serialNumber.serialNo}`}
                     />
                   </TableCell>
-                  <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
+                  <TableIndexCell index={index + 1} />
                   <TableCell className="font-mono text-sm">{line.serialNumber.serialNo}</TableCell>
                   <TableCell>
                     <div>{line.model.skuCode}</div>
@@ -213,9 +207,7 @@ export function StockCountDetailPanel({ session }: StockCountDetailPanelProps) {
                 </TableRow>
               ))}
             </TableBody>
-          </Table>
-        </DataTableScroll>
-      </DataTableShell>
+      </GlobalDataTable>
 
       {session.variances.length > 0 && (
         <>
@@ -225,24 +217,22 @@ export function StockCountDetailPanel({ session }: StockCountDetailPanelProps) {
               TL investigates discrepancies; admin requests SAP inventory adjustment.
             </p>
           </div>
-          <DataTableShell>
-            <DataTableScroll>
-            <Table>
+          <GlobalDataTable stickyHeader scrollable>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-10">
+                  <GlobalTableHead className="w-10">
                     <Checkbox
                       checked={varianceSelection.isAllSelected || (varianceSelection.isPartiallySelected ? "indeterminate" : false)}
                       onCheckedChange={(checked) => varianceSelection.toggleAll(checked === true)}
                       aria-label="Select all variances"
                     />
-                  </TableHead>
-                  <TableHead className="w-12">#</TableHead>
-                  <TableHead>Serial / SKU</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>SAP ref</TableHead>
-                  <TableHead>Actions</TableHead>
+                  </GlobalTableHead>
+                  <TableIndexHead />
+                  <GlobalTableHead>Serial / SKU</GlobalTableHead>
+                  <GlobalTableHead>Type</GlobalTableHead>
+                  <GlobalTableHead>Status</GlobalTableHead>
+                  <GlobalTableHead>SAP ref</GlobalTableHead>
+                  <GlobalTableHead>Actions</GlobalTableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -255,7 +245,7 @@ export function StockCountDetailPanel({ session }: StockCountDetailPanelProps) {
                         aria-label={`Select variance ${v.id}`}
                       />
                     </TableCell>
-                    <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
+                    <TableIndexCell index={index + 1} />
                     <TableCell>
                       {v.line ? (
                         <>
@@ -329,9 +319,7 @@ export function StockCountDetailPanel({ session }: StockCountDetailPanelProps) {
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
-          </DataTableScroll>
-        </DataTableShell>
+          </GlobalDataTable>
         </>
       )}
     </div>

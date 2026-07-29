@@ -62,6 +62,12 @@ export function TablePagination({
   const resolvedPage = meta?.page ?? page ?? 1;
   const resolvedTotalPages = meta?.totalPages ?? totalPages ?? 1;
   const resolvedLabel = meta?.itemLabel ?? label;
+  const pluralLabel =
+    resolvedTotal === 1
+      ? resolvedLabel
+      : resolvedLabel.endsWith("s")
+        ? resolvedLabel
+        : `${resolvedLabel}s`;
   const visiblePages = getVisiblePageNumbers(resolvedPage, resolvedTotalPages);
   const showFirst = resolvedPage > 1;
   const showPrevious = resolvedPage > 1;
@@ -71,8 +77,7 @@ export function TablePagination({
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-3 text-sm text-muted-foreground">
       <span>
-        {resolvedTotal} {resolvedLabel}
-        {resolvedTotal === 1 ? "" : "s"} · page {resolvedPage} of {resolvedTotalPages}
+        {resolvedTotal} {pluralLabel} · page {resolvedPage} of {resolvedTotalPages}
       </span>
       <div className="flex flex-wrap items-center gap-1.5">
         {showFirst ? (

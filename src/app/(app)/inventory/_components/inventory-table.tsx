@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { updateInventoryStatusAction } from "@/features/inventory/actions/inventory.actions";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
+import { TableIndexCell, TableIndexHead } from "@/components/data-table";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
@@ -139,6 +140,7 @@ export function InventoryTable({
   return (
     <>
       <GlobalDataTable
+        stickyHeader
         scrollable
         search={{
           value: query,
@@ -189,7 +191,7 @@ export function InventoryTable({
                 aria-label="Select all inventory rows"
               />
             </GlobalTableHead>
-            <GlobalTableHead className="w-12">#</GlobalTableHead>
+            <TableIndexHead />
             <GlobalTableHead>Serial</GlobalTableHead>
             <GlobalTableHead>Model</GlobalTableHead>
             <GlobalTableHead>Branch</GlobalTableHead>
@@ -207,7 +209,7 @@ export function InventoryTable({
                   aria-label={`Select serial ${r.serialNumber.serialNo}`}
                 />
               </TableCell>
-              <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
+              <TableIndexCell index={index + 1} />
               <TableCell className="font-mono text-sm">{r.serialNumber.serialNo}</TableCell>
               <TableCell>
                 <Link

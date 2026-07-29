@@ -12,24 +12,14 @@ import {
 import {
   STOCK_COUNT_SESSION_LABELS,
 } from "@/features/stock-audit/constants/stock-count-workflow";
-import {
-  DataTableScroll,
-  DataTableShell,
-} from "@/components/data-table/data-table-shell";
+import { TableIndexCell, TableIndexHead } from "@/components/data-table";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
-import { TablePagination } from "@/components/data-table/table-pagination";
+import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 
 interface SessionRow {
   id: string;
@@ -90,42 +80,53 @@ export function StockCountListPanel({ sessions }: StockCountListPanelProps) {
   }
 
   return (
-    <DataTableShell>
-      <div className="flex flex-wrap items-center justify-end gap-2 border-b p-4">
-        <SearchableSelect
-          className="w-full sm:w-[200px]"
-          options={branches.map((b) => ({ id: b.id, label: b.name }))}
-          value={selectedBranchId}
-          onChange={setSelectedBranchId}
-          placeholder="Branch"
-          searchPlaceholder="Search branches…"
-          emptyMessage="Load branches first."
-          onOpenChange={(open) => {
-            if (open) void loadBranches();
-          }}
-        />
-        <Button className="w-full sm:w-auto" disabled={pending} onClick={createSession}>
-          New count session
-        </Button>
-      </div>
-      <DataTableScroll>
-        <Table>
+    <GlobalDataTable
+      stickyHeader
+      scrollable
+      toolbarActions={
+        <>
+          <SearchableSelect
+            className="w-full sm:w-[200px]"
+            options={branches.map((b) => ({ id: b.id, label: b.name }))}
+            value={selectedBranchId}
+            onChange={setSelectedBranchId}
+            placeholder="Branch"
+            searchPlaceholder="Search branches…"
+            emptyMessage="Load branches first."
+            onOpenChange={(open) => {
+              if (open) void loadBranches();
+            }}
+          />
+          <Button className="w-full sm:w-auto" disabled={pending} onClick={createSession}>
+            New count session
+          </Button>
+        </>
+      }
+      pagination={{
+        total: sessions.total,
+        page: sessions.page,
+        totalPages: sessions.totalPages,
+        itemLabel: "session",
+        buildHref: (page) =>
+          page > 1 ? `/inventory/stock-count?page=${page}` : "/inventory/stock-count",
+      }}
+    >
           <TableHeader>
             <TableRow>
-              <TableHead className="w-10">
+              <GlobalTableHead className="w-10">
                 <Checkbox
                   checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
                   onCheckedChange={(checked) => selection.toggleAll(checked === true)}
                   aria-label="Select all stock count sessions"
                 />
-              </TableHead>
-              <TableHead className="w-12">#</TableHead>
-              <TableHead>Session</TableHead>
-              <TableHead>Branch</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Lines</TableHead>
-              <TableHead className="text-right">Variances</TableHead>
-              <TableHead>Created by</TableHead>
+              </GlobalTableHead>
+              <TableIndexHead />
+              <GlobalTableHead>Session</GlobalTableHead>
+              <GlobalTableHead>Branch</GlobalTableHead>
+              <GlobalTableHead>Status</GlobalTableHead>
+              <GlobalTableHead className="text-right">Lines</GlobalTableHead>
+              <GlobalTableHead className="text-right">Variances</GlobalTableHead>
+              <GlobalTableHead>Created by</GlobalTableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -145,7 +146,7 @@ export function StockCountListPanel({ sessions }: StockCountListPanelProps) {
                       aria-label={`Select session ${row.sessionNo}`}
                     />
                   </TableCell>
-                  <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
+                  <TableIndexCell index={index + 1} />
                   <TableCell>
                     <Link
                       href={`/inventory/stock-count/${row.id}`}
@@ -174,19 +175,6 @@ export function StockCountListPanel({ sessions }: StockCountListPanelProps) {
               ))
             )}
           </TableBody>
-        </Table>
-      </DataTableScroll>
-      <TablePagination
-        meta={{
-          total: sessions.total,
-          page: sessions.page,
-          totalPages: sessions.totalPages,
-          itemLabel: "session",
-        }}
-        buildHref={(page) =>
-          page > 1 ? `/inventory/stock-count?page=${page}` : "/inventory/stock-count"
-        }
-      />
-    </DataTableShell>
+    </GlobalDataTable>
   );
 }

@@ -31,7 +31,7 @@ export interface GlobalDataTableProps {
   className?: string;
   /** Freeze toolbar + column headers on page scroll. Track: `sticky table header`. */
   stickyHeader?: boolean;
-  /** Wrap table in horizontal scroll container. */
+  /** Wrap table in horizontal scroll container. Ignored when stickyHeader is on (overflow breaks freeze). */
   scrollable?: boolean;
   search?: GlobalDataTableSearch;
   pageSize?: GlobalDataTablePageSize;
@@ -73,10 +73,14 @@ export function GlobalDataTable({
 }: GlobalDataTableProps) {
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [toolbarHeight, setToolbarHeight] = useState(0);
+  const hasSearch = Boolean(search);
   const hasToolbar = Boolean(search || pageSize || toolbarActions || toolbarLeading);
 
   useEffect(() => {
-    if (!stickyHeader || !hasToolbar) return;
+    if (!stickyHeader || !hasToolbar) {
+      setToolbarHeight(0);
+      return;
+    }
     const el = toolbarRef.current;
     if (!el) return;
 
@@ -87,14 +91,15 @@ export function GlobalDataTable({
     return () => observer.disconnect();
   }, [stickyHeader, hasToolbar]);
 
-  const toolbarLeadingContent = (
-    <>
-      {pageSize ? (
-        <TablePageSizeSelect value={pageSize.value} onChange={pageSize.onChange} />
-      ) : null}
-      {toolbarLeading}
-    </>
-  );
+  const toolbarLeadingContent =
+    pageSize || toolbarLeading ? (
+      <>
+        {pageSize ? (
+          <TablePageSizeSelect value={pageSize.value} onChange={pageSize.onChange} />
+        ) : null}
+        {toolbarLeading}
+      </>
+    ) : null;
 
   const toolbar = hasToolbar ? (
     <TableSearchToolbar
@@ -104,17 +109,17 @@ export function GlobalDataTable({
       suggestions={search?.suggestions}
       className={stickyHeader ? "border-b-0" : undefined}
       leading={toolbarLeadingContent}
+      showSearch={hasSearch}
     >
       {toolbarActions}
     </TableSearchToolbar>
   ) : null;
 
-  const shellStyle =
-    stickyHeader && hasToolbar
-      ? ({
-          "--sticky-toolbar-height": `${toolbarHeight}px`,
-        } as CSSProperties)
-      : undefined;
+  const shellStyle = stickyHeader
+    ? ({
+        "--sticky-toolbar-height": `${hasToolbar ? toolbarHeight : 0}px`,
+      } as CSSProperties)
+    : undefined;
 
   return (
     <GlobalTableStickyContext.Provider value={stickyHeader}>
@@ -138,9 +143,14 @@ export function GlobalDataTable({
           <DataTableEmptyContent message={emptyMessage} />
         ) : (
           <>
-            {scrollable ? (
+            {/*
+              sticky table header: do NOT wrap in DataTableScroll when sticky.
+              overflow-x-auto forces a scrollport and makes sticky `top` offset
+              inside the table, which covers the first body row(s).
+            */}
+            {scrollable && !stickyHeader ? (
               <DataTableScroll>
-                <Table scrollContainer={!stickyHeader}>{children}</Table>
+                <Table>{children}</Table>
               </DataTableScroll>
             ) : (
               <Table scrollContainer={!stickyHeader}>{children}</Table>

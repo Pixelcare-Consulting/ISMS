@@ -18,6 +18,7 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
     <div className="space-y-6">
       <PageHeader
         title="Sales & ATR"
+        sticky={false}
         tutorial={SALES_PAGE_TUTORIAL}
         description="Branch sales with SN picker, reserved (RSV) flow, and ATR return workflow."
       />
