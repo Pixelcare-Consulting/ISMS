@@ -24,7 +24,10 @@ export function StockCountPermissionDialog({
 }: StockCountPermissionDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="overflow-hidden border-destructive/30 p-0 sm:max-w-sm">
+      <DialogContent
+        showCloseButton={false}
+        className="overflow-hidden border-destructive/30 p-0 sm:max-w-sm"
+      >
         <div className="h-1.5 bg-destructive" />
         <div className="space-y-5 px-6 pb-6">
           <DialogHeader className="items-center pt-2 text-center sm:text-center">
