@@ -54,7 +54,17 @@ export async function listStockCountSessionsAction(input?: { page?: number }) {
     session.user.tenantId,
     session.user.id,
     unrestricted,
-    { page: input?.page },
+    { page: input?.page, limit: 10 },
+  );
+}
+
+export async function getStockCountKpisAction() {
+  const session = await requirePermission("inventory.view");
+  const unrestricted = isUnrestricted(session.user.permissions);
+  return stockAuditService.getKpis(
+    session.user.tenantId,
+    session.user.id,
+    unrestricted,
   );
 }
 

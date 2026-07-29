@@ -30,18 +30,20 @@ import { Button } from "@/components/ui/button";
 import { BRANCH_ORDER_STATUS_LABELS } from "@/features/orders/constants/order-status";
 import { OrderTypeBadge } from "@/features/orders/components/order-type-badge";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
-import { DataTableScroll, DataTableShell } from "@/components/data-table/data-table-shell";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
-import { TablePagination } from "@/components/data-table/table-pagination";
-import { TableSearchToolbar, uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
+import {
+  DEFAULT_TABLE_PAGE_SIZE,
+  parseTablePageSize,
+  type TablePageSize,
+} from "@/components/data-table/table-page-size";
+import { uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
+import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
-  Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
@@ -114,8 +116,12 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function buildOrdersHref(page: number): string {
-  return page > 1 ? `/orders?page=${page}` : "/orders";
+function buildOrdersHref(page: number, limit: number): string {
+  const params = new URLSearchParams();
+  if (page > 1) params.set("page", String(page));
+  if (limit !== DEFAULT_TABLE_PAGE_SIZE) params.set("limit", String(limit));
+  const query = params.toString();
+  return query ? `/orders?${query}` : "/orders";
 }
 
 export function OrdersTable({ result, viewerRoleSlugs, canEdit = false }: OrdersTableProps) {
@@ -128,6 +134,11 @@ export function OrdersTable({ result, viewerRoleSlugs, canEdit = false }: Orders
     null,
   );
   const [showCreate, setShowCreate] = useState(false);
+  const pageSize = parseTablePageSize(result.limit);
+
+  function handlePageSizeChange(limit: TablePageSize) {
+    router.push(buildOrdersHref(1, limit));
+  }
 
   const filtered = useMemo(
     () =>
@@ -196,117 +207,119 @@ export function OrdersTable({ result, viewerRoleSlugs, canEdit = false }: Orders
   }
 
   return (
-    <DataTableShell>
-      <TableSearchToolbar
-        value={query}
-        onChange={setQuery}
-        placeholder="Search orders…"
-        suggestions={suggestions}
-      >
-        {selection.selectedCount > 0 ? (
-          <Button variant="secondary" onClick={selection.clearSelection}>
-            {selection.selectedCount} selected
-          </Button>
-        ) : null}
-        <Button variant="outline" asChild>
-          <a href="/planning/suggested-orders">Suggested orders</a>
-        </Button>
-        <Button onClick={() => setShowCreate(true)}>Create order</Button>
-      </TableSearchToolbar>
-      <DataTableScroll>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-10">
-                <Checkbox
-                  checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
-                  onCheckedChange={(checked) => selection.toggleAll(checked === true)}
-                  aria-label="Select all orders"
-                />
-              </TableHead>
-              <TableHead className="w-12">#</TableHead>
-              <TableHead>Order #</TableHead>
-              <TableHead>Branch</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Lines</TableHead>
-              <TableHead className="w-28" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filtered.map((o, index) => (
-              <TableRow key={o.id} data-state={selection.isRowSelected(o.id) ? "selected" : undefined}>
-                <TableCell>
-                  <Checkbox
-                    checked={selection.isRowSelected(o.id)}
-                    onCheckedChange={(checked) => selection.toggleRow(o.id, checked === true)}
-                    aria-label={`Select order ${o.orderNumber}`}
-                  />
-                </TableCell>
-                <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
-                <TableCell className="font-mono text-sm">{o.orderNumber}</TableCell>
-                <TableCell>{o.branch.name}</TableCell>
-                <TableCell>
-                  <OrderTypeBadge orderType={o.orderType} />
-                </TableCell>
-                <TableCell>
-                  <StatusCodeBadge
-                    code={o.status}
-                    name={
-                      BRANCH_ORDER_STATUS_LABELS[o.status as BranchOrderStatus] ?? o.status
-                    }
-                  />
-                </TableCell>
-                <TableCell>
-                  {o.details.map((d) => `${d.model.skuCode}×${d.quantity}`).join(", ")}
-                </TableCell>
-                <TableCell>
-                  <div className="flex justify-end gap-2">
-                    {canEdit && isOrderEditable(o.status as BranchOrderStatus) ? (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() =>
-                          setEditingOrder({
-                            id: o.id,
-                            orderNumber: o.orderNumber,
-                            branchId: o.branchId,
-                            branchName: o.branch.name,
-                            orderType: o.orderType as EditableOrder["orderType"],
-                            lines: o.details.map((d) => ({
-                              modelId: d.model.id,
-                              skuCode: d.model.skuCode,
-                              quantity: d.quantity,
-                            })),
-                          })
-                        }
-                      >
-                        Edit
-                      </Button>
-                    ) : null}
-                    {isOrderPendingApproval(o.status as BranchOrderStatus) ? (
-                      <OrderReviewButton
-                        order={o}
-                        viewerRoleSlugs={viewerRoleSlugs}
-                        onReview={() => setWorkflowOrder(o)}
-                      />
-                    ) : null}
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </DataTableScroll>
-      <TablePagination
-        meta={{
+    <>
+      <GlobalDataTable
+        stickyHeader
+        search={{
+          value: query,
+          onChange: setQuery,
+          placeholder: "Search orders…",
+          suggestions,
+        }}
+        pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
+        toolbarActions={
+          <>
+            {selection.selectedCount > 0 ? (
+              <Button variant="secondary" onClick={selection.clearSelection}>
+                {selection.selectedCount} selected
+              </Button>
+            ) : null}
+            <Button variant="outline" asChild>
+              <a href="/planning/suggested-orders">Suggested orders</a>
+            </Button>
+            <Button onClick={() => setShowCreate(true)}>Create order</Button>
+          </>
+        }
+        pagination={{
           total: result.total,
           page: result.page,
           totalPages: result.totalPages,
           itemLabel: "order",
+          buildHref: (page) => buildOrdersHref(page, pageSize),
         }}
-        buildHref={buildOrdersHref}
-      />
+      >
+        <TableHeader>
+          <TableRow className="hover:bg-transparent">
+            <GlobalTableHead className="w-10">
+              <Checkbox
+                checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
+                onCheckedChange={(checked) => selection.toggleAll(checked === true)}
+                aria-label="Select all orders"
+              />
+            </GlobalTableHead>
+            <GlobalTableHead className="w-12">#</GlobalTableHead>
+            <GlobalTableHead>Order #</GlobalTableHead>
+            <GlobalTableHead>Branch</GlobalTableHead>
+            <GlobalTableHead>Type</GlobalTableHead>
+            <GlobalTableHead>Status</GlobalTableHead>
+            <GlobalTableHead>Lines</GlobalTableHead>
+            <GlobalTableHead className="w-28" />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {filtered.map((o, index) => (
+            <TableRow key={o.id} data-state={selection.isRowSelected(o.id) ? "selected" : undefined}>
+              <TableCell>
+                <Checkbox
+                  checked={selection.isRowSelected(o.id)}
+                  onCheckedChange={(checked) => selection.toggleRow(o.id, checked === true)}
+                  aria-label={`Select order ${o.orderNumber}`}
+                />
+              </TableCell>
+              <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
+              <TableCell className="font-mono text-sm">{o.orderNumber}</TableCell>
+              <TableCell>{o.branch.name}</TableCell>
+              <TableCell>
+                <OrderTypeBadge orderType={o.orderType} />
+              </TableCell>
+              <TableCell>
+                <StatusCodeBadge
+                  code={o.status}
+                  name={
+                    BRANCH_ORDER_STATUS_LABELS[o.status as BranchOrderStatus] ?? o.status
+                  }
+                />
+              </TableCell>
+              <TableCell>
+                {o.details.map((d) => `${d.model.skuCode}×${d.quantity}`).join(", ")}
+              </TableCell>
+              <TableCell>
+                <div className="flex justify-end gap-2">
+                  {canEdit && isOrderEditable(o.status as BranchOrderStatus) ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() =>
+                        setEditingOrder({
+                          id: o.id,
+                          orderNumber: o.orderNumber,
+                          branchId: o.branchId,
+                          branchName: o.branch.name,
+                          orderType: o.orderType as EditableOrder["orderType"],
+                          lines: o.details.map((d) => ({
+                            modelId: d.model.id,
+                            skuCode: d.model.skuCode,
+                            quantity: d.quantity,
+                          })),
+                        })
+                      }
+                    >
+                      Edit
+                    </Button>
+                  ) : null}
+                  {isOrderPendingApproval(o.status as BranchOrderStatus) ? (
+                    <OrderReviewButton
+                      order={o}
+                      viewerRoleSlugs={viewerRoleSlugs}
+                      onReview={() => setWorkflowOrder(o)}
+                    />
+                  ) : null}
+                </div>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </GlobalDataTable>
       {workflowOrder ? (
         <OrderWorkflowDialog
           orderNumber={workflowOrder.orderNumber}
@@ -342,7 +355,7 @@ export function OrdersTable({ result, viewerRoleSlugs, canEdit = false }: Orders
           processingAction === "reject" ? [...ORDER_REJECT_FEED] : [...ORDER_APPROVE_FEED]
         }
       />
-    </DataTableShell>
+    </>
   );
 }
 

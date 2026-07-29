@@ -56,7 +56,7 @@ export function SidebarNavGroup({ group, items, pathname }: SidebarNavGroupProps
           <SidebarMenuSub>
             {items.map((item) => {
               const ItemIcon = item.icon;
-              const active = isNavItemActive(pathname, item.href);
+              const active = isNavItemActive(pathname, item.href, item.exact);
 
               return (
                 <SidebarMenuSubItem key={item.href}>

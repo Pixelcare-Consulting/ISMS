@@ -24,7 +24,7 @@ export async function listInventoryAction(input?: {
     session.user.tenantId,
     session.user.id,
     unrestricted,
-    { page: input?.page },
+    { page: input?.page, limit: 10 },
     {
       branchId: input?.branchId,
       skuCode: input?.sku,
@@ -53,6 +53,16 @@ export async function listInventoryAction(input?: {
 export async function listInventoryStatusOptionsAction() {
   const session = await requirePermission("inventory.view");
   return reasonStatusService.listActiveCodes(session.user.tenantId, "inventory_system");
+}
+
+export async function getInventoryKpisAction() {
+  const session = await requirePermission("inventory.view");
+  const unrestricted = isUnrestricted(session.user.permissions);
+  return inventoryService.getKpis(
+    session.user.tenantId,
+    session.user.id,
+    unrestricted,
+  );
 }
 
 export async function updateInventoryStatusAction(

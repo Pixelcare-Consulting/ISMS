@@ -159,6 +159,26 @@ function buildTimeline(row: SerialTraceabilityRow): SerialTimelineEvent[] {
   return events.sort((a, b) => b.at.getTime() - a.at.getTime());
 }
 
+export interface SerialNumberStatusKpi {
+  code: string;
+  name: string;
+  count: number;
+}
+
+export interface SerialNumberKpis {
+  totalSerials: number;
+  statuses: SerialNumberStatusKpi[];
+}
+
+const RECORD_STATUS_LABELS: Record<LookupRecordStatus, string> = {
+  active: "Active",
+  inactive: "Inactive",
+};
+
+const RECORD_STATUS_ORDER = Object.keys(
+  RECORD_STATUS_LABELS,
+) as LookupRecordStatus[];
+
 export const serialNumberService = {
   list(
     tenantId: string,
@@ -170,6 +190,26 @@ export const serialNumberService = {
 
   listModelOptions(tenantId: string) {
     return serialNumberRepository.listModelOptions(tenantId);
+  },
+
+  async getKpis(tenantId: string): Promise<SerialNumberKpis> {
+    const [statusGroups, totalSerials] = await Promise.all([
+      serialNumberRepository.countByRecordStatus(tenantId),
+      serialNumberRepository.countAll(tenantId),
+    ]);
+
+    const countByStatus = new Map(
+      statusGroups.map((g) => [g.recordStatus, g._count.id]),
+    );
+
+    return {
+      totalSerials,
+      statuses: RECORD_STATUS_ORDER.map((status) => ({
+        code: status,
+        name: RECORD_STATUS_LABELS[status],
+        count: countByStatus.get(status) ?? 0,
+      })),
+    };
   },
 
   async getTraceability(

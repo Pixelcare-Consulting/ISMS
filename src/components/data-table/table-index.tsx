@@ -1,21 +1,22 @@
-import { TableCell, TableHead } from "@/components/ui/table";
+import { TableCell } from "@/components/ui/table";
+import { GlobalTableHead } from "@/lib/data-table/global-table-head";
 import { cn } from "@/utils/cn";
 
 interface TableIndexHeadProps {
   className?: string;
 }
 
-/** Standard `#` column header (`w-12`, muted, centered). */
+/** Standard `#` column header (`w-12`, muted, centered). Sticky via GlobalDataTable. */
 export function TableIndexHead({ className }: TableIndexHeadProps) {
   return (
-    <TableHead
+    <GlobalTableHead
       className={cn(
         "w-12 min-w-12 text-center text-muted-foreground",
         className,
       )}
     >
       #
-    </TableHead>
+    </GlobalTableHead>
   );
 }
 

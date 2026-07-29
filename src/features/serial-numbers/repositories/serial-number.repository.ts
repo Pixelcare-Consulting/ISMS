@@ -190,4 +190,16 @@ export const serialNumberRepository = {
       data: { recordStatus },
     });
   },
+
+  countAll(tenantId: string) {
+    return prisma.serialNumber.count({ where: { tenantId } });
+  },
+
+  countByRecordStatus(tenantId: string) {
+    return prisma.serialNumber.groupBy({
+      by: ["recordStatus"],
+      where: { tenantId },
+      _count: { id: true },
+    });
+  },
 };

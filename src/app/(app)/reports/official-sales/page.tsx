@@ -15,6 +15,7 @@ export default async function OfficialSalesPage() {
     <div className="space-y-6">
       <PageHeader
         title="Official Sales"
+        sticky={false}
         description="Upload dealer DR files to a staging table, then process SALE (STK→SLD) or RETURN (SLD/RSV→STK) per serial."
       />
       <OfficialSalesPanel rows={rows} canManage={canManage} />

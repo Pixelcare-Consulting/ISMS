@@ -179,6 +179,11 @@ interface TableSearchToolbarProps {
   placeholder?: string;
   children?: React.ReactNode;
   suggestions?: string[];
+  /** Content shown before the search input (e.g. rows-per-page select). */
+  leading?: React.ReactNode;
+  className?: string;
+  /** When false, hide the search input (actions/leading-only toolbar). */
+  showSearch?: boolean;
 }
 
 export function TableSearchToolbar({
@@ -187,16 +192,29 @@ export function TableSearchToolbar({
   placeholder,
   children,
   suggestions,
+  leading,
+  className,
+  showSearch = true,
 }: TableSearchToolbarProps) {
   return (
-    <div className="flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-      <TableSearchBar
-        value={value}
-        onChange={onChange}
-        placeholder={placeholder}
-        suggestions={suggestions}
-        className="sm:max-w-sm"
-      />
+    <div
+      className={cn(
+        "flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between",
+        className,
+      )}
+    >
+      <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-center">
+        {leading}
+        {showSearch ? (
+          <TableSearchBar
+            value={value}
+            onChange={onChange}
+            placeholder={placeholder}
+            suggestions={suggestions}
+            className="sm:max-w-sm"
+          />
+        ) : null}
+      </div>
       {children ? (
         <div className="flex shrink-0 flex-wrap items-center gap-2">{children}</div>
       ) : null}

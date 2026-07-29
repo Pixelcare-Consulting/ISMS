@@ -13,13 +13,10 @@ import {
 } from "@/features/logistics/actions/logistics.actions";
 import { listStkSerialsForBranchAction } from "@/features/sales/actions/sales.actions";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
-import {
-  DataTableScroll,
-  DataTableShell,
-} from "@/components/data-table/data-table-shell";
+import { TableIndexCell, TableIndexHead } from "@/components/data-table";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
-import { TablePagination } from "@/components/data-table/table-pagination";
-import { TableSearchToolbar, uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
+import { uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
+import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -32,14 +29,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { LogisticsLoadRefsButton } from "@/app/(app)/logistics/_components/logistics-load-refs-button";
 import {
   buildLogisticsPageHref,
@@ -192,19 +182,18 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
 
   return (
     <>
-      <DataTableShell>
-        <TableSearchToolbar
-          value={query}
-          onChange={setQuery}
-          placeholder="Search transfers…"
-          suggestions={suggestions}
-        >
-          {selection.selectedCount > 0 ? (
-            <Button variant="secondary" onClick={selection.clearSelection}>
-              {selection.selectedCount} selected
-            </Button>
-          ) : null}
-          <LogisticsLoadRefsButton onClick={loadRefs} />
+      <GlobalDataTable
+        stickyHeader
+        scrollable
+        search={{ value: query, onChange: setQuery, placeholder: "Search transfers…", suggestions }}
+        toolbarActions={
+          <>
+            {selection.selectedCount > 0 ? (
+              <Button variant="secondary" onClick={selection.clearSelection}>
+                {selection.selectedCount} selected
+              </Button>
+            ) : null}
+            <LogisticsLoadRefsButton onClick={loadRefs} />
           {branches.length >= 2 ? (
             <Button
               size="sm"
@@ -223,23 +212,30 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
               New transfer request
             </Button>
           ) : null}
-        </TableSearchToolbar>
-        <DataTableScroll>
-          <Table>
+          </>
+        }
+        pagination={{
+          total: transfers.total,
+          page: transfers.page,
+          totalPages: transfers.totalPages,
+          itemLabel: "transfer",
+          buildHref: (page) => buildLogisticsPageHref(LOGISTICS_TRANSFERS_PATH, page),
+        }}
+      >
             <TableHeader>
               <TableRow>
-                <TableHead className="w-10">
+                <GlobalTableHead className="w-10">
                   <Checkbox
                     checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
                     onCheckedChange={(checked) => selection.toggleAll(checked === true)}
                     aria-label="Select all transfers"
                   />
-                </TableHead>
-                <TableHead className="w-12">#</TableHead>
-                <TableHead>No.</TableHead>
-                <TableHead>From → To</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead />
+                </GlobalTableHead>
+                <TableIndexHead />
+                <GlobalTableHead>No.</GlobalTableHead>
+                <GlobalTableHead>From → To</GlobalTableHead>
+                <GlobalTableHead>Status</GlobalTableHead>
+                <GlobalTableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -252,7 +248,7 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
                       aria-label={`Select transfer ${t.transferNo}`}
                     />
                   </TableCell>
-                  <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
+                  <TableIndexCell index={index + 1} />
                   <TableCell>{t.transferNo}</TableCell>
                   <TableCell>
                     {t.fromBranch.name} → {t.toBranch.name}
@@ -328,18 +324,7 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
                 </TableRow>
               ))}
             </TableBody>
-          </Table>
-        </DataTableScroll>
-        <TablePagination
-          meta={{
-            total: transfers.total,
-            page: transfers.page,
-            totalPages: transfers.totalPages,
-            itemLabel: "transfer",
-          }}
-          buildHref={(page) => buildLogisticsPageHref(LOGISTICS_TRANSFERS_PATH, page)}
-        />
-      </DataTableShell>
+      </GlobalDataTable>
 
       <AlertDialog
         open={pendingConfirm !== null}
