@@ -64,11 +64,13 @@ export function PlanogramBranchesTable({ branches }: PlanogramBranchesTableProps
   const {
     page,
     setPage,
+    pageSize,
+    setPageSize,
     total,
     totalPages,
     pageItems,
     indexOffset,
-  } = useClientTablePagination(filtered, { pageSize: 10, resetKey: query });
+  } = useClientTablePagination(filtered, { resetKey: query });
 
   if (branches.length === 0) {
     return <DataTableEmptyState message="No branches available for your account." />;
@@ -92,6 +94,7 @@ export function PlanogramBranchesTable({ branches }: PlanogramBranchesTableProps
             size="sm"
           />
         }
+        pageSize={{ value: pageSize, onChange: setPageSize }}
         pagination={{
           total,
           page,

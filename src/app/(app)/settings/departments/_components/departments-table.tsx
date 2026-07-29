@@ -71,11 +71,13 @@ export function DepartmentsTable({ departments }: DepartmentsTableProps) {
   const {
     page,
     setPage,
+    pageSize,
+    setPageSize,
     total,
     totalPages,
     pageItems,
     indexOffset,
-  } = useClientTablePagination(filtered, { pageSize: 10, resetKey: query });
+  } = useClientTablePagination(filtered, { resetKey: query });
 
   function handleDeleteConfirm() {
     if (!deleting) return;
@@ -126,6 +128,7 @@ export function DepartmentsTable({ departments }: DepartmentsTableProps) {
         toolbarActions={createAction}
         empty={rows.length === 0}
         emptyMessage="No departments yet. Add one or register a new organization to get defaults."
+        pageSize={{ value: pageSize, onChange: setPageSize }}
         pagination={{
           total,
           page,

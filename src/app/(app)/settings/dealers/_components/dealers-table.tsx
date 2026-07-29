@@ -109,10 +109,12 @@ export function DealersTable({ dealers }: { dealers: DealerRow[] }) {
   const {
     page,
     setPage,
+    pageSize,
+    setPageSize,
     total,
     totalPages,
     pageItems,
-  } = useClientTablePagination(filtered, { pageSize: 10, resetKey: query });
+  } = useClientTablePagination(filtered, { resetKey: query });
 
   async function ensureOptions() {
     if (options) return options;
@@ -195,6 +197,7 @@ export function DealersTable({ dealers }: { dealers: DealerRow[] }) {
             Add dealer
           </Button>
         }
+        pageSize={{ value: pageSize, onChange: setPageSize }}
         pagination={{
           total,
           page,

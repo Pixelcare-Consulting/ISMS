@@ -6,6 +6,7 @@ import { z } from "zod";
 import { auditService } from "@/features/audit/services/audit.service";
 import { logisticsRepository } from "@/features/logistics/repositories/logistics.repository";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
+import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/database/client";
 
@@ -134,10 +135,11 @@ export async function getPulloutKpisAction(): Promise<LogisticsKpis> {
   );
 }
 
-export async function listDeliveriesAction(input?: { page?: number }) {
+export async function listDeliveriesAction(input?: { page?: number; limit?: number }) {
   const session = await requireAnyPermission(["logistics.manage", "orders.create", "orders.view"]);
   return logisticsRepository.listDeliveries(session.user.tenantId, {
     page: input?.page,
+    limit: parseTablePageSize(input?.limit),
   });
 }
 
@@ -296,10 +298,11 @@ export async function rejectDeliveryAction(id: string, notes?: string) {
   return { success: true as const };
 }
 
-export async function listTransfersAction(input?: { page?: number }) {
+export async function listTransfersAction(input?: { page?: number; limit?: number }) {
   const session = await requireAnyPermission(["logistics.manage", "orders.create", "orders.view"]);
   return logisticsRepository.listTransfers(session.user.tenantId, {
     page: input?.page,
+    limit: parseTablePageSize(input?.limit),
   });
 }
 
@@ -550,10 +553,11 @@ export async function receiveTransferAction(id: string) {
   return { success: true as const };
 }
 
-export async function listPulloutsAction(input?: { page?: number }) {
+export async function listPulloutsAction(input?: { page?: number; limit?: number }) {
   const session = await requireAnyPermission(["logistics.manage", "orders.create", "orders.view"]);
   return logisticsRepository.listPullouts(session.user.tenantId, {
     page: input?.page,
+    limit: parseTablePageSize(input?.limit),
   });
 }
 

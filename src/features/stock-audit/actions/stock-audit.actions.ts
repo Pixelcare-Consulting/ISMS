@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import {
   hasPermission,
   requireAnyPermission,
@@ -64,14 +65,18 @@ export async function listBranchesForStockCountAction() {
   };
 }
 
-export async function listStockCountSessionsAction(input?: { page?: number }) {
+export async function listStockCountSessionsAction(input?: {
+  page?: number;
+  limit?: number;
+}) {
   const session = await requirePermission("inventory.view");
   const unrestricted = isUnrestricted(session.user.permissions);
+  const limit = parseTablePageSize(input?.limit);
   return stockAuditService.listForUser(
     session.user.tenantId,
     session.user.id,
     unrestricted,
-    { page: input?.page, limit: 10 },
+    { page: input?.page, limit },
   );
 }
 

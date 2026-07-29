@@ -19,6 +19,11 @@ import {
   TableIndexHead,
   uniqueSearchSuggestions,
 } from "@/components/data-table";
+import {
+  DEFAULT_TABLE_PAGE_SIZE,
+  parseTablePageSize,
+  type TablePageSize,
+} from "@/components/data-table/table-page-size";
 import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -74,10 +79,12 @@ interface SerialNumberTableProps {
 
 function buildHref(
   page: number,
+  limit: number,
   filters: { q?: string; status?: LookupRecordStatus } = {},
 ): string {
   const params = new URLSearchParams();
   if (page > 1) params.set("page", String(page));
+  if (limit !== DEFAULT_TABLE_PAGE_SIZE) params.set("limit", String(limit));
   if (filters.q) params.set("q", filters.q);
   if (filters.status) params.set("status", filters.status);
   const query = params.toString();
@@ -99,10 +106,15 @@ export function SerialNumberTable({
   const [formSerialNo, setFormSerialNo] = useState("");
   const [formModelId, setFormModelId] = useState("");
   const [pending, startTransition] = useTransition();
+  const pageSize = parseTablePageSize(result.limit);
 
   const rows = result.items;
   const activeFilters = { q: currentSearch, status: currentStatus };
   const hasActiveFilters = Boolean(currentSearch || currentStatus);
+
+  function handlePageSizeChange(limit: TablePageSize) {
+    router.push(buildHref(1, limit, activeFilters));
+  }
 
   const modelLabelById = useMemo(
     () => new Map(modelOptions.map((m) => [m.id, `${m.skuCode} — ${m.name}`])),
@@ -120,7 +132,7 @@ export function SerialNumberTable({
 
   function applyFilters() {
     router.push(
-      buildHref(1, {
+      buildHref(1, pageSize, {
         q: search.trim() || undefined,
         status: (status || undefined) as LookupRecordStatus | undefined,
       }),
@@ -220,12 +232,13 @@ export function SerialNumberTable({
             ) : null}
           </>
         }
+        pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
         pagination={{
           total: result.total,
           page: result.page,
           totalPages: result.totalPages,
           itemLabel: "serial",
-          buildHref: (page) => buildHref(page, activeFilters),
+          buildHref: (page) => buildHref(page, pageSize, activeFilters),
         }}
         footer={
           rows.length === 0 ? (

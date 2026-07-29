@@ -15,6 +15,11 @@ import {
   STOCK_COUNT_SESSION_LABELS,
 } from "@/features/stock-audit/constants/stock-count-workflow";
 import { TableIndexCell, TableIndexHead } from "@/components/data-table";
+import {
+  DEFAULT_TABLE_PAGE_SIZE,
+  parseTablePageSize,
+  type TablePageSize,
+} from "@/components/data-table/table-page-size";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
 import { Badge } from "@/components/ui/badge";
@@ -45,6 +50,14 @@ interface StockCountListPanelProps {
   sessions: PaginatedList<SessionRow>;
 }
 
+function buildStockCountHref(page: number, limit: number): string {
+  const params = new URLSearchParams();
+  if (page > 1) params.set("page", String(page));
+  if (limit !== DEFAULT_TABLE_PAGE_SIZE) params.set("limit", String(limit));
+  const query = params.toString();
+  return query ? `/inventory/stock-count?${query}` : "/inventory/stock-count";
+}
+
 export function StockCountListPanel({ sessions }: StockCountListPanelProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -53,6 +66,11 @@ export function StockCountListPanel({ sessions }: StockCountListPanelProps) {
   const [refsLoaded, setRefsLoaded] = useState(false);
   const [permissionDialogOpen, setPermissionDialogOpen] = useState(false);
   const selection = useTableSelection(sessions.items.map((session) => session.id));
+  const pageSize = parseTablePageSize(sessions.limit);
+
+  function handlePageSizeChange(limit: TablePageSize) {
+    router.push(buildStockCountHref(1, limit));
+  }
 
   async function loadBranches() {
     if (refsLoaded) return;
@@ -65,7 +83,7 @@ export function StockCountListPanel({ sessions }: StockCountListPanelProps) {
       }
       return;
     }
-    const rows = "branches" in result ? result.branches : [];
+    const rows = ("branches" in result ? result.branches : []) ?? [];
     setBranches(rows);
     if (rows[0]) setSelectedBranchId(rows[0].id);
     setRefsLoaded(true);
@@ -124,9 +142,9 @@ export function StockCountListPanel({ sessions }: StockCountListPanelProps) {
         page: sessions.page,
         totalPages: sessions.totalPages,
         itemLabel: "session",
-        buildHref: (page) =>
-          page > 1 ? `/inventory/stock-count?page=${page}` : "/inventory/stock-count",
+        buildHref: (page) => buildStockCountHref(page, pageSize),
       }}
+      pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
     >
           <TableHeader>
             <TableRow>
@@ -163,7 +181,9 @@ export function StockCountListPanel({ sessions }: StockCountListPanelProps) {
                       aria-label={`Select session ${row.sessionNo}`}
                     />
                   </TableCell>
-                  <TableIndexCell index={index + 1} />
+                  <TableIndexCell
+                    index={(sessions.page - 1) * sessions.limit + index + 1}
+                  />
                   <TableCell>
                     <Link
                       href={`/inventory/stock-count/${row.id}`}

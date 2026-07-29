@@ -3,20 +3,22 @@ import {
   listPulloutsAction,
 } from "@/features/logistics/actions/logistics.actions";
 import { PulloutKpisStrip } from "@/features/logistics/components/pullout-kpis";
+import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { requireAnyPermission } from "@/lib/auth/permissions";
 import { SectionPageLead } from "@/components/navigation/section-page-lead";
 import { PulloutsPanel } from "@/app/(app)/logistics/_components/pullouts-panel";
 
 interface PickupsPageProps {
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{ page?: string; limit?: string }>;
 }
 
 export default async function PickupsPage({ searchParams }: PickupsPageProps) {
   await requireAnyPermission(["logistics.manage", "orders.create", "orders.view"]);
   const params = await searchParams;
   const page = Number(params.page) || 1;
+  const limit = parseTablePageSize(params.limit);
   const [pullouts, kpis] = await Promise.all([
-    listPulloutsAction({ page }),
+    listPulloutsAction({ page, limit }),
     getPulloutKpisAction(),
   ]);
 

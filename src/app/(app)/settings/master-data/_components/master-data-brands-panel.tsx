@@ -52,19 +52,23 @@ export function MasterDataBrandsPanel({ brands, categories }: MasterDataBrandsPa
   const {
     page: brandPage,
     setPage: setBrandPage,
+    pageSize: brandPageSize,
+    setPageSize: setBrandPageSize,
     total: brandTotal,
     totalPages: brandTotalPages,
     pageItems: brandPageItems,
     indexOffset: brandIndexOffset,
-  } = useClientTablePagination(brandRows, { pageSize: 10 });
+  } = useClientTablePagination(brandRows);
   const {
     page: categoryPage,
     setPage: setCategoryPage,
+    pageSize: categoryPageSize,
+    setPageSize: setCategoryPageSize,
     total: categoryTotal,
     totalPages: categoryTotalPages,
     pageItems: categoryPageItems,
     indexOffset: categoryIndexOffset,
-  } = useClientTablePagination(categoryRows, { pageSize: 10 });
+  } = useClientTablePagination(categoryRows);
 
   useEffect(() => {
     setBrandRows(brands);
@@ -164,6 +168,7 @@ export function MasterDataBrandsPanel({ brands, categories }: MasterDataBrandsPa
               itemLabel: "brand",
               onPageChange: setBrandPage,
             }}
+            pageSize={{ value: brandPageSize, onChange: setBrandPageSize }}
           >
                 <TableHeader>
                   <TableRow>
@@ -248,6 +253,7 @@ export function MasterDataBrandsPanel({ brands, categories }: MasterDataBrandsPa
               itemLabel: "category",
               onPageChange: setCategoryPage,
             }}
+            pageSize={{ value: categoryPageSize, onChange: setCategoryPageSize }}
           >
                 <TableHeader>
                   <TableRow>

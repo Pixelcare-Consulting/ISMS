@@ -130,11 +130,13 @@ export function UsersTable({
   const {
     page,
     setPage,
+    pageSize,
+    setPageSize,
     total,
     totalPages,
     pageItems,
     indexOffset,
-  } = useClientTablePagination(filteredUsers, { pageSize: 10, resetKey: query });
+  } = useClientTablePagination(filteredUsers, { resetKey: query });
 
   function handleDeleteConfirm() {
     if (!deletingUser) {
@@ -199,6 +201,7 @@ export function UsersTable({
           />
         }
         toolbarActions={addUserAction}
+        pageSize={{ value: pageSize, onChange: setPageSize }}
         pagination={{
           total,
           page,

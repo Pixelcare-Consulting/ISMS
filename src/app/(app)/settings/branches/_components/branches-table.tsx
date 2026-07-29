@@ -93,11 +93,13 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
   const {
     page,
     setPage,
+    pageSize,
+    setPageSize,
     total,
     totalPages,
     pageItems,
     indexOffset,
-  } = useClientTablePagination(filtered, { pageSize: 10, resetKey: query });
+  } = useClientTablePagination(filtered, { resetKey: query });
 
   function handleDelete() {
     if (!deleting) return;
@@ -146,6 +148,7 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
               />
           </>
         }
+        pageSize={{ value: pageSize, onChange: setPageSize }}
         pagination={{
           total,
           page,

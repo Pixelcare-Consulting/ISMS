@@ -75,12 +75,13 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
   const {
     page,
     setPage,
+    pageSize,
+    setPageSize,
     total,
     totalPages,
     pageItems,
     indexOffset,
   } = useClientTablePagination(activeCodes, {
-    pageSize: 10,
     resetKey: expanded ?? "",
   });
 
@@ -217,6 +218,7 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
               itemLabel: "code",
               onPageChange: setPage,
             }}
+            pageSize={{ value: pageSize, onChange: setPageSize }}
           >
               <TableHeader>
                 <TableRow className="bg-muted/30 hover:bg-muted/30">

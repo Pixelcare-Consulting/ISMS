@@ -108,10 +108,12 @@ export function ServiceCentersTable({ centers }: { centers: CenterRow[] }) {
   const {
     page,
     setPage,
+    pageSize,
+    setPageSize,
     total,
     totalPages,
     pageItems,
-  } = useClientTablePagination(filtered, { pageSize: 10, resetKey: query });
+  } = useClientTablePagination(filtered, { resetKey: query });
 
   async function loadAreas() {
     if (areas.length) return;
@@ -217,6 +219,7 @@ export function ServiceCentersTable({ centers }: { centers: CenterRow[] }) {
             Add center
           </Button>
         }
+        pageSize={{ value: pageSize, onChange: setPageSize }}
         pagination={{
           total,
           page,

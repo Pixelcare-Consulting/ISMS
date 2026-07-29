@@ -11,6 +11,11 @@ import {
   formatSerialActivityPerformedBy,
   formatSerialActivityTimestamp,
 } from "@/features/serial-activity/constants/serial-activity-display";
+import {
+  DEFAULT_TABLE_PAGE_SIZE,
+  parseTablePageSize,
+  type TablePageSize,
+} from "@/components/data-table/table-page-size";
 import { TableSearchBar, uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,9 +62,14 @@ const TYPE_BADGE_CLASS: Record<SerialActivityType, string> = {
   counted: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
 };
 
-function buildHref(page: number, filters: SerialActivityFilters = {}): string {
+function buildHref(
+  page: number,
+  limit: number,
+  filters: SerialActivityFilters = {},
+): string {
   const params = new URLSearchParams();
   if (page > 1) params.set("page", String(page));
+  if (limit !== DEFAULT_TABLE_PAGE_SIZE) params.set("limit", String(limit));
   if (filters.type) params.set("type", filters.type);
   if (filters.q) params.set("q", filters.q);
   if (filters.dateFrom) params.set("dateFrom", filters.dateFrom);
@@ -82,6 +92,7 @@ export function SerialActivityTable({
   const [search, setSearch] = useState(currentSearch ?? "");
   const [dateFrom, setDateFrom] = useState(currentDateFrom ?? "");
   const [dateTo, setDateTo] = useState(currentDateTo ?? "");
+  const pageSize = parseTablePageSize(result.pageSize);
 
   const rows = result.items;
 
@@ -100,9 +111,13 @@ export function SerialActivityTable({
     currentType || currentSearch || currentDateFrom || currentDateTo,
   );
 
+  function handlePageSizeChange(limit: TablePageSize) {
+    router.push(buildHref(1, limit, activeFilters));
+  }
+
   function applyFilters() {
     router.push(
-      buildHref(1, {
+      buildHref(1, pageSize, {
         type: type || undefined,
         q: search.trim() || undefined,
         dateFrom: dateFrom || undefined,
@@ -191,8 +206,9 @@ export function SerialActivityTable({
         page: result.page,
         totalPages: result.totalPages,
         itemLabel: "event",
-        buildHref: (page) => buildHref(page, activeFilters),
+        buildHref: (page) => buildHref(page, pageSize, activeFilters),
       }}
+      pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
     >
       <TableHeader>
         <TableRow className="bg-muted/30 hover:bg-muted/30">

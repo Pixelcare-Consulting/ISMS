@@ -93,12 +93,13 @@ export function MasterDataTable({ brands, models }: MasterDataTableProps) {
   const {
     page: brandPage,
     setPage: setBrandPage,
+    pageSize: brandPageSize,
+    setPageSize: setBrandPageSize,
     total: brandTotal,
     totalPages: brandTotalPages,
     pageItems: brandPageItems,
     indexOffset: brandIndexOffset,
   } = useClientTablePagination(filteredBrands, {
-    pageSize: 10,
     resetKey: brandQuery,
   });
 
@@ -124,12 +125,13 @@ export function MasterDataTable({ brands, models }: MasterDataTableProps) {
   const {
     page: modelPage,
     setPage: setModelPage,
+    pageSize: modelPageSize,
+    setPageSize: setModelPageSize,
     total: modelTotal,
     totalPages: modelTotalPages,
     pageItems: modelPageItems,
     indexOffset: modelIndexOffset,
   } = useClientTablePagination(filteredModels, {
-    pageSize: 10,
     resetKey: query,
   });
 
@@ -182,6 +184,7 @@ export function MasterDataTable({ brands, models }: MasterDataTableProps) {
         }
         empty={brands.length === 0}
         emptyMessage="No brands yet."
+        pageSize={{ value: brandPageSize, onChange: setBrandPageSize }}
         pagination={{
           total: brandTotal,
           page: brandPage,
@@ -258,6 +261,7 @@ export function MasterDataTable({ brands, models }: MasterDataTableProps) {
         }
         empty={models.length === 0}
         emptyMessage="No product models yet."
+        pageSize={{ value: modelPageSize, onChange: setModelPageSize }}
         pagination={{
           total: modelTotal,
           page: modelPage,

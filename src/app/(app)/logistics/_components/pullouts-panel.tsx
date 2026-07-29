@@ -14,6 +14,10 @@ import {
 import { listStkSerialsForBranchAction } from "@/features/sales/actions/sales.actions";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { TableIndexCell, TableIndexHead } from "@/components/data-table";
+import {
+  parseTablePageSize,
+  type TablePageSize,
+} from "@/components/data-table/table-page-size";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
@@ -74,6 +78,11 @@ export function PulloutsPanel({ pullouts }: PulloutsPanelProps) {
     { id: string; serialNo: string; skuCode: string }[]
   >([]);
   const [selectedPulloutSerialIds, setSelectedPulloutSerialIds] = useState<string[]>([]);
+  const pageSize = parseTablePageSize(pullouts.limit);
+
+  function handlePageSizeChange(limit: TablePageSize) {
+    router.push(buildLogisticsPageHref(LOGISTICS_PICKUPS_PATH, 1, limit));
+  }
 
   const filtered = useMemo(
     () =>
@@ -218,8 +227,10 @@ export function PulloutsPanel({ pullouts }: PulloutsPanelProps) {
         page: pullouts.page,
         totalPages: pullouts.totalPages,
         itemLabel: "pull-out",
-        buildHref: (page) => buildLogisticsPageHref(LOGISTICS_PICKUPS_PATH, page),
+        buildHref: (page) =>
+          buildLogisticsPageHref(LOGISTICS_PICKUPS_PATH, page, pageSize),
       }}
+      pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
     >
           <TableHeader>
             <TableRow>
@@ -249,7 +260,9 @@ export function PulloutsPanel({ pullouts }: PulloutsPanelProps) {
                     aria-label={`Select pull-out ${p.pulloutNo}`}
                   />
                 </TableCell>
-                <TableIndexCell index={index + 1} />
+                <TableIndexCell
+                  index={(pullouts.page - 1) * pullouts.limit + index + 1}
+                />
                 <TableCell>{p.pulloutNo}</TableCell>
                 <TableCell>{p.branch.name}</TableCell>
                 <TableCell>{p.warehouse.name}</TableCell>

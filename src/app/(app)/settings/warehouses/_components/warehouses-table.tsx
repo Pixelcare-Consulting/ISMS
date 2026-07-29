@@ -96,11 +96,13 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
   const {
     page,
     setPage,
+    pageSize,
+    setPageSize,
     total,
     totalPages,
     pageItems,
     indexOffset,
-  } = useClientTablePagination(filtered, { pageSize: 10, resetKey: query });
+  } = useClientTablePagination(filtered, { resetKey: query });
 
   function createWarehouse() {
     startTransition(async () => {
@@ -244,6 +246,7 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
               </Button>
           </>
         }
+        pageSize={{ value: pageSize, onChange: setPageSize }}
         pagination={{
           total,
           page,

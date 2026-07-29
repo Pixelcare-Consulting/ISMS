@@ -8,6 +8,11 @@ import { toast } from "sonner";
 import { updateInventoryStatusAction } from "@/features/inventory/actions/inventory.actions";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { TableIndexCell, TableIndexHead } from "@/components/data-table";
+import {
+  DEFAULT_TABLE_PAGE_SIZE,
+  parseTablePageSize,
+  type TablePageSize,
+} from "@/components/data-table/table-page-size";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
@@ -53,10 +58,18 @@ interface InventoryTableProps {
   initialOffPlanogram?: boolean;
 }
 
-function buildInventoryHref(page: number, offPlanogram: boolean): string {
+function buildInventoryHref(
+  page: number,
+  limit: number,
+  offPlanogram: boolean,
+  filters: { branch?: string; sku?: string } = {},
+): string {
   const params = new URLSearchParams();
   if (page > 1) params.set("page", String(page));
+  if (limit !== DEFAULT_TABLE_PAGE_SIZE) params.set("limit", String(limit));
   if (offPlanogram) params.set("offPlanogram", "1");
+  if (filters.branch) params.set("branch", filters.branch);
+  if (filters.sku) params.set("sku", filters.sku);
   const qs = params.toString();
   return qs ? `/inventory?${qs}` : "/inventory";
 }
@@ -71,9 +84,18 @@ export function InventoryTable({
   const [query, setQuery] = useState("");
   const [offPlanogramOnly, setOffPlanogramOnly] = useState(initialOffPlanogram);
   const [pending, startTransition] = useTransition();
+  const pageSize = parseTablePageSize(result.limit);
 
   const branchFilter = searchParams.get("branch") ?? "";
   const skuFilter = searchParams.get("sku") ?? "";
+  const urlFilters = {
+    branch: branchFilter || undefined,
+    sku: skuFilter || undefined,
+  };
+
+  function handlePageSizeChange(limit: TablePageSize) {
+    router.push(buildInventoryHref(1, limit, offPlanogramOnly, urlFilters));
+  }
 
   const filtered = useMemo(
     () =>
@@ -169,12 +191,14 @@ export function InventoryTable({
           </>
         }
         banner={filterBanner}
+        pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
         pagination={{
           total: result.total,
           page: result.page,
           totalPages: result.totalPages,
           itemLabel: "unit",
-          buildHref: (page) => buildInventoryHref(page, offPlanogramOnly),
+          buildHref: (page) =>
+            buildInventoryHref(page, pageSize, offPlanogramOnly, urlFilters),
         }}
         footer={
           filtered.length === 0 ? (
@@ -209,7 +233,9 @@ export function InventoryTable({
                   aria-label={`Select serial ${r.serialNumber.serialNo}`}
                 />
               </TableCell>
-              <TableIndexCell index={index + 1} />
+              <TableIndexCell
+                index={(result.page - 1) * result.limit + index + 1}
+              />
               <TableCell className="font-mono text-sm">{r.serialNumber.serialNo}</TableCell>
               <TableCell>
                 <Link

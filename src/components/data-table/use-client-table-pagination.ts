@@ -2,7 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-const DEFAULT_PAGE_SIZE = 10;
+import {
+  DEFAULT_TABLE_PAGE_SIZE,
+  parseTablePageSize,
+  type TablePageSize,
+} from "@/components/data-table/table-page-size";
 
 /**
  * Client-side page slicing for Settings-style tables that already hold the full list.
@@ -12,13 +16,19 @@ export function useClientTablePagination<T>(
   items: T[],
   options?: { pageSize?: number; resetKey?: string | number },
 ) {
-  const pageSize = options?.pageSize ?? DEFAULT_PAGE_SIZE;
+  const [pageSize, setPageSizeState] = useState<TablePageSize>(() =>
+    parseTablePageSize(options?.pageSize ?? DEFAULT_TABLE_PAGE_SIZE),
+  );
   const resetKey = options?.resetKey ?? "";
   const [page, setPage] = useState(1);
 
   useEffect(() => {
     setPage(1);
-  }, [resetKey]);
+  }, [resetKey, pageSize]);
+
+  function setPageSize(next: TablePageSize) {
+    setPageSizeState(parseTablePageSize(next));
+  }
 
   const total = items.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize) || 1);
@@ -33,6 +43,7 @@ export function useClientTablePagination<T>(
     page: safePage,
     setPage,
     pageSize,
+    setPageSize,
     total,
     totalPages,
     pageItems,

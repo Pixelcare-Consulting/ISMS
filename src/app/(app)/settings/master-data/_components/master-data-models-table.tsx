@@ -111,11 +111,13 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
   const {
     page,
     setPage,
+    pageSize,
+    setPageSize,
     total,
     totalPages,
     pageItems,
     indexOffset,
-  } = useClientTablePagination(filtered, { pageSize: 10, resetKey: query });
+  } = useClientTablePagination(filtered, { resetKey: query });
 
   async function loadOptions() {
     if (options) return options;
@@ -244,6 +246,7 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
             itemLabel: "model",
             onPageChange: setPage,
           }}
+          pageSize={{ value: pageSize, onChange: setPageSize }}
         >
               <TableHeader>
                 <TableRow className="bg-muted/30 hover:bg-muted/30">

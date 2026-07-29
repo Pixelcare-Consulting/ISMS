@@ -12,6 +12,11 @@ import {
   formatAuditEntityTypeLabel,
   formatAuditTimestamp,
 } from "@/features/audit/constants/audit-display";
+import {
+  DEFAULT_TABLE_PAGE_SIZE,
+  parseTablePageSize,
+  type TablePageSize,
+} from "@/components/data-table/table-page-size";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { TableSearchBar, uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import { Button } from "@/components/ui/button";
@@ -71,11 +76,18 @@ interface AuditLogFilters {
   dateTo?: string;
 }
 
-function buildAuditLogHref(page: number, filters: AuditLogFilters = {}): string {
+function buildAuditLogHref(
+  page: number,
+  limit: number,
+  filters: AuditLogFilters = {},
+): string {
   const params = new URLSearchParams();
 
   if (page > 1) {
     params.set("page", String(page));
+  }
+  if (limit !== DEFAULT_TABLE_PAGE_SIZE) {
+    params.set("limit", String(limit));
   }
   if (filters.action) {
     params.set("action", filters.action);
@@ -112,6 +124,7 @@ export function AuditLogTable({
   const [search, setSearch] = useState(currentSearch ?? "");
   const [dateFrom, setDateFrom] = useState(currentDateFrom ?? "");
   const [dateTo, setDateTo] = useState(currentDateTo ?? "");
+  const pageSize = parseTablePageSize(result.pageSize);
 
   const rows = useMemo(() => result.items, [result.items]);
   const selection = useTableSelection(rows.map((row) => row.id));
@@ -137,9 +150,13 @@ export function AuditLogTable({
     dateTo: currentDateTo,
   };
 
+  function handlePageSizeChange(limit: TablePageSize) {
+    router.push(buildAuditLogHref(1, limit, activeFilters));
+  }
+
   function applyFilters() {
     router.push(
-      buildAuditLogHref(1, {
+      buildAuditLogHref(1, pageSize, {
         action: action || undefined,
         entityType: entityType || undefined,
         q: search.trim() || undefined,
@@ -263,8 +280,9 @@ export function AuditLogTable({
         page: result.page,
         totalPages: result.totalPages,
         itemLabel: "event",
-        buildHref: (page) => buildAuditLogHref(page, activeFilters),
+        buildHref: (page) => buildAuditLogHref(page, pageSize, activeFilters),
       }}
+      pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
     >
       <TableHeader>
         <TableRow className="bg-muted/30 hover:bg-muted/30">

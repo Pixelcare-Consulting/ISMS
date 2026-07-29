@@ -118,11 +118,13 @@ export function BranchQuotasTable({ quotas }: { quotas: QuotaRow[] }) {
   const {
     page,
     setPage,
+    pageSize,
+    setPageSize,
     total,
     totalPages,
     pageItems,
     indexOffset,
-  } = useClientTablePagination(filtered, { pageSize: 10, resetKey: query });
+  } = useClientTablePagination(filtered, { resetKey: query });
 
   async function ensureOptions() {
     if (options) return;
@@ -206,6 +208,7 @@ export function BranchQuotasTable({ quotas }: { quotas: QuotaRow[] }) {
         }
         empty={rows.length === 0}
         emptyMessage="No branch quotas yet."
+        pageSize={{ value: pageSize, onChange: setPageSize }}
         pagination={{
           total,
           page,

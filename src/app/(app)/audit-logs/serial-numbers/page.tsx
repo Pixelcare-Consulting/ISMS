@@ -3,6 +3,7 @@ import {
   SERIAL_ACTIVITY_TYPES,
   type SerialActivityType,
 } from "@/features/serial-activity/constants/serial-activity-display";
+import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { requirePermission } from "@/lib/auth/permissions";
 import { PageHeader } from "@/app/(app)/_components/page-header";
 import { SerialActivityTable } from "@/app/(app)/audit-logs/serial-numbers/_components/serial-activity-table";
@@ -10,6 +11,7 @@ import { SerialActivityTable } from "@/app/(app)/audit-logs/serial-numbers/_comp
 interface SerialLogsPageProps {
   searchParams: Promise<{
     page?: string;
+    limit?: string;
     type?: string;
     q?: string;
     dateFrom?: string;
@@ -27,10 +29,12 @@ export default async function SerialNumberLogsPage({
   await requirePermission("serial_logs.view");
   const params = await searchParams;
   const page = Number(params.page) || 1;
+  const limit = parseTablePageSize(params.limit);
   const type = parseType(params.type);
 
   const rawResult = await listSerialActivityAction({
     page,
+    limit,
     type,
     q: params.q,
     dateFrom: params.dateFrom,

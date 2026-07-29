@@ -170,11 +170,13 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
   const {
     page,
     setPage,
+    pageSize,
+    setPageSize,
     total,
     totalPages,
     pageItems,
     indexOffset,
-  } = useClientTablePagination(filtered, { pageSize: 10, resetKey: query });
+  } = useClientTablePagination(filtered, { resetKey: query });
 
   function openCreate() {
     setEditing(null);
@@ -273,6 +275,7 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
         }
         empty={rows.length === 0}
         emptyMessage={`No ${config.label.toLowerCase()} yet.`}
+        pageSize={{ value: pageSize, onChange: setPageSize }}
         pagination={{
           total,
           page,

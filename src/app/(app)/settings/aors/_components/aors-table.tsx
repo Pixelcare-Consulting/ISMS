@@ -391,11 +391,13 @@ export function AorsTable({
   const {
     page,
     setPage,
+    pageSize,
+    setPageSize,
     total,
     totalPages,
     pageItems,
     indexOffset,
-  } = useClientTablePagination(filtered, { pageSize: 10, resetKey: query });
+  } = useClientTablePagination(filtered, { resetKey: query });
 
   const canAssign =
     Boolean(userId) &&
@@ -554,6 +556,7 @@ export function AorsTable({
         }
         empty={rows.length === 0}
         emptyMessage="No AORs assigned yet."
+        pageSize={{ value: pageSize, onChange: setPageSize }}
         pagination={{
           total,
           page,

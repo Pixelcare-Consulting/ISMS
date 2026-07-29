@@ -15,6 +15,11 @@ import {
 } from "@/features/sales/actions/sales.actions";
 import { listBranchesForOrderAction } from "@/features/orders/actions/order.actions";
 import { TableIndexCell, TableIndexHead, uniqueSearchSuggestions } from "@/components/data-table";
+import {
+  DEFAULT_TABLE_PAGE_SIZE,
+  parseTablePageSize,
+  type TablePageSize,
+} from "@/components/data-table/table-page-size";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
@@ -51,14 +56,23 @@ const RETURN_STATUS_LABELS: Record<string, string> = {
   completed: "Completed",
 };
 
-function buildSalesHref(page: number): string {
-  return page > 1 ? `/sales?page=${page}` : "/sales";
+function buildSalesHref(page: number, limit: number): string {
+  const params = new URLSearchParams();
+  if (page > 1) params.set("page", String(page));
+  if (limit !== DEFAULT_TABLE_PAGE_SIZE) params.set("limit", String(limit));
+  const query = params.toString();
+  return query ? `/sales?${query}` : "/sales";
 }
 
 export function SalesTable({ result }: SalesTableProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
+  const pageSize = parseTablePageSize(result.limit);
+
+  function handlePageSizeChange(limit: TablePageSize) {
+    router.push(buildSalesHref(1, limit));
+  }
   const filtered = useMemo(
     () =>
       result.items.filter((sale) =>
@@ -118,8 +132,9 @@ export function SalesTable({ result }: SalesTableProps) {
           page: result.page,
           totalPages: result.totalPages,
           itemLabel: "sale",
-          buildHref: buildSalesHref,
+          buildHref: (page) => buildSalesHref(page, pageSize),
         }}
+        pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
       >
             <TableHeader>
               <TableRow>
@@ -150,7 +165,9 @@ export function SalesTable({ result }: SalesTableProps) {
                       aria-label={`Select sale ${s.id.slice(-8)}`}
                     />
                   </TableCell>
-                  <TableIndexCell index={index + 1} />
+                  <TableIndexCell
+                    index={(result.page - 1) * result.limit + index + 1}
+                  />
                   <TableCell className="font-mono text-sm">{s.id.slice(-8)}</TableCell>
                   <TableCell>{s.branch.name}</TableCell>
                   <TableCell>{s.amount}</TableCell>

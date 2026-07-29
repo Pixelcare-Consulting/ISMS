@@ -14,6 +14,10 @@ import {
 import { listStkSerialsForBranchAction } from "@/features/sales/actions/sales.actions";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { TableIndexCell, TableIndexHead } from "@/components/data-table";
+import {
+  parseTablePageSize,
+  type TablePageSize,
+} from "@/components/data-table/table-page-size";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
@@ -87,6 +91,11 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
   const [executeSerials, setExecuteSerials] = useState<SerialOption[]>([]);
   const [selectedSerialIds, setSelectedSerialIds] = useState<string[]>([]);
+  const pageSize = parseTablePageSize(transfers.limit);
+
+  function handlePageSizeChange(limit: TablePageSize) {
+    router.push(buildLogisticsPageHref(LOGISTICS_TRANSFERS_PATH, 1, limit));
+  }
 
   const filtered = useMemo(
     () =>
@@ -219,8 +228,10 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
           page: transfers.page,
           totalPages: transfers.totalPages,
           itemLabel: "transfer",
-          buildHref: (page) => buildLogisticsPageHref(LOGISTICS_TRANSFERS_PATH, page),
+          buildHref: (page) =>
+            buildLogisticsPageHref(LOGISTICS_TRANSFERS_PATH, page, pageSize),
         }}
+        pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
       >
             <TableHeader>
               <TableRow>
@@ -248,7 +259,9 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
                       aria-label={`Select transfer ${t.transferNo}`}
                     />
                   </TableCell>
-                  <TableIndexCell index={index + 1} />
+                  <TableIndexCell
+                    index={(transfers.page - 1) * transfers.limit + index + 1}
+                  />
                   <TableCell>{t.transferNo}</TableCell>
                   <TableCell>
                     {t.fromBranch.name} → {t.toBranch.name}
