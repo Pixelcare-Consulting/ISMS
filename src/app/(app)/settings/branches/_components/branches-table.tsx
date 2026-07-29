@@ -10,6 +10,7 @@ import { deleteBranchAction } from "@/features/branches/actions/branch.actions";
 import { CreateBranchDialog } from "@/app/(app)/settings/branches/_components/create-branch-dialog";
 import { EditBranchDialog } from "@/app/(app)/settings/branches/_components/edit-branch-dialog";
 import { ImportBranchesDialog } from "@/app/(app)/settings/branches/_components/import-branches-dialog";
+import { SyncBranchesSapButton } from "@/app/(app)/settings/branches/_components/sync-branches-sap-button";
 import {
   AppDataTable,
   AppDataTableBody,
@@ -128,6 +129,7 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
                 count={selection.selectedCount}
                 onClear={selection.clearSelection}
               />
+              <SyncBranchesSapButton />
               <Button variant="outline" size="sm" onClick={() => setImporting(true)}>
                 <Upload className="mr-1 size-4" />
                 Import

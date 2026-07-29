@@ -18,6 +18,7 @@ export const BRANCHES_PAGE_TUTORIAL: PageTutorialContent = {
       title: "How to use it",
       bullets: [
         "Create branches linked to dealers with accurate SAP codes.",
+        "Sync from SAP pulls branch master data over the Service Layer and matches on SAP code — it adds and updates branches, but never deletes or deactivates ones SAP no longer lists.",
         "Keep delivery areas current so logistics can schedule correctly.",
         "Planogram and AOR assignments are per branch — create branches before those setups.",
       ],
