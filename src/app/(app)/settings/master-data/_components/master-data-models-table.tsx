@@ -14,19 +14,18 @@ import {
 } from "@/features/master-data/actions/master-data.actions";
 import type { ClientModelRow } from "@/features/master-data/types/client-model";
 import {
-  AppDataTable,
-  AppDataTableBody,
   DataTableEmptyState,
   TableEmptyRow,
   TableIndexCell,
   TableIndexHead,
   TableRowCheckbox,
-  TableSearchBar,
   TableSelectAllCheckbox,
   TableSelectionBadge,
   uniqueSearchSuggestions,
+  useClientTablePagination,
   useTableSelection,
 } from "@/components/data-table";
+import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -40,10 +39,8 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import {
-  Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
@@ -111,6 +108,16 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
   );
 
   const selection = useTableSelection(filtered.map((model) => model.id));
+  const {
+    page,
+    setPage,
+    pageSize,
+    setPageSize,
+    total,
+    totalPages,
+    pageItems,
+    indexOffset,
+  } = useClientTablePagination(filtered, { resetKey: query });
 
   async function loadOptions() {
     if (options) return options;
@@ -208,33 +215,39 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
           <DataTableEmptyState message="No product models yet." />
         </div>
       ) : (
-        <AppDataTable
-          title="Product models"
-          shellHeader={
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <TableSearchBar
-                value={query}
-                onChange={setQuery}
-                placeholder="Search models by SKU, name, brand…"
-                suggestions={suggestions}
-                className="sm:max-w-sm"
-              />
-              <div className="flex shrink-0 flex-wrap items-center gap-2">
-                <TableSelectionBadge
-                  count={selection.selectedCount}
-                  onClear={selection.clearSelection}
-                  size="sm"
-                />
-                <Button type="button" size="sm" onClick={() => onAddOpenChange(true)}>
-                  <Plus className="size-3.5" />
-                  Add model
-                </Button>
-              </div>
-            </div>
+        <GlobalDataTable
+          stickyHeader
+          toolbarLeading={
+            <span className="text-sm font-medium">Product models</span>
           }
+          search={{
+            value: query,
+            onChange: setQuery,
+            placeholder: "Search models by SKU, name, brand…",
+            suggestions,
+          }}
+          toolbarActions={
+            <>
+              <TableSelectionBadge
+                count={selection.selectedCount}
+                onClear={selection.clearSelection}
+                size="sm"
+              />
+              <Button type="button" size="sm" onClick={() => onAddOpenChange(true)}>
+                <Plus className="size-3.5" />
+                Add model
+              </Button>
+            </>
+          }
+          pagination={{
+            total,
+            page,
+            totalPages,
+            itemLabel: "model",
+            onPageChange: setPage,
+          }}
+          pageSize={{ value: pageSize, onChange: setPageSize }}
         >
-          <AppDataTableBody>
-            <Table>
               <TableHeader>
                 <TableRow className="bg-muted/30 hover:bg-muted/30">
                   <TableSelectAllCheckbox
@@ -244,12 +257,12 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
                     aria-label="Select all models"
                   />
                   <TableIndexHead />
-                  <TableHead>SKU</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Brand</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead className="text-right">SRP</TableHead>
-                  <TableHead>Status</TableHead>
+                  <GlobalTableHead>SKU</GlobalTableHead>
+                  <GlobalTableHead>Name</GlobalTableHead>
+                  <GlobalTableHead>Brand</GlobalTableHead>
+                  <GlobalTableHead>Category</GlobalTableHead>
+                  <GlobalTableHead className="text-right">SRP</GlobalTableHead>
+                  <GlobalTableHead>Status</GlobalTableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -259,7 +272,7 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
                     message="No models match your search."
                   />
                 ) : (
-                  filtered.map((m, index) => (
+                  pageItems.map((m, index) => (
                     <TableRow
                       key={m.id}
                       data-state={selection.isRowSelected(m.id) ? "selected" : undefined}
@@ -270,7 +283,7 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
                         onCheckedChange={(checked) => selection.toggleRow(m.id, checked)}
                         aria-label={`Select model ${m.skuCode}`}
                       />
-                      <TableIndexCell index={index + 1} />
+                      <TableIndexCell index={indexOffset + index + 1} />
                       <TableCell className="font-mono text-sm">{m.skuCode}</TableCell>
                       <TableCell className="font-medium">{m.name}</TableCell>
                       <TableCell>{m.brand?.name ?? "—"}</TableCell>
@@ -295,9 +308,7 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
                   ))
                 )}
               </TableBody>
-            </Table>
-          </AppDataTableBody>
-        </AppDataTable>
+        </GlobalDataTable>
       )}
 
       <Sheet open={addOpen} onOpenChange={onAddOpenChange}>

@@ -16,16 +16,15 @@ import {
 } from "@/features/lookups/constants/lookup-registry";
 import { Button } from "@/components/ui/button";
 import {
-  AppDataTable,
-  AppDataTableBody,
   TableEmptyRow,
   TableIndexCell,
   TableIndexHead,
   TableRowActions,
-  TableSearchBar,
   TableStatusBadge,
   uniqueSearchSuggestions,
+  useClientTablePagination,
 } from "@/components/data-table";
+import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
 import {
   Dialog,
   DialogContent,
@@ -38,10 +37,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
-  Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
@@ -170,6 +167,17 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
     [rows, parentNameOf],
   );
 
+  const {
+    page,
+    setPage,
+    pageSize,
+    setPageSize,
+    total,
+    totalPages,
+    pageItems,
+    indexOffset,
+  } = useClientTablePagination(filtered, { resetKey: query });
+
   function openCreate() {
     setEditing(null);
     setFormName("");
@@ -249,51 +257,55 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
 
   return (
     <>
-      <AppDataTable
-        title={title}
-        shellHeader={
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <TableSearchBar
-              value={query}
-              onChange={setQuery}
-              placeholder={`Search ${config.label.toLowerCase()}…`}
-              suggestions={suggestions}
-              className="sm:max-w-sm"
-            />
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <Button onClick={openCreate} disabled={addDisabled}>
-                <Plus className="size-4" /> Add {config.singular}
-              </Button>
-            </div>
-          </div>
+      <GlobalDataTable
+        stickyHeader
+        toolbarLeading={
+          title ? <span className="text-sm font-medium">{title}</span> : null
+        }
+        search={{
+          value: query,
+          onChange: setQuery,
+          placeholder: `Search ${config.label.toLowerCase()}…`,
+          suggestions,
+        }}
+        toolbarActions={
+          <Button onClick={openCreate} disabled={addDisabled}>
+            <Plus className="size-4" /> Add {config.singular}
+          </Button>
         }
         empty={rows.length === 0}
         emptyMessage={`No ${config.label.toLowerCase()} yet.`}
+        pageSize={{ value: pageSize, onChange: setPageSize }}
+        pagination={{
+          total,
+          page,
+          totalPages,
+          itemLabel: config.singular,
+          onPageChange: setPage,
+        }}
       >
-        <AppDataTableBody>
-          <Table>
             <TableHeader>
               <TableRow>
                 <TableIndexHead />
-                <TableHead>Name</TableHead>
-                {config.code ? <TableHead>Code</TableHead> : null}
-                {config.classField ? <TableHead>Class</TableHead> : null}
-                {config.quantityField ? <TableHead>Qty</TableHead> : null}
-                {config.parent ? <TableHead>{config.parent.label}</TableHead> : null}
-                <TableHead>Status</TableHead>
-                <TableHead className="w-48" />
+                <GlobalTableHead>Name</GlobalTableHead>
+                {config.code ? <GlobalTableHead>Code</GlobalTableHead> : null}
+                {config.classField ? <GlobalTableHead>Class</GlobalTableHead> : null}
+                {config.quantityField ? <GlobalTableHead>Qty</GlobalTableHead> : null}
+                {config.parent ? <GlobalTableHead>{config.parent.label}</GlobalTableHead> : null}
+                <GlobalTableHead>Status</GlobalTableHead>
+                <GlobalTableHead className="w-48" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.length === 0 ? (
                 <TableEmptyRow colSpan={colSpan} message="No results match your search." />
               ) : (
-                filtered.map((row, index) => (
+                pageItems.map((row, index) => (
                   <TableRow
                     key={row.id}
                     className={cn(index % 2 === 1 && "bg-table-stripe")}
                   >
-                    <TableIndexCell index={index + 1} />
+                    <TableIndexCell index={indexOffset + index + 1} />
                     <TableCell className="font-medium">{row.name}</TableCell>
                     {config.code ? (
                       <TableCell className="font-mono text-sm">{row.code ?? "—"}</TableCell>
@@ -327,9 +339,7 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
                 ))
               )}
             </TableBody>
-          </Table>
-        </AppDataTableBody>
-      </AppDataTable>
+      </GlobalDataTable>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>

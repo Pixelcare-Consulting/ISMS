@@ -6,6 +6,7 @@ import {
   listSerialNumbersAction,
 } from "@/features/serial-numbers/actions/serial-number.actions";
 import { SerialNumberKpisStrip } from "@/features/serial-numbers/components/serial-number-kpis";
+import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { requirePermission } from "@/lib/auth/permissions";
 import { SectionPageLead } from "@/components/navigation/section-page-lead";
 import { SerialNumberTable } from "@/app/(app)/inventory/serial-numbers/_components/serial-number-table";
@@ -13,6 +14,7 @@ import { SerialNumberTable } from "@/app/(app)/inventory/serial-numbers/_compone
 interface SerialNumbersPageProps {
   searchParams: Promise<{
     page?: string;
+    limit?: string;
     q?: string;
     status?: string;
   }>;
@@ -30,10 +32,11 @@ export default async function SerialNumbersPage({
 
   const params = await searchParams;
   const page = Number(params.page) || 1;
+  const limit = parseTablePageSize(params.limit);
   const status = parseStatus(params.status);
 
   const [result, modelOptions, kpis] = await Promise.all([
-    listSerialNumbersAction({ page, q: params.q, status }),
+    listSerialNumbersAction({ page, limit, q: params.q, status }),
     canManage ? listSerialModelOptionsAction() : Promise.resolve([]),
     getSerialNumberKpisAction(),
   ]);

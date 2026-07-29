@@ -12,6 +12,7 @@ export default async function SettingsStatusPage() {
       <PageHeader
         title="Status settings"
         description="Reason/Status lookup tables for inventory system codes (STK, DIT, DEF), logistics workflows, and pull-out reasons."
+        sticky={false}
       />
       <StatusSettingsTable groups={groups} />
     </div>

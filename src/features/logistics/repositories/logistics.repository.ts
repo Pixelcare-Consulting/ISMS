@@ -26,6 +26,42 @@ const pulloutListInclude = {
 } satisfies Prisma.BranchPulloutInclude;
 
 export const logisticsRepository = {
+  countDeliveriesByStatus(tenantId: string) {
+    return prisma.branchDelivery.groupBy({
+      by: ["statusCodeId"],
+      where: { tenantId },
+      _count: { id: true },
+    });
+  },
+
+  countAllDeliveries(tenantId: string) {
+    return prisma.branchDelivery.count({ where: { tenantId } });
+  },
+
+  countTransfersByStatus(tenantId: string) {
+    return prisma.branchTransfer.groupBy({
+      by: ["statusCodeId"],
+      where: { tenantId },
+      _count: { id: true },
+    });
+  },
+
+  countAllTransfers(tenantId: string) {
+    return prisma.branchTransfer.count({ where: { tenantId } });
+  },
+
+  countPulloutsByStatus(tenantId: string) {
+    return prisma.branchPullout.groupBy({
+      by: ["statusCodeId"],
+      where: { tenantId },
+      _count: { id: true },
+    });
+  },
+
+  countAllPullouts(tenantId: string) {
+    return prisma.branchPullout.count({ where: { tenantId } });
+  },
+
   async listDeliveries(
     tenantId: string,
     pagination?: { page?: number; limit?: number },

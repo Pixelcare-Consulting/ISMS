@@ -153,6 +153,8 @@ export default async function PlanningPage({ searchParams }: PlanningPageProps) 
 
         description="Run shelf allocation, and generate suggested auto-replenish orders."
 
+        sticky={false}
+
         actions={
 
           <Button variant="outline" asChild>

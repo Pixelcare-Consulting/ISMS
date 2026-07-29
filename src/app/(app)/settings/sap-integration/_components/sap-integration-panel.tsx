@@ -12,20 +12,14 @@ import {
   SAP_JOB_STATUS_LABELS,
   SAP_JOB_TYPE_LABELS,
 } from "@/features/sap/constants/sap-job-types";
-import {
-  DataTableScroll,
-  DataTableShell,
-} from "@/components/data-table/data-table-shell";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
-import { TablePagination } from "@/components/data-table/table-pagination";
+import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
@@ -93,32 +87,39 @@ export function SapIntegrationPanel({ jobs }: SapIntegrationPanelProps) {
         </Button>
       </div>
 
-      <DataTableShell>
-        {selection.selectedCount > 0 ? (
-          <div className="px-4 pb-2">
+      <GlobalDataTable
+        stickyHeader
+        toolbarActions={
+          selection.selectedCount > 0 ? (
             <Button variant="secondary" size="sm" onClick={selection.clearSelection}>
               {selection.selectedCount} selected
             </Button>
-          </div>
-        ) : null}
-        <DataTableScroll>
-          <Table>
+          ) : null
+        }
+        pagination={{
+          total: jobs.total,
+          page: jobs.page,
+          totalPages: jobs.totalPages,
+          itemLabel: "job",
+          buildHref: (page) => `/settings/sap-integration?page=${page}`,
+        }}
+      >
             <TableHeader>
               <TableRow>
-                <TableHead className="w-10">
+                <GlobalTableHead className="w-10">
                   <Checkbox
                     checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
                     onCheckedChange={(checked) => selection.toggleAll(checked === true)}
                     aria-label="Select all SAP jobs"
                   />
-                </TableHead>
-                <TableHead className="w-12">#</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Reference</TableHead>
-                <TableHead>SAP doc</TableHead>
-                <TableHead>Attempts</TableHead>
-                <TableHead>Error</TableHead>
+                </GlobalTableHead>
+                <GlobalTableHead className="w-12">#</GlobalTableHead>
+                <GlobalTableHead>Type</GlobalTableHead>
+                <GlobalTableHead>Status</GlobalTableHead>
+                <GlobalTableHead>Reference</GlobalTableHead>
+                <GlobalTableHead>SAP doc</GlobalTableHead>
+                <GlobalTableHead>Attempts</GlobalTableHead>
+                <GlobalTableHead>Error</GlobalTableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -160,14 +161,7 @@ export function SapIntegrationPanel({ jobs }: SapIntegrationPanelProps) {
                 ))
               )}
             </TableBody>
-          </Table>
-        </DataTableScroll>
-        <TablePagination
-          page={jobs.page}
-          totalPages={jobs.totalPages}
-          buildHref={(page) => `/settings/sap-integration?page=${page}`}
-        />
-      </DataTableShell>
+      </GlobalDataTable>
     </div>
   );
 }

@@ -157,7 +157,11 @@ export function GlobalDataTable({
             )}
             {footer}
             {pagination ? (
-              <TablePagination meta={pagination} buildHref={pagination.buildHref} />
+              <TablePagination
+                meta={pagination}
+                buildHref={pagination.buildHref}
+                onPageChange={pagination.onPageChange}
+              />
             ) : null}
           </>
         )}

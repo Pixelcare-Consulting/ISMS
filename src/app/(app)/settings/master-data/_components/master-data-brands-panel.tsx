@@ -9,8 +9,10 @@ import {
   createBrandAction,
   createCategoryAction,
 } from "@/features/master-data/actions/master-data.actions";
-import { AppDataTable, AppDataTableBody, DataTableEmpty } from "@/components/data-table";
+import { DataTableEmpty } from "@/components/data-table";
+import { useClientTablePagination } from "@/components/data-table/use-client-table-pagination";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
+import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -24,10 +26,8 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import {
-  Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
@@ -49,6 +49,26 @@ export function MasterDataBrandsPanel({ brands, categories }: MasterDataBrandsPa
   const [catName, setCatName] = useState("");
   const brandSelection = useTableSelection(brands.map((brand) => brand.id));
   const categorySelection = useTableSelection(categories.map((category) => category.id));
+  const {
+    page: brandPage,
+    setPage: setBrandPage,
+    pageSize: brandPageSize,
+    setPageSize: setBrandPageSize,
+    total: brandTotal,
+    totalPages: brandTotalPages,
+    pageItems: brandPageItems,
+    indexOffset: brandIndexOffset,
+  } = useClientTablePagination(brandRows);
+  const {
+    page: categoryPage,
+    setPage: setCategoryPage,
+    pageSize: categoryPageSize,
+    setPageSize: setCategoryPageSize,
+    total: categoryTotal,
+    totalPages: categoryTotalPages,
+    pageItems: categoryPageItems,
+    indexOffset: categoryIndexOffset,
+  } = useClientTablePagination(categoryRows);
 
   useEffect(() => {
     setBrandRows(brands);
@@ -125,29 +145,34 @@ export function MasterDataBrandsPanel({ brands, categories }: MasterDataBrandsPa
             <DataTableEmpty message="No brands yet." />
           </div>
         ) : (
-          <AppDataTable
-            title="Brands"
-            shellHeader={
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex shrink-0 flex-wrap items-center gap-2">
-                  {brandSelection.selectedCount > 0 ? (
-                    <Button variant="secondary" size="sm" onClick={brandSelection.clearSelection}>
-                      {brandSelection.selectedCount} selected
-                    </Button>
-                  ) : null}
-                </div>
+          <GlobalDataTable
+            stickyHeader
+            toolbarLeading={<span className="text-sm font-medium">Brands</span>}
+            toolbarActions={
+              <>
+                {brandSelection.selectedCount > 0 ? (
+                  <Button variant="secondary" size="sm" onClick={brandSelection.clearSelection}>
+                    {brandSelection.selectedCount} selected
+                  </Button>
+                ) : null}
                 <Button type="button" size="sm" onClick={() => onBrandOpenChange(true)}>
                   <Plus className="size-3.5" />
                   Add brand
                 </Button>
-              </div>
+              </>
             }
+            pagination={{
+              total: brandTotal,
+              page: brandPage,
+              totalPages: brandTotalPages,
+              itemLabel: "brand",
+              onPageChange: setBrandPage,
+            }}
+            pageSize={{ value: brandPageSize, onChange: setBrandPageSize }}
           >
-            <AppDataTableBody>
-              <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-10">
+                    <GlobalTableHead className="w-10">
                       <Checkbox
                         checked={
                           brandSelection.isAllSelected ||
@@ -156,14 +181,14 @@ export function MasterDataBrandsPanel({ brands, categories }: MasterDataBrandsPa
                         onCheckedChange={(checked) => brandSelection.toggleAll(checked === true)}
                         aria-label="Select all brands"
                       />
-                    </TableHead>
-                    <TableHead className="w-12">#</TableHead>
-                    <TableHead>Code</TableHead>
-                    <TableHead>Name</TableHead>
+                    </GlobalTableHead>
+                    <GlobalTableHead className="w-12">#</GlobalTableHead>
+                    <GlobalTableHead>Code</GlobalTableHead>
+                    <GlobalTableHead>Name</GlobalTableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {brandRows.map((b, index) => (
+                  {brandPageItems.map((b, index) => (
                     <TableRow
                       key={b.id}
                       data-state={brandSelection.isRowSelected(b.id) ? "selected" : undefined}
@@ -178,16 +203,14 @@ export function MasterDataBrandsPanel({ brands, categories }: MasterDataBrandsPa
                         />
                       </TableCell>
                       <TableCell className="tabular-nums text-muted-foreground">
-                        {index + 1}
+                        {brandIndexOffset + index + 1}
                       </TableCell>
                       <TableCell className="font-mono text-sm">{b.code ?? "—"}</TableCell>
                       <TableCell className="font-medium">{b.name}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
-              </Table>
-            </AppDataTableBody>
-          </AppDataTable>
+          </GlobalDataTable>
         )}
       </div>
 
@@ -203,33 +226,38 @@ export function MasterDataBrandsPanel({ brands, categories }: MasterDataBrandsPa
             <DataTableEmpty message="No categories yet." />
           </div>
         ) : (
-          <AppDataTable
-            title="Categories"
-            shellHeader={
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex shrink-0 flex-wrap items-center gap-2">
-                  {categorySelection.selectedCount > 0 ? (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={categorySelection.clearSelection}
-                    >
-                      {categorySelection.selectedCount} selected
-                    </Button>
-                  ) : null}
-                </div>
+          <GlobalDataTable
+            stickyHeader
+            toolbarLeading={<span className="text-sm font-medium">Categories</span>}
+            toolbarActions={
+              <>
+                {categorySelection.selectedCount > 0 ? (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={categorySelection.clearSelection}
+                  >
+                    {categorySelection.selectedCount} selected
+                  </Button>
+                ) : null}
                 <Button type="button" size="sm" onClick={() => onCategoryOpenChange(true)}>
                   <Plus className="size-3.5" />
                   Add category
                 </Button>
-              </div>
+              </>
             }
+            pagination={{
+              total: categoryTotal,
+              page: categoryPage,
+              totalPages: categoryTotalPages,
+              itemLabel: "category",
+              onPageChange: setCategoryPage,
+            }}
+            pageSize={{ value: categoryPageSize, onChange: setCategoryPageSize }}
           >
-            <AppDataTableBody>
-              <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-10">
+                    <GlobalTableHead className="w-10">
                       <Checkbox
                         checked={
                           categorySelection.isAllSelected ||
@@ -240,13 +268,13 @@ export function MasterDataBrandsPanel({ brands, categories }: MasterDataBrandsPa
                         }
                         aria-label="Select all categories"
                       />
-                    </TableHead>
-                    <TableHead className="w-12">#</TableHead>
-                    <TableHead>Name</TableHead>
+                    </GlobalTableHead>
+                    <GlobalTableHead className="w-12">#</GlobalTableHead>
+                    <GlobalTableHead>Name</GlobalTableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {categoryRows.map((c, index) => (
+                  {categoryPageItems.map((c, index) => (
                     <TableRow
                       key={c.id}
                       data-state={categorySelection.isRowSelected(c.id) ? "selected" : undefined}
@@ -261,15 +289,13 @@ export function MasterDataBrandsPanel({ brands, categories }: MasterDataBrandsPa
                         />
                       </TableCell>
                       <TableCell className="tabular-nums text-muted-foreground">
-                        {index + 1}
+                        {categoryIndexOffset + index + 1}
                       </TableCell>
                       <TableCell className="font-medium">{c.name}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
-              </Table>
-            </AppDataTableBody>
-          </AppDataTable>
+          </GlobalDataTable>
         )}
       </div>
 

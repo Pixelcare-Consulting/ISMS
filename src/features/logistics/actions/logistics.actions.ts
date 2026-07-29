@@ -6,6 +6,7 @@ import { z } from "zod";
 import { auditService } from "@/features/audit/services/audit.service";
 import { logisticsRepository } from "@/features/logistics/repositories/logistics.repository";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
+import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/database/client";
 
@@ -81,10 +82,64 @@ async function updateInventoryStatusForSerials(input: {
   }
 }
 
-export async function listDeliveriesAction(input?: { page?: number }) {
+export interface LogisticsKpis {
+  total: number;
+  statuses: { code: string; name: string; count: number }[];
+}
+
+async function buildLogisticsKpis(
+  tenantId: string,
+  category: "delivery_workflow" | "transfer_workflow" | "pullout_workflow",
+  countByStatus: () => Promise<{ statusCodeId: string; _count: { id: number } }[]>,
+  countAll: () => Promise<number>,
+): Promise<LogisticsKpis> {
+  const codes = await reasonStatusService.listActiveCodes(tenantId, category);
+  const [statusGroups, total] = await Promise.all([countByStatus(), countAll()]);
+  const countByCodeId = new Map(statusGroups.map((g) => [g.statusCodeId, g._count.id]));
+  return {
+    total,
+    statuses: codes.map((c) => ({ code: c.code, name: c.name, count: countByCodeId.get(c.id) ?? 0 })),
+  };
+}
+
+export async function getDeliveryKpisAction(): Promise<LogisticsKpis> {
+  const session = await requireAnyPermission(["logistics.manage", "orders.create", "orders.view"]);
+  const tid = session.user.tenantId;
+  return buildLogisticsKpis(
+    tid,
+    "delivery_workflow",
+    () => logisticsRepository.countDeliveriesByStatus(tid),
+    () => logisticsRepository.countAllDeliveries(tid),
+  );
+}
+
+export async function getTransferKpisAction(): Promise<LogisticsKpis> {
+  const session = await requireAnyPermission(["logistics.manage", "orders.create", "orders.view"]);
+  const tid = session.user.tenantId;
+  return buildLogisticsKpis(
+    tid,
+    "transfer_workflow",
+    () => logisticsRepository.countTransfersByStatus(tid),
+    () => logisticsRepository.countAllTransfers(tid),
+  );
+}
+
+export async function getPulloutKpisAction(): Promise<LogisticsKpis> {
+  const session = await requireAnyPermission(["logistics.manage", "orders.create", "orders.view"]);
+  const tid = session.user.tenantId;
+  return buildLogisticsKpis(
+    tid,
+    "pullout_workflow",
+    () => logisticsRepository.countPulloutsByStatus(tid),
+    () => logisticsRepository.countAllPullouts(tid),
+  );
+}
+
+export async function listDeliveriesAction(input?: { page?: number; limit?: number }) {
   const session = await requireAnyPermission(["logistics.manage", "orders.create", "orders.view"]);
   return logisticsRepository.listDeliveries(session.user.tenantId, {
     page: input?.page,
+    limit: parseTablePageSize(input?.limit),
   });
 }
 
@@ -243,10 +298,11 @@ export async function rejectDeliveryAction(id: string, notes?: string) {
   return { success: true as const };
 }
 
-export async function listTransfersAction(input?: { page?: number }) {
+export async function listTransfersAction(input?: { page?: number; limit?: number }) {
   const session = await requireAnyPermission(["logistics.manage", "orders.create", "orders.view"]);
   return logisticsRepository.listTransfers(session.user.tenantId, {
     page: input?.page,
+    limit: parseTablePageSize(input?.limit),
   });
 }
 
@@ -497,10 +553,11 @@ export async function receiveTransferAction(id: string) {
   return { success: true as const };
 }
 
-export async function listPulloutsAction(input?: { page?: number }) {
+export async function listPulloutsAction(input?: { page?: number; limit?: number }) {
   const session = await requireAnyPermission(["logistics.manage", "orders.create", "orders.view"]);
   return logisticsRepository.listPullouts(session.user.tenantId, {
     page: input?.page,
+    limit: parseTablePageSize(input?.limit),
   });
 }
 

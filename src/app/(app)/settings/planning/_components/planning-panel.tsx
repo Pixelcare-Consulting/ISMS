@@ -17,15 +17,14 @@ import {
 
 import { AllocationGapsTable } from "@/features/forecast/components/allocation-gaps-table";
 
-import { AppDataTable, AppDataTableBody } from "@/components/data-table";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
+import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+import { KpiCard } from "@/lib/kpi-cards";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
@@ -146,13 +145,13 @@ export function PlanningPanel({
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Active period" value={period?.label ?? "None"} />
+        <KpiCard label="Active period" value={period?.label ?? "None"} />
 
-        <StatCard label="Allocation gaps" value={String(gapCount)} />
+        <KpiCard label="Allocation gaps" value={String(gapCount)} />
 
-        <StatCard label="Draft suggestions" value={String(draftOrders)} />
+        <KpiCard label="Draft suggestions" value={String(draftOrders)} />
 
-        <StatCard
+        <KpiCard
           label="Allocation rows"
           value={String(period?._count?.allocations ?? 0)}
         />
@@ -233,33 +232,34 @@ export function PlanningPanel({
 
       {period ? (
         <>
-          <AppDataTable
-            title="Branch revenue targets"
+          <GlobalDataTable
+            stickyHeader
+            toolbarLeading={
+              <span className="text-sm font-medium">Branch revenue targets</span>
+            }
             empty={targets.length === 0}
             emptyMessage="No branch revenue targets for this period."
+            toolbarActions={
+              targetSelection.selectedCount > 0 ? (
+                <Button variant="secondary" size="sm" onClick={targetSelection.clearSelection}>
+                  {targetSelection.selectedCount} selected
+                </Button>
+              ) : null
+            }
           >
-            <AppDataTableBody>
-              {targetSelection.selectedCount > 0 ? (
-                <div className="px-4 pb-2">
-                  <Button variant="secondary" size="sm" onClick={targetSelection.clearSelection}>
-                    {targetSelection.selectedCount} selected
-                  </Button>
-                </div>
-              ) : null}
-              <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-10">
+                    <GlobalTableHead className="w-10">
                       <Checkbox
                         checked={targetSelection.isAllSelected || (targetSelection.isPartiallySelected ? "indeterminate" : false)}
                         onCheckedChange={(checked) => targetSelection.toggleAll(checked === true)}
                         aria-label="Select all revenue targets"
                       />
-                    </TableHead>
-                    <TableHead className="w-12">#</TableHead>
-                    <TableHead>Branch</TableHead>
-                    <TableHead>SAP</TableHead>
-                    <TableHead className="text-right">Target</TableHead>
+                    </GlobalTableHead>
+                    <GlobalTableHead className="w-12">#</GlobalTableHead>
+                    <GlobalTableHead>Branch</GlobalTableHead>
+                    <GlobalTableHead>SAP</GlobalTableHead>
+                    <GlobalTableHead className="text-right">Target</GlobalTableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -279,9 +279,7 @@ export function PlanningPanel({
                     </TableRow>
                   ))}
                 </TableBody>
-              </Table>
-            </AppDataTableBody>
-          </AppDataTable>
+          </GlobalDataTable>
 
           <AllocationGapsTable
             basePath="/settings/planning"
@@ -297,16 +295,6 @@ export function PlanningPanel({
           to begin.
         </p>
       )}
-    </div>
-  );
-}
-
-function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border bg-card p-4 shadow-sm">
-      <p className="text-sm text-muted-foreground">{label}</p>
-
-      <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
     </div>
   );
 }

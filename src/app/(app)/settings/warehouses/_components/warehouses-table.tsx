@@ -12,28 +12,25 @@ import {
   deleteWarehouseLocationAction,
 } from "@/features/warehouses/actions/warehouse.actions";
 import {
-  AppDataTable,
-  AppDataTableBody,
   DeleteConfirmDialog,
   TableEmptyRow,
   TableIndexCell,
   TableIndexHead,
   TableRowActions,
   TableRowCheckbox,
-  TableSearchBar,
   TableSelectAllCheckbox,
   TableSelectionBadge,
   uniqueSearchSuggestions,
+  useClientTablePagination,
   useTableSelection,
 } from "@/components/data-table";
+import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
@@ -96,6 +93,16 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
   );
 
   const selection = useTableSelection(filtered.map((warehouse) => warehouse.id));
+  const {
+    page,
+    setPage,
+    pageSize,
+    setPageSize,
+    total,
+    totalPages,
+    pageItems,
+    indexOffset,
+  } = useClientTablePagination(filtered, { resetKey: query });
 
   function createWarehouse() {
     startTransition(async () => {
@@ -201,21 +208,22 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
 
   return (
     <>
-      <AppDataTable
-        shellHeader={
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <TableSearchBar
-              value={query}
-              onChange={setQuery}
-              placeholder="Search warehouses…"
-              suggestions={suggestions}
-              className="sm:max-w-sm"
-            />
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <TableSelectionBadge
-                count={selection.selectedCount}
-                onClear={selection.clearSelection}
-              />
+      <GlobalDataTable
+        stickyHeader
+        search={{
+          value: query,
+          onChange: setQuery,
+          placeholder: "Search warehouses…",
+          suggestions,
+        }}
+        toolbarLeading={
+          <TableSelectionBadge
+            count={selection.selectedCount}
+            onClear={selection.clearSelection}
+          />
+        }
+        toolbarActions={
+          <>
               <Input
                 placeholder="Code"
                 value={newCode}
@@ -236,12 +244,17 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
                 <Plus className="mr-1 h-4 w-4" />
                 Add warehouse
               </Button>
-            </div>
-          </div>
+          </>
         }
+        pageSize={{ value: pageSize, onChange: setPageSize }}
+        pagination={{
+          total,
+          page,
+          totalPages,
+          itemLabel: "warehouse",
+          onPageChange: setPage,
+        }}
       >
-        <AppDataTableBody>
-          <Table>
             <TableHeader>
               <TableRow className="bg-muted/30 hover:bg-muted/30">
                 <TableSelectAllCheckbox
@@ -251,18 +264,18 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
                   aria-label="Select all warehouses"
                 />
                 <TableIndexHead />
-                <TableHead>Code</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Locations</TableHead>
-                <TableHead>Links</TableHead>
-                <TableHead className="w-28 text-right">Actions</TableHead>
+                <GlobalTableHead>Code</GlobalTableHead>
+                <GlobalTableHead>Name</GlobalTableHead>
+                <GlobalTableHead>Locations</GlobalTableHead>
+                <GlobalTableHead>Links</GlobalTableHead>
+                <GlobalTableHead className="w-28 text-right">Actions</GlobalTableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.length === 0 ? (
                 <TableEmptyRow colSpan={COL_COUNT} message={emptyMessage} />
               ) : (
-                filtered.map((w, index) => (
+                pageItems.map((w, index) => (
                   <Fragment key={w.id}>
                     <TableRow
                       data-state={selection.isRowSelected(w.id) ? "selected" : undefined}
@@ -273,7 +286,7 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
                         onCheckedChange={(checked) => selection.toggleRow(w.id, checked)}
                         aria-label={`Select warehouse ${w.name}`}
                       />
-                      <TableIndexCell index={index + 1} />
+                      <TableIndexCell index={indexOffset + index + 1} />
                       <TableCell className="font-mono text-sm">
                         {w.code}
                         {w.isMain ? (
@@ -354,9 +367,7 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
                 ))
               )}
             </TableBody>
-          </Table>
-        </AppDataTableBody>
-      </AppDataTable>
+      </GlobalDataTable>
 
       <DeleteConfirmDialog
         open={deleting !== null}

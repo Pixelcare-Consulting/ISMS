@@ -1,4 +1,5 @@
 import type { DashboardKpis } from "@/features/dashboard/services/dashboard-kpi.service";
+import { GlobalKpiCards } from "@/lib/kpi-cards";
 
 interface DashboardOpsKpisProps {
   kpis: DashboardKpis;
@@ -6,24 +7,15 @@ interface DashboardOpsKpisProps {
 
 export function DashboardOpsKpis({ kpis }: DashboardOpsKpisProps) {
   const items = [
-    { label: "Pending order approvals", value: kpis.pendingOrderApprovals },
-    { label: "Delivery in transit", value: kpis.deliveryInTransit },
-    { label: "Stock on hand", value: kpis.stockCount },
-    { label: "Open ATR", value: kpis.openAtr },
-    { label: "Below planogram capacity", value: kpis.belowPlanogramCapacity },
-    { label: "MIL threshold breaches", value: kpis.milBreaches },
-    { label: "Allocation gaps", value: kpis.allocationGapCount },
-    { label: "Draft suggested orders", value: kpis.draftSuggestedOrders },
+    { key: "pendingOrderApprovals", label: "Pending order approvals", value: kpis.pendingOrderApprovals },
+    { key: "deliveryInTransit", label: "Delivery in transit", value: kpis.deliveryInTransit },
+    { key: "stockCount", label: "Stock on hand", value: kpis.stockCount },
+    { key: "openAtr", label: "Open ATR", value: kpis.openAtr },
+    { key: "belowPlanogramCapacity", label: "Below planogram capacity", value: kpis.belowPlanogramCapacity },
+    { key: "milBreaches", label: "MIL threshold breaches", value: kpis.milBreaches },
+    { key: "allocationGaps", label: "Allocation gaps", value: kpis.allocationGapCount },
+    { key: "draftSuggestedOrders", label: "Draft suggested orders", value: kpis.draftSuggestedOrders },
   ];
 
-  return (
-    <div className="responsive-card-grid">
-      {items.map((item) => (
-        <div key={item.label} className="rounded-xl border bg-card p-4 shadow-sm">
-          <p className="text-sm text-muted-foreground">{item.label}</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums">{item.value}</p>
-        </div>
-      ))}
-    </div>
-  );
+  return <GlobalKpiCards items={items} />;
 }

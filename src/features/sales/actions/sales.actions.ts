@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { auditService } from "@/features/audit/services/audit.service";
 import { aorService } from "@/features/aors/services/aor.service";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
@@ -35,10 +36,11 @@ async function assertBranchInAor(
   }
 }
 
-export async function listSalesAction(input?: { page?: number }) {
+export async function listSalesAction(input?: { page?: number; limit?: number }) {
   const session = await requirePermission("sales.create");
   const result = await salesRepository.listForTenant(session.user.tenantId, {
     page: input?.page,
+    limit: parseTablePageSize(input?.limit),
   });
 
   return {

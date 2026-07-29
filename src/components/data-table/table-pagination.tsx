@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 
@@ -13,7 +14,10 @@ interface TablePaginationMeta {
 }
 
 interface TablePaginationProps {
-  buildHref: (page: number) => string;
+  /** URL-based pagination (Orders, Inventory, Audit). */
+  buildHref?: (page: number) => string;
+  /** Client-side pagination (Settings tables that filter in-browser). */
+  onPageChange?: (page: number) => void;
   meta?: TablePaginationMeta;
   total?: number;
   page?: number;
@@ -45,13 +49,65 @@ export function getVisiblePageNumbers(
   return Array.from({ length: end - start + 1 }, (_, i) => start + i);
 }
 
+function PaginationControl({
+  page,
+  isCurrent = false,
+  buildHref,
+  onPageChange,
+  children,
+}: {
+  page: number;
+  isCurrent?: boolean;
+  buildHref?: (page: number) => string;
+  onPageChange?: (page: number) => void;
+  children: ReactNode;
+}) {
+  if (isCurrent) {
+    return (
+      <Button
+        variant="default"
+        size="sm"
+        className="min-w-8 px-2.5"
+        aria-current="page"
+      >
+        {children}
+      </Button>
+    );
+  }
+
+  if (onPageChange) {
+    return (
+      <Button
+        variant="outline"
+        size="sm"
+        className="min-w-8 px-2.5"
+        type="button"
+        onClick={() => onPageChange(page)}
+      >
+        {children}
+      </Button>
+    );
+  }
+
+  if (!buildHref) {
+    return null;
+  }
+
+  return (
+    <Button variant="outline" size="sm" className="min-w-8 px-2.5" asChild>
+      <Link href={buildHref(page)}>{children}</Link>
+    </Button>
+  );
+}
+
 /**
  * Shared table pagination: First · Previous · page numbers · Next · Last.
- * Used by Orders, Inventory, Logistics, Reports, etc.
+ * Used by Orders, Inventory, Logistics, Settings, Reports, etc.
  * First is hidden on page 1; Last is hidden on the last page.
  */
 export function TablePagination({
   buildHref,
+  onPageChange,
   meta,
   total,
   page,
@@ -81,45 +137,49 @@ export function TablePagination({
       </span>
       <div className="flex flex-wrap items-center gap-1.5">
         {showFirst ? (
-          <Button variant="outline" size="sm" asChild>
-            <Link href={buildHref(1)}>First</Link>
-          </Button>
+          <PaginationControl page={1} buildHref={buildHref} onPageChange={onPageChange}>
+            First
+          </PaginationControl>
         ) : null}
         {showPrevious ? (
-          <Button variant="outline" size="sm" asChild>
-            <Link href={buildHref(resolvedPage - 1)}>Previous</Link>
-          </Button>
+          <PaginationControl
+            page={resolvedPage - 1}
+            buildHref={buildHref}
+            onPageChange={onPageChange}
+          >
+            Previous
+          </PaginationControl>
         ) : null}
 
-        {visiblePages.map((pageNumber) => {
-          const isCurrent = pageNumber === resolvedPage;
-          return (
-            <Button
-              key={pageNumber}
-              variant={isCurrent ? "default" : "outline"}
-              size="sm"
-              className="min-w-8 px-2.5"
-              asChild={!isCurrent}
-              aria-current={isCurrent ? "page" : undefined}
-            >
-              {isCurrent ? (
-                <span>{pageNumber}</span>
-              ) : (
-                <Link href={buildHref(pageNumber)}>{pageNumber}</Link>
-              )}
-            </Button>
-          );
-        })}
+        {visiblePages.map((pageNumber) => (
+          <PaginationControl
+            key={pageNumber}
+            page={pageNumber}
+            isCurrent={pageNumber === resolvedPage}
+            buildHref={buildHref}
+            onPageChange={onPageChange}
+          >
+            {pageNumber}
+          </PaginationControl>
+        ))}
 
         {showNext ? (
-          <Button variant="outline" size="sm" asChild>
-            <Link href={buildHref(resolvedPage + 1)}>Next</Link>
-          </Button>
+          <PaginationControl
+            page={resolvedPage + 1}
+            buildHref={buildHref}
+            onPageChange={onPageChange}
+          >
+            Next
+          </PaginationControl>
         ) : null}
         {showLast ? (
-          <Button variant="outline" size="sm" asChild>
-            <Link href={buildHref(resolvedTotalPages)}>Last</Link>
-          </Button>
+          <PaginationControl
+            page={resolvedTotalPages}
+            buildHref={buildHref}
+            onPageChange={onPageChange}
+          >
+            Last
+          </PaginationControl>
         ) : null}
       </div>
     </div>

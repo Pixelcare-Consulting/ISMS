@@ -3,13 +3,16 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import {
   hasPermission,
   requireAnyPermission,
+  requireAuth,
   requirePermission,
 } from "@/lib/auth/permissions";
 import { aorService } from "@/features/aors/services/aor.service";
 import { branchRepository } from "@/features/branches/repositories/branch.repository";
+import { STOCK_COUNT_PERMISSION_MESSAGE } from "@/features/stock-audit/constants/stock-count-permissions";
 import { stockAuditService } from "@/features/stock-audit/services/stock-audit.service";
 
 const PCOUNT_REPORT_ACCESS = ["reports.view", "inventory.view"] as const;
@@ -21,6 +24,15 @@ function isUnrestricted(permissions: string[] | undefined) {
   );
 }
 
+/** Soft permission check for client-called manage actions — returns error instead of redirecting. */
+async function requireStockCountManage() {
+  const session = await requireAuth();
+  if (!hasPermission(session.user.permissions, "inventory.manage")) {
+    return { error: STOCK_COUNT_PERMISSION_MESSAGE as string, session: null };
+  }
+  return { error: null, session };
+}
+
 function revalidateStockCountPaths(sessionId?: string) {
   revalidatePath("/inventory/stock-count");
   revalidatePath("/reports/pcount");
@@ -30,31 +42,41 @@ function revalidateStockCountPaths(sessionId?: string) {
 }
 
 export async function listBranchesForStockCountAction() {
-  const session = await requirePermission("inventory.manage");
+  const { error, session } = await requireStockCountManage();
+  if (error || !session) return { error: error ?? STOCK_COUNT_PERMISSION_MESSAGE };
+
   const unrestricted = isUnrestricted(session.user.permissions);
   if (unrestricted) {
     const branches = await branchRepository.listByTenant(session.user.tenantId);
-    return branches.map((b) => ({ id: b.id, name: b.name, sapCode: b.sapCode }));
+    return {
+      branches: branches.map((b) => ({ id: b.id, name: b.name, sapCode: b.sapCode })),
+    };
   }
   const branchIds = await aorService.getBranchIdsForUser(
     session.user.tenantId,
     session.user.id,
   );
-  if (!branchIds.length) return [];
+  if (!branchIds.length) return { branches: [] };
   const branches = await branchRepository.listByTenant(session.user.tenantId);
-  return branches
-    .filter((b) => branchIds.includes(b.id))
-    .map((b) => ({ id: b.id, name: b.name, sapCode: b.sapCode }));
+  return {
+    branches: branches
+      .filter((b) => branchIds.includes(b.id))
+      .map((b) => ({ id: b.id, name: b.name, sapCode: b.sapCode })),
+  };
 }
 
-export async function listStockCountSessionsAction(input?: { page?: number }) {
+export async function listStockCountSessionsAction(input?: {
+  page?: number;
+  limit?: number;
+}) {
   const session = await requirePermission("inventory.view");
   const unrestricted = isUnrestricted(session.user.permissions);
+  const limit = parseTablePageSize(input?.limit);
   return stockAuditService.listForUser(
     session.user.tenantId,
     session.user.id,
     unrestricted,
-    { page: input?.page, limit: 10 },
+    { page: input?.page, limit },
   );
 }
 
@@ -76,7 +98,9 @@ export async function getStockCountSessionAction(sessionId: string) {
 const createSessionSchema = z.object({ branchId: z.string().min(1) });
 
 export async function createStockCountSessionAction(input: unknown) {
-  const session = await requirePermission("inventory.manage");
+  const { error, session } = await requireStockCountManage();
+  if (error || !session) return { error: error ?? STOCK_COUNT_PERMISSION_MESSAGE };
+
   const parsed = createSessionSchema.safeParse(input);
   if (!parsed.success) return { error: "Invalid input" };
 
@@ -94,7 +118,9 @@ export async function createStockCountSessionAction(input: unknown) {
 }
 
 export async function startStockCountAction(sessionId: string) {
-  const session = await requirePermission("inventory.manage");
+  const { error, session } = await requireStockCountManage();
+  if (error || !session) return { error: error ?? STOCK_COUNT_PERMISSION_MESSAGE };
+
   try {
     await stockAuditService.startCounting(
       session.user.tenantId,
@@ -109,7 +135,9 @@ export async function startStockCountAction(sessionId: string) {
 }
 
 export async function recordStockCountLineAction(sessionId: string, lineId: string) {
-  const session = await requirePermission("inventory.manage");
+  const { error, session } = await requireStockCountManage();
+  if (error || !session) return { error: error ?? STOCK_COUNT_PERMISSION_MESSAGE };
+
   try {
     await stockAuditService.recordCount(
       session.user.tenantId,
@@ -125,7 +153,9 @@ export async function recordStockCountLineAction(sessionId: string, lineId: stri
 }
 
 export async function completeStockCountAction(sessionId: string) {
-  const session = await requirePermission("inventory.manage");
+  const { error, session } = await requireStockCountManage();
+  if (error || !session) return { error: error ?? STOCK_COUNT_PERMISSION_MESSAGE };
+
   try {
     await stockAuditService.completeCounting(
       session.user.tenantId,
@@ -145,7 +175,9 @@ export async function investigateStockVarianceAction(
   varianceId: string,
   input: unknown,
 ) {
-  const session = await requirePermission("inventory.manage");
+  const { error, session } = await requireStockCountManage();
+  if (error || !session) return { error: error ?? STOCK_COUNT_PERMISSION_MESSAGE };
+
   const parsed = investigateSchema.safeParse(input);
   if (!parsed.success) return { error: "Investigation notes are required" };
 
@@ -164,7 +196,9 @@ export async function investigateStockVarianceAction(
 }
 
 export async function requestStockAdjustmentAction(varianceId: string) {
-  const session = await requirePermission("inventory.manage");
+  const { error, session } = await requireStockCountManage();
+  if (error || !session) return { error: error ?? STOCK_COUNT_PERMISSION_MESSAGE };
+
   try {
     await stockAuditService.requestAdjustment(
       session.user.tenantId,
@@ -179,7 +213,9 @@ export async function requestStockAdjustmentAction(varianceId: string) {
 }
 
 export async function closeStockCountSessionAction(sessionId: string) {
-  const session = await requirePermission("inventory.manage");
+  const { error, session } = await requireStockCountManage();
+  if (error || !session) return { error: error ?? STOCK_COUNT_PERMISSION_MESSAGE };
+
   try {
     await stockAuditService.closeSession(
       session.user.tenantId,

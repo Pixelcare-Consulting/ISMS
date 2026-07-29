@@ -10,6 +10,10 @@ import {
 } from "@/features/logistics/actions/logistics.actions";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { TableIndexCell, TableIndexHead } from "@/components/data-table";
+import {
+  parseTablePageSize,
+  type TablePageSize,
+} from "@/components/data-table/table-page-size";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
@@ -71,6 +75,11 @@ export function DeliveriesPanel({ deliveries }: DeliveriesPanelProps) {
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
+  const pageSize = parseTablePageSize(deliveries.limit);
+
+  function handlePageSizeChange(limit: TablePageSize) {
+    router.push(buildLogisticsPageHref(LOGISTICS_DELIVERIES_PATH, 1, limit));
+  }
 
   const filtered = useMemo(
     () =>
@@ -134,8 +143,10 @@ export function DeliveriesPanel({ deliveries }: DeliveriesPanelProps) {
           page: deliveries.page,
           totalPages: deliveries.totalPages,
           itemLabel: "delivery",
-          buildHref: (page) => buildLogisticsPageHref(LOGISTICS_DELIVERIES_PATH, page),
+          buildHref: (page) =>
+            buildLogisticsPageHref(LOGISTICS_DELIVERIES_PATH, page, pageSize),
         }}
+        pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
       >
             <TableHeader>
               <TableRow>
@@ -164,7 +175,9 @@ export function DeliveriesPanel({ deliveries }: DeliveriesPanelProps) {
                       aria-label={`Select delivery ${d.deliveryNo}`}
                     />
                   </TableCell>
-                  <TableIndexCell index={index + 1} />
+                  <TableIndexCell
+                    index={(deliveries.page - 1) * deliveries.limit + index + 1}
+                  />
                   <TableCell>{d.deliveryNo}</TableCell>
                   <TableCell>{d.order?.orderNumber ?? "—"}</TableCell>
                   <TableCell>{d.branch.name}</TableCell>
