@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { SearchableMultiSelect } from "@/features/aors/components/searchable-multi-select";
@@ -31,6 +31,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import {
   Table,
   TableBody,
@@ -168,6 +176,7 @@ export function AorsTable({
   const [rows, setRows] = useState(aors);
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [userId, setUserId] = useState("");
   const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
   const [selectedDealerIds, setSelectedDealerIds] = useState<string[]>([]);
@@ -245,6 +254,13 @@ export function AorsTable({
     Boolean(userId) &&
     (selectedBranchIds.length > 0 || selectedDealerIds.length > 0);
 
+  function openAssign() {
+    setUserId("");
+    setSelectedBranchIds([]);
+    setSelectedDealerIds([]);
+    setSheetOpen(true);
+  }
+
   function assign() {
     if (!canAssign) return;
 
@@ -310,6 +326,7 @@ export function AorsTable({
       setUserId("");
       setSelectedBranchIds([]);
       setSelectedDealerIds([]);
+      setSheetOpen(false);
       router.refresh();
     });
   }
@@ -373,54 +390,6 @@ export function AorsTable({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border bg-card p-4 shadow-sm">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            assign();
-          }}
-          className="space-y-4"
-        >
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <SearchableSelect
-              label="User"
-              options={users.map((u) => ({ id: u.id, label: u.label }))}
-              value={userId}
-              onChange={setUserId}
-              placeholder="Select user…"
-              searchPlaceholder="Search users…"
-              disabled={pending}
-            />
-            <SearchableMultiSelect
-              label="Branches"
-              options={branchOptions}
-              selectedIds={selectedBranchIds}
-              onChange={setSelectedBranchIds}
-              placeholder="Search and select branches…"
-              searchPlaceholder="Filter branches…"
-              emptyMessage="No branches available."
-              disabled={pending}
-            />
-            <SearchableMultiSelect
-              label="Dealers"
-              options={dealerOptions}
-              selectedIds={selectedDealerIds}
-              onChange={setSelectedDealerIds}
-              placeholder="Search and select dealers…"
-              searchPlaceholder="Filter dealers…"
-              emptyMessage="No dealers available."
-              hint="Selecting a dealer assigns all of its active branches."
-              disabled={pending}
-            />
-          </div>
-          <div className="flex justify-end">
-            <Button type="submit" disabled={pending || !canAssign}>
-              {pending ? "Assigning…" : "Assign AOR"}
-            </Button>
-          </div>
-        </form>
-      </div>
-
       <AppDataTable
         shellHeader={
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -437,6 +406,10 @@ export function AorsTable({
                 onClear={selection.clearSelection}
               />
             </div>
+            <Button onClick={openAssign} disabled={pending}>
+              <Plus className="size-4" />
+              Assign AOR
+            </Button>
           </div>
         }
         empty={rows.length === 0}
@@ -548,6 +521,74 @@ export function AorsTable({
           </Table>
         </AppDataTableBody>
       </AppDataTable>
+
+      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+        <SheetContent
+          side="right"
+          className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-md"
+        >
+          <SheetHeader className="border-b border-border/60 px-4 py-4 text-left">
+            <SheetTitle>Assign AOR</SheetTitle>
+            <SheetDescription>
+              Assign branches or dealers to a user. Selecting a dealer assigns
+              all of its active branches.
+            </SheetDescription>
+          </SheetHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              assign();
+            }}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+              <SearchableSelect
+                label="User"
+                options={users.map((u) => ({ id: u.id, label: u.label }))}
+                value={userId}
+                onChange={setUserId}
+                placeholder="Select user…"
+                searchPlaceholder="Search users…"
+                disabled={pending}
+              />
+              <SearchableMultiSelect
+                label="Branches"
+                options={branchOptions}
+                selectedIds={selectedBranchIds}
+                onChange={setSelectedBranchIds}
+                placeholder="Search and select branches…"
+                searchPlaceholder="Filter branches…"
+                emptyMessage="No branches available."
+                disabled={pending}
+              />
+              <SearchableMultiSelect
+                label="Dealers"
+                options={dealerOptions}
+                selectedIds={selectedDealerIds}
+                onChange={setSelectedDealerIds}
+                placeholder="Search and select dealers…"
+                searchPlaceholder="Filter dealers…"
+                emptyMessage="No dealers available."
+                hint="Selecting a dealer assigns all of its active branches."
+                disabled={pending}
+              />
+            </div>
+            <SheetFooter className="border-t border-border/60">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setSheetOpen(false)}
+                disabled={pending}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={pending || !canAssign}>
+                {pending ? "Assigning…" : "Assign AOR"}
+              </Button>
+            </SheetFooter>
+          </form>
+        </SheetContent>
+      </Sheet>
 
       <Dialog
         open={Boolean(viewingAll)}
