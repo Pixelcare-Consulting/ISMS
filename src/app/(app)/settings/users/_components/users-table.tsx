@@ -16,26 +16,23 @@ import { userHasProviderOnlyRole } from "@/features/roles/constants/role.constan
 import { CreateUserDialog } from "@/app/(app)/settings/users/_components/create-user-dialog";
 import { EditUserDialog } from "@/app/(app)/settings/users/_components/edit-user-dialog";
 import {
-  AppDataTable,
-  AppDataTableBody,
   DeleteConfirmDialog,
   TableEmptyRow,
   TableIndexCell,
   TableIndexHead,
   TableRowActions,
   TableRowCheckbox,
-  TableSearchBar,
   TableSelectAllCheckbox,
   TableSelectionBadge,
   uniqueSearchSuggestions,
+  useClientTablePagination,
   useTableSelection,
 } from "@/components/data-table";
+import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
-  Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
@@ -130,6 +127,14 @@ export function UsersTable({
   );
 
   const selection = useTableSelection(filteredUsers.map((user) => user.id));
+  const {
+    page,
+    setPage,
+    total,
+    totalPages,
+    pageItems,
+    indexOffset,
+  } = useClientTablePagination(filteredUsers, { pageSize: 10, resetKey: query });
 
   function handleDeleteConfirm() {
     if (!deletingUser) {
@@ -152,36 +157,56 @@ export function UsersTable({
     });
   }
 
-  const toolbar = (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <TableSearchBar
-        value={query}
-        onChange={setQuery}
-        placeholder="Search by name, email, role, or department…"
-        suggestions={suggestions}
-        className="sm:max-w-sm"
-      />
-      <div className="flex shrink-0 flex-wrap items-center gap-2">
-        <TableSelectionBadge
-          count={selection.selectedCount}
-          onClear={selection.clearSelection}
-        />
-        {addUserAction}
-      </div>
-    </div>
-  );
-
   if (rows.length === 0) {
     return (
-      <AppDataTable shellHeader={toolbar} empty emptyMessage="No users yet." />
+      <GlobalDataTable
+        stickyHeader
+        search={{
+          value: query,
+          onChange: setQuery,
+          placeholder: "Search by name, email, role, or department…",
+          suggestions,
+        }}
+        toolbarLeading={
+          <TableSelectionBadge
+            count={selection.selectedCount}
+            onClear={selection.clearSelection}
+          />
+        }
+        toolbarActions={addUserAction}
+        empty
+        emptyMessage="No users yet."
+      >
+        <></>
+      </GlobalDataTable>
     );
   }
 
   return (
     <>
-      <AppDataTable shellHeader={toolbar}>
-        <AppDataTableBody>
-          <Table>
+      <GlobalDataTable
+        stickyHeader
+        search={{
+          value: query,
+          onChange: setQuery,
+          placeholder: "Search by name, email, role, or department…",
+          suggestions,
+        }}
+        toolbarLeading={
+          <TableSelectionBadge
+            count={selection.selectedCount}
+            onClear={selection.clearSelection}
+          />
+        }
+        toolbarActions={addUserAction}
+        pagination={{
+          total,
+          page,
+          totalPages,
+          itemLabel: "user",
+          onPageChange: setPage,
+        }}
+      >
             <TableHeader>
               <TableRow className="bg-muted/30 hover:bg-muted/30">
                 <TableSelectAllCheckbox
@@ -191,11 +216,11 @@ export function UsersTable({
                   aria-label="Select all users"
                 />
                 <TableIndexHead />
-                <TableHead>Name</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Roles</TableHead>
-                <TableHead>Department</TableHead>
-                <TableHead className="w-28 text-right">Actions</TableHead>
+                <GlobalTableHead>Name</GlobalTableHead>
+                <GlobalTableHead>Email</GlobalTableHead>
+                <GlobalTableHead>Roles</GlobalTableHead>
+                <GlobalTableHead>Department</GlobalTableHead>
+                <GlobalTableHead className="w-28 text-right">Actions</GlobalTableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -205,7 +230,7 @@ export function UsersTable({
                   message="No users match your search."
                 />
               ) : (
-                filteredUsers.map((user, index) => {
+                pageItems.map((user, index) => {
                   const isProtected = isProtectedUser(user, currentUserId);
 
                   return (
@@ -223,7 +248,7 @@ export function UsersTable({
                         }
                         aria-label={`Select user ${user.name ?? user.email}`}
                       />
-                      <TableIndexCell index={index + 1} />
+                      <TableIndexCell index={indexOffset + index + 1} />
                       <TableCell>
                         <div className="flex items-center gap-3">
                           <Avatar className="size-8">
@@ -281,9 +306,7 @@ export function UsersTable({
                 })
               )}
             </TableBody>
-          </Table>
-        </AppDataTableBody>
-      </AppDataTable>
+      </GlobalDataTable>
 
       {editingUser ? (
         <EditUserDialog

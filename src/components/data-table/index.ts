@@ -34,6 +34,7 @@ export {
 } from "@/components/data-table/table-selection-checkbox";
 export { TableStatusBadge } from "@/components/data-table/table-status-badge";
 export { useTableSelection } from "@/components/data-table/use-table-selection";
+export { useClientTablePagination } from "@/components/data-table/use-client-table-pagination";
 export {
   GlobalDataTable,
   GlobalTableHead,

@@ -14,6 +14,7 @@ export default async function SettingsServiceCentersPage() {
         title="Service centers"
         tutorial={SERVICE_CENTERS_PAGE_TUTORIAL}
         description="Service center master data and nested locations (ops workflows later)."
+        sticky={false}
       />
       <ServiceCentersTable centers={centers} />
     </div>

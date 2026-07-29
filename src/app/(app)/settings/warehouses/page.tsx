@@ -15,6 +15,7 @@ export default async function SettingsWarehousesPage() {
         title="Warehouses"
         tutorial={WAREHOUSES_PAGE_TUTORIAL}
         description="Manage warehouse locations and storage aisles (CSV step 4)."
+        sticky={false}
       />
       <WarehousesKpisStrip rows={warehouses} />
       <WarehousesTable warehouses={warehouses} />

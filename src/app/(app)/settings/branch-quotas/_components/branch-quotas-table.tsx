@@ -12,16 +12,15 @@ import {
   updateBranchQuotaAction,
 } from "@/features/branch-quotas/actions/branch-quota.actions";
 import {
-  AppDataTable,
-  AppDataTableBody,
   DeleteConfirmDialog,
   TableEmptyRow,
   TableIndexCell,
   TableIndexHead,
   TableRowActions,
-  TableSearchBar,
   uniqueSearchSuggestions,
+  useClientTablePagination,
 } from "@/components/data-table";
+import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,10 +34,8 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import {
-  Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
@@ -118,6 +115,15 @@ export function BranchQuotasTable({ quotas }: { quotas: QuotaRow[] }) {
     [rows],
   );
 
+  const {
+    page,
+    setPage,
+    total,
+    totalPages,
+    pageItems,
+    indexOffset,
+  } = useClientTablePagination(filtered, { pageSize: 10, resetKey: query });
+
   async function ensureOptions() {
     if (options) return;
     setOptions(await listBranchQuotaFormOptionsAction());
@@ -184,47 +190,50 @@ export function BranchQuotasTable({ quotas }: { quotas: QuotaRow[] }) {
 
   return (
     <div className="space-y-4">
-      <AppDataTable
-        shellHeader={
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <TableSearchBar
-              value={query}
-              onChange={setQuery}
-              placeholder="Search quotas…"
-              suggestions={suggestions}
-              className="sm:max-w-sm"
-            />
-            <Button onClick={openCreate}>
-              <Plus className="size-4" />
-              Add quota
-            </Button>
-          </div>
+      <GlobalDataTable
+        stickyHeader
+        search={{
+          value: query,
+          onChange: setQuery,
+          placeholder: "Search quotas…",
+          suggestions,
+        }}
+        toolbarActions={
+          <Button onClick={openCreate}>
+            <Plus className="size-4" />
+            Add quota
+          </Button>
         }
         empty={rows.length === 0}
         emptyMessage="No branch quotas yet."
+        pagination={{
+          total,
+          page,
+          totalPages,
+          itemLabel: "quota",
+          onPageChange: setPage,
+        }}
       >
-        <AppDataTableBody>
-          <Table>
             <TableHeader>
               <TableRow>
                 <TableIndexHead />
-                <TableHead>Branch</TableHead>
-                <TableHead>Brand</TableHead>
-                <TableHead>Month</TableHead>
-                <TableHead className="text-right">Quota</TableHead>
-                <TableHead className="w-40" />
+                <GlobalTableHead>Branch</GlobalTableHead>
+                <GlobalTableHead>Brand</GlobalTableHead>
+                <GlobalTableHead>Month</GlobalTableHead>
+                <GlobalTableHead className="text-right">Quota</GlobalTableHead>
+                <GlobalTableHead className="w-40" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.length === 0 ? (
                 <TableEmptyRow colSpan={COL_COUNT} message="No results match your search." />
               ) : (
-                filtered.map((row, index) => (
+                pageItems.map((row, index) => (
                   <TableRow
                     key={row.id}
                     className={cn(index % 2 === 1 && "bg-table-stripe")}
                   >
-                    <TableIndexCell index={index + 1} />
+                    <TableIndexCell index={indexOffset + index + 1} />
                     <TableCell className="font-medium">
                       {row.branch.name}
                       <span className="mt-0.5 block font-mono text-xs text-muted-foreground">
@@ -246,9 +255,7 @@ export function BranchQuotasTable({ quotas }: { quotas: QuotaRow[] }) {
                 ))
               )}
             </TableBody>
-          </Table>
-        </AppDataTableBody>
-      </AppDataTable>
+      </GlobalDataTable>
 
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
         <SheetContent

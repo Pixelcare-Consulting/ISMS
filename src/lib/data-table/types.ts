@@ -13,7 +13,10 @@ export interface GlobalDataTablePagination {
   page: number;
   totalPages: number;
   itemLabel: string;
-  buildHref: (page: number) => string;
+  /** Server/URL pagination (Orders, Inventory, Audit). */
+  buildHref?: (page: number) => string;
+  /** Client pagination (Settings tables with in-memory lists). */
+  onPageChange?: (page: number) => void;
 }
 
 export interface GlobalDataTableSearch {

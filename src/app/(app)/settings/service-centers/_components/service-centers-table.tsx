@@ -13,14 +13,13 @@ import {
   listServiceCenterFormOptionsAction,
 } from "@/features/service-centers/actions/service-center.actions";
 import {
-  AppDataTable,
-  AppDataTableBody,
   DeleteConfirmDialog,
   TableEmptyRow,
   TableRowActions,
-  TableSearchBar,
   uniqueSearchSuggestions,
+  useClientTablePagination,
 } from "@/components/data-table";
+import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -34,10 +33,8 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import {
-  Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
@@ -107,6 +104,14 @@ export function ServiceCentersTable({ centers }: { centers: CenterRow[] }) {
       ),
     [rows],
   );
+
+  const {
+    page,
+    setPage,
+    total,
+    totalPages,
+    pageItems,
+  } = useClientTablePagination(filtered, { pageSize: 10, resetKey: query });
 
   async function loadAreas() {
     if (areas.length) return;
@@ -198,41 +203,42 @@ export function ServiceCentersTable({ centers }: { centers: CenterRow[] }) {
 
   return (
     <div className="space-y-4">
-      <AppDataTable
-        shellHeader={
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <TableSearchBar
-              value={query}
-              onChange={setQuery}
-              placeholder="Search service centers…"
-              suggestions={suggestions}
-              className="sm:max-w-sm"
-            />
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <Button type="button" size="sm" onClick={() => onAddOpenChange(true)}>
-                <Plus className="size-3.5" />
-                Add center
-              </Button>
-            </div>
-          </div>
+      <GlobalDataTable
+        stickyHeader
+        search={{
+          value: query,
+          onChange: setQuery,
+          placeholder: "Search service centers…",
+          suggestions,
+        }}
+        toolbarActions={
+          <Button type="button" size="sm" onClick={() => onAddOpenChange(true)}>
+            <Plus className="size-3.5" />
+            Add center
+          </Button>
         }
+        pagination={{
+          total,
+          page,
+          totalPages,
+          itemLabel: "service center",
+          onPageChange: setPage,
+        }}
       >
-        <AppDataTableBody>
-          <Table>
             <TableHeader>
               <TableRow className="bg-muted/30 hover:bg-muted/30">
-                <TableHead>SAP</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Area</TableHead>
-                <TableHead>Locations</TableHead>
-                <TableHead className="w-28 text-right">Actions</TableHead>
+                <GlobalTableHead>SAP</GlobalTableHead>
+                <GlobalTableHead>Name</GlobalTableHead>
+                <GlobalTableHead>Area</GlobalTableHead>
+                <GlobalTableHead>Locations</GlobalTableHead>
+                <GlobalTableHead className="w-28 text-right">Actions</GlobalTableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.length === 0 ? (
                 <TableEmptyRow colSpan={COL_COUNT} message={emptyMessage} />
               ) : (
-                filtered.map((row, index) => (
+                pageItems.map((row, index) => (
                   <Fragment key={row.id}>
                     <TableRow className={cn(index % 2 === 1 && "bg-table-stripe")}>
                       <TableCell>{row.sapCode}</TableCell>
@@ -307,9 +313,7 @@ export function ServiceCentersTable({ centers }: { centers: CenterRow[] }) {
                 ))
               )}
             </TableBody>
-          </Table>
-        </AppDataTableBody>
-      </AppDataTable>
+      </GlobalDataTable>
 
       <Sheet open={addOpen} onOpenChange={onAddOpenChange}>
         <SheetContent

@@ -12,6 +12,7 @@ export default async function BranchQuotasPage() {
       <PageHeader
         title="Branch quotas"
         description="Set monthly order limits by branch and brand. Enforced when creating branch orders."
+        sticky={false}
       />
       <BranchQuotasTable
         quotas={quotas.map((q) => ({

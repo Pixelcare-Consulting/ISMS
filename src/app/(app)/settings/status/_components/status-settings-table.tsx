@@ -11,25 +11,23 @@ import {
 import { REASON_STATUS_CATEGORY_LABELS } from "@/features/reason-status/constants/defaults";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import {
-  AppDataTable,
-  AppDataTableBody,
   TableEmptyRow,
   TableIndexCell,
   TableIndexHead,
   TableRowCheckbox,
   TableSelectAllCheckbox,
   TableSelectionBadge,
+  useClientTablePagination,
   useTableSelection,
 } from "@/components/data-table";
+import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
@@ -72,7 +70,19 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
     () => rows.find((g) => g.category === expanded),
     [rows, expanded],
   );
-  const selection = useTableSelection(activeGroup?.codes.map((code) => code.id) ?? []);
+  const activeCodes = activeGroup?.codes ?? [];
+  const selection = useTableSelection(activeCodes.map((code) => code.id));
+  const {
+    page,
+    setPage,
+    total,
+    totalPages,
+    pageItems,
+    indexOffset,
+  } = useClientTablePagination(activeCodes, {
+    pageSize: 10,
+    resetKey: expanded ?? "",
+  });
 
   function toggleCodeStatus(code: StatusCodeRow) {
     const next: LookupRecordStatus = code.recordStatus === "active" ? "inactive" : "active";
@@ -153,10 +163,12 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
       </div>
 
       {activeGroup ? (
-        <AppDataTable
-          title={activeGroup.name}
-          shellHeader={
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-4">
+          <h2 className="text-lg font-semibold">{activeGroup.name}</h2>
+          <GlobalDataTable
+            stickyHeader
+            toolbarLeading={
+              <>
               <p className="text-sm text-muted-foreground">
                 Tenant-configurable custom codes. System codes cannot be deleted;
                 deactivate instead.
@@ -166,11 +178,46 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
                 onClear={selection.clearSelection}
                 size="sm"
               />
-            </div>
-          }
-        >
-          <AppDataTableBody>
-            <Table>
+              </>
+            }
+            footer={
+              <div className="flex flex-wrap items-end gap-2 border-t px-4 py-3">
+                <div>
+                  <Label htmlFor="new-code">Code</Label>
+                  <Input
+                    id="new-code"
+                    value={newCode}
+                    onChange={(e) => setNewCode(e.target.value.toUpperCase())}
+                    placeholder="e.g. RTN"
+                    className="w-28"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="new-name">Name</Label>
+                  <Input
+                    id="new-name"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder="Display label"
+                    className="min-w-[200px]"
+                  />
+                </div>
+                <Button
+                  disabled={pending || !newCode.trim() || !newName.trim()}
+                  onClick={addCode}
+                >
+                  Add code
+                </Button>
+              </div>
+            }
+            pagination={{
+              total,
+              page,
+              totalPages,
+              itemLabel: "code",
+              onPageChange: setPage,
+            }}
+          >
               <TableHeader>
                 <TableRow className="bg-muted/30 hover:bg-muted/30">
                   <TableSelectAllCheckbox
@@ -180,21 +227,21 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
                     aria-label="Select all status codes"
                   />
                   <TableIndexHead />
-                  <TableHead>Code</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="w-28" />
+                  <GlobalTableHead>Code</GlobalTableHead>
+                  <GlobalTableHead>Name</GlobalTableHead>
+                  <GlobalTableHead>Type</GlobalTableHead>
+                  <GlobalTableHead>Status</GlobalTableHead>
+                  <GlobalTableHead className="w-28" />
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {activeGroup.codes.length === 0 ? (
+                {activeCodes.length === 0 ? (
                   <TableEmptyRow
                     colSpan={COL_COUNT}
                     message="No status codes in this category yet."
                   />
                 ) : (
-                  activeGroup.codes.map((code, index) => (
+                  pageItems.map((code, index) => (
                     <TableRow
                       key={code.id}
                       data-state={selection.isRowSelected(code.id) ? "selected" : undefined}
@@ -205,7 +252,7 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
                         onCheckedChange={(checked) => selection.toggleRow(code.id, checked)}
                         aria-label={`Select status code ${code.code}`}
                       />
-                      <TableIndexCell index={index + 1} />
+                      <TableIndexCell index={indexOffset + index + 1} />
                       <TableCell className="font-mono text-sm">{code.code}</TableCell>
                       <TableCell>{code.name}</TableCell>
                       <TableCell>
@@ -235,34 +282,8 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
                   ))
                 )}
               </TableBody>
-            </Table>
-          </AppDataTableBody>
-          <div className="flex flex-wrap items-end gap-2 border-t px-4 py-3">
-            <div>
-              <Label htmlFor="new-code">Code</Label>
-              <Input
-                id="new-code"
-                value={newCode}
-                onChange={(e) => setNewCode(e.target.value.toUpperCase())}
-                placeholder="e.g. RTN"
-                className="w-28"
-              />
-            </div>
-            <div>
-              <Label htmlFor="new-name">Name</Label>
-              <Input
-                id="new-name"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder="Display label"
-                className="min-w-[200px]"
-              />
-            </div>
-            <Button disabled={pending || !newCode.trim() || !newName.trim()} onClick={addCode}>
-              Add code
-            </Button>
-          </div>
-        </AppDataTable>
+          </GlobalDataTable>
+        </div>
       ) : null}
     </div>
   );

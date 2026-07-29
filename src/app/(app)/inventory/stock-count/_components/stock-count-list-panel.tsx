@@ -9,6 +9,8 @@ import {
   createStockCountSessionAction,
   listBranchesForStockCountAction,
 } from "@/features/stock-audit/actions/stock-audit.actions";
+import { StockCountPermissionDialog } from "@/app/(app)/inventory/stock-count/_components/stock-count-permission-dialog";
+import { STOCK_COUNT_PERMISSION_MESSAGE } from "@/features/stock-audit/constants/stock-count-permissions";
 import {
   STOCK_COUNT_SESSION_LABELS,
 } from "@/features/stock-audit/constants/stock-count-workflow";
@@ -49,11 +51,21 @@ export function StockCountListPanel({ sessions }: StockCountListPanelProps) {
   const [branches, setBranches] = useState<{ id: string; name: string }[]>([]);
   const [selectedBranchId, setSelectedBranchId] = useState("");
   const [refsLoaded, setRefsLoaded] = useState(false);
+  const [permissionDialogOpen, setPermissionDialogOpen] = useState(false);
   const selection = useTableSelection(sessions.items.map((session) => session.id));
 
   async function loadBranches() {
     if (refsLoaded) return;
-    const rows = await listBranchesForStockCountAction();
+    const result = await listBranchesForStockCountAction();
+    if ("error" in result && result.error) {
+      if (result.error === STOCK_COUNT_PERMISSION_MESSAGE) {
+        setPermissionDialogOpen(true);
+      } else {
+        toast.error(result.error);
+      }
+      return;
+    }
+    const rows = "branches" in result ? result.branches : [];
     setBranches(rows);
     if (rows[0]) setSelectedBranchId(rows[0].id);
     setRefsLoaded(true);
@@ -67,7 +79,11 @@ export function StockCountListPanel({ sessions }: StockCountListPanelProps) {
     startTransition(async () => {
       const result = await createStockCountSessionAction({ branchId: selectedBranchId });
       if ("error" in result && result.error) {
-        toast.error(result.error);
+        if (result.error === STOCK_COUNT_PERMISSION_MESSAGE) {
+          setPermissionDialogOpen(true);
+        } else {
+          toast.error(result.error);
+        }
         return;
       }
       toast.success("Count session created");
@@ -80,7 +96,8 @@ export function StockCountListPanel({ sessions }: StockCountListPanelProps) {
   }
 
   return (
-    <GlobalDataTable
+    <>
+      <GlobalDataTable
       stickyHeader
       scrollable
       toolbarActions={
@@ -175,6 +192,11 @@ export function StockCountListPanel({ sessions }: StockCountListPanelProps) {
               ))
             )}
           </TableBody>
-    </GlobalDataTable>
+      </GlobalDataTable>
+      <StockCountPermissionDialog
+        open={permissionDialogOpen}
+        onOpenChange={setPermissionDialogOpen}
+      />
+    </>
   );
 }

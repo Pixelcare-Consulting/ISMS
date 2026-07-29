@@ -55,6 +55,7 @@ export default async function SettingsAorsPage() {
         title="Areas of responsibility"
         tutorial={AORS_PAGE_TUTORIAL}
         description="Assignments are stored per branch. The table groups them by user so you can see every branch in one place."
+        sticky={false}
       />
       <AorsKpisStrip rows={mappedAors} />
       <AorsTable

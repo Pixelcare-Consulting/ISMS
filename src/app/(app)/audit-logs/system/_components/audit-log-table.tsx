@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
@@ -13,11 +12,6 @@ import {
   formatAuditEntityTypeLabel,
   formatAuditTimestamp,
 } from "@/features/audit/constants/audit-display";
-import {
-  DataTableEmpty,
-  DataTableScroll,
-  DataTableShell,
-} from "@/components/data-table/data-table-shell";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { TableSearchBar, uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import { Button } from "@/components/ui/button";
@@ -26,13 +20,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
-  Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
 import { cn } from "@/utils/cn";
 
 interface AuditLogUser {
@@ -174,203 +167,181 @@ export function AuditLogTable({
   );
 
   return (
-    <DataTableShell>
-      <div className="space-y-4 border-b px-4 py-4">
-        <TableSearchBar
-          value={search}
-          onChange={setSearch}
-          placeholder="Search by user, activity, or area…"
-          suggestions={suggestions}
-        />
-
-        <div className="flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-end lg:gap-3">
-          <div className="grid shrink-0 gap-3 sm:grid-cols-2 lg:max-w-md">
-            <SearchableSelect
-              label="Activity"
-              id="audit-action-filter"
-              options={[
-                { id: "all", label: "All activities" },
-                ...filterOptions.actions.map((item) => ({
-                  id: item,
-                  label: formatAuditActionLabel(item),
-                })),
-              ]}
-              value={action || "all"}
-              onChange={(value) => setAction(value === "all" ? "" : value)}
-              searchPlaceholder="Search activities…"
-            />
-
-            <SearchableSelect
-              label="Area"
-              id="audit-entity-filter"
-              options={[
-                { id: "all", label: "All areas" },
-                ...filterOptions.entityTypes.map((item) => ({
-                  id: item,
-                  label: formatAuditEntityTypeLabel(item),
-                })),
-              ]}
-              value={entityType || "all"}
-              onChange={(value) => setEntityType(value === "all" ? "" : value)}
-              searchPlaceholder="Search areas…"
-            />
-          </div>
-
-          <div className="space-y-2 lg:w-40">
-            <Label htmlFor="audit-date-from">From date</Label>
-            <Input
-              id="audit-date-from"
-              type="date"
-              value={dateFrom}
-              onChange={(event) => setDateFrom(event.target.value)}
-            />
-          </div>
-
-          <div className="space-y-2 lg:w-40">
-            <Label htmlFor="audit-date-to">To date</Label>
-            <Input
-              id="audit-date-to"
-              type="date"
-              value={dateTo}
-              min={dateFrom || undefined}
-              onChange={(event) => setDateTo(event.target.value)}
-            />
-          </div>
-
-          <div className="flex gap-2 shrink-0">
-            <Button type="button" variant="outline" onClick={clearFilters}>
-              Clear
-            </Button>
-            <Button type="button" onClick={applyFilters}>
-              Apply filters
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {rows.length === 0 ? (
-        <DataTableEmpty
-          message={
-            hasActiveFilters
-              ? "No activity matches your filters."
-              : "No activity has been recorded yet."
-          }
-        />
-      ) : (
+    <GlobalDataTable
+      stickyHeader
+      empty={rows.length === 0}
+      emptyMessage={
+        hasActiveFilters
+          ? "No activity matches your filters."
+          : "No activity has been recorded yet."
+      }
+      banner={
         <>
+          <div className="space-y-4 border-b px-4 py-4">
+            <TableSearchBar
+              value={search}
+              onChange={setSearch}
+              placeholder="Search by user, activity, or area…"
+              suggestions={suggestions}
+            />
+
+            <div className="flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-end lg:gap-3">
+              <div className="grid shrink-0 gap-3 sm:grid-cols-2 lg:max-w-md">
+                <SearchableSelect
+                  label="Activity"
+                  id="audit-action-filter"
+                  options={[
+                    { id: "all", label: "All activities" },
+                    ...filterOptions.actions.map((item) => ({
+                      id: item,
+                      label: formatAuditActionLabel(item),
+                    })),
+                  ]}
+                  value={action || "all"}
+                  onChange={(value) => setAction(value === "all" ? "" : value)}
+                  searchPlaceholder="Search activities…"
+                />
+
+                <SearchableSelect
+                  label="Area"
+                  id="audit-entity-filter"
+                  options={[
+                    { id: "all", label: "All areas" },
+                    ...filterOptions.entityTypes.map((item) => ({
+                      id: item,
+                      label: formatAuditEntityTypeLabel(item),
+                    })),
+                  ]}
+                  value={entityType || "all"}
+                  onChange={(value) => setEntityType(value === "all" ? "" : value)}
+                  searchPlaceholder="Search areas…"
+                />
+              </div>
+
+              <div className="space-y-2 lg:w-40">
+                <Label htmlFor="audit-date-from">From date</Label>
+                <Input
+                  id="audit-date-from"
+                  type="date"
+                  value={dateFrom}
+                  onChange={(event) => setDateFrom(event.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2 lg:w-40">
+                <Label htmlFor="audit-date-to">To date</Label>
+                <Input
+                  id="audit-date-to"
+                  type="date"
+                  value={dateTo}
+                  min={dateFrom || undefined}
+                  onChange={(event) => setDateTo(event.target.value)}
+                />
+              </div>
+
+              <div className="flex gap-2 shrink-0">
+                <Button type="button" variant="outline" onClick={clearFilters}>
+                  Clear
+                </Button>
+                <Button type="button" onClick={applyFilters}>
+                  Apply filters
+                </Button>
+              </div>
+            </div>
+          </div>
           {selection.selectedCount > 0 ? (
-            <div className="px-4 pb-2">
+            <div className="px-4 pb-2 pt-2">
               <Button variant="secondary" size="sm" onClick={selection.clearSelection}>
                 {selection.selectedCount} selected
               </Button>
             </div>
           ) : null}
-          <DataTableScroll>
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/30 hover:bg-muted/30">
-                  <TableHead className="w-10">
-                    <Checkbox
-                      checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
-                      onCheckedChange={(checked) => selection.toggleAll(checked === true)}
-                      aria-label="Select all audit log rows"
-                    />
-                  </TableHead>
-                  <TableHead className="w-12">#</TableHead>
-                  <TableHead>Date & time</TableHead>
-                  <TableHead>User</TableHead>
-                  <TableHead>Activity</TableHead>
-                  <TableHead>Area</TableHead>
-                  <TableHead>Details</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((row, index) => {
-                  const entitySummary = formatAuditEntitySummary(
-                    row.entityType,
-                    row.metadata,
-                  );
-                  const details = formatAuditDetails(row.metadata, row.action);
-
-                  return (
-                    <TableRow
-                      key={row.id}
-                      data-state={selection.isRowSelected(row.id) ? "selected" : undefined}
-                      className={cn(index % 2 === 1 && "bg-table-stripe")}
-                    >
-                      <TableCell>
-                        <Checkbox
-                          checked={selection.isRowSelected(row.id)}
-                          onCheckedChange={(checked) => selection.toggleRow(row.id, checked === true)}
-                          aria-label={`Select audit row ${row.id}`}
-                        />
-                      </TableCell>
-                      <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
-                      <TableCell className="whitespace-nowrap text-muted-foreground">
-                        {formatAuditTimestamp(row.createdAt)}
-                      </TableCell>
-                      <TableCell>
-                        <div className="font-medium">
-                          {row.user
-                            ? (row.user.name ?? row.user.email)
-                            : "System"}
-                        </div>
-                        {row.user?.name ? (
-                          <div className="text-xs text-muted-foreground">
-                            {row.user.email}
-                          </div>
-                        ) : null}
-                      </TableCell>
-                      <TableCell>
-                        <AuditActionBadge action={row.action} />
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col items-start gap-1.5">
-                          <AuditEntityBadge entityType={row.entityType} />
-                          {entitySummary ? (
-                            <span className="text-sm text-foreground">
-                              {entitySummary}
-                            </span>
-                          ) : null}
-                        </div>
-                      </TableCell>
-                      <TableCell className="max-w-sm text-sm text-muted-foreground">
-                        {details}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </DataTableScroll>
-          <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground">
-            <span>
-              {result.total} event{result.total === 1 ? "" : "s"} · page{" "}
-              {result.page} of {result.totalPages}
-            </span>
-            <div className="flex gap-2">
-              {result.page > 1 ? (
-                <Button variant="outline" size="sm" asChild>
-                  <Link
-                    href={buildAuditLogHref(result.page - 1, activeFilters)}
-                  >
-                    Previous
-                  </Link>
-                </Button>
-              ) : null}
-              {result.page < result.totalPages ? (
-                <Button variant="outline" size="sm" asChild>
-                  <Link
-                    href={buildAuditLogHref(result.page + 1, activeFilters)}
-                  >
-                    Next
-                  </Link>
-                </Button>
-              ) : null}
-            </div>
-          </div>
         </>
-      )}
-    </DataTableShell>
+      }
+      pagination={{
+        total: result.total,
+        page: result.page,
+        totalPages: result.totalPages,
+        itemLabel: "event",
+        buildHref: (page) => buildAuditLogHref(page, activeFilters),
+      }}
+    >
+      <TableHeader>
+        <TableRow className="bg-muted/30 hover:bg-muted/30">
+          <GlobalTableHead className="w-10">
+            <Checkbox
+              checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
+              onCheckedChange={(checked) => selection.toggleAll(checked === true)}
+              aria-label="Select all audit log rows"
+            />
+          </GlobalTableHead>
+          <GlobalTableHead className="w-12">#</GlobalTableHead>
+          <GlobalTableHead>Date & time</GlobalTableHead>
+          <GlobalTableHead>User</GlobalTableHead>
+          <GlobalTableHead>Activity</GlobalTableHead>
+          <GlobalTableHead>Area</GlobalTableHead>
+          <GlobalTableHead>Details</GlobalTableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {rows.map((row, index) => {
+          const entitySummary = formatAuditEntitySummary(
+            row.entityType,
+            row.metadata,
+          );
+          const details = formatAuditDetails(row.metadata, row.action);
+
+          return (
+            <TableRow
+              key={row.id}
+              data-state={selection.isRowSelected(row.id) ? "selected" : undefined}
+              className={cn(index % 2 === 1 && "bg-table-stripe")}
+            >
+              <TableCell>
+                <Checkbox
+                  checked={selection.isRowSelected(row.id)}
+                  onCheckedChange={(checked) => selection.toggleRow(row.id, checked === true)}
+                  aria-label={`Select audit row ${row.id}`}
+                />
+              </TableCell>
+              <TableCell className="tabular-nums text-muted-foreground">
+                {(result.page - 1) * result.pageSize + index + 1}
+              </TableCell>
+              <TableCell className="whitespace-nowrap text-muted-foreground">
+                {formatAuditTimestamp(row.createdAt)}
+              </TableCell>
+              <TableCell>
+                <div className="font-medium">
+                  {row.user
+                    ? (row.user.name ?? row.user.email)
+                    : "System"}
+                </div>
+                {row.user?.name ? (
+                  <div className="text-xs text-muted-foreground">
+                    {row.user.email}
+                  </div>
+                ) : null}
+              </TableCell>
+              <TableCell>
+                <AuditActionBadge action={row.action} />
+              </TableCell>
+              <TableCell>
+                <div className="flex flex-col items-start gap-1.5">
+                  <AuditEntityBadge entityType={row.entityType} />
+                  {entitySummary ? (
+                    <span className="text-sm text-foreground">
+                      {entitySummary}
+                    </span>
+                  ) : null}
+                </div>
+              </TableCell>
+              <TableCell className="max-w-sm text-sm text-muted-foreground">
+                {details}
+              </TableCell>
+            </TableRow>
+          );
+        })}
+      </TableBody>
+    </GlobalDataTable>
   );
 }

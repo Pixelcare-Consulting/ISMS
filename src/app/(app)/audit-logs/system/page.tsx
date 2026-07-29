@@ -49,6 +49,7 @@ export default async function SettingsAuditLogPage({
       <PageHeader
         title="System logs"
         description="A clear, read-only timeline of who did what in your organization."
+        sticky={false}
       />
       <AuditLogTable
         result={result}

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
@@ -12,24 +11,18 @@ import {
   formatSerialActivityPerformedBy,
   formatSerialActivityTimestamp,
 } from "@/features/serial-activity/constants/serial-activity-display";
-import {
-  DataTableEmpty,
-  DataTableScroll,
-  DataTableShell,
-} from "@/components/data-table/data-table-shell";
 import { TableSearchBar, uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
-  Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
 import { cn } from "@/utils/cn";
 
 interface SerialActivityTableProps {
@@ -127,165 +120,143 @@ export function SerialActivityTable({
   }
 
   return (
-    <DataTableShell>
-      <div className="space-y-4 border-b px-4 py-4">
-        <TableSearchBar
-          value={search}
-          onChange={setSearch}
-          placeholder="Search by serial number…"
-          suggestions={suggestions}
-        />
-
-        <div className="flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-end lg:gap-3">
-          <SearchableSelect
-            label="Event"
-            id="serial-activity-type"
-            className="lg:w-56"
-            options={[
-              { id: "all", label: "All events" },
-              ...SERIAL_ACTIVITY_TYPES.map((item) => ({
-                id: item,
-                label: SERIAL_ACTIVITY_LABELS[item],
-              })),
-            ]}
-            value={type || "all"}
-            onChange={(value) => setType(value === "all" ? "" : value)}
-            searchPlaceholder="Search events…"
+    <GlobalDataTable
+      stickyHeader
+      empty={rows.length === 0}
+      emptyMessage={
+        hasActiveFilters
+          ? "No serial-number activity matches your filters."
+          : "No serial-number activity has been recorded yet."
+      }
+      banner={
+        <div className="space-y-4 border-b px-4 py-4">
+          <TableSearchBar
+            value={search}
+            onChange={setSearch}
+            placeholder="Search by serial number…"
+            suggestions={suggestions}
           />
 
-          <div className="space-y-2 lg:w-40">
-            <Label htmlFor="serial-activity-date-from">From date</Label>
-            <Input
-              id="serial-activity-date-from"
-              type="date"
-              value={dateFrom}
-              onChange={(event) => setDateFrom(event.target.value)}
+          <div className="flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-end lg:gap-3">
+            <SearchableSelect
+              label="Event"
+              id="serial-activity-type"
+              className="lg:w-56"
+              options={[
+                { id: "all", label: "All events" },
+                ...SERIAL_ACTIVITY_TYPES.map((item) => ({
+                  id: item,
+                  label: SERIAL_ACTIVITY_LABELS[item],
+                })),
+              ]}
+              value={type || "all"}
+              onChange={(value) => setType(value === "all" ? "" : value)}
+              searchPlaceholder="Search events…"
             />
-          </div>
 
-          <div className="space-y-2 lg:w-40">
-            <Label htmlFor="serial-activity-date-to">To date</Label>
-            <Input
-              id="serial-activity-date-to"
-              type="date"
-              value={dateTo}
-              min={dateFrom || undefined}
-              onChange={(event) => setDateTo(event.target.value)}
-            />
-          </div>
+            <div className="space-y-2 lg:w-40">
+              <Label htmlFor="serial-activity-date-from">From date</Label>
+              <Input
+                id="serial-activity-date-from"
+                type="date"
+                value={dateFrom}
+                onChange={(event) => setDateFrom(event.target.value)}
+              />
+            </div>
 
-          <div className="flex gap-2 shrink-0">
-            <Button type="button" variant="outline" onClick={clearFilters}>
-              Clear
-            </Button>
-            <Button type="button" onClick={applyFilters}>
-              Apply filters
-            </Button>
-          </div>
-        </div>
-      </div>
+            <div className="space-y-2 lg:w-40">
+              <Label htmlFor="serial-activity-date-to">To date</Label>
+              <Input
+                id="serial-activity-date-to"
+                type="date"
+                value={dateTo}
+                min={dateFrom || undefined}
+                onChange={(event) => setDateTo(event.target.value)}
+              />
+            </div>
 
-      {rows.length === 0 ? (
-        <DataTableEmpty
-          message={
-            hasActiveFilters
-              ? "No serial-number activity matches your filters."
-              : "No serial-number activity has been recorded yet."
-          }
-        />
-      ) : (
-        <>
-          <DataTableScroll>
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/30 hover:bg-muted/30">
-                  <TableHead className="w-12">#</TableHead>
-                  <TableHead>Date &amp; time</TableHead>
-                  <TableHead>Event</TableHead>
-                  <TableHead>Serial</TableHead>
-                  <TableHead>Model</TableHead>
-                  <TableHead>Location</TableHead>
-                  <TableHead>Reference</TableHead>
-                  <TableHead>Performed by</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((row, index) => (
-                  <TableRow
-                    key={row.id}
-                    className={cn(index % 2 === 1 && "bg-table-stripe")}
-                  >
-                    <TableCell className="tabular-nums text-muted-foreground">
-                      {(result.page - 1) * result.pageSize + index + 1}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap text-muted-foreground">
-                      {formatSerialActivityTimestamp(row.timestamp)}
-                    </TableCell>
-                    <TableCell>
-                      <span
-                        className={cn(
-                          "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
-                          TYPE_BADGE_CLASS[row.type],
-                        )}
-                      >
-                        {SERIAL_ACTIVITY_LABELS[row.type]}
-                      </span>
-                    </TableCell>
-                    <TableCell className="font-medium tabular-nums">
-                      {row.serialNo}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {row.modelLabel}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {row.location ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      <div className="flex flex-col">
-                        {row.reference ? <span>{row.reference}</span> : null}
-                        {row.status ? (
-                          <span className="text-xs">{row.status}</span>
-                        ) : null}
-                        {row.amount ? (
-                          <span className="text-xs tabular-nums">
-                            {row.amount}
-                          </span>
-                        ) : null}
-                        {!row.reference && !row.status && !row.amount ? "—" : null}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {formatSerialActivityPerformedBy(row.performedBy)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </DataTableScroll>
-          <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground">
-            <span>
-              {result.total} event{result.total === 1 ? "" : "s"} · page{" "}
-              {result.page} of {result.totalPages}
-            </span>
-            <div className="flex gap-2">
-              {result.page > 1 ? (
-                <Button variant="outline" size="sm" asChild>
-                  <Link href={buildHref(result.page - 1, activeFilters)}>
-                    Previous
-                  </Link>
-                </Button>
-              ) : null}
-              {result.page < result.totalPages ? (
-                <Button variant="outline" size="sm" asChild>
-                  <Link href={buildHref(result.page + 1, activeFilters)}>
-                    Next
-                  </Link>
-                </Button>
-              ) : null}
+            <div className="flex gap-2 shrink-0">
+              <Button type="button" variant="outline" onClick={clearFilters}>
+                Clear
+              </Button>
+              <Button type="button" onClick={applyFilters}>
+                Apply filters
+              </Button>
             </div>
           </div>
-        </>
-      )}
-    </DataTableShell>
+        </div>
+      }
+      pagination={{
+        total: result.total,
+        page: result.page,
+        totalPages: result.totalPages,
+        itemLabel: "event",
+        buildHref: (page) => buildHref(page, activeFilters),
+      }}
+    >
+      <TableHeader>
+        <TableRow className="bg-muted/30 hover:bg-muted/30">
+          <GlobalTableHead className="w-12">#</GlobalTableHead>
+          <GlobalTableHead>Date &amp; time</GlobalTableHead>
+          <GlobalTableHead>Event</GlobalTableHead>
+          <GlobalTableHead>Serial</GlobalTableHead>
+          <GlobalTableHead>Model</GlobalTableHead>
+          <GlobalTableHead>Location</GlobalTableHead>
+          <GlobalTableHead>Reference</GlobalTableHead>
+          <GlobalTableHead>Performed by</GlobalTableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {rows.map((row, index) => (
+          <TableRow
+            key={row.id}
+            className={cn(index % 2 === 1 && "bg-table-stripe")}
+          >
+            <TableCell className="tabular-nums text-muted-foreground">
+              {(result.page - 1) * result.pageSize + index + 1}
+            </TableCell>
+            <TableCell className="whitespace-nowrap text-muted-foreground">
+              {formatSerialActivityTimestamp(row.timestamp)}
+            </TableCell>
+            <TableCell>
+              <span
+                className={cn(
+                  "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
+                  TYPE_BADGE_CLASS[row.type],
+                )}
+              >
+                {SERIAL_ACTIVITY_LABELS[row.type]}
+              </span>
+            </TableCell>
+            <TableCell className="font-medium tabular-nums">
+              {row.serialNo}
+            </TableCell>
+            <TableCell className="text-sm text-muted-foreground">
+              {row.modelLabel}
+            </TableCell>
+            <TableCell className="text-sm text-muted-foreground">
+              {row.location ?? "—"}
+            </TableCell>
+            <TableCell className="text-sm text-muted-foreground">
+              <div className="flex flex-col">
+                {row.reference ? <span>{row.reference}</span> : null}
+                {row.status ? (
+                  <span className="text-xs">{row.status}</span>
+                ) : null}
+                {row.amount ? (
+                  <span className="text-xs tabular-nums">
+                    {row.amount}
+                  </span>
+                ) : null}
+                {!row.reference && !row.status && !row.amount ? "—" : null}
+              </div>
+            </TableCell>
+            <TableCell className="text-sm text-muted-foreground">
+              {formatSerialActivityPerformedBy(row.performedBy)}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </GlobalDataTable>
   );
 }

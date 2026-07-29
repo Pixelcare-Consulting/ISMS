@@ -11,27 +11,24 @@ import { CreateBranchDialog } from "@/app/(app)/settings/branches/_components/cr
 import { EditBranchDialog } from "@/app/(app)/settings/branches/_components/edit-branch-dialog";
 import { ImportBranchesDialog } from "@/app/(app)/settings/branches/_components/import-branches-dialog";
 import {
-  AppDataTable,
-  AppDataTableBody,
   DeleteConfirmDialog,
   TableEmptyRow,
   TableIndexCell,
   TableIndexHead,
   TableRowActions,
   TableRowCheckbox,
-  TableSearchBar,
   TableSelectAllCheckbox,
   TableSelectionBadge,
   TableStatusBadge,
   uniqueSearchSuggestions,
+  useClientTablePagination,
   useTableSelection,
 } from "@/components/data-table";
+import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import {
-  Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
@@ -93,6 +90,14 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
   );
 
   const selection = useTableSelection(filtered.map((branch) => branch.id));
+  const {
+    page,
+    setPage,
+    total,
+    totalPages,
+    pageItems,
+    indexOffset,
+  } = useClientTablePagination(filtered, { pageSize: 10, resetKey: query });
 
   function handleDelete() {
     if (!deleting) return;
@@ -113,21 +118,22 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
 
   return (
     <>
-      <AppDataTable
-        shellHeader={
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <TableSearchBar
-              value={query}
-              onChange={setQuery}
-              placeholder="Search branches…"
-              suggestions={suggestions}
-              className="sm:max-w-sm"
-            />
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <TableSelectionBadge
-                count={selection.selectedCount}
-                onClear={selection.clearSelection}
-              />
+      <GlobalDataTable
+        stickyHeader
+        search={{
+          value: query,
+          onChange: setQuery,
+          placeholder: "Search branches…",
+          suggestions,
+        }}
+        toolbarLeading={
+          <TableSelectionBadge
+            count={selection.selectedCount}
+            onClear={selection.clearSelection}
+          />
+        }
+        toolbarActions={
+          <>
               <Button variant="outline" size="sm" onClick={() => setImporting(true)}>
                 <Upload className="mr-1 size-4" />
                 Import
@@ -138,12 +144,16 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
                   router.refresh();
                 }}
               />
-            </div>
-          </div>
+          </>
         }
+        pagination={{
+          total,
+          page,
+          totalPages,
+          itemLabel: "branch",
+          onPageChange: setPage,
+        }}
       >
-        <AppDataTableBody>
-          <Table>
             <TableHeader>
               <TableRow>
                 <TableSelectAllCheckbox
@@ -153,18 +163,18 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
                   aria-label="Select all branches"
                 />
                 <TableIndexHead />
-                <TableHead>SAP code</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Area</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="w-32" />
+                <GlobalTableHead>SAP code</GlobalTableHead>
+                <GlobalTableHead>Name</GlobalTableHead>
+                <GlobalTableHead>Area</GlobalTableHead>
+                <GlobalTableHead>Status</GlobalTableHead>
+                <GlobalTableHead className="w-32" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.length === 0 ? (
                 <TableEmptyRow colSpan={COLUMN_COUNT} message="No branches found" />
               ) : (
-                filtered.map((branch, index) => (
+                pageItems.map((branch, index) => (
                   <TableRow
                     key={branch.id}
                     data-state={selection.isRowSelected(branch.id) ? "selected" : undefined}
@@ -177,7 +187,7 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
                       }
                       aria-label={`Select branch ${branch.name}`}
                     />
-                    <TableIndexCell index={index + 1} />
+                    <TableIndexCell index={indexOffset + index + 1} />
                     <TableCell className="font-mono text-sm">{branch.sapCode}</TableCell>
                     <TableCell>{branch.name}</TableCell>
                     <TableCell>{branch.branchArea?.name ?? "—"}</TableCell>
@@ -198,9 +208,7 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
                 ))
               )}
             </TableBody>
-          </Table>
-        </AppDataTableBody>
-      </AppDataTable>
+      </GlobalDataTable>
       {editing ? (
         <EditBranchDialog
           branch={editing}

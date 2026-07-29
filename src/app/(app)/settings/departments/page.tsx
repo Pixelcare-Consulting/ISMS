@@ -14,6 +14,7 @@ export default async function SettingsDepartmentsPage() {
         title="Departments"
         tutorial={DEPARTMENTS_PAGE_TUTORIAL}
         description="Organize users by department. Default departments are created when you register a new organization."
+        sticky={false}
       />
       <DepartmentsTable departments={departments} />
     </div>

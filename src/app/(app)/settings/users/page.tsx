@@ -28,6 +28,7 @@ export default async function SettingsUsersPage() {
         title="Users"
         tutorial={USERS_PAGE_TUTORIAL}
         description="Manage users in your organization."
+        sticky={false}
       />
       <UsersTable
         users={users}

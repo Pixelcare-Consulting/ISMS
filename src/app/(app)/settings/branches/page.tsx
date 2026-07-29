@@ -15,6 +15,7 @@ export default async function SettingsBranchesPage() {
         title="Branches"
         tutorial={BRANCHES_PAGE_TUTORIAL}
         description="Manage dealer branch locations, SAP codes, and delivery areas."
+        sticky={false}
       />
       <BranchesKpisStrip rows={branches} />
       <BranchesTable branches={branches} />

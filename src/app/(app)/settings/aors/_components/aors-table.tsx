@@ -8,20 +8,19 @@ import { toast } from "sonner";
 import { SearchableMultiSelect } from "@/features/aors/components/searchable-multi-select";
 import { deleteAorAction, syncUserAorsAction } from "@/features/aors/actions/aor.actions";
 import {
-  AppDataTable,
-  AppDataTableBody,
   DeleteConfirmDialog,
   TableEmptyRow,
   TableIndexCell,
   TableIndexHead,
   TableRowActions,
-  TableSearchBar,
   TableSelectAllCheckbox,
   TableSelectionBadge,
   TableRowCheckbox,
   uniqueSearchSuggestions,
+  useClientTablePagination,
   useTableSelection,
 } from "@/components/data-table";
+import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -389,6 +388,14 @@ export function AorsTable({
   );
 
   const selection = useTableSelection(filtered.map((group) => group.userId));
+  const {
+    page,
+    setPage,
+    total,
+    totalPages,
+    pageItems,
+    indexOffset,
+  } = useClientTablePagination(filtered, { pageSize: 10, resetKey: query });
 
   const canAssign =
     Boolean(userId) &&
@@ -525,33 +532,36 @@ export function AorsTable({
 
   return (
     <div className="space-y-4">
-      <AppDataTable
-        shellHeader={
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-center">
-              <TableSearchBar
-                value={query}
-                onChange={setQuery}
-                placeholder="Search users or branches…"
-                suggestions={suggestions}
-                className="sm:max-w-sm"
-              />
-              <TableSelectionBadge
-                count={selection.selectedCount}
-                onClear={selection.clearSelection}
-              />
-            </div>
-            <Button onClick={openAssign} disabled={pending}>
-              <Plus className="size-4" />
-              Assign AOR
-            </Button>
-          </div>
+      <GlobalDataTable
+        stickyHeader
+        search={{
+          value: query,
+          onChange: setQuery,
+          placeholder: "Search users or branches…",
+          suggestions,
+        }}
+        toolbarLeading={
+          <TableSelectionBadge
+            count={selection.selectedCount}
+            onClear={selection.clearSelection}
+          />
+        }
+        toolbarActions={
+          <Button onClick={openAssign} disabled={pending}>
+            <Plus className="size-4" />
+            Assign AOR
+          </Button>
         }
         empty={rows.length === 0}
         emptyMessage="No AORs assigned yet."
+        pagination={{
+          total,
+          page,
+          totalPages,
+          itemLabel: "user",
+          onPageChange: setPage,
+        }}
       >
-        <AppDataTableBody>
-          <Table>
             <TableHeader>
               <TableRow>
                 <TableSelectAllCheckbox
@@ -561,18 +571,18 @@ export function AorsTable({
                   aria-label="Select all AOR users"
                 />
                 <TableIndexHead />
-                <TableHead>User</TableHead>
-                <TableHead>Branches</TableHead>
-                <TableHead>Assigned at</TableHead>
-                <TableHead>Assigned by</TableHead>
-                <TableHead className="w-16" />
+                <GlobalTableHead>User</GlobalTableHead>
+                <GlobalTableHead>Branches</GlobalTableHead>
+                <GlobalTableHead>Assigned at</GlobalTableHead>
+                <GlobalTableHead>Assigned by</GlobalTableHead>
+                <GlobalTableHead className="w-16" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.length === 0 ? (
                 <TableEmptyRow colSpan={7} message="No AORs match your search." />
               ) : (
-                filtered.map((group, index) => {
+                pageItems.map((group, index) => {
                   const branchAors = group.aors.filter((aor) => aor.branch);
                   const branchCount = branchAors.length;
                   const visibleAors = branchAors.slice(0, MAX_VISIBLE_BRANCHES);
@@ -593,7 +603,7 @@ export function AorsTable({
                         }
                         aria-label={`Select AOR user ${userLabel}`}
                       />
-                      <TableIndexCell index={index + 1} />
+                      <TableIndexCell index={indexOffset + index + 1} />
                       <TableCell>
                         <div className="font-medium">{userLabel}</div>
                         {group.user.name ? (
@@ -653,9 +663,7 @@ export function AorsTable({
                 })
               )}
             </TableBody>
-          </Table>
-        </AppDataTableBody>
-      </AppDataTable>
+      </GlobalDataTable>
 
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
         <SheetContent

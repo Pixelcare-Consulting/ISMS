@@ -15,6 +15,7 @@ export default async function SettingsDealersPage() {
         title="Dealers"
         tutorial={DEALERS_PAGE_TUTORIAL}
         description="Dealer master data with area, type, and mode of payment."
+        sticky={false}
       />
       <DealersKpisStrip rows={dealers} />
       <DealersTable dealers={dealers} />

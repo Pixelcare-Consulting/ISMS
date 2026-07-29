@@ -5,26 +5,23 @@ import { useMemo, useState } from "react";
 import { ChevronRight } from "lucide-react";
 
 import {
-  AppDataTable,
-  AppDataTableBody,
   DataTableEmptyState,
   TableEmptyRow,
   TableIndexCell,
   TableIndexHead,
   TableRowActions,
   TableRowCheckbox,
-  TableSearchBar,
   TableSelectAllCheckbox,
   TableSelectionBadge,
   uniqueSearchSuggestions,
+  useClientTablePagination,
   useTableSelection,
 } from "@/components/data-table";
+import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import {
-  Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
@@ -64,33 +61,45 @@ export function PlanogramBranchesTable({ branches }: PlanogramBranchesTableProps
   );
 
   const selection = useTableSelection(filtered.map((branch) => branch.id));
+  const {
+    page,
+    setPage,
+    total,
+    totalPages,
+    pageItems,
+    indexOffset,
+  } = useClientTablePagination(filtered, { pageSize: 10, resetKey: query });
 
   if (branches.length === 0) {
     return <DataTableEmptyState message="No branches available for your account." />;
   }
 
   return (
-    <AppDataTable
-      title="Branches"
-      shellHeader={
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <TableSearchBar
-            value={query}
-            onChange={setQuery}
-            placeholder="Search by branch name or SAP code…"
-            suggestions={suggestions}
-            className="sm:max-w-sm"
-          />
+    <div className="space-y-4">
+      <h2 className="text-lg font-semibold">Branches</h2>
+      <GlobalDataTable
+        stickyHeader
+        search={{
+          value: query,
+          onChange: setQuery,
+          placeholder: "Search by branch name or SAP code…",
+          suggestions,
+        }}
+        toolbarLeading={
           <TableSelectionBadge
             count={selection.selectedCount}
             onClear={selection.clearSelection}
             size="sm"
           />
-        </div>
-      }
-    >
-      <AppDataTableBody>
-        <Table>
+        }
+        pagination={{
+          total,
+          page,
+          totalPages,
+          itemLabel: "branch",
+          onPageChange: setPage,
+        }}
+      >
           <TableHeader>
             <TableRow className="bg-muted/30 hover:bg-muted/30">
               <TableSelectAllCheckbox
@@ -100,9 +109,9 @@ export function PlanogramBranchesTable({ branches }: PlanogramBranchesTableProps
                 aria-label="Select all branches"
               />
               <TableIndexHead />
-              <TableHead className="w-[45%]">Branch</TableHead>
-              <TableHead className="w-[35%]">SAP code</TableHead>
-              <TableHead className="w-[20%] text-right"> </TableHead>
+              <GlobalTableHead className="w-[45%]">Branch</GlobalTableHead>
+              <GlobalTableHead className="w-[35%]">SAP code</GlobalTableHead>
+              <GlobalTableHead className="w-[20%] text-right"> </GlobalTableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -112,7 +121,7 @@ export function PlanogramBranchesTable({ branches }: PlanogramBranchesTableProps
                 message="No branches match your search."
               />
             ) : (
-              filtered.map((branch, index) => (
+              pageItems.map((branch, index) => (
                 <TableRow
                   key={branch.id}
                   data-state={selection.isRowSelected(branch.id) ? "selected" : undefined}
@@ -123,7 +132,7 @@ export function PlanogramBranchesTable({ branches }: PlanogramBranchesTableProps
                     onCheckedChange={(checked) => selection.toggleRow(branch.id, checked)}
                     aria-label={`Select branch ${branch.name}`}
                   />
-                  <TableIndexCell index={index + 1} />
+                  <TableIndexCell index={indexOffset + index + 1} />
                   <TableCell className="font-medium">{branch.name}</TableCell>
                   <TableCell className="font-mono text-sm text-muted-foreground">
                     {branch.sapCode}
@@ -140,8 +149,7 @@ export function PlanogramBranchesTable({ branches }: PlanogramBranchesTableProps
               ))
             )}
           </TableBody>
-        </Table>
-      </AppDataTableBody>
-    </AppDataTable>
+      </GlobalDataTable>
+    </div>
   );
 }

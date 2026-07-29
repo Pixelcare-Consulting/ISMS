@@ -10,25 +10,22 @@ import { CreateDepartmentDialog } from "@/app/(app)/settings/departments/_compon
 import { EditDepartmentDialog } from "@/app/(app)/settings/departments/_components/edit-department-dialog";
 import { Badge } from "@/components/ui/badge";
 import {
-  AppDataTable,
-  AppDataTableBody,
   DeleteConfirmDialog,
   TableEmptyRow,
   TableIndexCell,
   TableIndexHead,
   TableRowActions,
   TableRowCheckbox,
-  TableSearchBar,
   TableSelectAllCheckbox,
   TableSelectionBadge,
   uniqueSearchSuggestions,
+  useClientTablePagination,
   useTableSelection,
 } from "@/components/data-table";
+import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
 import {
-  Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
@@ -71,6 +68,14 @@ export function DepartmentsTable({ departments }: DepartmentsTableProps) {
   );
 
   const selection = useTableSelection(filtered.map((department) => department.id));
+  const {
+    page,
+    setPage,
+    total,
+    totalPages,
+    pageItems,
+    indexOffset,
+  } = useClientTablePagination(filtered, { pageSize: 10, resetKey: query });
 
   function handleDeleteConfirm() {
     if (!deleting) return;
@@ -104,30 +109,31 @@ export function DepartmentsTable({ departments }: DepartmentsTableProps) {
 
   return (
     <>
-      <AppDataTable
-        shellHeader={
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <TableSearchBar
-              value={query}
-              onChange={setQuery}
-              placeholder="Search departments…"
-              suggestions={suggestions}
-              className="sm:max-w-sm"
-            />
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <TableSelectionBadge
-                count={selection.selectedCount}
-                onClear={selection.clearSelection}
-              />
-              {createAction}
-            </div>
-          </div>
+      <GlobalDataTable
+        stickyHeader
+        search={{
+          value: query,
+          onChange: setQuery,
+          placeholder: "Search departments…",
+          suggestions,
+        }}
+        toolbarLeading={
+          <TableSelectionBadge
+            count={selection.selectedCount}
+            onClear={selection.clearSelection}
+          />
         }
+        toolbarActions={createAction}
         empty={rows.length === 0}
         emptyMessage="No departments yet. Add one or register a new organization to get defaults."
+        pagination={{
+          total,
+          page,
+          totalPages,
+          itemLabel: "department",
+          onPageChange: setPage,
+        }}
       >
-        <AppDataTableBody>
-          <Table>
             <TableHeader>
               <TableRow>
                 <TableSelectAllCheckbox
@@ -137,9 +143,9 @@ export function DepartmentsTable({ departments }: DepartmentsTableProps) {
                   aria-label="Select all departments"
                 />
                 <TableIndexHead />
-                <TableHead>Name</TableHead>
-                <TableHead className="w-24 text-right">Users</TableHead>
-                <TableHead className="w-28 text-right">Actions</TableHead>
+                <GlobalTableHead>Name</GlobalTableHead>
+                <GlobalTableHead className="w-24 text-right">Users</GlobalTableHead>
+                <GlobalTableHead className="w-28 text-right">Actions</GlobalTableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -149,7 +155,7 @@ export function DepartmentsTable({ departments }: DepartmentsTableProps) {
                   message="No departments match your search."
                 />
               ) : (
-                filtered.map((department, index) => (
+                pageItems.map((department, index) => (
                   <TableRow
                     key={department.id}
                     data-state={
@@ -164,7 +170,7 @@ export function DepartmentsTable({ departments }: DepartmentsTableProps) {
                       }
                       aria-label={`Select department ${department.name}`}
                     />
-                    <TableIndexCell index={index + 1} />
+                    <TableIndexCell index={indexOffset + index + 1} />
                     <TableCell className="font-medium">{department.name}</TableCell>
                     <TableCell className="text-right">
                       <Badge variant="secondary">{department._count.users}</Badge>
@@ -179,9 +185,7 @@ export function DepartmentsTable({ departments }: DepartmentsTableProps) {
                 ))
               )}
             </TableBody>
-          </Table>
-        </AppDataTableBody>
-      </AppDataTable>
+      </GlobalDataTable>
 
       <EditDepartmentDialog
         department={editing}

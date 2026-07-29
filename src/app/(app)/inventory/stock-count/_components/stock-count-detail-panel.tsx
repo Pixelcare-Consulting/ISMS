@@ -13,6 +13,8 @@ import {
   requestStockAdjustmentAction,
   startStockCountAction,
 } from "@/features/stock-audit/actions/stock-audit.actions";
+import { StockCountPermissionDialog } from "@/app/(app)/inventory/stock-count/_components/stock-count-permission-dialog";
+import { STOCK_COUNT_PERMISSION_MESSAGE } from "@/features/stock-audit/constants/stock-count-permissions";
 import {
   STOCK_COUNT_SESSION_LABELS,
   STOCK_VARIANCE_STATUS_LABELS,
@@ -63,6 +65,7 @@ export function StockCountDetailPanel({ session }: StockCountDetailPanelProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [investigationNotes, setInvestigationNotes] = useState<Record<string, string>>({});
+  const [permissionDialogOpen, setPermissionDialogOpen] = useState(false);
   const lineSelection = useTableSelection(session.lines.map((line) => line.id));
   const varianceSelection = useTableSelection(session.variances.map((variance) => variance.id));
 
@@ -70,7 +73,11 @@ export function StockCountDetailPanel({ session }: StockCountDetailPanelProps) {
     startTransition(async () => {
       const result = await action();
       if (result.error) {
-        toast.error(result.error);
+        if (result.error === STOCK_COUNT_PERMISSION_MESSAGE) {
+          setPermissionDialogOpen(true);
+        } else {
+          toast.error(result.error);
+        }
         return;
       }
       toast.success(message);
@@ -322,6 +329,10 @@ export function StockCountDetailPanel({ session }: StockCountDetailPanelProps) {
           </GlobalDataTable>
         </>
       )}
+      <StockCountPermissionDialog
+        open={permissionDialogOpen}
+        onOpenChange={setPermissionDialogOpen}
+      />
     </div>
   );
 }
