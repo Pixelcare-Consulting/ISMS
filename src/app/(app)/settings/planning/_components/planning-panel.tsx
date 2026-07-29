@@ -19,6 +19,7 @@ import { AllocationGapsTable } from "@/features/forecast/components/allocation-g
 
 import { AppDataTable, AppDataTableBody } from "@/components/data-table";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
+import { KpiCard } from "@/lib/kpi-cards";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -146,13 +147,13 @@ export function PlanningPanel({
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Active period" value={period?.label ?? "None"} />
+        <KpiCard label="Active period" value={period?.label ?? "None"} />
 
-        <StatCard label="Allocation gaps" value={String(gapCount)} />
+        <KpiCard label="Allocation gaps" value={String(gapCount)} />
 
-        <StatCard label="Draft suggestions" value={String(draftOrders)} />
+        <KpiCard label="Draft suggestions" value={String(draftOrders)} />
 
-        <StatCard
+        <KpiCard
           label="Allocation rows"
           value={String(period?._count?.allocations ?? 0)}
         />
@@ -297,16 +298,6 @@ export function PlanningPanel({
           to begin.
         </p>
       )}
-    </div>
-  );
-}
-
-function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border bg-card p-4 shadow-sm">
-      <p className="text-sm text-muted-foreground">{label}</p>
-
-      <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
     </div>
   );
 }

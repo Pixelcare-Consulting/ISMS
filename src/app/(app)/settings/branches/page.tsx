@@ -2,6 +2,7 @@ import { listBranchesAction } from "@/features/branches/actions/branch.actions";
 import { requirePermission } from "@/lib/auth/permissions";
 import { BRANCHES_PAGE_TUTORIAL } from "@/content/page-tutorials/branches";
 import { PageHeader } from "@/app/(app)/_components/page-header";
+import { BranchesKpisStrip } from "@/app/(app)/settings/branches/_components/branches-kpis";
 import { BranchesTable } from "@/app/(app)/settings/branches/_components/branches-table";
 
 export default async function SettingsBranchesPage() {
@@ -15,6 +16,7 @@ export default async function SettingsBranchesPage() {
         tutorial={BRANCHES_PAGE_TUTORIAL}
         description="Manage dealer branch locations, SAP codes, and delivery areas."
       />
+      <BranchesKpisStrip rows={branches} />
       <BranchesTable branches={branches} />
     </div>
   );

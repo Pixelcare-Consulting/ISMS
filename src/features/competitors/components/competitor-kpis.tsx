@@ -1,4 +1,5 @@
 import type { CompetitorKpis } from "@/features/competitors/services/competitor.service";
+import { KpiCard } from "@/lib/kpi-cards";
 import { formatPeso } from "@/utils/format-currency";
 
 interface CompetitorKpisStripProps {
@@ -18,10 +19,7 @@ export function CompetitorKpisStrip({ kpis }: CompetitorKpisStripProps) {
   return (
     <div className="grid gap-4 sm:grid-cols-3">
       {items.map((item) => (
-        <div key={item.label} className="rounded-xl border bg-card p-4 shadow-sm">
-          <p className="text-sm text-muted-foreground">{item.label}</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums">{item.value}</p>
-        </div>
+        <KpiCard key={item.label} label={item.label} value={item.value} />
       ))}
     </div>
   );

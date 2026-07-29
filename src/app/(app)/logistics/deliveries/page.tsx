@@ -1,4 +1,8 @@
-import { listDeliveriesAction } from "@/features/logistics/actions/logistics.actions";
+import {
+  getDeliveryKpisAction,
+  listDeliveriesAction,
+} from "@/features/logistics/actions/logistics.actions";
+import { DeliveryKpisStrip } from "@/features/logistics/components/delivery-kpis";
 import { requireAnyPermission } from "@/lib/auth/permissions";
 import { SectionPageLead } from "@/components/navigation/section-page-lead";
 import { DeliveriesPanel } from "@/app/(app)/logistics/_components/deliveries-panel";
@@ -11,13 +15,17 @@ export default async function DeliveriesPage({ searchParams }: DeliveriesPagePro
   await requireAnyPermission(["logistics.manage", "orders.create", "orders.view"]);
   const params = await searchParams;
   const page = Number(params.page) || 1;
-  const deliveries = await listDeliveriesAction({ page });
+  const [deliveries, kpis] = await Promise.all([
+    listDeliveriesAction({ page }),
+    getDeliveryKpisAction(),
+  ]);
 
   return (
     <div className="space-y-4">
       <SectionPageLead>
         Deliveries sync from approved orders (SAP ITR/SO). Branch PS accepts DIT → Stock.
       </SectionPageLead>
+      <DeliveryKpisStrip kpis={kpis} />
       <DeliveriesPanel deliveries={deliveries} />
     </div>
   );

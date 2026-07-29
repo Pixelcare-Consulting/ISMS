@@ -1,4 +1,8 @@
-import { listTransfersAction } from "@/features/logistics/actions/logistics.actions";
+import {
+  getTransferKpisAction,
+  listTransfersAction,
+} from "@/features/logistics/actions/logistics.actions";
+import { TransferKpisStrip } from "@/features/logistics/components/transfer-kpis";
 import { requireAnyPermission } from "@/lib/auth/permissions";
 import { SectionPageLead } from "@/components/navigation/section-page-lead";
 import { TransfersPanel } from "@/app/(app)/logistics/_components/transfers-panel";
@@ -11,13 +15,17 @@ export default async function TransfersPage({ searchParams }: TransfersPageProps
   await requireAnyPermission(["logistics.manage", "orders.create", "orders.view"]);
   const params = await searchParams;
   const page = Number(params.page) || 1;
-  const transfers = await listTransfersAction({ page });
+  const [transfers, kpis] = await Promise.all([
+    listTransfersAction({ page }),
+    getTransferKpisAction(),
+  ]);
 
   return (
     <div className="space-y-4">
       <SectionPageLead>
         PS requests → TL approves → logistics executes → receiving branch accepts.
       </SectionPageLead>
+      <TransferKpisStrip kpis={kpis} />
       <TransfersPanel transfers={transfers} />
     </div>
   );

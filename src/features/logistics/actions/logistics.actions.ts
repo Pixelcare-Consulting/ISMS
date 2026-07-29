@@ -81,6 +81,59 @@ async function updateInventoryStatusForSerials(input: {
   }
 }
 
+export interface LogisticsKpis {
+  total: number;
+  statuses: { code: string; name: string; count: number }[];
+}
+
+async function buildLogisticsKpis(
+  tenantId: string,
+  category: "delivery_workflow" | "transfer_workflow" | "pullout_workflow",
+  countByStatus: () => Promise<{ statusCodeId: string; _count: { id: number } }[]>,
+  countAll: () => Promise<number>,
+): Promise<LogisticsKpis> {
+  const codes = await reasonStatusService.listActiveCodes(tenantId, category);
+  const [statusGroups, total] = await Promise.all([countByStatus(), countAll()]);
+  const countByCodeId = new Map(statusGroups.map((g) => [g.statusCodeId, g._count.id]));
+  return {
+    total,
+    statuses: codes.map((c) => ({ code: c.code, name: c.name, count: countByCodeId.get(c.id) ?? 0 })),
+  };
+}
+
+export async function getDeliveryKpisAction(): Promise<LogisticsKpis> {
+  const session = await requireAnyPermission(["logistics.manage", "orders.create", "orders.view"]);
+  const tid = session.user.tenantId;
+  return buildLogisticsKpis(
+    tid,
+    "delivery_workflow",
+    () => logisticsRepository.countDeliveriesByStatus(tid),
+    () => logisticsRepository.countAllDeliveries(tid),
+  );
+}
+
+export async function getTransferKpisAction(): Promise<LogisticsKpis> {
+  const session = await requireAnyPermission(["logistics.manage", "orders.create", "orders.view"]);
+  const tid = session.user.tenantId;
+  return buildLogisticsKpis(
+    tid,
+    "transfer_workflow",
+    () => logisticsRepository.countTransfersByStatus(tid),
+    () => logisticsRepository.countAllTransfers(tid),
+  );
+}
+
+export async function getPulloutKpisAction(): Promise<LogisticsKpis> {
+  const session = await requireAnyPermission(["logistics.manage", "orders.create", "orders.view"]);
+  const tid = session.user.tenantId;
+  return buildLogisticsKpis(
+    tid,
+    "pullout_workflow",
+    () => logisticsRepository.countPulloutsByStatus(tid),
+    () => logisticsRepository.countAllPullouts(tid),
+  );
+}
+
 export async function listDeliveriesAction(input?: { page?: number }) {
   const session = await requireAnyPermission(["logistics.manage", "orders.create", "orders.view"]);
   return logisticsRepository.listDeliveries(session.user.tenantId, {
