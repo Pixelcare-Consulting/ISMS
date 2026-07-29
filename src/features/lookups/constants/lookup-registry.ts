@@ -52,6 +52,7 @@ export type LookupEntityKey =
   | "paymentType"
   | "modeOfPayment"
   | "promoType"
+  | "competitor"
   | "dealerType"
   | "customerDeliveryMethod"
   | "problemDescription"
@@ -213,6 +214,15 @@ export const LOOKUP_ENTITIES: Record<LookupEntityKey, LookupEntityConfig> = {
     group: "Sales",
     auditEntity: "PromoType",
     auditKey: "promo_type",
+  },
+  competitor: {
+    key: "competitor",
+    label: "Competitors",
+    singular: "competitor",
+    slug: "competitors",
+    group: "Sales",
+    auditEntity: "Competitor",
+    auditKey: "competitor",
   },
   dealerType: {
     key: "dealerType",

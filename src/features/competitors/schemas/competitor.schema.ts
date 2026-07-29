@@ -7,6 +7,14 @@ const optionalId = z
   .nullable()
   .transform((v) => (v && v.length > 0 ? v : null));
 
+const optionalPromotion = z
+  .string()
+  .trim()
+  .max(255)
+  .optional()
+  .nullable()
+  .transform((v) => (v && v.length > 0 ? v : null));
+
 export const competitorListFilterSchema = z.object({
   branchId: optionalId,
   brandId: optionalId,
@@ -16,8 +24,7 @@ export const competitorListFilterSchema = z.object({
 });
 
 export const createCompetitorObservationSchema = z.object({
-  competitorName: z.string().trim().min(1, "Competitor name is required").max(120),
-  branchId: optionalId,
+  competitorId: z.string().trim().min(1, "Competitor is required"),
   brandId: optionalId,
   modelId: optionalId,
   price: z
@@ -28,6 +35,7 @@ export const createCompetitorObservationSchema = z.object({
       return Number.isFinite(n) ? n : null;
     })
     .pipe(z.number().nonnegative().nullable()),
+  promotion: optionalPromotion,
   notes: z
     .string()
     .trim()
