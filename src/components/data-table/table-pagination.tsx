@@ -181,11 +181,6 @@ export function TablePagination({
             Last
           </PaginationControl>
         ) : null}
-        {showLast ? (
-          <Button variant="outline" size="sm" asChild>
-            <Link href={buildHref(resolvedTotalPages)}>Last</Link>
-          </Button>
-        ) : null}
       </div>
     </div>
   );
