@@ -14,6 +14,7 @@ export default async function PlanogramIndexPage() {
         title="Planogram"
         tutorial={PLANOGRAM_PAGE_TUTORIAL}
         description="Authorized SKUs and MIL thresholds per branch."
+        sticky={false}
       />
       <PlanogramBranchesTable branches={branches} />
     </div>

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { inventoryService } from "@/features/inventory/services/inventory.service";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
@@ -14,17 +15,19 @@ function isUnrestricted(permissions: string[] | undefined) {
 
 export async function listInventoryAction(input?: {
   page?: number;
+  limit?: number;
   branchId?: string;
   sku?: string;
   offPlanogram?: boolean;
 }) {
   const session = await requirePermission("inventory.view");
   const unrestricted = isUnrestricted(session.user.permissions);
+  const limit = parseTablePageSize(input?.limit);
   const result = await inventoryService.listForUser(
     session.user.tenantId,
     session.user.id,
     unrestricted,
-    { page: input?.page },
+    { page: input?.page, limit },
     {
       branchId: input?.branchId,
       skuCode: input?.sku,
@@ -53,6 +56,16 @@ export async function listInventoryAction(input?: {
 export async function listInventoryStatusOptionsAction() {
   const session = await requirePermission("inventory.view");
   return reasonStatusService.listActiveCodes(session.user.tenantId, "inventory_system");
+}
+
+export async function getInventoryKpisAction() {
+  const session = await requirePermission("inventory.view");
+  const unrestricted = isUnrestricted(session.user.permissions);
+  return inventoryService.getKpis(
+    session.user.tenantId,
+    session.user.id,
+    unrestricted,
+  );
 }
 
 export async function updateInventoryStatusAction(

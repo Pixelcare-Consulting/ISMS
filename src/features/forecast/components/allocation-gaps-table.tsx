@@ -6,18 +6,14 @@ import { useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { AppDataTable, AppDataTableBody } from "@/components/data-table";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
-import { TablePagination } from "@/components/data-table/table-pagination";
-import { TableSearchBar, uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
-import { Label } from "@/components/ui/label";
+import { uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
+import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
-  Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
@@ -124,85 +120,100 @@ export function AllocationGapsTable({
   }
 
   return (
-  <>
-      <AppDataTable
-        title="Allocation gaps"
-        leading={
-          result.total > 0 ? (
-            <Badge variant="outline" className="text-amber-600">
-              {result.total} SKU gap{result.total === 1 ? "" : "s"}
-            </Badge>
-          ) : null
+      <GlobalDataTable
+        stickyHeader
+        toolbarLeading={
+          <>
+            <span className="text-sm font-medium">Allocation gaps</span>
+            {result.total > 0 ? (
+              <Badge variant="outline" className="text-amber-600">
+                {result.total} SKU gap{result.total === 1 ? "" : "s"}
+              </Badge>
+            ) : null}
+            <SearchableSelect
+              label="Branch"
+              id="gaps-branch"
+              options={[
+                { id: "all", label: "All branches" },
+                ...branches.map((b) => ({ id: b.id, label: b.name })),
+              ]}
+              value={branch || "all"}
+              onChange={(value) => setBranch(value === "all" ? "" : value)}
+              searchPlaceholder="Search branches…"
+            />
+          </>
         }
-        shellHeader={
-          <div className="space-y-3">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-              <div className="grid flex-1 gap-3 sm:grid-cols-2">
-                <SearchableSelect
-                  label="Branch"
-                  id="gaps-branch"
-                  options={[
-                    { id: "all", label: "All branches" },
-                    ...branches.map((b) => ({ id: b.id, label: b.name })),
-                  ]}
-                  value={branch || "all"}
-                  onChange={(value) => setBranch(value === "all" ? "" : value)}
-                  searchPlaceholder="Search branches…"
-                />
-                <div className="space-y-1.5">
-                  <Label htmlFor="gaps-q">Search</Label>
-                  <TableSearchBar
-                    value={q}
-                    onChange={setQ}
-                    placeholder="Branch or SKU…"
-                    suggestions={suggestions}
-                  />
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <Button type="button" size="sm" onClick={applyFilters}>
-                  Apply
-                </Button>
-                {hasActiveFilters ? (
-                  <Button type="button" size="sm" variant="outline" onClick={clearFilters}>
-                    Clear
-                  </Button>
-                ) : null}
-              </div>
-            </div>
-          </div>
-        }
-        empty={result.items.length === 0}
-        emptyMessage={emptyMessage}
-      >
-        <AppDataTableBody>
-          {selection.selectedCount > 0 ? (
-            <div className="px-4 pb-2">
+        search={{
+          value: q,
+          onChange: setQ,
+          placeholder: "Branch or SKU…",
+          suggestions,
+        }}
+        toolbarActions={
+          <>
+            {selection.selectedCount > 0 ? (
               <Button variant="secondary" size="sm" onClick={selection.clearSelection}>
                 {selection.selectedCount} selected
               </Button>
-            </div>
-          ) : null}
-          <Table>
+            ) : null}
+            <Button type="button" size="sm" onClick={applyFilters}>
+              Apply
+            </Button>
+            {hasActiveFilters ? (
+              <Button type="button" size="sm" variant="outline" onClick={clearFilters}>
+                Clear
+              </Button>
+            ) : null}
+          </>
+        }
+        empty={result.items.length === 0}
+        emptyMessage={emptyMessage}
+        banner={
+          hasActiveFilters ? (
+            <p className="border-b px-4 py-2 text-xs text-muted-foreground">
+              Filtered results.
+              <Button variant="link" className="ml-1 h-auto p-0 text-xs" asChild>
+                <Link href={buildAllocationGapsHref(basePath, 1, pageParam, {}, preserveParams)}>
+                  Show all gaps
+                </Link>
+              </Button>
+            </p>
+          ) : null
+        }
+        pagination={{
+          total: result.total,
+          page: result.page,
+          totalPages: result.totalPages,
+          itemLabel: "gap",
+          buildHref: (page) =>
+            buildAllocationGapsHref(
+              basePath,
+              page,
+              pageParam,
+              { branch: currentBranch, q: currentQ },
+              preserveParams,
+            ),
+        }}
+      >
             <TableHeader>
               <TableRow>
-                <TableHead className="w-10">
+                <GlobalTableHead className="w-10">
                   <Checkbox
                     checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
                     onCheckedChange={(checked) => selection.toggleAll(checked === true)}
                     aria-label="Select all allocation gaps"
                   />
-                </TableHead>
-                <TableHead className="w-12">#</TableHead>
-                <TableHead>Branch</TableHead>
-                <TableHead>SKU</TableHead>
+                </GlobalTableHead>
+                <GlobalTableHead className="w-12">#</GlobalTableHead>
+                <GlobalTableHead>Branch</GlobalTableHead>
+                <GlobalTableHead>SKU</GlobalTableHead>
                 {showStockColumns ? (
                   <>
-                    <TableHead>Stock</TableHead>
-                    <TableHead>Max</TableHead>
+                    <GlobalTableHead>Stock</GlobalTableHead>
+                    <GlobalTableHead>Max</GlobalTableHead>
                   </>
                 ) : null}
-                <TableHead>{suggestedQtyLabel ? "Suggested qty" : "Gap"}</TableHead>
+                <GlobalTableHead>{suggestedQtyLabel ? "Suggested qty" : "Gap"}</GlobalTableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -228,37 +239,6 @@ export function AllocationGapsTable({
                 </TableRow>
               ))}
             </TableBody>
-          </Table>
-        </AppDataTableBody>
-        <TablePagination
-          meta={{
-            total: result.total,
-            page: result.page,
-            totalPages: result.totalPages,
-            itemLabel: "gap",
-          }}
-          buildHref={(page) =>
-            buildAllocationGapsHref(
-              basePath,
-              page,
-              pageParam,
-              { branch: currentBranch, q: currentQ },
-              preserveParams,
-            )
-          }
-        />
-      </AppDataTable>
-
-      {hasActiveFilters ? (
-        <p className="text-xs text-muted-foreground">
-          Filtered results.
-          <Button variant="link" className="ml-1 h-auto p-0 text-xs" asChild>
-            <Link href={buildAllocationGapsHref(basePath, 1, pageParam, {}, preserveParams)}>
-              Show all gaps
-            </Link>
-          </Button>
-        </p>
-      ) : null}
-  </>
+      </GlobalDataTable>
   );
 }

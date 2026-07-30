@@ -2,6 +2,7 @@ import { listWarehousesAction } from "@/features/warehouses/actions/warehouse.ac
 import { requirePermission } from "@/lib/auth/permissions";
 import { WAREHOUSES_PAGE_TUTORIAL } from "@/content/page-tutorials/warehouses";
 import { PageHeader } from "@/app/(app)/_components/page-header";
+import { WarehousesKpisStrip } from "@/app/(app)/settings/warehouses/_components/warehouses-kpis";
 import { WarehousesTable } from "@/app/(app)/settings/warehouses/_components/warehouses-table";
 
 export default async function SettingsWarehousesPage() {
@@ -14,7 +15,9 @@ export default async function SettingsWarehousesPage() {
         title="Warehouses"
         tutorial={WAREHOUSES_PAGE_TUTORIAL}
         description="Manage warehouse locations and storage aisles (CSV step 4)."
+        sticky={false}
       />
+      <WarehousesKpisStrip rows={warehouses} />
       <WarehousesTable warehouses={warehouses} />
     </div>
   );

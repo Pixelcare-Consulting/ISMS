@@ -15,10 +15,16 @@ import {
 } from "@/features/serial-numbers/actions/serial-number.actions";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import {
-  DataTableEmpty,
-  DataTableScroll,
-  DataTableShell,
-} from "@/components/data-table/data-table-shell";
+  TableIndexCell,
+  TableIndexHead,
+  uniqueSearchSuggestions,
+} from "@/components/data-table";
+import {
+  DEFAULT_TABLE_PAGE_SIZE,
+  parseTablePageSize,
+  type TablePageSize,
+} from "@/components/data-table/table-page-size";
+import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,10 +38,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
-  Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
@@ -75,10 +79,12 @@ interface SerialNumberTableProps {
 
 function buildHref(
   page: number,
+  limit: number,
   filters: { q?: string; status?: LookupRecordStatus } = {},
 ): string {
   const params = new URLSearchParams();
   if (page > 1) params.set("page", String(page));
+  if (limit !== DEFAULT_TABLE_PAGE_SIZE) params.set("limit", String(limit));
   if (filters.q) params.set("q", filters.q);
   if (filters.status) params.set("status", filters.status);
   const query = params.toString();
@@ -100,19 +106,33 @@ export function SerialNumberTable({
   const [formSerialNo, setFormSerialNo] = useState("");
   const [formModelId, setFormModelId] = useState("");
   const [pending, startTransition] = useTransition();
+  const pageSize = parseTablePageSize(result.limit);
 
   const rows = result.items;
   const activeFilters = { q: currentSearch, status: currentStatus };
   const hasActiveFilters = Boolean(currentSearch || currentStatus);
 
+  function handlePageSizeChange(limit: TablePageSize) {
+    router.push(buildHref(1, limit, activeFilters));
+  }
+
   const modelLabelById = useMemo(
     () => new Map(modelOptions.map((m) => [m.id, `${m.skuCode} — ${m.name}`])),
     [modelOptions],
   );
+  const suggestions = useMemo(
+    () =>
+      uniqueSearchSuggestions(
+        result.items.map((row) => row.serialNo),
+        result.items.map((row) => row.model.skuCode),
+        result.items.map((row) => row.model.name),
+      ),
+    [result.items],
+  );
 
   function applyFilters() {
     router.push(
-      buildHref(1, {
+      buildHref(1, pageSize, {
         q: search.trim() || undefined,
         status: (status || undefined) as LookupRecordStatus | undefined,
       }),
@@ -173,82 +193,82 @@ export function SerialNumberTable({
   }
 
   return (
-    <DataTableShell>
-      <div className="flex flex-col gap-3 border-b px-4 py-4 sm:flex-row sm:items-end sm:justify-between">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <div className="space-y-2">
-            <Label htmlFor="serial-search">Search</Label>
-            <Input
-              id="serial-search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") applyFilters();
-              }}
-              placeholder="Serial no, SKU, or model…"
-              className="sm:w-64"
+    <>
+      <GlobalDataTable
+        stickyHeader
+        scrollable
+        search={{
+          value: search,
+          onChange: setSearch,
+          placeholder: "Serial no, SKU, or model…",
+          suggestions,
+        }}
+        toolbarActions={
+          <>
+            <SearchableSelect
+              id="serial-status"
+              className="sm:w-40"
+              options={[
+                { id: "all", label: "All statuses" },
+                { id: "active", label: "Active" },
+                { id: "inactive", label: "Inactive" },
+              ]}
+              value={status || "all"}
+              onChange={(value) => setStatus(value === "all" ? "" : value)}
+              searchPlaceholder="Search status…"
             />
-          </div>
-          <SearchableSelect
-            label="Status"
-            id="serial-status"
-            className="sm:w-40"
-            options={[
-              { id: "all", label: "All statuses" },
-              { id: "active", label: "Active" },
-              { id: "inactive", label: "Inactive" },
-            ]}
-            value={status || "all"}
-            onChange={(value) => setStatus(value === "all" ? "" : value)}
-            searchPlaceholder="Search status…"
-          />
-          <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={clearFilters}>
-              Clear
-            </Button>
-            <Button type="button" onClick={applyFilters}>
-              Apply
-            </Button>
-          </div>
-        </div>
-        {canManage ? (
-          <Button onClick={openCreate}>
-            <Plus className="size-4" /> Add serial
-          </Button>
-        ) : null}
-      </div>
-
-      {rows.length === 0 ? (
-        <DataTableEmpty
-          message={
-            hasActiveFilters
-              ? "No serial numbers match your filters."
-              : "No serial numbers yet."
-          }
-        />
-      ) : (
-        <>
-          <DataTableScroll>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-12">#</TableHead>
-                  <TableHead>Serial no</TableHead>
-                  <TableHead>Model</TableHead>
-                  <TableHead>Current branch</TableHead>
-                  <TableHead>Current status</TableHead>
-                  <TableHead>Record</TableHead>
-                  {canManage ? <TableHead className="w-48" /> : null}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={clearFilters}>
+                Clear
+              </Button>
+              <Button type="button" onClick={applyFilters}>
+                Apply
+              </Button>
+            </div>
+            {canManage ? (
+              <Button onClick={openCreate}>
+                <Plus className="size-4" /> Add serial
+              </Button>
+            ) : null}
+          </>
+        }
+        pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
+        pagination={{
+          total: result.total,
+          page: result.page,
+          totalPages: result.totalPages,
+          itemLabel: "serial",
+          buildHref: (page) => buildHref(page, pageSize, activeFilters),
+        }}
+        footer={
+          rows.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              {hasActiveFilters
+                ? "No serial numbers match your filters."
+                : "No serial numbers yet."}
+            </p>
+          ) : null
+        }
+      >
+        {rows.length > 0 ? (
+          <>
+            <TableHeader>
+              <TableRow>
+                <TableIndexHead />
+                <GlobalTableHead>Serial no</GlobalTableHead>
+                <GlobalTableHead>Model</GlobalTableHead>
+                <GlobalTableHead>Current branch</GlobalTableHead>
+                <GlobalTableHead>Current status</GlobalTableHead>
+                <GlobalTableHead>Record</GlobalTableHead>
+                {canManage ? <GlobalTableHead className="w-48" /> : null}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
                 {rows.map((row, index) => {
                   const current = row.branchInventories[0] ?? null;
                   return (
                     <TableRow key={row.id}>
-                      <TableCell className="tabular-nums text-muted-foreground">
-                        {(result.page - 1) * result.limit + index + 1}
-                      </TableCell>
+                      <TableIndexCell index={(result.page - 1) * result.limit + index + 1} />
                       <TableCell className="font-medium">
                         <Link
                           href={`/inventory/serial-numbers/${row.id}`}
@@ -310,31 +330,10 @@ export function SerialNumberTable({
                     </TableRow>
                   );
                 })}
-              </TableBody>
-            </Table>
-          </DataTableScroll>
-          <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground">
-            <span>
-              {result.total} serial{result.total === 1 ? "" : "s"} · page{" "}
-              {result.page} of {result.totalPages}
-            </span>
-            <div className="flex gap-2">
-              {result.page > 1 ? (
-                <Button variant="outline" size="sm" asChild>
-                  <Link href={buildHref(result.page - 1, activeFilters)}>
-                    Previous
-                  </Link>
-                </Button>
-              ) : null}
-              {result.page < result.totalPages ? (
-                <Button variant="outline" size="sm" asChild>
-                  <Link href={buildHref(result.page + 1, activeFilters)}>Next</Link>
-                </Button>
-              ) : null}
-            </div>
-          </div>
-        </>
-      )}
+            </TableBody>
+          </>
+        ) : null}
+      </GlobalDataTable>
 
       {canManage ? (
         <Dialog open={open} onOpenChange={setOpen}>
@@ -377,6 +376,6 @@ export function SerialNumberTable({
           </DialogContent>
         </Dialog>
       ) : null}
-    </DataTableShell>
+    </>
   );
 }

@@ -2,6 +2,7 @@ import {
   getAuditLogFilterOptionsAction,
   listAuditLogsAction,
 } from "@/features/audit/actions/audit-log.actions";
+import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { requirePermission } from "@/lib/auth/permissions";
 import { PageHeader } from "@/app/(app)/_components/page-header";
 import { AuditLogTable } from "@/app/(app)/audit-logs/system/_components/audit-log-table";
@@ -9,6 +10,7 @@ import { AuditLogTable } from "@/app/(app)/audit-logs/system/_components/audit-l
 interface AuditLogPageProps {
   searchParams: Promise<{
     page?: string;
+    limit?: string;
     action?: string;
     entityType?: string;
     q?: string;
@@ -23,10 +25,12 @@ export default async function SettingsAuditLogPage({
   await requirePermission("audit_logs.view");
   const params = await searchParams;
   const page = Number(params.page) || 1;
+  const limit = parseTablePageSize(params.limit);
 
   const [rawResult, filterOptions] = await Promise.all([
     listAuditLogsAction({
       page,
+      limit,
       action: params.action,
       entityType: params.entityType,
       q: params.q,
@@ -49,6 +53,7 @@ export default async function SettingsAuditLogPage({
       <PageHeader
         title="System logs"
         description="A clear, read-only timeline of who did what in your organization."
+        sticky={false}
       />
       <AuditLogTable
         result={result}

@@ -2,7 +2,7 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.13.2`
+**Current version:** `0.13.3`
 
 ## Stack
 
@@ -15,16 +15,16 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | **Auth** | Email/password (Better Auth), tenant-scoped sessions, demo seed users |
 | **Dashboard** | Ops KPIs (approvals, DIT, stock, ATR, planogram/MIL alerts); active announcement banner |
 | **Announcements** | Tenant posts (title, body, publish/expiry); list + CRUD (`/announcements`) |
-| **Competitors** | Manual market observations; KPIs + filterable CRUD (`/competitors`) |
-| **Settings** | Company, users, departments, roles, branches, warehouses, dealers, AORs, master data, status codes |
+| **Competitors** | Market observations with master Competitor lookup, AOR-bound branch, optional promotion; KPIs + CRUD (`/competitors`) |
+| **Settings** | Company, users, departments, roles, branches, warehouses, dealers, AORs (assign pre-selects + sync), master data (incl. Competitors), status codes |
 | **Planning** | BRS CSV forecast import, allocation, suggested auto-replenish orders (`/settings/planning`, `/planning/suggested-orders`) |
 | **Planogram** | Per-branch SKU shelf capacity, MIL, order enforcement |
 | **Policies** | Full document control (ISO track) |
 | **Inventory** | Serialized stock, AOR-scoped list, **physical stock count / P-Count** (`/inventory/stock-count`) |
 | **Orders** | Manual / special / auto-replenish; PS → TL → SP; SO#, processed orders, delivery-due auto-reschedule |
 | **Logistics** | Deliveries (accept/reject), transfers, pull-outs with SN movement |
-| **Sales** | SN picker, reserved (RSV) sales, **BranchReturnRequest** ATR workflow |
-| **Reports** | Processed orders, daily stock, transfers, sales (CSV export), **P-Count** (`/reports/pcount`), **Official Sales** staging (`/reports/official-sales`) |
+| **Sales** | Encode at `/sales` (sidebar); SN picker, reserved (RSV) sales, **BranchReturnRequest** ATR workflow |
+| **Reports** | Processed orders, daily stock, transfers, sales CSV (`/reports/sales`), **P-Count** (`/reports/pcount`), **Official Sales** staging (`/reports/official-sales`) |
 | **SAP** | Outbound job queue + mock processor; **Service Layer** settings (encrypted credentials) + in-process session client with status UI (Connect/Logout) and refresh-on-401 |
 | **RBAC** | ISO + BRS roles (PS, TL, SP/SPA, Logistics, AE), permission-gated sidebar |
 

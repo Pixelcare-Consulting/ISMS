@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import {
@@ -14,24 +14,20 @@ import {
   requestReturnAction,
 } from "@/features/sales/actions/sales.actions";
 import { listBranchesForOrderAction } from "@/features/orders/actions/order.actions";
+import { TableIndexCell, TableIndexHead, uniqueSearchSuggestions } from "@/components/data-table";
 import {
-  DataTableScroll,
-  DataTableShell,
-} from "@/components/data-table/data-table-shell";
+  DEFAULT_TABLE_PAGE_SIZE,
+  parseTablePageSize,
+  type TablePageSize,
+} from "@/components/data-table/table-page-size";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
-import { TablePagination } from "@/components/data-table/table-pagination";
+import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
+import { matchesTableSearch } from "@/utils/match-table-search";
 
 interface SaleRow {
   id: string;
@@ -60,14 +56,47 @@ const RETURN_STATUS_LABELS: Record<string, string> = {
   completed: "Completed",
 };
 
-function buildSalesHref(page: number): string {
-  return page > 1 ? `/sales?page=${page}` : "/sales";
+function buildSalesHref(page: number, limit: number): string {
+  const params = new URLSearchParams();
+  if (page > 1) params.set("page", String(page));
+  if (limit !== DEFAULT_TABLE_PAGE_SIZE) params.set("limit", String(limit));
+  const query = params.toString();
+  return query ? `/sales?${query}` : "/sales";
 }
 
 export function SalesTable({ result }: SalesTableProps) {
   const router = useRouter();
+  const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
-  const selection = useTableSelection(result.items.map((s) => s.id));
+  const pageSize = parseTablePageSize(result.limit);
+
+  function handlePageSizeChange(limit: TablePageSize) {
+    router.push(buildSalesHref(1, limit));
+  }
+  const filtered = useMemo(
+    () =>
+      result.items.filter((sale) =>
+        matchesTableSearch(query, [
+          sale.id,
+          sale.branch.name,
+          sale.amount,
+          sale.serialNumber?.serialNo,
+          sale.atrStatus,
+          sale.returnRequest?.status,
+        ]),
+      ),
+    [query, result.items],
+  );
+  const suggestions = useMemo(
+    () =>
+      uniqueSearchSuggestions(
+        result.items.map((sale) => sale.branch.name),
+        result.items.map((sale) => sale.serialNumber?.serialNo),
+        result.items.map((sale) => sale.atrStatus),
+      ),
+    [result.items],
+  );
+  const selection = useTableSelection(filtered.map((s) => s.id));
 
   function runReturnAction(
     action: () => Promise<{ error?: string; success?: boolean }>,
@@ -87,37 +116,47 @@ export function SalesTable({ result }: SalesTableProps) {
   return (
     <div className="space-y-4">
       <RecordSaleForm pending={pending} />
-      <DataTableShell>
-        {selection.selectedCount > 0 ? (
-          <div className="px-4 pb-2">
+      <GlobalDataTable
+        stickyHeader
+        scrollable
+        search={{ value: query, onChange: setQuery, placeholder: "Search sales…", suggestions }}
+        toolbarActions={
+          selection.selectedCount > 0 ? (
             <Button variant="secondary" onClick={selection.clearSelection}>
               {selection.selectedCount} selected
             </Button>
-          </div>
-        ) : null}
-        <DataTableScroll>
-          <Table>
+          ) : null
+        }
+        pagination={{
+          total: result.total,
+          page: result.page,
+          totalPages: result.totalPages,
+          itemLabel: "sale",
+          buildHref: (page) => buildSalesHref(page, pageSize),
+        }}
+        pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
+      >
             <TableHeader>
               <TableRow>
-                <TableHead className="w-10">
+                <GlobalTableHead className="w-10">
                   <Checkbox
                     checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
                     onCheckedChange={(checked) => selection.toggleAll(checked === true)}
                     aria-label="Select all sales rows"
                   />
-                </TableHead>
-                <TableHead className="w-12">#</TableHead>
-                <TableHead>Transaction</TableHead>
-                <TableHead>Branch</TableHead>
-                <TableHead>Amount</TableHead>
-                <TableHead>Serial</TableHead>
-                <TableHead>ATR</TableHead>
-                <TableHead>Return</TableHead>
-                <TableHead className="w-48" />
+                </GlobalTableHead>
+                <TableIndexHead />
+                <GlobalTableHead>Transaction</GlobalTableHead>
+                <GlobalTableHead>Branch</GlobalTableHead>
+                <GlobalTableHead>Amount</GlobalTableHead>
+                <GlobalTableHead>Serial</GlobalTableHead>
+                <GlobalTableHead>ATR</GlobalTableHead>
+                <GlobalTableHead>Return</GlobalTableHead>
+                <GlobalTableHead className="w-48" />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {result.items.map((s, index) => (
+              {filtered.map((s, index) => (
                 <TableRow key={s.id} data-state={selection.isRowSelected(s.id) ? "selected" : undefined}>
                   <TableCell>
                     <Checkbox
@@ -126,7 +165,9 @@ export function SalesTable({ result }: SalesTableProps) {
                       aria-label={`Select sale ${s.id.slice(-8)}`}
                     />
                   </TableCell>
-                  <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
+                  <TableIndexCell
+                    index={(result.page - 1) * result.limit + index + 1}
+                  />
                   <TableCell className="font-mono text-sm">{s.id.slice(-8)}</TableCell>
                   <TableCell>{s.branch.name}</TableCell>
                   <TableCell>{s.amount}</TableCell>
@@ -231,18 +272,7 @@ export function SalesTable({ result }: SalesTableProps) {
                 </TableRow>
               ))}
             </TableBody>
-          </Table>
-        </DataTableScroll>
-        <TablePagination
-          meta={{
-            total: result.total,
-            page: result.page,
-            totalPages: result.totalPages,
-            itemLabel: "sale",
-          }}
-          buildHref={buildSalesHref}
-        />
-      </DataTableShell>
+      </GlobalDataTable>
     </div>
   );
 }

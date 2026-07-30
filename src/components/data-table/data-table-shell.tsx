@@ -4,11 +4,13 @@ import { cn } from "@/utils/cn";
 interface DataTableShellProps {
   children: React.ReactNode;
   className?: string;
+  style?: React.CSSProperties;
 }
 
-export function DataTableShell({ children, className }: DataTableShellProps) {
+export function DataTableShell({ children, className, style }: DataTableShellProps) {
   return (
     <div
+      style={style}
       className={cn(
         "overflow-hidden rounded-xl border bg-card shadow-sm",
         className,

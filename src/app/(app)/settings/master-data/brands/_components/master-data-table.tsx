@@ -12,19 +12,18 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  AppDataTable,
-  AppDataTableBody,
   TableEmptyRow,
   TableIndexCell,
   TableIndexHead,
   TableRowCheckbox,
-  TableSearchBar,
   TableSelectAllCheckbox,
   TableSelectionBadge,
   TableStatusBadge,
   uniqueSearchSuggestions,
+  useClientTablePagination,
   useTableSelection,
 } from "@/components/data-table";
+import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
 import {
   Dialog,
   DialogContent,
@@ -36,10 +35,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
-  Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
@@ -93,6 +90,18 @@ export function MasterDataTable({ brands, models }: MasterDataTableProps) {
   );
 
   const brandSelection = useTableSelection(filteredBrands.map((brand) => brand.id));
+  const {
+    page: brandPage,
+    setPage: setBrandPage,
+    pageSize: brandPageSize,
+    setPageSize: setBrandPageSize,
+    total: brandTotal,
+    totalPages: brandTotalPages,
+    pageItems: brandPageItems,
+    indexOffset: brandIndexOffset,
+  } = useClientTablePagination(filteredBrands, {
+    resetKey: brandQuery,
+  });
 
   const filteredModels = useMemo(
     () =>
@@ -113,6 +122,18 @@ export function MasterDataTable({ brands, models }: MasterDataTableProps) {
   );
 
   const modelSelection = useTableSelection(filteredModels.map((model) => model.id));
+  const {
+    page: modelPage,
+    setPage: setModelPage,
+    pageSize: modelPageSize,
+    setPageSize: setModelPageSize,
+    total: modelTotal,
+    totalPages: modelTotalPages,
+    pageItems: modelPageItems,
+    indexOffset: modelIndexOffset,
+  } = useClientTablePagination(filteredModels, {
+    resetKey: query,
+  });
 
   function submitBrand(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -140,34 +161,38 @@ export function MasterDataTable({ brands, models }: MasterDataTableProps) {
 
   return (
     <div className="space-y-8">
-      <AppDataTable
-        title="Brands"
-        shellHeader={
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <TableSearchBar
-              value={brandQuery}
-              onChange={setBrandQuery}
-              placeholder="Search brands…"
-              suggestions={brandSuggestions}
-              className="sm:max-w-sm"
+      <GlobalDataTable
+        stickyHeader
+        toolbarLeading={<span className="text-sm font-medium">Brands</span>}
+        search={{
+          value: brandQuery,
+          onChange: setBrandQuery,
+          placeholder: "Search brands…",
+          suggestions: brandSuggestions,
+        }}
+        toolbarActions={
+          <>
+            <TableSelectionBadge
+              count={brandSelection.selectedCount}
+              onClear={brandSelection.clearSelection}
+              size="sm"
             />
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <TableSelectionBadge
-                count={brandSelection.selectedCount}
-                onClear={brandSelection.clearSelection}
-                size="sm"
-              />
-              <Button size="sm" onClick={() => setBrandOpen(true)}>
-                <Plus className="size-4" /> Add brand
-              </Button>
-            </div>
-          </div>
+            <Button size="sm" onClick={() => setBrandOpen(true)}>
+              <Plus className="size-4" /> Add brand
+            </Button>
+          </>
         }
         empty={brands.length === 0}
         emptyMessage="No brands yet."
+        pageSize={{ value: brandPageSize, onChange: setBrandPageSize }}
+        pagination={{
+          total: brandTotal,
+          page: brandPage,
+          totalPages: brandTotalPages,
+          itemLabel: "brand",
+          onPageChange: setBrandPage,
+        }}
       >
-        <AppDataTableBody>
-          <Table>
             <TableHeader>
               <TableRow>
                 <TableSelectAllCheckbox
@@ -177,16 +202,16 @@ export function MasterDataTable({ brands, models }: MasterDataTableProps) {
                   aria-label="Select all brands"
                 />
                 <TableIndexHead />
-                <TableHead>Name</TableHead>
-                <TableHead>Code</TableHead>
-                <TableHead className="text-right">Models</TableHead>
+                <GlobalTableHead>Name</GlobalTableHead>
+                <GlobalTableHead>Code</GlobalTableHead>
+                <GlobalTableHead className="text-right">Models</GlobalTableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredBrands.length === 0 ? (
                 <TableEmptyRow colSpan={5} message="No brands match your search." />
               ) : (
-                filteredBrands.map((brand, index) => (
+                brandPageItems.map((brand, index) => (
                   <TableRow
                     key={brand.id}
                     data-state={
@@ -201,7 +226,7 @@ export function MasterDataTable({ brands, models }: MasterDataTableProps) {
                       }
                       aria-label={`Select brand ${brand.name}`}
                     />
-                    <TableIndexCell index={index + 1} />
+                    <TableIndexCell index={brandIndexOffset + index + 1} />
                     <TableCell className="font-medium">{brand.name}</TableCell>
                     <TableCell>{brand.code ?? "—"}</TableCell>
                     <TableCell className="text-right">
@@ -211,38 +236,40 @@ export function MasterDataTable({ brands, models }: MasterDataTableProps) {
                 ))
               )}
             </TableBody>
-          </Table>
-        </AppDataTableBody>
-      </AppDataTable>
+      </GlobalDataTable>
 
-      <AppDataTable
-        title="Models"
-        shellHeader={
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <TableSearchBar
-              value={query}
-              onChange={setQuery}
-              placeholder="Search models…"
-              suggestions={modelSuggestions}
-              className="sm:max-w-sm"
+      <GlobalDataTable
+        stickyHeader
+        toolbarLeading={<span className="text-sm font-medium">Models</span>}
+        search={{
+          value: query,
+          onChange: setQuery,
+          placeholder: "Search models…",
+          suggestions: modelSuggestions,
+        }}
+        toolbarActions={
+          <>
+            <TableSelectionBadge
+              count={modelSelection.selectedCount}
+              onClear={modelSelection.clearSelection}
+              size="sm"
             />
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <TableSelectionBadge
-                count={modelSelection.selectedCount}
-                onClear={modelSelection.clearSelection}
-                size="sm"
-              />
-              <Button onClick={() => setModelOpen(true)}>
-                <Plus className="size-4" /> Add model
-              </Button>
-            </div>
-          </div>
+            <Button onClick={() => setModelOpen(true)}>
+              <Plus className="size-4" /> Add model
+            </Button>
+          </>
         }
         empty={models.length === 0}
         emptyMessage="No product models yet."
+        pageSize={{ value: modelPageSize, onChange: setModelPageSize }}
+        pagination={{
+          total: modelTotal,
+          page: modelPage,
+          totalPages: modelTotalPages,
+          itemLabel: "model",
+          onPageChange: setModelPage,
+        }}
       >
-        <AppDataTableBody>
-          <Table>
             <TableHeader>
               <TableRow>
                 <TableSelectAllCheckbox
@@ -252,17 +279,17 @@ export function MasterDataTable({ brands, models }: MasterDataTableProps) {
                   aria-label="Select all models"
                 />
                 <TableIndexHead />
-                <TableHead>SKU</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Brand</TableHead>
-                <TableHead>Status</TableHead>
+                <GlobalTableHead>SKU</GlobalTableHead>
+                <GlobalTableHead>Name</GlobalTableHead>
+                <GlobalTableHead>Brand</GlobalTableHead>
+                <GlobalTableHead>Status</GlobalTableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredModels.length === 0 ? (
                 <TableEmptyRow colSpan={6} message="No models match your search." />
               ) : (
-                filteredModels.map((model, index) => (
+                modelPageItems.map((model, index) => (
                   <TableRow
                     key={model.id}
                     data-state={
@@ -277,7 +304,7 @@ export function MasterDataTable({ brands, models }: MasterDataTableProps) {
                       }
                       aria-label={`Select model ${model.skuCode}`}
                     />
-                    <TableIndexCell index={index + 1} />
+                    <TableIndexCell index={modelIndexOffset + index + 1} />
                     <TableCell className="font-mono text-sm">{model.skuCode}</TableCell>
                     <TableCell>{model.name}</TableCell>
                     <TableCell>{model.brand?.name ?? "—"}</TableCell>
@@ -288,9 +315,7 @@ export function MasterDataTable({ brands, models }: MasterDataTableProps) {
                 ))
               )}
             </TableBody>
-          </Table>
-        </AppDataTableBody>
-      </AppDataTable>
+      </GlobalDataTable>
 
       <Dialog open={brandOpen} onOpenChange={setBrandOpen}>
         <DialogContent>

@@ -8,6 +8,7 @@ import { dealerRepository } from "@/features/dealers/repositories/dealer.reposit
 import { orderingPolicyService } from "@/features/ordering/services/ordering-policy.service";
 import { checkOrderingAllowed } from "@/features/orders/utils/order-window";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
+import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import type { BranchOrderType } from "@prisma/client";
 
 function hasFullOrderAccess(permissions: string[] | undefined) {
@@ -17,13 +18,14 @@ function hasFullOrderAccess(permissions: string[] | undefined) {
   );
 }
 
-export async function listOrdersAction(input?: { page?: number }) {
+export async function listOrdersAction(input?: { page?: number; limit?: number }) {
   const session = await requirePermission("orders.view");
+  const limit = parseTablePageSize(input?.limit);
   const result = await orderService.list(
     session.user.tenantId,
     session.user.id,
     hasFullOrderAccess(session.user.permissions),
-    { page: input?.page },
+    { page: input?.page, limit },
   );
   return {
     ...result,
@@ -38,6 +40,15 @@ export async function listOrdersAction(input?: { page?: number }) {
       })),
     })),
   };
+}
+
+export async function getOrdersKpisAction() {
+  const session = await requirePermission("orders.view");
+  return orderService.getKpis(
+    session.user.tenantId,
+    session.user.id,
+    hasFullOrderAccess(session.user.permissions),
+  );
 }
 
 export async function listActiveDealersForOrderAction() {

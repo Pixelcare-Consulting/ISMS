@@ -4,9 +4,23 @@ import { cn } from "@/utils/cn";
 
 const Table = React.forwardRef<
   HTMLTableElement,
-  React.HTMLAttributes<HTMLTableElement>
->(({ className, ...props }, ref) => (
-  <div className="relative w-full overflow-auto">
+  React.HTMLAttributes<HTMLTableElement> & {
+    /**
+     * sticky table header support:
+     * When false, wrapper skips overflow-auto so headers can freeze on page scroll.
+     * See Orders: `TABLE_STICKY_HEAD_CLASSNAME` + scrollContainer={false}.
+     * Default true keeps existing table scroll behavior.
+     */
+    scrollContainer?: boolean;
+  }
+>(({ className, scrollContainer = true, ...props }, ref) => (
+  <div
+    className={cn(
+      "relative w-full",
+      // sticky table header: overflow-visible lets position:sticky use the page scroller
+      scrollContainer ? "overflow-auto" : "overflow-visible",
+    )}
+  >
     <table
       ref={ref}
       className={cn("w-full caption-bottom text-sm", className)}

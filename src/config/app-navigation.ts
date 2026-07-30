@@ -33,6 +33,8 @@ export interface NavLinkItem {
   href: string;
   label: string;
   icon: LucideIcon;
+  /** Only `pathname === href` is active (use for section index routes). */
+  exact?: boolean;
   permission?: string;
   /** Show link when user has any of these permissions */
   anyPermissions?: string[];
@@ -83,7 +85,6 @@ export const appNavigation: NavEntry[] = [
     label: "Announcements",
     icon: Megaphone,
     permission: "announcements.view",
-    badge: "new",
   },
   {
     type: "link",
@@ -109,6 +110,7 @@ export const appNavigation: NavEntry[] = [
         href: "/inventory",
         label: "Stock units",
         icon: Package,
+        exact: true,
         permission: "inventory.view",
       },
       {
@@ -116,7 +118,6 @@ export const appNavigation: NavEntry[] = [
         label: "P-Count",
         icon: ClipboardList,
         permission: "inventory.view",
-        badge: "new",
       },
       {
         href: "/inventory/serial-numbers",
@@ -158,14 +159,13 @@ export const appNavigation: NavEntry[] = [
       },
     ],
   },
-  // Sales module hidden from the sidebar (kept for future re-enablement)
-  // {
-  //   type: "link",
-  //   href: "/sales",
-  //   label: "Sales",
-  //   icon: Store,
-  //   permission: "sales.create",
-  // },
+  {
+    type: "link",
+    href: "/sales",
+    label: "Sales",
+    icon: Store,
+    permission: "sales.create",
+  },
   {
     type: "group",
     label: "Reports",
@@ -189,13 +189,12 @@ export const appNavigation: NavEntry[] = [
         icon: ArrowLeftRight,
         anyPermissions: ["reports.view", "logistics.manage"],
       },
-      // Sales report hidden (kept for future re-enablement)
-      // {
-      //   href: "/reports/sales",
-      //   label: "Sales",
-      //   icon: Store,
-      //   anyPermissions: ["reports.view", "sales.create"],
-      // },
+      {
+        href: "/reports/sales",
+        label: "Sales",
+        icon: Store,
+        anyPermissions: ["reports.view", "sales.create"],
+      },
       {
         href: "/reports/official-sales",
         label: "Official Sales",
@@ -278,14 +277,12 @@ export const appNavigation: NavEntry[] = [
         label: "System logs",
         icon: ClipboardList,
         permission: "audit_logs.view",
-        badge: "new",
       },
       {
         href: "/audit-logs/serial-numbers",
         label: "Serial number logs",
         icon: Barcode,
         permission: "serial_logs.view",
-        badge: "new",
       },
     ],
   },
@@ -327,7 +324,6 @@ export const appNavigation: NavEntry[] = [
             label: "Branch quotas",
             icon: ChartColumn,
             permission: "branches.manage",
-            badge: "new",
           },
           {
             href: "/settings/planning",
@@ -373,7 +369,6 @@ export const appNavigation: NavEntry[] = [
             label: "Roles",
             icon: Shield,
             permission: "roles.manage",
-            badge: "new",
           },
           {
             href: "/settings/permissions",
@@ -393,28 +388,24 @@ export const appNavigation: NavEntry[] = [
             label: "Branches",
             icon: MapPin,
             permission: "branches.manage",
-            badge: "new",
           },
           {
             href: "/settings/warehouses",
             label: "Warehouses",
             icon: Building2,
             permission: "warehouses.manage",
-            badge: "new",
           },
           {
             href: "/settings/service-centers",
             label: "Service centers",
             icon: Building2,
             permission: "service_centers.manage",
-            badge: "new",
           },
           {
             href: "/settings/dealers",
             label: "Dealers",
             icon: Store,
             permission: "dealers.manage",
-            badge: "new",
           },
         ],
       },
@@ -494,7 +485,13 @@ export function filterNavByPermissions(
     .filter((entry): entry is NavEntry => entry !== null);
 }
 
-export function isNavItemActive(pathname: string, href: string): boolean {
+/** Whether a nav href should show as active for the current pathname. */
+export function isNavItemActive(
+  pathname: string,
+  href: string,
+  exact?: boolean,
+): boolean {
+  if (exact) return pathname === href;
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -505,6 +502,6 @@ export function isNavGroupActive(
   return items.some((child) =>
     isNavSubGroup(child)
       ? isNavGroupActive(pathname, child.items)
-      : isNavItemActive(pathname, child.href),
+      : isNavItemActive(pathname, child.href, child.exact),
   );
 }

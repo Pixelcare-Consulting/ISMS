@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import type { LookupRecordStatus } from "@prisma/client";
 
+import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { serialNumberService } from "@/features/serial-numbers/services/serial-number.service";
 import { requirePermission } from "@/lib/auth/permissions";
 
@@ -11,15 +12,22 @@ const SERIAL_NUMBERS_ROUTE = "/inventory/serial-numbers";
 
 export async function listSerialNumbersAction(params: {
   page?: number;
+  limit?: number;
   q?: string;
   status?: LookupRecordStatus;
 }) {
   const session = await requirePermission("inventory.view");
+  const limit = parseTablePageSize(params.limit);
   return serialNumberService.list(
     session.user.tenantId,
-    { page: params.page },
+    { page: params.page, limit },
     { q: params.q, status: params.status },
   );
+}
+
+export async function getSerialNumberKpisAction() {
+  const session = await requirePermission("inventory.view");
+  return serialNumberService.getKpis(session.user.tenantId);
 }
 
 export async function listSerialModelOptionsAction() {

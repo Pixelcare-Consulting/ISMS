@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -38,6 +38,7 @@ import { cn } from "@/utils/cn";
 interface CompetitorsTableProps {
   observations: CompetitorObservationDto[];
   canManage: boolean;
+  competitors: CompetitorFormOption[];
   branches: CompetitorFormOption[];
   brands: CompetitorFormOption[];
   models: CompetitorModelOption[];
@@ -52,12 +53,12 @@ function formatObservedDate(iso: string) {
 export function CompetitorsTable({
   observations,
   canManage,
+  competitors,
   branches,
   brands,
   models,
 }: CompetitorsTableProps) {
   const router = useRouter();
-  const [rows, setRows] = useState(observations);
   const [query, setQuery] = useState("");
   const [branchFilter, setBranchFilter] = useState("");
   const [brandFilter, setBrandFilter] = useState("");
@@ -66,16 +67,13 @@ export function CompetitorsTable({
   const [editing, setEditing] = useState<CompetitorObservationDto | null>(null);
   const [deleting, setDeleting] = useState<CompetitorObservationDto | null>(null);
 
-  useEffect(() => {
-    setRows(observations);
-  }, [observations]);
-
   const filtered = useMemo(() => {
-    return rows.filter((row) => {
+    return observations.filter((row) => {
       if (branchFilter && row.branchId !== branchFilter) return false;
       if (brandFilter && row.brandId !== brandFilter) return false;
       return matchesTableSearch(query, [
         row.competitorName,
+        row.promotion ?? "",
         row.branch?.name ?? "",
         row.branch?.sapCode ?? "",
         row.brand?.name ?? "",
@@ -86,22 +84,23 @@ export function CompetitorsTable({
         row.createdBy.email,
       ]);
     });
-  }, [rows, query, branchFilter, brandFilter]);
+  }, [observations, query, branchFilter, brandFilter]);
 
   const suggestions = useMemo(
     () =>
       uniqueSearchSuggestions(
-        rows.map((row) => row.competitorName),
-        rows.map((row) => row.branch?.name),
-        rows.map((row) => row.branch?.sapCode),
-        rows.map((row) => row.brand?.name),
-        rows.map((row) => row.model?.name),
-        rows.map((row) => row.model?.skuCode),
-        rows.map((row) => row.notes),
-        rows.map((row) => row.createdBy.name),
-        rows.map((row) => row.createdBy.email),
+        observations.map((row) => row.competitorName),
+        observations.map((row) => row.promotion),
+        observations.map((row) => row.branch?.name),
+        observations.map((row) => row.branch?.sapCode),
+        observations.map((row) => row.brand?.name),
+        observations.map((row) => row.model?.name),
+        observations.map((row) => row.model?.skuCode),
+        observations.map((row) => row.notes),
+        observations.map((row) => row.createdBy.name),
+        observations.map((row) => row.createdBy.email),
       ),
-    [rows],
+    [observations],
   );
 
   function openCreate() {
@@ -128,9 +127,9 @@ export function CompetitorsTable({
     });
   }
 
-  const colSpan = canManage ? 8 : 7;
+  const colSpan = canManage ? 9 : 8;
   const emptyMessage =
-    rows.length === 0
+    observations.length === 0
       ? "No competitor observations yet."
       : "No observations match your filters.";
 
@@ -144,7 +143,7 @@ export function CompetitorsTable({
               <TableSearchBar
                 value={query}
                 onChange={setQuery}
-                placeholder="Search competitor, brand, model…"
+                placeholder="Search competitor, promo, brand, model…"
                 suggestions={suggestions}
                 className="sm:max-w-sm"
               />
@@ -180,7 +179,7 @@ export function CompetitorsTable({
             </div>
           </div>
         }
-        empty={rows.length === 0}
+        empty={observations.length === 0}
         emptyMessage="No competitor observations yet."
       >
         <AppDataTableBody>
@@ -191,6 +190,7 @@ export function CompetitorsTable({
                 <TableHead>Branch</TableHead>
                 <TableHead>Brand / Model</TableHead>
                 <TableHead className="text-right">Price</TableHead>
+                <TableHead>Promotion</TableHead>
                 <TableHead>Observed</TableHead>
                 <TableHead>Notes</TableHead>
                 <TableHead>Logged by</TableHead>
@@ -225,6 +225,12 @@ export function CompetitorsTable({
                     <TableCell className="text-right tabular-nums">
                       {formatPeso(row.price)}
                     </TableCell>
+                    <TableCell
+                      className="max-w-[12rem] truncate"
+                      title={row.promotion ?? undefined}
+                    >
+                      {row.promotion ?? "—"}
+                    </TableCell>
                     <TableCell>{formatObservedDate(row.observedAt)}</TableCell>
                     <TableCell className="max-w-[14rem] truncate" title={row.notes ?? undefined}>
                       {row.notes ?? "—"}
@@ -250,11 +256,11 @@ export function CompetitorsTable({
 
       {canManage ? (
         <CompetitorFormDialog
-          key={editing?.id ?? "create"}
+          key={`${editing?.id ?? "create"}-${formOpen ? "open" : "closed"}`}
           open={formOpen}
           onOpenChange={setFormOpen}
           observation={editing}
-          branches={branches}
+          competitors={competitors}
           brands={brands}
           models={models}
         />

@@ -1,7 +1,10 @@
 import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
 
 import { auditService } from "@/features/audit/services/audit.service";
-import { BRANCH_ORDER_TYPE_LABELS } from "@/features/orders/constants/order-status";
+import {
+  BRANCH_ORDER_STATUS_LABELS,
+  BRANCH_ORDER_TYPE_LABELS,
+} from "@/features/orders/constants/order-status";
 import {
   canApproveOrder,
   getApprovalLevelForStatus,
@@ -21,6 +24,21 @@ import { assertOrderingAllowed } from "@/features/orders/utils/order-window";
 import { branchRepository } from "@/features/branches/repositories/branch.repository";
 import { orderingPolicyService } from "@/features/ordering/services/ordering-policy.service";
 import { sendWorkflowEmail } from "@/lib/notifications/workflow-email";
+
+export interface OrderStatusKpi {
+  code: string;
+  name: string;
+  count: number;
+}
+
+export interface OrderKpis {
+  totalOrders: number;
+  statuses: OrderStatusKpi[];
+}
+
+const ORDER_STATUS_ORDER = Object.keys(
+  BRANCH_ORDER_STATUS_LABELS,
+) as BranchOrderStatus[];
 
 function buildLinesSummary(
   details: { quantity: number; model: { skuCode: string } }[],
@@ -109,6 +127,41 @@ export const orderService = {
   ) {
     const branchIds = hasFullAccess ? null : await getUserBranchIds(tenantId, userId);
     return orderRepository.listForTenant(tenantId, branchIds, pagination);
+  },
+
+  async getKpis(
+    tenantId: string,
+    userId: string,
+    hasFullAccess: boolean,
+  ): Promise<OrderKpis> {
+    const emptyStatuses = ORDER_STATUS_ORDER.map((status) => ({
+      code: status,
+      name: BRANCH_ORDER_STATUS_LABELS[status],
+      count: 0,
+    }));
+
+    const branchIds = hasFullAccess ? null : await getUserBranchIds(tenantId, userId);
+    if (!hasFullAccess && (!branchIds || branchIds.length === 0)) {
+      return { totalOrders: 0, statuses: emptyStatuses };
+    }
+
+    const [statusGroups, totalOrders] = await Promise.all([
+      orderRepository.countByStatus(tenantId, branchIds),
+      orderRepository.countAll(tenantId, branchIds),
+    ]);
+
+    const countByStatus = new Map(
+      statusGroups.map((g) => [g.status, g._count.id]),
+    );
+
+    return {
+      totalOrders,
+      statuses: ORDER_STATUS_ORDER.map((status) => ({
+        code: status,
+        name: BRANCH_ORDER_STATUS_LABELS[status],
+        count: countByStatus.get(status) ?? 0,
+      })),
+    };
   },
 
   async listModelsForOrder(

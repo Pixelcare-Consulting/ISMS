@@ -14,9 +14,20 @@ const createAorsBulkSchema = z.object({
   dealerIds: z.array(z.string().min(1)).optional().default([]),
 });
 
+const syncUserAorsSchema = z.object({
+  userId: z.string().min(1),
+  branchIds: z.array(z.string().min(1)).optional().default([]),
+  dealerIds: z.array(z.string().min(1)).optional().default([]),
+  warehouseIds: z.array(z.string().min(1)).optional().default([]),
+});
+
 export const aorService = {
   listAors(tenantId: string) {
     return aorRepository.listByTenant(tenantId);
+  },
+
+  listAorsForUser(tenantId: string, userId: string) {
+    return aorRepository.listByUser(tenantId, userId);
   },
 
   async getBranchIdsForUser(tenantId: string, userId: string) {
@@ -138,6 +149,170 @@ export const aorService = {
     }
 
     return { aors, createdCount: aors.length, skippedCount };
+  },
+
+  async syncUserAors(input: {
+    tenantId: string;
+    actorUserId: string;
+    userId: string;
+    branchIds?: string[];
+    dealerIds?: string[];
+    warehouseIds?: string[];
+  }) {
+    const parsed = syncUserAorsSchema.safeParse(input);
+    if (!parsed.success) {
+      throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
+    }
+
+    const explicitBranchIds = [...new Set(parsed.data.branchIds)];
+    const dealerIds = [...new Set(parsed.data.dealerIds)];
+    const warehouseIds = [...new Set(parsed.data.warehouseIds)];
+
+    if (
+      explicitBranchIds.length === 0 &&
+      dealerIds.length === 0 &&
+      warehouseIds.length === 0
+    ) {
+      throw new Error("Select at least one branch, dealer, or warehouse");
+    }
+
+    const dealerBranches = await aorRepository.listBranchIdsByDealerIds(
+      input.tenantId,
+      dealerIds,
+    );
+    const dealerBranchIds = dealerBranches.map((branch) => branch.id);
+    const targetBranchIds = [
+      ...new Set([...explicitBranchIds, ...dealerBranchIds]),
+    ];
+
+    if (
+      dealerIds.length > 0 &&
+      targetBranchIds.length === 0 &&
+      warehouseIds.length === 0
+    ) {
+      throw new Error("Selected dealers have no active branches");
+    }
+
+    const existingBranchAors = await aorRepository.listBranchAorsForUser(
+      input.tenantId,
+      parsed.data.userId,
+    );
+    const existingWarehouseAors = await aorRepository.listWarehouseIdsForUser(
+      input.tenantId,
+      parsed.data.userId,
+    );
+    const existingDealerAors = await aorRepository.listDealerIdsForUser(
+      input.tenantId,
+      parsed.data.userId,
+    );
+
+    const existingBranchIds = new Set(
+      existingBranchAors
+        .map((row) => row.branchId)
+        .filter((id): id is string => id !== null),
+    );
+    const existingWarehouseIds = new Set(
+      existingWarehouseAors
+        .map((row) => row.warehouseId)
+        .filter((id): id is string => id !== null),
+    );
+    const existingDealerIds = new Set(
+      existingDealerAors
+        .map((row) => row.dealerId)
+        .filter((id): id is string => id !== null),
+    );
+
+    const targetBranchSet = new Set(targetBranchIds);
+    const targetWarehouseSet = new Set(warehouseIds);
+    const targetDealerSet = new Set(dealerIds);
+
+    const branchIdsToCreate = targetBranchIds.filter(
+      (id) => !existingBranchIds.has(id),
+    );
+    const warehouseIdsToCreate = warehouseIds.filter(
+      (id) => !existingWarehouseIds.has(id),
+    );
+    const dealerIdsToCreate = dealerIds.filter(
+      (id) => !existingDealerIds.has(id),
+    );
+
+    const branchIdsToDelete = existingBranchAors
+      .filter(
+        (row) => row.branchId !== null && !targetBranchSet.has(row.branchId),
+      )
+      .map((row) => row.id);
+    const warehouseIdsToDelete = existingWarehouseAors
+      .filter(
+        (row) =>
+          row.warehouseId !== null && !targetWarehouseSet.has(row.warehouseId),
+      )
+      .map((row) => row.id);
+    const dealerIdsToDelete = existingDealerAors
+      .filter(
+        (row) => row.dealerId !== null && !targetDealerSet.has(row.dealerId),
+      )
+      .map((row) => row.id);
+
+    const idsToDelete = [
+      ...branchIdsToDelete,
+      ...warehouseIdsToDelete,
+      ...dealerIdsToDelete,
+    ];
+
+    if (idsToDelete.length > 0) {
+      await aorRepository.deleteMany(input.tenantId, idsToDelete);
+    }
+
+    const rowsToCreate = [
+      ...branchIdsToCreate.map((branchId) => ({
+        userId: parsed.data.userId,
+        branchId,
+        createdById: input.actorUserId,
+      })),
+      ...warehouseIdsToCreate.map((warehouseId) => ({
+        userId: parsed.data.userId,
+        warehouseId,
+        createdById: input.actorUserId,
+      })),
+      ...dealerIdsToCreate.map((dealerId) => ({
+        userId: parsed.data.userId,
+        dealerId,
+        createdById: input.actorUserId,
+      })),
+    ];
+
+    const createdAors =
+      rowsToCreate.length === 0
+        ? []
+        : await aorRepository.createMany(input.tenantId, rowsToCreate);
+
+    const deletedCount = idsToDelete.length;
+    const createdCount = createdAors.length;
+
+    if (createdCount > 0 || deletedCount > 0) {
+      await auditService.log({
+        tenantId: input.tenantId,
+        userId: input.actorUserId,
+        action: "aor.synced",
+        entityType: "Aor",
+        entityId: createdAors[0]?.id ?? idsToDelete[0] ?? parsed.data.userId,
+        metadata: {
+          userId: parsed.data.userId,
+          createdCount,
+          deletedCount,
+          branchIds: targetBranchIds,
+          dealerIds,
+          warehouseIds,
+        },
+      });
+    }
+
+    const aors = await aorRepository.listByUser(
+      input.tenantId,
+      parsed.data.userId,
+    );
+
+    return { aors, createdCount, deletedCount };
   },
 
   async deleteAor(input: { tenantId: string; actorUserId: string; aorId: string }) {

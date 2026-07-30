@@ -67,7 +67,6 @@ export async function createCompetitorObservationAction(input: unknown) {
     const observation = await competitorService.create({
       tenantId: session.user.tenantId,
       actorUserId: session.user.id,
-      hasFullAccess: hasFullAccess(session.user.permissions),
       ...parsed.data,
     });
     revalidateCompetitors();
@@ -88,7 +87,6 @@ export async function updateCompetitorObservationAction(input: unknown) {
     const observation = await competitorService.update({
       tenantId: session.user.tenantId,
       actorUserId: session.user.id,
-      hasFullAccess: hasFullAccess(session.user.permissions),
       ...parsed.data,
     });
     revalidateCompetitors();
@@ -104,7 +102,6 @@ export async function deleteCompetitorObservationAction(id: string) {
     await competitorService.delete({
       tenantId: session.user.tenantId,
       actorUserId: session.user.id,
-      hasFullAccess: hasFullAccess(session.user.permissions),
       id,
     });
     revalidateCompetitors();

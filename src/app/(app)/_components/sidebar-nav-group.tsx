@@ -87,7 +87,7 @@ function SidebarNavSubItem({
   pathname: string;
 }) {
   const ItemIcon = item.icon;
-  const active = isNavItemActive(pathname, item.href);
+  const active = isNavItemActive(pathname, item.href, item.exact);
 
   return (
     <SidebarMenuSubItem>

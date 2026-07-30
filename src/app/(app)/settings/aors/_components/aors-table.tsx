@@ -2,26 +2,25 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { SearchableMultiSelect } from "@/features/aors/components/searchable-multi-select";
-import { createAorsBulkAction, deleteAorAction } from "@/features/aors/actions/aor.actions";
+import { deleteAorAction, syncUserAorsAction } from "@/features/aors/actions/aor.actions";
 import {
-  AppDataTable,
-  AppDataTableBody,
   DeleteConfirmDialog,
   TableEmptyRow,
   TableIndexCell,
   TableIndexHead,
   TableRowActions,
-  TableSearchBar,
   TableSelectAllCheckbox,
   TableSelectionBadge,
   TableRowCheckbox,
   uniqueSearchSuggestions,
+  useClientTablePagination,
   useTableSelection,
 } from "@/components/data-table";
+import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -31,6 +30,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import {
   Table,
   TableBody,
@@ -71,8 +78,9 @@ interface AorRow {
   createdAt: string | Date;
   user: { id: string; name: string | null; email: string };
   createdBy: { name: string | null; email: string } | null;
-  branch: { name: string; sapCode: string } | null;
-  warehouse: { name: string; code: string } | null;
+  branch: { id: string; name: string; sapCode: string } | null;
+  warehouse: { id: string; name: string; code: string } | null;
+  dealer: { id: string; name: string; sapCode: string | null } | null;
 }
 
 type BranchOption = {
@@ -88,6 +96,13 @@ type DealerOption = {
   name: string;
   sapCode: string | null;
   branchCount: number;
+  label: string;
+};
+
+type WarehouseOption = {
+  id: string;
+  name: string;
+  code: string;
   label: string;
 };
 
@@ -153,24 +168,127 @@ function groupAorsByUser(rows: AorRow[]): AorUserGroup[] {
   );
 }
 
+function selectionsForUser(
+  userAors: AorRow[],
+  branches: BranchOption[],
+  dealers: DealerOption[],
+) {
+  const branchIds = [
+    ...new Set(
+      userAors
+        .map((aor) => aor.branch?.id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+  const warehouseIds = [
+    ...new Set(
+      userAors
+        .map((aor) => aor.warehouse?.id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+  const dealerIdsFromRows = [
+    ...new Set(
+      userAors
+        .map((aor) => aor.dealer?.id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+
+  const assignedBranchSet = new Set(branchIds);
+  const branchIdsByDealer = new Map<string, string[]>();
+  for (const branch of branches) {
+    if (!branch.dealerId) continue;
+    const list = branchIdsByDealer.get(branch.dealerId) ?? [];
+    list.push(branch.id);
+    branchIdsByDealer.set(branch.dealerId, list);
+  }
+
+  const inferredDealerIds = dealers
+    .filter((dealer) => {
+      if (dealerIdsFromRows.includes(dealer.id)) return false;
+      const ids = branchIdsByDealer.get(dealer.id) ?? [];
+      return ids.length > 0 && ids.every((id) => assignedBranchSet.has(id));
+    })
+    .map((dealer) => dealer.id);
+
+  return {
+    branchIds,
+    dealerIds: [...new Set([...dealerIdsFromRows, ...inferredDealerIds])],
+    warehouseIds,
+  };
+}
+
+function mapSyncedAorRow(
+  aor: {
+    id: string;
+    createdAt: string | Date;
+    user: { id: string; name: string | null; email: string };
+    createdBy: { name: string | null; email: string } | null;
+    branch: { id: string; name: string; sapCode: string } | null;
+    warehouse: { id: string; name: string; code: string } | null;
+    dealer: { id: string; name: string; sapCode: string | null } | null;
+    branchId?: string | null;
+    warehouseId?: string | null;
+  },
+  selectedUser: { name: string | null; email: string } | undefined,
+  branchById: Map<string, BranchOption>,
+  warehouseById: Map<string, WarehouseOption>,
+): AorRow {
+  const branch =
+    aor.branch ??
+    (aor.branchId ? branchById.get(aor.branchId) : undefined) ??
+    null;
+  const warehouse =
+    aor.warehouse ??
+    (aor.warehouseId ? warehouseById.get(aor.warehouseId) : undefined) ??
+    null;
+
+  return {
+    id: aor.id,
+    createdAt: aor.createdAt,
+    user: {
+      id: aor.user.id,
+      name: selectedUser?.name ?? aor.user.name,
+      email: selectedUser?.email ?? aor.user.email,
+    },
+    createdBy: aor.createdBy
+      ? { name: aor.createdBy.name, email: aor.createdBy.email }
+      : null,
+    branch: branch
+      ? { id: branch.id, name: branch.name, sapCode: branch.sapCode }
+      : null,
+    warehouse: warehouse
+      ? { id: warehouse.id, name: warehouse.name, code: warehouse.code }
+      : null,
+    dealer: aor.dealer
+      ? { id: aor.dealer.id, name: aor.dealer.name, sapCode: aor.dealer.sapCode }
+      : null,
+  };
+}
+
 export function AorsTable({
   aors,
   users,
   branches,
   dealers,
+  warehouses,
 }: {
   aors: AorRow[];
   users: { id: string; name: string | null; email: string; label: string }[];
   branches: BranchOption[];
   dealers: DealerOption[];
+  warehouses: WarehouseOption[];
 }) {
   const router = useRouter();
   const [rows, setRows] = useState(aors);
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
-  const [userId, setUserId] = useState(users[0]?.id ?? "");
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [userId, setUserId] = useState("");
   const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
   const [selectedDealerIds, setSelectedDealerIds] = useState<string[]>([]);
+  const [selectedWarehouseIds, setSelectedWarehouseIds] = useState<string[]>([]);
   const [removingAll, setRemovingAll] = useState<AorUserGroup | null>(null);
   const [viewingAll, setViewingAll] = useState<AorUserGroup | null>(null);
   const [removingOne, setRemovingOne] = useState<{
@@ -182,6 +300,23 @@ export function AorsTable({
   useEffect(() => {
     setRows(aors);
   }, [aors]);
+
+  useEffect(() => {
+    if (!sheetOpen || !userId) {
+      if (!userId) {
+        setSelectedBranchIds([]);
+        setSelectedDealerIds([]);
+        setSelectedWarehouseIds([]);
+      }
+      return;
+    }
+
+    const userAors = rows.filter((row) => row.user.id === userId);
+    const next = selectionsForUser(userAors, branches, dealers);
+    setSelectedBranchIds(next.branchIds);
+    setSelectedDealerIds(next.dealerIds);
+    setSelectedWarehouseIds(next.warehouseIds);
+  }, [sheetOpen, userId, rows, branches, dealers]);
 
   const branchOptions = useMemo(
     () =>
@@ -202,6 +337,15 @@ export function AorsTable({
     [dealers],
   );
 
+  const warehouseOptions = useMemo(
+    () =>
+      warehouses.map((warehouse) => ({
+        id: warehouse.id,
+        label: warehouse.label,
+      })),
+    [warehouses],
+  );
+
   const groups = useMemo(() => groupAorsByUser(rows), [rows]);
 
   const filtered = useMemo(
@@ -216,6 +360,8 @@ export function AorsTable({
             aor.branch?.name ?? "",
             aor.branch?.sapCode ?? "",
             branchLabel(aor.branch) ?? "",
+            aor.warehouse?.name ?? "",
+            aor.warehouse?.code ?? "",
           ]),
         ]),
       ),
@@ -233,6 +379,8 @@ export function AorsTable({
             aor.branch?.name,
             aor.branch?.sapCode,
             branchLabel(aor.branch),
+            aor.warehouse?.name,
+            aor.warehouse?.code,
           ]),
         ),
       ),
@@ -240,10 +388,30 @@ export function AorsTable({
   );
 
   const selection = useTableSelection(filtered.map((group) => group.userId));
+  const {
+    page,
+    setPage,
+    pageSize,
+    setPageSize,
+    total,
+    totalPages,
+    pageItems,
+    indexOffset,
+  } = useClientTablePagination(filtered, { resetKey: query });
 
   const canAssign =
     Boolean(userId) &&
-    (selectedBranchIds.length > 0 || selectedDealerIds.length > 0);
+    (selectedBranchIds.length > 0 ||
+      selectedDealerIds.length > 0 ||
+      selectedWarehouseIds.length > 0);
+
+  function openAssign() {
+    setUserId("");
+    setSelectedBranchIds([]);
+    setSelectedDealerIds([]);
+    setSelectedWarehouseIds([]);
+    setSheetOpen(true);
+  }
 
   function assign() {
     if (!canAssign) return;
@@ -257,57 +425,50 @@ export function AorsTable({
       for (const dealerId of selectedDealerIds) {
         fd.append("dealerIds", dealerId);
       }
+      for (const warehouseId of selectedWarehouseIds) {
+        fd.append("warehouseIds", warehouseId);
+      }
 
-      const result = await createAorsBulkAction(fd);
+      const result = await syncUserAorsAction(fd);
       if (result.error) {
         toast.error(String(result.error));
         return;
       }
 
       const createdCount = result.createdCount ?? 0;
-      const skippedCount = result.skippedCount ?? 0;
-      if (createdCount === 0 && skippedCount > 0) {
-        toast.message(`No new AORs — ${skippedCount} already assigned`);
-      } else if (skippedCount > 0) {
-        toast.success(`Assigned ${createdCount} AORs (${skippedCount} skipped)`);
+      const deletedCount = result.deletedCount ?? 0;
+      if (createdCount === 0 && deletedCount === 0) {
+        toast.message("No AOR changes");
+      } else if (deletedCount > 0 && createdCount > 0) {
+        toast.success(
+          `Synced AORs (+${createdCount}, −${deletedCount})`,
+        );
+      } else if (deletedCount > 0) {
+        toast.success(`Removed ${deletedCount} AOR${deletedCount === 1 ? "" : "s"}`);
       } else {
-        toast.success(`Assigned ${createdCount} AORs`);
+        toast.success(`Assigned ${createdCount} AOR${createdCount === 1 ? "" : "s"}`);
       }
 
-      if (result.aors && result.aors.length > 0) {
+      if (result.aors) {
         const selectedUser = users.find((user) => user.id === userId);
         const branchById = new Map(branches.map((branch) => [branch.id, branch]));
+        const warehouseById = new Map(
+          warehouses.map((warehouse) => [warehouse.id, warehouse]),
+        );
+        const syncedRows = result.aors.map((aor) =>
+          mapSyncedAorRow(aor, selectedUser, branchById, warehouseById),
+        );
         setRows((currentRows) => [
-          ...result.aors.map((aor) => {
-            const branch = aor.branchId
-              ? branchById.get(aor.branchId)
-              : undefined;
-            return {
-              id: aor.id,
-              createdAt: aor.createdAt,
-              user: {
-                id: aor.user.id,
-                name: selectedUser?.name ?? aor.user.name,
-                email: selectedUser?.email ?? aor.user.email,
-              },
-              createdBy: aor.createdBy
-                ? { name: aor.createdBy.name, email: aor.createdBy.email }
-                : null,
-              branch: aor.branch
-                ? { name: aor.branch.name, sapCode: aor.branch.sapCode }
-                : branch
-                  ? { name: branch.name, sapCode: branch.sapCode }
-                  : null,
-              warehouse: aor.warehouse
-                ? { name: aor.warehouse.name, code: aor.warehouse.code }
-                : null,
-            };
-          }),
-          ...currentRows,
+          ...syncedRows,
+          ...currentRows.filter((row) => row.user.id !== userId),
         ]);
-        setSelectedBranchIds([]);
-        setSelectedDealerIds([]);
       }
+
+      setUserId("");
+      setSelectedBranchIds([]);
+      setSelectedDealerIds([]);
+      setSelectedWarehouseIds([]);
+      setSheetOpen(false);
       router.refresh();
     });
   }
@@ -339,7 +500,7 @@ export function AorsTable({
     if (!removingAll) return;
     const ids = removingAll.aors.map((aor) => aor.id);
     const userLabel = formatPerson(removingAll.user);
-    const userId = removingAll.userId;
+    const removedUserId = removingAll.userId;
 
     startTransition(async () => {
       for (const id of ids) {
@@ -352,10 +513,12 @@ export function AorsTable({
       }
       toast.success(`Removed all AORs for ${userLabel}`);
       setRows((currentRows) =>
-        currentRows.filter((row) => row.user.id !== userId),
+        currentRows.filter((row) => row.user.id !== removedUserId),
       );
       setRemovingAll(null);
-      setViewingAll((current) => (current?.userId === userId ? null : current));
+      setViewingAll((current) =>
+        current?.userId === removedUserId ? null : current,
+      );
       router.refresh();
     });
   }
@@ -371,68 +534,37 @@ export function AorsTable({
 
   return (
     <div className="space-y-4">
-      <div className="space-y-3 rounded-xl border bg-card p-4 shadow-sm">
-        <SearchableSelect
-          label="User"
-          className="min-w-[200px]"
-          options={users.map((u) => ({ id: u.id, label: u.label }))}
-          value={userId}
-          onChange={setUserId}
-          placeholder="Select user…"
-          searchPlaceholder="Search users…"
-          disabled={pending}
-        />
-
-        <div className="grid gap-3 md:grid-cols-2">
-          <SearchableMultiSelect
-            label="Branches"
-            options={branchOptions}
-            selectedIds={selectedBranchIds}
-            onChange={setSelectedBranchIds}
-            placeholder="Search and select branches…"
-            searchPlaceholder="Filter branches…"
-            emptyMessage="No branches available."
-            disabled={pending}
+      <GlobalDataTable
+        stickyHeader
+        search={{
+          value: query,
+          onChange: setQuery,
+          placeholder: "Search users or branches…",
+          suggestions,
+        }}
+        toolbarLeading={
+          <TableSelectionBadge
+            count={selection.selectedCount}
+            onClear={selection.clearSelection}
           />
-          <SearchableMultiSelect
-            label="Dealers"
-            options={dealerOptions}
-            selectedIds={selectedDealerIds}
-            onChange={setSelectedDealerIds}
-            placeholder="Search and select dealers…"
-            searchPlaceholder="Filter dealers…"
-            emptyMessage="No dealers available."
-            hint="Selecting a dealer assigns all of its active branches."
-            disabled={pending}
-          />
-        </div>
-
-        <Button disabled={pending || !canAssign} onClick={assign}>
-          Assign AOR
-        </Button>
-      </div>
-
-      <AppDataTable
-        shellHeader={
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <TableSearchBar
-              value={query}
-              onChange={setQuery}
-              placeholder="Search users or branches…"
-              suggestions={suggestions}
-              className="sm:max-w-sm"
-            />
-            <TableSelectionBadge
-              count={selection.selectedCount}
-              onClear={selection.clearSelection}
-            />
-          </div>
+        }
+        toolbarActions={
+          <Button onClick={openAssign} disabled={pending}>
+            <Plus className="size-4" />
+            Assign AOR
+          </Button>
         }
         empty={rows.length === 0}
         emptyMessage="No AORs assigned yet."
+        pageSize={{ value: pageSize, onChange: setPageSize }}
+        pagination={{
+          total,
+          page,
+          totalPages,
+          itemLabel: "user",
+          onPageChange: setPage,
+        }}
       >
-        <AppDataTableBody>
-          <Table>
             <TableHeader>
               <TableRow>
                 <TableSelectAllCheckbox
@@ -442,18 +574,18 @@ export function AorsTable({
                   aria-label="Select all AOR users"
                 />
                 <TableIndexHead />
-                <TableHead>User</TableHead>
-                <TableHead>Branches</TableHead>
-                <TableHead>Assigned at</TableHead>
-                <TableHead>Assigned by</TableHead>
-                <TableHead className="w-16" />
+                <GlobalTableHead>User</GlobalTableHead>
+                <GlobalTableHead>Branches</GlobalTableHead>
+                <GlobalTableHead>Assigned at</GlobalTableHead>
+                <GlobalTableHead>Assigned by</GlobalTableHead>
+                <GlobalTableHead className="w-16" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.length === 0 ? (
                 <TableEmptyRow colSpan={7} message="No AORs match your search." />
               ) : (
-                filtered.map((group, index) => {
+                pageItems.map((group, index) => {
                   const branchAors = group.aors.filter((aor) => aor.branch);
                   const branchCount = branchAors.length;
                   const visibleAors = branchAors.slice(0, MAX_VISIBLE_BRANCHES);
@@ -474,7 +606,7 @@ export function AorsTable({
                         }
                         aria-label={`Select AOR user ${userLabel}`}
                       />
-                      <TableIndexCell index={index + 1} />
+                      <TableIndexCell index={indexOffset + index + 1} />
                       <TableCell>
                         <div className="font-medium">{userLabel}</div>
                         {group.user.name ? (
@@ -534,9 +666,163 @@ export function AorsTable({
                 })
               )}
             </TableBody>
-          </Table>
-        </AppDataTableBody>
-      </AppDataTable>
+      </GlobalDataTable>
+
+      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+        <SheetContent
+          side="right"
+          className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-md"
+        >
+          <SheetHeader className="border-b border-border/60 px-4 py-4 text-left">
+            <SheetTitle>Assign AOR</SheetTitle>
+            <SheetDescription>
+              Assign branches, dealers, or warehouses to a user. Selecting a
+              dealer assigns all of its active branches.
+            </SheetDescription>
+          </SheetHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              assign();
+            }}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+              <SearchableSelect
+                label="User"
+                options={users.map((u) => ({ id: u.id, label: u.label }))}
+                value={userId}
+                onChange={setUserId}
+                placeholder="Select user…"
+                searchPlaceholder="Search users…"
+                disabled={pending}
+              />
+              <SearchableMultiSelect
+                label="Branches"
+                options={branchOptions}
+                selectedIds={selectedBranchIds}
+                onChange={setSelectedBranchIds}
+                placeholder="Search and select branches…"
+                searchPlaceholder="Filter branches…"
+                emptyMessage="No branches available."
+                disabled={pending}
+              />
+              <SearchableMultiSelect
+                label="Dealers"
+                options={dealerOptions}
+                selectedIds={selectedDealerIds}
+                onChange={setSelectedDealerIds}
+                placeholder="Search and select dealers…"
+                searchPlaceholder="Filter dealers…"
+                emptyMessage="No dealers available."
+                hint="Selecting a dealer assigns all of its active branches."
+                disabled={pending}
+              />
+              <SearchableMultiSelect
+                label="Warehouses"
+                options={warehouseOptions}
+                selectedIds={selectedWarehouseIds}
+                onChange={setSelectedWarehouseIds}
+                placeholder="Search and select warehouses…"
+                searchPlaceholder="Filter warehouses…"
+                emptyMessage="No warehouses available."
+                disabled={pending}
+              />
+            </div>
+            <SheetFooter className="border-t border-border/60">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setSheetOpen(false)}
+                disabled={pending}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={pending || !canAssign}>
+                {pending ? "Saving…" : "Save AOR"}
+              </Button>
+            </SheetFooter>
+          </form>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+        <SheetContent
+          side="right"
+          className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-md"
+        >
+          <SheetHeader className="border-b border-border/60 px-4 py-4 text-left">
+            <SheetTitle>Assign AOR</SheetTitle>
+            <SheetDescription>
+              Assign branches, dealers, or warehouses to a user. Selecting a
+              dealer assigns all of its active branches.
+            </SheetDescription>
+          </SheetHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              assign();
+            }}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+              <SearchableSelect
+                label="User"
+                options={users.map((u) => ({ id: u.id, label: u.label }))}
+                value={userId}
+                onChange={setUserId}
+                placeholder="Select user…"
+                searchPlaceholder="Search users…"
+                disabled={pending}
+              />
+              <SearchableMultiSelect
+                label="Branches"
+                options={branchOptions}
+                selectedIds={selectedBranchIds}
+                onChange={setSelectedBranchIds}
+                placeholder="Search and select branches…"
+                searchPlaceholder="Filter branches…"
+                emptyMessage="No branches available."
+                disabled={pending}
+              />
+              <SearchableMultiSelect
+                label="Dealers"
+                options={dealerOptions}
+                selectedIds={selectedDealerIds}
+                onChange={setSelectedDealerIds}
+                placeholder="Search and select dealers…"
+                searchPlaceholder="Filter dealers…"
+                emptyMessage="No dealers available."
+                hint="Selecting a dealer assigns all of its active branches."
+                disabled={pending}
+              />
+              <SearchableMultiSelect
+                label="Warehouses"
+                options={warehouseOptions}
+                selectedIds={selectedWarehouseIds}
+                onChange={setSelectedWarehouseIds}
+                placeholder="Search and select warehouses…"
+                searchPlaceholder="Filter warehouses…"
+                emptyMessage="No warehouses available."
+                disabled={pending}
+              />
+            </div>
+            <SheetFooter className="border-t border-border/60">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setSheetOpen(false)}
+                disabled={pending}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={pending || !canAssign}>
+                {pending ? "Saving…" : "Save AOR"}
+              </Button>
+            </SheetFooter>
+          </form>
+        </SheetContent>
+      </Sheet>
 
       <Dialog
         open={Boolean(viewingAll)}

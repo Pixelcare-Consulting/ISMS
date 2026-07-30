@@ -9,27 +9,24 @@ import {
   createStockCountSessionAction,
   listBranchesForStockCountAction,
 } from "@/features/stock-audit/actions/stock-audit.actions";
+import { StockCountPermissionDialog } from "@/app/(app)/inventory/stock-count/_components/stock-count-permission-dialog";
+import { STOCK_COUNT_PERMISSION_MESSAGE } from "@/features/stock-audit/constants/stock-count-permissions";
 import {
   STOCK_COUNT_SESSION_LABELS,
 } from "@/features/stock-audit/constants/stock-count-workflow";
+import { TableIndexCell, TableIndexHead } from "@/components/data-table";
 import {
-  DataTableScroll,
-  DataTableShell,
-} from "@/components/data-table/data-table-shell";
+  DEFAULT_TABLE_PAGE_SIZE,
+  parseTablePageSize,
+  type TablePageSize,
+} from "@/components/data-table/table-page-size";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
-import { TablePagination } from "@/components/data-table/table-pagination";
+import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 
 interface SessionRow {
   id: string;
@@ -53,17 +50,40 @@ interface StockCountListPanelProps {
   sessions: PaginatedList<SessionRow>;
 }
 
+function buildStockCountHref(page: number, limit: number): string {
+  const params = new URLSearchParams();
+  if (page > 1) params.set("page", String(page));
+  if (limit !== DEFAULT_TABLE_PAGE_SIZE) params.set("limit", String(limit));
+  const query = params.toString();
+  return query ? `/inventory/stock-count?${query}` : "/inventory/stock-count";
+}
+
 export function StockCountListPanel({ sessions }: StockCountListPanelProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [branches, setBranches] = useState<{ id: string; name: string }[]>([]);
   const [selectedBranchId, setSelectedBranchId] = useState("");
   const [refsLoaded, setRefsLoaded] = useState(false);
+  const [permissionDialogOpen, setPermissionDialogOpen] = useState(false);
   const selection = useTableSelection(sessions.items.map((session) => session.id));
+  const pageSize = parseTablePageSize(sessions.limit);
+
+  function handlePageSizeChange(limit: TablePageSize) {
+    router.push(buildStockCountHref(1, limit));
+  }
 
   async function loadBranches() {
     if (refsLoaded) return;
-    const rows = await listBranchesForStockCountAction();
+    const result = await listBranchesForStockCountAction();
+    if ("error" in result && result.error) {
+      if (result.error === STOCK_COUNT_PERMISSION_MESSAGE) {
+        setPermissionDialogOpen(true);
+      } else {
+        toast.error(result.error);
+      }
+      return;
+    }
+    const rows = ("branches" in result ? result.branches : []) ?? [];
     setBranches(rows);
     if (rows[0]) setSelectedBranchId(rows[0].id);
     setRefsLoaded(true);
@@ -77,7 +97,11 @@ export function StockCountListPanel({ sessions }: StockCountListPanelProps) {
     startTransition(async () => {
       const result = await createStockCountSessionAction({ branchId: selectedBranchId });
       if ("error" in result && result.error) {
-        toast.error(result.error);
+        if (result.error === STOCK_COUNT_PERMISSION_MESSAGE) {
+          setPermissionDialogOpen(true);
+        } else {
+          toast.error(result.error);
+        }
         return;
       }
       toast.success("Count session created");
@@ -90,42 +114,54 @@ export function StockCountListPanel({ sessions }: StockCountListPanelProps) {
   }
 
   return (
-    <DataTableShell>
-      <div className="flex flex-wrap items-center justify-end gap-2 border-b p-4">
-        <SearchableSelect
-          className="w-full sm:w-[200px]"
-          options={branches.map((b) => ({ id: b.id, label: b.name }))}
-          value={selectedBranchId}
-          onChange={setSelectedBranchId}
-          placeholder="Branch"
-          searchPlaceholder="Search branches…"
-          emptyMessage="Load branches first."
-          onOpenChange={(open) => {
-            if (open) void loadBranches();
-          }}
-        />
-        <Button className="w-full sm:w-auto" disabled={pending} onClick={createSession}>
-          New count session
-        </Button>
-      </div>
-      <DataTableScroll>
-        <Table>
+    <>
+      <GlobalDataTable
+      stickyHeader
+      scrollable
+      toolbarActions={
+        <>
+          <SearchableSelect
+            className="w-full sm:w-[200px]"
+            options={branches.map((b) => ({ id: b.id, label: b.name }))}
+            value={selectedBranchId}
+            onChange={setSelectedBranchId}
+            placeholder="Branch"
+            searchPlaceholder="Search branches…"
+            emptyMessage="Load branches first."
+            onOpenChange={(open) => {
+              if (open) void loadBranches();
+            }}
+          />
+          <Button className="w-full sm:w-auto" disabled={pending} onClick={createSession}>
+            New count session
+          </Button>
+        </>
+      }
+      pagination={{
+        total: sessions.total,
+        page: sessions.page,
+        totalPages: sessions.totalPages,
+        itemLabel: "session",
+        buildHref: (page) => buildStockCountHref(page, pageSize),
+      }}
+      pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
+    >
           <TableHeader>
             <TableRow>
-              <TableHead className="w-10">
+              <GlobalTableHead className="w-10">
                 <Checkbox
                   checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
                   onCheckedChange={(checked) => selection.toggleAll(checked === true)}
                   aria-label="Select all stock count sessions"
                 />
-              </TableHead>
-              <TableHead className="w-12">#</TableHead>
-              <TableHead>Session</TableHead>
-              <TableHead>Branch</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Lines</TableHead>
-              <TableHead className="text-right">Variances</TableHead>
-              <TableHead>Created by</TableHead>
+              </GlobalTableHead>
+              <TableIndexHead />
+              <GlobalTableHead>Session</GlobalTableHead>
+              <GlobalTableHead>Branch</GlobalTableHead>
+              <GlobalTableHead>Status</GlobalTableHead>
+              <GlobalTableHead className="text-right">Lines</GlobalTableHead>
+              <GlobalTableHead className="text-right">Variances</GlobalTableHead>
+              <GlobalTableHead>Created by</GlobalTableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -145,7 +181,9 @@ export function StockCountListPanel({ sessions }: StockCountListPanelProps) {
                       aria-label={`Select session ${row.sessionNo}`}
                     />
                   </TableCell>
-                  <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
+                  <TableIndexCell
+                    index={(sessions.page - 1) * sessions.limit + index + 1}
+                  />
                   <TableCell>
                     <Link
                       href={`/inventory/stock-count/${row.id}`}
@@ -174,17 +212,11 @@ export function StockCountListPanel({ sessions }: StockCountListPanelProps) {
               ))
             )}
           </TableBody>
-        </Table>
-      </DataTableScroll>
-      <TablePagination
-        meta={{
-          total: sessions.total,
-          page: sessions.page,
-          totalPages: sessions.totalPages,
-          itemLabel: "session",
-        }}
-        buildHref={(page) => `/inventory/stock-count?page=${page}`}
+      </GlobalDataTable>
+      <StockCountPermissionDialog
+        open={permissionDialogOpen}
+        onOpenChange={setPermissionDialogOpen}
       />
-    </DataTableShell>
+    </>
   );
 }

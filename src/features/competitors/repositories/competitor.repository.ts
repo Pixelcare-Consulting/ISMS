@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/database/client";
 
 const observationInclude = {
+  competitor: { select: { id: true, name: true, recordStatus: true } },
   branch: { select: { id: true, name: true, sapCode: true } },
   brand: { select: { id: true, name: true } },
   model: { select: { id: true, name: true, skuCode: true } },
@@ -75,11 +76,13 @@ export const competitorRepository = {
   create(
     tenantId: string,
     data: {
+      competitorId: string;
       competitorName: string;
-      branchId?: string | null;
+      branchId: string;
       brandId?: string | null;
       modelId?: string | null;
       price?: number | null;
+      promotion?: string | null;
       notes?: string | null;
       observedAt: Date;
       createdById: string;
@@ -88,11 +91,13 @@ export const competitorRepository = {
     return prisma.competitorObservation.create({
       data: {
         tenantId,
+        competitorId: data.competitorId,
         competitorName: data.competitorName,
-        branchId: data.branchId ?? null,
+        branchId: data.branchId,
         brandId: data.brandId ?? null,
         modelId: data.modelId ?? null,
         price: data.price ?? null,
+        promotion: data.promotion ?? null,
         notes: data.notes ?? null,
         observedAt: data.observedAt,
         createdById: data.createdById,
@@ -105,11 +110,13 @@ export const competitorRepository = {
     tenantId: string,
     id: string,
     data: {
+      competitorId: string;
       competitorName: string;
-      branchId?: string | null;
+      branchId: string;
       brandId?: string | null;
       modelId?: string | null;
       price?: number | null;
+      promotion?: string | null;
       notes?: string | null;
       observedAt: Date;
     },
@@ -117,11 +124,13 @@ export const competitorRepository = {
     return prisma.competitorObservation.update({
       where: { id },
       data: {
+        competitorId: data.competitorId,
         competitorName: data.competitorName,
-        branchId: data.branchId ?? null,
+        branchId: data.branchId,
         brandId: data.brandId ?? null,
         modelId: data.modelId ?? null,
         price: data.price ?? null,
+        promotion: data.promotion ?? null,
         notes: data.notes ?? null,
         observedAt: data.observedAt,
       },
@@ -152,8 +161,8 @@ export const competitorRepository = {
       }),
       prisma.competitorObservation.findMany({
         where: baseWhere,
-        select: { competitorName: true },
-        distinct: ["competitorName"],
+        select: { competitorId: true },
+        distinct: ["competitorId"],
       }),
       prisma.competitorObservation.aggregate({
         where: { ...baseWhere, price: { not: null } },

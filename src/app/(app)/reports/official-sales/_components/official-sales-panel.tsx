@@ -10,20 +10,16 @@ import {
   uploadOfficialSalesAction,
 } from "@/features/official-sales/actions/official-sales.actions";
 import {
-  AppDataTable,
-  AppDataTableBody,
   TableEmptyRow,
   TableIndexCell,
   TableIndexHead,
-  TableSearchBar,
   uniqueSearchSuggestions,
 } from "@/components/data-table";
+import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import {
-  Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
@@ -127,9 +123,17 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        {canManage ? (
+    <GlobalDataTable
+      stickyHeader
+      scrollable
+      search={{
+        value: query,
+        onChange: setQuery,
+        placeholder: "Search staging rows…",
+        suggestions,
+      }}
+      toolbarActions={
+        canManage ? (
           <>
             <input
               ref={fileRef}
@@ -138,97 +142,71 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
               className="hidden"
               onChange={(e) => onUpload(e.target.files)}
             />
-            <Button
-              type="button"
-              disabled={pending}
-              onClick={() => fileRef.current?.click()}
-            >
+            <Button type="button" disabled={pending} onClick={() => fileRef.current?.click()}>
               Upload sales
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={pending}
-              onClick={() => onProcess()}
-            >
+            <Button type="button" variant="outline" disabled={pending} onClick={() => onProcess()}>
               Process pending
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={pending}
-              onClick={onClear}
-            >
+            <Button type="button" variant="outline" disabled={pending} onClick={onClear}>
               Clear temp table
             </Button>
           </>
-        ) : null}
-      </div>
-
-      <AppDataTable
-        shellHeader={
-          <TableSearchBar
-            value={query}
-            onChange={setQuery}
-            placeholder="Search staging rows…"
-            suggestions={suggestions}
-            className="sm:max-w-sm"
-          />
-        }
-        empty={rows.length === 0}
-        emptyMessage="Temp table is empty. Upload an Excel or CSV file to stage rows."
-      >
-        <AppDataTableBody>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableIndexHead />
-                <TableHead>Serial</TableHead>
-                <TableHead>DR DATE</TableHead>
-                <TableHead>DR NO</TableHead>
-                <TableHead>ACTION</TableHead>
-                <TableHead>RESULT</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.length === 0 ? (
-                <TableEmptyRow colSpan={COL_COUNT} message="No results match your search." />
-              ) : (
-                filtered.map((row, index) => (
-                  <TableRow
-                    key={row.id}
-                    className={cn(index % 2 === 1 && "bg-table-stripe")}
-                  >
-                    <TableIndexCell index={index + 1} />
-                    <TableCell className="font-mono text-sm">{row.serial}</TableCell>
-                    <TableCell className="tabular-nums">{row.drDate ?? "—"}</TableCell>
-                    <TableCell>{row.drNo ?? "—"}</TableCell>
-                    <TableCell>
-                      {canManage && row.status === "pending" ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={pending}
-                          onClick={() => onProcess([row.id])}
-                        >
-                          Process
-                        </Button>
-                      ) : (
-                        <span className="text-xs uppercase text-muted-foreground">
-                          {row.status}
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell className="max-w-xs text-sm text-muted-foreground">
-                      {row.result ?? "—"}
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </AppDataTableBody>
-      </AppDataTable>
-    </div>
+        ) : null
+      }
+      footer={
+        rows.length === 0 ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">
+            Temp table is empty. Upload an Excel or CSV file to stage rows.
+          </p>
+        ) : null
+      }
+    >
+      {rows.length > 0 ? (
+        <>
+          <TableHeader>
+            <TableRow>
+              <TableIndexHead />
+              <GlobalTableHead>Serial</GlobalTableHead>
+              <GlobalTableHead>DR DATE</GlobalTableHead>
+              <GlobalTableHead>DR NO</GlobalTableHead>
+              <GlobalTableHead>ACTION</GlobalTableHead>
+              <GlobalTableHead>RESULT</GlobalTableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filtered.length === 0 ? (
+              <TableEmptyRow colSpan={COL_COUNT} message="No results match your search." />
+            ) : (
+              filtered.map((row, index) => (
+                <TableRow key={row.id} className={cn(index % 2 === 1 && "bg-table-stripe")}>
+                  <TableIndexCell index={index + 1} />
+                  <TableCell className="font-mono text-sm">{row.serial}</TableCell>
+                  <TableCell className="tabular-nums">{row.drDate ?? "—"}</TableCell>
+                  <TableCell>{row.drNo ?? "—"}</TableCell>
+                  <TableCell>
+                    {canManage && row.status === "pending" ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={pending}
+                        onClick={() => onProcess([row.id])}
+                      >
+                        Process
+                      </Button>
+                    ) : (
+                      <span className="text-xs uppercase text-muted-foreground">{row.status}</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="max-w-xs text-sm text-muted-foreground">
+                    {row.result ?? "—"}
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </>
+      ) : null}
+    </GlobalDataTable>
   );
 }

@@ -57,6 +57,7 @@ const delegates: Record<LookupEntityKey | "brand", LookupDelegate> = {
   paymentType: prisma.paymentType as unknown as LookupDelegate,
   modeOfPayment: prisma.modeOfPayment as unknown as LookupDelegate,
   promoType: prisma.promoType as unknown as LookupDelegate,
+  competitor: prisma.competitor as unknown as LookupDelegate,
   dealerType: prisma.dealerType as unknown as LookupDelegate,
   customerDeliveryMethod: prisma.customerDeliveryMethod as unknown as LookupDelegate,
   problemDescription: prisma.problemDescription as unknown as LookupDelegate,

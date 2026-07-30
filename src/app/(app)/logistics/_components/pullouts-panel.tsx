@@ -13,24 +13,18 @@ import {
 } from "@/features/logistics/actions/logistics.actions";
 import { listStkSerialsForBranchAction } from "@/features/sales/actions/sales.actions";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
+import { TableIndexCell, TableIndexHead } from "@/components/data-table";
 import {
-  DataTableScroll,
-  DataTableShell,
-} from "@/components/data-table/data-table-shell";
+  parseTablePageSize,
+  type TablePageSize,
+} from "@/components/data-table/table-page-size";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
-import { TablePagination } from "@/components/data-table/table-pagination";
-import { TableSearchToolbar, uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
+import { uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
+import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { LogisticsLoadRefsButton } from "@/app/(app)/logistics/_components/logistics-load-refs-button";
 import {
   buildLogisticsPageHref,
@@ -84,6 +78,11 @@ export function PulloutsPanel({ pullouts }: PulloutsPanelProps) {
     { id: string; serialNo: string; skuCode: string }[]
   >([]);
   const [selectedPulloutSerialIds, setSelectedPulloutSerialIds] = useState<string[]>([]);
+  const pageSize = parseTablePageSize(pullouts.limit);
+
+  function handlePageSizeChange(limit: TablePageSize) {
+    router.push(buildLogisticsPageHref(LOGISTICS_PICKUPS_PATH, 1, limit));
+  }
 
   const filtered = useMemo(
     () =>
@@ -128,18 +127,17 @@ export function PulloutsPanel({ pullouts }: PulloutsPanelProps) {
   }
 
   return (
-    <DataTableShell>
-      <TableSearchToolbar
-        value={query}
-        onChange={setQuery}
-        placeholder="Search pull-outs…"
-        suggestions={suggestions}
-      >
-        {selection.selectedCount > 0 ? (
-          <Button variant="secondary" onClick={selection.clearSelection}>
-            {selection.selectedCount} selected
-          </Button>
-        ) : null}
+    <GlobalDataTable
+      stickyHeader
+      scrollable
+      search={{ value: query, onChange: setQuery, placeholder: "Search pull-outs…", suggestions }}
+      toolbarActions={
+        <>
+          {selection.selectedCount > 0 ? (
+            <Button variant="secondary" onClick={selection.clearSelection}>
+              {selection.selectedCount} selected
+            </Button>
+          ) : null}
         {pulloutReasons.length > 0 ? (
           <SearchableSelect
             className="w-full sm:w-[200px]"
@@ -203,8 +201,9 @@ export function PulloutsPanel({ pullouts }: PulloutsPanelProps) {
             New pull-out
           </Button>
         ) : null}
-      </TableSearchToolbar>
-      {pulloutSerials.length > 0 ? (
+        </>
+      }
+      banner={pulloutSerials.length > 0 ? (
         <div className="border-b px-4 py-2 text-sm">
           <span className="text-muted-foreground">Serials to pull out: </span>
           {pulloutSerials.map((s) => (
@@ -223,24 +222,32 @@ export function PulloutsPanel({ pullouts }: PulloutsPanelProps) {
           ))}
         </div>
       ) : null}
-      <DataTableScroll>
-        <Table>
+      pagination={{
+        total: pullouts.total,
+        page: pullouts.page,
+        totalPages: pullouts.totalPages,
+        itemLabel: "pull-out",
+        buildHref: (page) =>
+          buildLogisticsPageHref(LOGISTICS_PICKUPS_PATH, page, pageSize),
+      }}
+      pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
+    >
           <TableHeader>
             <TableRow>
-              <TableHead className="w-10">
+              <GlobalTableHead className="w-10">
                 <Checkbox
                   checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
                   onCheckedChange={(checked) => selection.toggleAll(checked === true)}
                   aria-label="Select all pull-outs"
                 />
-              </TableHead>
-              <TableHead className="w-12">#</TableHead>
-              <TableHead>No.</TableHead>
-              <TableHead>Branch</TableHead>
-              <TableHead>Warehouse</TableHead>
-              <TableHead>Reason</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead />
+              </GlobalTableHead>
+              <TableIndexHead />
+              <GlobalTableHead>No.</GlobalTableHead>
+              <GlobalTableHead>Branch</GlobalTableHead>
+              <GlobalTableHead>Warehouse</GlobalTableHead>
+              <GlobalTableHead>Reason</GlobalTableHead>
+              <GlobalTableHead>Status</GlobalTableHead>
+              <GlobalTableHead />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -253,7 +260,9 @@ export function PulloutsPanel({ pullouts }: PulloutsPanelProps) {
                     aria-label={`Select pull-out ${p.pulloutNo}`}
                   />
                 </TableCell>
-                <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
+                <TableIndexCell
+                  index={(pullouts.page - 1) * pullouts.limit + index + 1}
+                />
                 <TableCell>{p.pulloutNo}</TableCell>
                 <TableCell>{p.branch.name}</TableCell>
                 <TableCell>{p.warehouse.name}</TableCell>
@@ -333,17 +342,6 @@ export function PulloutsPanel({ pullouts }: PulloutsPanelProps) {
               </TableRow>
             ))}
           </TableBody>
-        </Table>
-      </DataTableScroll>
-      <TablePagination
-        meta={{
-          total: pullouts.total,
-          page: pullouts.page,
-          totalPages: pullouts.totalPages,
-          itemLabel: "pull-out",
-        }}
-        buildHref={(page) => buildLogisticsPageHref(LOGISTICS_PICKUPS_PATH, page)}
-      />
-    </DataTableShell>
+    </GlobalDataTable>
   );
 }

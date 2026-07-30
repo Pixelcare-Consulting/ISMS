@@ -12,14 +12,13 @@ import {
   updateDealerAction,
 } from "@/features/dealers/actions/dealer.actions";
 import {
-  AppDataTable,
-  AppDataTableBody,
   DeleteConfirmDialog,
   TableEmptyRow,
   TableRowActions,
-  TableSearchBar,
   uniqueSearchSuggestions,
+  useClientTablePagination,
 } from "@/components/data-table";
+import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,10 +32,8 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import {
-  Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
@@ -109,6 +106,16 @@ export function DealersTable({ dealers }: { dealers: DealerRow[] }) {
     [rows],
   );
 
+  const {
+    page,
+    setPage,
+    pageSize,
+    setPageSize,
+    total,
+    totalPages,
+    pageItems,
+  } = useClientTablePagination(filtered, { resetKey: query });
+
   async function ensureOptions() {
     if (options) return options;
     const loaded = await listDealerFormOptionsAction();
@@ -176,43 +183,45 @@ export function DealersTable({ dealers }: { dealers: DealerRow[] }) {
 
   return (
     <div className="space-y-4">
-      <AppDataTable
-        shellHeader={
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <TableSearchBar
-              value={query}
-              onChange={setQuery}
-              placeholder="Search dealers…"
-              suggestions={suggestions}
-              className="sm:max-w-sm"
-            />
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <Button type="button" size="sm" onClick={() => onAddOpenChange(true)}>
-                <Plus className="size-3.5" />
-                Add dealer
-              </Button>
-            </div>
-          </div>
+      <GlobalDataTable
+        stickyHeader
+        search={{
+          value: query,
+          onChange: setQuery,
+          placeholder: "Search dealers…",
+          suggestions,
+        }}
+        toolbarActions={
+          <Button type="button" size="sm" onClick={() => onAddOpenChange(true)}>
+            <Plus className="size-3.5" />
+            Add dealer
+          </Button>
         }
+        pageSize={{ value: pageSize, onChange: setPageSize }}
+        pagination={{
+          total,
+          page,
+          totalPages,
+          itemLabel: "dealer",
+          onPageChange: setPage,
+        }}
       >
-        <AppDataTableBody>
-          <Table>
             <TableHeader>
               <TableRow className="bg-muted/30 hover:bg-muted/30">
-                <TableHead>Name</TableHead>
-                <TableHead>SAP</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Payment</TableHead>
-                <TableHead>Branches</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="w-28 text-right">Actions</TableHead>
+                <GlobalTableHead>Name</GlobalTableHead>
+                <GlobalTableHead>SAP</GlobalTableHead>
+                <GlobalTableHead>Type</GlobalTableHead>
+                <GlobalTableHead>Payment</GlobalTableHead>
+                <GlobalTableHead>Branches</GlobalTableHead>
+                <GlobalTableHead>Status</GlobalTableHead>
+                <GlobalTableHead className="w-28 text-right">Actions</GlobalTableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.length === 0 ? (
                 <TableEmptyRow colSpan={COL_COUNT} message={emptyMessage} />
               ) : (
-                filtered.map((row, index) => (
+                pageItems.map((row, index) => (
                   <TableRow
                     key={row.id}
                     className={cn(index % 2 === 1 && "bg-table-stripe")}
@@ -250,9 +259,7 @@ export function DealersTable({ dealers }: { dealers: DealerRow[] }) {
                 ))
               )}
             </TableBody>
-          </Table>
-        </AppDataTableBody>
-      </AppDataTable>
+      </GlobalDataTable>
 
       <Sheet open={addOpen} onOpenChange={onAddOpenChange}>
         <SheetContent

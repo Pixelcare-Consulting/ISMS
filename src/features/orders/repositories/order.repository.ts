@@ -19,6 +19,16 @@ const orderListInclude = {
   approvalLevels: { orderBy: { level: "asc" as const } },
 } satisfies Prisma.BranchOrderInclude;
 
+function orderScopeWhere(
+  tenantId: string,
+  branchIds: string[] | null,
+): Prisma.BranchOrderWhereInput {
+  return {
+    tenantId,
+    ...(branchIds?.length ? { branchId: { in: branchIds } } : {}),
+  };
+}
+
 export const orderRepository = {
   async listForTenant(
     tenantId: string,
@@ -26,10 +36,7 @@ export const orderRepository = {
     pagination?: { page?: number; limit?: number },
   ) {
     const { limit, page, skip } = resolvePagination(pagination);
-    const where: Prisma.BranchOrderWhereInput = {
-      tenantId,
-      ...(branchIds?.length ? { branchId: { in: branchIds } } : {}),
-    };
+    const where = orderScopeWhere(tenantId, branchIds);
 
     const [items, total] = await Promise.all([
       prisma.branchOrder.findMany({
@@ -43,6 +50,20 @@ export const orderRepository = {
     ]);
 
     return toPaginatedResult(items, total, page, limit);
+  },
+
+  countAll(tenantId: string, branchIds: string[] | null) {
+    return prisma.branchOrder.count({
+      where: orderScopeWhere(tenantId, branchIds),
+    });
+  },
+
+  countByStatus(tenantId: string, branchIds: string[] | null) {
+    return prisma.branchOrder.groupBy({
+      by: ["status"],
+      where: orderScopeWhere(tenantId, branchIds),
+      _count: { id: true },
+    });
   },
 
   findById(tenantId: string, id: string) {
