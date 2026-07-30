@@ -11,6 +11,7 @@ import { AppSidebar } from "@/app/(app)/_components/app-sidebar";
 import { AppTopLoader } from "@/app/(app)/_components/app-top-loader";
 import { WhatsNewHeaderAction } from "@/app/(app)/_components/whats-new-header-action";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { SapSyncReportDialogs } from "@/features/sap/components/sap-sync-report-dialogs";
 
 export default async function AppLayout({
   children,
@@ -56,6 +57,8 @@ export default async function AppLayout({
           <div className="w-full px-5 py-6 sm:px-7 lg:px-10">{children}</div>
         </div>
       </SidebarInset>
+
+      <SapSyncReportDialogs />
     </SidebarProvider>
   );
 }

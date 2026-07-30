@@ -227,6 +227,7 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
         toolbarActions={
           <>
               <SapSyncButton
+                syncKey="warehouse"
                 noun={{ one: "warehouse", many: "warehouses" }}
                 onSync={syncWarehousesFromSapAction}
               />

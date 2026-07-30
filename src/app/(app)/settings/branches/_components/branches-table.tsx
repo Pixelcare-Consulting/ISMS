@@ -141,6 +141,7 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
         toolbarActions={
           <>
               <SapSyncButton
+                syncKey="branch"
                 noun={{ one: "branch", many: "branches" }}
                 onSync={syncBranchesFromSapAction}
               />

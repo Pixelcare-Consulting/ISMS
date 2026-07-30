@@ -238,8 +238,8 @@ export const branchRepository = {
   applySapSync(
     tenantId: string,
     input: {
-      create: { sapCode: string; name: string; status: BranchStatus }[];
-      update: { id: string; name: string; status: BranchStatus }[];
+      create: { sapCode: string; name: string }[];
+      update: { id: string; name: string }[];
     },
   ) {
     return prisma.$transaction(async (tx) => {
@@ -251,7 +251,7 @@ export const branchRepository = {
       for (const row of input.update) {
         await tx.branch.update({
           where: { id: row.id, tenantId },
-          data: { name: row.name, status: row.status },
+          data: { name: row.name },
         });
       }
     });

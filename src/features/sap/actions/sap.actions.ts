@@ -2,10 +2,16 @@
 
 import { revalidatePath } from "next/cache";
 
+import { sapSyncStatusRepository } from "@/features/sap/repositories/sap-sync-status.repository";
+import type { SapMasterSyncResult } from "@/features/sap/schemas/sap-master-sync.schema";
 import { sapServiceLayerSchema } from "@/features/sap/schemas/sap-service-layer.schema";
 import { sapServiceLayerService } from "@/features/sap/services/sap-service-layer.service";
 import { sapService } from "@/features/sap/services/sap.service";
-import { requirePermission } from "@/lib/auth/permissions";
+import { requireAuth, requirePermission } from "@/lib/auth/permissions";
+
+/** A "running" row older than this is almost certainly from a killed/restarted server,
+ *  not an actual in-progress sync — self-heal it instead of blocking the button forever. */
+const STALE_SYNC_MS = 10 * 60 * 1000;
 
 export async function listSapServiceLayerSettingsAction() {
   const session = await requirePermission("sap.manage");
@@ -158,6 +164,37 @@ export async function processSapQueueAction() {
   );
   revalidatePath("/settings/sap-integration");
   return { success: true as const, results };
+}
+
+/**
+ * Read-only status check for the given SAP pull-sync keys (e.g. `["branch", "warehouse"]`).
+ * Used by `SapSyncButton` on mount so a freshly loaded page can show "still syncing"
+ * instead of assuming idle when a sync is running in another tab or survived a refresh.
+ */
+export async function getSapSyncStatusesAction(entities: string[]) {
+  const session = await requireAuth();
+  const rows = await sapSyncStatusRepository.listByTenant(session.user.tenantId, entities);
+
+  const statuses = await Promise.all(
+    rows.map(async (row) => {
+      const isStaleRunning =
+        row.status === "running" && Date.now() - row.startedAt.getTime() > STALE_SYNC_MS;
+      if (!isStaleRunning) {
+        return {
+          entity: row.entity,
+          status: row.status,
+          result: row.result as SapMasterSyncResult | null,
+          error: row.error,
+        };
+      }
+
+      const error = "Sync did not finish — the server may have restarted mid-run.";
+      await sapSyncStatusRepository.markError(session.user.tenantId, row.entity, error);
+      return { entity: row.entity, status: "error" as const, result: null, error };
+    }),
+  );
+
+  return { success: true as const, statuses };
 }
 
 export async function syncInventoryFromSapAction(input?: { warehouseCode?: string }) {
