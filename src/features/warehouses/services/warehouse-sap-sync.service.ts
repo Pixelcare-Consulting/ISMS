@@ -8,7 +8,7 @@ import {
   parseSapFlag,
 } from "@/features/sap/services/sap-master-data";
 import { sapServiceLayerService } from "@/features/sap/services/sap-service-layer.service";
-import { runTrackedSapSync } from "@/features/sap/services/sap-sync-runner";
+import { withSapSyncLock } from "@/features/sap/services/sap-sync-lock";
 import { warehouseRepository } from "@/features/warehouses/repositories/warehouse.repository";
 
 /** SAP B1 Service Layer entity holding warehouse master data (OWHS). */
@@ -139,8 +139,6 @@ export const warehouseSapSyncService = {
    * the first sync already finished) joins the same run instead of hitting SAP twice.
    */
   syncFromSap(tenantId: string, actorUserId: string): Promise<SapMasterSyncResult> {
-    return runTrackedSapSync(tenantId, "warehouse", actorUserId, () =>
-      runSync(tenantId, actorUserId),
-    );
+    return withSapSyncLock(`warehouse:${tenantId}`, () => runSync(tenantId, actorUserId));
   },
 };

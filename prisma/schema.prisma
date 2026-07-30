@@ -91,12 +91,6 @@ enum SapIntegrationJobStatus {
   dead_letter
 }
 
-enum SapSyncRunStatus {
-  running
-  success
-  error
-}
-
 enum SapIntegrationJobType {
   approved_order
   pullout_itr
@@ -216,7 +210,6 @@ model Tenant {
   stockVariances      StockVariance[]
   sapIntegrationJobs  SapIntegrationJob[]
   sapServiceLayerConfigs SapServiceLayerConfig[]
-  sapSyncStatuses        SapSyncStatus[]
   announcements       Announcement[]
   competitorObservations CompetitorObservation[]
   officialSalesImportBatches OfficialSalesImportBatch[]
@@ -1928,29 +1921,6 @@ model SapServiceLayerConfig {
   @@index([tenantId, isEnabled])
   @@index([tenantId, updatedAt])
   @@map("sap_service_layer_configs")
-}
-
-/// One row per (tenant, entity) pull-sync — e.g. `branch`, `warehouse` — tracking only the
-/// most recent run. Lets a freshly loaded page tell a still-running sync apart from an idle
-/// one, since in-memory client state (and the in-process lock in sap-sync-lock.ts) doesn't
-/// survive a page refresh or a server restart.
-model SapSyncStatus {
-  id          String           @id @default(cuid())
-  tenantId    String           @map("tenant_id")
-  /// Sync key without the tenant, e.g. "branch", "warehouse" — matches SapSyncButton's syncKey.
-  entity      String
-  status      SapSyncRunStatus
-  startedAt   DateTime         @map("started_at")
-  finishedAt  DateTime?        @map("finished_at")
-  result      Json?
-  error       String?
-  actorUserId String?          @map("actor_user_id")
-  updatedAt   DateTime         @updatedAt @map("updated_at")
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@unique([tenantId, entity])
-  @@map("sap_sync_statuses")
 }
 
 model BranchReturnRequest {

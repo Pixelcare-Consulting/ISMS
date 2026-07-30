@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import {
   runSapSync,
   useSapSyncPending,
-  useSapSyncStatusHydration,
   type SapSyncNoun,
   type SapSyncResponse,
 } from "@/features/sap/hooks/use-sap-sync";
@@ -37,7 +36,6 @@ interface SapSyncButtonProps {
  */
 export function SapSyncButton({ syncKey, noun, onSync }: SapSyncButtonProps) {
   const router = useRouter();
-  useSapSyncStatusHydration(syncKey, noun);
   const pending = useSapSyncPending(syncKey);
   const completedAt = useSapSyncStore((s) => s.completedAt[syncKey]);
   const seenCompletedAt = useRef(completedAt);

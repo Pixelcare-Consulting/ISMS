@@ -6,7 +6,7 @@ import type {
 } from "@/features/sap/schemas/sap-master-sync.schema";
 import { fetchSapCollection } from "@/features/sap/services/sap-master-data";
 import { sapServiceLayerService } from "@/features/sap/services/sap-service-layer.service";
-import { runTrackedSapSync } from "@/features/sap/services/sap-sync-runner";
+import { withSapSyncLock } from "@/features/sap/services/sap-sync-lock";
 
 /**
  * SAP B1 Service Layer entity holding branch master data — the multi-branch feature
@@ -137,8 +137,6 @@ export const branchSapSyncService = {
    * the first sync already finished) joins the same run instead of hitting SAP twice.
    */
   syncFromSap(tenantId: string, actorUserId: string): Promise<SapMasterSyncResult> {
-    return runTrackedSapSync(tenantId, "branch", actorUserId, () =>
-      runSync(tenantId, actorUserId),
-    );
+    return withSapSyncLock(`branch:${tenantId}`, () => runSync(tenantId, actorUserId));
   },
 };
