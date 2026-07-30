@@ -1,28 +1,24 @@
 import { auditService } from "@/features/audit/services/audit.service";
 import { branchRepository } from "@/features/branches/repositories/branch.repository";
 import type {
-  BranchSapSyncResult,
-  BranchSapSyncSkip,
-} from "@/features/branches/schemas/branch-sap-sync.schema";
-import { sapServiceLayerClient } from "@/features/sap/services/sap-service-layer-client";
+  SapMasterSyncResult,
+  SapMasterSyncSkip,
+} from "@/features/sap/schemas/sap-master-sync.schema";
+import {
+  fetchSapCollection,
+  parseSapFlag,
+} from "@/features/sap/services/sap-master-data";
 import { sapServiceLayerService } from "@/features/sap/services/sap-service-layer.service";
-import type { SapServiceLayerCredentials } from "@/features/sap/types/sap-service-layer";
 import type { BranchStatus } from "@/lib/database/generated/prisma/client";
 
 /**
  * SAP B1 Service Layer entity holding branch master data (OBPL / "Business Places").
- * If a tenant maps ISMS branches onto a different entity, these three constants and
+ * If a tenant maps ISMS branches onto a different entity, these constants and
  * `readSapRecord` below are the only things that need to change — e.g. `BusinessPartners`
- * with `CardCode`/`CardName`, or `Warehouses` with `WarehouseCode`/`WarehouseName`.
+ * with `CardCode`/`CardName`.
  */
 const SAP_BRANCH_ENTITY = "BusinessPlaces";
 const SAP_BRANCH_SELECT = "BPLID,BPLName,AliasName,Disabled";
-
-/**
- * Service Layer caps page size server-side (default 20), so `$top` is unreliable —
- * we page with `$skip` until a request comes back empty. The cap is a runaway guard.
- */
-const MAX_PAGES = 200;
 
 interface SapBranchRecord {
   BPLID?: number | string | null;
@@ -31,70 +27,17 @@ interface SapBranchRecord {
   Disabled?: boolean | string | null;
 }
 
-interface SapCollectionResponse {
-  value?: SapBranchRecord[];
-}
-
-/** SAP reports "disabled" as tYES/tNO on most master-data entities, boolean on some. */
-function toBranchStatus(disabled: SapBranchRecord["Disabled"]): BranchStatus {
-  if (typeof disabled === "boolean") return disabled ? "inactive" : "active";
-  const value = (disabled ?? "").toString().trim().toLowerCase();
-  return value === "tyes" || value === "y" || value === "true" ? "inactive" : "active";
-}
-
 function readSapRecord(record: SapBranchRecord) {
   return {
     sapCode: record.BPLID == null ? "" : String(record.BPLID).trim(),
     name: (record.BPLName ?? record.AliasName ?? "").trim(),
-    status: toBranchStatus(record.Disabled),
+    status: (parseSapFlag(record.Disabled) ? "inactive" : "active") as BranchStatus,
   };
-}
-
-/** Surface SAP's own error text — a bare status code is useless for diagnosing this. */
-function sapErrorMessage(statusCode: number, rawBody: string): string {
-  try {
-    const parsed = JSON.parse(rawBody) as {
-      error?: { message?: string | { value?: string } };
-    };
-    const message = parsed.error?.message;
-    const text = typeof message === "string" ? message : message?.value;
-    if (text) return `SAP returned ${statusCode}: ${text}`;
-  } catch {
-    // Non-JSON body (HTML error page, proxy response) — fall through.
-  }
-  return `SAP returned ${statusCode} while reading ${SAP_BRANCH_ENTITY}`;
-}
-
-async function fetchSapBranches(
-  creds: SapServiceLayerCredentials,
-): Promise<SapBranchRecord[]> {
-  const records: SapBranchRecord[] = [];
-  let skip = 0;
-
-  for (let page = 0; page < MAX_PAGES; page += 1) {
-    const response = await sapServiceLayerClient.request<SapCollectionResponse>({
-      creds,
-      method: "GET",
-      path: `/${SAP_BRANCH_ENTITY}?$select=${SAP_BRANCH_SELECT}&$skip=${skip}`,
-    });
-
-    if (response.statusCode >= 400) {
-      throw new Error(sapErrorMessage(response.statusCode, response.rawBody));
-    }
-
-    const batch = response.data?.value ?? [];
-    if (batch.length === 0) break;
-
-    records.push(...batch);
-    skip += batch.length;
-  }
-
-  return records;
 }
 
 export const branchSapSyncService = {
   /** Pull branch master data from SAP and upsert ISMS branches matched on sapCode. */
-  async syncFromSap(tenantId: string, actorUserId: string): Promise<BranchSapSyncResult> {
+  async syncFromSap(tenantId: string, actorUserId: string): Promise<SapMasterSyncResult> {
     const creds = await sapServiceLayerService.getCredentials(tenantId);
     if (!creds) {
       throw new Error(
@@ -102,11 +45,14 @@ export const branchSapSyncService = {
       );
     }
 
-    const records = await fetchSapBranches(creds);
+    const records = await fetchSapCollection<SapBranchRecord>(creds, {
+      entity: SAP_BRANCH_ENTITY,
+      select: SAP_BRANCH_SELECT,
+    });
     const existing = await branchRepository.listSapSyncSnapshot(tenantId);
     const bySapCode = new Map(existing.map((branch) => [branch.sapCode, branch]));
 
-    const skipped: BranchSapSyncSkip[] = [];
+    const skipped: SapMasterSyncSkip[] = [];
     const toCreate: { sapCode: string; name: string; status: BranchStatus }[] = [];
     const toUpdate: { id: string; name: string; status: BranchStatus }[] = [];
     const seen = new Set<string>();
@@ -155,7 +101,7 @@ export const branchSapSyncService = {
       await branchRepository.applySapSync(tenantId, { create: toCreate, update: toUpdate });
     }
 
-    const result: BranchSapSyncResult = {
+    const result: SapMasterSyncResult = {
       fetched: records.length,
       created: toCreate.length,
       updated: toUpdate.length,

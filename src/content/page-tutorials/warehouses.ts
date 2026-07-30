@@ -17,6 +17,7 @@ export const WAREHOUSES_PAGE_TUTORIAL: PageTutorialContent = {
       title: "How to use it",
       bullets: [
         "Add warehouses with clear codes that match your ERP/SAP naming where possible.",
+        "Sync from SAP pulls warehouse master data over the Service Layer and matches on code — it adds and renames warehouses, but never deletes them or changes which one is main.",
         "Define aisles when your process tracks storage slots.",
         "Link warehouses in Areas of responsibility when users need warehouse-scoped access.",
       ],

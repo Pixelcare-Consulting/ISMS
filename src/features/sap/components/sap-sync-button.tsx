@@ -5,8 +5,7 @@ import { useState, useTransition } from "react";
 import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
-import { syncBranchesFromSapAction } from "@/features/branches/actions/branch.actions";
-import type { BranchSapSyncResult } from "@/features/branches/schemas/branch-sap-sync.schema";
+import type { SapMasterSyncResult } from "@/features/sap/schemas/sap-master-sync.schema";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -24,29 +23,35 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-function summarize(result: BranchSapSyncResult): string {
-  return [
-    `${result.created} added`,
-    `${result.updated} updated`,
-    `${result.unchanged} unchanged`,
-  ].join(" · ");
+type SyncResponse = { error: string } | { success: true; result: SapMasterSyncResult };
+
+interface SapSyncButtonProps {
+  /** Singular + plural noun for the record type, e.g. `{ one: "branch", many: "branches" }`. */
+  noun: { one: string; many: string };
+  onSync: () => Promise<SyncResponse>;
 }
 
-export function SyncBranchesSapButton() {
+function summarize(result: SapMasterSyncResult): string {
+  return `${result.created} added · ${result.updated} updated · ${result.unchanged} unchanged`;
+}
+
+/** Shared "Sync from SAP" control for the one-way SAP → ISMS master-data syncs. */
+export function SapSyncButton({ noun, onSync }: SapSyncButtonProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [skipReport, setSkipReport] = useState<BranchSapSyncResult | null>(null);
+  const [skipReport, setSkipReport] = useState<SapMasterSyncResult | null>(null);
 
   function handleSync() {
     startTransition(async () => {
-      const response = await syncBranchesFromSapAction();
+      const response = await onSync();
       if ("error" in response) {
-        toast.error("Could not sync branches from SAP", { description: response.error });
+        toast.error(`Could not sync ${noun.many} from SAP`, { description: response.error });
         return;
       }
 
       const { result } = response;
-      toast.success(`Synced ${result.fetched} branch${result.fetched === 1 ? "" : "es"} from SAP`, {
+      const label = result.fetched === 1 ? noun.one : noun.many;
+      toast.success(`Synced ${result.fetched} ${label} from SAP`, {
         description: summarize(result),
       });
 
@@ -74,7 +79,7 @@ export function SyncBranchesSapButton() {
               <p className="text-muted-foreground text-sm">
                 {summarize(skipReport)}. The rows below were left untouched.
                 {skipReport.notInSap > 0
-                  ? ` ${skipReport.notInSap} ISMS branch${skipReport.notInSap === 1 ? " has" : "es have"} no matching SAP record — nothing was deleted or deactivated.`
+                  ? ` ${skipReport.notInSap} ISMS ${skipReport.notInSap === 1 ? `${noun.one} has` : `${noun.many} have`} no matching SAP record — nothing was deleted or deactivated.`
                   : ""}
               </p>
 
