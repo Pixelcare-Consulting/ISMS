@@ -13,6 +13,7 @@ import { warehouseRepository } from "@/features/warehouses/repositories/warehous
 /** SAP B1 Service Layer entity holding warehouse master data (OWHS). */
 const SAP_WAREHOUSE_ENTITY = "Warehouses";
 const SAP_WAREHOUSE_SELECT = "WarehouseCode,WarehouseName,Inactive";
+const SAP_WAREHOUSE_ORDER_BY = "WarehouseCode";
 
 interface SapWarehouseRecord {
   WarehouseCode?: string | null;
@@ -48,6 +49,7 @@ export const warehouseSapSyncService = {
     const records = await fetchSapCollection<SapWarehouseRecord>(creds, {
       entity: SAP_WAREHOUSE_ENTITY,
       select: SAP_WAREHOUSE_SELECT,
+      orderBy: SAP_WAREHOUSE_ORDER_BY,
     });
     const existing = await warehouseRepository.listSapSyncSnapshot(tenantId);
     const byCode = new Map(existing.map((warehouse) => [warehouse.code, warehouse]));
@@ -65,12 +67,17 @@ export const warehouseSapSyncService = {
         skipped.push({ sapCode: null, name: name || null, reason: "Missing warehouse code" });
         continue;
       }
-      if (!name) {
-        skipped.push({ sapCode: code, name: null, reason: "Missing warehouse name" });
-        continue;
-      }
+      // `seen` drives both dedupe and `notInSap`, so a code SAP actually returned has to
+      // register here even if the row is skipped below — otherwise the warehouse gets
+      // reported as "no matching SAP record" when SAP does know about it.
       if (seen.has(code)) {
         skipped.push({ sapCode: code, name, reason: "Duplicate warehouse code in SAP response" });
+        continue;
+      }
+      seen.add(code);
+
+      if (!name) {
+        skipped.push({ sapCode: code, name: null, reason: "Missing warehouse name" });
         continue;
       }
 
@@ -83,8 +90,6 @@ export const warehouseSapSyncService = {
         skipped.push({ sapCode: code, name, reason: "Inactive in SAP — not imported" });
         continue;
       }
-
-      seen.add(code);
 
       if (!match) {
         toCreate.push({ code, name });

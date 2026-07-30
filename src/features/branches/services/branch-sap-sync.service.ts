@@ -19,6 +19,7 @@ import type { BranchStatus } from "@/lib/database/generated/prisma/client";
  */
 const SAP_BRANCH_ENTITY = "BusinessPlaces";
 const SAP_BRANCH_SELECT = "BPLID,BPLName,AliasName,Disabled";
+const SAP_BRANCH_ORDER_BY = "BPLID";
 
 interface SapBranchRecord {
   BPLID?: number | string | null;
@@ -30,7 +31,9 @@ interface SapBranchRecord {
 function readSapRecord(record: SapBranchRecord) {
   return {
     sapCode: record.BPLID == null ? "" : String(record.BPLID).trim(),
-    name: (record.BPLName ?? record.AliasName ?? "").trim(),
+    // `||`, not `??` — Service Layer returns "" for unset strings, so a blank BPLName
+    // has to fall through to AliasName the same way a null one does.
+    name: (record.BPLName || record.AliasName || "").trim(),
     status: (parseSapFlag(record.Disabled) ? "inactive" : "active") as BranchStatus,
   };
 }
@@ -48,6 +51,7 @@ export const branchSapSyncService = {
     const records = await fetchSapCollection<SapBranchRecord>(creds, {
       entity: SAP_BRANCH_ENTITY,
       select: SAP_BRANCH_SELECT,
+      orderBy: SAP_BRANCH_ORDER_BY,
     });
     const existing = await branchRepository.listSapSyncSnapshot(tenantId);
     const bySapCode = new Map(existing.map((branch) => [branch.sapCode, branch]));
@@ -65,15 +69,19 @@ export const branchSapSyncService = {
         skipped.push({ sapCode: null, name: name || null, reason: "Missing branch code" });
         continue;
       }
-      if (!name) {
-        skipped.push({ sapCode, name: null, reason: "Missing branch name" });
-        continue;
-      }
+      // `seen` drives both dedupe and `notInSap`, so a code SAP actually returned has to
+      // register here even if the row is skipped below — otherwise the branch gets
+      // reported as "no matching SAP record" when SAP does know about it.
       if (seen.has(sapCode)) {
         skipped.push({ sapCode, name, reason: "Duplicate branch code in SAP response" });
         continue;
       }
       seen.add(sapCode);
+
+      if (!name) {
+        skipped.push({ sapCode, name: null, reason: "Missing branch name" });
+        continue;
+      }
 
       const match = bySapCode.get(sapCode);
       if (!match) {

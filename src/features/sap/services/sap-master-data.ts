@@ -49,7 +49,8 @@ export function parseSapFlag(value: boolean | string | null | undefined): boolea
 /** Fetch every row of a Service Layer entity set, paging until it runs dry. */
 export async function fetchSapCollection<T>(
   creds: SapServiceLayerCredentials,
-  query: { entity: string; select: string },
+  /** `orderBy` should be the entity's key — paging by `$skip` needs a stable sort. */
+  query: { entity: string; select: string; orderBy: string },
 ): Promise<T[]> {
   const records: T[] = [];
   let skip = 0;
@@ -58,7 +59,7 @@ export async function fetchSapCollection<T>(
     const response = await sapServiceLayerClient.request<SapCollectionResponse<T>>({
       creds,
       method: "GET",
-      path: `/${query.entity}?$select=${query.select}&$skip=${skip}`,
+      path: `/${query.entity}?$select=${query.select}&$orderby=${query.orderBy}&$skip=${skip}`,
     });
 
     if (response.statusCode >= 400) {
