@@ -1,6 +1,7 @@
 "use server";
 
 import { getDashboardKpis } from "@/features/dashboard/services/dashboard-kpi.service";
+import { hasAnyOrderPermission } from "@/features/orders/constants/order-permissions";
 import { hasPermission, requireAuth } from "@/lib/auth/permissions";
 
 export async function getDashboardKpisAction() {
@@ -8,7 +9,7 @@ export async function getDashboardKpisAction() {
   const perms = session.user.permissions ?? [];
   const hasOps =
     hasPermission(perms, "inventory.view") ||
-    hasPermission(perms, "orders.view") ||
+    hasAnyOrderPermission(perms, "view") ||
     hasPermission(perms, "sales.create");
 
   if (!hasOps) {
@@ -16,7 +17,7 @@ export async function getDashboardKpisAction() {
   }
 
   const fullAccess =
-    hasPermission(perms, "orders.approve") || hasPermission(perms, "branches.manage");
+    hasAnyOrderPermission(perms, "approve") || hasPermission(perms, "branches.manage");
 
   return getDashboardKpis(session.user.tenantId, session.user.id, fullAccess);
 }

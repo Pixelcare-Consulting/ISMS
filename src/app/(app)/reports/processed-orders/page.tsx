@@ -1,9 +1,10 @@
+import { ORDER_VIEW_REPORT_PERMISSIONS } from "@/features/orders/constants/order-permissions";
 import { ProcessedOrdersReportPanel } from "@/app/(app)/reports/processed-orders/_components/processed-orders-report-panel";
 import { SectionPageLead } from "@/components/navigation/section-page-lead";
 import { requireAnyPermission } from "@/lib/auth/permissions";
 
 export default async function ProcessedOrdersReportPage() {
-  await requireAnyPermission(["reports.view", "orders.view"]);
+  await requireAnyPermission(["reports.view", ...ORDER_VIEW_REPORT_PERMISSIONS]);
 
   return (
     <div className="space-y-4">

@@ -3,6 +3,8 @@ import { seedBranchSchedules } from "./seed-branch-schedules";
 import { seedBrsDemoData } from "./seed-brs";
 import { seedCore } from "./seed-core";
 import { resolveSeedProfile, type SeedProfile } from "./seed-data";
+import { seedRegionsAndProvincesForAllTenants } from "./seed-ph-geo";
+import { seedPsgBranchesForAllTenants } from "./seed-psg-branches";
 import { seedReasonStatusesForTenant } from "./seed-reason-status";
 
 const prisma = createPrismaClient();
@@ -27,6 +29,8 @@ async function runProfile(profile: SeedProfile) {
 
   if (profile === "core") {
     await seedCore(prisma);
+    console.log("Seeding regions/provinces for all tenants…");
+    await seedRegionsAndProvincesForAllTenants(prisma);
     console.log(`Seed [core] done in ${Date.now() - started}ms`);
     return;
   }
@@ -53,20 +57,33 @@ async function runProfile(profile: SeedProfile) {
     return;
   }
 
+  if (profile === "branches") {
+    console.log("Seeding regions/provinces for all tenants…");
+    await seedRegionsAndProvincesForAllTenants(prisma);
+    console.log("Seeding PSG branches for all tenants (may take a bit for ~1k rows)…");
+    await seedPsgBranchesForAllTenants(prisma);
+    console.log(`Seed [branches] done in ${Date.now() - started}ms`);
+    return;
+  }
+
   const { demoTenant, usersByEmail } = await seedCore(prisma);
+  console.log("Seeding regions/provinces for all tenants…");
+  await seedRegionsAndProvincesForAllTenants(prisma);
   const statusCodes = await seedReasonStatusesForTenant(prisma, demoTenant.id);
 
   if (profile === "full") {
     await seedBrsDemoData(prisma, demoTenant.id, usersByEmail, statusCodes);
     await seedBranchSchedules(prisma, demoTenant.id);
+    console.log("Seeding PSG branches for all tenants (may take a bit for ~1k rows)…");
+    await seedPsgBranchesForAllTenants(prisma);
     console.log(
-      `Seed [full] done in ${Date.now() - started}ms — core + status + BRS demo. See database/seed-users.md`,
+      `Seed [full] done in ${Date.now() - started}ms — core + geo + status + BRS + PSG branches. See database/seed-users.md`,
     );
     return;
   }
 
   console.log(
-    `Seed [minimal] done in ${Date.now() - started}ms — core + status. Run \`pnpm run db:seed:full\` for BRS demo data.`,
+    `Seed [minimal] done in ${Date.now() - started}ms — core + geo + status. Run \`pnpm run db:seed:full\` for BRS demo data, or \`pnpm run db:seed:branches\` for PSG branches.`,
   );
 }
 

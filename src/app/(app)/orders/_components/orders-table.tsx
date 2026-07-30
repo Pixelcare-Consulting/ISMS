@@ -91,6 +91,10 @@ interface OrdersTableProps {
   };
   viewerRoleSlugs: string[];
   canEdit?: boolean;
+  /** When set, list is type-scoped and create dialog locks this type. */
+  fixedOrderType?: BranchOrderType;
+  /** Base path for pagination links (defaults to `/orders`). */
+  basePath?: string;
 }
 
 const ORDER_APPROVE_FEED = [
@@ -116,15 +120,21 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function buildOrdersHref(page: number, limit: number): string {
+function buildOrdersHref(basePath: string, page: number, limit: number): string {
   const params = new URLSearchParams();
   if (page > 1) params.set("page", String(page));
   if (limit !== DEFAULT_TABLE_PAGE_SIZE) params.set("limit", String(limit));
   const query = params.toString();
-  return query ? `/orders?${query}` : "/orders";
+  return query ? `${basePath}?${query}` : basePath;
 }
 
-export function OrdersTable({ result, viewerRoleSlugs, canEdit = false }: OrdersTableProps) {
+export function OrdersTable({
+  result,
+  viewerRoleSlugs,
+  canEdit = false,
+  fixedOrderType,
+  basePath = "/orders",
+}: OrdersTableProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [workflowOrder, setWorkflowOrder] = useState<OrderRow | null>(null);
@@ -137,7 +147,7 @@ export function OrdersTable({ result, viewerRoleSlugs, canEdit = false }: Orders
   const pageSize = parseTablePageSize(result.limit);
 
   function handlePageSizeChange(limit: TablePageSize) {
-    router.push(buildOrdersHref(1, limit));
+    router.push(buildOrdersHref(basePath, 1, limit));
   }
 
   const filtered = useMemo(
@@ -227,7 +237,9 @@ export function OrdersTable({ result, viewerRoleSlugs, canEdit = false }: Orders
             <Button variant="outline" asChild>
               <a href="/planning/suggested-orders">Suggested orders</a>
             </Button>
-            <Button onClick={() => setShowCreate(true)}>Create order</Button>
+            {canEdit ? (
+              <Button onClick={() => setShowCreate(true)}>Create order</Button>
+            ) : null}
           </>
         }
         pagination={{
@@ -235,7 +247,7 @@ export function OrdersTable({ result, viewerRoleSlugs, canEdit = false }: Orders
           page: result.page,
           totalPages: result.totalPages,
           itemLabel: "order",
-          buildHref: (page) => buildOrdersHref(page, pageSize),
+          buildHref: (page) => buildOrdersHref(basePath, page, pageSize),
         }}
       >
         <TableHeader>
@@ -340,7 +352,10 @@ export function OrdersTable({ result, viewerRoleSlugs, canEdit = false }: Orders
         />
       ) : null}
       {showCreate ? (
-        <CreateOrderDialog onClose={() => setShowCreate(false)} />
+        <CreateOrderDialog
+          onClose={() => setShowCreate(false)}
+          fixedOrderType={fixedOrderType}
+        />
       ) : null}
       {editingOrder ? (
         <EditOrderDialog order={editingOrder} onClose={() => setEditingOrder(null)} />
@@ -406,7 +421,13 @@ function OrderReviewButton({ order, viewerRoleSlugs, onReview }: OrderReviewButt
   );
 }
 
-function CreateOrderDialog({ onClose }: { onClose: () => void }) {
+function CreateOrderDialog({
+  onClose,
+  fixedOrderType,
+}: {
+  onClose: () => void;
+  fixedOrderType?: BranchOrderType;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [dealers, setDealers] = useState<{ id: string; name: string }[]>([]);
@@ -416,11 +437,14 @@ function CreateOrderDialog({ onClose }: { onClose: () => void }) {
   const [models, setModels] = useState<OrderModelOption[]>([]);
   const [dealerId, setDealerId] = useState("");
   const [branchId, setBranchId] = useState("");
-  const [orderType, setOrderType] = useState<"manual" | "special" | "auto_replenish">("manual");
+  const [orderType, setOrderType] = useState<"manual" | "special" | "auto_replenish">(
+    fixedOrderType ?? "manual",
+  );
   const [modelId, setModelId] = useState("");
   const [qty, setQty] = useState(1);
   const [loaded, setLoaded] = useState(false);
   const [windowBlock, setWindowBlock] = useState<string | null>(null);
+  const lockedOrderType = fixedOrderType ?? null;
 
   const selectedModel = models.find((m) => m.id === modelId);
 
@@ -428,8 +452,8 @@ function CreateOrderDialog({ onClose }: { onClose: () => void }) {
     let cancelled = false;
     void (async () => {
       const [dealerRows, branchRows] = await Promise.all([
-        listActiveDealersForOrderAction(),
-        listBranchesForOrderAction(),
+        listActiveDealersForOrderAction(fixedOrderType),
+        listBranchesForOrderAction(undefined, fixedOrderType),
       ]);
       if (cancelled) return;
       setDealers(dealerRows);
@@ -439,12 +463,12 @@ function CreateOrderDialog({ onClose }: { onClose: () => void }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [fixedOrderType]);
 
   useEffect(() => {
     if (!loaded || !dealerId) return;
     let cancelled = false;
-    void listBranchesForOrderAction(dealerId).then((branchRows) => {
+    void listBranchesForOrderAction(dealerId, fixedOrderType).then((branchRows) => {
       if (cancelled) return;
       setBranches(branchRows);
       setBranchId((current) =>
@@ -454,7 +478,7 @@ function CreateOrderDialog({ onClose }: { onClose: () => void }) {
     return () => {
       cancelled = true;
     };
-  }, [dealerId, loaded]);
+  }, [dealerId, loaded, fixedOrderType]);
 
   useEffect(() => {
     let cancelled = false;
@@ -464,13 +488,13 @@ function CreateOrderDialog({ onClose }: { onClose: () => void }) {
         if (!cancelled) setWindowBlock(null);
         return;
       }
-      const res = await checkOrderWindowAction(branch);
+      const res = await checkOrderWindowAction(branch, fixedOrderType);
       if (!cancelled) setWindowBlock(res.blocked ? res.reason : null);
     });
     return () => {
       cancelled = true;
     };
-  }, [branchId]);
+  }, [branchId, fixedOrderType]);
 
   useEffect(() => {
     if (!branchId) return;
@@ -547,19 +571,32 @@ function CreateOrderDialog({ onClose }: { onClose: () => void }) {
               </p>
             ) : null}
             <div>
-              <SearchableSelect
-                label="Order type"
-                options={[
-                  { id: "manual", label: "Manual (planogram SKUs)" },
-                  { id: "auto_replenish", label: "Auto replenish (planogram SKUs)" },
-                  { id: "special", label: "Special (off-planogram allowed)" },
-                ]}
-                value={orderType}
-                onChange={(next) =>
-                  setOrderType(next as "manual" | "special" | "auto_replenish")
-                }
-                searchPlaceholder="Search order types…"
-              />
+              {lockedOrderType ? (
+                <div className="space-y-1">
+                  <Label>Order type</Label>
+                  <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                    {lockedOrderType === "manual"
+                      ? "Manual (planogram SKUs)"
+                      : lockedOrderType === "special"
+                        ? "Special (off-planogram allowed)"
+                        : "Auto replenish (planogram SKUs)"}
+                  </p>
+                </div>
+              ) : (
+                <SearchableSelect
+                  label="Order type"
+                  options={[
+                    { id: "manual", label: "Manual (planogram SKUs)" },
+                    { id: "auto_replenish", label: "Auto replenish (planogram SKUs)" },
+                    { id: "special", label: "Special (off-planogram allowed)" },
+                  ]}
+                  value={orderType}
+                  onChange={(next) =>
+                    setOrderType(next as "manual" | "special" | "auto_replenish")
+                  }
+                  searchPlaceholder="Search order types…"
+                />
+              )}
               {orderType === "auto_replenish" ? (
                 <p className="mt-1 text-xs text-muted-foreground">
                   Single-line auto-replenish here, or use suggested orders.

@@ -2,7 +2,7 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.13.4`
+**Current version:** `0.13.8`
 
 ## Stack
 
@@ -20,10 +20,10 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | **Planning** | BRS CSV forecast import, allocation, suggested auto-replenish orders (`/settings/planning`, `/planning/suggested-orders`) |
 | **Planogram** | Per-branch SKU shelf capacity, MIL, order enforcement |
 | **Policies** | Full document control (ISO track) |
-| **Inventory** | Serialized stock, AOR-scoped list, **physical stock count / P-Count** (`/inventory/stock-count`) |
-| **Orders** | Manual / special / auto-replenish; PS → TL → SP; SO#, processed orders, delivery-due auto-reschedule |
+| **Inventory** | Serialized stock, AOR-scoped list, series QTY/VALUE + DR#/date/aging on Stock units, **physical stock count / P-Count** (`/inventory/stock-count`) |
+| **Orders** | Nav group: Manual / Special / Auto replenish (`/orders/manual` etc.); per-type `orders.manual`, `orders.special`, `orders.auto_replenish` with view/create/approve; PS → TL → SP; SO#, processed orders, delivery-due auto-reschedule |
 | **Logistics** | Deliveries (accept/reject), transfers, pull-outs with SN movement |
-| **Sales** | Encode at `/sales` (sidebar); SN picker, reserved (RSV) sales, **BranchReturnRequest** ATR workflow |
+| **Sales** | Encode at `/sales` (sidebar); PS auto-branch; TL `sales.create` + branch picker; SN picker, reserved (RSV) sales, **BranchReturnRequest** ATR workflow |
 | **Reports** | Processed orders, daily stock, transfers, sales CSV (`/reports/sales`), **P-Count** (`/reports/pcount`), **Official Sales** staging (`/reports/official-sales`) |
 | **SAP** | Outbound job queue + mock processor; **Service Layer** settings (encrypted credentials) + in-process session client with status UI (Connect/Logout) and refresh-on-401 |
 | **RBAC** | ISO + BRS roles (PS, TL, SP/SPA, Logistics, AE), permission-gated sidebar |
@@ -37,9 +37,12 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/dashboard` | Authenticated app |
 | `/announcements` | `announcements.view` / `announcements.manage` |
 | `/competitors` | `competitors.view` / `competitors.manage` |
-| `/inventory` | `inventory.view` |
+| `/inventory` | `inventory.view` (Stock units: series summary, DR#/date/aging, status filter) |
 | `/inventory/stock-count` | `inventory.view` (nav alias: P-Count) |
-| `/orders` | `orders.view` / `orders.create` / `orders.approve` |
+| `/orders` | Redirects to first accessible order type (or dashboard) |
+| `/orders/manual` | `orders.manual.view` / `create` / `approve` (or legacy `orders.*`) |
+| `/orders/special` | `orders.special.view` / `create` / `approve` (or legacy `orders.*`) |
+| `/orders/auto-replenish` | `orders.auto_replenish.view` / `create` / `approve` (or legacy `orders.*`) |
 | `/planning/suggested-orders` | `forecast.manage` / `planogram.manage` |
 | `/logistics/deliveries`, `/transfers`, `/pickups` | `logistics.manage` |
 | `/operations` | `inventory.view` (combined ops view) |
@@ -50,7 +53,8 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/settings/users`, `/roles` | `users.manage` / `roles.manage` |
 | `/settings/departments` | `departments.manage` |
 | `/audit-logs/system`, `/audit-logs/serial-numbers` | `audit_logs.view` |
-| `/settings/branches`, `/settings/branch-quotas` | `branches.manage` |
+| `/settings/branches`, `/settings/branch-quotas` | `branches.manage` (Import creates missing sap_codes; accepts PSG ISMS sheet; schedule UX shows company locked days + frequency suggestions) |
+| `/settings/ordering` | `ordering_settings.manage` (company locked weekdays + frequency code catalog) |
 | `/settings/warehouses` | `warehouses.manage` |
 | `/settings/dealers` | `dealers.manage` |
 | `/settings/service-centers` | `service_centers.manage` |
@@ -68,6 +72,9 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 |-----|---------|
 | [`docs/DEVELOPMENT_README.md`](docs/DEVELOPMENT_README.md) | Spec index, Process Flow v1.0 traceability, BRS ↔ app mapping |
 | [`docs/sap-integration.md`](docs/sap-integration.md) | SAP queue, Service Layer config, implemented vs stub |
+| [`docs/official-sales-gap-spec.md`](docs/official-sales-gap-spec.md) | Accounting Official Sales ADD/UPD/DEL vs current staging |
+| [`docs/uat-feedback-sales-2026-07-28-triage.md`](docs/uat-feedback-sales-2026-07-28-triage.md) | UAT PS/TL/Inventory feedback ticket triage |
+| [`docs/sales-nav-revalidation.md`](docs/sales-nav-revalidation.md) | PS/TL `/sales` nav + `sales.create` revalidation |
 | [`database/seed-users.md`](database/seed-users.md) | Demo accounts and seed profiles |
 | [`database/postgres.example.md`](database/postgres.example.md) | Docker Postgres, env, migrate, storage |
 | [`docs/release-notes.md`](docs/release-notes.md) | Release workflow |
@@ -101,6 +108,7 @@ src/
    - `pnpm run db:generate`
    - `pnpm run db:migrate`
    - `pnpm run db:seed` (or `pnpm run db:seed:full` for BRS planogram demo data)
+   - `pnpm run db:seed:branches` to upsert PH regions/provinces + PSG ISMS branches (~1k coded rows from `docs/07.29.26 - PSG ok.xlsx`) for all tenants — safe to re-run; may take a bit
    - Run [`database/extensions.sql`](database/extensions.sql) against local Postgres (`psql` or `docker compose exec`)
 5. (Optional) Policy / audit files land under `STORAGE_ROOT` (default `.data/uploads`)
 6. (Optional) Workflow email: Resend
@@ -133,9 +141,10 @@ Or register at `/register` for a new tenant.
 | `pnpm run db:generate` | Prisma client |
 | `pnpm run db:migrate` | Dev migrations |
 | `pnpm run db:deploy` | Deploy migrations |
-| `pnpm run db:seed` | Core seed (permissions, demo tenant, roles) |
-| `pnpm run db:seed:full` | Full BRS demo (planogram CSV, 4 branches) |
+| `pnpm run db:seed` | Core seed (permissions, demo tenant, roles) + PH regions/provinces |
+| `pnpm run db:seed:full` | Full BRS demo + PH geo + PSG branches (~1k; may take a bit) |
 | `pnpm run db:seed:brs` | BRS data only |
+| `pnpm run db:seed:branches` | PH regions/provinces + PSG ISMS branches for all tenants |
 | `pnpm run db:studio` | Prisma Studio |
 | `pnpm run docs:modules-matrix` | Regenerate `docs/ISMS_App_Modules_vs_Workflow.xlsx` |
 

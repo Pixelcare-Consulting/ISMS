@@ -1,6 +1,7 @@
 import { auditService } from "@/features/audit/services/audit.service";
 import { branchRepository, type BranchScheduleInput } from "@/features/branches/repositories/branch.repository";
 import { branchScheduleSchema } from "@/features/branches/schemas/branch.schema";
+import { orderingPolicyService } from "@/features/ordering/services/ordering-policy.service";
 import { z } from "zod";
 
 const createBranchSchema = z.object({
@@ -39,8 +40,15 @@ export const branchService = {
     return branchRepository.listActiveByTenant(tenantId, dealerId);
   },
 
-  listFormOptions(tenantId: string) {
-    return branchRepository.listFormOptions(tenantId);
+  async listFormOptions(tenantId: string) {
+    const [options, policy] = await Promise.all([
+      branchRepository.listFormOptions(tenantId),
+      orderingPolicyService.getPolicy(tenantId),
+    ]);
+    return {
+      ...options,
+      globalLockedWeekdays: policy.globalLockedWeekdays,
+    };
   },
 
   async createBranch(input: {

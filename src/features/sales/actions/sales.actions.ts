@@ -47,6 +47,7 @@ export async function listSalesAction(input?: { page?: number; limit?: number })
     ...result,
     items: result.items.map((row) => ({
       id: row.id,
+      transactionNo: row.transactionNo,
       amount: row.amount.toString(),
       atrStatus: row.atrStatus,
       branch: row.branch,

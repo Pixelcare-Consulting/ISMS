@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import {
@@ -13,7 +13,6 @@ import {
   rejectReturnAction,
   requestReturnAction,
 } from "@/features/sales/actions/sales.actions";
-import { listBranchesForOrderAction } from "@/features/orders/actions/order.actions";
 import { TableIndexCell, TableIndexHead, uniqueSearchSuggestions } from "@/components/data-table";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
@@ -31,11 +30,17 @@ import { matchesTableSearch } from "@/utils/match-table-search";
 
 interface SaleRow {
   id: string;
+  transactionNo: string;
   amount: string;
   atrStatus: string;
   branch: { name: string };
   serialNumber: { serialNo: string } | null;
   returnRequest: { id: string; status: string } | null;
+}
+
+interface SalesBranchOption {
+  id: string;
+  name: string;
 }
 
 interface SalesTableProps {
@@ -46,6 +51,10 @@ interface SalesTableProps {
     limit: number;
     totalPages: number;
   };
+  roleSlugs: string[];
+  branches: SalesBranchOption[];
+  /** PS with a single AOR branch — hide branch picker and auto-scope serials. */
+  autoResolveBranch: boolean;
 }
 
 const RETURN_STATUS_LABELS: Record<string, string> = {
@@ -56,6 +65,10 @@ const RETURN_STATUS_LABELS: Record<string, string> = {
   completed: "Completed",
 };
 
+function saleTransactionLabel(sale: SaleRow): string {
+  return sale.transactionNo || sale.id.slice(-8);
+}
+
 function buildSalesHref(page: number, limit: number): string {
   const params = new URLSearchParams();
   if (page > 1) params.set("page", String(page));
@@ -64,11 +77,19 @@ function buildSalesHref(page: number, limit: number): string {
   return query ? `/sales?${query}` : "/sales";
 }
 
-export function SalesTable({ result }: SalesTableProps) {
+export function SalesTable({
+  result,
+  roleSlugs,
+  branches,
+  autoResolveBranch,
+}: SalesTableProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
   const pageSize = parseTablePageSize(result.limit);
+  // Role context from page (PS auto-branch vs TL / multi-branch picker).
+  const isPsEncode = roleSlugs.includes("ps") && autoResolveBranch;
+  const isMultiBranchEncode = !isPsEncode;
 
   function handlePageSizeChange(limit: TablePageSize) {
     router.push(buildSalesHref(1, limit));
@@ -78,6 +99,7 @@ export function SalesTable({ result }: SalesTableProps) {
       result.items.filter((sale) =>
         matchesTableSearch(query, [
           sale.id,
+          sale.transactionNo,
           sale.branch.name,
           sale.amount,
           sale.serialNumber?.serialNo,
@@ -90,6 +112,7 @@ export function SalesTable({ result }: SalesTableProps) {
   const suggestions = useMemo(
     () =>
       uniqueSearchSuggestions(
+        result.items.map((sale) => sale.transactionNo),
         result.items.map((sale) => sale.branch.name),
         result.items.map((sale) => sale.serialNumber?.serialNo),
         result.items.map((sale) => sale.atrStatus),
@@ -115,7 +138,12 @@ export function SalesTable({ result }: SalesTableProps) {
 
   return (
     <div className="space-y-4">
-      <RecordSaleForm pending={pending} />
+      <RecordSaleForm
+        pending={pending}
+        branches={branches}
+        autoResolveBranch={autoResolveBranch}
+        showBranchPicker={isMultiBranchEncode}
+      />
       <GlobalDataTable
         stickyHeader
         scrollable
@@ -162,13 +190,13 @@ export function SalesTable({ result }: SalesTableProps) {
                     <Checkbox
                       checked={selection.isRowSelected(s.id)}
                       onCheckedChange={(checked) => selection.toggleRow(s.id, checked === true)}
-                      aria-label={`Select sale ${s.id.slice(-8)}`}
+                      aria-label={`Select sale ${saleTransactionLabel(s)}`}
                     />
                   </TableCell>
                   <TableIndexCell
                     index={(result.page - 1) * result.limit + index + 1}
                   />
-                  <TableCell className="font-mono text-sm">{s.id.slice(-8)}</TableCell>
+                  <TableCell className="font-mono text-sm">{saleTransactionLabel(s)}</TableCell>
                   <TableCell>{s.branch.name}</TableCell>
                   <TableCell>{s.amount}</TableCell>
                   <TableCell>{s.serialNumber?.serialNo ?? "—"}</TableCell>
@@ -277,17 +305,28 @@ export function SalesTable({ result }: SalesTableProps) {
   );
 }
 
-function RecordSaleForm({ pending }: { pending: boolean }) {
+function RecordSaleForm({
+  pending,
+  branches,
+  autoResolveBranch,
+  showBranchPicker,
+}: {
+  pending: boolean;
+  branches: SalesBranchOption[];
+  autoResolveBranch: boolean;
+  showBranchPicker: boolean;
+}) {
   const router = useRouter();
   const [, startTransition] = useTransition();
-  const [branches, setBranches] = useState<{ id: string; name: string }[]>([]);
-  const [branchId, setBranchId] = useState("");
+  const resolvedBranchId = autoResolveBranch ? (branches[0]?.id ?? "") : "";
+  const [branchId, setBranchId] = useState(resolvedBranchId);
   const [amount, setAmount] = useState("1000");
   const [reserved, setReserved] = useState(false);
   const [serialNumberId, setSerialNumberId] = useState("");
   const [serials, setSerials] = useState<
     { id: string; serialNo: string; skuCode: string; modelName: string }[]
   >([]);
+  const [serialsLoading, setSerialsLoading] = useState(false);
 
   async function loadSerialsForBranch(id: string) {
     if (!id) {
@@ -295,10 +334,38 @@ function RecordSaleForm({ pending }: { pending: boolean }) {
       setSerialNumberId("");
       return;
     }
-    const rows = await listSaleableSerialsAction(id);
-    setSerials(rows);
-    setSerialNumberId(rows[0]?.id ?? "");
+    setSerialsLoading(true);
+    try {
+      const rows = await listSaleableSerialsAction(id);
+      setSerials(rows);
+      setSerialNumberId(rows[0]?.id ?? "");
+    } finally {
+      setSerialsLoading(false);
+    }
   }
+
+  useEffect(() => {
+    if (!autoResolveBranch || !resolvedBranchId) return;
+    let cancelled = false;
+    setSerialsLoading(true);
+    void listSaleableSerialsAction(resolvedBranchId)
+      .then((rows) => {
+        if (cancelled) return;
+        setSerials(rows);
+        setSerialNumberId(rows[0]?.id ?? "");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setSerials([]);
+        setSerialNumberId("");
+      })
+      .finally(() => {
+        if (!cancelled) setSerialsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [autoResolveBranch, resolvedBranchId]);
 
   function submit() {
     startTransition(async () => {
@@ -317,73 +384,71 @@ function RecordSaleForm({ pending }: { pending: boolean }) {
     });
   }
 
+  const resolvedBranch = autoResolveBranch ? branches[0] : null;
+
+  if (branches.length === 0) {
+    return (
+      <div className="rounded-xl border bg-card p-4 text-sm text-muted-foreground shadow-sm">
+        No branch in your area of responsibility. Assign an AOR before recording sales.
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3 rounded-xl border bg-card p-4 shadow-sm">
       <div className="flex flex-wrap items-end gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full sm:w-auto"
-          onClick={async () => {
-            const b = await listBranchesForOrderAction();
-            setBranches(b);
-            if (b[0]) {
-              setBranchId(b[0].id);
-              await loadSerialsForBranch(b[0].id);
-            }
-          }}
-        >
-          Load branches
-        </Button>
-        {branches.length > 0 ? (
-          <>
-            <SearchableSelect
-              className="w-full sm:w-[200px]"
-              options={branches.map((b) => ({ id: b.id, label: b.name }))}
-              value={branchId}
-              onChange={(id) => {
-                setBranchId(id);
-                void loadSerialsForBranch(id);
-              }}
-              placeholder="Select branch…"
-              searchPlaceholder="Search branches…"
-            />
-            <SearchableSelect
-              label="Serial (STK, AOR-scoped)"
-              id="sale-serial"
-              className="w-full sm:w-[240px]"
-              options={serials.map((s) => ({
-                id: s.id,
-                label: `${s.serialNo} · ${s.skuCode}`,
-              }))}
-              value={serialNumberId}
-              onChange={setSerialNumberId}
-              allowClear
-              placeholder="— No serial —"
-              searchPlaceholder="Search serials…"
-              emptyMessage="No serials for this branch."
-              disabled={serials.length === 0}
-            />
-            <Input
-              type="number"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="w-full sm:w-32"
-              aria-label="Amount"
-            />
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={reserved}
-                onChange={(e) => setReserved(e.target.checked)}
-              />
-              Reserved (RSV)
-            </label>
-            <Button className="w-full sm:w-auto" disabled={pending || !branchId} onClick={submit}>
-              Record sale
-            </Button>
-          </>
+        {resolvedBranch ? (
+          <p className="w-full text-sm text-muted-foreground sm:w-auto sm:pb-2">
+            Branch: <span className="font-medium text-foreground">{resolvedBranch.name}</span>
+          </p>
         ) : null}
+        {showBranchPicker ? (
+          <SearchableSelect
+            className="w-full sm:w-[200px]"
+            options={branches.map((b) => ({ id: b.id, label: b.name }))}
+            value={branchId}
+            onChange={(id) => {
+              setBranchId(id);
+              void loadSerialsForBranch(id);
+            }}
+            placeholder="Select branch…"
+            searchPlaceholder="Search branches…"
+          />
+        ) : null}
+        <SearchableSelect
+          label="Serial (STK, AOR-scoped)"
+          id="sale-serial"
+          className="w-full sm:w-[240px]"
+          options={serials.map((s) => ({
+            id: s.id,
+            label: `${s.serialNo} · ${s.skuCode}`,
+          }))}
+          value={serialNumberId}
+          onChange={setSerialNumberId}
+          allowClear
+          placeholder={serialsLoading ? "Loading serials…" : "— No serial —"}
+          searchPlaceholder="Search serials…"
+          emptyMessage="No serials for this branch."
+          disabled={!branchId || serialsLoading || serials.length === 0}
+        />
+        <Input
+          type="number"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          className="w-full sm:w-32"
+          aria-label="Amount"
+        />
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={reserved}
+            onChange={(e) => setReserved(e.target.checked)}
+          />
+          Reserved (RSV)
+        </label>
+        <Button className="w-full sm:w-auto" disabled={pending || !branchId} onClick={submit}>
+          Record sale
+        </Button>
       </div>
     </div>
   );

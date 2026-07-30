@@ -19,6 +19,8 @@ export interface SheetRows {
 export interface ImportWorkbook {
   branches: SheetRows;
   allowedModels: SheetRows;
+  /** True when the Branches side came from a PSG-style ISMS / single sheet. */
+  psgStyle: boolean;
 }
 
 const EMPTY_SHEET: SheetRows = { present: false, columns: new Set(), rows: [] };
@@ -70,6 +72,13 @@ function readSheet(sheet: ExcelJS.Worksheet | undefined): SheetRows {
   return { present: true, columns, rows };
 }
 
+function looksLikePsgColumns(columns: Set<string>): boolean {
+  return (
+    columns.has("sapcode") &&
+    (columns.has("area") || columns.has("devantquota") || columns.has("hisenseblquota") || columns.has("status"))
+  );
+}
+
 /** True for the ZIP magic bytes every .xlsx file starts with. */
 function looksLikeXlsx(buffer: Buffer): boolean {
   return buffer.length > 1 && buffer[0] === 0x50 && buffer[1] === 0x4b;
@@ -78,6 +87,8 @@ function looksLikeXlsx(buffer: Buffer): boolean {
 /**
  * Read an upload into the two logical sheets. A plain CSV is accepted as the
  * Branches sheet alone — handy for a quick rename pass with no allowed models.
+ * PSG ISMS workbooks (sheet named ISMS, or first sheet with PSG headers) are
+ * accepted as a single Branches sheet.
  */
 export async function readImportWorkbook(buffer: Buffer): Promise<ImportWorkbook> {
   if (!looksLikeXlsx(buffer)) {
@@ -98,6 +109,7 @@ export async function readImportWorkbook(buffer: Buffer): Promise<ImportWorkbook
     return {
       branches: { present: true, columns, rows },
       allowedModels: EMPTY_SHEET,
+      psgStyle: looksLikePsgColumns(columns),
     };
   }
 
@@ -109,13 +121,49 @@ export async function readImportWorkbook(buffer: Buffer): Promise<ImportWorkbook
       (sheet) => sheet.name.trim().toLowerCase() === name.toLowerCase(),
     );
 
-  // Fall back to sheet order when tabs have been renamed.
-  const branchSheet = byName(BRANCH_SHEET_NAME) ?? workbook.worksheets[0];
-  const allowedSheet = byName(ALLOWED_MODEL_SHEET_NAME) ?? workbook.worksheets[1];
+  const ismsSheet = byName("ISMS");
+  if (ismsSheet) {
+    const branches = readSheet(ismsSheet);
+    return {
+      branches,
+      allowedModels: EMPTY_SHEET,
+      psgStyle: true,
+    };
+  }
 
+  const namedBranches = byName(BRANCH_SHEET_NAME);
+  const namedAllowed = byName(ALLOWED_MODEL_SHEET_NAME);
+
+  if (namedBranches || namedAllowed) {
+    const branchSheet = namedBranches ?? workbook.worksheets[0];
+    const allowedSheet = namedAllowed ?? workbook.worksheets[1];
+    const branches = readSheet(branchSheet);
+    return {
+      branches,
+      allowedModels: readSheet(allowedSheet === branchSheet ? undefined : allowedSheet),
+      psgStyle: looksLikePsgColumns(branches.columns),
+    };
+  }
+
+  // Unnamed / PSG-style: use first sheet that looks like PSG, else sheet order.
+  for (const sheet of workbook.worksheets) {
+    const candidate = readSheet(sheet);
+    if (looksLikePsgColumns(candidate.columns)) {
+      return {
+        branches: candidate,
+        allowedModels: EMPTY_SHEET,
+        psgStyle: true,
+      };
+    }
+  }
+
+  const branchSheet = workbook.worksheets[0];
+  const allowedSheet = workbook.worksheets[1];
+  const branches = readSheet(branchSheet);
   return {
-    branches: readSheet(branchSheet),
+    branches,
     allowedModels: readSheet(allowedSheet === branchSheet ? undefined : allowedSheet),
+    psgStyle: looksLikePsgColumns(branches.columns),
   };
 }
 
@@ -152,9 +200,6 @@ export async function buildTemplateWorkbook(
     branchSheet.addRow(["BR-001", "Example Branch"]);
   }
   styleHeader(branchSheet, [18, 40]);
-  // sap_code identifies an existing branch; editing it would point at a different
-  // branch rather than rename this one, so lock the column against accidents.
-  branchSheet.getColumn(1).protection = { locked: true };
 
   const allowedSheet = workbook.addWorksheet(ALLOWED_MODEL_SHEET_NAME);
   allowedSheet.addRow(ALLOWED_MODEL_SHEET_HEADERS);

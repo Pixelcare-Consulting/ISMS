@@ -101,7 +101,7 @@ export function ImportBranchesDialog({
         return;
       }
       toast.success(
-        `${result.result.branchesUpdated} branch${result.result.branchesUpdated === 1 ? "" : "es"} updated · ${result.result.allowedModelsAdded} allowed model${result.result.allowedModelsAdded === 1 ? "" : "s"} added`,
+        `${result.result.branchesCreated} created · ${result.result.branchesUpdated} updated · ${result.result.allowedModelsAdded} allowed model${result.result.allowedModelsAdded === 1 ? "" : "s"} added`,
       );
       handleClose(false);
       router.refresh();
@@ -131,9 +131,14 @@ export function ImportBranchesDialog({
               to list several.
             </p>
             <p>
-              Branches and product models must already exist; anything missing is reported
-              below instead of being created. Blank cells are left untouched, and nothing is
-              ever deleted.
+              Unknown <code className="font-mono text-xs">sap_code</code> values are{" "}
+              <strong>created</strong>; existing codes are updated. You can also upload a PSG
+              ISMS workbook (sheet <code className="font-mono text-xs">ISMS</code> or columns
+              like <code className="font-mono text-xs">BRANCH CODE</code>,{" "}
+              <code className="font-mono text-xs">AREA</code>,{" "}
+              <code className="font-mono text-xs">STATUS</code>, Devant / Hisense quotas).
+              Product models (SKUs) must already exist. Blank cells are left untouched, and
+              nothing is ever deleted.
             </p>
           </div>
 
@@ -172,6 +177,9 @@ export function ImportBranchesDialog({
                 <span>
                   <strong>{preview.branchRowCount}</strong> branch rows ·{" "}
                   <strong>{preview.allowedModelRowCount}</strong> model rows
+                </span>
+                <span>
+                  <strong>{preview.branchCreateCount}</strong> branches to create
                 </span>
                 <span>
                   <strong>{preview.branchUpdateCount}</strong> branches to update
@@ -216,6 +224,7 @@ export function ImportBranchesDialog({
                       <TableRow>
                         <TableHead>SAP code</TableHead>
                         <TableHead>Branch</TableHead>
+                        <TableHead>Action</TableHead>
                         <TableHead>Changes</TableHead>
                         <TableHead className="text-right">Allowed models</TableHead>
                       </TableRow>
@@ -225,6 +234,9 @@ export function ImportBranchesDialog({
                         <TableRow key={branch.branchId}>
                           <TableCell className="font-mono text-xs">{branch.sapCode}</TableCell>
                           <TableCell>{branch.name}</TableCell>
+                          <TableCell className="text-sm">
+                            {branch.isCreate ? "Create" : "Update"}
+                          </TableCell>
                           <TableCell className="text-sm">
                             {branch.changes.length === 0 ? (
                               <span className="text-muted-foreground">No field changes</span>

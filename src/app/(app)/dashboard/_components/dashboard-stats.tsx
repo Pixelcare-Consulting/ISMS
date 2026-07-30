@@ -41,7 +41,16 @@ const cards: DashboardCard[] = [
     title: "Orders",
     description: "Branch ordering workflow",
     href: "/orders",
-    anyPermissions: ["orders.view", "orders.create"],
+    anyPermissions: [
+      "orders.view",
+      "orders.create",
+      "orders.manual.view",
+      "orders.manual.create",
+      "orders.special.view",
+      "orders.special.create",
+      "orders.auto_replenish.view",
+      "orders.auto_replenish.create",
+    ],
     modified: "Today",
   },
   {

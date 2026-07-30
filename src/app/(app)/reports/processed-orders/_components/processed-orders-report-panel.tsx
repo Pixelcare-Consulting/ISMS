@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -20,11 +20,20 @@ export function ProcessedOrdersReportPanel() {
   const [processedFrom, setProcessedFrom] = useState("");
   const [processedTo, setProcessedTo] = useState("");
 
-  async function loadBranches() {
-    const list = await listBranchesForReportsAction();
-    setBranches(list);
-    if (list[0]) setBranchId("");
-  }
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const list = await listBranchesForReportsAction();
+        if (!cancelled) setBranches(list);
+      } catch {
+        if (!cancelled) toast.error("Failed to load branches");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function handleExport() {
     startTransition(async () => {
@@ -47,47 +56,39 @@ export function ProcessedOrdersReportPanel() {
       <p className="text-sm text-muted-foreground">
         Export approved branch order lines matching the ISMS-v2 Processed Order Summary layout.
       </p>
-      {branches.length === 0 ? (
-        <Button type="button" variant="outline" onClick={loadBranches}>
-          Load branches
-        </Button>
-      ) : (
-        <>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="processed-from">Processed from</Label>
-              <Input
-                id="processed-from"
-                type="date"
-                value={processedFrom}
-                onChange={(e) => setProcessedFrom(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="processed-to">Processed to</Label>
-              <Input
-                id="processed-to"
-                type="date"
-                value={processedTo}
-                onChange={(e) => setProcessedTo(e.target.value)}
-              />
-            </div>
-          </div>
-          <SearchableSelect
-            label="Branch (optional)"
-            id="branch-filter"
-            options={branches.map((b) => ({ id: b.id, label: b.name }))}
-            value={branchId}
-            onChange={setBranchId}
-            allowClear
-            placeholder="All branches"
-            searchPlaceholder="Search branches…"
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="processed-from">Processed from</Label>
+          <Input
+            id="processed-from"
+            type="date"
+            value={processedFrom}
+            onChange={(e) => setProcessedFrom(e.target.value)}
           />
-          <Button disabled={pending} onClick={handleExport}>
-            {pending ? "Exporting…" : "Download CSV"}
-          </Button>
-        </>
-      )}
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="processed-to">Processed to</Label>
+          <Input
+            id="processed-to"
+            type="date"
+            value={processedTo}
+            onChange={(e) => setProcessedTo(e.target.value)}
+          />
+        </div>
+      </div>
+      <SearchableSelect
+        label="Branch (optional)"
+        id="branch-filter"
+        options={branches.map((b) => ({ id: b.id, label: b.name }))}
+        value={branchId}
+        onChange={setBranchId}
+        allowClear
+        placeholder="All branches"
+        searchPlaceholder="Search branches…"
+      />
+      <Button disabled={pending} onClick={handleExport}>
+        {pending ? "Exporting…" : "Download CSV"}
+      </Button>
     </div>
   );
 }

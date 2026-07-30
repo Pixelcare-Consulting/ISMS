@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { branchService } from "@/features/branches/services/branch.service";
 import { branchScheduleSchema } from "@/features/branches/schemas/branch.schema";
-import { requirePermission } from "@/lib/auth/permissions";
+import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 
 const branchInputSchema = z.object({
   sapCode: z.string().min(1),
@@ -27,7 +27,14 @@ export async function listBranchesAction() {
 
 export async function listBranchFormOptionsAction() {
   const session = await requirePermission("branches.manage");
-  return branchService.listFormOptions(session.user.tenantId);
+  const options = await branchService.listFormOptions(session.user.tenantId);
+  return {
+    ...options,
+    canManageOrderingPolicy: hasPermission(
+      session.user.permissions,
+      "ordering_settings.manage",
+    ),
+  };
 }
 
 export async function createBranchAction(input: unknown) {

@@ -335,6 +335,8 @@ function EditBranchForm({
             value={schedule}
             onChange={setSchedule}
             frequencyCodes={options.frequencyCodes}
+            globalLockedWeekdays={options.globalLockedWeekdays}
+            canManageOrderingPolicy={options.canManageOrderingPolicy}
             disabled={pending}
           />
         </>
