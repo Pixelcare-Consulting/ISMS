@@ -18,10 +18,12 @@ export interface LookupRecord {
   regionId?: string | null;
   sizeId?: string | null;
   documentTypeId?: string | null;
+  competitorBrandId?: string | null;
   brand?: { name: string } | null;
   region?: { name: string } | null;
   size?: { name: string } | null;
   documentType?: { name: string } | null;
+  competitorBrand?: { name: string } | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -58,6 +60,8 @@ const delegates: Record<LookupEntityKey | "brand", LookupDelegate> = {
   modeOfPayment: prisma.modeOfPayment as unknown as LookupDelegate,
   promoType: prisma.promoType as unknown as LookupDelegate,
   competitor: prisma.competitor as unknown as LookupDelegate,
+  competitorBrand: prisma.competitorBrand as unknown as LookupDelegate,
+  competitorModel: prisma.competitorModel as unknown as LookupDelegate,
   dealerType: prisma.dealerType as unknown as LookupDelegate,
   customerDeliveryMethod: prisma.customerDeliveryMethod as unknown as LookupDelegate,
   problemDescription: prisma.problemDescription as unknown as LookupDelegate,

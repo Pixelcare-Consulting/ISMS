@@ -1,8 +1,8 @@
 export type LookupGroup = "Products" | "Geography" | "Sales" | "Service" | "Operations";
 
-export type LookupParentField = "regionId" | "sizeId" | "documentTypeId";
+export type LookupParentField = "regionId" | "sizeId" | "documentTypeId" | "competitorBrandId";
 
-export type LookupParentKey = "region" | "size" | "documentType";
+export type LookupParentKey = "region" | "size" | "documentType" | "competitorBrand";
 
 export interface LookupParentConfig {
   /** Delegate key of the parent model (brand is managed outside this slice). */
@@ -10,7 +10,7 @@ export interface LookupParentConfig {
   /** FK column on the child row. */
   field: LookupParentField;
   /** Relation property included on list rows. */
-  relation: "region" | "size" | "documentType";
+  relation: "region" | "size" | "documentType" | "competitorBrand";
   label: string;
   required: boolean;
 }
@@ -53,6 +53,8 @@ export type LookupEntityKey =
   | "modeOfPayment"
   | "promoType"
   | "competitor"
+  | "competitorBrand"
+  | "competitorModel"
   | "dealerType"
   | "customerDeliveryMethod"
   | "problemDescription"
@@ -223,6 +225,32 @@ export const LOOKUP_ENTITIES: Record<LookupEntityKey, LookupEntityConfig> = {
     group: "Sales",
     auditEntity: "Competitor",
     auditKey: "competitor",
+  },
+  competitorBrand: {
+    key: "competitorBrand",
+    label: "Competitor brands",
+    singular: "competitor brand",
+    slug: "competitor-brands",
+    group: "Sales",
+    auditEntity: "CompetitorBrand",
+    auditKey: "competitor_brand",
+    child: "competitorModel",
+  },
+  competitorModel: {
+    key: "competitorModel",
+    label: "Competitor models",
+    singular: "competitor model",
+    slug: "competitor-brands",
+    group: "Sales",
+    auditEntity: "CompetitorModel",
+    auditKey: "competitor_model",
+    parent: {
+      key: "competitorBrand",
+      field: "competitorBrandId",
+      relation: "competitorBrand",
+      label: "Competitor brand",
+      required: true,
+    },
   },
   dealerType: {
     key: "dealerType",

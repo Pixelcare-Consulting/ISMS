@@ -50,6 +50,14 @@ function formatObservedDate(iso: string) {
   return d.toLocaleDateString();
 }
 
+function brandDisplay(row: CompetitorObservationDto) {
+  return row.competitorBrand?.name ?? row.brandName ?? null;
+}
+
+function modelDisplay(row: CompetitorObservationDto) {
+  return row.competitorModel?.name ?? row.modelName ?? null;
+}
+
 export function CompetitorsTable({
   observations,
   canManage,
@@ -70,15 +78,14 @@ export function CompetitorsTable({
   const filtered = useMemo(() => {
     return observations.filter((row) => {
       if (branchFilter && row.branchId !== branchFilter) return false;
-      if (brandFilter && row.brandId !== brandFilter) return false;
+      if (brandFilter && row.competitorBrandId !== brandFilter) return false;
       return matchesTableSearch(query, [
         row.competitorName,
         row.promotion ?? "",
         row.branch?.name ?? "",
         row.branch?.sapCode ?? "",
-        row.brand?.name ?? "",
-        row.model?.name ?? "",
-        row.model?.skuCode ?? "",
+        brandDisplay(row) ?? "",
+        modelDisplay(row) ?? "",
         row.notes ?? "",
         row.createdBy.name ?? "",
         row.createdBy.email,
@@ -93,9 +100,8 @@ export function CompetitorsTable({
         observations.map((row) => row.promotion),
         observations.map((row) => row.branch?.name),
         observations.map((row) => row.branch?.sapCode),
-        observations.map((row) => row.brand?.name),
-        observations.map((row) => row.model?.name),
-        observations.map((row) => row.model?.skuCode),
+        observations.map((row) => brandDisplay(row)),
+        observations.map((row) => modelDisplay(row)),
         observations.map((row) => row.notes),
         observations.map((row) => row.createdBy.name),
         observations.map((row) => row.createdBy.email),
@@ -214,10 +220,10 @@ export function CompetitorsTable({
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-col">
-                        <span>{row.brand?.name ?? "—"}</span>
-                        {row.model ? (
+                        <span>{brandDisplay(row) ?? "—"}</span>
+                        {modelDisplay(row) ? (
                           <span className="text-xs text-muted-foreground">
-                            {row.model.skuCode} — {row.model.name}
+                            {modelDisplay(row)}
                           </span>
                         ) : null}
                       </div>

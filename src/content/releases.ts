@@ -24,6 +24,33 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.13.4",
+    date: "2026-07-30",
+    title: "Competitor brand and model masters",
+    highlights: [
+      "Competitor observations use dedicated CompetitorBrand / CompetitorModel masters (not inventory Brand/SKU)",
+      "Master data: Competitor brands page with nested models (name + active status)",
+      "Existing observation brand/model links migrated into the new tables with name snapshots",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Tenant-scoped CompetitorBrand and CompetitorModel lookups under Sales master data",
+      },
+      {
+        type: "improvement",
+        description:
+          "Observation form and table pick competitor brands/models only; promotion stays free text",
+      },
+      {
+        type: "fix",
+        description:
+          "Detached competitor observations from inventory Brand / ProductModel foreign keys",
+      },
+    ],
+  },
+  {
     version: "0.13.3",
     date: "2026-07-28",
     title: "AOR sync, Sales nav, Competitors master",

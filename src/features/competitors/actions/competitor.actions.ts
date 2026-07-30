@@ -22,7 +22,7 @@ function hasFullAccess(permissions: string[] | undefined) {
 
 export async function listCompetitorObservationsAction(filter?: {
   branchId?: string | null;
-  brandId?: string | null;
+  competitorBrandId?: string | null;
   competitorName?: string | null;
 }) {
   const session = await requirePermission("competitors.view");
@@ -32,7 +32,7 @@ export async function listCompetitorObservationsAction(filter?: {
     hasFullAccess(session.user.permissions),
     {
       branchId: filter?.branchId ?? null,
-      brandId: filter?.brandId ?? null,
+      competitorBrandId: filter?.competitorBrandId ?? null,
       competitorName: filter?.competitorName ?? null,
     },
   );

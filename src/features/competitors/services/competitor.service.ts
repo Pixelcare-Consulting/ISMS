@@ -9,7 +9,6 @@ import {
   updateCompetitorObservationSchema,
 } from "@/features/competitors/schemas/competitor.schema";
 import { branchRepository } from "@/features/branches/repositories/branch.repository";
-import { masterDataRepository } from "@/features/master-data/repositories/master-data.repository";
 import { getUserBranchIds } from "@/lib/aor/scope";
 import { prisma } from "@/lib/database/client";
 
@@ -18,8 +17,10 @@ export interface CompetitorObservationDto {
   competitorId: string;
   competitorName: string;
   branchId: string | null;
-  brandId: string | null;
-  modelId: string | null;
+  competitorBrandId: string | null;
+  competitorModelId: string | null;
+  brandName: string | null;
+  modelName: string | null;
   price: number | null;
   promotion: string | null;
   notes: string | null;
@@ -27,8 +28,8 @@ export interface CompetitorObservationDto {
   createdAt: string;
   updatedAt: string;
   branch: { id: string; name: string; sapCode: string } | null;
-  brand: { id: string; name: string } | null;
-  model: { id: string; name: string; skuCode: string } | null;
+  competitorBrand: { id: string; name: string } | null;
+  competitorModel: { id: string; name: string } | null;
   createdBy: { id: string; name: string | null; email: string };
 }
 
@@ -47,8 +48,10 @@ function toDto(row: CompetitorObservationListItem): CompetitorObservationDto {
     competitorId: row.competitorId,
     competitorName: row.competitorName,
     branchId: row.branchId,
-    brandId: row.brandId,
-    modelId: row.modelId,
+    competitorBrandId: row.competitorBrandId,
+    competitorModelId: row.competitorModelId,
+    brandName: row.brandName,
+    modelName: row.modelName,
     price: row.price != null ? Number(row.price) : null,
     promotion: row.promotion,
     notes: row.notes,
@@ -56,8 +59,8 @@ function toDto(row: CompetitorObservationListItem): CompetitorObservationDto {
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     branch: row.branch,
-    brand: row.brand,
-    model: row.model,
+    competitorBrand: row.competitorBrand,
+    competitorModel: row.competitorModel,
     createdBy: row.createdBy,
   };
 }
@@ -98,20 +101,58 @@ async function resolveActiveCompetitor(tenantId: string, competitorId: string) {
   return competitor;
 }
 
-async function assertModelMatchesBrand(
+async function resolveCompetitorBrandAndModel(
   tenantId: string,
-  modelId: string | null | undefined,
-  brandId: string | null | undefined,
-) {
-  if (!modelId) return;
-  const model = await prisma.productModel.findFirst({
-    where: { id: modelId, tenantId },
-    select: { id: true, brandId: true },
-  });
-  if (!model) throw new Error("Model not found");
-  if (brandId && model.brandId && brandId !== model.brandId) {
-    throw new Error("Model does not belong to the selected brand");
+  competitorBrandId: string | null | undefined,
+  competitorModelId: string | null | undefined,
+): Promise<{
+  competitorBrandId: string | null;
+  competitorModelId: string | null;
+  brandName: string | null;
+  modelName: string | null;
+}> {
+  let brandName: string | null = null;
+  let modelName: string | null = null;
+  let resolvedBrandId: string | null = competitorBrandId ?? null;
+  let resolvedModelId: string | null = competitorModelId ?? null;
+
+  if (resolvedBrandId) {
+    const brand = await prisma.competitorBrand.findFirst({
+      where: { id: resolvedBrandId, tenantId, recordStatus: "active" },
+      select: { id: true, name: true },
+    });
+    if (!brand) throw new Error("Competitor brand not found or inactive");
+    brandName = brand.name;
   }
+
+  if (resolvedModelId) {
+    const model = await prisma.competitorModel.findFirst({
+      where: { id: resolvedModelId, tenantId, recordStatus: "active" },
+      select: { id: true, name: true, competitorBrandId: true },
+    });
+    if (!model) throw new Error("Competitor model not found or inactive");
+    if (resolvedBrandId && model.competitorBrandId !== resolvedBrandId) {
+      throw new Error("Model does not belong to the selected competitor brand");
+    }
+    if (!resolvedBrandId) {
+      const brand = await prisma.competitorBrand.findFirst({
+        where: { id: model.competitorBrandId, tenantId },
+        select: { id: true, name: true },
+      });
+      if (!brand) throw new Error("Competitor brand not found for model");
+      resolvedBrandId = brand.id;
+      brandName = brand.name;
+    }
+    resolvedModelId = model.id;
+    modelName = model.name;
+  }
+
+  return {
+    competitorBrandId: resolvedBrandId,
+    competitorModelId: resolvedModelId,
+    brandName,
+    modelName,
+  };
 }
 
 export const competitorService = {
@@ -141,8 +182,16 @@ export const competitorService = {
     const scopedBranchIds = await resolveScopedBranchIds(tenantId, userId, hasFullAccess);
     const [allBranches, brands, models, competitors] = await Promise.all([
       branchRepository.listByTenant(tenantId),
-      masterDataRepository.listBrands(tenantId),
-      masterDataRepository.listModels(tenantId),
+      prisma.competitorBrand.findMany({
+        where: { tenantId, recordStatus: "active" },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      }),
+      prisma.competitorModel.findMany({
+        where: { tenantId, recordStatus: "active" },
+        select: { id: true, name: true, competitorBrandId: true },
+        orderBy: { name: "asc" },
+      }),
       prisma.competitor.findMany({
         where: { tenantId, recordStatus: "active" },
         select: { id: true, name: true },
@@ -170,9 +219,8 @@ export const competitorService = {
       models: models.map((m) => ({
         id: m.id,
         name: m.name,
-        skuCode: m.skuCode,
-        brandId: m.brandId,
-        label: `${m.skuCode} — ${m.name}`,
+        competitorBrandId: m.competitorBrandId,
+        label: m.name,
       })),
       competitors: competitors.map((c) => ({
         id: c.id,
@@ -186,8 +234,8 @@ export const competitorService = {
     tenantId: string;
     actorUserId: string;
     competitorId: string;
-    brandId?: string | null;
-    modelId?: string | null;
+    competitorBrandId?: string | null;
+    competitorModelId?: string | null;
     price?: number | null;
     promotion?: string | null;
     notes?: string | null;
@@ -200,14 +248,20 @@ export const competitorService = {
 
     const branchId = await resolveWriteBranchId(input.tenantId, input.actorUserId);
     const competitor = await resolveActiveCompetitor(input.tenantId, parsed.data.competitorId);
-    await assertModelMatchesBrand(input.tenantId, parsed.data.modelId, parsed.data.brandId);
+    const brandModel = await resolveCompetitorBrandAndModel(
+      input.tenantId,
+      parsed.data.competitorBrandId,
+      parsed.data.competitorModelId,
+    );
 
     const row = await competitorRepository.create(input.tenantId, {
       competitorId: competitor.id,
       competitorName: competitor.name,
       branchId,
-      brandId: parsed.data.brandId,
-      modelId: parsed.data.modelId,
+      competitorBrandId: brandModel.competitorBrandId,
+      competitorModelId: brandModel.competitorModelId,
+      brandName: brandModel.brandName,
+      modelName: brandModel.modelName,
       price: parsed.data.price,
       promotion: parsed.data.promotion,
       notes: parsed.data.notes,
@@ -232,8 +286,8 @@ export const competitorService = {
     actorUserId: string;
     id: string;
     competitorId: string;
-    brandId?: string | null;
-    modelId?: string | null;
+    competitorBrandId?: string | null;
+    competitorModelId?: string | null;
     price?: number | null;
     promotion?: string | null;
     notes?: string | null;
@@ -253,14 +307,20 @@ export const competitorService = {
     }
 
     const competitor = await resolveActiveCompetitor(input.tenantId, parsed.data.competitorId);
-    await assertModelMatchesBrand(input.tenantId, parsed.data.modelId, parsed.data.brandId);
+    const brandModel = await resolveCompetitorBrandAndModel(
+      input.tenantId,
+      parsed.data.competitorBrandId,
+      parsed.data.competitorModelId,
+    );
 
     const row = await competitorRepository.update(input.tenantId, parsed.data.id, {
       competitorId: competitor.id,
       competitorName: competitor.name,
       branchId,
-      brandId: parsed.data.brandId,
-      modelId: parsed.data.modelId,
+      competitorBrandId: brandModel.competitorBrandId,
+      competitorModelId: brandModel.competitorModelId,
+      brandName: brandModel.brandName,
+      modelName: brandModel.modelName,
       price: parsed.data.price,
       promotion: parsed.data.promotion,
       notes: parsed.data.notes,
