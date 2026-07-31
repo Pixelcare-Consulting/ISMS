@@ -10,7 +10,9 @@ import {
   addWarehouseLocationAction,
   deleteWarehouseAction,
   deleteWarehouseLocationAction,
+  syncWarehousesFromSapAction,
 } from "@/features/warehouses/actions/warehouse.actions";
+import { SapSyncButton } from "@/features/sap/components/sap-sync-button";
 import {
   DeleteConfirmDialog,
   TableEmptyRow,
@@ -224,6 +226,11 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
         }
         toolbarActions={
           <>
+              <SapSyncButton
+                syncKey="warehouse"
+                noun={{ one: "warehouse", many: "warehouses" }}
+                onSync={syncWarehousesFromSapAction}
+              />
               <Input
                 placeholder="Code"
                 value={newCode}

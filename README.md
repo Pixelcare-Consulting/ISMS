@@ -2,7 +2,7 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.13.8`
+**Current version:** `0.13.11`
 
 ## Stack
 
@@ -23,7 +23,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | **Inventory** | Serialized stock, AOR-scoped list, series QTY/VALUE + DR#/date/aging on Stock units, **physical stock count / P-Count** (`/inventory/stock-count`) |
 | **Orders** | Nav group: Manual / Special / Auto replenish (`/orders/manual` etc.); per-type `orders.manual`, `orders.special`, `orders.auto_replenish` with view/create/approve; PS → TL → SP; SO#, processed orders, delivery-due auto-reschedule |
 | **Logistics** | Deliveries (accept/reject), transfers, pull-outs with SN movement |
-| **Sales** | Encode at `/sales` (sidebar); PS auto-branch; TL `sales.create` + branch picker; SN picker, reserved (RSV) sales, **BranchReturnRequest** ATR workflow |
+| **Sales** | Encode at `/sales/new` (CTA from `/sales`); PS auto-branch; TL `sales.create` + branch picker; package detail modal (qty → N sets), reserved (RSV) sales, **BranchReturnRequest** ATR workflow |
 | **Reports** | Processed orders, daily stock, transfers, sales CSV (`/reports/sales`), **P-Count** (`/reports/pcount`), **Official Sales** staging (`/reports/official-sales`) |
 | **SAP** | Outbound job queue + mock processor; **Service Layer** settings (encrypted credentials) + in-process session client with status UI (Connect/Logout) and refresh-on-401 |
 | **RBAC** | ISO + BRS roles (PS, TL, SP/SPA, Logistics, AE), permission-gated sidebar |
@@ -46,7 +46,8 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/planning/suggested-orders` | `forecast.manage` / `planogram.manage` |
 | `/logistics/deliveries`, `/transfers`, `/pickups` | `logistics.manage` |
 | `/operations` | `inventory.view` (combined ops view) |
-| `/sales` | `sales.create` |
+| `/sales` | `sales.create` (list + ATR; New transaction CTA) |
+| `/sales/new` | `sales.create` (multi-detail encode) |
 | `/reports/processed-orders`, `/daily-stock`, `/transfers`, `/sales`, `/pcount`, `/official-sales` | `reports.view` (+ module-specific) |
 | `/policies`, `/policies/[id]`, `/policies/new` | Policy permissions |
 | `/settings/company` | Tenant Admin / Super Admin |
@@ -109,6 +110,7 @@ src/
    - `pnpm run db:migrate`
    - `pnpm run db:seed` (or `pnpm run db:seed:full` for BRS planogram demo data)
    - `pnpm run db:seed:branches` to upsert PH regions/provinces + PSG ISMS branches (~1k coded rows from `docs/07.29.26 - PSG ok.xlsx`) for all tenants — safe to re-run; may take a bit
+   - `pnpm run db:seed:psg` after branches to upsert PSG MODEL catalog (~1.5k SKUs, all tenants) + Outgoing serial stock (demo tenant, STK) — safe to re-run
    - Run [`database/extensions.sql`](database/extensions.sql) against local Postgres (`psql` or `docker compose exec`)
 5. (Optional) Policy / audit files land under `STORAGE_ROOT` (default `.data/uploads`)
 6. (Optional) Workflow email: Resend
@@ -145,6 +147,7 @@ Or register at `/register` for a new tenant.
 | `pnpm run db:seed:full` | Full BRS demo + PH geo + PSG branches (~1k; may take a bit) |
 | `pnpm run db:seed:brs` | BRS data only |
 | `pnpm run db:seed:branches` | PH regions/provinces + PSG ISMS branches for all tenants |
+| `pnpm run db:seed:psg` | PSG MODEL catalog (all tenants) + Outgoing serial stock (demo); run after `db:seed:branches` |
 | `pnpm run db:studio` | Prisma Studio |
 | `pnpm run docs:modules-matrix` | Regenerate `docs/ISMS_App_Modules_vs_Workflow.xlsx` |
 

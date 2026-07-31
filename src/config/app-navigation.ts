@@ -16,6 +16,7 @@ import {
   Megaphone,
   Network,
   Package,
+  Plug,
   ScrollText,
   Settings,
   Shield,
@@ -46,16 +47,29 @@ export interface NavLinkEntry extends NavLinkItem {
   type: "link";
 }
 
+/** Nested group inside a sidebar group (e.g. Settings submodules) */
+export interface NavSubGroupItem {
+  label: string;
+  icon: LucideIcon;
+  items: NavLinkItem[];
+}
+
+export type NavGroupChild = NavLinkItem | NavSubGroupItem;
+
 export interface NavGroupEntry {
   type: "group";
   label: string;
   icon: LucideIcon;
-  items: NavLinkItem[];
+  items: NavGroupChild[];
   /** Open on first load when no child route is active (in-session toggle still works) */
   defaultOpen?: boolean;
 }
 
 export type NavEntry = NavLinkEntry | NavGroupEntry;
+
+export function isNavSubGroup(child: NavGroupChild): child is NavSubGroupItem {
+  return "items" in child;
+}
 
 export const appNavigation: NavEntry[] = [
   {
@@ -330,90 +344,133 @@ export const appNavigation: NavEntry[] = [
     defaultOpen: true,
     items: [
       {
-        href: "/settings/company",
-        label: "Company Settings",
+        label: "Organization",
         icon: Building2,
+        items: [
+          {
+            href: "/settings/company",
+            label: "Company Settings",
+            icon: Building2,
+          },
+          {
+            href: "/settings/departments",
+            label: "Departments",
+            icon: Network,
+            permission: "departments.manage",
+          },
+          {
+            href: "/settings/status",
+            label: "Status",
+            icon: Clock,
+            permission: "status_settings.manage",
+          },
+        ],
       },
       {
-        href: "/settings/users",
-        label: "Users",
-        icon: Users,
-        permission: "users.manage",
+        label: "Operations & Planning",
+        icon: LayoutGrid,
+        items: [
+          {
+            href: "/settings/branch-quotas",
+            label: "Branch quotas",
+            icon: ChartColumn,
+            permission: "branches.manage",
+          },
+          {
+            href: "/settings/planning",
+            label: "Planning & Forecast",
+            icon: LayoutGrid,
+            anyPermissions: ["forecast.manage", "planogram.manage"],
+          },
+          {
+            href: "/settings/planogram",
+            label: "Planogram",
+            icon: LayoutGrid,
+            anyPermissions: ["planogram.view", "planogram.manage"],
+            badge: "new",
+          },
+          {
+            href: "/settings/aors",
+            label: "AORs",
+            icon: Network,
+            permission: "aors.manage",
+            badge: "new",
+          },
+          {
+            href: "/settings/ordering",
+            label: "Ordering policy",
+            icon: CalendarClock,
+            permission: "ordering_settings.manage",
+            badge: "new",
+          },
+        ],
       },
       {
-        href: "/settings/departments",
-        label: "Departments",
-        icon: Network,
-        permission: "departments.manage",
-      },
-      {
-        href: "/settings/roles",
-        label: "Roles",
+        label: "Access & Security",
         icon: Shield,
-        permission: "roles.manage",
+        items: [
+          {
+            href: "/settings/users",
+            label: "Users",
+            icon: Users,
+            permission: "users.manage",
+          },
+          {
+            href: "/settings/roles",
+            label: "Roles",
+            icon: Shield,
+            permission: "roles.manage",
+          },
+          {
+            href: "/settings/permissions",
+            label: "Permissions",
+            icon: KeyRound,
+            permission: "roles.manage",
+            platformOperatorOnly: true,
+          },
+        ],
       },
       {
-        href: "/settings/permissions",
-        label: "Permissions",
-        icon: KeyRound,
-        permission: "roles.manage",
-        platformOperatorOnly: true,
-      },
-      {
-        href: "/settings/status",
-        label: "Status",
-        icon: Clock,
-        permission: "status_settings.manage",
-      },
-      {
-        href: "/settings/ordering",
-        label: "Ordering policy",
-        icon: CalendarClock,
-        permission: "ordering_settings.manage",
-        badge: "new",
-      },
-      {
-        href: "/settings/branches",
-        label: "Branches",
+        label: "Locations & Facilities",
         icon: MapPin,
-        permission: "branches.manage",
+        items: [
+          {
+            href: "/settings/branches",
+            label: "Branches",
+            icon: MapPin,
+            permission: "branches.manage",
+          },
+          {
+            href: "/settings/warehouses",
+            label: "Warehouses",
+            icon: Building2,
+            permission: "warehouses.manage",
+          },
+          {
+            href: "/settings/service-centers",
+            label: "Service centers",
+            icon: Building2,
+            permission: "service_centers.manage",
+          },
+          {
+            href: "/settings/dealers",
+            label: "Dealers",
+            icon: Store,
+            permission: "dealers.manage",
+          },
+        ],
       },
       {
-        href: "/settings/branch-quotas",
-        label: "Branch quotas",
-        icon: ChartColumn,
-        permission: "branches.manage",
-      },
-      {
-        href: "/settings/dealers",
-        label: "Dealers",
-        icon: Store,
-        permission: "dealers.manage",
-      },
-      {
-        href: "/settings/warehouses",
-        label: "Warehouses",
-        icon: Building2,
-        permission: "warehouses.manage",
-      },
-      {
-        href: "/settings/service-centers",
-        label: "Service centers",
-        icon: Building2,
-        permission: "service_centers.manage",
-      },
-      {
-        href: "/settings/planning",
-        label: "Planning & Forecast",
-        icon: LayoutGrid,
-        anyPermissions: ["forecast.manage", "planogram.manage"],
-      },
-      {
-        href: "/settings/planogram",
-        label: "Planogram",
-        icon: LayoutGrid,
-        anyPermissions: ["planogram.view", "planogram.manage"],
-        badge: "new",
+        label: "Integrations",
+        icon: Plug,
+        items: [
+          {
+            href: "/settings/sap-integration",
+            label: "SAP integration",
+            icon: Truck,
+            permission: "sap.manage",
+          },
+        ],
       },
       {
         href: "/settings/master-data",
@@ -421,19 +478,6 @@ export const appNavigation: NavEntry[] = [
         icon: Tags,
         permission: "master_data.manage",
         badge: "new",
-      },
-      {
-        href: "/settings/aors",
-        label: "AORs",
-        icon: Network,
-        permission: "aors.manage",
-        badge: "new",
-      },
-      {
-        href: "/settings/sap-integration",
-        label: "SAP integration",
-        icon: Truck,
-        permission: "sap.manage",
       },
     ],
   },
@@ -466,12 +510,22 @@ export function filterNavByPermissions(
         return entry;
       }
 
-      const visibleItems = entry.items.filter((item) => {
+      const isVisible = (item: NavLinkItem) => {
         if (item.platformOperatorOnly && !isPlatformOperator) {
           return false;
         }
         return hasNavPermission(permissions, item);
-      });
+      };
+
+      const visibleItems = entry.items
+        .map((child) => {
+          if (!isNavSubGroup(child)) {
+            return isVisible(child) ? child : null;
+          }
+          const items = child.items.filter(isVisible);
+          return items.length > 0 ? { ...child, items } : null;
+        })
+        .filter((child): child is NavGroupChild => child !== null);
 
       if (visibleItems.length === 0) {
         return null;
@@ -492,6 +546,13 @@ export function isNavItemActive(
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function isNavGroupActive(pathname: string, items: NavLinkItem[]): boolean {
-  return items.some((item) => isNavItemActive(pathname, item.href, item.exact));
+export function isNavGroupActive(
+  pathname: string,
+  items: NavGroupChild[],
+): boolean {
+  return items.some((child) =>
+    isNavSubGroup(child)
+      ? isNavGroupActive(pathname, child.items)
+      : isNavItemActive(pathname, child.href, child.exact),
+  );
 }

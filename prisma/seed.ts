@@ -5,6 +5,7 @@ import { seedCore } from "./seed-core";
 import { resolveSeedProfile, type SeedProfile } from "./seed-data";
 import { seedRegionsAndProvincesForAllTenants } from "./seed-ph-geo";
 import { seedPsgBranchesForAllTenants } from "./seed-psg-branches";
+import { seedPsgModelAndOutgoing } from "./seed-psg";
 import { seedReasonStatusesForTenant } from "./seed-reason-status";
 
 const prisma = createPrismaClient();
@@ -63,6 +64,13 @@ async function runProfile(profile: SeedProfile) {
     console.log("Seeding PSG branches for all tenants (may take a bit for ~1k rows)…");
     await seedPsgBranchesForAllTenants(prisma);
     console.log(`Seed [branches] done in ${Date.now() - started}ms`);
+    return;
+  }
+
+  if (profile === "psg") {
+    console.log("Seeding PSG MODEL catalog (all tenants) + Outgoing stock (demo)…");
+    await seedPsgModelAndOutgoing(prisma);
+    console.log(`Seed [psg] done in ${Date.now() - started}ms`);
     return;
   }
 

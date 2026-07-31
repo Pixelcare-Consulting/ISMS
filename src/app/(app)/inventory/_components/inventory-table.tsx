@@ -387,38 +387,13 @@ export function InventoryTable({
                 index={(result.page - 1) * result.limit + index + 1}
               />
               {hideBranch ? null : (
-                <TableCell>
-                  <Link
-                    href={`/settings/branches/${r.branch.id}/planogram`}
-                    className="underline"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {r.branch.name}
-                  </Link>
-                </TableCell>
+                <TableCell>{r.branch.name}</TableCell>
               )}
               <TableCell>
-                {hideBranch ? (
-                  <>
-                    <span className="font-mono text-sm">{r.serialNumber.model.sku}</span>
-                    <span className="block text-xs text-muted-foreground">
-                      {r.serialNumber.model.name}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <Link
-                      href={`/settings/branches/${r.branch.id}/planogram`}
-                      className="font-mono text-sm underline"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {r.serialNumber.model.sku}
-                    </Link>
-                    <span className="block text-xs text-muted-foreground">
-                      {r.serialNumber.model.name}
-                    </span>
-                  </>
-                )}
+                <span className="font-mono text-sm">{r.serialNumber.model.sku}</span>
+                <span className="block text-xs text-muted-foreground">
+                  {r.serialNumber.model.name}
+                </span>
               </TableCell>
               <TableCell className="font-mono text-sm">{r.serialNumber.serialNo}</TableCell>
               <TableCell className="font-mono text-sm">{r.deliveryNo ?? "—"}</TableCell>
