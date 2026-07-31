@@ -1,5 +1,5 @@
 export function normalizeTableSearch(value: string) {
-  return value.trim().toLowerCase();
+  return value.trim().toLowerCase().replace(/[_\s]+/g, " ");
 }
 
 export function matchesTableSearch(query: string, values: Array<string | null | undefined>) {
@@ -9,6 +9,6 @@ export function matchesTableSearch(query: string, values: Array<string | null | 
   }
 
   return values.some((value) =>
-    (value ?? "").toLowerCase().includes(normalizedQuery),
+    normalizeTableSearch(value ?? "").includes(normalizedQuery),
   );
 }
