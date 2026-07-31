@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -19,10 +19,20 @@ export function DailyStockReportPanel() {
   const [branchId, setBranchId] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
 
-  async function loadBranches() {
-    const list = await listBranchesForReportsAction();
-    setBranches(list);
-  }
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const list = await listBranchesForReportsAction();
+        if (!cancelled) setBranches(list);
+      } catch {
+        if (!cancelled) toast.error("Failed to load branches");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function handleExport() {
     startTransition(async () => {
@@ -44,36 +54,28 @@ export function DailyStockReportPanel() {
       <p className="text-sm text-muted-foreground">
         Branch × planogram SKU matrix with INV (STK) and SOLD (SLD) counts for the selected day.
       </p>
-      {branches.length === 0 ? (
-        <Button type="button" variant="outline" onClick={loadBranches}>
-          Load branches
-        </Button>
-      ) : (
-        <>
-          <div className="space-y-2">
-            <Label htmlFor="stock-date">Date</Label>
-            <Input
-              id="stock-date"
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-            />
-          </div>
-          <SearchableSelect
-            label="Branch (optional)"
-            id="stock-branch"
-            options={branches.map((b) => ({ id: b.id, label: b.name }))}
-            value={branchId}
-            onChange={setBranchId}
-            allowClear
-            placeholder="All branches"
-            searchPlaceholder="Search branches…"
-          />
-          <Button disabled={pending || !date} onClick={handleExport}>
-            {pending ? "Exporting…" : "Download CSV"}
-          </Button>
-        </>
-      )}
+      <div className="space-y-2">
+        <Label htmlFor="stock-date">Date</Label>
+        <Input
+          id="stock-date"
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+        />
+      </div>
+      <SearchableSelect
+        label="Branch (optional)"
+        id="stock-branch"
+        options={branches.map((b) => ({ id: b.id, label: b.name }))}
+        value={branchId}
+        onChange={setBranchId}
+        allowClear
+        placeholder="All branches"
+        searchPlaceholder="Search branches…"
+      />
+      <Button disabled={pending || !date} onClick={handleExport}>
+        {pending ? "Exporting…" : "Download CSV"}
+      </Button>
     </div>
   );
 }

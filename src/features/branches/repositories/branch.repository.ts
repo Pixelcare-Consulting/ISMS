@@ -166,7 +166,9 @@ export const branchRepository = {
         }
       }
 
-      if (data.schedule) {
+      if (data.schedule === null) {
+        await tx.branchDeliverySchedule.deleteMany({ where: { branchId: id } });
+      } else if (data.schedule) {
         await tx.branchDeliverySchedule.upsert({
           where: { branchId: id },
           create: {
@@ -219,7 +221,13 @@ export const branchRepository = {
   findManyBySapCodes(tenantId: string, sapCodes: string[]) {
     return prisma.branch.findMany({
       where: { tenantId, deletedAt: null, sapCode: { in: sapCodes } },
-      select: { id: true, sapCode: true, name: true },
+      select: {
+        id: true,
+        sapCode: true,
+        name: true,
+        status: true,
+        branchArea: { select: { name: true } },
+      },
     });
   },
 

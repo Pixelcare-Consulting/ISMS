@@ -206,12 +206,38 @@ export const appModules: AppModule[] = [
     ],
   },
   {
-    id: "orders",
-    name: "Branch Orders",
-    route: "/orders",
-    slugPrefix: "orders",
-    navPermission: "orders.view",
-    description: "Branch ordering and approval workflow",
+    id: "orders_manual",
+    name: "Manual Order",
+    route: "/orders/manual",
+    slugPrefix: "orders.manual",
+    navPermission: "orders.manual.view",
+    description: "Manual branch orders (planogram SKUs)",
+    actions: [
+      { value: "view", label: "View" },
+      { value: "create", label: "Create" },
+      { value: "approve", label: "Approve" },
+    ],
+  },
+  {
+    id: "orders_special",
+    name: "Special Order",
+    route: "/orders/special",
+    slugPrefix: "orders.special",
+    navPermission: "orders.special.view",
+    description: "Special branch orders (off-planogram allowed)",
+    actions: [
+      { value: "view", label: "View" },
+      { value: "create", label: "Create" },
+      { value: "approve", label: "Approve" },
+    ],
+  },
+  {
+    id: "orders_auto_replenish",
+    name: "Auto replenish",
+    route: "/orders/auto-replenish",
+    slugPrefix: "orders.auto_replenish",
+    navPermission: "orders.auto_replenish.view",
+    description: "Auto-replenish branch orders",
     actions: [
       { value: "view", label: "View" },
       { value: "create", label: "Create" },
@@ -316,18 +342,24 @@ export function parsePermissionSlug(slug: string): {
   module: AppModule | null;
   action: string | null;
 } {
-  const dotIndex = slug.indexOf(".");
-  if (dotIndex === -1) {
-    return { module: null, action: null };
+  // Prefer longest slugPrefix match (e.g. orders.manual before a hypothetical orders).
+  const byPrefixLength = [...appModules].sort(
+    (a, b) => b.slugPrefix.length - a.slugPrefix.length,
+  );
+
+  for (const appModule of byPrefixLength) {
+    const prefix = `${appModule.slugPrefix}.`;
+    if (!slug.startsWith(prefix)) {
+      continue;
+    }
+    const action = slug.slice(prefix.length);
+    if (!action) {
+      continue;
+    }
+    return { module: appModule, action };
   }
 
-  const prefix = slug.slice(0, dotIndex);
-  const action = slug.slice(dotIndex + 1);
-
-  return {
-    module: getAppModuleBySlugPrefix(prefix) ?? null,
-    action: action || null,
-  };
+  return { module: null, action: null };
 }
 
 export function getModuleNavPermission(moduleId: string): string | undefined {

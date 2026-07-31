@@ -1,7 +1,17 @@
 import { auditService } from "@/features/audit/services/audit.service";
 import { aorService } from "@/features/aors/services/aor.service";
-import { inventoryRepository } from "@/features/inventory/repositories/inventory.repository";
+import {
+  inventoryRepository,
+  type InventoryListFilters,
+  type InventoryListSort,
+  type InventoryListSortDir,
+} from "@/features/inventory/repositories/inventory.repository";
+import {
+  deriveSkuSeries,
+  wholeDaysBetween,
+} from "@/features/inventory/utils/sku-series";
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
+import { decimalToNumber } from "@/lib/database/decimal";
 
 export interface InventoryStatusKpi {
   code: string;
@@ -14,49 +24,79 @@ export interface InventoryKpis {
   statuses: InventoryStatusKpi[];
 }
 
-export const inventoryService = {
+export interface InventorySeriesRow {
+  series: string;
+  qty: number;
+  value: number;
+}
 
+export interface InventorySeriesSummary {
+  rows: InventorySeriesRow[];
+  totalQty: number;
+  totalValue: number;
+}
+
+export type InventoryListOptions = {
+  branchId?: string;
+  skuCode?: string;
+  statusCodeId?: string;
+  offPlanogramOnly?: boolean;
+  sort?: InventoryListSort;
+  sortDir?: InventoryListSortDir;
+};
+
+async function resolveBranchIds(
+  tenantId: string,
+  userId: string,
+  isUnrestricted: boolean,
+): Promise<string[]> {
+  if (isUnrestricted) {
+    const { branchRepository } = await import(
+      "@/features/branches/repositories/branch.repository"
+    );
+    const branches = await branchRepository.listByTenant(tenantId);
+    return branches.map((b) => b.id);
+  }
+  return aorService.getBranchIdsForUser(tenantId, userId);
+}
+
+function toListFilters(filters?: InventoryListOptions): InventoryListFilters {
+  return {
+    branchId: filters?.branchId,
+    skuCode: filters?.skuCode,
+    statusCodeId: filters?.statusCodeId,
+    offPlanogramOnly: filters?.offPlanogramOnly,
+  };
+}
+
+export const inventoryService = {
   async listForUser(
     tenantId: string,
     userId: string,
     isUnrestricted: boolean,
     pagination?: { page?: number; limit?: number },
-    filters?: {
-      branchId?: string;
-      skuCode?: string;
-      offPlanogramOnly?: boolean;
-    },
+    filters?: InventoryListOptions,
   ) {
-    const branchIds = isUnrestricted
-      ? undefined
-      : await aorService.getBranchIdsForUser(tenantId, userId);
+    const branchIds = await resolveBranchIds(tenantId, userId, isUnrestricted);
 
-    if (!isUnrestricted && (!branchIds || branchIds.length === 0)) {
-      return inventoryRepository.listByBranches(tenantId, [], pagination, filters);
-    }
-
-    const allBranches = branchIds ?? [];
-    if (isUnrestricted) {
-      const { branchRepository } = await import(
-        "@/features/branches/repositories/branch.repository"
-      );
-      const branches = await branchRepository.listByTenant(tenantId);
-      const result = await inventoryRepository.listByBranches(
+    if (!isUnrestricted && branchIds.length === 0) {
+      return inventoryRepository.listByBranches(
         tenantId,
-        branches.map((b) => b.id),
+        [],
         pagination,
-        filters,
+        toListFilters(filters),
       );
-      return this.enrichWithPlanogramFlags(tenantId, result);
     }
 
     const result = await inventoryRepository.listByBranches(
       tenantId,
-      allBranches,
+      branchIds,
       pagination,
-      filters,
+      toListFilters(filters),
+      { field: filters?.sort, dir: filters?.sortDir },
     );
-    return this.enrichWithPlanogramFlags(tenantId, result);
+    const withPlanogram = await this.enrichWithPlanogramFlags(tenantId, result);
+    return this.enrichWithDeliveryAging(tenantId, withPlanogram);
   },
 
   async enrichWithPlanogramFlags<
@@ -86,23 +126,86 @@ export const inventoryService = {
     };
   },
 
+  async enrichWithDeliveryAging<
+    T extends {
+      items: {
+        serialNumberId: string;
+        createdAt: Date;
+      }[];
+    },
+  >(tenantId: string, result: T) {
+    const deliveries = await inventoryRepository.findLatestAcceptedDeliveries(
+      tenantId,
+      result.items.map((item) => item.serialNumberId),
+    );
+    const bySerial = new Map(
+      deliveries.map((d) => [d.serialNumberId, d] as const),
+    );
 
+    return {
+      ...result,
+      items: result.items.map((item) => {
+        const delivery = bySerial.get(item.serialNumberId);
+        const agingAnchor = delivery?.deliveryDate ?? item.createdAt;
+        return {
+          ...item,
+          deliveryNo: delivery?.deliveryNo ?? null,
+          deliveryDate: delivery?.deliveryDate ?? null,
+          agingDays: wholeDaysBetween(agingAnchor),
+        };
+      }),
+    };
+  },
+
+  async getSeriesSummary(
+    tenantId: string,
+    userId: string,
+    isUnrestricted: boolean,
+    filters?: InventoryListOptions,
+  ): Promise<InventorySeriesSummary> {
+    const branchIds = await resolveBranchIds(tenantId, userId, isUnrestricted);
+    if (branchIds.length === 0) {
+      return { rows: [], totalQty: 0, totalValue: 0 };
+    }
+
+    const rows = await inventoryRepository.listSeriesRows(
+      tenantId,
+      branchIds,
+      toListFilters(filters),
+    );
+
+    const bySeries = new Map<string, { qty: number; value: number }>();
+    for (const row of rows) {
+      const skuCode = row.serialNumber.model.skuCode;
+      const series = deriveSkuSeries(skuCode);
+      const srp = decimalToNumber(row.serialNumber.model.srp) ?? 0;
+      const current = bySeries.get(series) ?? { qty: 0, value: 0 };
+      current.qty += 1;
+      current.value += srp;
+      bySeries.set(series, current);
+    }
+
+    const summaryRows = Array.from(bySeries.entries())
+      .map(([series, agg]) => ({
+        series,
+        qty: agg.qty,
+        value: agg.value,
+      }))
+      .sort((a, b) => a.series.localeCompare(b.series));
+
+    return {
+      rows: summaryRows,
+      totalQty: summaryRows.reduce((sum, r) => sum + r.qty, 0),
+      totalValue: summaryRows.reduce((sum, r) => sum + r.value, 0),
+    };
+  },
 
   async getKpis(
     tenantId: string,
     userId: string,
     isUnrestricted: boolean,
   ): Promise<InventoryKpis> {
-    let branchIds: string[];
-    if (isUnrestricted) {
-      const { branchRepository } = await import(
-        "@/features/branches/repositories/branch.repository"
-      );
-      const branches = await branchRepository.listByTenant(tenantId);
-      branchIds = branches.map((b) => b.id);
-    } else {
-      branchIds = await aorService.getBranchIdsForUser(tenantId, userId);
-    }
+    const branchIds = await resolveBranchIds(tenantId, userId, isUnrestricted);
 
     const codes = await reasonStatusRepository.listActiveCodesByCategory(
       tenantId,
@@ -134,8 +237,6 @@ export const inventoryService = {
       })),
     };
   },
-
-
 
   async updateStatus(input: {
     tenantId: string;
@@ -169,5 +270,3 @@ export const inventoryService = {
     return item;
   },
 };
-
-

@@ -57,10 +57,12 @@ export interface LookupRowData {
   regionId?: string | null;
   sizeId?: string | null;
   documentTypeId?: string | null;
+  competitorBrandId?: string | null;
   brand?: { name: string } | null;
   region?: { name: string } | null;
   size?: { name: string } | null;
   documentType?: { name: string } | null;
+  competitorBrand?: { name: string } | null;
 }
 
 export interface LookupOption {

@@ -1,5 +1,6 @@
 "use server";
 
+import { ORDER_VIEW_REPORT_PERMISSIONS } from "@/features/orders/constants/order-permissions";
 import { reportsService } from "@/features/reports/services/reports.service";
 import { requirePermission } from "@/lib/auth/permissions";
 import { branchService } from "@/features/branches/services/branch.service";
@@ -9,7 +10,7 @@ import { transferReportService } from "@/features/reports/services/transfer-repo
 import { salesReportService } from "@/features/reports/services/sales-report.service";
 import { requireAnyPermission } from "@/lib/auth/permissions";
 
-const REPORT_ACCESS = ["reports.view", "orders.view"] as const;
+const REPORT_ACCESS = ["reports.view", ...ORDER_VIEW_REPORT_PERMISSIONS] as const;
 
 export async function listProcessedOrdersReportAction(input?: {
   branchId?: string;

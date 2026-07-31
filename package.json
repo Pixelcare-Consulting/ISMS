@@ -1,6 +1,6 @@
 {
   "name": "isms",
-  "version": "0.13.3",
+  "version": "0.13.8",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -20,6 +20,7 @@
     "db:seed:brs": "dotenv -e .env.local -- node scripts/seed-profile.mjs brs",
     "db:seed:schedules": "dotenv -e .env.local -- node scripts/seed-profile.mjs schedules",
     "db:seed:status": "dotenv -e .env.local -- node scripts/seed-profile.mjs status",
+    "db:seed:branches": "dotenv -e .env.local -- node scripts/seed-profile.mjs branches",
     "db:studio": "dotenv -e .env.local -- prisma studio",
     "docs:modules-matrix": "node scripts/generate-modules-workflow-excel.mjs"
   },

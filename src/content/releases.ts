@@ -24,6 +24,130 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.13.8",
+    date: "2026-07-30",
+    title: "Branch schedule UX uses company ordering policy",
+    highlights: [
+      "Branch delivery schedule shows company locked weekdays and clearer global vs branch hierarchy",
+      "Selecting a frequency code suggests delivery and ordering days (editable after)",
+      "Disabling a branch schedule clears the saved BranchDeliverySchedule row",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Branch create/edit schedule card surfaces company locked days, disables those weekdays on pickers, and links to Settings → Ordering policy when permitted",
+      },
+      {
+        type: "feature",
+        description:
+          "Frequency code selection autofills delivery/order days from cadence + global locks (suggest-schedule-days helper)",
+      },
+      {
+        type: "fix",
+        description:
+          "Updating a branch with schedule disabled deletes BranchDeliverySchedule so stale orderDays no longer gate create",
+      },
+    ],
+  },
+  {
+    version: "0.13.7",
+    date: "2026-07-30",
+    title: "PH regions/provinces seed + PSG branch",
+    highlights: [
+      "Seed Regions and Provinces for every tenant from the PH REGION→PROVINCE master list",
+      "New db:seed:branches loads ~1k PSG ISMS branches (areas, status, Devant/Hisense quotas)",
+      "Branches Import can create missing sap_codes and accepts PSG ISMS columns / sheet",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Idempotent geo seed (Region / Province) for all tenants on core, minimal, full, and branches profiles",
+      },
+      {
+        type: "feature",
+        description:
+          "PSG workbook parser + upsert: BranchArea, Branch by sap_code, current-month quotas (Hisense BL+WL summed); pnpm run db:seed:branches",
+      },
+      {
+        type: "improvement",
+        description:
+          "Branches Import creates unknown BRANCH CODEs, previews create vs update counts, accepts ISMS/PSG single-sheet uploads",
+      },
+    ],
+  },
+  {
+    version: "0.13.6",
+    date: "2026-07-30",
+    title: "Orders split, Sales encode polish, Inventory Excel view",
+    highlights: [
+      "Orders split into Manual / Special / Auto replenish with per-type view, create, and approve permissions",
+      "Sales encode: PS auto-branch, TL can create sales with branch picker, transactionNo on the table",
+      "Stock units: series QTY/VALUE summary, DR# / DR date / aging, status filter, PS column scoping",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Orders nav group with /orders/manual, /orders/special, /orders/auto-replenish; permissions orders.manual|special|auto_replenish × view|create|approve (legacy orders.* still accepted)",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sales encode: PS resolves AOR branch automatically; TL seed includes sales.create and keeps multi-branch picker; table shows transactionNo",
+      },
+      {
+        type: "feature",
+        description:
+          "Inventory Stock units: series peso summary (QTY/VALUE), DR#/DR date/aging from deliveries, status filter, PS hides branch column/search",
+      },
+    ],
+  },
+  {
+    version: "0.13.5",
+    date: "2026-07-30",
+    title: "Reports export form shown immediately",
+    highlights: [
+      "Processed Orders and Daily Stock reports show the CSV export form on load — no Load branches step",
+      "Branch dropdown still loads in the background and defaults to All branches",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Reports: auto-load branches on mount and display Processed from/to, Branch, and Download CSV without a gate button",
+      },
+    ],
+  },
+  {
+    version: "0.13.4",
+    date: "2026-07-30",
+    title: "Competitor brand and model masters",
+    highlights: [
+      "Competitor observations use dedicated CompetitorBrand / CompetitorModel masters (not inventory Brand/SKU)",
+      "Master data: Competitor brands page with nested models (name + active status)",
+      "Existing observation brand/model links migrated into the new tables with name snapshots",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Tenant-scoped CompetitorBrand and CompetitorModel lookups under Sales master data",
+      },
+      {
+        type: "improvement",
+        description:
+          "Observation form and table pick competitor brands/models only; promotion stays free text",
+      },
+      {
+        type: "fix",
+        description:
+          "Detached competitor observations from inventory Brand / ProductModel foreign keys",
+      },
+    ],
+  },
+  {
     version: "0.13.3",
     date: "2026-07-28",
     title: "AOR sync, Sales nav, Competitors master",

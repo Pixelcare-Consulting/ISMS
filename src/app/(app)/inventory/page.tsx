@@ -1,9 +1,9 @@
 import {
-  getInventoryKpisAction,
+  getInventorySeriesSummaryAction,
   listInventoryAction,
   listInventoryStatusOptionsAction,
 } from "@/features/inventory/actions/inventory.actions";
-import { InventoryKpisStrip } from "@/features/inventory/components/inventory-kpis";
+import { InventorySeriesSummaryPanel } from "@/features/inventory/components/inventory-series-summary";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { requirePermission } from "@/lib/auth/permissions";
 import { SectionPageLead } from "@/components/navigation/section-page-lead";
@@ -16,36 +16,58 @@ interface InventoryPageProps {
     branch?: string;
     sku?: string;
     offPlanogram?: string;
+    status?: string;
+    sort?: string;
+    dir?: string;
   }>;
 }
 
 export default async function InventoryPage({ searchParams }: InventoryPageProps) {
-  await requirePermission("inventory.view");
+  const session = await requirePermission("inventory.view");
   const params = await searchParams;
   const page = Number(params.page) || 1;
   const limit = parseTablePageSize(params.limit);
-  const [result, statusOptions, kpis] = await Promise.all([
-    listInventoryAction({
-      page,
-      limit,
-      branchId: params.branch,
-      sku: params.sku,
-      offPlanogram: params.offPlanogram === "1",
-    }),
+  const offPlanogram = params.offPlanogram === "1";
+  const statusCodeId = params.status || undefined;
+  const listFilters = {
+    page,
+    limit,
+    branchId: params.branch,
+    sku: params.sku,
+    statusCodeId,
+    offPlanogram,
+    sort: params.sort,
+    sortDir: params.dir,
+  };
+  const summaryFilters = {
+    branchId: params.branch,
+    sku: params.sku,
+    statusCodeId,
+    offPlanogram,
+  };
+
+  const [result, statusOptions, seriesSummary] = await Promise.all([
+    listInventoryAction(listFilters),
     listInventoryStatusOptionsAction(),
-    getInventoryKpisAction(),
+    getInventorySeriesSummaryAction(summaryFilters),
   ]);
+
+  const hideBranch = (session.user.roleSlugs ?? []).includes("ps");
 
   return (
     <div className="space-y-4">
       <SectionPageLead>
-        Serialized units by branch. Planogram badge shows authorized SKUs per branch.
+        Serialized units by branch. Series summary mirrors the INVENTORY Excel mock (QTY × SRP).
       </SectionPageLead>
-      <InventoryKpisStrip kpis={kpis} />
+      <InventorySeriesSummaryPanel summary={seriesSummary} />
       <InventoryTable
         result={result}
         statusOptions={statusOptions}
-        initialOffPlanogram={params.offPlanogram === "1"}
+        initialOffPlanogram={offPlanogram}
+        initialStatusCodeId={statusCodeId ?? ""}
+        initialSort={params.sort ?? ""}
+        initialSortDir={params.dir ?? "desc"}
+        hideBranch={hideBranch}
       />
     </div>
   );

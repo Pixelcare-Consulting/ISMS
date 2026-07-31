@@ -28,8 +28,7 @@ export interface CompetitorFormOption {
 }
 
 export interface CompetitorModelOption extends CompetitorFormOption {
-  brandId: string | null;
-  skuCode: string;
+  competitorBrandId: string;
   name: string;
 }
 
@@ -64,8 +63,12 @@ export function CompetitorFormDialog({
   const isEdit = Boolean(observation);
 
   const [competitorId, setCompetitorId] = useState(observation?.competitorId ?? "");
-  const [brandId, setBrandId] = useState(observation?.brandId ?? "");
-  const [modelId, setModelId] = useState(observation?.modelId ?? "");
+  const [competitorBrandId, setCompetitorBrandId] = useState(
+    observation?.competitorBrandId ?? "",
+  );
+  const [competitorModelId, setCompetitorModelId] = useState(
+    observation?.competitorModelId ?? "",
+  );
   const [price, setPrice] = useState(
     observation?.price != null ? String(observation.price) : "",
   );
@@ -78,9 +81,9 @@ export function CompetitorFormDialog({
   );
 
   const filteredModels = useMemo(() => {
-    if (!brandId) return models;
-    return models.filter((m) => m.brandId === brandId || m.brandId == null);
-  }, [models, brandId]);
+    if (!competitorBrandId) return models;
+    return models.filter((m) => m.competitorBrandId === competitorBrandId);
+  }, [models, competitorBrandId]);
 
   const competitorOptions = useMemo(() => {
     if (!observation?.competitorId) return competitors;
@@ -93,6 +96,34 @@ export function CompetitorFormDialog({
       ...competitors,
     ];
   }, [competitors, observation]);
+
+  const brandOptions = useMemo(() => {
+    if (!observation?.competitorBrandId) return brands;
+    if (brands.some((b) => b.id === observation.competitorBrandId)) return brands;
+    return [
+      {
+        id: observation.competitorBrandId,
+        label: `${observation.brandName ?? "Unknown"} (inactive)`,
+      },
+      ...brands,
+    ];
+  }, [brands, observation]);
+
+  const modelOptions = useMemo(() => {
+    if (!observation?.competitorModelId) return filteredModels;
+    if (filteredModels.some((m) => m.id === observation.competitorModelId)) {
+      return filteredModels;
+    }
+    return [
+      {
+        id: observation.competitorModelId,
+        label: `${observation.modelName ?? "Unknown"} (inactive)`,
+        competitorBrandId: observation.competitorBrandId ?? "",
+        name: observation.modelName ?? "",
+      },
+      ...filteredModels,
+    ];
+  }, [filteredModels, observation]);
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -107,8 +138,8 @@ export function CompetitorFormDialog({
 
     const payload = {
       competitorId,
-      brandId: brandId || null,
-      modelId: modelId || null,
+      competitorBrandId: competitorBrandId || null,
+      competitorModelId: competitorModelId || null,
       price: price === "" ? null : price,
       promotion: promotion.trim() || null,
       notes: notes.trim() || null,
@@ -163,12 +194,12 @@ export function CompetitorFormDialog({
           <div className="grid gap-4 sm:grid-cols-2">
             <SearchableSelect
               label="Brand (optional)"
-              id="brandId"
-              options={brands.map((b) => ({ id: b.id, label: b.label }))}
-              value={brandId}
+              id="competitorBrandId"
+              options={brandOptions.map((b) => ({ id: b.id, label: b.label }))}
+              value={competitorBrandId}
               onChange={(next) => {
-                setBrandId(next);
-                setModelId("");
+                setCompetitorBrandId(next);
+                setCompetitorModelId("");
               }}
               allowClear
               placeholder="—"
@@ -177,10 +208,10 @@ export function CompetitorFormDialog({
             />
             <SearchableSelect
               label="Model (optional)"
-              id="modelId"
-              options={filteredModels.map((m) => ({ id: m.id, label: m.label }))}
-              value={modelId}
-              onChange={setModelId}
+              id="competitorModelId"
+              options={modelOptions.map((m) => ({ id: m.id, label: m.label }))}
+              value={competitorModelId}
+              onChange={setCompetitorModelId}
               allowClear
               placeholder="—"
               searchPlaceholder="Search models…"

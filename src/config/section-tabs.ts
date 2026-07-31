@@ -139,6 +139,12 @@ export const MASTER_DATA_TAB_GROUPS: SectionTabGroupDefinition[] = [
         badge: "new",
       },
       {
+        href: "/settings/master-data/competitor-brands",
+        label: "Competitor brands",
+        description: "Competitor brand and model lookup for market observations.",
+        badge: "new",
+      },
+      {
         href: "/settings/master-data/dealer-types",
         label: "Dealer types",
         description: "Dealer type lookup for dealer classification.",

@@ -44,6 +44,15 @@ export const PERMISSIONS = [
   { slug: "orders.view", name: "View branch orders" },
   { slug: "orders.create", name: "Create branch orders" },
   { slug: "orders.approve", name: "Approve branch orders" },
+  { slug: "orders.manual.view", name: "View manual orders" },
+  { slug: "orders.manual.create", name: "Create manual orders" },
+  { slug: "orders.manual.approve", name: "Approve manual orders" },
+  { slug: "orders.special.view", name: "View special orders" },
+  { slug: "orders.special.create", name: "Create special orders" },
+  { slug: "orders.special.approve", name: "Approve special orders" },
+  { slug: "orders.auto_replenish.view", name: "View auto-replenish orders" },
+  { slug: "orders.auto_replenish.create", name: "Create auto-replenish orders" },
+  { slug: "orders.auto_replenish.approve", name: "Approve auto-replenish orders" },
   { slug: "logistics.manage", name: "Manage logistics" },
   { slug: "sap.manage", name: "Manage SAP integration" },
   { slug: "sales.create", name: "Create sales transactions" },
@@ -56,6 +65,30 @@ export const PERMISSIONS = [
   { slug: "announcements.manage", name: "Manage announcements" },
   { slug: "competitors.view", name: "View competitor observations" },
   { slug: "competitors.manage", name: "Manage competitor observations" },
+] as const;
+
+/** Legacy + per-type order view (compat for reports / AE-style read access). */
+const ORDERS_VIEW_ALL = [
+  "orders.view",
+  "orders.manual.view",
+  "orders.special.view",
+  "orders.auto_replenish.view",
+] as const;
+
+/** Legacy + per-type create (PS / tenant admin pattern). */
+const ORDERS_CREATE_ALL = [
+  "orders.create",
+  "orders.manual.create",
+  "orders.special.create",
+  "orders.auto_replenish.create",
+] as const;
+
+/** Legacy + per-type approve (TL / SP / logistics / admin pattern). */
+const ORDERS_APPROVE_ALL = [
+  "orders.approve",
+  "orders.manual.approve",
+  "orders.special.approve",
+  "orders.auto_replenish.approve",
 ] as const;
 
 export const ROLES = [
@@ -91,9 +124,9 @@ export const ROLES = [
       "ordering_settings.manage",
       "aors.manage",
       "inventory.view",
-      "orders.view",
-      "orders.create",
-      "orders.approve",
+      ...ORDERS_VIEW_ALL,
+      ...ORDERS_CREATE_ALL,
+      ...ORDERS_APPROVE_ALL,
       "logistics.manage",
       "sap.manage",
       "sales.create",
@@ -178,8 +211,8 @@ export const ROLES = [
     permissions: [
       "dashboard.manage",
       "inventory.view",
-      "orders.view",
-      "orders.create",
+      ...ORDERS_VIEW_ALL,
+      ...ORDERS_CREATE_ALL,
       "sales.create",
       "planogram.view",
       "announcements.view",
@@ -193,8 +226,9 @@ export const ROLES = [
     permissions: [
       "dashboard.manage",
       "inventory.view",
-      "orders.view",
-      "orders.approve",
+      ...ORDERS_VIEW_ALL,
+      ...ORDERS_APPROVE_ALL,
+      "sales.create",
       "planogram.view",
       "announcements.view",
       "competitors.view",
@@ -208,8 +242,8 @@ export const ROLES = [
       "dashboard.manage",
       "master_data.manage",
       "inventory.view",
-      "orders.view",
-      "orders.approve",
+      ...ORDERS_VIEW_ALL,
+      ...ORDERS_APPROVE_ALL,
       "planogram.manage",
       "forecast.manage",
       "reports.view",
@@ -226,8 +260,8 @@ export const ROLES = [
     permissions: [
       "dashboard.manage",
       "inventory.view",
-      "orders.view",
-      "orders.approve",
+      ...ORDERS_VIEW_ALL,
+      ...ORDERS_APPROVE_ALL,
       "planogram.view",
       "forecast.manage",
       "reports.view",
@@ -243,8 +277,8 @@ export const ROLES = [
     description: "Alias for SP permissions",
     permissions: [
       "dashboard.manage",
-      "orders.view",
-      "orders.approve",
+      ...ORDERS_VIEW_ALL,
+      ...ORDERS_APPROVE_ALL,
       "forecast.manage",
       "reports.view",
       "audit_logs.view",
@@ -259,8 +293,8 @@ export const ROLES = [
     description: "Alias for SPA permissions",
     permissions: [
       "dashboard.manage",
-      "orders.view",
-      "orders.approve",
+      ...ORDERS_VIEW_ALL,
+      ...ORDERS_APPROVE_ALL,
       "forecast.manage",
       "reports.view",
       "audit_logs.view",
@@ -276,8 +310,8 @@ export const ROLES = [
     permissions: [
       "dashboard.manage",
       "inventory.view",
-      "orders.view",
-      "orders.approve",
+      ...ORDERS_VIEW_ALL,
+      ...ORDERS_APPROVE_ALL,
       "logistics.manage",
       "sap.manage",
       "announcements.view",
@@ -291,7 +325,7 @@ export const ROLES = [
     permissions: [
       "dashboard.manage",
       "inventory.view",
-      "orders.view",
+      ...ORDERS_VIEW_ALL,
       "reports.view",
       "official_sales.view",
       "official_sales.manage",
@@ -320,7 +354,14 @@ export const USER_DEPARTMENTS: Record<string, (typeof DEPARTMENTS)[number]> = {
   "ae@demo.local": "Operations",
 };
 
-export type SeedProfile = "minimal" | "full" | "core" | "status" | "brs" | "schedules";
+export type SeedProfile =
+  | "minimal"
+  | "full"
+  | "core"
+  | "status"
+  | "brs"
+  | "schedules"
+  | "branches";
 
 export function resolveSeedProfile(): SeedProfile {
   const raw = process.env.SEED_PROFILE?.trim().toLowerCase();
@@ -330,6 +371,7 @@ export function resolveSeedProfile(): SeedProfile {
     raw === "status" ||
     raw === "brs" ||
     raw === "schedules" ||
+    raw === "branches" ||
     raw === "minimal"
   ) {
     return raw;

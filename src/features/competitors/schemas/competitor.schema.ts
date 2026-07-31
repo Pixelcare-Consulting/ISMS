@@ -17,7 +17,7 @@ const optionalPromotion = z
 
 export const competitorListFilterSchema = z.object({
   branchId: optionalId,
-  brandId: optionalId,
+  competitorBrandId: optionalId,
   competitorName: z.string().trim().max(120).optional().nullable(),
   from: z.string().datetime({ offset: true }).optional().nullable().or(z.literal("")),
   to: z.string().datetime({ offset: true }).optional().nullable().or(z.literal("")),
@@ -25,8 +25,8 @@ export const competitorListFilterSchema = z.object({
 
 export const createCompetitorObservationSchema = z.object({
   competitorId: z.string().trim().min(1, "Competitor is required"),
-  brandId: optionalId,
-  modelId: optionalId,
+  competitorBrandId: optionalId,
+  competitorModelId: optionalId,
   price: z
     .union([z.string(), z.number(), z.null(), z.undefined()])
     .transform((v) => {

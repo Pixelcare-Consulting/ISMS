@@ -4,8 +4,8 @@ import { prisma } from "@/lib/database/client";
 const observationInclude = {
   competitor: { select: { id: true, name: true, recordStatus: true } },
   branch: { select: { id: true, name: true, sapCode: true } },
-  brand: { select: { id: true, name: true } },
-  model: { select: { id: true, name: true, skuCode: true } },
+  competitorBrand: { select: { id: true, name: true } },
+  competitorModel: { select: { id: true, name: true } },
   createdBy: { select: { id: true, name: true, email: true } },
 } as const;
 
@@ -15,7 +15,7 @@ export type CompetitorObservationListItem = Prisma.CompetitorObservationGetPaylo
 
 export interface CompetitorListFilter {
   branchId?: string | null;
-  brandId?: string | null;
+  competitorBrandId?: string | null;
   competitorName?: string | null;
   from?: Date | null;
   to?: Date | null;
@@ -37,8 +37,8 @@ function buildWhere(
     where.branchId = filter.branchId;
   }
 
-  if (filter.brandId) {
-    where.brandId = filter.brandId;
+  if (filter.competitorBrandId) {
+    where.competitorBrandId = filter.competitorBrandId;
   }
 
   if (filter.competitorName?.trim()) {
@@ -79,8 +79,10 @@ export const competitorRepository = {
       competitorId: string;
       competitorName: string;
       branchId: string;
-      brandId?: string | null;
-      modelId?: string | null;
+      competitorBrandId?: string | null;
+      competitorModelId?: string | null;
+      brandName?: string | null;
+      modelName?: string | null;
       price?: number | null;
       promotion?: string | null;
       notes?: string | null;
@@ -94,8 +96,10 @@ export const competitorRepository = {
         competitorId: data.competitorId,
         competitorName: data.competitorName,
         branchId: data.branchId,
-        brandId: data.brandId ?? null,
-        modelId: data.modelId ?? null,
+        competitorBrandId: data.competitorBrandId ?? null,
+        competitorModelId: data.competitorModelId ?? null,
+        brandName: data.brandName ?? null,
+        modelName: data.modelName ?? null,
         price: data.price ?? null,
         promotion: data.promotion ?? null,
         notes: data.notes ?? null,
@@ -113,8 +117,10 @@ export const competitorRepository = {
       competitorId: string;
       competitorName: string;
       branchId: string;
-      brandId?: string | null;
-      modelId?: string | null;
+      competitorBrandId?: string | null;
+      competitorModelId?: string | null;
+      brandName?: string | null;
+      modelName?: string | null;
       price?: number | null;
       promotion?: string | null;
       notes?: string | null;
@@ -127,8 +133,10 @@ export const competitorRepository = {
         competitorId: data.competitorId,
         competitorName: data.competitorName,
         branchId: data.branchId,
-        brandId: data.brandId ?? null,
-        modelId: data.modelId ?? null,
+        competitorBrandId: data.competitorBrandId ?? null,
+        competitorModelId: data.competitorModelId ?? null,
+        brandName: data.brandName ?? null,
+        modelName: data.modelName ?? null,
         price: data.price ?? null,
         promotion: data.promotion ?? null,
         notes: data.notes ?? null,

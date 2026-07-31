@@ -1,13 +1,12 @@
 /**
  * Workbook contract for the bulk branch import.
  *
- * Sheet 1 (Branches)       — sap_code, branch_name
+ * Sheet 1 (Branches)       — sap_code, branch_name (+ optional PSG: AREA, STATUS, quotas)
  * Sheet 2 (Allowed Models) — sap_code, sku_code
  *
- * Both sheets are keyed on human-readable business codes because users cannot read
- * cuids; every value is resolved to a primary key server-side before anything is
- * written. `sap_code` is what joins sheet 2 back to a branch — it is unique per
- * tenant and survives row reordering, unlike a positional row number.
+ * Also accepts a single-sheet PSG ISMS export (sheet named ISMS or first sheet with
+ * BRANCH CODE / AREA / STATUS headers). Unknown sap_codes are created; existing
+ * ones are updated. Allowed Models still require existing product models (SKUs).
  */
 
 export const BRANCH_SHEET_NAME = "Branches";
@@ -28,11 +27,21 @@ export const BRANCH_IMPORT_ALIAS_MAP: Record<string, string> = {
   sku: "skucode",
   modelcode: "skucode",
   modelsku: "skucode",
+  area: "area",
+  status: "status",
+  devantquota: "devantquota",
+  hisenseblquota: "hisenseblquota",
+  hisensewlquota: "hisensewlquota",
+  hisensequota: "hisensequota",
 };
 
 /** Branch fields the import may change, and how they read in the preview. */
 export const BRANCH_IMPORT_FIELD_LABELS: Record<string, string> = {
   name: "Name",
+  status: "Status",
+  area: "Area",
+  devantQuota: "Devant quota",
+  hisenseQuota: "Hisense quota",
 };
 
 export interface BranchImportRowError {
@@ -51,9 +60,11 @@ export interface BranchImportFieldChange {
 }
 
 export interface BranchImportBranchPlan {
+  /** Existing branch id, or empty when this row will create a new branch. */
   branchId: string;
   sapCode: string;
   name: string;
+  isCreate: boolean;
   changes: BranchImportFieldChange[];
   allowedModelsToAdd: { modelId: string; skuCode: string; name: string }[];
   /** Listed in the sheet but already allowed — reported as "no change". */
@@ -66,6 +77,7 @@ export interface BranchImportPreview {
   /** Only branches with something to do. */
   branches: BranchImportBranchPlan[];
   unchangedCount: number;
+  branchCreateCount: number;
   branchUpdateCount: number;
   allowedModelAddCount: number;
   errors: BranchImportRowError[];
@@ -73,6 +85,7 @@ export interface BranchImportPreview {
 }
 
 export interface BranchImportResult {
+  branchesCreated: number;
   branchesUpdated: number;
   allowedModelsAdded: number;
   unchanged: number;
