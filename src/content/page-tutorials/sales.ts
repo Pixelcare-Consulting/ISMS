@@ -5,20 +5,20 @@ export const SALES_PAGE_TUTORIAL: PageTutorialContent = {
   triggerLabel: "Open sales tutorial",
   dialogTitle: "Sales & ATR — quick guide",
   dialogDescription:
-    "Branch sales with SN picker, reserved (RSV) flow, and ATR returns.",
+    "Branch sales with package detail sets, reserved (RSV) flow, and ATR returns.",
   helpHref: "/help",
   helpLinkLabel: "Full Help & Support portal",
   sections: [
     {
       title: "What this page is for",
       description:
-        "Record customer sales that update stock and reporting. Supports serial-number picker, reserved (RSV) sales, and BranchReturnRequest ATR workflow.",
+        "List sales and run ATR returns. Encode new sales on /sales/new with package detail sets, reserved (RSV) sales, and BranchReturnRequest ATR workflow.",
     },
     {
       title: "How to use it",
       bullets: [
-        "Start a new sale for the branch and add line items (serials per tenant rules).",
-        "Verify totals before submit; RSV holds stock until the sale completes.",
+        "Click New transaction, fill the header, then Add Detail (package qty expands into N sets with model + serial).",
+        "Verify the details total before Save; RSV moves stock to reserved instead of sold.",
         "Use ATR return requests when product must come back through the return path.",
       ],
     },

@@ -11,12 +11,20 @@ import { salesRepository } from "@/features/sales/repositories/sales.repository"
 import { hasPermission, requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/database/client";
 
+const saleDetailSchema = z.object({
+  packageTypeId: z.string().optional(),
+  modelId: z.string().optional(),
+  serialNumberId: z.string().min(1),
+  saleAmount: z.coerce.number().positive(),
+  modelPrice: z.coerce.number().nonnegative().optional(),
+});
+
 const saleSchema = z.object({
   branchId: z.string().min(1),
-  serialNumberId: z.string().optional(),
-  amount: z.coerce.number().positive(),
-  notes: z.string().optional(),
+  customerName: z.string().trim().min(1),
+  transactionDate: z.string().optional(),
   reserved: z.boolean().optional(),
+  details: z.array(saleDetailSchema).min(1),
 });
 
 async function assertBranchInAor(
@@ -59,7 +67,67 @@ export async function listSalesAction(input?: { page?: number; limit?: number })
   };
 }
 
-export async function listSaleableSerialsAction(branchId: string) {
+export async function listPackageTypesForSalesAction() {
+  const session = await requirePermission("sales.create");
+  const rows = await prisma.packageType.findMany({
+    where: { tenantId: session.user.tenantId, recordStatus: "active" },
+    select: { id: true, name: true, quantity: true },
+    orderBy: { name: "asc" },
+  });
+  return rows;
+}
+
+export async function listModelsForSalesAction() {
+  const session = await requirePermission("sales.create");
+  const rows = await prisma.productModel.findMany({
+    where: { tenantId: session.user.tenantId, status: "active" },
+    select: { id: true, skuCode: true, name: true, srp: true },
+    orderBy: { skuCode: "asc" },
+    take: 500,
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    skuCode: r.skuCode,
+    name: r.name,
+    srp: r.srp != null ? r.srp.toString() : null,
+  }));
+}
+
+export async function resolveModelPriceForSalesAction(input: {
+  modelId: string;
+  packageTypeId?: string;
+}) {
+  const session = await requirePermission("sales.create");
+  const now = new Date();
+  const priceList = await prisma.priceList.findFirst({
+    where: {
+      tenantId: session.user.tenantId,
+      modelId: input.modelId,
+      periodStart: { lte: now },
+      periodEnd: { gte: now },
+      ...(input.packageTypeId
+        ? {
+            OR: [{ packageTypeId: input.packageTypeId }, { packageTypeId: null }],
+          }
+        : {}),
+    },
+    orderBy: [{ packageTypeId: "desc" }, { periodStart: "desc" }],
+    select: { amount: true },
+  });
+  if (priceList) return Number(priceList.amount.toString());
+
+  const model = await prisma.productModel.findFirst({
+    where: { id: input.modelId, tenantId: session.user.tenantId },
+    select: { srp: true },
+  });
+  if (model?.srp != null) return Number(model.srp.toString());
+  return null;
+}
+
+export async function listSaleableSerialsAction(
+  branchId: string,
+  modelId?: string,
+) {
   const session = await requirePermission("sales.create");
   await assertBranchInAor(
     session.user.tenantId,
@@ -79,23 +147,28 @@ export async function listSaleableSerialsAction(branchId: string) {
       tenantId: session.user.tenantId,
       branchId,
       statusCodeId: stkCodeId,
+      ...(modelId
+        ? { serialNumber: { modelId } }
+        : {}),
     },
     include: {
       serialNumber: {
         select: {
           id: true,
           serialNo: true,
+          modelId: true,
           model: { select: { skuCode: true, name: true } },
         },
       },
     },
     orderBy: { serialNumber: { serialNo: "asc" } },
-    take: 200,
+    take: 500,
   });
 
   return rows.map((r) => ({
     id: r.serialNumber.id,
     serialNo: r.serialNumber.serialNo,
+    modelId: r.serialNumber.modelId,
     skuCode: r.serialNumber.model.skuCode,
     modelName: r.serialNumber.model.name,
   }));
@@ -117,45 +190,77 @@ export async function createSaleAction(input: unknown) {
     return { error: e instanceof Error ? e.message : "Access denied" };
   }
 
-  const transactionNo = `SAL-${Date.now().toString(36).toUpperCase()}`;
-  const serialNumberId = parsed.data.serialNumberId;
-
-  let stkCodeId: string | undefined;
-  let targetStatusCodeId: string | undefined;
-  if (serialNumberId) {
-    stkCodeId = await reasonStatusService.requireCodeId(
-      session.user.tenantId,
-      "inventory_system",
-      "STK",
-    );
-    targetStatusCodeId = await reasonStatusService.requireCodeId(
-      session.user.tenantId,
-      "inventory_system",
-      parsed.data.reserved ? "RSV" : "SLD",
-    );
+  const details = parsed.data.details;
+  const serialIds = details.map((d) => d.serialNumberId);
+  if (new Set(serialIds).size !== serialIds.length) {
+    return { error: "Duplicate serials in the same transaction are not allowed" };
   }
+
+  const transactionNo = `SAL-${Date.now().toString(36).toUpperCase()}`;
+  const firstDetail = details[0]!;
+  const amount = details.reduce((sum, d) => sum + d.saleAmount, 0);
+  const modelPriceRollup = details.find((d) => d.modelPrice != null)?.modelPrice;
+  const packageTypeId = firstDetail.packageTypeId ?? null;
+  const headerSerialId = firstDetail.serialNumberId;
+
+  let transactionDate: Date | null = null;
+  if (parsed.data.transactionDate) {
+    const d = new Date(parsed.data.transactionDate);
+    if (Number.isNaN(d.getTime())) {
+      return { error: "Invalid transaction date" };
+    }
+    transactionDate = d;
+  }
+
+  const stkCodeId = await reasonStatusService.requireCodeId(
+    session.user.tenantId,
+    "inventory_system",
+    "STK",
+  );
+  const targetStatusCodeId = await reasonStatusService.requireCodeId(
+    session.user.tenantId,
+    "inventory_system",
+    parsed.data.reserved ? "RSV" : "SLD",
+  );
 
   let row;
   try {
     row = await prisma.$transaction(async (tx) => {
+      if (packageTypeId) {
+        const pkg = await tx.packageType.findFirst({
+          where: {
+            id: packageTypeId,
+            tenantId: session.user.tenantId,
+            recordStatus: "active",
+          },
+          select: { id: true },
+        });
+        if (!pkg) {
+          throw new Error("Package type not found");
+        }
+      }
+
       const created = await tx.branchSalesTransaction.create({
         data: {
           tenantId: session.user.tenantId,
           branchId: parsed.data.branchId,
-          serialNumberId: serialNumberId ?? null,
+          serialNumberId: headerSerialId,
+          packageTypeId,
           transactionNo,
-          amount: parsed.data.amount,
-          notes: parsed.data.notes,
+          transactionDate,
+          customerName: parsed.data.customerName,
+          amount,
+          modelPrice: modelPriceRollup ?? null,
           atrStatus: "open",
           createdById: session.user.id,
         },
       });
 
-      if (serialNumberId) {
+      for (const detail of details) {
         const updated = await tx.branchInventory.updateMany({
           where: {
             tenantId: session.user.tenantId,
-            serialNumberId,
+            serialNumberId: detail.serialNumberId,
             branchId: parsed.data.branchId,
             statusCodeId: stkCodeId,
           },
@@ -164,6 +269,17 @@ export async function createSaleAction(input: unknown) {
         if (updated.count === 0) {
           throw new Error("Serial is not in sellable stock at this branch");
         }
+
+        await tx.branchSalesTransactionDetail.create({
+          data: {
+            salesId: created.id,
+            modelId: detail.modelId ?? null,
+            serialNumberId: detail.serialNumberId,
+            saleAmount: detail.saleAmount,
+            modelPrice: detail.modelPrice ?? null,
+            amount: detail.saleAmount,
+          },
+        });
       }
 
       return created;
@@ -181,10 +297,12 @@ export async function createSaleAction(input: unknown) {
     metadata: {
       transactionNo: row.transactionNo,
       reserved: Boolean(parsed.data.reserved),
+      detailCount: details.length,
     },
   });
 
   revalidatePath("/sales");
+  revalidatePath("/sales/new");
   revalidatePath("/inventory");
   return { success: true as const };
 }

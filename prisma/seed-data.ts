@@ -361,7 +361,8 @@ export type SeedProfile =
   | "status"
   | "brs"
   | "schedules"
-  | "branches";
+  | "branches"
+  | "psg";
 
 export function resolveSeedProfile(): SeedProfile {
   const raw = process.env.SEED_PROFILE?.trim().toLowerCase();
@@ -372,6 +373,7 @@ export function resolveSeedProfile(): SeedProfile {
     raw === "brs" ||
     raw === "schedules" ||
     raw === "branches" ||
+    raw === "psg" ||
     raw === "minimal"
   ) {
     return raw;
