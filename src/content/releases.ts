@@ -24,13 +24,15 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
-    version: "0.13.8",
+    version: "0.13.9",
     date: "2026-07-30",
-    title: "Branch schedule UX uses company ordering policy",
+    title: "Branch schedule UX uses company ordering policy & Inventory serial details",
     highlights: [
       "Branch delivery schedule shows company locked weekdays and clearer global vs branch hierarchy",
       "Selecting a frequency code suggests delivery and ordering days (editable after)",
       "Disabling a branch schedule clears the saved BranchDeliverySchedule row",
+      "BRANCH and MODEL on Inventory Stock units are plain text (no planogram links)",
+      "Clicking a row, Branch, Model, or Serial opens serial details and history",
     ],
     changes: [
       {
@@ -47,6 +49,11 @@ export const RELEASES: ReleaseNote[] = [
         type: "fix",
         description:
           "Updating a branch with schedule disabled deletes BranchDeliverySchedule so stale orderDays no longer gate create",
+      },
+      {
+        type: "fix",
+        description:
+          "Inventory stock units BRANCH/MODEL no longer link to planogram; row click opens serial details",
       },
     ],
   },
