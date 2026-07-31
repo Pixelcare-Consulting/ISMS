@@ -231,6 +231,40 @@ export const branchRepository = {
     });
   },
 
+  /**
+   * Identity + status snapshot used to diff ISMS branches against SAP master data.
+   * Soft-deleted rows are included because they still occupy their sapCode slot.
+   */
+  listSapSyncSnapshot(tenantId: string) {
+    return prisma.branch.findMany({
+      where: { tenantId },
+      select: { id: true, sapCode: true, name: true, status: true, deletedAt: true },
+    });
+  },
+
+  /** Apply a SAP branch sync in one transaction — insert new codes, patch changed ones. */
+  applySapSync(
+    tenantId: string,
+    input: {
+      create: { sapCode: string; name: string }[];
+      update: { id: string; name: string }[];
+    },
+  ) {
+    return prisma.$transaction(async (tx) => {
+      if (input.create.length > 0) {
+        await tx.branch.createMany({
+          data: input.create.map((row) => ({ tenantId, ...row })),
+        });
+      }
+      for (const row of input.update) {
+        await tx.branch.update({
+          where: { id: row.id, tenantId },
+          data: { name: row.name },
+        });
+      }
+    });
+  },
+
   findModelsBySkuCodes(tenantId: string, skuCodes: string[]) {
     return prisma.productModel.findMany({
       where: { tenantId, skuCode: { in: skuCodes } },

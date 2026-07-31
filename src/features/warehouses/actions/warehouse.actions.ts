@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import { warehouseSapSyncService } from "@/features/warehouses/services/warehouse-sap-sync.service";
 import { warehouseService } from "@/features/warehouses/services/warehouse.service";
 import { warehouseRepository } from "@/features/warehouses/repositories/warehouse.repository";
 import { requirePermission } from "@/lib/auth/permissions";
@@ -62,6 +63,20 @@ export async function updateWarehouseAction(input: unknown) {
     return { success: true as const };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to update warehouse" };
+  }
+}
+
+export async function syncWarehousesFromSapAction() {
+  const session = await requirePermission("warehouses.manage");
+  try {
+    const result = await warehouseSapSyncService.syncFromSap(
+      session.user.tenantId,
+      session.user.id,
+    );
+    revalidatePath("/settings/warehouses");
+    return { success: true as const, result };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to sync warehouses from SAP" };
   }
 }
 

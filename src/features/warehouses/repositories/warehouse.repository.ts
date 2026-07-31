@@ -50,6 +50,37 @@ export const warehouseRepository = {
     });
   },
 
+  /** Identity snapshot used to diff ISMS warehouses against SAP master data. */
+  listSapSyncSnapshot(tenantId: string) {
+    return prisma.warehouse.findMany({
+      where: { tenantId },
+      select: { id: true, code: true, name: true },
+    });
+  },
+
+  /** Apply a SAP warehouse sync in one transaction — insert new codes, patch changed names. */
+  applySapSync(
+    tenantId: string,
+    input: {
+      create: { code: string; name: string }[];
+      update: { id: string; name: string }[];
+    },
+  ) {
+    return prisma.$transaction(async (tx) => {
+      if (input.create.length > 0) {
+        await tx.warehouse.createMany({
+          data: input.create.map((row) => ({ tenantId, ...row })),
+        });
+      }
+      for (const row of input.update) {
+        await tx.warehouse.update({
+          where: { id: row.id, tenantId },
+          data: { name: row.name },
+        });
+      }
+    });
+  },
+
   addLocation(warehouseId: string, data: { code: string; name: string }) {
     return prisma.warehouseLocation.create({
       data: { warehouseId, ...data },

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { branchSapSyncService } from "@/features/branches/services/branch-sap-sync.service";
 import { branchService } from "@/features/branches/services/branch.service";
 import { branchScheduleSchema } from "@/features/branches/schemas/branch.schema";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
@@ -70,6 +71,20 @@ export async function updateBranchAction(input: unknown) {
     return { success: true as const, branch };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to update branch" };
+  }
+}
+
+export async function syncBranchesFromSapAction() {
+  const session = await requirePermission("branches.manage");
+  try {
+    const result = await branchSapSyncService.syncFromSap(
+      session.user.tenantId,
+      session.user.id,
+    );
+    revalidatePath("/settings/branches");
+    return { success: true as const, result };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to sync branches from SAP" };
   }
 }
 
