@@ -4,7 +4,7 @@ import { buildCsvContent } from "@/lib/shared/csv";
 export interface SalesReportFilters {
   from?: Date;
   to?: Date;
-  branchId?: string;
+  branchIds?: string[];
 }
 
 const HEADERS = [
@@ -27,7 +27,7 @@ export const salesReportService = {
     const sales = await prisma.branchSalesTransaction.findMany({
       where: {
         tenantId,
-        ...(filters.branchId ? { branchId: filters.branchId } : {}),
+        ...(filters.branchIds ? { branchId: { in: filters.branchIds } } : {}),
         ...(filters.from || filters.to
           ? {
               createdAt: {

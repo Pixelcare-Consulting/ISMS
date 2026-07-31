@@ -3,73 +3,66 @@
 import { ORDER_VIEW_REPORT_PERMISSIONS } from "@/features/orders/constants/order-permissions";
 import { reportsService } from "@/features/reports/services/reports.service";
 import { requirePermission } from "@/lib/auth/permissions";
-import { branchService } from "@/features/branches/services/branch.service";
 import { dailyStockReportService } from "@/features/reports/services/daily-stock-report.service";
 import { processedOrdersReportService } from "@/features/reports/services/processed-orders-report.service";
 import { transferReportService } from "@/features/reports/services/transfer-report.service";
 import { salesReportService } from "@/features/reports/services/sales-report.service";
 import { requireAnyPermission } from "@/lib/auth/permissions";
+import { getUserBranchIds } from "@/lib/aor/scope";
 
 const REPORT_ACCESS = ["reports.view", ...ORDER_VIEW_REPORT_PERMISSIONS] as const;
 
+async function resolveReportBranchIds(tenantId: string, userId: string): Promise<string[]> {
+  return (await getUserBranchIds(tenantId, userId)) ?? [];
+}
+
 export async function listProcessedOrdersReportAction(input?: {
-  branchId?: string;
   from?: string;
   to?: string;
   q?: string;
 }) {
   const session = await requirePermission("reports.view");
+  const branchIds = await resolveReportBranchIds(session.user.tenantId, session.user.id);
   return reportsService.listProcessedOrders(session.user.tenantId, {
-    branchId: input?.branchId,
+    branchIds,
     from: input?.from ? new Date(input.from) : undefined,
     to: input?.to ? new Date(input.to) : undefined,
     q: input?.q?.trim() || undefined,
   });
 }
 
-export async function listDailyStockReportAction(input: {
-  date: string;
-  branchId?: string;
-}) {
+export async function listDailyStockReportAction(input: { date: string }) {
   const session = await requirePermission("reports.view");
+  const branchIds = await resolveReportBranchIds(session.user.tenantId, session.user.id);
   return reportsService.listDailyStock(session.user.tenantId, {
     date: new Date(input.date),
-    branchId: input.branchId,
+    branchIds,
   });
 }
 
-export async function listTransfersReportAction(input?: {
-  branchId?: string;
-  from?: string;
-  to?: string;
-}) {
+export async function listTransfersReportAction(input?: { from?: string; to?: string }) {
   const session = await requirePermission("reports.view");
+  const branchIds = await resolveReportBranchIds(session.user.tenantId, session.user.id);
   return reportsService.listTransfers(session.user.tenantId, {
-    branchId: input?.branchId,
+    branchIds,
     from: input?.from ? new Date(input.from) : undefined,
     to: input?.to ? new Date(input.to) : undefined,
   });
 }
 
-export async function listBranchesForReportsAction() {
-  const session = await requireAnyPermission([...REPORT_ACCESS]);
-  const branches = await branchService.listBranches(session.user.tenantId);
-  return branches.map((b) => ({ id: b.id, name: b.name }));
-}
-
 export async function exportProcessedOrdersCsvAction(input: {
   processedFrom?: string;
   processedTo?: string;
-  branchId?: string;
 }) {
   const session = await requireAnyPermission([...REPORT_ACCESS]);
+  const branchIds = await resolveReportBranchIds(session.user.tenantId, session.user.id);
 
   const csv = await processedOrdersReportService.generateCsv(session.user.tenantId, {
     processedFrom: input.processedFrom ? new Date(input.processedFrom) : undefined,
     processedTo: input.processedTo
       ? new Date(`${input.processedTo}T23:59:59.999Z`)
       : undefined,
-    branchId: input.branchId,
+    branchIds,
   });
 
   return {
@@ -79,16 +72,14 @@ export async function exportProcessedOrdersCsvAction(input: {
   };
 }
 
-export async function exportDailyStockCsvAction(input: {
-  date: string;
-  branchId?: string;
-}) {
+export async function exportDailyStockCsvAction(input: { date: string }) {
   const session = await requireAnyPermission([...REPORT_ACCESS]);
   if (!input.date) return { error: "Date is required" as const };
+  const branchIds = await resolveReportBranchIds(session.user.tenantId, session.user.id);
 
   const csv = await dailyStockReportService.generateCsv(session.user.tenantId, {
     date: new Date(input.date),
-    branchId: input.branchId,
+    branchIds,
   });
 
   return {
@@ -103,10 +94,12 @@ export async function exportTransferReportCsvAction(input?: {
   to?: string;
 }) {
   const session = await requireAnyPermission([...REPORT_ACCESS, "logistics.manage"]);
+  const branchIds = await resolveReportBranchIds(session.user.tenantId, session.user.id);
 
   const csv = await transferReportService.generateCsv(session.user.tenantId, {
     from: input?.from ? new Date(input.from) : undefined,
     to: input?.to ? new Date(`${input.to}T23:59:59.999Z`) : undefined,
+    branchIds,
   });
 
   return {
@@ -116,17 +109,14 @@ export async function exportTransferReportCsvAction(input?: {
   };
 }
 
-export async function exportSalesReportCsvAction(input?: {
-  from?: string;
-  to?: string;
-  branchId?: string;
-}) {
+export async function exportSalesReportCsvAction(input?: { from?: string; to?: string }) {
   const session = await requireAnyPermission([...REPORT_ACCESS, "sales.create"]);
+  const branchIds = await resolveReportBranchIds(session.user.tenantId, session.user.id);
 
   const csv = await salesReportService.generateCsv(session.user.tenantId, {
     from: input?.from ? new Date(input.from) : undefined,
     to: input?.to ? new Date(`${input.to}T23:59:59.999Z`) : undefined,
-    branchId: input?.branchId,
+    branchIds,
   });
 
   return {

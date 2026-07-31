@@ -4,7 +4,7 @@ import { buildCsvContent } from "@/lib/shared/csv";
 export interface ProcessedOrdersReportFilters {
   processedFrom?: Date;
   processedTo?: Date;
-  branchId?: string;
+  branchIds?: string[];
 }
 
 const HEADERS = [
@@ -50,7 +50,7 @@ export const processedOrdersReportService = {
         tenantId,
         status: "approved",
         processedAt: { not: null },
-        ...(filters.branchId ? { branchId: filters.branchId } : {}),
+        ...(filters.branchIds ? { branchId: { in: filters.branchIds } } : {}),
         ...(filters.processedFrom || filters.processedTo
           ? {
               processedAt: {

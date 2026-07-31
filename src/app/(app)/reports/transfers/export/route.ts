@@ -1,18 +1,19 @@
 import { NextResponse } from "next/server";
 import { reportsService } from "@/features/reports/services/reports.service";
 import { requirePermission } from "@/lib/auth/permissions";
+import { getUserBranchIds } from "@/lib/aor/scope";
 
 export async function GET(request: Request) {
   const session = await requirePermission("reports.view");
   const { searchParams } = new URL(request.url);
   const from = searchParams.get("from");
   const to = searchParams.get("to");
-  const branchId = searchParams.get("branchId");
+  const branchIds = (await getUserBranchIds(session.user.tenantId, session.user.id)) ?? [];
 
   const csv = await reportsService.exportTransfersCsv(session.user.tenantId, {
     from: from ? new Date(from) : undefined,
     to: to ? new Date(to) : undefined,
-    branchId: branchId || undefined,
+    branchIds,
   });
 
   return new NextResponse(csv, {

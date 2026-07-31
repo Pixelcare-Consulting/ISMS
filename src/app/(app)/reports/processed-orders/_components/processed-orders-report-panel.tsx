@@ -1,46 +1,24 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { SearchableSelect } from "@/components/ui/searchable-select";
-import {
-  exportProcessedOrdersCsvAction,
-  listBranchesForReportsAction,
-} from "@/features/reports/actions/reports.actions";
+import { exportProcessedOrdersCsvAction } from "@/features/reports/actions/reports.actions";
 import { downloadCsvFile } from "@/lib/shared/download-csv";
 
 export function ProcessedOrdersReportPanel() {
   const [pending, startTransition] = useTransition();
-  const [branches, setBranches] = useState<{ id: string; name: string }[]>([]);
-  const [branchId, setBranchId] = useState("");
   const [processedFrom, setProcessedFrom] = useState("");
   const [processedTo, setProcessedTo] = useState("");
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const list = await listBranchesForReportsAction();
-        if (!cancelled) setBranches(list);
-      } catch {
-        if (!cancelled) toast.error("Failed to load branches");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   function handleExport() {
     startTransition(async () => {
       const result = await exportProcessedOrdersCsvAction({
         processedFrom: processedFrom || undefined,
         processedTo: processedTo || undefined,
-        branchId: branchId || undefined,
       });
       if (!("success" in result) || !result.success) {
         toast.error("Export failed");
@@ -54,7 +32,8 @@ export function ProcessedOrdersReportPanel() {
   return (
     <div className="max-w-xl space-y-4 rounded-xl border bg-card p-4 shadow-sm sm:p-6">
       <p className="text-sm text-muted-foreground">
-        Export approved branch order lines matching the ISMS-v2 Processed Order Summary layout.
+        Export approved branch order lines matching the ISMS-v2 Processed Order Summary layout,
+        scoped to your assigned branch(es).
       </p>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
@@ -76,16 +55,6 @@ export function ProcessedOrdersReportPanel() {
           />
         </div>
       </div>
-      <SearchableSelect
-        label="Branch (optional)"
-        id="branch-filter"
-        options={branches.map((b) => ({ id: b.id, label: b.name }))}
-        value={branchId}
-        onChange={setBranchId}
-        allowClear
-        placeholder="All branches"
-        searchPlaceholder="Search branches…"
-      />
       <Button disabled={pending} onClick={handleExport}>
         {pending ? "Exporting…" : "Download CSV"}
       </Button>

@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/database/client";
 
 interface ProcessedOrdersFilters {
-  branchId?: string;
+  branchIds?: string[];
   from?: Date;
   to?: Date;
   q?: string;
@@ -9,11 +9,11 @@ interface ProcessedOrdersFilters {
 
 interface DailyStockFilters {
   date: Date;
-  branchId?: string;
+  branchIds?: string[];
 }
 
 interface TransferFilters {
-  branchId?: string;
+  branchIds?: string[];
   from?: Date;
   to?: Date;
 }
@@ -58,7 +58,7 @@ export const reportsService = {
       where: {
         tenantId,
         status: "approved",
-        ...(filters.branchId ? { branchId: filters.branchId } : {}),
+        ...(filters.branchIds ? { branchId: { in: filters.branchIds } } : {}),
         ...mapDateRange(filters, "processedAt"),
         ...(filters.q
           ? {
@@ -162,7 +162,7 @@ export const reportsService = {
     const planogramRows = await prisma.branchPlanogram.findMany({
       where: {
         tenantId,
-        ...(filters.branchId ? { branchId: filters.branchId } : {}),
+        ...(filters.branchIds ? { branchId: { in: filters.branchIds } } : {}),
       },
       include: {
         branch: true,
@@ -254,9 +254,12 @@ export const reportsService = {
     const rows = await prisma.branchTransfer.findMany({
       where: {
         tenantId,
-        ...(filters.branchId
+        ...(filters.branchIds
           ? {
-              OR: [{ fromBranchId: filters.branchId }, { toBranchId: filters.branchId }],
+              OR: [
+                { fromBranchId: { in: filters.branchIds } },
+                { toBranchId: { in: filters.branchIds } },
+              ],
             }
           : {}),
         ...mapDateRange(filters, "createdAt"),

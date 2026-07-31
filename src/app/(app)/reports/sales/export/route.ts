@@ -2,18 +2,19 @@ import { NextResponse } from "next/server";
 
 import { salesReportService } from "@/features/reports/services/sales-report.service";
 import { requireAnyPermission } from "@/lib/auth/permissions";
+import { getUserBranchIds } from "@/lib/aor/scope";
 
 export async function GET(request: Request) {
   const session = await requireAnyPermission(["reports.view", "sales.create"]);
   const { searchParams } = new URL(request.url);
   const from = searchParams.get("from");
   const to = searchParams.get("to");
-  const branchId = searchParams.get("branchId");
+  const branchIds = (await getUserBranchIds(session.user.tenantId, session.user.id)) ?? [];
 
   const csv = await salesReportService.generateCsv(session.user.tenantId, {
     from: from ? new Date(from) : undefined,
     to: to ? new Date(`${to}T23:59:59.999Z`) : undefined,
-    branchId: branchId || undefined,
+    branchIds,
   });
 
   return new NextResponse(csv, {
