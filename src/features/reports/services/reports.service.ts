@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/database/client";
 
 interface ProcessedOrdersFilters {
-  branchId?: string;
+  branchIds?: string[];
   from?: Date;
   to?: Date;
   q?: string;
@@ -9,11 +9,11 @@ interface ProcessedOrdersFilters {
 
 interface DailyStockFilters {
   date: Date;
-  branchId?: string;
+  branchIds?: string[];
 }
 
 interface TransferFilters {
-  branchId?: string;
+  branchIds?: string[];
   from?: Date;
   to?: Date;
 }
@@ -58,7 +58,7 @@ export const reportsService = {
       where: {
         tenantId,
         status: "approved",
-        ...(filters.branchId ? { branchId: filters.branchId } : {}),
+        ...(filters.branchIds ? { branchId: { in: filters.branchIds } } : {}),
         ...mapDateRange(filters, "processedAt"),
         ...(filters.q
           ? {
@@ -162,7 +162,7 @@ export const reportsService = {
     const planogramRows = await prisma.branchPlanogram.findMany({
       where: {
         tenantId,
-        ...(filters.branchId ? { branchId: filters.branchId } : {}),
+        ...(filters.branchIds ? { branchId: { in: filters.branchIds } } : {}),
       },
       include: {
         branch: true,
@@ -184,7 +184,7 @@ export const reportsService = {
       select: { id: true },
     });
 
-    const [stockRows, soldRows] = await Promise.all([
+    const [stockRows, soldDetails] = await Promise.all([
       stkCode
         ? prisma.branchInventory.groupBy({
             by: ["branchId", "statusCodeId"],
@@ -198,33 +198,32 @@ export const reportsService = {
             _count: { id: true },
           })
         : Promise.resolve([]),
-      prisma.branchSalesTransaction.groupBy({
-        by: ["branchId", "serialNumberId"],
+      prisma.branchSalesTransactionDetail.findMany({
         where: {
-          tenantId,
-          branchId: { in: branchIds },
-          createdAt: { gte: dateStart, lte: dateEnd },
-          serialNumber: { modelId: { in: modelIds } },
+          sale: {
+            tenantId,
+            branchId: { in: branchIds },
+            createdAt: { gte: dateStart, lte: dateEnd },
+          },
+          OR: [
+            { modelId: { in: modelIds } },
+            { serialNumber: { modelId: { in: modelIds } } },
+          ],
         },
-        _count: { id: true },
+        select: {
+          modelId: true,
+          sale: { select: { branchId: true } },
+          serialNumber: { select: { modelId: true } },
+        },
       }),
     ]);
 
-    const soldSerialIds = soldRows.map((row) => row.serialNumberId).filter((id): id is string => Boolean(id));
-    const serials = soldSerialIds.length
-      ? await prisma.serialNumber.findMany({
-          where: { id: { in: soldSerialIds } },
-          select: { id: true, modelId: true },
-        })
-      : [];
-    const modelBySerial = new Map(serials.map((row) => [row.id, row.modelId]));
     const soldByBranchModel = new Map<string, number>();
-    for (const row of soldRows) {
-      if (!row.serialNumberId) continue;
-      const modelId = modelBySerial.get(row.serialNumberId);
-      if (!modelId) continue;
-      const key = `${row.branchId}:${modelId}`;
-      soldByBranchModel.set(key, (soldByBranchModel.get(key) ?? 0) + row._count.id);
+    for (const row of soldDetails) {
+      const modelId = row.modelId ?? row.serialNumber.modelId;
+      if (!modelId || !modelIds.includes(modelId)) continue;
+      const key = `${row.sale.branchId}:${modelId}`;
+      soldByBranchModel.set(key, (soldByBranchModel.get(key) ?? 0) + 1);
     }
 
     const stockByBranch = new Map<string, number>();
@@ -254,9 +253,12 @@ export const reportsService = {
     const rows = await prisma.branchTransfer.findMany({
       where: {
         tenantId,
-        ...(filters.branchId
+        ...(filters.branchIds
           ? {
-              OR: [{ fromBranchId: filters.branchId }, { toBranchId: filters.branchId }],
+              OR: [
+                { fromBranchId: { in: filters.branchIds } },
+                { toBranchId: { in: filters.branchIds } },
+              ],
             }
           : {}),
         ...mapDateRange(filters, "createdAt"),

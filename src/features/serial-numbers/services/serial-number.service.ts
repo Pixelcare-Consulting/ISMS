@@ -72,10 +72,13 @@ function buildTimeline(row: SerialTraceabilityRow): SerialTimelineEvent[] {
     });
   }
 
-  for (const sale of row.branchSales) {
-    const amount = decimalToNumberOrNull(sale.amount);
+  for (const detail of row.salesDetails) {
+    const sale = detail.sale;
+    const amount =
+      decimalToNumberOrNull(detail.saleAmount) ??
+      decimalToNumberOrNull(sale.amount);
     events.push({
-      id: `sale-${sale.id}`,
+      id: `sale-${detail.id}`,
       type: "sale",
       label: "Sold",
       at: sale.createdAt,

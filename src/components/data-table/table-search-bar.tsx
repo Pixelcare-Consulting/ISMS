@@ -12,6 +12,7 @@ import {
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { normalizeTableSearch } from "@/utils/match-table-search";
 import { cn } from "@/utils/cn";
 
 const MAX_SUGGESTIONS = 8;
@@ -57,10 +58,10 @@ export function TableSearchBar({
   const [highlight, setHighlight] = useState(-1);
 
   const matches = useMemo(() => {
-    const q = value.trim().toLowerCase();
+    const q = normalizeTableSearch(value);
     if (!q || !suggestions?.length) return [];
     return suggestions
-      .filter((label) => label.toLowerCase().includes(q))
+      .filter((label) => normalizeTableSearch(label).includes(q))
       .slice(0, MAX_SUGGESTIONS);
   }, [suggestions, value]);
 

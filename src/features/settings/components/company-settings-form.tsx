@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { processBrandImage } from "@/utils/process-brand-image";
+import { APP_NAME } from "@/lib/shared/constants";
 
 interface CompanySettingsFormProps {
   initialValues: CompanySettingsInput;
@@ -201,7 +202,7 @@ export function CompanySettingsForm({
             value={name}
             onChange={(event) => setName(event.target.value)}
             disabled={!canEdit || isBusy}
-            placeholder="FINDEN ISMS"
+            placeholder={APP_NAME}
             maxLength={80}
             required
           />

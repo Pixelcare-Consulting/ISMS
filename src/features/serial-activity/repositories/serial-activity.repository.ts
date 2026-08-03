@@ -203,49 +203,50 @@ async function soldSource(
   tenantId: string,
   { window, q, dateFilter }: SourceOptions,
 ): Promise<SourceResult> {
-  const where: Prisma.BranchSalesTransactionWhereInput = {
-    tenantId,
-    serialNumberId: { not: null },
+  const where: Prisma.BranchSalesTransactionDetailWhereInput = {
+    sale: {
+      tenantId,
+      ...(dateFilter ? { createdAt: dateFilter } : {}),
+    },
     ...(q ? { serialNumber: { serialNo: serialContains(q) } } : {}),
-    ...(dateFilter ? { createdAt: dateFilter } : {}),
   };
   const [rows, count] = await Promise.all([
-    prisma.branchSalesTransaction.findMany({
+    prisma.branchSalesTransactionDetail.findMany({
       where,
       orderBy: { createdAt: "desc" },
       take: window,
       select: {
         id: true,
         createdAt: true,
+        saleAmount: true,
         amount: true,
-        transactionNo: true,
-        branch: { select: { name: true } },
+        sale: {
+          select: {
+            transactionNo: true,
+            amount: true,
+            branch: { select: { name: true } },
+            createdBy: userSelect,
+          },
+        },
         serialNumber: { select: { serialNo: true, model: modelSelect } },
-        createdBy: userSelect,
       },
     }),
-    prisma.branchSalesTransaction.count({ where }),
+    prisma.branchSalesTransactionDetail.count({ where }),
   ]);
   return {
     count,
-    events: rows.flatMap((r) =>
-      r.serialNumber
-        ? [
-            {
-              id: `sold:${r.id}`,
-              type: "sold" as const,
-              timestamp: r.createdAt,
-              serialNo: r.serialNumber.serialNo,
-              modelLabel: modelLabel(r.serialNumber.model),
-              location: r.branch.name,
-              reference: r.transactionNo,
-              status: null,
-              amount: r.amount.toString(),
-              performedBy: performedByLabel(r.createdBy),
-            },
-          ]
-        : [],
-    ),
+    events: rows.map((r) => ({
+      id: `sold:${r.id}`,
+      type: "sold" as const,
+      timestamp: r.createdAt,
+      serialNo: r.serialNumber.serialNo,
+      modelLabel: modelLabel(r.serialNumber.model),
+      location: r.sale.branch.name,
+      reference: r.sale.transactionNo,
+      status: null,
+      amount: (r.saleAmount ?? r.amount ?? r.sale.amount).toString(),
+      performedBy: performedByLabel(r.sale.createdBy),
+    })),
   };
 }
 

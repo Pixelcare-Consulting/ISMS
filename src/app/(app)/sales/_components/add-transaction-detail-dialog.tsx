@@ -21,9 +21,13 @@ import {
 
 export type DraftSaleDetail = {
   key: string;
-  packageTypeId: string | null;
+  packageTypeId: string;
   packageTypeName: string;
-  modelId: string | null;
+  brandId: string;
+  brandName: string;
+  promoTypeId: string | null;
+  promoTypeName: string | null;
+  modelId: string;
   modelLabel: string;
   // Holds a real serial id, or TO-FOLLOW when the unit serial is still pending.
   serialNumberId: string;
@@ -38,11 +42,17 @@ type PackageOption = {
   quantity: number;
 };
 
+type LookupOption = {
+  id: string;
+  name: string;
+};
+
 type ModelOption = {
   id: string;
   skuCode: string;
   name: string;
   srp: string | null;
+  brandId: string | null;
 };
 
 type SerialOption = {
@@ -74,12 +84,16 @@ function newClientKey(): string {
 }
 
 export function AddTransactionDetailDialog({
-  branchId,
+  stockBranchId,
+  brands,
+  promoTypes,
   usedSerialIds,
   onAdd,
   onClose,
 }: {
-  branchId: string;
+  stockBranchId: string;
+  brands: LookupOption[];
+  promoTypes: LookupOption[];
   usedSerialIds: Set<string>;
   onAdd: (rows: DraftSaleDetail[]) => void;
   onClose: () => void;
@@ -90,11 +104,21 @@ export function AddTransactionDetailDialog({
   const [serials, setSerials] = useState<SerialOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [packageTypeId, setPackageTypeId] = useState("");
+  const [brandId, setBrandId] = useState("");
+  const [promoTypeId, setPromoTypeId] = useState("");
   const [sets, setSets] = useState<DetailSetDraft[]>([emptySet()]);
 
   const selectedPackage = useMemo(
     () => packages.find((p) => p.id === packageTypeId) ?? null,
     [packages, packageTypeId],
+  );
+  const selectedBrand = useMemo(
+    () => brands.find((b) => b.id === brandId) ?? null,
+    [brands, brandId],
+  );
+  const selectedPromo = useMemo(
+    () => promoTypes.find((p) => p.id === promoTypeId) ?? null,
+    [promoTypes, promoTypeId],
   );
 
   useEffect(() => {
@@ -102,14 +126,12 @@ export function AddTransactionDetailDialog({
     setLoading(true);
     void (async () => {
       try {
-        const [pkgRows, modelRows, serialRows] = await Promise.all([
+        const [pkgRows, serialRows] = await Promise.all([
           listPackageTypesForSalesAction(),
-          listModelsForSalesAction(),
-          listSaleableSerialsAction(branchId),
+          listSaleableSerialsAction(stockBranchId),
         ]);
         if (cancelled) return;
         setPackages(pkgRows);
-        setModels(modelRows);
         setSerials(serialRows);
       } catch {
         if (cancelled) return;
@@ -121,13 +143,41 @@ export function AddTransactionDetailDialog({
     return () => {
       cancelled = true;
     };
-  }, [branchId]);
+  }, [stockBranchId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const modelRows = await listModelsForSalesAction(brandId || undefined);
+        if (cancelled) return;
+        setModels(modelRows);
+        setSets((prev) =>
+          prev.map((s) =>
+            s.modelId && !modelRows.some((m) => m.id === s.modelId)
+              ? { ...s, modelId: "", serialNumberId: "" }
+              : s,
+          ),
+        );
+      } catch {
+        if (!cancelled) toast.error("Failed to load models");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [brandId]);
 
   function onPackageChange(id: string) {
     setPackageTypeId(id);
     const pkg = packages.find((p) => p.id === id);
     const n = Math.max(1, pkg?.quantity ?? 1);
     setSets(Array.from({ length: n }, () => emptySet()));
+  }
+
+  function onBrandChange(id: string) {
+    setBrandId(id);
+    setSets((prev) => prev.map(() => emptySet()));
   }
 
   function updateSet(index: number, patch: Partial<DetailSetDraft>) {
@@ -187,6 +237,10 @@ export function AddTransactionDetailDialog({
       toast.error("Select a package type");
       return;
     }
+    if (!selectedBrand) {
+      toast.error("Select a brand");
+      return;
+    }
 
     const rows: DraftSaleDetail[] = [];
     for (let i = 0; i < sets.length; i++) {
@@ -226,6 +280,10 @@ export function AddTransactionDetailDialog({
         key: newClientKey(),
         packageTypeId: selectedPackage.id,
         packageTypeName: selectedPackage.name,
+        brandId: selectedBrand.id,
+        brandName: selectedBrand.name,
+        promoTypeId: selectedPromo?.id ?? null,
+        promoTypeName: selectedPromo?.name ?? null,
         modelId: set.modelId,
         modelLabel: model ? `${model.skuCode} · ${model.name}` : set.modelId,
         serialNumberId: isToFollow ? TO_FOLLOW_SERIAL_ID : serial!.id,
@@ -260,32 +318,60 @@ export function AddTransactionDetailDialog({
         <div>
           <h3 className="text-lg font-semibold">Add Transaction Detail</h3>
           <p className="text-sm text-muted-foreground">
-            Choose a package type. Quantity expands into one set per unit; each set
-            needs a model and a serial (or TO-FOLLOW if the serial is pending).
+            Choose package and brand. Quantity expands into one set per unit; each set
+            needs a model and an STK serial from the stock source branch (or TO-FOLLOW
+            if the serial is pending).
           </p>
         </div>
 
-        <div className="space-y-2">
-          <Label>Package *</Label>
-          <SearchableSelect
-            options={packages.map((p) => ({
-              id: p.id,
-              label: `${p.name} — qty ${p.quantity}`,
-            }))}
-            value={packageTypeId}
-            onChange={onPackageChange}
-            placeholder={loading ? "Loading packages…" : "Select package…"}
-            searchPlaceholder="Search packages…"
-            emptyMessage="No active package types."
-            disabled={loading || packages.length === 0}
-          />
-          {selectedPackage ? (
-            <p className="text-sm text-muted-foreground">
-              This package creates {selectedPackage.quantity} set
-              {selectedPackage.quantity === 1 ? "" : "s"}.
-            </p>
-          ) : null}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label>Package *</Label>
+            <SearchableSelect
+              options={packages.map((p) => ({
+                id: p.id,
+                label: `${p.name} — qty ${p.quantity}`,
+              }))}
+              value={packageTypeId}
+              onChange={onPackageChange}
+              placeholder={loading ? "Loading packages…" : "Select package…"}
+              searchPlaceholder="Search packages…"
+              emptyMessage="No active package types."
+              disabled={loading || packages.length === 0}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Brand *</Label>
+            <SearchableSelect
+              options={brands.map((b) => ({ id: b.id, label: b.name }))}
+              value={brandId}
+              onChange={onBrandChange}
+              placeholder="Select brand…"
+              searchPlaceholder="Search brands…"
+              emptyMessage="No brands."
+              disabled={loading || brands.length === 0}
+            />
+          </div>
+          <div className="space-y-2 sm:col-span-2">
+            <Label>Promo type</Label>
+            <SearchableSelect
+              options={promoTypes.map((p) => ({ id: p.id, label: p.name }))}
+              value={promoTypeId}
+              onChange={setPromoTypeId}
+              placeholder="Optional promo…"
+              searchPlaceholder="Search promo types…"
+              emptyMessage="No promo types."
+              disabled={loading}
+            />
+          </div>
         </div>
+
+        {selectedPackage ? (
+          <p className="text-sm text-muted-foreground">
+            This package creates {selectedPackage.quantity} set
+            {selectedPackage.quantity === 1 ? "" : "s"}.
+          </p>
+        ) : null}
 
         <div className="space-y-3">
           {sets.map((set, index) => {
@@ -305,10 +391,12 @@ export function AddTransactionDetailDialog({
                     }))}
                     value={set.modelId}
                     onChange={(id) => void onModelChange(index, id)}
-                    placeholder="Select model…"
+                    placeholder={
+                      !brandId ? "Select brand first…" : "Select model…"
+                    }
                     searchPlaceholder="Search models…"
-                    emptyMessage="No models."
-                    disabled={loading}
+                    emptyMessage="No models for this brand."
+                    disabled={loading || !brandId}
                   />
                   <SearchableSelect
                     label="Serial number *"
@@ -327,8 +415,9 @@ export function AddTransactionDetailDialog({
                         : "Select serial…"
                     }
                     searchPlaceholder="Search serials…"
-                    emptyMessage="No sellable serials for this model at the branch."
-                    // Stay enabled after model pick even if the branch has no STK units.
+                    emptyMessage="No sellable serials for this model at the stock source."
+                    // Stay enabled after model pick even if the stock source has no STK units
+                    // so TO-FOLLOW remains selectable.
                     disabled={loading || !set.modelId}
                   />
                   <div className="space-y-2">

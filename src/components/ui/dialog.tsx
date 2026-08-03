@@ -42,6 +42,8 @@ const DialogContent = React.forwardRef<
         className,
       )}
       {...props}
+      // Opt out when no DialogDescription child — silences Radix a11y warning app-wide.
+      aria-describedby={props["aria-describedby"] ?? undefined}
     >
       {children}
       {showCloseButton ? (

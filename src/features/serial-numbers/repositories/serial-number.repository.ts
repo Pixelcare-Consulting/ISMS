@@ -44,15 +44,21 @@ const serialTraceabilityInclude = {
       statusCode: { select: { code: true, name: true } },
     },
   },
-  branchSales: {
+  salesDetails: {
     select: {
       id: true,
-      transactionNo: true,
-      amount: true,
-      atrStatus: true,
-      createdAt: true,
-      branch: { select: { name: true } },
-      returnRequest: { select: { id: true, status: true, createdAt: true } },
+      saleAmount: true,
+      sale: {
+        select: {
+          id: true,
+          transactionNo: true,
+          amount: true,
+          atrStatus: true,
+          createdAt: true,
+          branch: { select: { name: true } },
+          returnRequest: { select: { id: true, status: true, createdAt: true } },
+        },
+      },
     },
   },
   transferLines: {

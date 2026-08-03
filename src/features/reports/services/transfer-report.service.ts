@@ -4,6 +4,7 @@ import { buildCsvContent } from "@/lib/shared/csv";
 export interface TransferReportFilters {
   from?: Date;
   to?: Date;
+  branchIds?: string[];
 }
 
 const HEADERS = ["TRANSFER NO", "FROM BRANCH", "TO BRANCH", "STATUS", "DATE", "NOTES"];
@@ -17,6 +18,14 @@ export const transferReportService = {
     const transfers = await prisma.branchTransfer.findMany({
       where: {
         tenantId,
+        ...(filters.branchIds
+          ? {
+              OR: [
+                { fromBranchId: { in: filters.branchIds } },
+                { toBranchId: { in: filters.branchIds } },
+              ],
+            }
+          : {}),
         ...(filters.from || filters.to
           ? {
               createdAt: {

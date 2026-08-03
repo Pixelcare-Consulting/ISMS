@@ -2,6 +2,12 @@ import { Suspense } from "react";
 
 import { AuthPageHeader } from "@/app/(auth)/_components/auth-page-shell";
 import { LoginForm } from "@/app/(auth)/login/_components/login-form";
+import { pageMetadata } from "@/lib/shared/seo";
+
+export const metadata = pageMetadata(
+  "Sign in",
+  "Use your work email to access role-based dashboards and branch operations.",
+);
 
 export default function LoginPage() {
   return (

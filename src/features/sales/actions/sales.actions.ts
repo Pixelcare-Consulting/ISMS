@@ -14,10 +14,13 @@ import {
 } from "@/features/sales/constants/to-follow-serial";
 import { hasPermission, requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/database/client";
+import { getObjectStorage } from "@/lib/storage";
 
 const saleDetailSchema = z.object({
-  packageTypeId: z.string().optional(),
-  modelId: z.string().optional(),
+  packageTypeId: z.string().min(1),
+  brandId: z.string().min(1),
+  promoTypeId: z.string().optional(),
+  modelId: z.string().min(1),
   // Accept either a real serial id or the TO-FOLLOW placeholder from the UI.
   serialNumberId: z.string().min(1),
   // 0 is allowed for free items; negatives are not.
@@ -27,11 +30,21 @@ const saleDetailSchema = z.object({
 
 const saleSchema = z.object({
   branchId: z.string().min(1),
+  alternateBranchId: z.string().min(1),
   customerName: z.string().trim().min(1),
+  siTrans: z.string().trim().min(1),
+  paymentTypeId: z.string().min(1),
+  saleTypeId: z.string().min(1),
+  customerDeliveryMethodId: z.string().min(1),
+  infoSlipVsoRrReleased: z.string().trim().optional(),
+  rrReceiveDeliver: z.string().trim().optional(),
+  proof: z.string().trim().optional(),
   transactionDate: z.string().optional(),
   reserved: z.boolean().optional(),
   details: z.array(saleDetailSchema).min(1),
 });
+
+const SALES_PROOF_PREFIX = "sales-proofs";
 
 async function assertBranchInAor(
   tenantId: string,
@@ -50,6 +63,53 @@ async function assertBranchInAor(
   }
 }
 
+/** Stock source may be an alternate warehouse of an AOR branch. */
+async function assertStockLocationReadable(
+  tenantId: string,
+  userId: string,
+  stockBranchId: string,
+  permissions: string[] | undefined,
+) {
+  const unrestricted =
+    hasPermission(permissions, "branches.manage") ||
+    hasPermission(permissions, "master_data.manage");
+  if (unrestricted) return;
+
+  const branchIds = await aorService.getBranchIdsForUser(tenantId, userId);
+  if (branchIds?.includes(stockBranchId)) return;
+
+  const alt = await prisma.alternateWarehouse.findFirst({
+    where: {
+      alternateBranchId: stockBranchId,
+      branchId: { in: branchIds ?? [] },
+      branch: { tenantId },
+    },
+    select: { id: true },
+  });
+  if (!alt) {
+    throw new Error("Branch not in your area of responsibility");
+  }
+}
+
+async function assertValidStockSource(
+  tenantId: string,
+  soldBranchId: string,
+  alternateBranchId: string,
+) {
+  if (alternateBranchId === soldBranchId) return;
+  const alt = await prisma.alternateWarehouse.findFirst({
+    where: {
+      branchId: soldBranchId,
+      alternateBranchId,
+      branch: { tenantId },
+    },
+    select: { id: true },
+  });
+  if (!alt) {
+    throw new Error("Stock source must be the sold branch or one of its alternate warehouses");
+  }
+}
+
 export async function listSalesAction(input?: { page?: number; limit?: number }) {
   const session = await requirePermission("sales.create");
   const result = await salesRepository.listForTenant(session.user.tenantId, {
@@ -59,19 +119,37 @@ export async function listSalesAction(input?: { page?: number; limit?: number })
 
   return {
     ...result,
-    items: result.items.map((row) => ({
-      id: row.id,
-      transactionNo: row.transactionNo,
-      amount: row.amount.toString(),
-      atrStatus: row.atrStatus,
-      branchId: row.branchId,
-      branch: row.branch,
-      serialNumberId: row.serialNumberId,
-      serialNumber: row.serialNumber,
-      returnRequest: row.returnRequest
-        ? { id: row.returnRequest.id, status: row.returnRequest.status }
-        : null,
-    })),
+    items: result.items.map((row) => {
+      const firstDetail = row.details[0];
+      const serialCount = row.details.length;
+      const firstSerial = firstDetail?.serialNumber?.serialNo ?? null;
+      const firstSerialId = firstDetail?.serialNumberId ?? null;
+      const serialLabel =
+        serialCount <= 1
+          ? firstSerial
+          : firstSerial
+            ? `${firstSerial} (+${serialCount - 1})`
+            : null;
+      return {
+        id: row.id,
+        transactionNo: row.transactionNo,
+        amount: row.amount.toString(),
+        atrStatus: row.atrStatus,
+        // Stock source drives edit-serial inventory picks; fall back to sold branch.
+        branchId: row.alternateBranchId ?? row.branchId,
+        branch: row.branch,
+        serialNumberId: firstSerialId,
+        serialNumber: serialLabel
+          ? {
+              id: firstDetail?.serialNumber?.id ?? firstSerialId ?? "",
+              serialNo: serialLabel,
+            }
+          : null,
+        returnRequest: row.returnRequest
+          ? { id: row.returnRequest.id, status: row.returnRequest.status }
+          : null,
+      };
+    }),
   };
 }
 
@@ -85,11 +163,94 @@ export async function listPackageTypesForSalesAction() {
   return rows;
 }
 
-export async function listModelsForSalesAction() {
+export async function listPaymentTypesForSalesAction() {
+  const session = await requirePermission("sales.create");
+  return prisma.paymentType.findMany({
+    where: { tenantId: session.user.tenantId, recordStatus: "active" },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
+}
+
+export async function listSaleTypesForSalesAction() {
+  const session = await requirePermission("sales.create");
+  return prisma.saleType.findMany({
+    where: { tenantId: session.user.tenantId, recordStatus: "active" },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
+}
+
+export async function listCustomerDeliveryMethodsForSalesAction() {
+  const session = await requirePermission("sales.create");
+  return prisma.customerDeliveryMethod.findMany({
+    where: { tenantId: session.user.tenantId, recordStatus: "active" },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
+}
+
+export async function listPromoTypesForSalesAction() {
+  const session = await requirePermission("sales.create");
+  return prisma.promoType.findMany({
+    where: { tenantId: session.user.tenantId, recordStatus: "active" },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
+}
+
+export async function listBrandsForSalesAction() {
+  const session = await requirePermission("sales.create");
+  return prisma.brand.findMany({
+    where: { tenantId: session.user.tenantId },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
+}
+
+export async function listStockSourceBranchesForSalesAction(branchId: string) {
+  const session = await requirePermission("sales.create");
+  await assertBranchInAor(
+    session.user.tenantId,
+    session.user.id,
+    branchId,
+    session.user.permissions,
+  );
+
+  const branch = await prisma.branch.findFirst({
+    where: { id: branchId, tenantId: session.user.tenantId },
+    select: {
+      id: true,
+      name: true,
+      alternateWarehouses: {
+        select: {
+          alternateBranch: { select: { id: true, name: true } },
+        },
+      },
+    },
+  });
+  if (!branch) return [];
+
+  const options = [{ id: branch.id, name: branch.name }];
+  for (const row of branch.alternateWarehouses) {
+    if (row.alternateBranch.id === branch.id) continue;
+    options.push({
+      id: row.alternateBranch.id,
+      name: `${row.alternateBranch.name} (alternate)`,
+    });
+  }
+  return options;
+}
+
+export async function listModelsForSalesAction(brandId?: string) {
   const session = await requirePermission("sales.create");
   const rows = await prisma.productModel.findMany({
-    where: { tenantId: session.user.tenantId, status: "active" },
-    select: { id: true, skuCode: true, name: true, srp: true },
+    where: {
+      tenantId: session.user.tenantId,
+      status: "active",
+      ...(brandId ? { brandId } : {}),
+    },
+    select: { id: true, skuCode: true, name: true, srp: true, brandId: true },
     orderBy: { skuCode: "asc" },
     take: 500,
   });
@@ -97,6 +258,7 @@ export async function listModelsForSalesAction() {
     id: r.id,
     skuCode: r.skuCode,
     name: r.name,
+    brandId: r.brandId,
     srp: r.srp != null ? r.srp.toString() : null,
   }));
 }
@@ -137,7 +299,7 @@ export async function listSaleableSerialsAction(
   modelId?: string,
 ) {
   const session = await requirePermission("sales.create");
-  await assertBranchInAor(
+  await assertStockLocationReadable(
     session.user.tenantId,
     session.user.id,
     branchId,
@@ -182,6 +344,33 @@ export async function listSaleableSerialsAction(
   }));
 }
 
+export async function uploadSaleProofAction(formData: FormData) {
+  const session = await requirePermission("sales.create");
+  try {
+    const file = formData.get("proof");
+    if (!(file instanceof File) || file.size === 0) {
+      return { error: "No file selected" as const };
+    }
+
+    const fileId = crypto.randomUUID();
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const storagePath = `${SALES_PROOF_PREFIX}/tenants/${session.user.tenantId}/${fileId}-${safeName}`;
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const storage = getObjectStorage();
+    await storage.upload({
+      path: storagePath,
+      body: buffer,
+      contentType: file.type || "application/octet-stream",
+    });
+
+    return { success: true as const, path: storagePath };
+  } catch (e) {
+    return {
+      error: e instanceof Error ? e.message : "Failed to upload proof",
+    };
+  }
+}
+
 export async function createSaleAction(input: unknown) {
   const session = await requirePermission("sales.create");
   const parsed = saleSchema.safeParse(input);
@@ -193,6 +382,11 @@ export async function createSaleAction(input: unknown) {
       session.user.id,
       parsed.data.branchId,
       session.user.permissions,
+    );
+    await assertValidStockSource(
+      session.user.tenantId,
+      parsed.data.branchId,
+      parsed.data.alternateBranchId,
     );
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Access denied" };
@@ -208,14 +402,9 @@ export async function createSaleAction(input: unknown) {
   }
 
   const transactionNo = `SAL-${Date.now().toString(36).toUpperCase()}`;
-  const firstDetail = details[0]!;
   const amount = details.reduce((sum, d) => sum + d.saleAmount, 0);
   const modelPriceRollup = details.find((d) => d.modelPrice != null)?.modelPrice;
-  const packageTypeId = firstDetail.packageTypeId ?? null;
-  // Header serial stays null when the first line is still TO-FOLLOW.
-  const headerSerialId = isToFollowSerial(firstDetail.serialNumberId)
-    ? null
-    : firstDetail.serialNumberId;
+  const stockBranchId = parsed.data.alternateBranchId;
 
   let transactionDate: Date | null = null;
   if (parsed.data.transactionDate) {
@@ -246,29 +435,89 @@ export async function createSaleAction(input: unknown) {
   let row;
   try {
     row = await prisma.$transaction(async (tx) => {
-      if (packageTypeId) {
-        const pkg = await tx.packageType.findFirst({
+      const packageIds = [...new Set(details.map((d) => d.packageTypeId))];
+      const brandIds = [...new Set(details.map((d) => d.brandId))];
+      const promoIds = [
+        ...new Set(
+          details
+            .map((d) => d.promoTypeId)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      ];
+
+      const [pkgs, brands, promos, payment, saleType, delivery] = await Promise.all([
+        tx.packageType.findMany({
           where: {
-            id: packageTypeId,
+            id: { in: packageIds },
             tenantId: session.user.tenantId,
             recordStatus: "active",
           },
           select: { id: true },
-        });
-        if (!pkg) {
-          throw new Error("Package type not found");
-        }
+        }),
+        tx.brand.findMany({
+          where: { id: { in: brandIds }, tenantId: session.user.tenantId },
+          select: { id: true },
+        }),
+        promoIds.length
+          ? tx.promoType.findMany({
+              where: {
+                id: { in: promoIds },
+                tenantId: session.user.tenantId,
+                recordStatus: "active",
+              },
+              select: { id: true },
+            })
+          : Promise.resolve([]),
+        tx.paymentType.findFirst({
+          where: {
+            id: parsed.data.paymentTypeId,
+            tenantId: session.user.tenantId,
+            recordStatus: "active",
+          },
+          select: { id: true },
+        }),
+        tx.saleType.findFirst({
+          where: {
+            id: parsed.data.saleTypeId,
+            tenantId: session.user.tenantId,
+            recordStatus: "active",
+          },
+          select: { id: true },
+        }),
+        tx.customerDeliveryMethod.findFirst({
+          where: {
+            id: parsed.data.customerDeliveryMethodId,
+            tenantId: session.user.tenantId,
+            recordStatus: "active",
+          },
+          select: { id: true },
+        }),
+      ]);
+
+      if (pkgs.length !== packageIds.length) throw new Error("Package type not found");
+      if (brands.length !== brandIds.length) throw new Error("Brand not found");
+      if (promoIds.length && promos.length !== promoIds.length) {
+        throw new Error("Promo type not found");
       }
+      if (!payment) throw new Error("Payment type not found");
+      if (!saleType) throw new Error("Sale type not found");
+      if (!delivery) throw new Error("Customer delivery method not found");
 
       const created = await tx.branchSalesTransaction.create({
         data: {
           tenantId: session.user.tenantId,
           branchId: parsed.data.branchId,
-          serialNumberId: headerSerialId,
-          packageTypeId,
+          alternateBranchId: stockBranchId,
+          paymentTypeId: parsed.data.paymentTypeId,
+          saleTypeId: parsed.data.saleTypeId,
+          customerDeliveryMethodId: parsed.data.customerDeliveryMethodId,
           transactionNo,
           transactionDate,
           customerName: parsed.data.customerName,
+          siTrans: parsed.data.siTrans,
+          infoSlipVsoRrReleased: parsed.data.infoSlipVsoRrReleased || null,
+          rrReceiveDeliver: parsed.data.rrReceiveDeliver || null,
+          proof: parsed.data.proof || null,
           amount,
           modelPrice: modelPriceRollup ?? null,
           atrStatus: "open",
@@ -280,7 +529,7 @@ export async function createSaleAction(input: unknown) {
         const toFollow = isToFollowSerial(detail.serialNumberId);
 
         if (!toFollow) {
-          // Real serial: move branch stock STK -> SLD/RSV, then save the detail.
+          // Real serial: move stock-source STK -> SLD/RSV, then save the detail.
           if (!stkCodeId || !targetStatusCodeId) {
             throw new Error("Inventory status codes are not configured");
           }
@@ -289,19 +538,22 @@ export async function createSaleAction(input: unknown) {
             where: {
               tenantId: session.user.tenantId,
               serialNumberId,
-              branchId: parsed.data.branchId,
+              branchId: stockBranchId,
               statusCodeId: stkCodeId,
             },
             data: { statusCodeId: targetStatusCodeId, updatedById: session.user.id },
           });
           if (updated.count === 0) {
-            throw new Error("Serial is not in sellable stock at this branch");
+            throw new Error("Serial is not in sellable stock at the stock source branch");
           }
 
           await tx.branchSalesTransactionDetail.create({
             data: {
               salesId: created.id,
-              modelId: detail.modelId ?? null,
+              packageTypeId: detail.packageTypeId,
+              brandId: detail.brandId,
+              promoTypeId: detail.promoTypeId ?? null,
+              modelId: detail.modelId,
               serialNumberId,
               saleAmount: detail.saleAmount,
               modelPrice: detail.modelPrice ?? null,
@@ -313,7 +565,10 @@ export async function createSaleAction(input: unknown) {
           await tx.branchSalesTransactionDetail.create({
             data: {
               salesId: created.id,
-              modelId: detail.modelId ?? null,
+              packageTypeId: detail.packageTypeId,
+              brandId: detail.brandId,
+              promoTypeId: detail.promoTypeId ?? null,
+              modelId: detail.modelId,
               serialNumberId: null,
               saleAmount: detail.saleAmount,
               modelPrice: detail.modelPrice ?? null,
@@ -341,6 +596,7 @@ export async function createSaleAction(input: unknown) {
       detailCount: details.length,
       toFollowCount: details.filter((d) => isToFollowSerial(d.serialNumberId)).length,
       placeholder: TO_FOLLOW_SERIAL_ID,
+      stockSourceBranchId: stockBranchId,
     },
   });
 
@@ -493,7 +749,13 @@ export async function completeReturnRestoreAction(returnRequestId: string) {
   const session = await requireAnyPermission(["logistics.manage", "sales.create"]);
   const row = await prisma.branchReturnRequest.findFirst({
     where: { id: returnRequestId, tenantId: session.user.tenantId },
-    include: { sale: true },
+    include: {
+      sale: {
+        include: {
+          details: { select: { serialNumberId: true } },
+        },
+      },
+    },
   });
   if (!row || row.status !== "approved") {
     return { error: "Return must be TL-approved before inventory restore" };
@@ -505,20 +767,28 @@ export async function completeReturnRestoreAction(returnRequestId: string) {
     "STK",
   );
 
-  const serialNumberId = row.sale.serialNumberId;
+  const stockBranchId = row.sale.alternateBranchId ?? row.sale.branchId;
+  const serialIds = [
+    ...new Set(
+      row.sale.details
+        .map((d) => d.serialNumberId)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+
   await prisma.$transaction(async (tx) => {
-    if (serialNumberId) {
+    for (const serialNumberId of serialIds) {
       await tx.branchInventory.upsert({
         where: {
           branchId_serialNumberId: {
-            branchId: row.sale.branchId,
+            branchId: stockBranchId,
             serialNumberId,
           },
         },
         update: { statusCodeId: stkCodeId, updatedById: session.user.id },
         create: {
           tenantId: session.user.tenantId,
-          branchId: row.sale.branchId,
+          branchId: stockBranchId,
           serialNumberId,
           statusCodeId: stkCodeId,
           updatedById: session.user.id,
@@ -541,7 +811,10 @@ export async function completeReturnRestoreAction(returnRequestId: string) {
     action: "return.completed",
     entityType: "BranchReturnRequest",
     entityId: returnRequestId,
-    metadata: { transactionNo: row.sale.transactionNo },
+    metadata: {
+      transactionNo: row.sale.transactionNo,
+      restoredSerialCount: serialIds.length,
+    },
   });
 
   revalidatePath("/sales");
@@ -550,9 +823,9 @@ export async function completeReturnRestoreAction(returnRequestId: string) {
 }
 
 /**
- * Replace the sale header/detail serial. Used for TO-FOLLOW fill-in and
- * correcting any sale serial. Moves inventory: old unit back to STK (if any),
- * new unit STK → SLD (or RSV if the old unit was reserved).
+ * Replace the first sale-detail serial. Used for TO-FOLLOW fill-in and
+ * correcting any sale serial. Moves inventory at the stock source: old unit
+ * back to STK (if any), new unit STK → SLD (or RSV if the old unit was reserved).
  */
 export async function updateSaleSerialAction(input: {
   saleId: string;
@@ -566,10 +839,14 @@ export async function updateSaleSerialAction(input: {
   const sale = await prisma.branchSalesTransaction.findFirst({
     where: { id: input.saleId, tenantId: session.user.tenantId },
     include: {
-      details: { select: { id: true, serialNumberId: true } },
+      details: {
+        orderBy: { createdAt: "asc" },
+        select: { id: true, serialNumberId: true },
+      },
     },
   });
   if (!sale) return { error: "Sale not found" };
+  if (sale.details.length === 0) return { error: "Sale has no detail lines" };
 
   try {
     await assertBranchInAor(
@@ -582,7 +859,9 @@ export async function updateSaleSerialAction(input: {
     return { error: e instanceof Error ? e.message : "Access denied" };
   }
 
-  const oldSerialId = sale.serialNumberId;
+  const stockBranchId = sale.alternateBranchId ?? sale.branchId;
+  const targetDetail = sale.details[0]!;
+  const oldSerialId = targetDetail.serialNumberId;
   if (oldSerialId === nextSerialId) {
     return { success: true as const };
   }
@@ -612,7 +891,7 @@ export async function updateSaleSerialAction(input: {
         const oldInv = await tx.branchInventory.findFirst({
           where: {
             tenantId: session.user.tenantId,
-            branchId: sale.branchId,
+            branchId: stockBranchId,
             serialNumberId: oldSerialId,
           },
           select: { statusCodeId: true },
@@ -623,7 +902,7 @@ export async function updateSaleSerialAction(input: {
         await tx.branchInventory.updateMany({
           where: {
             tenantId: session.user.tenantId,
-            branchId: sale.branchId,
+            branchId: stockBranchId,
             serialNumberId: oldSerialId,
             statusCodeId: { in: [sldCodeId, rsvCodeId] },
           },
@@ -631,28 +910,23 @@ export async function updateSaleSerialAction(input: {
         });
       }
 
-      // Assign a real serial: it must be sellable STK at this branch.
+      // Assign a real serial: it must be sellable STK at the stock source.
       if (nextSerialId) {
         const moved = await tx.branchInventory.updateMany({
           where: {
             tenantId: session.user.tenantId,
-            branchId: sale.branchId,
+            branchId: stockBranchId,
             serialNumberId: nextSerialId,
             statusCodeId: stkCodeId,
           },
           data: { statusCodeId: soldStatusCodeId, updatedById: session.user.id },
         });
         if (moved.count === 0) {
-          throw new Error("Serial is not in sellable stock at this branch");
+          throw new Error("Serial is not in sellable stock at the stock source branch");
         }
       }
 
-      await tx.branchSalesTransaction.update({
-        where: { id: sale.id },
-        data: { serialNumberId: nextSerialId },
-      });
-
-      // Update matching detail lines (header serial or still-null TO-FOLLOW rows).
+      // Update matching detail lines (first serial or still-null TO-FOLLOW rows).
       for (const detail of sale.details) {
         const shouldUpdate =
           detail.serialNumberId == null ||
@@ -679,6 +953,7 @@ export async function updateSaleSerialAction(input: {
       fromSerialId: oldSerialId,
       toSerialId: nextSerialId,
       toFollow: nextIsToFollow,
+      stockSourceBranchId: stockBranchId,
     },
   });
 

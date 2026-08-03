@@ -24,6 +24,110 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.13.17",
+    date: "2026-08-03",
+    title: "Stock units page title",
+    highlights: [
+      "/inventory now uses Stock units for the page heading and browser tab (matches sidebar)",
+      "P-Count and Serial numbers inventory sub-routes keep their own titles in the section header",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Removed Inventory override on /inventory so nav label Stock units drives route title",
+      },
+    ],
+  },
+  {
+    version: "0.13.16",
+    date: "2026-08-03",
+    title: "Series summary sticky header and total",
+    highlights: [
+      "Inventory Series summary freezes SERIES/QTY/VALUE header and TOTAL while scrolling (panel + modal)",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "SeriesSummaryTable uses sticky thead/tfoot inside the scroll container",
+      },
+    ],
+  },
+  {
+    version: "0.13.15",
+    date: "2026-08-03",
+    title: "Route titles on every app page",
+    highlights: [
+      "Browser tab titles resolve from the current path for Inventory, Reports, Settings, and all other routes",
+      "Proxy forwards x-pathname so layout generateMetadata can set the correct title on SSR and soft navigations",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Pages without static metadata no longer fall back to a bare FINDEN ISMS tab title",
+      },
+    ],
+  },
+  {
+    version: "0.13.14",
+    date: "2026-08-03",
+    title: "Inventory series summary modal",
+    highlights: [
+      "Stock units Series summary adds View series button",
+      "Popup modal with series search, full table, and filtered totals",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "InventorySeriesSummaryPanel opens a searchable Dialog for the full series QTY/VALUE table",
+      },
+    ],
+  },
+  {
+    version: "0.13.12",
+    date: "2026-08-03",
+    title: "Sales details-first serials + header field alignment",
+    highlights: [
+      "Serials live only on transaction details; header serial FK removed",
+      "Header adds SI/Trans, payment/sale/delivery, stock-source branch, proof upload; slip/RR are free text",
+      "Detail modal requires brand (+ optional promo); ATR restore returns every detail serial to STK",
+      "Sales CSV report emits one row per serial/detail for multi-set packages",
+      "Browser tab shows the current page name (e.g. New sales transaction | FINDEN ISMS)",
+      "Route title map covers sidebar nav plus create/detail overrides",
+      "Static metadata on sales, dashboard, reports, and auth for first paint",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "BranchSalesTransaction.alternateBranchId stock source; detail packageTypeId/brandId/promoTypeId",
+      },
+      {
+        type: "feature",
+        description:
+          "New sale form: SI/Trans, payment/sale/delivery lookups, alternate branch, proof via local FS storage",
+      },
+      {
+        type: "fix",
+        description:
+          "ATR complete restores all detail serials at the stock-source branch (not only a header SN)",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sales report queries BranchSalesTransactionDetail (DATE, BRANCH, STOCK SOURCE, SERIAL, MODEL, PACKAGE, …)",
+      },
+      {
+        type: "improvement",
+        description:
+          "Root title template `%s | FINDEN ISMS` plus DocumentTitle sync from route-titles config",
+      },
+    ],
+  },
+  {
     version: "0.13.11",
     date: "2026-07-31",
     title: "Sales transaction create + package detail modal",
@@ -33,6 +137,11 @@ export const RELEASES: ReleaseNote[] = [
       "Multi-detail persist with per-serial STK→SLD/RSV; list page CTA replaces inline Record sale",
     ],
     changes: [
+      {
+        type: "fix",
+        description:
+          "DialogContent / AlertDialogContent default aria-describedby to silence Radix missing-Description warnings",
+      },
       {
         type: "feature",
         description:
@@ -125,7 +234,7 @@ export const RELEASES: ReleaseNote[] = [
         type: "feature",
         description:
           "Orders nav group with /orders/manual, /orders/special, /orders/auto-replenish; permissions orders.manual|special|auto_replenish × view|create|approve (legacy orders.* still accepted)",
-      },
+      }, 
       {
         type: "improvement",
         description:

@@ -4,7 +4,7 @@ import { buildCsvContent } from "@/lib/shared/csv";
 
 export interface DailyStockReportFilters {
   date: Date;
-  branchId?: string;
+  branchIds?: string[];
 }
 
 const HEADERS = [
@@ -40,7 +40,7 @@ export const dailyStockReportService = {
     const planograms = await prisma.branchPlanogram.findMany({
       where: {
         tenantId,
-        ...(filters.branchId ? { branchId: filters.branchId } : {}),
+        ...(filters.branchIds ? { branchId: { in: filters.branchIds } } : {}),
         OR: [{ effectiveFrom: null }, { effectiveFrom: { lte: end } }],
       },
       include: {
@@ -64,12 +64,17 @@ export const dailyStockReportService = {
           })
         : 0;
 
-      const soldCount = await prisma.branchSalesTransaction.count({
+      const soldCount = await prisma.branchSalesTransactionDetail.count({
         where: {
-          tenantId,
-          branchId: entry.branchId,
-          createdAt: { gte: start, lte: end },
-          serialNumber: { modelId: entry.modelId },
+          sale: {
+            tenantId,
+            branchId: entry.branchId,
+            createdAt: { gte: start, lte: end },
+          },
+          OR: [
+            { modelId: entry.modelId },
+            { serialNumber: { modelId: entry.modelId } },
+          ],
         },
       });
 
