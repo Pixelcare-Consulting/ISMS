@@ -779,9 +779,22 @@ export async function completeReturnRestoreAction(returnRequestId: string) {
   );
 
   const stockBranchId = row.sale.alternateBranchId ?? row.sale.branchId;
+  // Detail.serialNumberId is required in Prisma, but the live DB previously allowed
+  // ON DELETE SET NULL — filter so restore never upserts a null serial key.
   const serialIds = [
-    ...new Set(row.sale.details.map((d) => d.serialNumberId)),
+    ...new Set(
+      row.sale.details
+        .map((d) => d.serialNumberId)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+    ),
   ];
+
+  if (serialIds.length === 0) {
+    return {
+      error:
+        "Cannot restore stock — this sale has no linked serial numbers. Check the sale details or contact support.",
+    };
+  }
 
   await prisma.$transaction(async (tx) => {
     for (const serialNumberId of serialIds) {

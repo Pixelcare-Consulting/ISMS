@@ -34,6 +34,7 @@ export const RELEASES: ReleaseNote[] = [
     date: "2026-08-03",
     title: "Smoother sales, clearer roles, and a cleaner home screen",
     highlights: [
+      "Restore stock on Sales & ATRs works again for single- and multi-unit returns — and explains clearly when a sale has no serials to put back",
       "Confirmation dialogs stay readable and no longer spam the browser console with accessibility warnings",
       "Sales & ATRs asks you to confirm before Request return, CS evaluate, TL approve, Reject, or Restore stock",
       "Help & Support How ISMS works looks sharper — solid step cards, a tidy process tab bar, numbered steps with no sideways scroll, and vertical role timelines",
@@ -188,7 +189,7 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "fix",
         description:
-          "Completing a return puts every detail serial back to stock at the right branch",
+          "Restore stock on returns works for one or many serials, and shows a clear message if a sale has no serials left to restore",
       },
       {
         type: "fix",
@@ -199,6 +200,11 @@ export const RELEASES: ReleaseNote[] = [
         type: "fix",
         description:
           "Transfers confirm dialog no longer flashes an error when listing serials",
+      },
+      {
+        type: "fix",
+        description:
+          "Confirmation dialogs stay readable without browser accessibility console spam",
       },
     ],
   },
