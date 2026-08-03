@@ -3,6 +3,7 @@ import { NewSalesTransactionForm } from "@/app/(app)/sales/_components/new-sales
 import { aorService } from "@/features/aors/services/aor.service";
 import { branchService } from "@/features/branches/services/branch.service";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
+import { prisma } from "@/lib/database/client";
 
 export default async function NewSalesTransactionPage() {
   const session = await requirePermission("sales.create");
@@ -32,16 +33,44 @@ export default async function NewSalesTransactionPage() {
 
   const autoResolveBranch = roleSlugs.includes("ps") && branches.length === 1;
 
+  const lookupWhere = {
+    tenantId: session.user.tenantId,
+    recordStatus: "active",
+  } as const;
+  const lookupSelect = { id: true, name: true } as const;
+  const lookupOrder = { name: "asc" } as const;
+
+  const [paymentTypes, saleTypes, deliveryMethods] = await Promise.all([
+    prisma.paymentType.findMany({
+      where: lookupWhere,
+      select: lookupSelect,
+      orderBy: lookupOrder,
+    }),
+    prisma.saleType.findMany({
+      where: lookupWhere,
+      select: lookupSelect,
+      orderBy: lookupOrder,
+    }),
+    prisma.customerDeliveryMethod.findMany({
+      where: lookupWhere,
+      select: lookupSelect,
+      orderBy: lookupOrder,
+    }),
+  ]);
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="New sales transaction"
         sticky={false}
-        description="Enter header details, add package line sets, then save to update stock."
+        description="Enter header details, add line items, then save to update stock."
       />
       <NewSalesTransactionForm
         branches={branches}
         autoResolveBranch={autoResolveBranch}
+        paymentTypes={paymentTypes}
+        saleTypes={saleTypes}
+        deliveryMethods={deliveryMethods}
       />
     </div>
   );

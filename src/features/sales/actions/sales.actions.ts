@@ -13,6 +13,7 @@ import { prisma } from "@/lib/database/client";
 
 const saleDetailSchema = z.object({
   packageTypeId: z.string().optional(),
+  promoTypeId: z.string().optional(),
   modelId: z.string().optional(),
   serialNumberId: z.string().min(1),
   saleAmount: z.coerce.number().positive(),
@@ -22,7 +23,13 @@ const saleDetailSchema = z.object({
 const saleSchema = z.object({
   branchId: z.string().min(1),
   customerName: z.string().trim().min(1),
+  contactNo: z.string().trim().max(50).optional(),
   transactionDate: z.string().optional(),
+  paymentTypeId: z.string().optional(),
+  saleTypeId: z.string().optional(),
+  customerDeliveryMethodId: z.string().optional(),
+  infoSlipVsoRrReleased: z.string().trim().max(100).optional(),
+  rrReceiveDeliver: z.string().trim().max(100).optional(),
   reserved: z.boolean().optional(),
   details: z.array(saleDetailSchema).min(1),
 });
@@ -77,11 +84,36 @@ export async function listPackageTypesForSalesAction() {
   return rows;
 }
 
+export async function listPromoTypesForSalesAction() {
+  const session = await requirePermission("sales.create");
+  return prisma.promoType.findMany({
+    where: { tenantId: session.user.tenantId, recordStatus: "active" },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
+}
+
+export async function listBrandsForSalesAction() {
+  const session = await requirePermission("sales.create");
+  return prisma.brand.findMany({
+    where: { tenantId: session.user.tenantId },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
+}
+
 export async function listModelsForSalesAction() {
   const session = await requirePermission("sales.create");
   const rows = await prisma.productModel.findMany({
     where: { tenantId: session.user.tenantId, status: "active" },
-    select: { id: true, skuCode: true, name: true, srp: true },
+    select: {
+      id: true,
+      skuCode: true,
+      name: true,
+      srp: true,
+      brandId: true,
+      brand: { select: { name: true } },
+    },
     orderBy: { skuCode: "asc" },
     take: 500,
   });
@@ -90,6 +122,8 @@ export async function listModelsForSalesAction() {
     skuCode: r.skuCode,
     name: r.name,
     srp: r.srp != null ? r.srp.toString() : null,
+    brandId: r.brandId,
+    brandName: r.brand?.name ?? null,
   }));
 }
 
@@ -201,6 +235,7 @@ export async function createSaleAction(input: unknown) {
   const amount = details.reduce((sum, d) => sum + d.saleAmount, 0);
   const modelPriceRollup = details.find((d) => d.modelPrice != null)?.modelPrice;
   const packageTypeId = firstDetail.packageTypeId ?? null;
+  const promoTypeId = firstDetail.promoTypeId ?? null;
   const headerSerialId = firstDetail.serialNumberId;
 
   let transactionDate: Date | null = null;
@@ -226,29 +261,80 @@ export async function createSaleAction(input: unknown) {
   let row;
   try {
     row = await prisma.$transaction(async (tx) => {
-      if (packageTypeId) {
-        const pkg = await tx.packageType.findFirst({
-          where: {
-            id: packageTypeId,
-            tenantId: session.user.tenantId,
-            recordStatus: "active",
-          },
-          select: { id: true },
-        });
-        if (!pkg) {
-          throw new Error("Package type not found");
-        }
+      const tenantId = session.user.tenantId;
+
+      async function assertLookup(
+        label: string,
+        id: string | null | undefined,
+        find: (id: string) => Promise<{ id: string } | null>,
+      ) {
+        if (!id) return;
+        const found = await find(id);
+        if (!found) throw new Error(`${label} not found`);
       }
+
+      const packageTypeIds = [
+        ...new Set(details.map((d) => d.packageTypeId).filter(Boolean)),
+      ] as string[];
+      for (const id of packageTypeIds) {
+        await assertLookup("Package type", id, (value) =>
+          tx.packageType.findFirst({
+            where: { id: value, tenantId, recordStatus: "active" },
+            select: { id: true },
+          }),
+        );
+      }
+
+      const promoTypeIds = [
+        ...new Set(details.map((d) => d.promoTypeId).filter(Boolean)),
+      ] as string[];
+      for (const id of promoTypeIds) {
+        await assertLookup("Promo type", id, (value) =>
+          tx.promoType.findFirst({
+            where: { id: value, tenantId, recordStatus: "active" },
+            select: { id: true },
+          }),
+        );
+      }
+
+      await assertLookup("Payment type", parsed.data.paymentTypeId, (value) =>
+        tx.paymentType.findFirst({
+          where: { id: value, tenantId, recordStatus: "active" },
+          select: { id: true },
+        }),
+      );
+      await assertLookup("Sale type", parsed.data.saleTypeId, (value) =>
+        tx.saleType.findFirst({
+          where: { id: value, tenantId, recordStatus: "active" },
+          select: { id: true },
+        }),
+      );
+      await assertLookup(
+        "Customer delivery method",
+        parsed.data.customerDeliveryMethodId,
+        (value) =>
+          tx.customerDeliveryMethod.findFirst({
+            where: { id: value, tenantId, recordStatus: "active" },
+            select: { id: true },
+          }),
+      );
 
       const created = await tx.branchSalesTransaction.create({
         data: {
-          tenantId: session.user.tenantId,
+          tenantId,
           branchId: parsed.data.branchId,
           serialNumberId: headerSerialId,
           packageTypeId,
+          promoTypeId,
+          paymentTypeId: parsed.data.paymentTypeId || null,
+          saleTypeId: parsed.data.saleTypeId || null,
+          customerDeliveryMethodId: parsed.data.customerDeliveryMethodId || null,
           transactionNo,
           transactionDate,
           customerName: parsed.data.customerName,
+          contactNo: parsed.data.contactNo?.trim() || null,
+          infoSlipVsoRrReleased: parsed.data.infoSlipVsoRrReleased || null,
+          rrReceiveDeliver: parsed.data.rrReceiveDeliver || null,
           amount,
           modelPrice: modelPriceRollup ?? null,
           atrStatus: "open",
@@ -273,6 +359,8 @@ export async function createSaleAction(input: unknown) {
         await tx.branchSalesTransactionDetail.create({
           data: {
             salesId: created.id,
+            packageTypeId: detail.packageTypeId ?? null,
+            promoTypeId: detail.promoTypeId ?? null,
             modelId: detail.modelId ?? null,
             serialNumberId: detail.serialNumberId,
             saleAmount: detail.saleAmount,

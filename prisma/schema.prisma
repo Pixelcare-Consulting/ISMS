@@ -640,6 +640,7 @@ model PackageType {
   tenant       Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branchOrders BranchOrder[]
   branchSales  BranchSalesTransaction[]
+  branchSaleDetails BranchSalesTransactionDetail[]
   priceLists   PriceList[]
   serviceCenterOrders ServiceCenterOrder[]
   serviceCenterSales  ServiceCenterSalesTransaction[]
@@ -815,6 +816,7 @@ model PromoType {
 
   tenant       Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branchSales  BranchSalesTransaction[]
+  branchSaleDetails BranchSalesTransactionDetail[]
   serviceCenterSales ServiceCenterSalesTransaction[]
 
   @@unique([tenantId, name])
@@ -1752,9 +1754,10 @@ model BranchSalesTransaction {
   transactionNo              String    @map("transaction_no")
   transactionDate            DateTime? @map("transaction_date")
   customerName               String?   @map("customer_name")
+  contactNo                  String?   @map("contact_no")
   siTrans                    String?   @map("si_trans")
-  infoSlipVsoRrReleased      Boolean?  @map("info_slip_vso_rr_released")
-  rrReceiveDeliver           Boolean?  @map("rr_receive_deliver")
+  infoSlipVsoRrReleased      String?   @map("info_slip_vso_rr_released")
+  rrReceiveDeliver           String?   @map("rr_receive_deliver")
   proof                      String?
   deliveryNo                 String?   @map("delivery_no")
   deliveryDate               DateTime? @map("delivery_date")
@@ -2007,6 +2010,8 @@ model BranchReturnRequest {
 model BranchSalesTransactionDetail {
   id             String   @id @default(cuid())
   salesId        String   @map("sales_id")
+  packageTypeId  String?  @map("package_type_id")
+  promoTypeId    String?  @map("promo_type_id")
   modelId        String?  @map("model_id")
   serialNumberId String   @map("serial_number_id")
   modelPrice     Decimal? @map("model_price") @db.Decimal(12, 2)
@@ -2016,6 +2021,8 @@ model BranchSalesTransactionDetail {
   updatedAt      DateTime @updatedAt @map("updated_at")
 
   sale         BranchSalesTransaction @relation(fields: [salesId], references: [id], onDelete: Cascade)
+  packageType  PackageType?           @relation(fields: [packageTypeId], references: [id], onDelete: SetNull)
+  promoType    PromoType?             @relation(fields: [promoTypeId], references: [id], onDelete: SetNull)
   model        ProductModel?          @relation(fields: [modelId], references: [id], onDelete: SetNull)
   serialNumber SerialNumber           @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
 
