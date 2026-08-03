@@ -5,6 +5,7 @@ import { LifeBuoy, Mail, Sparkles } from "lucide-react";
 
 import { HELP_FAQ_CATEGORIES } from "@/content/help-support";
 import { HelpQuickActionsSidebar } from "@/app/(app)/help/_components/help-quick-actions-sidebar";
+import { HelpSystemOverview } from "@/app/(app)/help/_components/help-system-overview";
 import { HelpWorkflowGuides } from "@/app/(app)/help/_components/help-workflow-guides";
 import {
   Accordion,
@@ -38,14 +39,15 @@ export function HelpSupportPortal() {
             How to use ISMS
           </CardTitle>
           <CardDescription className="max-w-3xl">
-            Read workflow guides for step-by-step processes. Use quick actions on
-            the right to open the modules you use most.
+            Big-picture flows and role steps first, then guides for click-through
+            processes. Quick actions on the right open the modules you use most.
           </CardDescription>
         </CardHeader>
       </Card>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(240px,280px)] lg:items-start">
         <div className="min-w-0 space-y-8">
+          <HelpSystemOverview />
           <HelpWorkflowGuides />
 
           <section id="faq" className="scroll-mt-24 space-y-3">

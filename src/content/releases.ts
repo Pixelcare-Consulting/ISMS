@@ -34,7 +34,8 @@ export const RELEASES: ReleaseNote[] = [
     date: "2026-08-03",
     title: "Smoother sales, clearer roles, and a cleaner home screen",
     highlights: [
-      "Your home screen shows up to four activity cards for your role — less clutter, same jump-to actions",
+      "Help & Support How ISMS works looks sharper — solid step cards, a tidy process tab bar, numbered steps with no sideways scroll, and vertical role timelines",
+      "Dashboard screen shows up to four activity cards for your role — less clutter, same jump-to actions",
       "More home summaries: Planning & alerts for extra ops signals, plus a This month snapshot (orders, sales, in transit) with icons",
       "Inventory summary pairs a stock mix chart with a clear status count list; This month sits beside Order pipeline",
       "Dashboard tiles line up evenly across roles so rows stay balanced",
@@ -56,6 +57,11 @@ export const RELEASES: ReleaseNote[] = [
       "Browser tabs show friendly page names (for example, Stock units)",
     ],
     changes: [
+      {
+        type: "feature",
+        description:
+          "Help & Support How ISMS works: solid step cards and process chips, numbered steps, and vertical role timelines",
+      },
       {
         type: "feature",
         description:

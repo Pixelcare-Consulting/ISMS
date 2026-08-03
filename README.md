@@ -71,6 +71,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 
 | Doc | Purpose |
 |-----|---------|
+| [`docs/CLIENT_WORKFLOW.md`](docs/CLIENT_WORKFLOW.md) | Client-facing How ISMS works (Mermaid master + role swimlanes) |
 | [`docs/DEVELOPMENT_README.md`](docs/DEVELOPMENT_README.md) | Spec index, Process Flow v1.0 traceability, BRS ↔ app mapping |
 | [`docs/sap-integration.md`](docs/sap-integration.md) | SAP queue, Service Layer config, implemented vs stub |
 | [`docs/official-sales-gap-spec.md`](docs/official-sales-gap-spec.md) | Accounting Official Sales ADD/UPD/DEL vs current staging |
