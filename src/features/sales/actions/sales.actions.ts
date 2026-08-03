@@ -8,14 +8,20 @@ import { auditService } from "@/features/audit/services/audit.service";
 import { aorService } from "@/features/aors/services/aor.service";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { salesRepository } from "@/features/sales/repositories/sales.repository";
+import {
+  isToFollowSerial,
+  TO_FOLLOW_SERIAL_ID,
+} from "@/features/sales/constants/to-follow-serial";
 import { hasPermission, requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/database/client";
 
 const saleDetailSchema = z.object({
   packageTypeId: z.string().optional(),
   modelId: z.string().optional(),
+  // Accept either a real serial id or the TO-FOLLOW placeholder from the UI.
   serialNumberId: z.string().min(1),
-  saleAmount: z.coerce.number().positive(),
+  // 0 is allowed for free items; negatives are not.
+  saleAmount: z.coerce.number().nonnegative(),
   modelPrice: z.coerce.number().nonnegative().optional(),
 });
 
@@ -58,7 +64,9 @@ export async function listSalesAction(input?: { page?: number; limit?: number })
       transactionNo: row.transactionNo,
       amount: row.amount.toString(),
       atrStatus: row.atrStatus,
+      branchId: row.branchId,
       branch: row.branch,
+      serialNumberId: row.serialNumberId,
       serialNumber: row.serialNumber,
       returnRequest: row.returnRequest
         ? { id: row.returnRequest.id, status: row.returnRequest.status }
@@ -191,8 +199,11 @@ export async function createSaleAction(input: unknown) {
   }
 
   const details = parsed.data.details;
-  const serialIds = details.map((d) => d.serialNumberId);
-  if (new Set(serialIds).size !== serialIds.length) {
+  // TO-FOLLOW is not a stock unit — only real ids must be unique in one sale.
+  const realSerialIds = details
+    .map((d) => d.serialNumberId)
+    .filter((id) => !isToFollowSerial(id));
+  if (new Set(realSerialIds).size !== realSerialIds.length) {
     return { error: "Duplicate serials in the same transaction are not allowed" };
   }
 
@@ -201,7 +212,10 @@ export async function createSaleAction(input: unknown) {
   const amount = details.reduce((sum, d) => sum + d.saleAmount, 0);
   const modelPriceRollup = details.find((d) => d.modelPrice != null)?.modelPrice;
   const packageTypeId = firstDetail.packageTypeId ?? null;
-  const headerSerialId = firstDetail.serialNumberId;
+  // Header serial stays null when the first line is still TO-FOLLOW.
+  const headerSerialId = isToFollowSerial(firstDetail.serialNumberId)
+    ? null
+    : firstDetail.serialNumberId;
 
   let transactionDate: Date | null = null;
   if (parsed.data.transactionDate) {
@@ -212,16 +226,22 @@ export async function createSaleAction(input: unknown) {
     transactionDate = d;
   }
 
-  const stkCodeId = await reasonStatusService.requireCodeId(
-    session.user.tenantId,
-    "inventory_system",
-    "STK",
-  );
-  const targetStatusCodeId = await reasonStatusService.requireCodeId(
-    session.user.tenantId,
-    "inventory_system",
-    parsed.data.reserved ? "RSV" : "SLD",
-  );
+  // Skip status lookups when every line is TO-FOLLOW (no inventory move).
+  const hasRealSerials = realSerialIds.length > 0;
+  const stkCodeId = hasRealSerials
+    ? await reasonStatusService.requireCodeId(
+        session.user.tenantId,
+        "inventory_system",
+        "STK",
+      )
+    : null;
+  const targetStatusCodeId = hasRealSerials
+    ? await reasonStatusService.requireCodeId(
+        session.user.tenantId,
+        "inventory_system",
+        parsed.data.reserved ? "RSV" : "SLD",
+      )
+    : null;
 
   let row;
   try {
@@ -257,29 +277,50 @@ export async function createSaleAction(input: unknown) {
       });
 
       for (const detail of details) {
-        const updated = await tx.branchInventory.updateMany({
-          where: {
-            tenantId: session.user.tenantId,
-            serialNumberId: detail.serialNumberId,
-            branchId: parsed.data.branchId,
-            statusCodeId: stkCodeId,
-          },
-          data: { statusCodeId: targetStatusCodeId, updatedById: session.user.id },
-        });
-        if (updated.count === 0) {
-          throw new Error("Serial is not in sellable stock at this branch");
-        }
+        const toFollow = isToFollowSerial(detail.serialNumberId);
 
-        await tx.branchSalesTransactionDetail.create({
-          data: {
-            salesId: created.id,
-            modelId: detail.modelId ?? null,
-            serialNumberId: detail.serialNumberId,
-            saleAmount: detail.saleAmount,
-            modelPrice: detail.modelPrice ?? null,
-            amount: detail.saleAmount,
-          },
-        });
+        if (!toFollow) {
+          // Real serial: move branch stock STK -> SLD/RSV, then save the detail.
+          if (!stkCodeId || !targetStatusCodeId) {
+            throw new Error("Inventory status codes are not configured");
+          }
+          const serialNumberId = detail.serialNumberId;
+          const updated = await tx.branchInventory.updateMany({
+            where: {
+              tenantId: session.user.tenantId,
+              serialNumberId,
+              branchId: parsed.data.branchId,
+              statusCodeId: stkCodeId,
+            },
+            data: { statusCodeId: targetStatusCodeId, updatedById: session.user.id },
+          });
+          if (updated.count === 0) {
+            throw new Error("Serial is not in sellable stock at this branch");
+          }
+
+          await tx.branchSalesTransactionDetail.create({
+            data: {
+              salesId: created.id,
+              modelId: detail.modelId ?? null,
+              serialNumberId,
+              saleAmount: detail.saleAmount,
+              modelPrice: detail.modelPrice ?? null,
+              amount: detail.saleAmount,
+            },
+          });
+        } else {
+          // TO-FOLLOW: keep the sale line, leave serial null, do not touch inventory.
+          await tx.branchSalesTransactionDetail.create({
+            data: {
+              salesId: created.id,
+              modelId: detail.modelId ?? null,
+              serialNumberId: null,
+              saleAmount: detail.saleAmount,
+              modelPrice: detail.modelPrice ?? null,
+              amount: detail.saleAmount,
+            },
+          });
+        }
       }
 
       return created;
@@ -298,6 +339,8 @@ export async function createSaleAction(input: unknown) {
       transactionNo: row.transactionNo,
       reserved: Boolean(parsed.data.reserved),
       detailCount: details.length,
+      toFollowCount: details.filter((d) => isToFollowSerial(d.serialNumberId)).length,
+      placeholder: TO_FOLLOW_SERIAL_ID,
     },
   });
 
@@ -499,6 +542,144 @@ export async function completeReturnRestoreAction(returnRequestId: string) {
     entityType: "BranchReturnRequest",
     entityId: returnRequestId,
     metadata: { transactionNo: row.sale.transactionNo },
+  });
+
+  revalidatePath("/sales");
+  revalidatePath("/inventory");
+  return { success: true as const };
+}
+
+/**
+ * Replace the sale header/detail serial. Used for TO-FOLLOW fill-in and
+ * correcting any sale serial. Moves inventory: old unit back to STK (if any),
+ * new unit STK → SLD (or RSV if the old unit was reserved).
+ */
+export async function updateSaleSerialAction(input: {
+  saleId: string;
+  /** Real serial id, or TO-FOLLOW to clear the linked unit. */
+  serialNumberId: string;
+}) {
+  const session = await requirePermission("sales.create");
+  const nextIsToFollow = isToFollowSerial(input.serialNumberId);
+  const nextSerialId = nextIsToFollow ? null : input.serialNumberId;
+
+  const sale = await prisma.branchSalesTransaction.findFirst({
+    where: { id: input.saleId, tenantId: session.user.tenantId },
+    include: {
+      details: { select: { id: true, serialNumberId: true } },
+    },
+  });
+  if (!sale) return { error: "Sale not found" };
+
+  try {
+    await assertBranchInAor(
+      session.user.tenantId,
+      session.user.id,
+      sale.branchId,
+      session.user.permissions,
+    );
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Access denied" };
+  }
+
+  const oldSerialId = sale.serialNumberId;
+  if (oldSerialId === nextSerialId) {
+    return { success: true as const };
+  }
+
+  const stkCodeId = await reasonStatusService.requireCodeId(
+    session.user.tenantId,
+    "inventory_system",
+    "STK",
+  );
+  const sldCodeId = await reasonStatusService.requireCodeId(
+    session.user.tenantId,
+    "inventory_system",
+    "SLD",
+  );
+  const rsvCodeId = await reasonStatusService.requireCodeId(
+    session.user.tenantId,
+    "inventory_system",
+    "RSV",
+  );
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      let soldStatusCodeId = sldCodeId;
+
+      // Put the previous unit back to STK when we are replacing or clearing it.
+      if (oldSerialId) {
+        const oldInv = await tx.branchInventory.findFirst({
+          where: {
+            tenantId: session.user.tenantId,
+            branchId: sale.branchId,
+            serialNumberId: oldSerialId,
+          },
+          select: { statusCodeId: true },
+        });
+        if (oldInv?.statusCodeId === rsvCodeId) {
+          soldStatusCodeId = rsvCodeId;
+        }
+        await tx.branchInventory.updateMany({
+          where: {
+            tenantId: session.user.tenantId,
+            branchId: sale.branchId,
+            serialNumberId: oldSerialId,
+            statusCodeId: { in: [sldCodeId, rsvCodeId] },
+          },
+          data: { statusCodeId: stkCodeId, updatedById: session.user.id },
+        });
+      }
+
+      // Assign a real serial: it must be sellable STK at this branch.
+      if (nextSerialId) {
+        const moved = await tx.branchInventory.updateMany({
+          where: {
+            tenantId: session.user.tenantId,
+            branchId: sale.branchId,
+            serialNumberId: nextSerialId,
+            statusCodeId: stkCodeId,
+          },
+          data: { statusCodeId: soldStatusCodeId, updatedById: session.user.id },
+        });
+        if (moved.count === 0) {
+          throw new Error("Serial is not in sellable stock at this branch");
+        }
+      }
+
+      await tx.branchSalesTransaction.update({
+        where: { id: sale.id },
+        data: { serialNumberId: nextSerialId },
+      });
+
+      // Update matching detail lines (header serial or still-null TO-FOLLOW rows).
+      for (const detail of sale.details) {
+        const shouldUpdate =
+          detail.serialNumberId == null ||
+          (oldSerialId != null && detail.serialNumberId === oldSerialId);
+        if (!shouldUpdate) continue;
+        await tx.branchSalesTransactionDetail.update({
+          where: { id: detail.id },
+          data: { serialNumberId: nextSerialId },
+        });
+      }
+    });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to update serial" };
+  }
+
+  await auditService.log({
+    tenantId: session.user.tenantId,
+    userId: session.user.id,
+    action: "sale.serial_updated",
+    entityType: "BranchSalesTransaction",
+    entityId: sale.id,
+    metadata: {
+      transactionNo: sale.transactionNo,
+      fromSerialId: oldSerialId,
+      toSerialId: nextSerialId,
+      toFollow: nextIsToFollow,
+    },
   });
 
   revalidatePath("/sales");

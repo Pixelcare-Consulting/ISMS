@@ -6,8 +6,8 @@ import {
 import type { Prisma } from "@prisma/client";
 
 const salesListInclude = {
-  branch: { select: { name: true } },
-  serialNumber: { select: { serialNo: true } },
+  branch: { select: { id: true, name: true } },
+  serialNumber: { select: { id: true, serialNo: true } },
   returnRequest: { select: { id: true, status: true } },
 } satisfies Prisma.BranchSalesTransactionInclude;
 

@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { createSaleAction } from "@/features/sales/actions/sales.actions";
+import { isToFollowSerial } from "@/features/sales/constants/to-follow-serial";
 
 interface SalesBranchOption {
   id: string;
@@ -60,8 +61,14 @@ export function NewSalesTransactionForm({
     [details],
   );
 
+  // Exclude TO-FOLLOW so multiple pending lines can reuse the placeholder.
   const usedSerialIds = useMemo(
-    () => new Set(details.map((d) => d.serialNumberId)),
+    () =>
+      new Set(
+        details
+          .map((d) => d.serialNumberId)
+          .filter((id) => !isToFollowSerial(id)),
+      ),
     [details],
   );
 
