@@ -12,7 +12,10 @@ export function DataTableShell({ children, className, style }: DataTableShellPro
     <div
       style={style}
       className={cn(
-        "overflow-hidden rounded-xl border bg-card shadow-sm",
+        // min-w-0: as a flex/grid child the card must be allowed to shrink below
+        // its table's intrinsic width, otherwise the table widens the card (and
+        // the page) instead of scrolling inside it.
+        "min-w-0 overflow-hidden rounded-xl border bg-card shadow-sm",
         className,
       )}
     >
