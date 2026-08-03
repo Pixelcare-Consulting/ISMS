@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
 import { getRolesPermissionsMatrixAction } from "@/features/roles/actions/role.actions";
-import { RolesPermissionsTable } from "@/features/roles/components/roles-permissions-table";
+import { RoleModuleActionMatrix } from "@/features/roles/components/role-module-action-matrix";
 import {
   requirePermission,
   resolveSessionPlatformOperator,
@@ -22,11 +22,11 @@ export default async function SettingsRolesMatrixPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Roles — Advanced matrix"
+        title="Roles — Permission matrix"
         description={
           isPlatformOperator
-            ? "Full permission matrix for all tenant roles, including built-in system roles."
-            : "Full permission matrix for custom roles. Built-in system roles are not shown here."
+            ? "Pick a role, then toggle access by module. On phones this uses cards; on desktop you get the full matrix. System roles included for platform operators."
+            : "Pick a role, then toggle access by module. On phones this uses cards; on desktop you get the full matrix. Built-in system roles are not shown here."
         }
         actions={
           <Link
@@ -41,7 +41,7 @@ export default async function SettingsRolesMatrixPage() {
           </Link>
         }
       />
-      <RolesPermissionsTable
+      <RoleModuleActionMatrix
         matrix={matrix}
         isPlatformOperator={isPlatformOperator}
       />

@@ -2,7 +2,7 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.13.19`
+**Current version:** `0.13.23`
 
 ## Stack
 
@@ -22,11 +22,11 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | **Policies** | Full document control (ISO track) |
 | **Inventory** | Serialized stock, AOR-scoped list, series QTY/VALUE + DR#/date/aging on Stock units, **physical stock count / P-Count** (`/inventory/stock-count`) |
 | **Orders** | Nav group: Manual / Special / Auto replenish (`/orders/manual` etc.); per-type `orders.manual`, `orders.special`, `orders.auto_replenish` with view/create/approve; PS → TL → SP; SO#, processed orders, delivery-due auto-reschedule |
-| **Logistics** | Deliveries (accept/reject), transfers, pull-outs with SN movement |
-| **Sales** | Encode at `/sales/new` (CTA from `/sales`); PS auto-branch; TL `sales.create` + branch picker; package detail modal (qty → N sets), reserved (RSV) sales, **BranchReturnRequest** ATR workflow |
+| **Logistics** | Deliveries (accept/reject), transfers, pull-outs with SN movement; gated by `logistics.view` / `create` / `manage` |
+| **Sales** | Encode at `/sales/new` (CTA from `/sales`); PS auto-branch; TL `sales.create` + branch picker; package detail modal (qty → N sets), reserved (RSV) sales, **BranchReturnRequest** ATR workflow gated by `sales.return.*` (Roles UI) |
 | **Reports** | Processed orders, daily stock, transfers, sales CSV (`/reports/sales`), **P-Count** (`/reports/pcount`), **Official Sales** staging (`/reports/official-sales`) |
 | **SAP** | Outbound job queue + mock processor; **Service Layer** settings (encrypted credentials) + in-process session client with status UI (Connect/Logout) and refresh-on-401 |
-| **RBAC** | ISO + BRS roles (PS, TL, SP/SPA, Logistics, AE), permission-gated sidebar |
+| **RBAC** | ISO + BRS roles (PS, TL, SP/SPA, Logistics, AE); shared action vocabulary + module allowlists; Roles simple checklist + module×action matrix; Sales ATR buttons use `sales.return.*`; Logistics uses `logistics.view` / `create` / `manage` |
 
 ### App routes
 
@@ -44,9 +44,9 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/orders/special` | `orders.special.view` / `create` / `approve` (or legacy `orders.*`) |
 | `/orders/auto-replenish` | `orders.auto_replenish.view` / `create` / `approve` (or legacy `orders.*`) |
 | `/planning/suggested-orders` | `forecast.manage` / `planogram.manage` |
-| `/logistics/deliveries`, `/transfers`, `/pickups` | `logistics.manage` |
+| `/logistics/deliveries`, `/transfers`, `/pickups` | `logistics.view` / `create` / `manage` (legacy `orders.*` aliases for list) |
 | `/operations` | `inventory.view` (combined ops view) |
-| `/sales` | `sales.create` (list + ATR; New transaction CTA) |
+| `/sales` | `sales.view` / `sales.create` / any `sales.return.*` (list + ATR; New transaction needs `sales.create`) |
 | `/sales/new` | `sales.create` (multi-detail encode) |
 | `/reports/processed-orders`, `/daily-stock`, `/transfers`, `/sales`, `/pcount`, `/official-sales` | `reports.view` (+ module-specific) |
 | `/policies`, `/policies/[id]`, `/policies/new` | Policy permissions |

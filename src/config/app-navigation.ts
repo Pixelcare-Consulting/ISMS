@@ -185,19 +185,19 @@ export const appNavigation: NavEntry[] = [
         href: "/logistics/deliveries",
         label: "Deliveries",
         icon: Truck,
-        permission: "logistics.manage",
+        anyPermissions: ["logistics.view", "logistics.create", "logistics.manage"],
       },
       {
         href: "/logistics/transfers",
         label: "Transfers",
         icon: ArrowLeftRight,
-        permission: "logistics.manage",
+        anyPermissions: ["logistics.view", "logistics.create", "logistics.manage"],
       },
       {
         href: "/logistics/pickups",
         label: "Pull-outs",
         icon: ArrowUpToLine,
-        permission: "logistics.manage",
+        anyPermissions: ["logistics.view", "logistics.create", "logistics.manage"],
       },
     ],
   },
@@ -206,7 +206,14 @@ export const appNavigation: NavEntry[] = [
     href: "/sales",
     label: "Sales & ATRs",
     icon: Store,
-    permission: "sales.create",
+    anyPermissions: [
+      "sales.view",
+      "sales.create",
+      "sales.return.request",
+      "sales.return.evaluate",
+      "sales.return.approve",
+      "sales.return.complete",
+    ],
     badge: "new",
   },
   {
@@ -242,7 +249,12 @@ export const appNavigation: NavEntry[] = [
         href: "/reports/transfers",
         label: "Transfers",
         icon: ArrowLeftRight,
-        anyPermissions: ["reports.view", "logistics.manage"],
+        anyPermissions: [
+          "reports.view",
+          "logistics.view",
+          "logistics.create",
+          "logistics.manage",
+        ],
       },
       {
         href: "/reports/sales",
@@ -276,7 +288,12 @@ export const appNavigation: NavEntry[] = [
         href: "/reports/pull-outs",
         label: "Pull-outs",
         icon: ArrowUpToLine,
-        anyPermissions: ["reports.view", "logistics.manage"],
+        anyPermissions: [
+          "reports.view",
+          "logistics.view",
+          "logistics.create",
+          "logistics.manage",
+        ],
      
       },
       {

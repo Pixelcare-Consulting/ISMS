@@ -6,6 +6,10 @@ import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { updateInventoryStatusAction } from "@/features/inventory/actions/inventory.actions";
+import type {
+  InventoryListItem,
+  InventoryStatusOption,
+} from "@/features/inventory/actions/inventory.actions";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { TableIndexCell, TableIndexHead } from "@/components/data-table";
 import {
@@ -16,6 +20,7 @@ import {
 import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+import type { PaginatedResult } from "@/lib/shared/pagination";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -30,39 +35,12 @@ import {
 import { matchesTableSearch } from "@/utils/match-table-search";
 import { cn } from "@/utils/cn";
 
-interface StatusOption {
-  id: string;
-  code: string;
-  name: string;
-}
-
-interface InventoryRow {
-  id: string;
-  onPlanogram: boolean;
-  deliveryNo: string | null;
-  deliveryDate: string | null;
-  agingDays: number;
-  statusCode: { id: string; code: string; name: string };
-  branch: { id: string; name: string; sapCode: string };
-  serialNumber: {
-    id: string;
-    serialNo: string;
-    model: { sku: string; name: string; brand: { name: string } };
-  };
-}
-
 type InventorySortField = "aging" | "dr";
 type InventorySortDir = "asc" | "desc";
 
 interface InventoryTableProps {
-  result: {
-    items: InventoryRow[];
-    total: number;
-    page: number;
-    limit: number;
-    totalPages: number;
-  };
-  statusOptions: StatusOption[];
+  result: PaginatedResult<InventoryListItem>;
+  statusOptions: InventoryStatusOption[];
   initialOffPlanogram?: boolean;
   initialStatusCodeId?: string;
   initialSort?: string;

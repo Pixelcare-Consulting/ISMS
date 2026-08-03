@@ -11,7 +11,14 @@ import {
   rejectReturnAction,
   requestReturnAction,
 } from "@/features/sales/actions/sales.actions";
-import { TableIndexCell, TableIndexHead, uniqueSearchSuggestions } from "@/components/data-table";
+import type { SalesActionCapabilities } from "@/features/sales/constants/sales-permissions";
+import {
+  TableAmountCell,
+  TableCodeCell,
+  TableIndexCell,
+  TableIndexHead,
+  uniqueSearchSuggestions,
+} from "@/components/data-table";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   parseTablePageSize,
@@ -24,6 +31,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
+import { SaleSerialsDialog } from "./sale-serials-dialog";
+import { AtrStatusBadge, ReturnStatusBadge } from "./sales-status-badges";
+
 interface SaleRow {
   id: string;
   transactionNo: string;
@@ -31,6 +41,7 @@ interface SaleRow {
   atrStatus: string;
   branch: { name: string };
   serialNumber: { serialNo: string } | null;
+  serialNumbers: string[];
   returnRequest: { id: string; status: string } | null;
 }
 
@@ -42,15 +53,8 @@ interface SalesTableProps {
     limit: number;
     totalPages: number;
   };
+  capabilities: SalesActionCapabilities;
 }
-
-const RETURN_STATUS_LABELS: Record<string, string> = {
-  pending_cs: "Pending CS",
-  pending_tl: "Pending TL",
-  approved: "Approved",
-  rejected: "Rejected",
-  completed: "Completed",
-};
 
 function saleTransactionLabel(sale: SaleRow): string {
   return sale.transactionNo || sale.id.slice(-8);
@@ -64,10 +68,11 @@ function buildSalesHref(page: number, limit: number): string {
   return query ? `/sales?${query}` : "/sales";
 }
 
-export function SalesTable({ result }: SalesTableProps) {
+export function SalesTable({ result, capabilities }: SalesTableProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
+  const [serialDialogSale, setSerialDialogSale] = useState<SaleRow | null>(null);
   const pageSize = parseTablePageSize(result.limit);
 
   function handlePageSizeChange(limit: TablePageSize) {
@@ -82,6 +87,7 @@ export function SalesTable({ result }: SalesTableProps) {
           sale.branch.name,
           sale.amount,
           sale.serialNumber?.serialNo,
+          ...sale.serialNumbers,
           sale.atrStatus,
           sale.returnRequest?.status,
         ]),
@@ -169,18 +175,31 @@ export function SalesTable({ result }: SalesTableProps) {
                   <TableIndexCell
                     index={(result.page - 1) * result.limit + index + 1}
                   />
-                  <TableCell className="font-mono text-sm">{saleTransactionLabel(s)}</TableCell>
+                  <TableCodeCell value={saleTransactionLabel(s)} />
                   <TableCell>{s.branch.name}</TableCell>
-                  <TableCell>{s.amount}</TableCell>
-                  <TableCell>{s.serialNumber?.serialNo ?? "—"}</TableCell>
-                  <TableCell>{s.atrStatus}</TableCell>
+                  <TableAmountCell value={s.amount} />
+                  <TableCodeCell>
+                    {s.serialNumbers.length > 1 ? (
+                      <button
+                        type="button"
+                        className="cursor-pointer text-left underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        onClick={() => setSerialDialogSale(s)}
+                        aria-label={`View ${s.serialNumbers.length} serial numbers for ${saleTransactionLabel(s)}`}
+                      >
+                        {s.serialNumber?.serialNo}
+                      </button>
+                    ) : (
+                      (s.serialNumber?.serialNo ?? "—")
+                    )}
+                  </TableCodeCell>
                   <TableCell>
-                    {s.returnRequest
-                      ? RETURN_STATUS_LABELS[s.returnRequest.status] ?? s.returnRequest.status
-                      : "—"}
+                    <AtrStatusBadge status={s.atrStatus} />
+                  </TableCell>
+                  <TableCell>
+                    <ReturnStatusBadge status={s.returnRequest?.status} />
                   </TableCell>
                   <TableCell className="space-x-1">
-                    {!s.returnRequest && s.atrStatus === "open" ? (
+                    {!s.returnRequest && s.atrStatus === "open" && capabilities.canRequestReturn ? (
                       <Button
                         size="sm"
                         variant="outline"
@@ -195,7 +214,7 @@ export function SalesTable({ result }: SalesTableProps) {
                         Request return
                       </Button>
                     ) : null}
-                    {s.returnRequest?.status === "pending_cs" ? (
+                    {s.returnRequest?.status === "pending_cs" && capabilities.canEvaluateReturn ? (
                       <>
                         <Button
                           size="sm"
@@ -224,7 +243,7 @@ export function SalesTable({ result }: SalesTableProps) {
                         </Button>
                       </>
                     ) : null}
-                    {s.returnRequest?.status === "pending_tl" ? (
+                    {s.returnRequest?.status === "pending_tl" && capabilities.canApproveReturn ? (
                       <>
                         <Button
                           size="sm"
@@ -254,7 +273,7 @@ export function SalesTable({ result }: SalesTableProps) {
                         </Button>
                       </>
                     ) : null}
-                    {s.returnRequest?.status === "approved" ? (
+                    {s.returnRequest?.status === "approved" && capabilities.canCompleteReturn ? (
                       <Button
                         size="sm"
                         className="bg-emerald-600 text-white hover:bg-emerald-700"
@@ -274,6 +293,17 @@ export function SalesTable({ result }: SalesTableProps) {
               ))}
             </TableBody>
       </GlobalDataTable>
+
+      <SaleSerialsDialog
+        open={serialDialogSale != null}
+        onOpenChange={(open) => {
+          if (!open) setSerialDialogSale(null);
+        }}
+        transactionNo={
+          serialDialogSale ? saleTransactionLabel(serialDialogSale) : ""
+        }
+        serialNumbers={serialDialogSale?.serialNumbers ?? []}
+      />
     </div>
   );
 }

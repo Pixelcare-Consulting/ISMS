@@ -1,6 +1,6 @@
 {
   "name": "isms",
-  "version": "0.13.19",
+  "version": "0.13.23",
   "private": true,
   "scripts": {
     "dev": "next dev",

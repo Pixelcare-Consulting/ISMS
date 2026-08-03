@@ -7,7 +7,6 @@ import { appNavigation, isNavSubGroup, type NavLinkItem } from "@/config/app-nav
 const EXTRA_ROUTE_TITLES: Record<string, string> = {
   "/sales": "Sales & ATR",
   "/sales/new": "New sales transaction",
-  "/reports/sales": "Sales report",
   "/policies/new": "New policy",
   "/operations": "Operations",
   "/planning/suggested-orders": "Suggested orders",

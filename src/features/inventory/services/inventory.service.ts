@@ -3,6 +3,7 @@ import { aorService } from "@/features/aors/services/aor.service";
 import {
   inventoryRepository,
   type InventoryListFilters,
+  type InventoryListRow,
   type InventoryListSort,
   type InventoryListSortDir,
 } from "@/features/inventory/repositories/inventory.repository";
@@ -12,6 +13,7 @@ import {
 } from "@/features/inventory/utils/sku-series";
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
 import { decimalToNumber } from "@/lib/database/decimal";
+import type { PaginatedResult } from "@/lib/shared/pagination";
 
 export interface InventoryStatusKpi {
   code: string;
@@ -45,6 +47,19 @@ export type InventoryListOptions = {
   sortDir?: InventoryListSortDir;
 };
 
+export type InventoryListEnrichedItem = InventoryListRow & {
+  onPlanogram: boolean;
+  deliveryNo: string | null;
+  deliveryDate: Date | null;
+  agingDays: number;
+};
+
+type InventoryStatusCodeRow = {
+  id: string;
+  code: string;
+  name: string;
+};
+
 async function resolveBranchIds(
   tenantId: string,
   userId: string,
@@ -55,7 +70,7 @@ async function resolveBranchIds(
       "@/features/branches/repositories/branch.repository"
     );
     const branches = await branchRepository.listByTenant(tenantId);
-    return branches.map((b) => b.id);
+    return branches.map((b: { id: string }) => b.id);
   }
   return aorService.getBranchIdsForUser(tenantId, userId);
 }
@@ -76,18 +91,8 @@ export const inventoryService = {
     isUnrestricted: boolean,
     pagination?: { page?: number; limit?: number },
     filters?: InventoryListOptions,
-  ) {
+  ): Promise<PaginatedResult<InventoryListEnrichedItem>> {
     const branchIds = await resolveBranchIds(tenantId, userId, isUnrestricted);
-
-    if (!isUnrestricted && branchIds.length === 0) {
-      return inventoryRepository.listByBranches(
-        tenantId,
-        [],
-        pagination,
-        toListFilters(filters),
-      );
-    }
-
     const result = await inventoryRepository.listByBranches(
       tenantId,
       branchIds,
@@ -100,10 +105,11 @@ export const inventoryService = {
   },
 
   async enrichWithPlanogramFlags<
-    T extends {
-      items: { branchId: string; serialNumber: { model: { id: string } } }[];
-    },
-  >(tenantId: string, result: T) {
+    TItem extends { branchId: string; serialNumber: { model: { id: string } } },
+  >(
+    tenantId: string,
+    result: PaginatedResult<TItem>,
+  ): Promise<PaginatedResult<TItem & { onPlanogram: boolean }>> {
     const { planogramRepository } = await import(
       "@/features/planogram/repositories/planogram.repository"
     );
@@ -127,13 +133,19 @@ export const inventoryService = {
   },
 
   async enrichWithDeliveryAging<
-    T extends {
-      items: {
-        serialNumberId: string;
-        createdAt: Date;
-      }[];
-    },
-  >(tenantId: string, result: T) {
+    TItem extends { serialNumberId: string; createdAt: Date },
+  >(
+    tenantId: string,
+    result: PaginatedResult<TItem>,
+  ): Promise<
+    PaginatedResult<
+      TItem & {
+        deliveryNo: string | null;
+        deliveryDate: Date | null;
+        agingDays: number;
+      }
+    >
+  > {
     const deliveries = await inventoryRepository.findLatestAcceptedDeliveries(
       tenantId,
       result.items.map((item) => item.serialNumberId),
@@ -168,20 +180,20 @@ export const inventoryService = {
       return { rows: [], totalQty: 0, totalValue: 0 };
     }
 
-    const rows = await inventoryRepository.listSeriesRows(
+    // SQL GROUP BY sku — avoids loading every inventory row into Node.
+    const skuRows = await inventoryRepository.aggregateSeriesBySku(
       tenantId,
       branchIds,
       toListFilters(filters),
     );
 
     const bySeries = new Map<string, { qty: number; value: number }>();
-    for (const row of rows) {
-      const skuCode = row.serialNumber.model.skuCode;
-      const series = deriveSkuSeries(skuCode);
-      const srp = decimalToNumber(row.serialNumber.model.srp) ?? 0;
+    for (const row of skuRows) {
+      const series = deriveSkuSeries(row.skuCode);
+      const srp = decimalToNumber(row.srp) ?? 0;
       const current = bySeries.get(series) ?? { qty: 0, value: 0 };
-      current.qty += 1;
-      current.value += srp;
+      current.qty += row.qty;
+      current.value += srp * row.qty;
       bySeries.set(series, current);
     }
 
@@ -207,10 +219,10 @@ export const inventoryService = {
   ): Promise<InventoryKpis> {
     const branchIds = await resolveBranchIds(tenantId, userId, isUnrestricted);
 
-    const codes = await reasonStatusRepository.listActiveCodesByCategory(
+    const codes = (await reasonStatusRepository.listActiveCodesByCategory(
       tenantId,
       "inventory_system",
-    );
+    )) as InventoryStatusCodeRow[];
 
     if (branchIds.length === 0) {
       return {
@@ -225,7 +237,9 @@ export const inventoryService = {
     ]);
 
     const countByCodeId = new Map(
-      statusGroups.map((g) => [g.statusCodeId, g._count.id]),
+      (
+        statusGroups as Array<{ statusCodeId: string; _count: { id: number } }>
+      ).map((g) => [g.statusCodeId, g._count.id]),
     );
 
     return {
@@ -244,10 +258,10 @@ export const inventoryService = {
     inventoryId: string;
     statusCodeId: string;
   }) {
-    const codes = await reasonStatusRepository.listActiveCodesByCategory(
+    const codes = (await reasonStatusRepository.listActiveCodesByCategory(
       input.tenantId,
       "inventory_system",
-    );
+    )) as InventoryStatusCodeRow[];
     const target = codes.find((c) => c.id === input.statusCodeId);
     if (!target) {
       throw new Error("Invalid inventory status code");

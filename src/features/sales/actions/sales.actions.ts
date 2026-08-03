@@ -9,6 +9,15 @@ import { aorService } from "@/features/aors/services/aor.service";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { salesRepository } from "@/features/sales/repositories/sales.repository";
 import {
+  SALES_ACCESS_PERMISSIONS,
+  SALES_CREATE,
+  SALES_RETURN_APPROVE,
+  SALES_RETURN_COMPLETE,
+  SALES_RETURN_EVALUATE,
+  SALES_RETURN_REQUEST,
+  salesReturnRejectPermissions,
+} from "@/features/sales/constants/sales-permissions";
+import {
   generateSaleTransactionNo,
   isSaleTransactionNo,
 } from "@/features/sales/utils/sale-transaction-no";
@@ -114,7 +123,7 @@ async function assertValidStockSource(
 }
 
 export async function listSalesAction(input?: { page?: number; limit?: number }) {
-  const session = await requirePermission("sales.create");
+  const session = await requireAnyPermission([...SALES_ACCESS_PERMISSIONS]);
   const result = await salesRepository.listForTenant(session.user.tenantId, {
     page: input?.page,
     limit: parseTablePageSize(input?.limit),
@@ -123,9 +132,11 @@ export async function listSalesAction(input?: { page?: number; limit?: number })
   return {
     ...result,
     items: result.items.map((row) => {
-      const firstDetail = row.details[0];
-      const serialCount = row.details.length;
-      const firstSerial = firstDetail?.serialNumber?.serialNo ?? null;
+      const serialNumbers = row.details
+        .map((d) => d.serialNumber?.serialNo)
+        .filter((s): s is string => Boolean(s));
+      const firstSerial = serialNumbers[0] ?? null;
+      const serialCount = serialNumbers.length;
       const serialLabel =
         serialCount <= 1
           ? firstSerial
@@ -139,6 +150,7 @@ export async function listSalesAction(input?: { page?: number; limit?: number })
         atrStatus: row.atrStatus,
         branch: row.branch,
         serialNumber: serialLabel ? { serialNo: serialLabel } : null,
+        serialNumbers,
         returnRequest: row.returnRequest
           ? { id: row.returnRequest.id, status: row.returnRequest.status }
           : null,
@@ -592,7 +604,7 @@ export async function createSaleAction(input: unknown) {
 }
 
 export async function requestReturnAction(saleId: string, notes?: string) {
-  const session = await requirePermission("sales.create");
+  const session = await requireAnyPermission([SALES_RETURN_REQUEST, SALES_CREATE]);
   const sale = await prisma.branchSalesTransaction.findFirst({
     where: { id: saleId, tenantId: session.user.tenantId },
     include: { returnRequest: true },
@@ -637,7 +649,7 @@ export async function requestReturnAction(saleId: string, notes?: string) {
 }
 
 export async function evaluateReturnAction(returnRequestId: string, notes?: string) {
-  const session = await requirePermission("sales.create");
+  const session = await requirePermission(SALES_RETURN_EVALUATE);
   const row = await prisma.branchReturnRequest.findFirst({
     where: { id: returnRequestId, tenantId: session.user.tenantId },
   });
@@ -668,7 +680,7 @@ export async function evaluateReturnAction(returnRequestId: string, notes?: stri
 }
 
 export async function approveReturnAction(returnRequestId: string) {
-  const session = await requirePermission("orders.approve");
+  const session = await requireAnyPermission([SALES_RETURN_APPROVE, "orders.approve"]);
   const row = await prisma.branchReturnRequest.findFirst({
     where: { id: returnRequestId, tenantId: session.user.tenantId },
   });
@@ -698,13 +710,23 @@ export async function approveReturnAction(returnRequestId: string) {
 }
 
 export async function rejectReturnAction(returnRequestId: string, notes?: string) {
-  const session = await requireAnyPermission(["orders.approve", "sales.create"]);
+  const session = await requireAnyPermission([
+    SALES_RETURN_EVALUATE,
+    SALES_RETURN_APPROVE,
+    SALES_CREATE,
+    "orders.approve",
+  ]);
   const row = await prisma.branchReturnRequest.findFirst({
     where: { id: returnRequestId, tenantId: session.user.tenantId },
     include: { sale: true },
   });
   if (!row || !["pending_cs", "pending_tl"].includes(row.status)) {
     return { error: "Return request cannot be rejected" };
+  }
+
+  const allowed = salesReturnRejectPermissions(row.status);
+  if (!allowed.some((slug) => hasPermission(session.user.permissions, slug))) {
+    return { error: "You do not have permission to reject this return" };
   }
 
   await prisma.$transaction([
@@ -731,7 +753,11 @@ export async function rejectReturnAction(returnRequestId: string, notes?: string
 }
 
 export async function completeReturnRestoreAction(returnRequestId: string) {
-  const session = await requireAnyPermission(["logistics.manage", "sales.create"]);
+  const session = await requireAnyPermission([
+    SALES_RETURN_COMPLETE,
+    "logistics.manage",
+    SALES_CREATE,
+  ]);
   const row = await prisma.branchReturnRequest.findFirst({
     where: { id: returnRequestId, tenantId: session.user.tenantId },
     include: {

@@ -4,7 +4,13 @@
  * Maintenance (each release):
  * 1. Bump `version` in package.json (semver: major.minor.patch)
  * 2. Prepend a new entry below with matching version, date, and highlights
+ *    — Same calendar day: consolidate into the latest version (do not stack patches)
  * 3. Deploy — login footer and What's new dialog update automatically
+ *
+ * Writing style (always):
+ * - Write for end users, not developers
+ * - Describe what they can do or what feels better — not file names, SQL, slugs, or reseed steps
+ * - Avoid jargon (RBAC, FK, hydration, pool timeout, GROUP BY, etc.)
  */
 
 export type ReleaseChangeType = "feature" | "fix" | "improvement";
@@ -24,100 +30,118 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
-    version: "0.13.19",
+    version: "0.13.23",
     date: "2026-08-03",
-    title: "Sales transaction number shown on create",
+    title: "Smoother sales, clearer roles, and faster stock views",
     highlights: [
-      "New sales form displays the real TRN-… transaction number when the page opens",
-      "That same number is saved with the transaction; opening New again allocates a fresh one",
-      "New sales transaction numbers use TRN-… instead of SAL-…",
+      "New sales starts with a ready transaction number (TRN-…) and clearer fields for payment, delivery, stock branch, and proof",
+      "Package details capture brand (and optional promo); each set keeps its own serials",
+      "Sales & ATRs shows status badges, peso amounts, and a quick view of all serials on multi-unit sales",
+      "Returns (ATR) can be limited by role — request, evaluate, approve, or restore — so each team only sees what they need",
+      "Roles settings are easier: search, pick a role, and toggle access in a clearer grid (cards on phone)",
+      "Logistics and settings can use separate View vs Manage access; report export is optional",
+      "Stock series summary and off-planogram lists load faster and more reliably",
+      "Sign-in and register use a simple loading screen; reports and transfers titles match the menu",
+      "Browser tabs show friendly page names (for example, Stock units)",
     ],
     changes: [
       {
         type: "feature",
         description:
-          "allocateSaleTransactionNoAction + createSaleAction.transactionNo (unique per tenant)",
-      },
-      {
-        type: "improvement",
-        description: "SALE_TRANSACTION_NO_PREFIX changed to TRN-",
-      },
-    ],
-  },
-  {
-    version: "0.13.17",
-    date: "2026-08-03",
-    title: "Sales details-first, inventory series modal, and route titles",
-    highlights: [
-      "Serials live only on transaction details; header serial FK removed",
-      "Sale header adds SI/Trans, payment/sale/delivery, stock-source branch, proof; slip/RR are free text",
-      "Detail modal requires brand (+ optional promo); ATR restores every detail serial to STK",
-      "Sales CSV emits one row per serial/detail for multi-set packages",
-      "Stock units Series summary: View series modal with search; sticky SERIES header and TOTAL",
-      "Browser tabs use page names (e.g. Stock units | FINDEN ISMS) via path-based metadata",
-    ],
-    changes: [
-      {
-        type: "feature",
-        description:
-          "BranchSalesTransaction.alternateBranchId stock source; detail packageTypeId/brandId/promoTypeId",
+          "New sales shows the transaction number up front and saves it with the sale",
       },
       {
         type: "feature",
         description:
-          "New sale form: SI/Trans, payment/sale/delivery lookups, alternate branch, proof via local FS storage",
+          "Sale details support packages, brand, promo, stock-source branch, and proof upload",
       },
       {
         type: "feature",
         description:
-          "InventorySeriesSummaryPanel View series dialog with filter and sticky thead/tfoot",
+          "Click a serial cell with +N to see every serial on that sale",
       },
       {
-        type: "fix",
+        type: "feature",
         description:
-          "ATR complete restores all detail serials at the stock-source branch (not only a header SN)",
+          "Role settings can turn ATR request, evaluate, approve, and restore on or off per role",
       },
       {
-        type: "fix",
+        type: "feature",
         description:
-          "Route titles: proxy x-pathname + layout generateMetadata; /inventory shows Stock units",
+          "Logistics and settings can grant view-only access separately from manage",
       },
       {
         type: "improvement",
         description:
-          "Sales report queries BranchSalesTransactionDetail (one CSV row per serial)",
+          "Roles matrix and access drawer are searchable and easier on mobile",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sales & ATRs list uses clear status badges and consistent serial / amount formatting",
+      },
+      {
+        type: "improvement",
+        description:
+          "Series summary includes a searchable View series dialog with sticky totals",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sign-in loading is quieter; report page titles match the sidebar",
+      },
+      {
+        type: "fix",
+        description:
+          "Inventory and off-planogram views are more stable under heavy lists",
+      },
+      {
+        type: "fix",
+        description:
+          "Completing a return puts every detail serial back to stock at the right branch",
+      },
+      {
+        type: "fix",
+        description:
+          "Serial activity log no longer fails when an old sold serial is missing",
+      },
+      {
+        type: "fix",
+        description:
+          "Transfers confirm dialog no longer flashes an error when listing serials",
       },
     ],
   },
+
   {
     version: "0.13.11",
     date: "2026-07-31",
-    title: "Sales transaction create + package detail modal",
+    title: "New sales encode and package details",
     highlights: [
-      "New /sales/new encode flow with header card, details table, and Save/Back",
-      "Add Transaction Detail modal expands package qty into N model/serial/amount sets",
-      "Multi-detail persist with per-serial STK→SLD/RSV; list page CTA replaces inline Record sale",
+      "Record a new sale from Sales with a clear header, details table, and Save / Back",
+      "Add package details by quantity — each unit gets its own model, serial, and amount",
+      "Multi-line sales update each serial’s stock status; use New transaction instead of the old inline form",
     ],
     changes: [
       {
-        type: "fix",
+        type: "feature",
         description:
-          "DialogContent / AlertDialogContent default aria-describedby to silence Radix missing-Description warnings",
+          "New sales page with header, details table, and Save / Back",
       },
       {
         type: "feature",
         description:
-          "NewSalesTransactionForm + AddTransactionDetailDialog (Finden theme) for multi-line package sales",
-      },
-      {
-        type: "feature",
-        description:
-          "createSaleAction accepts details[] with BranchSalesTransactionDetail rows and inventory status updates",
+          "Package detail modal expands quantity into separate model / serial / amount rows",
       },
       {
         type: "improvement",
         description:
-          "/sales list keeps ATR workflow; New transaction CTA opens /sales/new instead of inline RecordSaleForm",
+          "Sales list keeps returns workflow; New transaction opens the full encode page",
+      },
+      {
+        type: "fix",
+        description:
+          "Dialogs no longer show accessibility warnings in the browser console",
       },
     ],
   },

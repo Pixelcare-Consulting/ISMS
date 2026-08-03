@@ -19,6 +19,7 @@ import {
   listStockSourceBranchesForSalesAction,
   uploadSaleProofAction,
 } from "@/features/sales/actions/sales.actions";
+import { formatPeso } from "@/utils/format-currency";
 
 interface SalesBranchOption {
   id: string;
@@ -47,13 +48,6 @@ function todayInputValue(): string {
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
-}
-
-function formatMoney(n: number): string {
-  return n.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
 }
 
 export function NewSalesTransactionForm({
@@ -428,10 +422,12 @@ export function NewSalesTransactionForm({
                     <td className="py-2 pr-3">{d.brandName}</td>
                     <td className="py-2 pr-3">{d.promoTypeName ?? "—"}</td>
                     <td className="py-2 pr-3">{d.modelLabel || "—"}</td>
-                    <td className="py-2 pr-3 font-mono">{d.serialNo}</td>
-                    <td className="py-2 pr-3 text-right">{formatMoney(d.saleAmount)}</td>
-                    <td className="py-2 pr-3 text-right">
-                      {d.modelPrice != null ? formatMoney(d.modelPrice) : "—"}
+                    <td className="py-2 pr-3 font-mono text-sm">{d.serialNo}</td>
+                    <td className="py-2 pr-3 text-right font-mono text-sm tabular-nums">
+                      {formatPeso(d.saleAmount)}
+                    </td>
+                    <td className="py-2 pr-3 text-right font-mono text-sm tabular-nums">
+                      {formatPeso(d.modelPrice)}
                     </td>
                     <td className="py-2">
                       <Button
@@ -451,8 +447,8 @@ export function NewSalesTransactionForm({
           </div>
         )}
 
-        <div className="flex justify-end border-t pt-3 text-sm font-medium">
-          Total sale amount: {formatMoney(totalSaleAmount)}
+        <div className="flex justify-end border-t pt-3 text-sm font-medium font-mono tabular-nums">
+          Total sale amount: {formatPeso(totalSaleAmount)}
         </div>
       </div>
 

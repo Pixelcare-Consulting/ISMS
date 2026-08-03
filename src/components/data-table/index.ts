@@ -8,6 +8,8 @@ export {
   TableEmptyRow,
 } from "@/components/data-table/data-table-shell";
 export { DeleteConfirmDialog } from "@/components/data-table/delete-confirm-dialog";
+export { TableAmountCell } from "@/components/data-table/table-amount-cell";
+export { TableCodeCell } from "@/components/data-table/table-code-cell";
 export { TableIndexCell, TableIndexHead } from "@/components/data-table/table-index";
 export {
   getVisiblePageNumbers,

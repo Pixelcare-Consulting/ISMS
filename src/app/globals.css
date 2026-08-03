@@ -270,3 +270,12 @@ body:has(.app-shell) #nprogress .peg {
   height: 1.125rem;
   width: 1.125rem;
 }
+
+@keyframes loading-bar {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}

@@ -4,11 +4,22 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { auditService } from "@/features/audit/services/audit.service";
+import {
+  LOGISTICS_CREATE,
+  LOGISTICS_MANAGE,
+  LOGISTICS_PAGE_PERMISSIONS,
+} from "@/features/logistics/constants/logistics-permissions";
 import { logisticsRepository } from "@/features/logistics/repositories/logistics.repository";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/database/client";
+
+const LOGISTICS_WRITE_ALIASES = [
+  LOGISTICS_CREATE,
+  LOGISTICS_MANAGE,
+  "orders.create",
+] as const;
 
 const deliverySchema = z.object({ branchId: z.string().min(1) });
 const transferSchema = z.object({
@@ -103,7 +114,7 @@ async function buildLogisticsKpis(
 }
 
 export async function getDeliveryKpisAction(): Promise<LogisticsKpis> {
-  const session = await requireAnyPermission(["logistics.manage", "orders.create", "orders.view"]);
+  const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
   const tid = session.user.tenantId;
   return buildLogisticsKpis(
     tid,
@@ -114,7 +125,7 @@ export async function getDeliveryKpisAction(): Promise<LogisticsKpis> {
 }
 
 export async function getTransferKpisAction(): Promise<LogisticsKpis> {
-  const session = await requireAnyPermission(["logistics.manage", "orders.create", "orders.view"]);
+  const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
   const tid = session.user.tenantId;
   return buildLogisticsKpis(
     tid,
@@ -125,7 +136,7 @@ export async function getTransferKpisAction(): Promise<LogisticsKpis> {
 }
 
 export async function getPulloutKpisAction(): Promise<LogisticsKpis> {
-  const session = await requireAnyPermission(["logistics.manage", "orders.create", "orders.view"]);
+  const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
   const tid = session.user.tenantId;
   return buildLogisticsKpis(
     tid,
@@ -136,7 +147,7 @@ export async function getPulloutKpisAction(): Promise<LogisticsKpis> {
 }
 
 export async function listDeliveriesAction(input?: { page?: number; limit?: number }) {
-  const session = await requireAnyPermission(["logistics.manage", "orders.create", "orders.view"]);
+  const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
   return logisticsRepository.listDeliveries(session.user.tenantId, {
     page: input?.page,
     limit: parseTablePageSize(input?.limit),
@@ -144,7 +155,7 @@ export async function listDeliveriesAction(input?: { page?: number; limit?: numb
 }
 
 export async function createDeliveryAction(input: unknown) {
-  const session = await requirePermission("logistics.manage");
+  const session = await requireAnyPermission([LOGISTICS_CREATE, LOGISTICS_MANAGE]);
   const parsed = deliverySchema.safeParse(input);
   if (!parsed.success) return { error: "Invalid input" };
 
@@ -182,7 +193,7 @@ export async function createDeliveryAction(input: unknown) {
 }
 
 export async function acceptDeliveryAction(id: string, input?: unknown) {
-  const session = await requireAnyPermission(["logistics.manage", "orders.create"]);
+  const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
   const parsed = input
     ? z.object({ serialNumberIds: z.array(z.string().min(1)).optional() }).safeParse(input)
     : { success: true as const, data: {} };
@@ -263,7 +274,7 @@ export async function acceptDeliveryAction(id: string, input?: unknown) {
 }
 
 export async function rejectDeliveryAction(id: string, notes?: string) {
-  const session = await requireAnyPermission(["logistics.manage", "orders.create"]);
+  const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
   const rejectedCodeId = await reasonStatusService.requireCodeId(
     session.user.tenantId,
     "delivery_workflow",
@@ -299,7 +310,7 @@ export async function rejectDeliveryAction(id: string, notes?: string) {
 }
 
 export async function listTransfersAction(input?: { page?: number; limit?: number }) {
-  const session = await requireAnyPermission(["logistics.manage", "orders.create", "orders.view"]);
+  const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
   return logisticsRepository.listTransfers(session.user.tenantId, {
     page: input?.page,
     limit: parseTablePageSize(input?.limit),
@@ -407,7 +418,7 @@ export async function rejectTransferAction(id: string) {
 }
 
 export async function executeTransferAction(id: string, input?: unknown) {
-  const session = await requirePermission("logistics.manage");
+  const session = await requirePermission(LOGISTICS_MANAGE);
   const parsed = input ? serialIdsSchema.safeParse(input) : null;
   if (parsed && !parsed.success) return { error: "Select at least one serial number" };
 
@@ -554,7 +565,7 @@ export async function receiveTransferAction(id: string) {
 }
 
 export async function listPulloutsAction(input?: { page?: number; limit?: number }) {
-  const session = await requireAnyPermission(["logistics.manage", "orders.create", "orders.view"]);
+  const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
   return logisticsRepository.listPullouts(session.user.tenantId, {
     page: input?.page,
     limit: parseTablePageSize(input?.limit),
@@ -702,7 +713,7 @@ export async function approvePulloutTlAction(id: string) {
 }
 
 export async function schedulePulloutAction(id: string) {
-  const session = await requirePermission("logistics.manage");
+  const session = await requirePermission(LOGISTICS_MANAGE);
   const statusCodeId = await reasonStatusService.requireCodeId(
     session.user.tenantId,
     "pullout_workflow",
@@ -734,7 +745,7 @@ export async function releasePulloutAction(id: string) {
 }
 
 export async function completePulloutAction(id: string) {
-  const session = await requirePermission("logistics.manage");
+  const session = await requirePermission(LOGISTICS_MANAGE);
   const statusCodeId = await reasonStatusService.requireCodeId(
     session.user.tenantId,
     "pullout_workflow",
@@ -788,7 +799,7 @@ export async function completePulloutAction(id: string) {
 }
 
 export async function listBranchesForLogisticsAction() {
-  const session = await requireAnyPermission(["logistics.manage", "orders.create"]);
+  const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
   return prisma.branch.findMany({
     where: { tenantId: session.user.tenantId, deletedAt: null },
     orderBy: { name: "asc" },
@@ -796,7 +807,7 @@ export async function listBranchesForLogisticsAction() {
 }
 
 export async function listWarehousesForLogisticsAction() {
-  const session = await requireAnyPermission(["logistics.manage", "orders.create"]);
+  const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
   return prisma.warehouse.findMany({
     where: { tenantId: session.user.tenantId },
     orderBy: { name: "asc" },
@@ -804,12 +815,12 @@ export async function listWarehousesForLogisticsAction() {
 }
 
 export async function listPulloutReasonCodesAction() {
-  const session = await requireAnyPermission(["logistics.manage", "orders.create"]);
+  const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
   return reasonStatusService.listActiveCodes(session.user.tenantId, "pullout_reason");
 }
 
 export async function listBranchStockSerialsAction(branchId: string) {
-  const session = await requireAnyPermission(["logistics.manage", "orders.create"]);
+  const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
   const stkCodeId = await reasonStatusService.requireCodeId(
     session.user.tenantId,
     "inventory_system",
