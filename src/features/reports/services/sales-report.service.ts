@@ -87,7 +87,7 @@ export const salesReportService = {
         d.sale.transactionNo,
         d.sale.branch.name,
         d.sale.stockSourceBranch?.name ?? d.sale.branch.name,
-        d.serialNumber.serialNo,
+        d.serialNumber?.serialNo ?? "",
         modelLabel,
         d.packageType?.name ?? "",
         (d.saleAmount ?? d.amount ?? 0).toString(),

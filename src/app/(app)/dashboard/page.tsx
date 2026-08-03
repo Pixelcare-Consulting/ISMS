@@ -1,5 +1,6 @@
 import { getModuleNavPermission } from "@/config/app-modules";
 import { hasPermission, requireAuth, requirePermission } from "@/lib/auth/permissions";
+import { pageMetadata } from "@/lib/shared/seo";
 import { listUsersAction } from "@/features/users/actions/user.actions";
 import { DASHBOARD_PAGE_TUTORIAL } from "@/content/page-tutorials/dashboard";
 import { PageHeader } from "@/app/(app)/_components/page-header";
@@ -9,6 +10,8 @@ import { ActiveAnnouncementBanner } from "@/features/announcements/components/ac
 import { DashboardOpsKpis } from "@/app/(app)/dashboard/_components/dashboard-ops-kpis";
 import { DashboardStats } from "@/app/(app)/dashboard/_components/dashboard-stats";
 import { DashboardRecentUsers } from "@/app/(app)/dashboard/_components/dashboard-recent-users";
+
+export const metadata = pageMetadata("Dashboard");
 
 export default async function DashboardPage() {
   const dashboardPermission = getModuleNavPermission("dashboard");

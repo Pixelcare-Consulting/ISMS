@@ -4,10 +4,16 @@ import { Plus } from "lucide-react";
 import { listSalesAction } from "@/features/sales/actions/sales.actions";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { requirePermission } from "@/lib/auth/permissions";
+import { pageMetadata } from "@/lib/shared/seo";
 import { SALES_PAGE_TUTORIAL } from "@/content/page-tutorials/sales";
 import { PageHeader } from "@/app/(app)/_components/page-header";
 import { SalesTable } from "@/app/(app)/sales/_components/sales-table";
 import { Button } from "@/components/ui/button";
+
+export const metadata = pageMetadata(
+  "Sales & ATR",
+  "Branch sales with multi-line encode, reserved (RSV) flow, and ATR return workflow.",
+);
 
 interface SalesPageProps {
   searchParams: Promise<{ page?: string; limit?: string }>;

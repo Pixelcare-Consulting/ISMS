@@ -1,1 +1,1 @@
-export const APP_NAME = "FINDEN ISMS";
+export const APP_NAME = "FINDEN ISMS v2";

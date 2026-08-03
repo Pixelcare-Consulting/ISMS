@@ -201,7 +201,7 @@ export const appNavigation: NavEntry[] = [
   {
     type: "link",
     href: "/sales",
-    label: "Sales",
+    label: "Sales & ATRs",
     icon: Store,
     permission: "sales.create",
   },

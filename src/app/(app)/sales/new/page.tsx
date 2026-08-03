@@ -10,6 +10,12 @@ import {
   listSaleTypesForSalesAction,
 } from "@/features/sales/actions/sales.actions";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
+import { pageMetadata } from "@/lib/shared/seo";
+
+export const metadata = pageMetadata(
+  "New sales transaction",
+  "Enter header details, add package line sets, then save to update stock.",
+);
 
 export default async function NewSalesTransactionPage() {
   const session = await requirePermission("sales.create");

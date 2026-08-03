@@ -116,7 +116,7 @@ export async function listSalesAction(input?: { page?: number; limit?: number })
     items: result.items.map((row) => {
       const firstDetail = row.details[0];
       const serialCount = row.details.length;
-      const firstSerial = firstDetail?.serialNumber.serialNo ?? null;
+      const firstSerial = firstDetail?.serialNumber?.serialNo ?? null;
       const serialLabel =
         serialCount <= 1
           ? firstSerial

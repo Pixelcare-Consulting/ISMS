@@ -89,11 +89,8 @@ export function NewSalesTransactionForm({
   const [detailOpen, setDetailOpen] = useState(false);
 
   useEffect(() => {
-    if (!branchId) {
-      setStockSources([]);
-      setAlternateBranchId("");
-      return;
-    }
+    if (!branchId) return;
+
     let cancelled = false;
     void (async () => {
       try {
@@ -108,6 +105,7 @@ export function NewSalesTransactionForm({
         toast.error("Failed to load stock source branches");
       }
     })();
+
     return () => {
       cancelled = true;
     };
@@ -135,6 +133,8 @@ export function NewSalesTransactionForm({
   function onBranchChange(id: string) {
     setBranchId(id);
     setDetails([]);
+    setStockSources([]);
+    setAlternateBranchId("");
   }
 
   async function onProofSelected(file: File | null) {
@@ -312,7 +312,7 @@ export function NewSalesTransactionForm({
               id="sale-info-slip"
               value={infoSlipVsoRrReleased}
               onChange={(e) => setInfoSlipVsoRrReleased(e.target.value)}
-              placeholder="Free text"
+              placeholder="Input Info slip / VSO / RR released"
             />
           </div>
           <div className="space-y-2">
@@ -321,7 +321,7 @@ export function NewSalesTransactionForm({
               id="sale-rr-receive"
               value={rrReceiveDeliver}
               onChange={(e) => setRrReceiveDeliver(e.target.value)}
-              placeholder="Free text"
+              placeholder="Input RR receive / deliver"
             />
           </div>
           <div className="space-y-2">
