@@ -8,6 +8,10 @@ import { auditService } from "@/features/audit/services/audit.service";
 import { aorService } from "@/features/aors/services/aor.service";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { salesRepository } from "@/features/sales/repositories/sales.repository";
+import {
+  generateSaleTransactionNo,
+  isSaleTransactionNo,
+} from "@/features/sales/utils/sale-transaction-no";
 import { hasPermission, requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/database/client";
 import { getObjectStorage } from "@/lib/storage";
@@ -23,6 +27,11 @@ const saleDetailSchema = z.object({
 });
 
 const saleSchema = z.object({
+  transactionNo: z
+    .string()
+    .trim()
+    .min(1)
+    .refine(isSaleTransactionNo, "Invalid transaction number"),
   branchId: z.string().min(1),
   alternateBranchId: z.string().min(1),
   customerName: z.string().trim().min(1),
@@ -356,6 +365,21 @@ export async function uploadSaleProofAction(formData: FormData) {
   }
 }
 
+export async function allocateSaleTransactionNoAction() {
+  const session = await requirePermission("sales.create");
+
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const transactionNo = generateSaleTransactionNo(Date.now() + attempt);
+    const existing = await prisma.branchSalesTransaction.findFirst({
+      where: { tenantId: session.user.tenantId, transactionNo },
+      select: { id: true },
+    });
+    if (!existing) return { transactionNo };
+  }
+
+  return { error: "Could not allocate a transaction number" as const };
+}
+
 export async function createSaleAction(input: unknown) {
   const session = await requirePermission("sales.create");
   const parsed = saleSchema.safeParse(input);
@@ -383,7 +407,18 @@ export async function createSaleAction(input: unknown) {
     return { error: "Duplicate serials in the same transaction are not allowed" };
   }
 
-  const transactionNo = `SAL-${Date.now().toString(36).toUpperCase()}`;
+  const taken = await prisma.branchSalesTransaction.findFirst({
+    where: {
+      tenantId: session.user.tenantId,
+      transactionNo: parsed.data.transactionNo,
+    },
+    select: { id: true },
+  });
+  if (taken) {
+    return { error: "Transaction number already used. Reload the page for a new number." };
+  }
+
+  const transactionNo = parsed.data.transactionNo;
   const amount = details.reduce((sum, d) => sum + d.saleAmount, 0);
   const modelPriceRollup = details.find((d) => d.modelPrice != null)?.modelPrice;
   const stockBranchId = parsed.data.alternateBranchId;

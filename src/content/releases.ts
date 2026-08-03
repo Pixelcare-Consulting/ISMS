@@ -24,80 +24,37 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
-    version: "0.13.17",
+    version: "0.13.19",
     date: "2026-08-03",
-    title: "Stock units page title",
+    title: "Sales transaction number shown on create",
     highlights: [
-      "/inventory now uses Stock units for the page heading and browser tab (matches sidebar)",
-      "P-Count and Serial numbers inventory sub-routes keep their own titles in the section header",
-    ],
-    changes: [
-      {
-        type: "fix",
-        description:
-          "Removed Inventory override on /inventory so nav label Stock units drives route title",
-      },
-    ],
-  },
-  {
-    version: "0.13.16",
-    date: "2026-08-03",
-    title: "Series summary sticky header and total",
-    highlights: [
-      "Inventory Series summary freezes SERIES/QTY/VALUE header and TOTAL while scrolling (panel + modal)",
-    ],
-    changes: [
-      {
-        type: "improvement",
-        description:
-          "SeriesSummaryTable uses sticky thead/tfoot inside the scroll container",
-      },
-    ],
-  },
-  {
-    version: "0.13.15",
-    date: "2026-08-03",
-    title: "Route titles on every app page",
-    highlights: [
-      "Browser tab titles resolve from the current path for Inventory, Reports, Settings, and all other routes",
-      "Proxy forwards x-pathname so layout generateMetadata can set the correct title on SSR and soft navigations",
-    ],
-    changes: [
-      {
-        type: "fix",
-        description:
-          "Pages without static metadata no longer fall back to a bare FINDEN ISMS tab title",
-      },
-    ],
-  },
-  {
-    version: "0.13.14",
-    date: "2026-08-03",
-    title: "Inventory series summary modal",
-    highlights: [
-      "Stock units Series summary adds View series button",
-      "Popup modal with series search, full table, and filtered totals",
+      "New sales form displays the real TRN-… transaction number when the page opens",
+      "That same number is saved with the transaction; opening New again allocates a fresh one",
+      "New sales transaction numbers use TRN-… instead of SAL-…",
     ],
     changes: [
       {
         type: "feature",
         description:
-          "InventorySeriesSummaryPanel opens a searchable Dialog for the full series QTY/VALUE table",
+          "allocateSaleTransactionNoAction + createSaleAction.transactionNo (unique per tenant)",
+      },
+      {
+        type: "improvement",
+        description: "SALE_TRANSACTION_NO_PREFIX changed to TRN-",
       },
     ],
   },
   {
-    version: "0.13.12",
+    version: "0.13.17",
     date: "2026-08-03",
-    title: "Sales details-first serials + header field alignment",
+    title: "Sales details-first, inventory series modal, and route titles",
     highlights: [
       "Serials live only on transaction details; header serial FK removed",
-      "Header adds SI/Trans, payment/sale/delivery, stock-source branch, proof upload; slip/RR are free text",
-      "Detail modal requires brand (+ optional promo); ATR restore returns every detail serial to STK",
-      "Sales CSV report emits one row per serial/detail for multi-set packages",
-      "Browser tab shows the current page name (e.g. New sales transaction | FINDEN ISMS)",
-      "Route title map covers sidebar nav plus create/detail overrides",
-      "Static metadata on sales, dashboard, reports, and auth for first paint",
+      "Sale header adds SI/Trans, payment/sale/delivery, stock-source branch, proof; slip/RR are free text",
+      "Detail modal requires brand (+ optional promo); ATR restores every detail serial to STK",
+      "Sales CSV emits one row per serial/detail for multi-set packages",
+      "Stock units Series summary: View series modal with search; sticky SERIES header and TOTAL",
+      "Browser tabs use page names (e.g. Stock units | FINDEN ISMS) via path-based metadata",
     ],
     changes: [
       {
@@ -111,19 +68,24 @@ export const RELEASES: ReleaseNote[] = [
           "New sale form: SI/Trans, payment/sale/delivery lookups, alternate branch, proof via local FS storage",
       },
       {
+        type: "feature",
+        description:
+          "InventorySeriesSummaryPanel View series dialog with filter and sticky thead/tfoot",
+      },
+      {
         type: "fix",
         description:
           "ATR complete restores all detail serials at the stock-source branch (not only a header SN)",
       },
       {
-        type: "improvement",
+        type: "fix",
         description:
-          "Sales report queries BranchSalesTransactionDetail (DATE, BRANCH, STOCK SOURCE, SERIAL, MODEL, PACKAGE, …)",
+          "Route titles: proxy x-pathname + layout generateMetadata; /inventory shows Stock units",
       },
       {
         type: "improvement",
         description:
-          "Root title template `%s | FINDEN ISMS` plus DocumentTitle sync from route-titles config",
+          "Sales report queries BranchSalesTransactionDetail (one CSV row per serial)",
       },
     ],
   },

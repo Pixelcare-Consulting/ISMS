@@ -31,6 +31,7 @@ interface LookupOption {
 }
 
 interface NewSalesTransactionFormProps {
+  transactionNo: string;
   branches: SalesBranchOption[];
   autoResolveBranch: boolean;
   paymentTypes: LookupOption[];
@@ -56,6 +57,7 @@ function formatMoney(n: number): string {
 }
 
 export function NewSalesTransactionForm({
+  transactionNo,
   branches,
   autoResolveBranch,
   paymentTypes,
@@ -191,6 +193,7 @@ export function NewSalesTransactionForm({
 
     startTransition(async () => {
       const result = await createSaleAction({
+        transactionNo,
         branchId,
         alternateBranchId,
         customerName: customerName.trim(),
@@ -243,10 +246,10 @@ export function NewSalesTransactionForm({
             <Label htmlFor="sale-txn-no">Transaction number *</Label>
             <Input
               id="sale-txn-no"
-              value="SAL-… (assigned on save)"
+              value={transactionNo}
               readOnly
               disabled
-              className="bg-muted"
+              className="bg-muted font-mono"
             />
           </div>
           <div className="space-y-2">
