@@ -34,6 +34,8 @@ export const RELEASES: ReleaseNote[] = [
     date: "2026-08-03",
     title: "Smoother sales, clearer roles, and a cleaner home screen",
     highlights: [
+      "Confirmation dialogs stay readable and no longer spam the browser console with accessibility warnings",
+      "Sales & ATRs asks you to confirm before Request return, CS evaluate, TL approve, Reject, or Restore stock",
       "Help & Support How ISMS works looks sharper — solid step cards, a tidy process tab bar, numbered steps with no sideways scroll, and vertical role timelines",
       "Dashboard screen shows up to four activity cards for your role — less clutter, same jump-to actions",
       "More home summaries: Planning & alerts for extra ops signals, plus a This month snapshot (orders, sales, in transit) with icons",
@@ -57,6 +59,11 @@ export const RELEASES: ReleaseNote[] = [
       "Browser tabs show friendly page names (for example, Stock units)",
     ],
     changes: [
+      {
+        type: "improvement",
+        description:
+          "Sales & ATRs return actions (request, evaluate, approve, reject, restore) ask for confirmation before running",
+      },
       {
         type: "feature",
         description:

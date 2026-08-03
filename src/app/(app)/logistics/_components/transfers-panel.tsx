@@ -353,51 +353,49 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{confirmTitle}</AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div>
-                {pendingConfirm ? (
-                  <>
-                    <p>
-                      Transfer{" "}
-                      <span className="font-medium text-foreground">
-                        {pendingConfirm.transferNo}
-                      </span>{" "}
-                      ({pendingConfirm.route}). {confirmDescription}
-                    </p>
-                    {pendingConfirm.action === "execute" ? (
-                      <div className="mt-3 max-h-40 space-y-1 overflow-y-auto rounded-md border p-2">
-                        {executeSerials.length === 0 ? (
-                          <p className="text-sm text-muted-foreground">
-                            No STK serials at source branch.
-                          </p>
-                        ) : (
-                          executeSerials.map((s) => (
-                            <label
-                              key={s.id}
-                              className="flex items-center gap-2 text-sm"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={selectedSerialIds.includes(s.id)}
-                                onChange={(e) => {
-                                  setSelectedSerialIds((prev) =>
-                                    e.target.checked
-                                      ? [...prev, s.id]
-                                      : prev.filter((id) => id !== s.id),
-                                  );
-                                }}
-                              />
-                              {s.serialNo} · {s.skuCode}
-                            </label>
-                          ))
-                        )}
-                      </div>
-                    ) : null}
-                  </>
-                ) : null}
-              </div>
+            <AlertDialogDescription>
+              {pendingConfirm ? (
+                <>
+                  Transfer{" "}
+                  <span className="font-medium text-foreground">
+                    {pendingConfirm.transferNo}
+                  </span>{" "}
+                  ({pendingConfirm.route}). {confirmDescription}
+                </>
+              ) : (
+                "Confirm this transfer action."
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {pendingConfirm?.action === "execute" ? (
+            <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border p-2">
+              {executeSerials.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No STK serials at source branch.
+                </p>
+              ) : (
+                executeSerials.map((s) => (
+                  <label
+                    key={s.id}
+                    className="flex items-center gap-2 text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedSerialIds.includes(s.id)}
+                      onChange={(e) => {
+                        setSelectedSerialIds((prev) =>
+                          e.target.checked
+                            ? [...prev, s.id]
+                            : prev.filter((id) => id !== s.id),
+                        );
+                      }}
+                    />
+                    {s.serialNo} · {s.skuCode}
+                  </label>
+                ))
+              )}
+            </div>
+          ) : null}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
             <AlertDialogAction

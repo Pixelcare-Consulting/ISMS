@@ -39,7 +39,6 @@ const AlertDialogContent = React.forwardRef<
         className,
       )}
       {...props}
-      aria-describedby={props["aria-describedby"] ?? undefined}
     />
   </AlertDialogPortal>
 ));
