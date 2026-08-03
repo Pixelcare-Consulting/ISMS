@@ -59,6 +59,19 @@ export function formatSerialActivityType(type: SerialActivityType): string {
   return SERIAL_ACTIVITY_LABELS[type] ?? type;
 }
 
+/**
+ * Event label with its reference details appended, e.g. `Status update: Sold`
+ * or `Transferred: TR-0001`. Falls back to the plain label when the event has
+ * no reference, status or amount.
+ */
+export function formatSerialActivityEvent(event: SerialActivityEvent): string {
+  const label = formatSerialActivityType(event.type);
+  const details = [event.reference, event.status, event.amount].filter(
+    (value): value is string => Boolean(value),
+  );
+  return details.length > 0 ? `${label}: ${details.join(" · ")}` : label;
+}
+
 export function formatSerialActivityTimestamp(value: Date): string {
   return new Date(value).toLocaleString(undefined, {
     year: "numeric",

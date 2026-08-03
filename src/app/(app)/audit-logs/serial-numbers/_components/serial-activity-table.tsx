@@ -8,6 +8,7 @@ import {
   SERIAL_ACTIVITY_TYPES,
   type SerialActivityEvent,
   type SerialActivityType,
+  formatSerialActivityEvent,
   formatSerialActivityPerformedBy,
   formatSerialActivityTimestamp,
 } from "@/features/serial-activity/constants/serial-activity-display";
@@ -218,7 +219,6 @@ export function SerialActivityTable({
           <GlobalTableHead>Serial</GlobalTableHead>
           <GlobalTableHead>Model</GlobalTableHead>
           <GlobalTableHead>Location</GlobalTableHead>
-          <GlobalTableHead>Reference</GlobalTableHead>
           <GlobalTableHead>Performed by</GlobalTableHead>
         </TableRow>
       </TableHeader>
@@ -237,11 +237,11 @@ export function SerialActivityTable({
             <TableCell>
               <span
                 className={cn(
-                  "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
+                  "inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium",
                   TYPE_BADGE_CLASS[row.type],
                 )}
               >
-                {SERIAL_ACTIVITY_LABELS[row.type]}
+                {formatSerialActivityEvent(row)}
               </span>
             </TableCell>
             <TableCell className="font-medium tabular-nums">
@@ -252,20 +252,6 @@ export function SerialActivityTable({
             </TableCell>
             <TableCell className="text-sm text-muted-foreground">
               {row.location ?? "—"}
-            </TableCell>
-            <TableCell className="text-sm text-muted-foreground">
-              <div className="flex flex-col">
-                {row.reference ? <span>{row.reference}</span> : null}
-                {row.status ? (
-                  <span className="text-xs">{row.status}</span>
-                ) : null}
-                {row.amount ? (
-                  <span className="text-xs tabular-nums">
-                    {row.amount}
-                  </span>
-                ) : null}
-                {!row.reference && !row.status && !row.amount ? "—" : null}
-              </div>
             </TableCell>
             <TableCell className="text-sm text-muted-foreground">
               {formatSerialActivityPerformedBy(row.performedBy)}
