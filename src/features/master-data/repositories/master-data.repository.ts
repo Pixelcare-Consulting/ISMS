@@ -30,7 +30,21 @@ export const masterDataRepository = {
       () =>
         prisma.productModel.findMany({
           where: { tenantId, ...(brandId ? { brandId } : {}) },
-          include: { brand: true, category: true },
+          include: {
+            brand: true,
+            category: true,
+            priceLists: {
+              select: {
+                id: true,
+                amount: true,
+                periodStart: true,
+                periodEnd: true,
+                packageTypeId: true,
+                packageType: { select: { id: true, name: true, quantity: true } },
+              },
+              orderBy: { periodStart: "desc" },
+            },
+          },
           orderBy: { skuCode: "asc" },
         }),
     );
