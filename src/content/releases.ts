@@ -24,6 +24,39 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.13.12",
+    date: "2026-08-03",
+    title: "Sales details-first serials + header field alignment",
+    highlights: [
+      "Serials live only on transaction details; header serial FK removed",
+      "Header adds SI/Trans, payment/sale/delivery, stock-source branch, proof upload; slip/RR are free text",
+      "Detail modal requires brand (+ optional promo); ATR restore returns every detail serial to STK",
+      "Sales CSV report emits one row per serial/detail for multi-set packages",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "BranchSalesTransaction.alternateBranchId stock source; detail packageTypeId/brandId/promoTypeId",
+      },
+      {
+        type: "feature",
+        description:
+          "New sale form: SI/Trans, payment/sale/delivery lookups, alternate branch, proof via local FS storage",
+      },
+      {
+        type: "fix",
+        description:
+          "ATR complete restores all detail serials at the stock-source branch (not only a header SN)",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sales report queries BranchSalesTransactionDetail (DATE, BRANCH, STOCK SOURCE, SERIAL, MODEL, PACKAGE, …)",
+      },
+    ],
+  },
+  {
     version: "0.13.11",
     date: "2026-07-31",
     title: "Sales transaction create + package detail modal",
@@ -33,6 +66,11 @@ export const RELEASES: ReleaseNote[] = [
       "Multi-detail persist with per-serial STK→SLD/RSV; list page CTA replaces inline Record sale",
     ],
     changes: [
+      {
+        type: "fix",
+        description:
+          "DialogContent / AlertDialogContent default aria-describedby to silence Radix missing-Description warnings",
+      },
       {
         type: "feature",
         description:
@@ -125,7 +163,7 @@ export const RELEASES: ReleaseNote[] = [
         type: "feature",
         description:
           "Orders nav group with /orders/manual, /orders/special, /orders/auto-replenish; permissions orders.manual|special|auto_replenish × view|create|approve (legacy orders.* still accepted)",
-      },
+      }, 
       {
         type: "improvement",
         description:
