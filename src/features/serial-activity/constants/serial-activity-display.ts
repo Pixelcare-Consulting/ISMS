@@ -36,14 +36,20 @@ export interface SerialActivityEvent {
   serialNo: string;
   /** `${skuCode} — ${name}` of the unit's model. */
   modelLabel: string;
-  /** Relevant branch/location for the event (may be a `from → to` route). */
+  /**
+   * Where the unit ended up for this event — the destination for routed events
+   * (transfers, pull-outs), the holding branch otherwise.
+   */
   location: string | null;
   /** Reference document number (transfer no, transaction no, session no, …). */
   reference: string | null;
-  /** Status label where applicable (inventory status, count outcome). */
+  /**
+   * Full reference context, one entry per line — the movement route
+   * (`Branch A → Branch B`), customer, amount, waybill, notes, and so on.
+   */
+  referenceDetails: string[];
+  /** Status label where applicable (inventory status, count outcome, …). */
   status: string | null;
-  /** Sale amount as a raw string, when the event is a sale. */
-  amount: string | null;
   /** User who performed the transaction, when captured. */
   performedBy: { name: string | null; email: string } | null;
 }
@@ -57,19 +63,6 @@ export function formatSerialActivityPerformedBy(
 
 export function formatSerialActivityType(type: SerialActivityType): string {
   return SERIAL_ACTIVITY_LABELS[type] ?? type;
-}
-
-/**
- * Event label with its reference details appended, e.g. `Status update: Sold`
- * or `Transferred: TR-0001`. Falls back to the plain label when the event has
- * no reference, status or amount.
- */
-export function formatSerialActivityEvent(event: SerialActivityEvent): string {
-  const label = formatSerialActivityType(event.type);
-  const details = [event.reference, event.status, event.amount].filter(
-    (value): value is string => Boolean(value),
-  );
-  return details.length > 0 ? `${label}: ${details.join(" · ")}` : label;
 }
 
 export function formatSerialActivityTimestamp(value: Date): string {

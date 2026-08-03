@@ -8,9 +8,9 @@ import {
   SERIAL_ACTIVITY_TYPES,
   type SerialActivityEvent,
   type SerialActivityType,
-  formatSerialActivityEvent,
   formatSerialActivityPerformedBy,
   formatSerialActivityTimestamp,
+  formatSerialActivityType,
 } from "@/features/serial-activity/constants/serial-activity-display";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
@@ -98,7 +98,11 @@ export function SerialActivityTable({
   const rows = result.items;
 
   const suggestions = useMemo(
-    () => uniqueSearchSuggestions(rows.map((row) => row.serialNo)),
+    () =>
+      uniqueSearchSuggestions(
+        rows.map((row) => row.serialNo),
+        rows.map((row) => row.reference),
+      ),
     [rows],
   );
 
@@ -149,7 +153,7 @@ export function SerialActivityTable({
           <TableSearchBar
             value={search}
             onChange={setSearch}
-            placeholder="Search by serial number…"
+            placeholder="Search by serial number or reference…"
             suggestions={suggestions}
           />
 
@@ -217,8 +221,9 @@ export function SerialActivityTable({
           <GlobalTableHead>Date &amp; time</GlobalTableHead>
           <GlobalTableHead>Event</GlobalTableHead>
           <GlobalTableHead>Serial</GlobalTableHead>
-          <GlobalTableHead>Model</GlobalTableHead>
+          <GlobalTableHead>Status</GlobalTableHead>
           <GlobalTableHead>Location</GlobalTableHead>
+          <GlobalTableHead>Reference</GlobalTableHead>
           <GlobalTableHead>Performed by</GlobalTableHead>
         </TableRow>
       </TableHeader>
@@ -241,17 +246,33 @@ export function SerialActivityTable({
                   TYPE_BADGE_CLASS[row.type],
                 )}
               >
-                {formatSerialActivityEvent(row)}
+                {formatSerialActivityType(row.type)}
               </span>
             </TableCell>
-            <TableCell className="font-medium tabular-nums">
-              {row.serialNo}
+            <TableCell>
+              <div className="font-medium tabular-nums">{row.serialNo}</div>
+              <div className="text-xs text-muted-foreground">
+                {row.modelLabel}
+              </div>
             </TableCell>
             <TableCell className="text-sm text-muted-foreground">
-              {row.modelLabel}
+              {row.status ?? "—"}
             </TableCell>
             <TableCell className="text-sm text-muted-foreground">
               {row.location ?? "—"}
+            </TableCell>
+            <TableCell className="min-w-56 text-sm">
+              {row.reference ? (
+                <div className="font-medium tabular-nums">{row.reference}</div>
+              ) : null}
+              {row.referenceDetails.map((detail) => (
+                <div key={detail} className="text-xs text-muted-foreground">
+                  {detail}
+                </div>
+              ))}
+              {!row.reference && row.referenceDetails.length === 0 ? (
+                <span className="text-muted-foreground">—</span>
+              ) : null}
             </TableCell>
             <TableCell className="text-sm text-muted-foreground">
               {formatSerialActivityPerformedBy(row.performedBy)}
