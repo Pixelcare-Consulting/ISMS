@@ -27,7 +27,7 @@ export function OrderPipelineBars({ data }: OrderPipelineBarsProps) {
   const hasAny = total > 0;
 
   return (
-    <div className="flex w-full flex-col rounded-xl border bg-card p-4 shadow-sm">
+    <div className="flex h-full min-h-64 w-full flex-col rounded-xl border bg-card p-4 shadow-sm">
       <div className="flex items-start justify-between gap-2">
         <div>
           <h3 className="font-semibold">Order pipeline</h3>

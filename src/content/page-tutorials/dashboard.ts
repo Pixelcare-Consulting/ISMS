@@ -19,8 +19,7 @@ export const DASHBOARD_PAGE_TUTORIAL: PageTutorialContent = {
       bullets: [
         "Tap an activity card to jump to Orders, Inventory, Logistics, Sales, Planogram, or Suggested orders — only tiles you can use appear (up to four).",
         "Inventory summary shows stock mix as a chart plus status counts; Planning & alerts lists extra signals that did not fit the top four (hidden when nothing is outstanding).",
-        "This month shows orders created, sales transactions, and units in transit for the current calendar month — only counts you are allowed to see.",
-        "Order pipeline sits full width underneath so you can scan workflow stages at a glance.",
+        "This month (with icons) sits beside Order pipeline — orders, sales, and in-transit counts for the current month next to workflow stages.",
         "Compliance roles see Policies, Reports, Announcements, and Competitors when those modules are available.",
         "Read the announcement banner for tenant-wide notices.",
         "If a module is missing from the menu, ask your admin for the right role permission.",

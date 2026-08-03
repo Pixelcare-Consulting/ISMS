@@ -36,33 +36,44 @@ export function DashboardAnalyticsCharts({
   const alertsVisible =
     showOpsAlerts && Boolean(kpis) && opsAlertKeys.length > 0;
   const periodVisible = showPeriodSnapshot;
-  const summaryRow =
-    showStockChart || alertsVisible || periodVisible;
+  const topRow = showStockChart || alertsVisible;
+  const bottomPair = periodVisible || showOrderChart;
 
-  if (!summaryRow && !showOrderChart) return null;
+  if (!topRow && !bottomPair) return null;
+
+  const periodCard = periodVisible ? (
+    <DashboardPeriodSnapshotCard
+      snapshot={analytics.periodSnapshot}
+      showOrders={showOrdersThisMonth}
+      showSales={showSalesThisMonth}
+      showDeliveryInTransit={showDeliveryInTransit}
+    />
+  ) : null;
+
+  const pipelineCard = showOrderChart ? (
+    <OrderPipelineBars data={analytics.ordersByStatus} />
+  ) : null;
 
   return (
     <section className="space-y-3">
-      {summaryRow ? (
-        <div className="grid gap-3 lg:grid-cols-2">
+      {topRow ? (
+        <div className="grid items-stretch gap-3 lg:grid-cols-2">
           {showStockChart ? (
             <StockStatusDonut data={analytics.inventoryByStatus} />
           ) : null}
           {alertsVisible && kpis ? (
             <DashboardOpsAlerts kpis={kpis} keys={opsAlertKeys} />
           ) : null}
-          {periodVisible ? (
-            <DashboardPeriodSnapshotCard
-              snapshot={analytics.periodSnapshot}
-              showOrders={showOrdersThisMonth}
-              showSales={showSalesThisMonth}
-              showDeliveryInTransit={showDeliveryInTransit}
-            />
-          ) : null}
         </div>
       ) : null}
-      {showOrderChart ? (
-        <OrderPipelineBars data={analytics.ordersByStatus} />
+
+      {bottomPair ? (
+        <div className="grid items-stretch gap-3 lg:grid-cols-2">
+          {periodCard ? <div className="min-w-0 h-full">{periodCard}</div> : null}
+          {pipelineCard ? (
+            <div className="min-w-0 h-full">{pipelineCard}</div>
+          ) : null}
+        </div>
       ) : null}
     </section>
   );

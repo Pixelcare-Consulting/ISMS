@@ -35,8 +35,8 @@ export const RELEASES: ReleaseNote[] = [
     title: "Smoother sales, clearer roles, and a cleaner home screen",
     highlights: [
       "Your home screen shows up to four activity cards for your role — less clutter, same jump-to actions",
-      "More home summaries: Planning & alerts for extra ops signals, plus a This month snapshot (orders, sales, in transit)",
-      "Inventory summary pairs a stock mix chart with a clear status count list; Order pipeline sits full width underneath",
+      "More home summaries: Planning & alerts for extra ops signals, plus a This month snapshot (orders, sales, in transit) with icons",
+      "Inventory summary pairs a stock mix chart with a clear status count list; This month sits beside Order pipeline",
       "Dashboard tiles line up evenly across roles so rows stay balanced",
       "Stock status chart hover shows each status count cleanly — no overlapping or misleading total tip",
       "Compliance roles see a simple overview of Policies, Reports, Announcements, and Competitors",
@@ -52,7 +52,7 @@ export const RELEASES: ReleaseNote[] = [
       "Status settings: pick badge colors per code, clearer module tabs, and a quick guide",
       "Module guides on busy pages — short collapsible tips under the header (Inventory, Sales, Orders, Logistics, Roles, Planning, Planogram, AORs, and more)",
       "Planning and Suggested orders actions look clearer — primary steps stand out, drafts show soft status badges",
-      "Sign-in and register use a simple loading screen; reports and transfers titles match the menu",
+      "Sign-in use a simple loading screen; reports and transfers titles match the menu",
       "Browser tabs show friendly page names (for example, Stock units)",
     ],
     changes: [
@@ -109,7 +109,12 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "improvement",
         description:
-          "Inventory summary shows status counts beside the chart; Order pipeline stays full width below",
+          "Inventory summary shows status counts beside the chart; This month sits beside Order pipeline",
+      },
+      {
+        type: "improvement",
+        description:
+          "This month snapshot uses icons and clearer rows for orders, sales, and in transit",
       },
       {
         type: "improvement",
@@ -121,7 +126,6 @@ export const RELEASES: ReleaseNote[] = [
         description:
           "Removed duplicate Ops snapshot tiles so numbers appear once in the activity cards",
       },
-     
       {
         type: "improvement",
         description:
