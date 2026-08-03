@@ -13,10 +13,10 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | Area | Features |
 |------|----------|
 | **Auth** | Email/password (Better Auth), tenant-scoped sessions, demo seed users |
-| **Dashboard** | Ops KPIs (approvals, DIT, stock, ATR, planogram/MIL alerts); active announcement banner |
+| **Dashboard** | Role-aware activity cards (top 4); Inventory summary + Planning & alerts; This month snapshot; Order pipeline full width; compliance overview when no ops access; active announcement banner |
 | **Announcements** | Tenant posts (title, body, publish/expiry); list + CRUD (`/announcements`) |
 | **Competitors** | Market observations with master Competitor + Competitor brand/model lookups, AOR-bound branch, optional promotion; KPIs + CRUD (`/competitors`) |
-| **Settings** | Company, users, departments, roles, branches, warehouses, dealers, AORs (assign pre-selects + sync), master data (incl. Competitors / Competitor brands), status codes (per-module tabs + badge colors) |
+| **Settings** | Company, users, departments, roles, branches, warehouses, dealers, AORs (assign pre-selects + sync), master data (incl. Competitors / Competitor brands), status codes (per-module tabs + badge colors); collapsible Module guides on complex settings/ops pages |
 | **Planning** | BRS CSV forecast import, allocation, suggested auto-replenish orders (`/settings/planning`, `/planning/suggested-orders`) |
 | **Planogram** | Per-branch SKU shelf capacity, MIL, order enforcement |
 | **Policies** | Full document control (ISO track) |
@@ -94,7 +94,7 @@ src/
 │   └── api/             # Auth, exports, policy attachments
 ├── components/          # Shared UI (ShadCN, data-table)
 ├── config/              # app-navigation, app-modules
-├── content/             # releases.ts
+├── content/             # releases.ts, page-tutorials, module-guides
 ├── features/            # Domain modules (actions, repositories, services)
 ├── lib/                 # auth, database, crypto, notifications, storage
 └── proxy.ts             # Route protection

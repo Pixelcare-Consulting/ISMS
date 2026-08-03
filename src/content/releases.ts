@@ -32,8 +32,14 @@ export const RELEASES: ReleaseNote[] = [
   {
     version: "0.13.23",
     date: "2026-08-03",
-    title: "Smoother sales, clearer roles, and faster stock views",
+    title: "Smoother sales, clearer roles, and a cleaner home screen",
     highlights: [
+      "Your home screen shows up to four activity cards for your role — less clutter, same jump-to actions",
+      "More home summaries: Planning & alerts for extra ops signals, plus a This month snapshot (orders, sales, in transit)",
+      "Inventory summary pairs a stock mix chart with a clear status count list; Order pipeline sits full width underneath",
+      "Dashboard tiles line up evenly across roles so rows stay balanced",
+      "Stock status chart hover shows each status count cleanly — no overlapping or misleading total tip",
+      "Compliance roles see a simple overview of Policies, Reports, Announcements, and Competitors",
       "New sales starts with a ready transaction number (TRN-…) and clearer fields for payment, delivery, stock branch, and proof",
       "Package details capture brand (and optional promo); each set keeps its own serials",
       "Sales & ATRs shows status badges, peso amounts, and a quick view of all serials on multi-unit sales",
@@ -44,10 +50,17 @@ export const RELEASES: ReleaseNote[] = [
       "Series summary on Stock units starts hidden; click the header to show or hide (preference remembered)",
       "Inventory quick guide explains off planogram and each stock-units table column",
       "Status settings: pick badge colors per code, clearer module tabs, and a quick guide",
+      "Module guides on busy pages — short collapsible tips under the header (Inventory, Sales, Orders, Logistics, Roles, Planning, Planogram, AORs, and more)",
+      "Planning and Suggested orders actions look clearer — primary steps stand out, drafts show soft status badges",
       "Sign-in and register use a simple loading screen; reports and transfers titles match the menu",
       "Browser tabs show friendly page names (for example, Stock units)",
     ],
     changes: [
+      {
+        type: "feature",
+        description:
+          "Compliance home shows Policies, Reports, Announcements, and Competitors when available",
+      },
       {
         type: "feature",
         description:
@@ -74,6 +87,42 @@ export const RELEASES: ReleaseNote[] = [
           "Logistics and settings can grant view-only access separately from manage",
       },
       {
+        type: "feature",
+        description:
+          "Status settings let you choose badge colors; each tab explains which module uses those codes",
+      },
+      {
+        type: "feature",
+        description:
+          "Busy pages show a collapsible module guide under the header so you can skim how the screen works",
+      },
+      {
+        type: "improvement",
+        description:
+          "Home screen adds Planning & alerts and a This month snapshot alongside inventory and the order pipeline",
+      },
+      {
+        type: "improvement",
+        description:
+          "Home screen focuses on your top activity cards, inventory mix, and order pipeline — without repeating the same counts in a second list",
+      },
+      {
+        type: "improvement",
+        description:
+          "Inventory summary shows status counts beside the chart; Order pipeline stays full width below",
+      },
+      {
+        type: "improvement",
+        description:
+          "Activity cards share rows evenly so the home layout stays tidy for every role",
+      },
+      {
+        type: "improvement",
+        description:
+          "Removed duplicate Ops snapshot tiles so numbers appear once in the activity cards",
+      },
+     
+      {
         type: "improvement",
         description:
           "Roles matrix and access drawer are searchable and easier on mobile",
@@ -88,11 +137,7 @@ export const RELEASES: ReleaseNote[] = [
         description:
           "Inventory quick guide covers off planogram and Branch / Model / Serial / DR / Planogram / Aging / Status columns",
       },
-      {
-        type: "feature",
-        description:
-          "Status settings let you choose badge colors; each tab explains which module uses those codes",
-      },
+    
       {
         type: "improvement",
         description:
@@ -106,7 +151,17 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "improvement",
         description:
+          "Planning and Suggested orders use clearer action buttons and soft status badges on draft orders",
+      },
+      {
+        type: "improvement",
+        description:
           "Sign-in loading is quieter; report page titles match the sidebar",
+      },
+      {
+        type: "fix",
+        description:
+          "Stock status donut hover shows the slice you point at, not a conflicting total tip",
       },
       {
         type: "fix",
@@ -485,7 +540,7 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "improvement",
         description:
-          "Sign-in and register keep a loading screen until the dashboard opens",
+          "Sign-in keep a loading screen until the dashboard opens",
       },
       {
         type: "improvement",

@@ -157,7 +157,7 @@ export function PlanningPanel({
         />
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-1 rounded-xl border bg-card p-1.5 shadow-sm">
         <input
           ref={fileRef}
           type="file"
@@ -179,7 +179,9 @@ export function PlanningPanel({
         />
 
         <Button
+          size="sm"
           variant="outline"
+          className="rounded-lg"
           disabled={pending}
           onClick={() => fileRef.current?.click()}
         >
@@ -189,6 +191,8 @@ export function PlanningPanel({
         {period ? (
           <>
             <Button
+              size="sm"
+              className="rounded-lg"
               disabled={pending}
               onClick={() =>
                 runAction("Allocation computed", () =>
@@ -200,7 +204,9 @@ export function PlanningPanel({
             </Button>
 
             <Button
-              variant="secondary"
+              size="sm"
+              variant="outline"
+              className="rounded-lg"
               disabled={pending}
               onClick={() =>
                 runAction("Suggested orders created", () =>
@@ -212,7 +218,9 @@ export function PlanningPanel({
             </Button>
 
             <Button
+              size="sm"
               variant="outline"
+              className="rounded-lg"
               disabled={pending || draftOrders === 0}
               onClick={() =>
                 runAction("Submitted for TL review", () =>
@@ -225,7 +233,7 @@ export function PlanningPanel({
           </>
         ) : null}
 
-        <Button variant="outline" asChild>
+        <Button size="sm" variant="outline" className="rounded-lg" asChild>
           <Link href="/planning/suggested-orders">View suggested orders</Link>
         </Button>
       </div>

@@ -5,6 +5,8 @@ import {
 } from "@/features/inventory/actions/inventory.actions";
 import { InventorySeriesSummaryPanel } from "@/features/inventory/components/inventory-series-summary";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
+import { ModuleGuide } from "@/components/module-guide";
+import { INVENTORY_MODULE_GUIDE } from "@/content/module-guides/inventory";
 import { requirePermission } from "@/lib/auth/permissions";
 import { InventoryTable } from "@/app/(app)/inventory/_components/inventory-table";
 
@@ -55,6 +57,7 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
 
   return (
     <div className="space-y-4">
+      <ModuleGuide {...INVENTORY_MODULE_GUIDE} />
       <InventorySeriesSummaryPanel summary={seriesSummary} />
       <InventoryTable
         result={result}

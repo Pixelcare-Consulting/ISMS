@@ -78,6 +78,7 @@ export const appNavigation: NavEntry[] = [
     label: "Dashboard",
     icon: LayoutDashboard,
     permission: getModuleNavPermission("dashboard"),
+    badge: "new",
   },
   {
     type: "link",
@@ -399,7 +400,7 @@ export const appNavigation: NavEntry[] = [
             href: "/settings/branch-quotas",
             label: "Branch quotas",
             icon: ChartColumn,
-            permission: "branches.manage",
+            anyPermissions: ["branches.view", "branches.manage"],
           },
           {
             href: "/settings/planning",
@@ -417,13 +418,14 @@ export const appNavigation: NavEntry[] = [
             href: "/settings/aors",
             label: "AORs",
             icon: Network,
-            permission: "aors.manage",
+            anyPermissions: ["aors.view", "aors.manage"],
           },
           {
             href: "/settings/ordering",
             label: "Ordering policy",
             icon: CalendarClock,
-            permission: "ordering_settings.manage",
+            anyPermissions: ["ordering_settings.view", "ordering_settings.manage"],
+            badge: "new",
           },
         ],
       },

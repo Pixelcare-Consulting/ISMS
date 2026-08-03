@@ -8,8 +8,10 @@ import {
   resolveSalesCapabilities,
 } from "@/features/sales/constants/sales-permissions";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
+import { ModuleGuide } from "@/components/module-guide";
 import { requireAuth } from "@/lib/auth/permissions";
 import { pageMetadata } from "@/lib/shared/seo";
+import { SALES_MODULE_GUIDE } from "@/content/module-guides/sales";
 import { SALES_PAGE_TUTORIAL } from "@/content/page-tutorials/sales";
 import { PageHeader } from "@/app/(app)/_components/page-header";
 import { SalesTable } from "@/app/(app)/sales/_components/sales-table";
@@ -54,6 +56,7 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
           ) : null
         }
       />
+      <ModuleGuide {...SALES_MODULE_GUIDE} />
       <SalesTable result={result} capabilities={capabilities} />
     </div>
   );

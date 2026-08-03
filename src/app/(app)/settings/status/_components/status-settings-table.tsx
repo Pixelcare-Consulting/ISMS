@@ -1,17 +1,22 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useMemo, useOptimistic, useState, useTransition } from "react";
+import {
+  ArrowLeftRight,
+  Info,
+  Package,
+  Truck,
+  Undo2,
+  type LucideIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import {
   createReasonStatusCodeAction,
   updateReasonStatusCodeAction,
 } from "@/features/reason-status/actions/reason-status.actions";
-import {
-  REASON_STATUS_CATEGORY_LABELS,
-  REASON_STATUS_CATEGORY_USED_IN,
-} from "@/features/reason-status/constants/defaults";
+import { REASON_STATUS_CATEGORY_LABELS } from "@/features/reason-status/constants/defaults";
 import {
   resolveStatusColorKey,
   type StatusColorKey,
@@ -31,6 +36,8 @@ import {
   useClientTablePagination,
   useTableSelection,
 } from "@/components/data-table";
+import { ModuleGuide } from "@/components/module-guide";
+import { statusModuleGuideForCategory } from "@/content/module-guides/status";
 import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -62,11 +69,68 @@ interface StatusGroupRow {
   codes: StatusCodeRow[];
 }
 
+type OptimisticUpdate =
+  | {
+      type: "recordStatus";
+      codeId: string;
+      recordStatus: LookupRecordStatus;
+    }
+  | { type: "color"; codeId: string; color: string }
+  | {
+      type: "add";
+      category: ReasonStatusCategory;
+      code: StatusCodeRow;
+    };
+
+function applyOptimisticUpdate(
+  current: StatusGroupRow[],
+  update: OptimisticUpdate,
+): StatusGroupRow[] {
+  switch (update.type) {
+    case "recordStatus":
+      return current.map((group) => ({
+        ...group,
+        codes: group.codes.map((entry) =>
+          entry.id === update.codeId
+            ? { ...entry, recordStatus: update.recordStatus }
+            : entry,
+        ),
+      }));
+    case "color":
+      return current.map((group) => ({
+        ...group,
+        codes: group.codes.map((entry) =>
+          entry.id === update.codeId
+            ? { ...entry, color: update.color }
+            : entry,
+        ),
+      }));
+    case "add":
+      return current.map((group) =>
+        group.category === update.category
+          ? { ...group, codes: [...group.codes, update.code] }
+          : group,
+      );
+    default: {
+      const _exhaustive: never = update;
+      return _exhaustive;
+    }
+  }
+}
+
 const COL_COUNT = 9;
+
+const CATEGORY_ICONS: Record<ReasonStatusCategory, LucideIcon> = {
+  inventory_system: Package,
+  pullout_reason: Undo2,
+  delivery_workflow: Truck,
+  transfer_workflow: ArrowLeftRight,
+  pullout_workflow: Undo2,
+};
 
 export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
   const router = useRouter();
-  const [rows, setRows] = useState(groups);
+  const [rows, applyOptimistic] = useOptimistic(groups, applyOptimisticUpdate);
   const [pending, startTransition] = useTransition();
   const [expanded, setExpanded] = useState<ReasonStatusCategory | null>(
     groups[0]?.category ?? null,
@@ -74,10 +138,6 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
   const [newCode, setNewCode] = useState("");
   const [newName, setNewName] = useState("");
   const [newColor, setNewColor] = useState<StatusColorKey>("slate");
-
-  useEffect(() => {
-    setRows(groups);
-  }, [groups]);
 
   const activeGroup = useMemo(
     () => rows.find((g) => g.category === expanded),
@@ -102,23 +162,21 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
     const next: LookupRecordStatus =
       code.recordStatus === "active" ? "inactive" : "active";
     startTransition(async () => {
+      applyOptimistic({
+        type: "recordStatus",
+        codeId: code.id,
+        recordStatus: next,
+      });
       const result = await updateReasonStatusCodeAction(code.id, {
         recordStatus: next,
       });
       if (result.error) {
         toast.error(result.error);
+        router.refresh();
         return;
       }
       toast.success(
         next === "active" ? "Status code activated" : "Status code deactivated",
-      );
-      setRows((currentRows) =>
-        currentRows.map((group) => ({
-          ...group,
-          codes: group.codes.map((entry) =>
-            entry.id === code.id ? { ...entry, recordStatus: next } : entry,
-          ),
-        })),
       );
       router.refresh();
     });
@@ -127,20 +185,14 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
   function setCodeColor(code: StatusCodeRow, color: StatusColorKey) {
     if (resolveStatusColorKey(code.color, code.code) === color) return;
     startTransition(async () => {
+      applyOptimistic({ type: "color", codeId: code.id, color });
       const result = await updateReasonStatusCodeAction(code.id, { color });
       if (result.error) {
         toast.error(result.error);
+        router.refresh();
         return;
       }
       toast.success("Badge color updated");
-      setRows((currentRows) =>
-        currentRows.map((group) => ({
-          ...group,
-          codes: group.codes.map((entry) =>
-            entry.id === code.id ? { ...entry, color } : entry,
-          ),
-        })),
-      );
       router.refresh();
     });
   }
@@ -160,27 +212,19 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
       }
       toast.success("Status code added");
       if (result.code) {
-        setRows((currentRows) =>
-          currentRows.map((group) =>
-            group.category === activeGroup.category
-              ? {
-                  ...group,
-                  codes: [
-                    ...group.codes,
-                    {
-                      id: result.code.id,
-                      code: result.code.code,
-                      name: result.code.name,
-                      color: result.code.color,
-                      sortOrder: result.code.sortOrder,
-                      isSystem: result.code.isSystem,
-                      recordStatus: result.code.recordStatus,
-                    },
-                  ],
-                }
-              : group,
-          ),
-        );
+        applyOptimistic({
+          type: "add",
+          category: activeGroup.category,
+          code: {
+            id: result.code.id,
+            code: result.code.code,
+            name: result.code.name,
+            color: result.code.color,
+            sortOrder: result.code.sortOrder,
+            isSystem: result.code.isSystem,
+            recordStatus: result.code.recordStatus,
+          },
+        });
       }
       setNewCode("");
       setNewName("");
@@ -188,16 +232,49 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
       router.refresh();
     });
   }
+  const CategoryIcon = activeGroup
+    ? CATEGORY_ICONS[activeGroup.category]
+    : Info;
+  const statusGuide = activeGroup
+    ? statusModuleGuideForCategory(
+        activeGroup.category,
+        activeGroup.name,
+        activeGroup.codes.length,
+      )
+    : null;
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
+      {activeGroup && statusGuide ? (
+        <ModuleGuide
+          title={statusGuide.title}
+          description={statusGuide.description}
+          badge={statusGuide.badge}
+          icon={CategoryIcon}
+          tips={statusGuide.tips.map((tip, index) =>
+            index === 0 ? { label: tip.label, icon: Info } : tip,
+          )}
+          resetKey={activeGroup.category}
+        />
+      ) : null}
+
+      <div
+        className="flex flex-wrap gap-1 rounded-xl border bg-card p-1.5 shadow-sm"
+        role="tablist"
+        aria-label="Status module"
+      >
         {rows.map((group) => (
           <Button
             key={group.category}
             type="button"
+            role="tab"
+            aria-selected={expanded === group.category}
             size="sm"
-            variant={expanded === group.category ? "default" : "outline"}
+            variant={expanded === group.category ? "default" : "ghost"}
+            className={cn(
+              "rounded-lg",
+              expanded !== group.category && "text-muted-foreground",
+            )}
             onClick={() => setExpanded(group.category)}
           >
             {REASON_STATUS_CATEGORY_LABELS[group.category]}
@@ -207,19 +284,6 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
 
       {activeGroup ? (
         <div className="space-y-4">
-          <div className="rounded-xl border bg-muted/30 px-4 py-3">
-            <h2 className="text-base font-semibold tracking-tight">
-              {activeGroup.name}
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {REASON_STATUS_CATEGORY_USED_IN[activeGroup.category]}
-            </p>
-            <p className="mt-2 text-xs text-muted-foreground">
-              System codes cannot be deleted — deactivate instead. Badge colors
-              appear on Inventory and Logistics lists.
-            </p>
-          </div>
-
           <GlobalDataTable
             stickyHeader
             toolbarLeading={
@@ -253,7 +317,7 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
                     placeholder="Display label"
-                    className="min-w-[200px]"
+                    className="min-w-50"
                   />
                 </div>
                 <div className="space-y-1.5">

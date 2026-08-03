@@ -92,12 +92,19 @@ export function SuggestedOrdersTable({
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap gap-2">
-        <Button disabled={pending || !periodId} onClick={generate}>
+      <div className="flex flex-wrap gap-1 rounded-xl border bg-card p-1.5 shadow-sm">
+        <Button
+          size="sm"
+          className="rounded-lg"
+          disabled={pending || !periodId}
+          onClick={generate}
+        >
           Generate from allocation
         </Button>
         <Button
+          size="sm"
           variant="outline"
+          className="rounded-lg"
           disabled={pending || draftsResult.total === 0}
           onClick={submitAll}
         >
