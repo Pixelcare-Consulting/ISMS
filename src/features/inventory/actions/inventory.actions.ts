@@ -21,7 +21,7 @@ export type InventoryListItem = {
   deliveryNo: string | null;
   deliveryDate: string | null;
   agingDays: number;
-  statusCode: { id: string; code: string; name: string };
+  statusCode: { id: string; code: string; name: string; color: string | null };
   branch: { id: string; name: string; sapCode: string };
   serialNumber: {
     id: string;
@@ -94,6 +94,7 @@ export async function listInventoryAction(input?: {
           id: r.statusCode.id,
           code: r.statusCode.code,
           name: r.statusCode.name,
+          color: r.statusCode.color,
         },
         branch: {
           id: r.branch.id,

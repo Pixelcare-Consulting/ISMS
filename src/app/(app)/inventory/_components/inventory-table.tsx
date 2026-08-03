@@ -409,6 +409,7 @@ export function InventoryTable({
                   <StatusCodeBadge
                     code={r.statusCode.code}
                     name={r.statusCode.name}
+                    color={r.statusCode.color}
                     showCode
                   />
                 </div>

@@ -37,6 +37,7 @@ interface StatusCodeRef {
   id: string;
   code: string;
   name: string;
+  color?: string | null;
 }
 
 interface PaginatedList<T> {
@@ -271,13 +272,18 @@ export function PulloutsPanel({ pullouts }: PulloutsPanelProps) {
                     <StatusCodeBadge
                       code={p.reasonStatusCode.code}
                       name={p.reasonStatusCode.name}
+                      color={p.reasonStatusCode.color}
                     />
                   ) : (
                     "—"
                   )}
                 </TableCell>
                 <TableCell>
-                  <StatusCodeBadge code={p.statusCode.code} name={p.statusCode.name} />
+                  <StatusCodeBadge
+                    code={p.statusCode.code}
+                    name={p.statusCode.name}
+                    color={p.statusCode.color}
+                  />
                 </TableCell>
                 <TableCell className="space-x-2">
                   {p.statusCode.code === "pending_tl" ? (

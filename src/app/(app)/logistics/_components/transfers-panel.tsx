@@ -46,6 +46,7 @@ interface StatusCodeRef {
   id: string;
   code: string;
   name: string;
+  color?: string | null;
 }
 
 interface PaginatedList<T> {
@@ -267,7 +268,11 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
                     {t.fromBranch.name} → {t.toBranch.name}
                   </TableCell>
                   <TableCell>
-                    <StatusCodeBadge code={t.statusCode.code} name={t.statusCode.name} />
+                    <StatusCodeBadge
+                      code={t.statusCode.code}
+                      name={t.statusCode.name}
+                      color={t.statusCode.color}
+                    />
                   </TableCell>
                   <TableCell className="space-x-2">
                     {["requested", "pending_tl"].includes(t.statusCode.code) ? (

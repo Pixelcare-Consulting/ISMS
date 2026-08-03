@@ -21,7 +21,7 @@ const serialListInclude = {
     select: {
       updatedAt: true,
       branch: { select: { id: true, name: true } },
-      statusCode: { select: { id: true, code: true, name: true } },
+      statusCode: { select: { id: true, code: true, name: true, color: true } },
     },
   },
 } satisfies Prisma.SerialNumberInclude;
@@ -41,7 +41,7 @@ const serialTraceabilityInclude = {
       id: true,
       updatedAt: true,
       branch: { select: { name: true } },
-      statusCode: { select: { code: true, name: true } },
+      statusCode: { select: { code: true, name: true, color: true } },
     },
   },
   salesDetails: {
@@ -71,7 +71,7 @@ const serialTraceabilityInclude = {
           createdAt: true,
           fromBranch: { select: { name: true } },
           toBranch: { select: { name: true } },
-          statusCode: { select: { code: true, name: true } },
+          statusCode: { select: { code: true, name: true, color: true } },
         },
       },
     },
@@ -86,7 +86,7 @@ const serialTraceabilityInclude = {
           createdAt: true,
           branch: { select: { name: true } },
           warehouse: { select: { name: true } },
-          statusCode: { select: { code: true, name: true } },
+          statusCode: { select: { code: true, name: true, color: true } },
         },
       },
     },

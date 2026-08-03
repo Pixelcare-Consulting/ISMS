@@ -1,42 +1,25 @@
-import type { ReasonStatusCategory } from "@prisma/client";
-
 import { Badge } from "@/components/ui/badge";
+import { statusColorClassName } from "@/features/reason-status/constants/status-colors";
 import { cn } from "@/utils/cn";
 
 interface StatusCodeBadgeProps {
   code: string;
   name: string;
-  category?: ReasonStatusCategory;
+  /** Palette key from ReasonStatusCode.color (optional — falls back by code). */
+  color?: string | null;
   /** Show technical code suffix (e.g. pending_tl). Off by default in operational views. */
   showCode?: boolean;
   className?: string;
 }
 
-const WORKFLOW_VARIANTS: Record<string, string> = {
-  pending: "border-amber-200 bg-amber-50 text-amber-800",
-  pending_ps: "border-amber-200 bg-amber-50 text-amber-800",
-  pending_tl: "border-amber-200 bg-amber-50 text-amber-800",
-  pending_logistics: "border-amber-200 bg-amber-50 text-amber-800",
-  pending_sp: "border-amber-200 bg-amber-50 text-amber-800",
-  for_transfer: "border-violet-200 bg-violet-50 text-violet-800",
-  for_pullout: "border-violet-200 bg-violet-50 text-violet-800",
-  accepted: "border-emerald-200 bg-emerald-50 text-emerald-800",
-  approved: "border-emerald-200 bg-emerald-50 text-emerald-800",
-  completed: "border-emerald-200 bg-emerald-50 text-emerald-800",
-  rejected: "border-rose-200 bg-rose-50 text-rose-800",
-  in_transit: "border-sky-200 bg-sky-50 text-sky-800",
-  cancelled: "border-rose-200 bg-rose-50 text-rose-800",
-  partial: "border-violet-200 bg-violet-50 text-violet-800",
-  draft: "border-muted bg-muted/40 text-muted-foreground",
-};
-
 export function StatusCodeBadge({
   code,
   name,
+  color,
   showCode = false,
   className,
 }: StatusCodeBadgeProps) {
-  const variant = WORKFLOW_VARIANTS[code] ?? "border-border bg-background text-foreground";
+  const variant = statusColorClassName(color, code);
 
   return (
     <Badge variant="outline" className={cn("font-normal", variant, className)}>
@@ -44,6 +27,28 @@ export function StatusCodeBadge({
       {showCode ? (
         <span className="ml-1.5 font-mono text-[10px] opacity-70">{code}</span>
       ) : null}
+    </Badge>
+  );
+}
+
+/** Active / Inactive for Settings → Status (not a workflow code). */
+export function RecordStatusBadge({
+  status,
+}: {
+  status: "active" | "inactive";
+}) {
+  const active = status === "active";
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        "font-normal",
+        active
+          ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+          : "border-slate-200 bg-slate-50 text-slate-600",
+      )}
+    >
+      {active ? "Active" : "Inactive"}
     </Badge>
   );
 }

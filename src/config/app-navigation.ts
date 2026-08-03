@@ -387,6 +387,7 @@ export const appNavigation: NavEntry[] = [
             label: "Status",
             icon: Clock,
             permission: "status_settings.manage",
+            badge: "new",
           },
         ],
       },

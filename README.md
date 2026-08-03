@@ -16,7 +16,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | **Dashboard** | Ops KPIs (approvals, DIT, stock, ATR, planogram/MIL alerts); active announcement banner |
 | **Announcements** | Tenant posts (title, body, publish/expiry); list + CRUD (`/announcements`) |
 | **Competitors** | Market observations with master Competitor + Competitor brand/model lookups, AOR-bound branch, optional promotion; KPIs + CRUD (`/competitors`) |
-| **Settings** | Company, users, departments, roles, branches, warehouses, dealers, AORs (assign pre-selects + sync), master data (incl. Competitors / Competitor brands), status codes |
+| **Settings** | Company, users, departments, roles, branches, warehouses, dealers, AORs (assign pre-selects + sync), master data (incl. Competitors / Competitor brands), status codes (per-module tabs + badge colors) |
 | **Planning** | BRS CSV forecast import, allocation, suggested auto-replenish orders (`/settings/planning`, `/planning/suggested-orders`) |
 | **Planogram** | Per-branch SKU shelf capacity, MIL, order enforcement |
 | **Policies** | Full document control (ISO track) |

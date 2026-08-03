@@ -41,6 +41,9 @@ export const RELEASES: ReleaseNote[] = [
       "Roles settings are easier: search, pick a role, and toggle access in a clearer grid (cards on phone)",
       "Logistics and settings can use separate View vs Manage access; report export is optional",
       "Stock series summary and off-planogram lists load faster and more reliably",
+      "Series summary on Stock units starts hidden; click the header to show or hide (preference remembered)",
+      "Inventory quick guide explains off planogram and each stock-units table column",
+      "Status settings: pick badge colors per code, clearer module tabs, and a quick guide",
       "Sign-in and register use a simple loading screen; reports and transfers titles match the menu",
       "Browser tabs show friendly page names (for example, Stock units)",
     ],
@@ -74,6 +77,21 @@ export const RELEASES: ReleaseNote[] = [
         type: "improvement",
         description:
           "Roles matrix and access drawer are searchable and easier on mobile",
+      },
+      {
+        type: "improvement",
+        description:
+          "Stock units Series summary starts collapsed; click the header to expand or hide (choice remembered)",
+      },
+      {
+        type: "improvement",
+        description:
+          "Inventory quick guide covers off planogram and Branch / Model / Serial / DR / Planogram / Aging / Status columns",
+      },
+      {
+        type: "feature",
+        description:
+          "Status settings let you choose badge colors; each tab explains which module uses those codes",
       },
       {
         type: "improvement",

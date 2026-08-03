@@ -8,7 +8,7 @@ import {
 
 const inventoryListInclude = {
   branch: { select: { id: true, name: true, sapCode: true } },
-  statusCode: { select: { id: true, code: true, name: true } },
+  statusCode: { select: { id: true, code: true, name: true, color: true } },
   serialNumber: {
     include: {
       model: {
@@ -34,7 +34,7 @@ export type InventoryListRow = {
   createdAt: Date;
   updatedAt: Date;
   branch: { id: string; name: string; sapCode: string };
-  statusCode: { id: string; code: string; name: string };
+  statusCode: { id: string; code: string; name: string; color: string | null };
   serialNumber: {
     id: string;
     serialNo: string;

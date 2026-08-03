@@ -24,6 +24,7 @@ export const reasonStatusService = {
     category: ReasonStatusCategory;
     name: string;
     code: string;
+    color?: string | null;
     sortOrder?: number;
   }) {
     const group = await reasonStatusRepository.findGroup(input.tenantId, input.category);
@@ -42,6 +43,7 @@ export const reasonStatusService = {
       reasonStatusId: group.id,
       name: input.name.trim(),
       code: normalized,
+      color: input.color,
       sortOrder: input.sortOrder,
     });
   },
@@ -49,10 +51,14 @@ export const reasonStatusService = {
   async updateCode(
     tenantId: string,
     codeId: string,
-    data: { name?: string; recordStatus?: "active" | "inactive"; sortOrder?: number },
+    data: {
+      name?: string;
+      recordStatus?: "active" | "inactive";
+      sortOrder?: number;
+      color?: string | null;
+    },
   ) {
-    const existing = await reasonStatusRepository.updateCode(tenantId, codeId, data);
-    return existing;
+    return reasonStatusRepository.updateCode(tenantId, codeId, data);
   },
 
   async deactivateCode(tenantId: string, codeId: string) {
