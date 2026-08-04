@@ -30,31 +30,44 @@ const DialogContent = React.forwardRef<
   React.ComponentRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
     showCloseButton?: boolean;
+    /** Applied to the overlay (e.g. raise z-index above another open dialog). */
+    overlayClassName?: string;
   }
->(({ className, children, showCloseButton = true, ...props }, ref) => (
-  <DialogPortal>
-    <DialogOverlay />
-    <DialogPrimitive.Content
-      ref={ref}
-      className={cn(
-        "fixed left-1/2 top-1/2 z-50 grid w-[calc(100%-2rem)] max-w-md max-h-[calc(100svh-2rem)] overflow-y-auto -translate-x-1/2 -translate-y-1/2",
-        "gap-4 rounded-xl border bg-card p-4 sm:p-6 shadow-xl",
-        className,
-      )}
-      {...props}
-      // Opt out when no DialogDescription child — silences Radix a11y warning app-wide.
-      aria-describedby={props["aria-describedby"] ?? undefined}
-    >
-      {children}
-      {showCloseButton ? (
-        <DialogPrimitive.Close className="absolute right-4 top-4 cursor-pointer rounded-md opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring disabled:pointer-events-none">
-          <X className="size-4" />
-          <span className="sr-only">Close</span>
-        </DialogPrimitive.Close>
-      ) : null}
-    </DialogPrimitive.Content>
-  </DialogPortal>
-));
+>(
+  (
+    {
+      className,
+      children,
+      showCloseButton = true,
+      overlayClassName,
+      ...props
+    },
+    ref,
+  ) => (
+    <DialogPortal>
+      <DialogOverlay className={overlayClassName} />
+      <DialogPrimitive.Content
+        ref={ref}
+        className={cn(
+          "fixed left-1/2 top-1/2 z-50 grid w-[calc(100%-2rem)] max-w-md max-h-[calc(100svh-2rem)] overflow-y-auto -translate-x-1/2 -translate-y-1/2",
+          "gap-4 rounded-xl border bg-card p-4 sm:p-6 shadow-xl",
+          className,
+        )}
+        {...props}
+        // Opt out when no DialogDescription child — silences Radix a11y warning app-wide.
+        aria-describedby={props["aria-describedby"] ?? undefined}
+      >
+        {children}
+        {showCloseButton ? (
+          <DialogPrimitive.Close className="absolute right-4 top-4 cursor-pointer rounded-md opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring disabled:pointer-events-none">
+            <X className="size-4" />
+            <span className="sr-only">Close</span>
+          </DialogPrimitive.Close>
+        ) : null}
+      </DialogPrimitive.Content>
+    </DialogPortal>
+  ),
+);
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
 function DialogHeader({

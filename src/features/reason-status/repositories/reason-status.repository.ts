@@ -26,6 +26,9 @@ async function invalidateReasonStatusCache(tenantId: string) {
     deleteCache(
       cacheKey("tenant", tenantId, "reason-status", "active", "pullout_workflow"),
     ),
+    deleteCache(
+      cacheKey("tenant", tenantId, "reason-status", "active", "sales_atr"),
+    ),
   ]);
 }
 

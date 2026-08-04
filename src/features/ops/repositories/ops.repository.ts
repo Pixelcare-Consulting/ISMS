@@ -53,19 +53,59 @@ export const opsRepository = {
     });
   },
 
-  async acceptDelivery(tenantId: string, id: string) {
-    const statusCodeId = await reasonStatusService.requireCodeId(
-      tenantId,
-      "delivery_workflow",
-      "accepted",
-    );
-    return prisma.branchDelivery.update({
-      where: { id, tenantId },
-      data: { statusCodeId, acceptedAt: new Date() },
-      include: {
-        branch: { select: { name: true } },
-        order: { select: { orderNumber: true } },
-      },
+  /**
+   * Accept delivery with line-scoped DIT→STK.
+   * Header-only deliveries (no lines) skip inventory move — do not branch-wide promote.
+   */
+  async acceptDelivery(
+    tenantId: string,
+    id: string,
+    actorUserId: string,
+    acceptedCodeId: string,
+    ditCodeId: string,
+    stkCodeId: string,
+  ) {
+    return prisma.$transaction(async (tx) => {
+      const existing = await tx.branchDelivery.findFirst({
+        where: { id, tenantId },
+        include: {
+          lines: { select: { serialNumberId: true } },
+          branch: { select: { name: true } },
+          order: { select: { orderNumber: true } },
+        },
+      });
+      if (!existing) {
+        throw new Error("Delivery not found");
+      }
+
+      const serialNumberIds = existing.lines.map((line) => line.serialNumberId);
+      let movedCount = 0;
+      if (serialNumberIds.length) {
+        const moved = await tx.branchInventory.updateMany({
+          where: {
+            tenantId,
+            branchId: existing.branchId,
+            statusCodeId: ditCodeId,
+            serialNumberId: { in: serialNumberIds },
+          },
+          data: { statusCodeId: stkCodeId, updatedById: actorUserId },
+        });
+        if (moved.count !== serialNumberIds.length) {
+          throw new Error("Some serials are not in-transit at this branch");
+        }
+        movedCount = moved.count;
+      }
+
+      const delivery = await tx.branchDelivery.update({
+        where: { id, tenantId },
+        data: { statusCodeId: acceptedCodeId, acceptedAt: new Date() },
+        include: {
+          branch: { select: { name: true } },
+          order: { select: { orderNumber: true } },
+        },
+      });
+
+      return { ...delivery, movedCount };
     });
   },
 
@@ -82,23 +122,6 @@ export const opsRepository = {
         branch: { select: { name: true } },
         order: { select: { orderNumber: true } },
       },
-    });
-  },
-
-  promoteInTransitToStock(
-    tenantId: string,
-    branchId: string,
-    ditCodeId: string,
-    stkCodeId: string,
-    updatedById: string,
-  ) {
-    return prisma.branchInventory.updateMany({
-      where: {
-        tenantId,
-        branchId,
-        statusCodeId: ditCodeId,
-      },
-      data: { statusCodeId: stkCodeId, updatedById },
     });
   },
 

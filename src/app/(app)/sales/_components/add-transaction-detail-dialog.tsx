@@ -173,12 +173,15 @@ export function AddTransactionDetailDialog({
       return;
     }
     try {
-      const price = await resolveModelPriceForSalesAction({
+      const resolved = await resolveModelPriceForSalesAction({
         modelId,
         packageTypeId: packageTypeId || undefined,
       });
-      if (price != null) {
-        updateSet(index, { modelPrice: String(price), noPriceList: false });
+      if (resolved) {
+        updateSet(index, {
+          modelPrice: String(resolved.amount),
+          noPriceList: false,
+        });
       } else {
         updateSet(index, { modelPrice: "", noPriceList: true });
       }

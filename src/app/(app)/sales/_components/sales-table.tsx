@@ -6,19 +6,25 @@ import { toast } from "sonner";
 
 import { EditSaleSerialDialog } from "@/app/(app)/sales/_components/edit-sale-serial-dialog";
 import {
+  SaleDetailsDialog,
+  type SaleDetailsLine,
+  type SaleDetailsPayload,
+  type SaleReturnConfirmAction,
+} from "@/app/(app)/sales/_components/sale-details-dialog";
+import {
   approveReturnAction,
   completeReturnRestoreAction,
   evaluateReturnAction,
+  getSaleDetailsAction,
   rejectReturnAction,
   requestReturnAction,
+  type SaleStatusCodeRef,
 } from "@/features/sales/actions/sales.actions";
 import { TO_FOLLOW_SERIAL_LABEL } from "@/features/sales/constants/to-follow-serial";
 import type { SalesActionCapabilities } from "@/features/sales/constants/sales-permissions";
 import {
   TableAmountCell,
   TableCodeCell,
-  TableIndexCell,
-  TableIndexHead,
   uniqueSearchSuggestions,
 } from "@/components/data-table";
 import {
@@ -26,7 +32,6 @@ import {
   parseTablePageSize,
   type TablePageSize,
 } from "@/components/data-table/table-page-size";
-import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
 import {
   AlertDialog,
@@ -39,27 +44,51 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
+import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
-import { SaleSerialsDialog } from "./sale-serials-dialog";
-import { AtrStatusBadge, ReturnStatusBadge } from "./sales-status-badges";
-
+/** One table row = one transaction detail (serial / TO-FOLLOW line). */
 interface SaleRow {
   id: string;
+  detailId: string;
+  saleId: string;
   transactionNo: string;
-  amount: string;
+  transactionDate: string | null;
+  customerName: string | null;
+  packageName: string | null;
+  brandName: string | null;
+  modelLabel: string | null;
+  saleAmount: string;
+  modelPrice: string | null;
   atrStatus: string;
+  statusCode: SaleStatusCodeRef | null;
   branchId: string;
   branch: { id: string; name: string };
   serialNumberId: string | null;
   serialNumber: { id: string; serialNo: string } | null;
-  serialNumbers: string[];
   returnRequest: { id: string; status: string } | null;
 }
 
-type SalesSortField = "transactionNo" | "branch" | "amount" | "atrStatus" | "returnStatus";
+type EditingLine = {
+  saleId: string;
+  detailId: string;
+  transactionNo: string;
+  branchId: string;
+  serialNumberId: string | null;
+  serialNo: string;
+};
+
+type SalesSortField =
+  | "transactionNo"
+  | "date"
+  | "branch"
+  | "customer"
+  | "amount"
+  | "atrStatus"
+  | "returnStatus";
 type SalesSortDir = "asc" | "desc";
 
 interface SalesTableProps {
@@ -75,23 +104,16 @@ interface SalesTableProps {
   initialSortDir?: string;
 }
 
-type ReturnConfirmAction =
-  | "request"
-  | "evaluate"
-  | "approve"
-  | "reject"
-  | "restore";
-
 type PendingConfirm = {
   saleId: string;
   returnRequestId?: string;
   transactionNo: string;
   branchName: string;
-  action: ReturnConfirmAction;
+  action: SaleReturnConfirmAction;
 };
 
 const CONFIRM_COPY: Record<
-  ReturnConfirmAction,
+  SaleReturnConfirmAction,
   { title: string; description: string; confirmLabel: string; successMessage: string }
 > = {
   request: {
@@ -131,12 +153,19 @@ const CONFIRM_COPY: Record<
 };
 
 function saleTransactionLabel(sale: SaleRow): string {
-  return sale.transactionNo || sale.id.slice(-8);
+  return sale.transactionNo || sale.saleId.slice(-8);
 }
 
 /** Null serial means TO-FOLLOW was encoded (placeholder pending a real unit). */
 function saleSerialLabel(sale: SaleRow): string {
   return sale.serialNumber?.serialNo ?? TO_FOLLOW_SERIAL_LABEL;
+}
+
+function formatSaleDate(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
 }
 
 function buildSalesHref(
@@ -154,6 +183,19 @@ function buildSalesHref(
   return query ? `/sales?${query}` : "/sales";
 }
 
+/** Shared numeric ID per sale on this page (sibling serial lines reuse the same ID). */
+function buildSaleIdMap(rows: SaleRow[]): Map<string, number> {
+  const map = new Map<string, number>();
+  let next = 1;
+  for (const row of rows) {
+    if (!map.has(row.saleId)) {
+      map.set(row.saleId, next);
+      next += 1;
+    }
+  }
+  return map;
+}
+
 export function SalesTable({
   result,
   capabilities,
@@ -164,9 +206,11 @@ export function SalesTable({
   const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
-  const [editingSale, setEditingSale] = useState<SaleRow | null>(null);
-  const [serialDialogSale, setSerialDialogSale] = useState<SaleRow | null>(null);
+  const [editingLine, setEditingLine] = useState<EditingLine | null>(null);
+  const [detailsSaleId, setDetailsSaleId] = useState<string | null>(null);
+  const [saleDetails, setSaleDetails] = useState<SaleDetailsPayload | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
+  const [returnReason, setReturnReason] = useState("");
   const pageSize = parseTablePageSize(result.limit);
   const sort = (searchParams.get("sort") ?? initialSort) || "";
   const sortDir = (
@@ -185,12 +229,18 @@ export function SalesTable({
     () =>
       result.items.filter((sale) =>
         matchesTableSearch(query, [
-          sale.id,
+          sale.saleId,
           sale.transactionNo,
+          sale.customerName,
+          sale.packageName,
+          sale.brandName,
+          sale.modelLabel,
           sale.branch.name,
-          sale.amount,
+          sale.saleAmount,
+          sale.modelPrice,
           saleSerialLabel(sale),
-          ...sale.serialNumbers,
+          sale.statusCode?.name,
+          sale.statusCode?.code,
           sale.atrStatus,
           sale.returnRequest?.status,
         ]),
@@ -202,12 +252,58 @@ export function SalesTable({
       uniqueSearchSuggestions(
         result.items.map((sale) => sale.transactionNo),
         result.items.map((sale) => sale.branch.name),
+        result.items.map((sale) => sale.customerName ?? ""),
         result.items.map((sale) => saleSerialLabel(sale)),
-        result.items.map((sale) => sale.atrStatus),
+        result.items.map((sale) => sale.modelLabel ?? ""),
+        result.items.map((sale) => sale.statusCode?.name ?? ""),
+        result.items.map((sale) => sale.statusCode?.code ?? ""),
       ),
     [result.items],
   );
-  const selection = useTableSelection(filtered.map((s) => s.id));
+  const saleIdMap = useMemo(() => buildSaleIdMap(filtered), [filtered]);
+
+  function refreshSaleDetails(saleId: string) {
+    startTransition(async () => {
+      const res = await getSaleDetailsAction(saleId);
+      if ("error" in res) {
+        toast.error(res.error);
+        setDetailsSaleId(null);
+        setSaleDetails(null);
+        return;
+      }
+      setSaleDetails(res);
+    });
+  }
+
+  function openSaleDetails(saleId: string) {
+    setDetailsSaleId(saleId);
+    setSaleDetails(null);
+    refreshSaleDetails(saleId);
+  }
+
+  function handleEditLine(line: SaleDetailsLine) {
+    if (!saleDetails) return;
+    setEditingLine({
+      saleId: saleDetails.id,
+      detailId: line.detailId,
+      transactionNo: saleDetails.transactionNo,
+      branchId: saleDetails.stockBranchId,
+      serialNumberId: line.serialNumberId,
+      serialNo: line.serialNo,
+    });
+  }
+
+  function handleReturnAction(action: SaleReturnConfirmAction) {
+    if (!saleDetails) return;
+    setReturnReason("");
+    setPendingConfirm({
+      saleId: saleDetails.id,
+      returnRequestId: saleDetails.returnRequest?.id,
+      transactionNo: saleDetails.transactionNo,
+      branchName: saleDetails.branch.name,
+      action,
+    });
+  }
 
   function confirmPendingAction() {
     if (!pendingConfirm) return;
@@ -216,12 +312,20 @@ export function SalesTable({
       successMessage: CONFIRM_COPY[pendingConfirm.action].successMessage,
     };
 
+    if (action === "request") {
+      const reason = returnReason.trim();
+      if (!reason) {
+        toast.error("Enter a return reason");
+        return;
+      }
+    }
+
     startTransition(async () => {
       let res: { error?: string; success?: boolean };
 
       switch (action) {
         case "request":
-          res = await requestReturnAction(saleId);
+          res = await requestReturnAction(saleId, returnReason.trim());
           break;
         case "evaluate":
           if (!returnRequestId) return;
@@ -252,7 +356,17 @@ export function SalesTable({
       }
       toast.success(successMessage);
       setPendingConfirm(null);
+      setReturnReason("");
       router.refresh();
+      if (detailsSaleId) {
+        const refreshed = await getSaleDetailsAction(detailsSaleId);
+        if ("error" in refreshed) {
+          setDetailsSaleId(null);
+          setSaleDetails(null);
+        } else {
+          setSaleDetails(refreshed);
+        }
+      }
     });
   }
 
@@ -264,39 +378,33 @@ export function SalesTable({
         stickyHeader
         scrollable
         search={{ value: query, onChange: setQuery, placeholder: "Search sales…", suggestions }}
-        toolbarActions={
-          selection.selectedCount > 0 ? (
-            <Button variant="secondary" onClick={selection.clearSelection}>
-              {selection.selectedCount} selected
-            </Button>
-          ) : null
-        }
         pagination={{
           total: result.total,
           page: result.page,
           totalPages: result.totalPages,
-          itemLabel: "sale",
+          itemLabel: "sale line",
           buildHref: (page) => buildSalesHref(page, pageSize, sort, sort ? sortDir : undefined),
         }}
         pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
       >
         <TableHeader>
           <TableRow>
-            <GlobalTableHead className="w-10">
-              <Checkbox
-                checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
-                onCheckedChange={(checked) => selection.toggleAll(checked === true)}
-                aria-label="Select all sales rows"
-              />
-            </GlobalTableHead>
-            <TableIndexHead />
+            <GlobalTableHead className="w-12">ID</GlobalTableHead>
             <GlobalTableHead
               sortKey="transactionNo"
               activeSortKey={sort}
               sortDirection={sortDir}
               onSort={(key) => toggleSort(key as SalesSortField)}
             >
-              Transaction
+              TRN NO.
+            </GlobalTableHead>
+            <GlobalTableHead
+              sortKey="date"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as SalesSortField)}
+            >
+              DATE
             </GlobalTableHead>
             <GlobalTableHead
               sortKey="branch"
@@ -304,225 +412,128 @@ export function SalesTable({
               sortDirection={sortDir}
               onSort={(key) => toggleSort(key as SalesSortField)}
             >
-              Branch
+              BRANCH
             </GlobalTableHead>
+            <GlobalTableHead
+              sortKey="customer"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as SalesSortField)}
+            >
+              CUSTOMER
+            </GlobalTableHead>
+            <GlobalTableHead>PACKAGE</GlobalTableHead>
+            <GlobalTableHead>BRAND</GlobalTableHead>
+            <GlobalTableHead>MODEL</GlobalTableHead>
+            <GlobalTableHead>SN</GlobalTableHead>
             <GlobalTableHead
               sortKey="amount"
               activeSortKey={sort}
               sortDirection={sortDir}
               onSort={(key) => toggleSort(key as SalesSortField)}
             >
-              Amount
+              SALE
             </GlobalTableHead>
-            <GlobalTableHead>Serial</GlobalTableHead>
-            <GlobalTableHead
-              sortKey="atrStatus"
-              activeSortKey={sort}
-              sortDirection={sortDir}
-              onSort={(key) => toggleSort(key as SalesSortField)}
-            >
-              ATR
-            </GlobalTableHead>
-            <GlobalTableHead
-              sortKey="returnStatus"
-              activeSortKey={sort}
-              sortDirection={sortDir}
-              onSort={(key) => toggleSort(key as SalesSortField)}
-            >
-              Return
-            </GlobalTableHead>
-            <GlobalTableHead className="w-64" />
+            <GlobalTableHead>MODEL PRICE</GlobalTableHead>
+            <GlobalTableHead>STATUS</GlobalTableHead>
+            <GlobalTableHead className="w-36">ACTIONS</GlobalTableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {filtered.map((s, index) => (
-            <TableRow key={s.id} data-state={selection.isRowSelected(s.id) ? "selected" : undefined}>
-              <TableCell>
-                <Checkbox
-                  checked={selection.isRowSelected(s.id)}
-                  onCheckedChange={(checked) => selection.toggleRow(s.id, checked === true)}
-                  aria-label={`Select sale ${saleTransactionLabel(s)}`}
-                />
+          {filtered.map((s) => (
+            <TableRow key={s.id}>
+              <TableCell className="tabular-nums text-muted-foreground">
+                {saleIdMap.get(s.saleId) ?? "—"}
               </TableCell>
-              <TableIndexCell
-                index={(result.page - 1) * result.limit + index + 1}
-              />
-              <TableCodeCell value={saleTransactionLabel(s)} />
+              <TableCodeCell value={saleTransactionLabel(s)} className="font-semibold" />
+              <TableCell className="whitespace-nowrap tabular-nums">
+                {formatSaleDate(s.transactionDate)}
+              </TableCell>
               <TableCell>{s.branch.name}</TableCell>
-              <TableAmountCell value={s.amount} />
-              <TableCodeCell>
-                {s.serialNumbers.length > 1 ? (
-                  <button
-                    type="button"
-                    className="cursor-pointer text-left underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    onClick={() => setSerialDialogSale(s)}
-                    aria-label={`View ${s.serialNumbers.length} serial numbers for ${saleTransactionLabel(s)}`}
-                  >
-                    {saleSerialLabel(s)}
-                  </button>
+              <TableCell>{s.customerName?.trim() || "—"}</TableCell>
+              <TableCell>{s.packageName ?? "—"}</TableCell>
+              <TableCell>{s.brandName ?? "—"}</TableCell>
+              <TableCell className="font-mono text-sm">{s.modelLabel ?? "—"}</TableCell>
+              <TableCodeCell value={saleSerialLabel(s)} />
+              <TableAmountCell value={s.saleAmount} />
+              {s.modelPrice != null ? (
+                <TableAmountCell value={s.modelPrice} />
+              ) : (
+                <TableCell className="text-muted-foreground">—</TableCell>
+              )}
+              <TableCell>
+                {s.statusCode ? (
+                  <StatusCodeBadge
+                    code={s.statusCode.code}
+                    name={s.statusCode.name}
+                    color={s.statusCode.color}
+                  />
                 ) : (
-                  saleSerialLabel(s)
+                  <span className="text-muted-foreground">—</span>
                 )}
-              </TableCodeCell>
-              <TableCell>
-                <AtrStatusBadge status={s.atrStatus} />
               </TableCell>
-              <TableCell>
-                <ReturnStatusBadge status={s.returnRequest?.status} />
-              </TableCell>
-              <TableCell className="space-x-1 whitespace-nowrap">
+              <TableCell className="whitespace-nowrap">
                 <Button
                   size="sm"
                   variant="outline"
                   disabled={pending}
-                  onClick={() => setEditingSale(s)}
+                  onClick={() => openSaleDetails(s.saleId)}
                 >
-                  Edit
+                  View details
                 </Button>
-                {!s.returnRequest && s.atrStatus === "open" && capabilities.canRequestReturn ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={pending}
-                    onClick={() =>
-                      setPendingConfirm({
-                        saleId: s.id,
-                        transactionNo: saleTransactionLabel(s),
-                        branchName: s.branch.name,
-                        action: "request",
-                      })
-                    }
-                  >
-                    Request return
-                  </Button>
-                ) : null}
-                {s.returnRequest?.status === "pending_cs" && capabilities.canEvaluateReturn ? (
-                  <>
-                    <Button
-                      size="sm"
-                      disabled={pending}
-                      onClick={() =>
-                        setPendingConfirm({
-                          saleId: s.id,
-                          returnRequestId: s.returnRequest!.id,
-                          transactionNo: saleTransactionLabel(s),
-                          branchName: s.branch.name,
-                          action: "evaluate",
-                        })
-                      }
-                    >
-                      CS evaluate
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={pending}
-                      onClick={() =>
-                        setPendingConfirm({
-                          saleId: s.id,
-                          returnRequestId: s.returnRequest!.id,
-                          transactionNo: saleTransactionLabel(s),
-                          branchName: s.branch.name,
-                          action: "reject",
-                        })
-                      }
-                    >
-                      Reject
-                    </Button>
-                  </>
-                ) : null}
-                {s.returnRequest?.status === "pending_tl" && capabilities.canApproveReturn ? (
-                  <>
-                    <Button
-                      size="sm"
-                      className="bg-amber-600 text-white hover:bg-amber-700"
-                      disabled={pending}
-                      onClick={() =>
-                        setPendingConfirm({
-                          saleId: s.id,
-                          returnRequestId: s.returnRequest!.id,
-                          transactionNo: saleTransactionLabel(s),
-                          branchName: s.branch.name,
-                          action: "approve",
-                        })
-                      }
-                    >
-                      TL approve
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={pending}
-                      onClick={() =>
-                        setPendingConfirm({
-                          saleId: s.id,
-                          returnRequestId: s.returnRequest!.id,
-                          transactionNo: saleTransactionLabel(s),
-                          branchName: s.branch.name,
-                          action: "reject",
-                        })
-                      }
-                    >
-                      Reject
-                    </Button>
-                  </>
-                ) : null}
-                {s.returnRequest?.status === "approved" && capabilities.canCompleteReturn ? (
-                  <Button
-                    size="sm"
-                    className="bg-emerald-600 text-white hover:bg-emerald-700"
-                    disabled={pending}
-                    onClick={() =>
-                      setPendingConfirm({
-                        saleId: s.id,
-                        returnRequestId: s.returnRequest!.id,
-                        transactionNo: saleTransactionLabel(s),
-                        branchName: s.branch.name,
-                        action: "restore",
-                      })
-                    }
-                  >
-                    Restore stock
-                  </Button>
-                ) : null}
               </TableCell>
             </TableRow>
           ))}
         </TableBody>
       </GlobalDataTable>
 
-      {editingSale ? (
-        <EditSaleSerialDialog
-          saleId={editingSale.id}
-          transactionNo={saleTransactionLabel(editingSale)}
-          branchId={editingSale.branchId}
-          currentSerialId={editingSale.serialNumberId}
-          currentSerialLabel={saleSerialLabel(editingSale)}
-          onClose={() => {
-            setEditingSale(null);
-            router.refresh();
+      {detailsSaleId && saleDetails ? (
+        <SaleDetailsDialog
+          sale={saleDetails}
+          open
+          capabilities={capabilities}
+          pending={pending}
+          onEditLine={handleEditLine}
+          onReturnAction={handleReturnAction}
+          onOpenChange={(open) => {
+            if (!open) {
+              setDetailsSaleId(null);
+              setSaleDetails(null);
+            }
           }}
         />
       ) : null}
 
-      <SaleSerialsDialog
-        open={serialDialogSale != null}
-        onOpenChange={(open) => {
-          if (!open) setSerialDialogSale(null);
-        }}
-        transactionNo={
-          serialDialogSale ? saleTransactionLabel(serialDialogSale) : ""
-        }
-        serialNumbers={serialDialogSale?.serialNumbers ?? []}
-      />
+      {editingLine ? (
+        <EditSaleSerialDialog
+          key={editingLine.detailId}
+          saleId={editingLine.saleId}
+          detailId={editingLine.detailId}
+          transactionNo={editingLine.transactionNo}
+          branchId={editingLine.branchId}
+          currentSerialId={editingLine.serialNumberId}
+          currentSerialLabel={editingLine.serialNo}
+          onClose={() => {
+            const saleId = editingLine.saleId;
+            setEditingLine(null);
+            router.refresh();
+            if (detailsSaleId === saleId) {
+              refreshSaleDetails(saleId);
+            }
+          }}
+        />
+      ) : null}
 
       <AlertDialog
         open={pendingConfirm !== null}
         onOpenChange={(open) => {
-          if (!open && !pending) setPendingConfirm(null);
+          if (!open && !pending) {
+            setPendingConfirm(null);
+            setReturnReason("");
+          }
         }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent className="z-60" overlayClassName="z-60">
           <AlertDialogHeader>
             <AlertDialogTitle>
               {copy?.title ?? "Are you sure?"}
@@ -541,10 +552,27 @@ export function SalesTable({
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {pendingConfirm?.action === "request" ? (
+            <div className="space-y-2 px-1">
+              <Label htmlFor="return-reason">Return reason</Label>
+              <Textarea
+                id="return-reason"
+                value={returnReason}
+                onChange={(event) => setReturnReason(event.target.value)}
+                placeholder="Why is this sale being returned?"
+                rows={3}
+                disabled={pending}
+                className="resize-y"
+              />
+            </div>
+          ) : null}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              disabled={pending}
+              disabled={
+                pending ||
+                (pendingConfirm?.action === "request" && !returnReason.trim())
+              }
               className={
                 pendingConfirm?.action === "approve"
                   ? "bg-amber-600 text-white hover:bg-amber-700"
