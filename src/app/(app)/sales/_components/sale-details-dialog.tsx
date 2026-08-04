@@ -1,7 +1,8 @@
 "use client";
 
-import { ExternalLink } from "lucide-react";
+import { useState } from "react";
 
+import { SaleProofViewerDialog } from "@/app/(app)/sales/_components/sale-proof-viewer-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,17 +14,14 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import type { SaleStatusCodeRef } from "@/features/sales/actions/sales.actions";
 import type { SalesActionCapabilities } from "@/features/sales/constants/sales-permissions";
-import {
-  saleProofFileName,
-  saleProofViewUrl,
-} from "@/features/sales/utils/sale-proof";
 import { formatPeso } from "@/utils/format-currency";
 
 export interface SaleDetailsLine {
@@ -90,76 +88,89 @@ function formatOptionalDate(value: string | null | undefined): string | null {
   });
 }
 
-function formatBrandModel(
-  brandName: string | null,
-  modelLabel: string | null,
-): string {
+function BrandModelStack({
+  brandName,
+  modelLabel,
+}: {
+  brandName: string | null;
+  modelLabel: string | null;
+}) {
   const brand = brandName?.trim() || null;
   const model = modelLabel?.trim() || null;
-  if (brand && model) return `${brand} · ${model}`;
-  return brand ?? model ?? "—";
+  if (!brand && !model) {
+    return <span className="text-muted-foreground">—</span>;
+  }
+  return (
+    <div className="min-w-0 leading-tight">
+      <p className="truncate font-medium" title={brand ?? undefined}>
+        {brand ?? "—"}
+      </p>
+      {model ? (
+        <p
+          className="truncate font-mono text-[11px] text-muted-foreground"
+          title={model}
+        >
+          {model}
+        </p>
+      ) : (
+        <p className="text-[11px] text-muted-foreground">No model</p>
+      )}
+    </div>
+  );
+}
+
+function SerialNumberCell({
+  serialNo,
+  className,
+}: {
+  serialNo: string;
+  className?: string;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          className={
+            className ?? "block max-w-full truncate font-mono text-xs"
+          }
+        >
+          {serialNo}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent
+        side="top"
+        sideOffset={6}
+        className="z-70 max-w-[min(24rem,calc(100vw-2rem))] break-all font-mono text-xs"
+      >
+        {serialNo}
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
 function SaleProofReview({
-  saleId,
   proofPaths,
+  onOpen,
 }: {
-  saleId: string;
   proofPaths: string[];
+  onOpen: () => void;
 }) {
   if (proofPaths.length === 0) {
     return <span>None</span>;
   }
 
-  if (proofPaths.length === 1) {
-    const path = proofPaths[0]!;
-    return (
-      <a
-        href={saleProofViewUrl(saleId, 0)}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center gap-1 text-primary underline-offset-4 hover:underline"
-      >
-        Review proof
-        <ExternalLink className="size-3.5 shrink-0" aria-hidden />
-        <span className="sr-only">({saleProofFileName(path)})</span>
-      </a>
-    );
-  }
-
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="link"
-          size="sm"
-          className="h-auto gap-1 px-0 text-sm"
-        >
-          {proofPaths.length} attachments — review
-          <ExternalLink className="size-3.5 shrink-0" aria-hidden />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="z-70 w-72 p-2" align="end">
-        <ul className="space-y-1">
-          {proofPaths.map((path, index) => (
-            <li key={`${path}-${index}`}>
-              <a
-                href={saleProofViewUrl(saleId, index)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-primary underline-offset-4 hover:bg-muted hover:underline"
-              >
-                <span className="min-w-0 truncate">
-                  {saleProofFileName(path)}
-                </span>
-                <ExternalLink className="size-3.5 shrink-0" aria-hidden />
-              </a>
-            </li>
-          ))}
-        </ul>
-      </PopoverContent>
-    </Popover>
+    <Button
+      type="button"
+      variant="link"
+      size="sm"
+      className="h-auto px-0 text-sm"
+      onClick={onOpen}
+    >
+      {proofPaths.length === 1
+        ? "Review proof"
+        : `${proofPaths.length} attachments — review`}
+    </Button>
   );
 }
 
@@ -172,6 +183,7 @@ export function SaleDetailsDialog({
   onEditLine,
   onReturnAction,
 }: SaleDetailsDialogProps) {
+  const [proofViewerOpen, setProofViewerOpen] = useState(false);
   const dateLabel = formatOptionalDate(sale.transactionDate);
   const totalLines = sale.lines.length;
   const returnStatus = sale.returnRequest?.status;
@@ -189,6 +201,8 @@ export function SaleDetailsDialog({
     showRequestReturn || showCsActions || showTlActions || showRestore;
 
   return (
+    <>
+    <TooltipProvider delayDuration={200}>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[90svh] w-[min(calc(100vw-2rem),48rem)] max-w-3xl flex-col overflow-hidden">
         <DialogHeader className="shrink-0 pr-8 text-left">
@@ -274,8 +288,8 @@ export function SaleDetailsDialog({
               <dt className="text-muted-foreground">Proof</dt>
               <dd className="text-right">
                 <SaleProofReview
-                  saleId={sale.id}
                   proofPaths={sale.proofPaths}
+                  onOpen={() => setProofViewerOpen(true)}
                 />
               </dd>
             </div>
@@ -288,99 +302,196 @@ export function SaleDetailsDialog({
             </p>
           </div>
 
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col space-y-2">
-            <div className="flex shrink-0 items-center justify-between gap-2">
-              <Label>Sale lines</Label>
-              <span className="text-xs text-muted-foreground">
-                Total {totalLines}
-              </span>
-            </div>
-            <div className="min-h-0 max-h-80 w-full flex-1 overflow-auto rounded-md border sm:max-h-105">
-              <table className="w-full text-sm">
-                <thead className="sticky top-0 z-10 bg-muted/95 text-xs text-muted-foreground backdrop-blur-sm">
-                  <tr>
-                    <th className="w-px whitespace-nowrap px-2 py-2 text-left font-medium">
-                      #
-                    </th>
-                    <th className="w-px whitespace-nowrap px-2 py-2 text-left font-medium">
-                      Package
-                    </th>
-                    <th className="min-w-0 px-2 py-2 text-left font-medium">
-                      Brand / Model
-                    </th>
-                    <th className="w-px whitespace-nowrap px-2 py-2 text-left font-medium">
-                      SN
-                    </th>
-                    <th className="w-px whitespace-nowrap px-2 py-2 text-right font-medium">
-                      Sale
-                    </th>
-                    <th className="w-px whitespace-nowrap px-2 py-2 text-right font-medium">
-                      Model price
-                    </th>
-                    <th className="sticky right-0 w-px whitespace-nowrap bg-muted/95 px-2 py-2 text-right font-medium shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.12)]">
-                      Edit
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sale.lines.map((line, index) => (
-                    <tr key={line.detailId} className="border-t">
-                      <td className="whitespace-nowrap px-2 py-2 text-muted-foreground">
-                        {index + 1}
-                      </td>
-                      <td
-                        className="max-w-36 truncate whitespace-nowrap px-2 py-2"
-                        title={line.packageName ?? undefined}
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col space-y-2">
+              <div className="flex shrink-0 items-center justify-between gap-2">
+                <Label>Sale lines</Label>
+                <span className="text-xs text-muted-foreground">
+                  Total {totalLines}
+                </span>
+              </div>
+
+              {/* Mobile: stacked cards */}
+              <div className="min-h-0 max-h-80 space-y-2 overflow-y-auto sm:hidden">
+                {sale.lines.map((line, index) => (
+                  <div
+                    key={line.detailId}
+                    className="space-y-2 rounded-md border bg-card p-3 text-sm"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 space-y-0.5">
+                        <p className="text-xs text-muted-foreground">
+                          Line {index + 1}
+                          {line.packageName ? ` · ${line.packageName}` : ""}
+                        </p>
+                        <BrandModelStack
+                          brandName={line.brandName}
+                          modelLabel={line.modelLabel}
+                        />
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="shrink-0"
+                        disabled={pending}
+                        onClick={() => onEditLine(line)}
                       >
-                        {line.packageName ?? "—"}
-                      </td>
-                      <td
-                        className="min-w-0 truncate px-2 py-2 font-mono text-xs"
-                        title={formatBrandModel(line.brandName, line.modelLabel)}
-                      >
-                        {formatBrandModel(line.brandName, line.modelLabel)}
-                      </td>
-                      <td
-                        className="max-w-40 truncate whitespace-nowrap px-2 py-2 font-mono text-xs"
-                        title={line.serialNo}
-                      >
-                        {line.serialNo}
-                      </td>
-                      <td className="whitespace-nowrap px-2 py-2 text-right font-mono text-xs tabular-nums">
-                        {formatPeso(Number(line.saleAmount))}
-                      </td>
-                      <td className="whitespace-nowrap px-2 py-2 text-right font-mono text-xs tabular-nums">
-                        {line.modelPrice != null ? (
-                          formatPeso(Number(line.modelPrice))
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </td>
-                      <td className="sticky right-0 whitespace-nowrap bg-card px-2 py-2 text-right shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.12)]">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={pending}
-                          onClick={() => onEditLine(line)}
-                        >
-                          Edit
-                        </Button>
-                      </td>
+                        Edit
+                      </Button>
+                    </div>
+                    <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
+                      <div className="min-w-0">
+                        <dt className="text-muted-foreground">SN</dt>
+                        <dd className="min-w-0">
+                          <SerialNumberCell
+                            serialNo={line.serialNo}
+                            className="block max-w-full truncate font-mono"
+                          />
+                        </dd>
+                      </div>
+                      <div className="min-w-0">
+                        <dt className="text-muted-foreground">Status</dt>
+                        <dd className="pt-0.5">
+                          {line.statusCode ? (
+                            <StatusCodeBadge
+                              code={line.statusCode.code}
+                              name={line.statusCode.name}
+                              color={line.statusCode.color}
+                            />
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-muted-foreground">Sale</dt>
+                        <dd className="font-mono tabular-nums">
+                          {formatPeso(Number(line.saleAmount))}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-muted-foreground">Model price</dt>
+                        <dd className="font-mono tabular-nums">
+                          {line.modelPrice != null ? (
+                            formatPeso(Number(line.modelPrice))
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </dd>
+                      </div>
+                    </dl>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop / tablet: table — SN left of Status */}
+              <div className="hidden min-h-0 max-h-105 w-full flex-1 overflow-auto rounded-md border sm:block">
+                <table className="w-full table-fixed text-sm">
+                  <colgroup>
+                    <col className="w-8" />
+                    <col className="w-32" />
+                    <col />
+                    <col className="w-28" />
+                    <col className="w-28" />
+                    <col className="w-16" />
+                    <col className="w-24" />
+                    <col className="w-16" />
+                  </colgroup>
+                  <thead className="sticky top-0 z-10 bg-muted/95 text-xs text-muted-foreground backdrop-blur-sm">
+                    <tr>
+                      <th className="whitespace-nowrap px-2 py-2 text-left font-medium">
+                        #
+                      </th>
+                      <th className="whitespace-nowrap py-2 pl-2 pr-3 text-left font-medium">
+                        Package
+                      </th>
+                      <th className="px-2 py-2 text-left font-medium">
+                        Brand / Model
+                      </th>
+                      <th className="whitespace-nowrap px-2 py-2 text-left font-medium">
+                        SN
+                      </th>
+                      <th className="whitespace-nowrap px-2 py-2 text-left font-medium">
+                        Status
+                      </th>
+                      <th className="whitespace-nowrap px-2 py-2 text-right font-medium">
+                        Sale
+                      </th>
+                      <th className="whitespace-nowrap px-2 py-2 text-right font-medium">
+                        Model price
+                      </th>
+                      <th className="sticky right-0 whitespace-nowrap bg-muted/95 px-2 py-2 text-right font-medium shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.12)]">
+                        Edit
+                      </th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {sale.lines.map((line, index) => (
+                      <tr key={line.detailId} className="border-t">
+                        <td className="whitespace-nowrap px-2 py-2 text-muted-foreground">
+                          {index + 1}
+                        </td>
+                        <td
+                          className="truncate py-2 pl-2 pr-3"
+                          title={line.packageName ?? undefined}
+                        >
+                          {line.packageName ?? "—"}
+                        </td>
+                        <td className="px-2 py-2">
+                          <BrandModelStack
+                            brandName={line.brandName}
+                            modelLabel={line.modelLabel}
+                          />
+                        </td>
+                        <td className="min-w-0 px-2 py-2">
+                          <SerialNumberCell serialNo={line.serialNo} />
+                        </td>
+                        <td className="whitespace-nowrap px-2 py-2">
+                          {line.statusCode ? (
+                            <StatusCodeBadge
+                              code={line.statusCode.code}
+                              name={line.statusCode.name}
+                              color={line.statusCode.color}
+                            />
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-2 py-2 text-right font-mono text-xs tabular-nums">
+                          {formatPeso(Number(line.saleAmount))}
+                        </td>
+                        <td className="whitespace-nowrap px-2 py-2 text-right font-mono text-xs tabular-nums">
+                          {line.modelPrice != null ? (
+                            formatPeso(Number(line.modelPrice))
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        <td className="sticky right-0 whitespace-nowrap bg-card px-2 py-2 text-right shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.12)]">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={pending}
+                            onClick={() => onEditLine(line)}
+                          >
+                            Edit
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="shrink-0 rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                Total lines:{" "}
+                <span className="font-medium text-foreground">{totalLines}</span>
+                {" • "}
+                Sale total:{" "}
+                <span className="font-medium text-foreground">
+                  {formatPeso(Number(sale.amount))}
+                </span>
+              </div>
             </div>
-            <div className="shrink-0 rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-              Total lines:{" "}
-              <span className="font-medium text-foreground">{totalLines}</span>
-              {" • "}
-              Sale total:{" "}
-              <span className="font-medium text-foreground">
-                {formatPeso(Number(sale.amount))}
-              </span>
-            </div>
-          </div>
         </div>
 
         {hasAtrActions ? (
@@ -448,5 +559,14 @@ export function SaleDetailsDialog({
         ) : null}
       </DialogContent>
     </Dialog>
+    </TooltipProvider>
+    <SaleProofViewerDialog
+      key={`${sale.id}-${proofViewerOpen ? "open" : "closed"}`}
+      saleId={sale.id}
+      proofPaths={sale.proofPaths}
+      open={proofViewerOpen}
+      onOpenChange={setProofViewerOpen}
+    />
+    </>
   );
 }

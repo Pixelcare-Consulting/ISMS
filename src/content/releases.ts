@@ -36,6 +36,7 @@ export const RELEASES: ReleaseNote[] = [
     highlights: [
       "Customize Sales & ATR return badge names and colors in Status settings",
       "Sales list shows one row per serial with clear status badges (including TO FOLLOW)",
+      "Review multiple sale proofs in a preview window — images and PDFs side by side",
       "Attach multiple proof files on a sale and type the transaction number from your invoice",
       "Sales encode and returns are reliable again — TO FOLLOW saves, model price fills from the price list, and return status shows Pending CS",
       "Orders and Logistics only show actions for your step; View details is always available",
@@ -55,6 +56,16 @@ export const RELEASES: ReleaseNote[] = [
         type: "feature",
         description:
           "Sales and Orders lists include View details for the full transaction or approval history",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sale details opens proofs in a preview window with file list and next/previous — no need to leave the page",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sale details line table shows Status again (Sold, TO FOLLOW, return steps, and more)",
       },
       {
         type: "improvement",

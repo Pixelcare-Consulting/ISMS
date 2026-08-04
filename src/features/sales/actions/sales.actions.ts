@@ -398,7 +398,9 @@ export async function getSaleDetailsAction(saleId: string) {
         packageName: detail.packageType?.name ?? null,
         brandName: detail.brand?.name ?? null,
         modelLabel: detail.model
-          ? detail.model.skuCode || detail.model.name
+          ? detail.model.skuCode?.trim() ||
+            detail.model.name?.trim() ||
+            null
           : null,
         serialNumberId: detail.serialNumberId,
         serialNo: detail.serialNumber?.serialNo ?? TO_FOLLOW_SERIAL_LABEL,
