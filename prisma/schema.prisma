@@ -1760,10 +1760,11 @@ model BranchSalesTransaction {
   transactionNo              String    @map("transaction_no")
   transactionDate            DateTime? @map("transaction_date")
   customerName               String?   @map("customer_name")
+  contactNo                  String?   @map("contact_no")
   siTrans                    String?   @map("si_trans")
   infoSlipVsoRrReleased      String?   @map("info_slip_vso_rr_released")
   rrReceiveDeliver           String?   @map("rr_receive_deliver")
-  proof                      String?
+  proof                      String[]  @default([])
   deliveryNo                 String?   @map("delivery_no")
   deliveryDate               DateTime? @map("delivery_date")
   modelPrice                 Decimal?  @map("model_price") @db.Decimal(12, 2)

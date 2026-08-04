@@ -12,6 +12,7 @@ export interface PriceListModelGroup {
   skuCode: string;
   name: string;
   latest: PriceListCardRow;
+  isActive: boolean;
   periodCount: number;
 }
 
@@ -21,7 +22,7 @@ interface PriceListCardProps {
 }
 
 export function PriceListCard({ group, onOpen }: PriceListCardProps) {
-  const { latest, periodCount } = group;
+  const { latest, periodCount, isActive } = group;
 
   return (
     <button
@@ -44,6 +45,14 @@ export function PriceListCard({ group, onOpen }: PriceListCardProps) {
           >
             {periodCount === 1 ? "1 period" : `${periodCount} periods`}
           </Badge>
+          {!isActive ? (
+            <Badge
+              variant="outline"
+              className="h-5 rounded-md border-amber-500/50 px-1.5 text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            >
+              Not currently active
+            </Badge>
+          ) : null}
           {latest.packageType ? (
             <Badge
               variant="outline"
@@ -60,7 +69,7 @@ export function PriceListCard({ group, onOpen }: PriceListCardProps) {
           {formatPeso(latest.amount)}
         </p>
         <p className="text-xs tabular-nums text-muted-foreground">
-          Latest: {latest.periodStart} → {latest.periodEnd}
+          {isActive ? "Active" : "Most recent"}: {latest.periodStart} → {latest.periodEnd}
         </p>
       </div>
     </button>

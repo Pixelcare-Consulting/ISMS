@@ -2,6 +2,8 @@ import type { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/database/client";
 import { resolvePagination, toPaginatedResult } from "@/lib/shared/pagination";
+import { STOCK_COUNT_SESSION_LABELS } from "@/features/stock-audit/constants/stock-count-workflow";
+import { formatPeso } from "@/utils/format-currency";
 import type {
   SerialActivityEvent,
   SerialActivityType,
@@ -80,14 +82,50 @@ const userSelect = {
   select: { name: true, email: true },
 } as const;
 
+const RECORD_STATUS_LABELS: Record<string, string> = {
+  active: "Active",
+  inactive: "Inactive",
+};
+
+const ATR_STATUS_LABELS: Record<string, string> = {
+  open: "Open",
+  reserve: "Reserved",
+  closed: "Closed",
+};
+
+const COUNT_LINE_STATUS_LABELS: Record<string, string> = {
+  pending: "Pending count",
+  counted: "Counted",
+  variance: "Variance",
+  resolved: "Resolved",
+};
+
+/** Drops empty/blank entries so reference cells never render dangling separators. */
+function referenceDetails(...parts: (string | null | undefined)[]): string[] {
+  return parts.filter((part): part is string => Boolean(part && part.trim()));
+}
+
+function route(from: string, to: string): string {
+  return `${from} → ${to}`;
+}
+
+/** Date-only label for reference lines (the timestamp column carries the time). */
+function formatEventDate(value: Date): string {
+  return value.toLocaleDateString("en-PH", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
 function performedByLabel(
   user: { name: string | null; email: string } | null,
 ): { name: string | null; email: string } | null {
   return user ? { name: user.name, email: user.email } : null;
 }
 
-/** Case-insensitive serial-number search fragment (or empty when no query). */
-function serialContains(q?: string) {
+/** Case-insensitive `contains` fragment (or empty when no query). */
+function textContains(q?: string) {
   return q ? { contains: q, mode: "insensitive" as const } : undefined;
 }
 
@@ -97,7 +135,7 @@ async function registeredSource(
 ): Promise<SourceResult> {
   const where: Prisma.SerialNumberWhereInput = {
     tenantId,
-    ...(q ? { serialNo: serialContains(q) } : {}),
+    ...(q ? { serialNo: textContains(q) } : {}),
     ...(dateFilter ? { createdAt: dateFilter } : {}),
   };
   const [rows, count] = await Promise.all([
@@ -109,8 +147,14 @@ async function registeredSource(
         id: true,
         serialNo: true,
         createdAt: true,
+        recordStatus: true,
         model: modelSelect,
         createdBy: userSelect,
+        branchInventories: {
+          take: 1,
+          orderBy: { createdAt: "asc" },
+          select: { branch: { select: { name: true } } },
+        },
       },
     }),
     prisma.serialNumber.count({ where }),
@@ -123,10 +167,10 @@ async function registeredSource(
       timestamp: r.createdAt,
       serialNo: r.serialNo,
       modelLabel: modelLabel(r.model),
-      location: null,
-      reference: null,
-      status: null,
-      amount: null,
+      location: r.branchInventories[0]?.branch.name ?? null,
+      reference: r.serialNo,
+      referenceDetails: referenceDetails(`SKU ${r.model.skuCode}`),
+      status: RECORD_STATUS_LABELS[r.recordStatus] ?? r.recordStatus,
       performedBy: performedByLabel(r.createdBy),
     })),
   };
@@ -138,7 +182,7 @@ async function statusSource(
 ): Promise<SourceResult> {
   const where: Prisma.BranchInventoryWhereInput = {
     tenantId,
-    ...(q ? { serialNumber: { serialNo: serialContains(q) } } : {}),
+    ...(q ? { serialNumber: { serialNo: textContains(q) } } : {}),
     ...(dateFilter ? { updatedAt: dateFilter } : {}),
   };
   const [rows, count] = await Promise.all([
@@ -149,8 +193,8 @@ async function statusSource(
       select: {
         id: true,
         updatedAt: true,
-        branch: { select: { name: true } },
-        statusCode: { select: { name: true } },
+        branch: { select: { name: true, sapCode: true } },
+        statusCode: { select: { code: true, name: true } },
         serialNumber: { select: { serialNo: true, model: modelSelect } },
         updatedBy: userSelect,
       },
@@ -170,9 +214,11 @@ async function statusSource(
           serialNo: serial.serialNo,
           modelLabel: serial.modelLabel,
           location: r.branch.name,
-          reference: null,
+          reference: r.branch.sapCode,
+          referenceDetails: referenceDetails(
+            `Status set to ${r.statusCode.name} (${r.statusCode.code})`,
+          ),
           status: r.statusCode.name,
-          amount: null,
           performedBy: performedByLabel(r.updatedBy),
         },
       ];
@@ -186,7 +232,14 @@ async function transferredSource(
 ): Promise<SourceResult> {
   const where: Prisma.BranchTransferLineWhereInput = {
     transfer: { tenantId, ...(dateFilter ? { createdAt: dateFilter } : {}) },
-    ...(q ? { serialNumber: { serialNo: serialContains(q) } } : {}),
+    ...(q
+      ? {
+          OR: [
+            { serialNumber: { serialNo: textContains(q) } },
+            { transfer: { transferNo: textContains(q) } },
+          ],
+        }
+      : {}),
   };
   const [rows, count] = await Promise.all([
     prisma.branchTransferLine.findMany({
@@ -200,8 +253,10 @@ async function transferredSource(
           select: {
             transferNo: true,
             createdAt: true,
+            notes: true,
             fromBranch: { select: { name: true } },
             toBranch: { select: { name: true } },
+            statusCode: { select: { name: true } },
             createdBy: userSelect,
           },
         },
@@ -221,10 +276,13 @@ async function transferredSource(
           timestamp: r.transfer.createdAt,
           serialNo: serial.serialNo,
           modelLabel: serial.modelLabel,
-          location: `${r.transfer.fromBranch.name} → ${r.transfer.toBranch.name}`,
+          location: r.transfer.toBranch.name,
           reference: r.transfer.transferNo,
-          status: null,
-          amount: null,
+          referenceDetails: referenceDetails(
+            route(r.transfer.fromBranch.name, r.transfer.toBranch.name),
+            r.transfer.notes ? `Note: ${r.transfer.notes}` : null,
+          ),
+          status: r.transfer.statusCode.name,
           performedBy: performedByLabel(r.transfer.createdBy),
         },
       ];
@@ -241,7 +299,14 @@ async function soldSource(
       tenantId,
       ...(dateFilter ? { createdAt: dateFilter } : {}),
     },
-    ...(q ? { serialNumber: { serialNo: serialContains(q) } } : {}),
+    ...(q
+      ? {
+          OR: [
+            { serialNumber: { serialNo: textContains(q) } },
+            { sale: { transactionNo: textContains(q) } },
+          ],
+        }
+      : {}),
   };
   const [rows, count] = await Promise.all([
     prisma.branchSalesTransactionDetail.findMany({
@@ -256,6 +321,10 @@ async function soldSource(
         sale: {
           select: {
             transactionNo: true,
+            transactionDate: true,
+            customerName: true,
+            deliveryNo: true,
+            atrStatus: true,
             amount: true,
             branch: { select: { name: true } },
             createdBy: userSelect,
@@ -280,8 +349,15 @@ async function soldSource(
           modelLabel: serial.modelLabel,
           location: r.sale.branch.name,
           reference: r.sale.transactionNo,
-          status: null,
-          amount: (r.saleAmount ?? r.amount ?? r.sale.amount).toString(),
+          referenceDetails: referenceDetails(
+            formatPeso(Number(r.saleAmount ?? r.amount ?? r.sale.amount)),
+            r.sale.customerName ? `Customer: ${r.sale.customerName}` : null,
+            r.sale.deliveryNo ? `DR ${r.sale.deliveryNo}` : null,
+            r.sale.transactionDate
+              ? `Transaction date: ${formatEventDate(r.sale.transactionDate)}`
+              : null,
+          ),
+          status: ATR_STATUS_LABELS[r.sale.atrStatus] ?? r.sale.atrStatus,
           performedBy: performedByLabel(r.sale.createdBy),
         },
       ];
@@ -295,7 +371,14 @@ async function pulledOutSource(
 ): Promise<SourceResult> {
   const where: Prisma.BranchPulloutLineWhereInput = {
     pullout: { tenantId, ...(dateFilter ? { createdAt: dateFilter } : {}) },
-    ...(q ? { serialNumber: { serialNo: serialContains(q) } } : {}),
+    ...(q
+      ? {
+          OR: [
+            { serialNumber: { serialNo: textContains(q) } },
+            { pullout: { pulloutNo: textContains(q) } },
+          ],
+        }
+      : {}),
   };
   const [rows, count] = await Promise.all([
     prisma.branchPulloutLine.findMany({
@@ -309,8 +392,13 @@ async function pulledOutSource(
           select: {
             pulloutNo: true,
             createdAt: true,
+            waybillNo: true,
+            notes: true,
             branch: { select: { name: true } },
             warehouse: { select: { name: true } },
+            warehouseLocation: { select: { code: true } },
+            statusCode: { select: { name: true } },
+            reasonStatusCode: { select: { name: true } },
             createdBy: userSelect,
           },
         },
@@ -330,10 +418,19 @@ async function pulledOutSource(
           timestamp: r.pullout.createdAt,
           serialNo: serial.serialNo,
           modelLabel: serial.modelLabel,
-          location: `${r.pullout.branch.name} → ${r.pullout.warehouse.name}`,
+          location: r.pullout.warehouseLocation
+            ? `${r.pullout.warehouse.name} · ${r.pullout.warehouseLocation.code}`
+            : r.pullout.warehouse.name,
           reference: r.pullout.pulloutNo,
-          status: null,
-          amount: null,
+          referenceDetails: referenceDetails(
+            route(r.pullout.branch.name, r.pullout.warehouse.name),
+            r.pullout.reasonStatusCode
+              ? `Reason: ${r.pullout.reasonStatusCode.name}`
+              : null,
+            r.pullout.waybillNo ? `Waybill ${r.pullout.waybillNo}` : null,
+            r.pullout.notes ? `Note: ${r.pullout.notes}` : null,
+          ),
+          status: r.pullout.statusCode.name,
           performedBy: performedByLabel(r.pullout.createdBy),
         },
       ];
@@ -348,7 +445,14 @@ async function countedSource(
   const where: Prisma.StockCountLineWhereInput = {
     session: { tenantId },
     countedAt: dateFilter ? { not: null, ...dateFilter } : { not: null },
-    ...(q ? { serialNumber: { serialNo: serialContains(q) } } : {}),
+    ...(q
+      ? {
+          OR: [
+            { serialNumber: { serialNo: textContains(q) } },
+            { session: { sessionNo: textContains(q) } },
+          ],
+        }
+      : {}),
   };
   const [rows, count] = await Promise.all([
     prisma.stockCountLine.findMany({
@@ -359,8 +463,15 @@ async function countedSource(
         id: true,
         countedAt: true,
         status: true,
+        expectedInCount: true,
+        notes: true,
+        branchInventory: { select: { statusCode: { select: { name: true } } } },
         session: {
-          select: { sessionNo: true, branch: { select: { name: true } } },
+          select: {
+            sessionNo: true,
+            status: true,
+            branch: { select: { name: true } },
+          },
         },
         serialNumber: { select: { serialNo: true, model: modelSelect } },
         countedBy: userSelect,
@@ -383,8 +494,15 @@ async function countedSource(
           modelLabel: serial.modelLabel,
           location: r.session.branch.name,
           reference: r.session.sessionNo,
-          status: r.status,
-          amount: null,
+          referenceDetails: referenceDetails(
+            `Session: ${STOCK_COUNT_SESSION_LABELS[r.session.status]}`,
+            r.branchInventory
+              ? `System status: ${r.branchInventory.statusCode.name}`
+              : null,
+            r.expectedInCount ? null : "Not expected in this count",
+            r.notes ? `Note: ${r.notes}` : null,
+          ),
+          status: COUNT_LINE_STATUS_LABELS[r.status] ?? r.status,
           performedBy: performedByLabel(r.countedBy),
         },
       ];

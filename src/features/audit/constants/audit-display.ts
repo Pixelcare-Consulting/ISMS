@@ -496,6 +496,121 @@ export function formatAuditDetails(
   return formatActionFallback(action);
 }
 
+/**
+ * Metadata keys that identify the record an audit entry is about, most specific
+ * first — the first hit becomes the reference number shown in the log.
+ */
+const REFERENCE_NUMBER_KEYS = [
+  "orderNumber",
+  "deliveryNo",
+  "transferNo",
+  "pulloutNo",
+  "transactionNo",
+  "sessionNo",
+  "serialNo",
+  "waybillNo",
+  "sapDocRef",
+  "code",
+  "warehouseCode",
+  "permissionSlug",
+  "slug",
+  "email",
+  "title",
+  "name",
+  "label",
+] as const;
+
+export interface AuditReference {
+  /** Document/record number identifying what the entry acted on. */
+  number: string | null;
+  /** Supporting context lines — route, branch, quantities, reason, … */
+  details: string[];
+  /** Raw record id, for tracing straight back to the row. */
+  recordId: string | null;
+}
+
+/**
+ * The full "what record was this?" answer for an audit entry: the document
+ * number plus every piece of context the metadata carries — the movement route
+ * for transfers and pull-outs, the branch, the affected lines, and so on.
+ */
+export function formatAuditReference(
+  entityType: string,
+  entityId: string | null,
+  metadata: unknown,
+  action: string,
+): AuditReference {
+  const data =
+    metadata && typeof metadata === "object" && !Array.isArray(metadata)
+      ? (metadata as Record<string, unknown>)
+      : {};
+
+  let number: string | null = null;
+  for (const key of REFERENCE_NUMBER_KEYS) {
+    const value = readMetadataString(data, key);
+    if (value) {
+      number = value;
+      break;
+    }
+  }
+
+  const details: string[] = [];
+  const push = (value: string | null) => {
+    if (value && !details.includes(value)) details.push(value);
+  };
+
+  const from = readMetadataString(data, "from");
+  const to = readMetadataString(data, "to");
+  const branchName = readMetadataString(data, "branchName");
+  const warehouseCode = readMetadataString(data, "warehouseCode");
+  const locationCode = readMetadataString(data, "locationCode");
+  const orderType = readMetadataString(data, "orderType");
+  const linesSummary = readMetadataString(data, "linesSummary");
+  const reasonName = readMetadataString(data, "reasonName");
+  const comment = readMetadataString(data, "comment");
+  const status =
+    readMetadataString(data, "statusName") ?? readMetadataString(data, "status");
+  const roleSlug = readMetadataString(data, "roleSlug");
+  const permissionSlug = readMetadataString(data, "permissionSlug");
+
+  // Movement route first — the "location 1 → location 2" that makes a transfer,
+  // pull-out or approval hop traceable at a glance.
+  if (from && to) {
+    push(`${formatStatusLabel(from)} → ${formatStatusLabel(to)}`);
+  } else if (from) {
+    push(`From ${formatStatusLabel(from)}`);
+  } else if (to) {
+    push(`To ${formatStatusLabel(to)}`);
+  }
+
+  if (branchName) push(branchName);
+  if (warehouseCode) {
+    push(locationCode ? `${warehouseCode} · ${locationCode}` : warehouseCode);
+  } else if (locationCode) {
+    push(locationCode);
+  }
+  if (orderType) push(`${formatOrderTypeLabel(orderType)} order`);
+  if (linesSummary) push(`Lines: ${linesSummary}`);
+  if (status) push(`Status: ${formatStatusLabel(status)}`);
+  if (reasonName) push(`Reason: ${reasonName}`);
+  if (comment) push(`Note: ${comment}`);
+
+  if (action === "role.permission.granted" || action === "role.permission.revoked") {
+    const verb = action.endsWith("granted") ? "Granted to" : "Revoked from";
+    push(`${verb} ${roleSlug ? formatRoleSlugLabel(roleSlug) : "role"}`);
+  } else if (permissionSlug && roleSlug) {
+    push(`${formatRoleSlugLabel(roleSlug)} · ${permissionSlug}`);
+  } else if (roleSlug) {
+    push(`Role: ${formatRoleSlugLabel(roleSlug)}`);
+  }
+
+  return {
+    number: number ?? (entityId ? formatAuditEntityTypeLabel(entityType) : null),
+    details,
+    recordId: entityId,
+  };
+}
+
 export function formatAuditTimestamp(value: Date | string): string {
   const date = value instanceof Date ? value : new Date(value);
 

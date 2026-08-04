@@ -7,7 +7,12 @@ import { masterDataRepository } from "@/features/master-data/repositories/master
 import { toClientModelRow } from "@/features/master-data/types/client-model";
 import { toClientPriceListRow } from "@/features/master-data/types/client-price-list";
 import { requirePermission } from "@/lib/auth/permissions";
+import { cacheKey, deleteCache } from "@/lib/cache/redis";
 import { prisma } from "@/lib/database/client";
+
+function invalidateModelsCache(tenantId: string) {
+  return deleteCache(cacheKey("tenant", tenantId, "master-data", "models", "all"));
+}
 
 const brandSchema = z.object({ name: z.string().min(1), code: z.string().optional() });
 const categorySchema = z.object({
@@ -155,6 +160,7 @@ export async function createPriceListAction(input: unknown) {
       periodEnd: new Date(parsed.data.periodEnd),
       packageTypeId: parsed.data.packageTypeId ?? null,
     });
+    await invalidateModelsCache(session.user.tenantId);
     revalidateMasterData();
     return { success: true as const };
   } catch (e) {
@@ -166,6 +172,7 @@ export async function deletePriceListAction(id: string) {
   const session = await requirePermission("master_data.manage");
   try {
     await masterDataRepository.deletePriceList(session.user.tenantId, id);
+    await invalidateModelsCache(session.user.tenantId);
     revalidateMasterData();
     return { success: true as const };
   } catch (e) {
