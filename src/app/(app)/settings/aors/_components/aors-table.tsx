@@ -81,6 +81,7 @@ interface AorRow {
   branch: { id: string; name: string; sapCode: string } | null;
   warehouse: { id: string; name: string; code: string } | null;
   dealer: { id: string; name: string; sapCode: string | null } | null;
+  serviceCenter: { id: string; name: string; sapCode: string } | null;
 }
 
 type BranchOption = {
@@ -103,6 +104,13 @@ type WarehouseOption = {
   id: string;
   name: string;
   code: string;
+  label: string;
+};
+
+type ServiceCenterOption = {
+  id: string;
+  name: string;
+  sapCode: string;
   label: string;
 };
 
@@ -187,6 +195,13 @@ function selectionsForUser(
         .filter((id): id is string => Boolean(id)),
     ),
   ];
+  const serviceCenterIds = [
+    ...new Set(
+      userAors
+        .map((aor) => aor.serviceCenter?.id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
   const dealerIdsFromRows = [
     ...new Set(
       userAors
@@ -216,6 +231,7 @@ function selectionsForUser(
     branchIds,
     dealerIds: [...new Set([...dealerIdsFromRows, ...inferredDealerIds])],
     warehouseIds,
+    serviceCenterIds,
   };
 }
 
@@ -228,12 +244,15 @@ function mapSyncedAorRow(
     branch: { id: string; name: string; sapCode: string } | null;
     warehouse: { id: string; name: string; code: string } | null;
     dealer: { id: string; name: string; sapCode: string | null } | null;
+    serviceCenter: { id: string; name: string; sapCode: string } | null;
     branchId?: string | null;
     warehouseId?: string | null;
+    serviceCenterId?: string | null;
   },
   selectedUser: { name: string | null; email: string } | undefined,
   branchById: Map<string, BranchOption>,
   warehouseById: Map<string, WarehouseOption>,
+  serviceCenterById: Map<string, ServiceCenterOption>,
 ): AorRow {
   const branch =
     aor.branch ??
@@ -242,6 +261,12 @@ function mapSyncedAorRow(
   const warehouse =
     aor.warehouse ??
     (aor.warehouseId ? warehouseById.get(aor.warehouseId) : undefined) ??
+    null;
+  const serviceCenter =
+    aor.serviceCenter ??
+    (aor.serviceCenterId
+      ? serviceCenterById.get(aor.serviceCenterId)
+      : undefined) ??
     null;
 
   return {
@@ -264,6 +289,13 @@ function mapSyncedAorRow(
     dealer: aor.dealer
       ? { id: aor.dealer.id, name: aor.dealer.name, sapCode: aor.dealer.sapCode }
       : null,
+    serviceCenter: serviceCenter
+      ? {
+          id: serviceCenter.id,
+          name: serviceCenter.name,
+          sapCode: serviceCenter.sapCode,
+        }
+      : null,
   };
 }
 
@@ -273,12 +305,14 @@ export function AorsTable({
   branches,
   dealers,
   warehouses,
+  serviceCenters,
 }: {
   aors: AorRow[];
   users: { id: string; name: string | null; email: string; label: string }[];
   branches: BranchOption[];
   dealers: DealerOption[];
   warehouses: WarehouseOption[];
+  serviceCenters: ServiceCenterOption[];
 }) {
   const router = useRouter();
   const [rows, setRows] = useState(aors);
@@ -290,6 +324,9 @@ export function AorsTable({
   const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
   const [selectedDealerIds, setSelectedDealerIds] = useState<string[]>([]);
   const [selectedWarehouseIds, setSelectedWarehouseIds] = useState<string[]>([]);
+  const [selectedServiceCenterIds, setSelectedServiceCenterIds] = useState<
+    string[]
+  >([]);
   const [removingAll, setRemovingAll] = useState<AorUserGroup | null>(null);
   const [viewingAll, setViewingAll] = useState<AorUserGroup | null>(null);
   const [removingOne, setRemovingOne] = useState<{
@@ -310,6 +347,7 @@ export function AorsTable({
       setSelectedBranchIds([]);
       setSelectedDealerIds([]);
       setSelectedWarehouseIds([]);
+      setSelectedServiceCenterIds([]);
       return;
     }
 
@@ -318,6 +356,7 @@ export function AorsTable({
     setSelectedBranchIds(next.branchIds);
     setSelectedDealerIds(next.dealerIds);
     setSelectedWarehouseIds(next.warehouseIds);
+    setSelectedServiceCenterIds(next.serviceCenterIds);
   }
 
   const branchOptions = useMemo(
@@ -348,6 +387,15 @@ export function AorsTable({
     [warehouses],
   );
 
+  const serviceCenterOptions = useMemo(
+    () =>
+      serviceCenters.map((center) => ({
+        id: center.id,
+        label: center.label,
+      })),
+    [serviceCenters],
+  );
+
   const groups = useMemo(() => groupAorsByUser(rows), [rows]);
 
   const filtered = useMemo(
@@ -364,6 +412,8 @@ export function AorsTable({
             branchLabel(aor.branch) ?? "",
             aor.warehouse?.name ?? "",
             aor.warehouse?.code ?? "",
+            aor.serviceCenter?.name ?? "",
+            aor.serviceCenter?.sapCode ?? "",
           ]),
         ]),
       ),
@@ -383,6 +433,8 @@ export function AorsTable({
             branchLabel(aor.branch),
             aor.warehouse?.name,
             aor.warehouse?.code,
+            aor.serviceCenter?.name,
+            aor.serviceCenter?.sapCode,
           ]),
         ),
       ),
@@ -413,13 +465,15 @@ export function AorsTable({
     Boolean(userId) &&
     (selectedBranchIds.length > 0 ||
       selectedDealerIds.length > 0 ||
-      selectedWarehouseIds.length > 0);
+      selectedWarehouseIds.length > 0 ||
+      selectedServiceCenterIds.length > 0);
 
   function openAssign() {
     setUserId("");
     setSelectedBranchIds([]);
     setSelectedDealerIds([]);
     setSelectedWarehouseIds([]);
+    setSelectedServiceCenterIds([]);
     setSheetOpen(true);
   }
 
@@ -437,6 +491,9 @@ export function AorsTable({
       }
       for (const warehouseId of selectedWarehouseIds) {
         fd.append("warehouseIds", warehouseId);
+      }
+      for (const serviceCenterId of selectedServiceCenterIds) {
+        fd.append("serviceCenterIds", serviceCenterId);
       }
 
       const result = await syncUserAorsAction(fd);
@@ -465,9 +522,18 @@ export function AorsTable({
         const warehouseById = new Map(
           warehouses.map((warehouse) => [warehouse.id, warehouse]),
         );
+        const serviceCenterById = new Map(
+          serviceCenters.map((center) => [center.id, center]),
+        );
         const syncedRows = result.aors.map(
           (aor: Parameters<typeof mapSyncedAorRow>[0]) =>
-            mapSyncedAorRow(aor, selectedUser, branchById, warehouseById),
+            mapSyncedAorRow(
+              aor,
+              selectedUser,
+              branchById,
+              warehouseById,
+              serviceCenterById,
+            ),
         );
         setRows((currentRows) => [
           ...syncedRows,
@@ -479,6 +545,7 @@ export function AorsTable({
       setSelectedBranchIds([]);
       setSelectedDealerIds([]);
       setSelectedWarehouseIds([]);
+      setSelectedServiceCenterIds([]);
       setSheetOpen(false);
       router.refresh();
     });
@@ -687,8 +754,8 @@ export function AorsTable({
           <SheetHeader className="border-b border-border/60 px-4 py-4 text-left">
             <SheetTitle>Assign AOR</SheetTitle>
             <SheetDescription>
-              Assign branches, dealers, or warehouses to a user. Selecting a
-              dealer assigns all of its active branches.
+              Assign branches, dealers, warehouses, or service centers to a
+              user. Selecting a dealer assigns all of its active branches.
             </SheetDescription>
           </SheetHeader>
           <form
@@ -737,6 +804,16 @@ export function AorsTable({
                 placeholder="Search and select warehouses…"
                 searchPlaceholder="Filter warehouses…"
                 emptyMessage="No warehouses available."
+                disabled={pending}
+              />
+              <SearchableMultiSelect
+                label="Service centers"
+                options={serviceCenterOptions}
+                selectedIds={selectedServiceCenterIds}
+                onChange={setSelectedServiceCenterIds}
+                placeholder="Search and select service centers…"
+                searchPlaceholder="Filter service centers…"
+                emptyMessage="No service centers available."
                 disabled={pending}
               />
             </div>

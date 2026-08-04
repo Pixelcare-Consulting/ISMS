@@ -203,6 +203,7 @@ model Tenant {
   serviceCenterDeliveries ServiceCenterDelivery[]
   serviceBackloads    ServiceBackload[]
   serviceCenterSales  ServiceCenterSalesTransaction[]
+  serviceCenterReturnRequests ServiceCenterReturnRequest[]
   serviceCenterPullouts ServiceCenterPullout[]
   reasonStatuses      ReasonStatus[]
   reasonStatusCodes   ReasonStatusCode[]
@@ -260,6 +261,10 @@ model User {
   returnRequestsEvaluated   BranchReturnRequest[] @relation("ReturnEvaluatedBy")
   returnRequestsApproved    BranchReturnRequest[] @relation("ReturnApprovedBy")
   returnRequestsAccepted    BranchReturnRequest[] @relation("ReturnAcceptedBy")
+  scReturnRequestsSubmitted ServiceCenterReturnRequest[] @relation("ScReturnRequestedBy")
+  scReturnRequestsEvaluated ServiceCenterReturnRequest[] @relation("ScReturnEvaluatedBy")
+  scReturnRequestsApproved  ServiceCenterReturnRequest[] @relation("ScReturnApprovedBy")
+  scReturnRequestsAccepted  ServiceCenterReturnRequest[] @relation("ScReturnAcceptedBy")
   salesReplacementsTransacted SalesReplacement[] @relation("SalesReplacementTransactedBy")
   serialNumberHistoriesCreated SerialNumberHistory[] @relation("SerialNumberHistoryCreatedBy")
   stockCountSessionsCreated StockCountSession[]   @relation("StockCountSessionCreatedBy")
@@ -2362,10 +2367,40 @@ model ServiceCenterSalesTransaction {
   saleType               SaleType?               @relation(fields: [saleTypeId], references: [id], onDelete: SetNull)
   promoType              PromoType?              @relation(fields: [promoTypeId], references: [id], onDelete: SetNull)
   customerDeliveryMethod CustomerDeliveryMethod? @relation(fields: [customerDeliveryMethodId], references: [id], onDelete: SetNull)
+  returnRequest          ServiceCenterReturnRequest?
 
   @@unique([tenantId, transactionNo])
   @@index([tenantId, serviceCenterId])
   @@map("service_center_sales_transactions")
+}
+
+model ServiceCenterReturnRequest {
+  id                   String              @id @default(cuid())
+  tenantId             String              @map("tenant_id")
+  saleId               String              @unique @map("sale_id")
+  status               ReturnRequestStatus @default(pending_cs)
+  requestNotes         String?             @map("request_notes")
+  evaluationNotes      String?             @map("evaluation_notes")
+  acceptedAt           DateTime?           @map("accepted_at")
+  acceptedById         String?             @map("accepted_by_id")
+  requestedById        String              @map("requested_by_id")
+  evaluatedById        String?             @map("evaluated_by_id")
+  approvedById         String?             @map("approved_by_id")
+  evaluatedAt          DateTime?           @map("evaluated_at")
+  approvedAt           DateTime?           @map("approved_at")
+  completedAt          DateTime?           @map("completed_at")
+  createdAt            DateTime            @default(now()) @map("created_at")
+  updatedAt            DateTime            @updatedAt @map("updated_at")
+
+  tenant      Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sale        ServiceCenterSalesTransaction @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  requestedBy User                         @relation("ScReturnRequestedBy", fields: [requestedById], references: [id])
+  evaluatedBy User?                        @relation("ScReturnEvaluatedBy", fields: [evaluatedById], references: [id], onDelete: SetNull)
+  approvedBy  User?                        @relation("ScReturnApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  acceptedBy  User?                        @relation("ScReturnAcceptedBy", fields: [acceptedById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, status])
+  @@map("service_center_return_requests")
 }
 
 model ServiceCenterPullout {

@@ -70,7 +70,10 @@ type DetailSetDraft = {
   serialNumberId: string;
   saleAmount: string;
   modelPrice: string;
+  /** True when the model has no master price list at all. */
   noPriceList: boolean;
+  /** When set, price came from an older (non-current) price list period. */
+  priceFallbackDate: string | null;
 };
 
 function emptySet(): DetailSetDraft {
@@ -82,7 +85,19 @@ function emptySet(): DetailSetDraft {
     saleAmount: "",
     modelPrice: "",
     noPriceList: false,
+    priceFallbackDate: null,
   };
+}
+
+function formatPriceListDate(isoDate: string): string {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  if (!year || !month || !day) return isoDate;
+  return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
 }
 
 function newClientKey(): string {
@@ -163,13 +178,18 @@ export function AddTransactionDetailDialog({
       serialNumberId: "",
       modelPrice: "",
       noPriceList: false,
+      priceFallbackDate: null,
     });
   }
 
   async function onModelChange(index: number, modelId: string) {
     updateSet(index, { modelId, serialNumberId: "" });
     if (!modelId) {
-      updateSet(index, { modelPrice: "", noPriceList: false });
+      updateSet(index, {
+        modelPrice: "",
+        noPriceList: false,
+        priceFallbackDate: null,
+      });
       return;
     }
     try {
@@ -181,13 +201,25 @@ export function AddTransactionDetailDialog({
         updateSet(index, {
           modelPrice: String(resolved.amount),
           noPriceList: false,
+          priceFallbackDate:
+            resolved.source === "pricelist_fallback"
+              ? resolved.periodStart
+              : null,
         });
       } else {
-        updateSet(index, { modelPrice: "", noPriceList: true });
+        updateSet(index, {
+          modelPrice: "0",
+          noPriceList: true,
+          priceFallbackDate: null,
+        });
       }
     } catch {
       toast.error("Failed to resolve model price");
-      updateSet(index, { modelPrice: "", noPriceList: false });
+      updateSet(index, {
+        modelPrice: "0",
+        noPriceList: true,
+        priceFallbackDate: null,
+      });
     }
   }
 
@@ -248,11 +280,8 @@ export function AddTransactionDetailDialog({
         return;
       }
       const modelPriceRaw = set.modelPrice.trim();
-      const modelPrice = modelPriceRaw === "" ? null : Number(modelPriceRaw);
-      if (
-        modelPrice != null &&
-        (!Number.isFinite(modelPrice) || modelPrice < 0)
-      ) {
+      const modelPrice = modelPriceRaw === "" ? 0 : Number(modelPriceRaw);
+      if (!Number.isFinite(modelPrice) || modelPrice < 0) {
         toast.error(`Set ${i + 1}: model price is invalid`);
         return;
       }
@@ -444,22 +473,19 @@ export function AddTransactionDetailDialog({
                         min="0"
                         step="0.01"
                         value={set.modelPrice}
-                        onChange={(e) =>
-                          updateSet(index, {
-                            modelPrice: e.target.value,
-                            noPriceList: false,
-                          })
-                        }
-                        placeholder={
-                          set.noPriceList
-                            ? "No price list available at this date"
-                            : "0.00"
-                        }
+                        readOnly
+                        disabled
+                        placeholder="0.00"
                       />
                       {set.noPriceList ? (
-                        <p className="text-xs text-destructive">
-                          No price list available at this date. Enter the
-                          price manually.
+                        <p className="text-xs text-muted-foreground">
+                          No price list set up for this model. Price stays at 0
+                          and cannot be edited.
+                        </p>
+                      ) : set.priceFallbackDate ? (
+                        <p className="text-xs text-muted-foreground">
+                          Using latest price list from{" "}
+                          {formatPriceListDate(set.priceFallbackDate)}.
                         </p>
                       ) : null}
                     </div>

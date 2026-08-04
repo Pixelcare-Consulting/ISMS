@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { aorService } from "@/features/aors/services/aor.service";
 import { branchService } from "@/features/branches/services/branch.service";
 import { dealerRepository } from "@/features/dealers/repositories/dealer.repository";
+import { serviceCenterRepository } from "@/features/service-centers/repositories/service-center.repository";
 import { userService } from "@/features/users/services/user.service";
 import { warehouseService } from "@/features/warehouses/services/warehouse.service";
 import { requirePermission } from "@/lib/auth/permissions";
@@ -22,13 +23,15 @@ export async function listAorsAction() {
 
 export async function listAorFormOptionsAction() {
   const session = await requirePermission("aors.manage");
-  const [users, branches, dealers, warehouses] = await Promise.all([
-    userService.listUsers(session.user.tenantId),
-    branchService.listBranches(session.user.tenantId),
-    dealerRepository.listActiveByTenant(session.user.tenantId),
-    warehouseService.listWarehouses(session.user.tenantId),
-  ]);
-  return { users, branches, dealers, warehouses };
+  const [users, branches, dealers, warehouses, serviceCenters] =
+    await Promise.all([
+      userService.listUsers(session.user.tenantId),
+      branchService.listBranches(session.user.tenantId),
+      dealerRepository.listActiveByTenant(session.user.tenantId),
+      warehouseService.listWarehouses(session.user.tenantId),
+      serviceCenterRepository.listByTenant(session.user.tenantId),
+    ]);
+  return { users, branches, dealers, warehouses, serviceCenters };
 }
 
 export async function createAorAction(formData: FormData) {
@@ -80,6 +83,7 @@ export async function syncUserAorsAction(formData: FormData) {
       branchIds: formDataStringList(formData, "branchIds"),
       dealerIds: formDataStringList(formData, "dealerIds"),
       warehouseIds: formDataStringList(formData, "warehouseIds"),
+      serviceCenterIds: formDataStringList(formData, "serviceCenterIds"),
     });
     revalidatePath("/settings/aors");
     return {

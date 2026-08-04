@@ -586,24 +586,16 @@ export async function listModelsForSalesAction(brandId?: string) {
   }));
 }
 
-export type ResolvedModelPriceSource = "pricelist" | "srp";
+export type ResolvedModelPriceSource = "pricelist" | "pricelist_fallback";
 
 export type ResolvedModelPrice = {
   amount: number;
   source: ResolvedModelPriceSource;
+  /** Calendar day of the chosen price list period start (UTC YYYY-MM-DD). */
+  periodStart: string;
 };
 
-/**
- * Resolve Model price for a sales detail set.
- * Price lists are tenant + model + optional package type + active calendar day.
- * Prefers a package-specific row, then a generic (no package) row, then model SRP.
- */
-export async function resolveModelPriceForSalesAction(input: {
-  modelId: string;
-  packageTypeId?: string;
-}): Promise<ResolvedModelPrice | null> {
-  const session = await requirePermission("sales.create");
-  const now = new Date();
+function utcDayBounds(now: Date = new Date()) {
   // Date inputs store midnight UTC; treat the whole calendar day as in-range.
   const dayStart = new Date(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
@@ -619,48 +611,82 @@ export async function resolveModelPriceForSalesAction(input: {
       999,
     ),
   );
+  return { dayStart, dayEnd };
+}
 
-  const baseWhere = {
-    tenantId: session.user.tenantId,
-    modelId: input.modelId,
-    periodStart: { lte: dayEnd },
-    periodEnd: { gte: dayStart },
-  };
+/**
+ * Resolve Model price from master price lists only (no SRP / no manual override).
+ * 1) Active row for today (package-specific, then generic)
+ * 2) Else latest row with periodStart <= today (same package preference)
+ * 3) Else null → caller locks amount at 0
+ */
+async function resolveModelPriceForSales(
+  tenantId: string,
+  modelId: string,
+  packageTypeId?: string,
+): Promise<ResolvedModelPrice | null> {
+  const { dayStart, dayEnd } = utcDayBounds();
+  const packageIds: Array<string | null> = packageTypeId
+    ? [packageTypeId, null]
+    : [null];
 
-  if (input.packageTypeId) {
-    const packagePrice = await prisma.priceList.findFirst({
-      where: { ...baseWhere, packageTypeId: input.packageTypeId },
+  for (const packageTypeFilter of packageIds) {
+    const active = await prisma.priceList.findFirst({
+      where: {
+        tenantId,
+        modelId,
+        packageTypeId: packageTypeFilter,
+        periodStart: { lte: dayEnd },
+        periodEnd: { gte: dayStart },
+      },
       orderBy: { periodStart: "desc" },
-      select: { amount: true },
+      select: { amount: true, periodStart: true },
     });
-    if (packagePrice) {
+    if (active) {
       return {
-        amount: Number(packagePrice.amount.toString()),
+        amount: Number(active.amount.toString()),
         source: "pricelist",
+        periodStart: active.periodStart.toISOString().slice(0, 10),
       };
     }
   }
 
-  const genericPrice = await prisma.priceList.findFirst({
-    where: { ...baseWhere, packageTypeId: null },
-    orderBy: { periodStart: "desc" },
-    select: { amount: true },
-  });
-  if (genericPrice) {
-    return {
-      amount: Number(genericPrice.amount.toString()),
-      source: "pricelist",
-    };
+  for (const packageTypeFilter of packageIds) {
+    const latest = await prisma.priceList.findFirst({
+      where: {
+        tenantId,
+        modelId,
+        packageTypeId: packageTypeFilter,
+        periodStart: { lte: dayEnd },
+      },
+      orderBy: { periodStart: "desc" },
+      select: { amount: true, periodStart: true },
+    });
+    if (latest) {
+      return {
+        amount: Number(latest.amount.toString()),
+        source: "pricelist_fallback",
+        periodStart: latest.periodStart.toISOString().slice(0, 10),
+      };
+    }
   }
 
-  const model = await prisma.productModel.findFirst({
-    where: { id: input.modelId, tenantId: session.user.tenantId },
-    select: { srp: true },
-  });
-  if (model?.srp != null) {
-    return { amount: Number(model.srp.toString()), source: "srp" };
-  }
   return null;
+}
+
+/**
+ * Resolve Model price for a sales detail set (see resolveModelPriceForSales).
+ */
+export async function resolveModelPriceForSalesAction(input: {
+  modelId: string;
+  packageTypeId?: string;
+}): Promise<ResolvedModelPrice | null> {
+  const session = await requirePermission("sales.create");
+  return resolveModelPriceForSales(
+    session.user.tenantId,
+    input.modelId,
+    input.packageTypeId,
+  );
 }
 
 export async function listSaleableSerialsAction(
@@ -773,7 +799,20 @@ export async function createSaleAction(input: unknown) {
     return { error: e instanceof Error ? e.message : "Access denied" };
   }
 
-  const details = parsed.data.details;
+  // Re-resolve model prices from master lists so clients cannot override.
+  const details = await Promise.all(
+    parsed.data.details.map(async (detail) => {
+      const resolved = await resolveModelPriceForSales(
+        session.user.tenantId,
+        detail.modelId,
+        detail.packageTypeId,
+      );
+      return {
+        ...detail,
+        modelPrice: resolved?.amount ?? 0,
+      };
+    }),
+  );
   // TO-FOLLOW is not a stock unit — only real ids must be unique in one sale.
   const realSerialIds = details
     .map((d) => d.serialNumberId)

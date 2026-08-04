@@ -49,6 +49,13 @@ export default async function SettingsAorsPage() {
           sapCode: aor.dealer.sapCode,
         }
       : null,
+    serviceCenter: aor.serviceCenter
+      ? {
+          id: aor.serviceCenter.id,
+          name: aor.serviceCenter.name,
+          sapCode: aor.serviceCenter.sapCode,
+        }
+      : null,
   }));
 
   return (
@@ -56,7 +63,7 @@ export default async function SettingsAorsPage() {
       <PageHeader
         title="Areas of responsibility"
         tutorial={AORS_PAGE_TUTORIAL}
-        description="Assignments are stored per branch. The table groups them by user so you can see every branch in one place."
+        description="Assignments are stored per branch, warehouse, or service center. The table groups them by user so you can see every location in one place."
         sticky={false}
       />
       <ModuleGuide {...AORS_MODULE_GUIDE} />
@@ -88,6 +95,12 @@ export default async function SettingsAorsPage() {
           name: w.name,
           code: w.code,
           label: `${w.name} (${w.code})`,
+        }))}
+        serviceCenters={options.serviceCenters.map((sc) => ({
+          id: sc.id,
+          name: sc.name,
+          sapCode: sc.sapCode,
+          label: `${sc.name} (${sc.sapCode})`,
         }))}
       />
     </div>
