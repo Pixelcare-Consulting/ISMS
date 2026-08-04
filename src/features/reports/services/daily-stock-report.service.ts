@@ -64,12 +64,17 @@ export const dailyStockReportService = {
           })
         : 0;
 
-      const soldCount = await prisma.branchSalesTransaction.count({
+      const soldCount = await prisma.branchSalesTransactionDetail.count({
         where: {
-          tenantId,
-          branchId: entry.branchId,
-          createdAt: { gte: start, lte: end },
-          serialNumber: { modelId: entry.modelId },
+          sale: {
+            tenantId,
+            branchId: entry.branchId,
+            createdAt: { gte: start, lte: end },
+          },
+          OR: [
+            { modelId: entry.modelId },
+            { serialNumber: { modelId: entry.modelId } },
+          ],
         },
       });
 

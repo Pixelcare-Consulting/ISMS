@@ -175,11 +175,11 @@ export const officialSalesService = {
           ].filter(Boolean);
 
           await prisma.$transaction(async (tx) => {
-            await tx.branchSalesTransaction.create({
+            const created = await tx.branchSalesTransaction.create({
               data: {
                 tenantId,
                 branchId: inventory.branchId,
-                serialNumberId: inventory.serialNumberId,
+                alternateBranchId: inventory.branchId,
                 transactionNo,
                 transactionDate: row.drDate,
                 deliveryNo: row.drNo,
@@ -188,6 +188,15 @@ export const officialSalesService = {
                 notes: noteParts.join(" · "),
                 atrStatus: "open",
                 createdById: userId,
+              },
+            });
+            await tx.branchSalesTransactionDetail.create({
+              data: {
+                salesId: created.id,
+                modelId: inventory.serialNumber.model?.id ?? null,
+                serialNumberId: inventory.serialNumberId,
+                saleAmount: 0,
+                amount: 0,
               },
             });
             const updated = await tx.branchInventory.updateMany({

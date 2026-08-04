@@ -46,6 +46,7 @@ interface StatusCodeRef {
   id: string;
   code: string;
   name: string;
+  color?: string | null;
 }
 
 interface PaginatedList<T> {
@@ -267,7 +268,11 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
                     {t.fromBranch.name} → {t.toBranch.name}
                   </TableCell>
                   <TableCell>
-                    <StatusCodeBadge code={t.statusCode.code} name={t.statusCode.name} />
+                    <StatusCodeBadge
+                      code={t.statusCode.code}
+                      name={t.statusCode.name}
+                      color={t.statusCode.color}
+                    />
                   </TableCell>
                   <TableCell className="space-x-2">
                     {["requested", "pending_tl"].includes(t.statusCode.code) ? (
@@ -356,34 +361,41 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
                     {pendingConfirm.transferNo}
                   </span>{" "}
                   ({pendingConfirm.route}). {confirmDescription}
-                  {pendingConfirm.action === "execute" ? (
-                    <div className="mt-3 max-h-40 space-y-1 overflow-y-auto rounded-md border p-2">
-                      {executeSerials.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">No STK serials at source branch.</p>
-                      ) : (
-                        executeSerials.map((s) => (
-                          <label key={s.id} className="flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
-                              checked={selectedSerialIds.includes(s.id)}
-                              onChange={(e) => {
-                                setSelectedSerialIds((prev) =>
-                                  e.target.checked
-                                    ? [...prev, s.id]
-                                    : prev.filter((id) => id !== s.id),
-                                );
-                              }}
-                            />
-                            {s.serialNo} · {s.skuCode}
-                          </label>
-                        ))
-                      )}
-                    </div>
-                  ) : null}
                 </>
-              ) : null}
+              ) : (
+                "Confirm this transfer action."
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {pendingConfirm?.action === "execute" ? (
+            <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border p-2">
+              {executeSerials.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No STK serials at source branch.
+                </p>
+              ) : (
+                executeSerials.map((s) => (
+                  <label
+                    key={s.id}
+                    className="flex items-center gap-2 text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedSerialIds.includes(s.id)}
+                      onChange={(e) => {
+                        setSelectedSerialIds((prev) =>
+                          e.target.checked
+                            ? [...prev, s.id]
+                            : prev.filter((id) => id !== s.id),
+                        );
+                      }}
+                    />
+                    {s.serialNo} · {s.skuCode}
+                  </label>
+                ))
+              )}
+            </div>
+          ) : null}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
             <AlertDialogAction

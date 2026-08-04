@@ -15,7 +15,7 @@ export default function MarketingPage() {
     <div className="flex min-h-full flex-col">
       <header className="border-b">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-          <span className="font-semibold">FINDEN ISMS</span>
+          <span className="font-semibold">FINDEN ISMS v2</span>
           <nav className="flex gap-2">
             <Button variant="ghost" asChild>
               <Link href="/login">Sign in</Link>

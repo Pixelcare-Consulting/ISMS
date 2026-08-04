@@ -16,7 +16,11 @@ export function GlobalKpiCards({ items, className, cardClassName }: GlobalKpiCar
           key={item.key}
           label={item.label}
           value={item.value}
-          className={cardClassName}
+          href={item.href}
+          icon={item.icon}
+          tone={item.tone}
+          hint={item.hint}
+          className={cn("h-full", cardClassName)}
         />
       ))}
     </div>

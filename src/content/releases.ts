@@ -4,7 +4,13 @@
  * Maintenance (each release):
  * 1. Bump `version` in package.json (semver: major.minor.patch)
  * 2. Prepend a new entry below with matching version, date, and highlights
+ *    — Same calendar day: consolidate into the latest version (do not stack patches)
  * 3. Deploy — login footer and What's new dialog update automatically
+ *
+ * Writing style (always):
+ * - Write for end users, not developers
+ * - Describe what they can do or what feels better — not file names, SQL, slugs, or reseed steps
+ * - Avoid jargon (RBAC, FK, hydration, pool timeout, GROUP BY, etc.)
  */
 
 export type ReleaseChangeType = "feature" | "fix" | "improvement";
@@ -24,29 +30,205 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
-    version: "0.13.11",
-    date: "2026-07-31",
-    title: "Sales transaction create + package detail modal",
+    version: "0.13.24",
+    date: "2026-08-04",
+    title: "Dashboard activity cards stay reliable",
     highlights: [
-      "New /sales/new encode flow with header card, details table, and Save/Back",
-      "Add Transaction Detail modal expands package qty into N model/serial/amount sets",
-      "Multi-detail persist with per-serial STK→SLD/RSV; list page CTA replaces inline Record sale",
+      "Home screen activity cards build cleanly again when deliveries or draft suggested orders are shown",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Dashboard activity cards no longer fail when showing neutral info-style counts",
+      },
+    ],
+  },
+  {
+    version: "0.13.23",
+    date: "2026-08-03",
+    title: "Smoother sales, clearer roles, and a cleaner home screen",
+    highlights: [
+      "Help & Support How ISMS works Improved with Workflow Guide — solid step cards, a tidy process tab bar, numbered steps with no sideways scroll, and vertical role timelines",
+      "More Dashboard summaries: Planning & alerts for extra ops signals, plus a This month snapshot (orders, sales, in transit) with icons",
+      "Module guides on busy pages — short collapsible tips under the header (Inventory, Sales, Orders, Logistics, Roles, Planning, Planogram, AORs, and more)",
+      "Sign-in has been optimized to load faster",
+      "Browser tabs show friendly page names (for example, Stock units)",
     ],
     changes: [
       {
         type: "feature",
         description:
-          "NewSalesTransactionForm + AddTransactionDetailDialog (Finden theme) for multi-line package sales",
+          "Help & Support How ISMS works: solid step cards and process chips, numbered steps, and vertical role timelines",
       },
       {
         type: "feature",
         description:
-          "createSaleAction accepts details[] with BranchSalesTransactionDetail rows and inventory status updates",
+          "Compliance home shows Policies, Reports, Announcements, and Competitors when available",
+      },
+      {
+        type: "feature",
+        description:
+          "New sales shows the transaction number up front and saves it with the sale",
+      },
+      {
+        type: "feature",
+        description:
+          "Sale details support packages, brand, promo, stock-source branch, and proof upload",
+      },
+      {
+        type: "feature",
+        description:
+          "Click a serial cell with +N to see every serial on that sale",
+      },
+      {
+        type: "feature",
+        description:
+          "Role settings can turn ATR request, evaluate, approve, and restore on or off per role",
+      },
+      {
+        type: "feature",
+        description:
+          "Logistics and settings can grant view-only access separately from manage",
+      },
+      {
+        type: "feature",
+        description:
+          "Status settings let you choose badge colors; each tab explains which module uses those codes",
+      },
+      {
+        type: "feature",
+        description:
+          "Busy pages show a collapsible module guide under the header so you can skim how the screen works",
       },
       {
         type: "improvement",
         description:
-          "/sales list keeps ATR workflow; New transaction CTA opens /sales/new instead of inline RecordSaleForm",
+          "Sales & ATRs return actions (request, evaluate, approve, reject, restore) ask for confirmation before running",
+      },
+      {
+        type: "improvement",
+        description:
+          "Home screen adds Planning & alerts and a This month snapshot alongside inventory and the order pipeline",
+      },
+      {
+        type: "improvement",
+        description:
+          "Inventory summary shows status counts beside the chart; This month sits beside Order pipeline",
+      },
+      {
+        type: "improvement",
+        description:
+          "This month snapshot uses icons and clearer rows for orders, sales, and in transit",
+      },
+      {
+        type: "improvement",
+        description:
+          "Activity cards share rows evenly so the home layout stays tidy for every role",
+      },
+      {
+        type: "improvement",
+        description:
+          "Removed duplicate Ops snapshot tiles so numbers appear once in the activity cards",
+      },
+      {
+        type: "improvement",
+        description:
+          "Roles matrix and access drawer are searchable and easier on mobile",
+      },
+      {
+        type: "improvement",
+        description:
+          "Stock units Series summary starts collapsed; click the header to expand or hide (choice remembered)",
+      },
+      {
+        type: "improvement",
+        description:
+          "Inventory quick guide covers off planogram and Branch / Model / Serial / DR / Planogram / Aging / Status columns",
+      },
+    
+      {
+        type: "improvement",
+        description:
+          "Sales & ATRs list uses clear status badges and consistent serial / amount formatting",
+      },
+      {
+        type: "improvement",
+        description:
+          "Series summary includes a searchable View series dialog with sticky totals",
+      },
+      {
+        type: "improvement",
+        description:
+          "Planning and Suggested orders use clearer action buttons and soft status badges on draft orders",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sign-in loading is quieter; report page titles match the sidebar",
+      },
+      {
+        type: "fix",
+        description:
+          "Stock status donut hover shows the slice you point at, not a conflicting total tip",
+      },
+      {
+        type: "fix",
+        description:
+          "Inventory and off-planogram views are more stable under heavy lists",
+      },
+      {
+        type: "fix",
+        description:
+          "Restore stock on returns works for one or many serials, and shows a clear message if a sale has no serials left to restore",
+      },
+      {
+        type: "fix",
+        description:
+          "Serial activity log no longer fails when an old sold serial is missing",
+      },
+      {
+        type: "fix",
+        description:
+          "Transfers confirm dialog no longer flashes an error when listing serials",
+      },
+      {
+        type: "fix",
+        description:
+          "Confirmation dialogs stay readable without browser accessibility console spam",
+      },
+    ],
+  },
+
+  {
+    version: "0.13.11",
+    date: "2026-07-31",
+    title: "New sales encode and package details",
+    highlights: [
+      "Record a new sale from Sales with a clear header, details table, and Save / Back",
+      "Add package details by quantity — each unit gets its own model, serial, and amount",
+      "Multi-line sales update each serial’s stock status; use New transaction instead of the old inline form",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "New sales page with header, details table, and Save / Back",
+      },
+      {
+        type: "feature",
+        description:
+          "Package detail modal expands quantity into separate model / serial / amount rows",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sales list keeps returns workflow; New transaction opens the full encode page",
+      },
+      {
+        type: "fix",
+        description:
+          "Dialogs no longer show accessibility warnings in the browser console",
       },
     ],
   },
@@ -125,7 +307,7 @@ export const RELEASES: ReleaseNote[] = [
         type: "feature",
         description:
           "Orders nav group with /orders/manual, /orders/special, /orders/auto-replenish; permissions orders.manual|special|auto_replenish × view|create|approve (legacy orders.* still accepted)",
-      },
+      }, 
       {
         type: "improvement",
         description:
@@ -372,7 +554,7 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "improvement",
         description:
-          "Sign-in and register keep a loading screen until the dashboard opens",
+          "Sign-in keep a loading screen until the dashboard opens",
       },
       {
         type: "improvement",

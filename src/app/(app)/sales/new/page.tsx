@@ -2,8 +2,21 @@ import { PageHeader } from "@/app/(app)/_components/page-header";
 import { NewSalesTransactionForm } from "@/app/(app)/sales/_components/new-sales-transaction-form";
 import { aorService } from "@/features/aors/services/aor.service";
 import { branchService } from "@/features/branches/services/branch.service";
+import {
+  allocateSaleTransactionNoAction,
+  listBrandsForSalesAction,
+  listCustomerDeliveryMethodsForSalesAction,
+  listPaymentTypesForSalesAction,
+  listPromoTypesForSalesAction,
+  listSaleTypesForSalesAction,
+} from "@/features/sales/actions/sales.actions";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
-import { prisma } from "@/lib/database/client";
+import { pageMetadata } from "@/lib/shared/seo";
+
+export const metadata = pageMetadata(
+  "New sales transaction",
+  "Enter header details, add package line sets, then save to update stock.",
+);
 
 export default async function NewSalesTransactionPage() {
   const session = await requirePermission("sales.create");
@@ -31,46 +44,42 @@ export default async function NewSalesTransactionPage() {
     branches = [...byId.entries()].map(([id, name]) => ({ id, name }));
   }
 
+  const [paymentTypes, saleTypes, deliveryMethods, promoTypes, brands, txnNoResult] =
+    await Promise.all([
+      listPaymentTypesForSalesAction(),
+      listSaleTypesForSalesAction(),
+      listCustomerDeliveryMethodsForSalesAction(),
+      listPromoTypesForSalesAction(),
+      listBrandsForSalesAction(),
+      allocateSaleTransactionNoAction(),
+    ]);
+
+  if ("error" in txnNoResult) {
+    return (
+      <div className="rounded-xl border bg-card p-4 text-sm text-muted-foreground shadow-sm">
+        {txnNoResult.error}
+      </div>
+    );
+  }
+
   const autoResolveBranch = roleSlugs.includes("ps") && branches.length === 1;
-
-  const lookupWhere = {
-    tenantId: session.user.tenantId,
-    recordStatus: "active",
-  } as const;
-  const lookupSelect = { id: true, name: true } as const;
-  const lookupOrder = { name: "asc" } as const;
-
-  const [paymentTypes, saleTypes, deliveryMethods] = await Promise.all([
-    prisma.paymentType.findMany({
-      where: lookupWhere,
-      select: lookupSelect,
-      orderBy: lookupOrder,
-    }),
-    prisma.saleType.findMany({
-      where: lookupWhere,
-      select: lookupSelect,
-      orderBy: lookupOrder,
-    }),
-    prisma.customerDeliveryMethod.findMany({
-      where: lookupWhere,
-      select: lookupSelect,
-      orderBy: lookupOrder,
-    }),
-  ]);
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="New sales transaction"
         sticky={false}
-        description="Enter header details, add line items, then save to update stock."
+        description="Enter header details, add package line sets, then save to update stock."
       />
       <NewSalesTransactionForm
+        transactionNo={txnNoResult.transactionNo}
         branches={branches}
         autoResolveBranch={autoResolveBranch}
         paymentTypes={paymentTypes}
         saleTypes={saleTypes}
         deliveryMethods={deliveryMethods}
+        promoTypes={promoTypes}
+        brands={brands}
       />
     </div>
   );

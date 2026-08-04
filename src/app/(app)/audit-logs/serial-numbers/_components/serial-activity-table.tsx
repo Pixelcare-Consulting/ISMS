@@ -12,6 +12,7 @@ import {
   formatSerialActivityTimestamp,
   formatSerialActivityType,
 } from "@/features/serial-activity/constants/serial-activity-display";
+import { TableCodeCell } from "@/components/data-table";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   parseTablePageSize,
@@ -249,12 +250,12 @@ export function SerialActivityTable({
                 {formatSerialActivityType(row.type)}
               </span>
             </TableCell>
-            <TableCell>
+            <TableCodeCell>
               <div className="font-medium tabular-nums">{row.serialNo}</div>
-              <div className="text-xs text-muted-foreground">
+              <div className="font-sans text-xs text-muted-foreground">
                 {row.modelLabel}
               </div>
-            </TableCell>
+            </TableCodeCell>
             <TableCell className="text-sm text-muted-foreground">
               {row.status ?? "—"}
             </TableCell>

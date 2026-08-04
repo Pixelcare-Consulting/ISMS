@@ -52,7 +52,7 @@ interface SerialModelOption {
 
 interface SerialInventorySnapshot {
   branch: { id: string; name: string } | null;
-  statusCode: { id: string; code: string; name: string } | null;
+  statusCode: { id: string; code: string; name: string; color?: string | null } | null;
 }
 
 interface SerialNumberRow {
@@ -289,6 +289,7 @@ export function SerialNumberTable({
                           <StatusCodeBadge
                             code={current.statusCode.code}
                             name={current.statusCode.name}
+                            color={current.statusCode.color}
                           />
                         ) : (
                           "—"

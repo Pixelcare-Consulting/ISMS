@@ -5,8 +5,9 @@ import {
 } from "@/features/inventory/actions/inventory.actions";
 import { InventorySeriesSummaryPanel } from "@/features/inventory/components/inventory-series-summary";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
+import { ModuleGuide } from "@/components/module-guide";
+import { INVENTORY_MODULE_GUIDE } from "@/content/module-guides/inventory";
 import { requirePermission } from "@/lib/auth/permissions";
-import { SectionPageLead } from "@/components/navigation/section-page-lead";
 import { InventoryTable } from "@/app/(app)/inventory/_components/inventory-table";
 
 interface InventoryPageProps {
@@ -56,9 +57,7 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
 
   return (
     <div className="space-y-4">
-      <SectionPageLead>
-        Serialized units by branch. Series summary mirrors the INVENTORY Excel mock (QTY × SRP).
-      </SectionPageLead>
+      <ModuleGuide {...INVENTORY_MODULE_GUIDE} />
       <InventorySeriesSummaryPanel summary={seriesSummary} />
       <InventoryTable
         result={result}

@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -25,16 +24,15 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { OrderStatusBadge } from "@/features/orders/components/order-status-badge";
 import { BRANCH_ORDER_TYPE_LABELS } from "@/features/orders/constants/order-status";
 import {
   getAfterApproveHint,
   getCurrentApproverLabel,
-  getOrderStatusLabel,
   isSupplyPlanningApprovalStep,
 } from "@/features/orders/constants/order-workflow";
 import { getDeliveryDueDateWarning } from "@/features/orders/utils/delivery-schedule";
 import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
-import { cn } from "@/utils/cn";
 
 export interface OrderWorkflowLine {
   detailId: string;
@@ -85,12 +83,10 @@ export function OrderWorkflowDialog({
   const deliveryDueWarning = isSpFinalStep
     ? getDeliveryDueDateWarning(deliveryDueDate, deliverySchedule)
     : null;
-  const statusLabel = getOrderStatusLabel(status);
   const currentApprover = getCurrentApproverLabel(status, orderType);
   const afterApprove = getAfterApproveHint(status, orderType);
   const totalLines = lines.length;
   const totalQuantity = lines.reduce((sum, line) => sum + line.quantity, 0);
-  const statusBadgeClassName = ORDER_STATUS_VARIANTS[status] ?? "border-border bg-background text-foreground";
 
   function handleOpenChange(nextOpen: boolean) {
     if (!nextOpen && pending) return;
@@ -167,9 +163,7 @@ export function OrderWorkflowDialog({
               <div className="flex justify-between gap-4">
                 <dt className="text-muted-foreground">Status</dt>
                 <dd>
-                  <Badge variant="outline" className={cn("font-normal", statusBadgeClassName)}>
-                    {statusLabel}
-                  </Badge>
+                  <OrderStatusBadge status={status} />
                 </dd>
               </div>
               {currentApprover ? (
@@ -302,14 +296,3 @@ export function OrderWorkflowDialog({
     </>
   );
 }
-
-const ORDER_STATUS_VARIANTS: Record<BranchOrderStatus, string> = {
-  draft: "border-slate-200 bg-slate-50 text-slate-700",
-  pending_ps: "border-amber-200 bg-amber-50 text-amber-800",
-  pending_tl: "border-amber-200 bg-amber-50 text-amber-800",
-  pending_sp: "border-amber-200 bg-amber-50 text-amber-800",
-  pending_logistics: "border-amber-200 bg-amber-50 text-amber-800",
-  approved: "border-emerald-200 bg-emerald-50 text-emerald-800",
-  rejected: "border-rose-200 bg-rose-50 text-rose-800",
-  cancelled: "border-zinc-200 bg-zinc-100 text-zinc-700",
-};

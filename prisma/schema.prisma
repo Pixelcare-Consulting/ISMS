@@ -508,6 +508,7 @@ model Brand {
   branchOrders BranchOrder[]
   branchQuotas BranchQuota[]
   serviceCenterOrders ServiceCenterOrder[]
+  salesTransactionDetails BranchSalesTransactionDetail[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -640,7 +641,7 @@ model PackageType {
   tenant       Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branchOrders BranchOrder[]
   branchSales  BranchSalesTransaction[]
-  branchSaleDetails BranchSalesTransactionDetail[]
+  salesDetails BranchSalesTransactionDetail[]
   priceLists   PriceList[]
   serviceCenterOrders ServiceCenterOrder[]
   serviceCenterSales  ServiceCenterSalesTransaction[]
@@ -816,7 +817,7 @@ model PromoType {
 
   tenant       Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branchSales  BranchSalesTransaction[]
-  branchSaleDetails BranchSalesTransactionDetail[]
+  salesDetails BranchSalesTransactionDetail[]
   serviceCenterSales ServiceCenterSalesTransaction[]
 
   @@unique([tenantId, name])
@@ -1133,6 +1134,7 @@ model Branch {
   transfersTo           BranchTransfer[]       @relation("TransferToBranch")
   branchPullouts        BranchPullout[]
   branchSales           BranchSalesTransaction[]
+  stockSourceSales      BranchSalesTransaction[] @relation("SalesStockSourceBranch")
   branchForecastTargets BranchForecastTarget[]
   branchAllocations     BranchAllocation[]
   stockCountSessions    StockCountSession[]
@@ -1356,6 +1358,8 @@ model ReasonStatusCode {
   reasonStatusId String             @map("reason_status_id")
   name           String
   code           String
+  /** Palette key for badges (emerald, amber, sky, …). Null → fallback by code. */
+  color          String?
   sortOrder      Int                @default(0) @map("sort_order")
   isSystem       Boolean            @default(false) @map("is_system")
   recordStatus   LookupRecordStatus @default(active) @map("record_status")
@@ -1395,7 +1399,6 @@ model SerialNumber {
   model             ProductModel              @relation(fields: [modelId], references: [id], onDelete: Cascade)
   createdBy         User?                     @relation("SerialNumberCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   branchInventories BranchInventory[]
-  branchSales       BranchSalesTransaction[]
   transferLines     BranchTransferLine[]
   pulloutLines      BranchPulloutLine[]
   stockCountLines   StockCountLine[]
@@ -1745,7 +1748,8 @@ model BranchSalesTransaction {
   id                         String    @id @default(cuid())
   tenantId                   String    @map("tenant_id")
   branchId                   String    @map("branch_id")
-  serialNumberId             String?   @map("serial_number_id")
+  /// Stock-source branch (sold branch or an AlternateWarehouse of it). Required on new creates.
+  alternateBranchId          String?   @map("alternate_branch_id")
   packageTypeId              String?   @map("package_type_id")
   paymentTypeId              String?   @map("payment_type_id")
   saleTypeId                 String?   @map("sale_type_id")
@@ -1771,7 +1775,7 @@ model BranchSalesTransaction {
 
   tenant                   Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branch                   Branch                     @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  serialNumber             SerialNumber?              @relation(fields: [serialNumberId], references: [id], onDelete: SetNull)
+  stockSourceBranch        Branch?                    @relation("SalesStockSourceBranch", fields: [alternateBranchId], references: [id], onDelete: SetNull)
   createdBy                User?                      @relation("BranchSalesTransactionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   packageType              PackageType?               @relation(fields: [packageTypeId], references: [id], onDelete: SetNull)
   paymentType              PaymentType?               @relation(fields: [paymentTypeId], references: [id], onDelete: SetNull)
@@ -1785,6 +1789,7 @@ model BranchSalesTransaction {
   @@unique([tenantId, transactionNo])
   @@index([tenantId, branchId])
   @@index([tenantId, atrStatus])
+  @@index([alternateBranchId])
   @@index([createdById])
   @@map("branch_sales_transactions")
 }
@@ -2011,6 +2016,7 @@ model BranchSalesTransactionDetail {
   id             String   @id @default(cuid())
   salesId        String   @map("sales_id")
   packageTypeId  String?  @map("package_type_id")
+  brandId        String?  @map("brand_id")
   promoTypeId    String?  @map("promo_type_id")
   modelId        String?  @map("model_id")
   serialNumberId String   @map("serial_number_id")
@@ -2022,12 +2028,16 @@ model BranchSalesTransactionDetail {
 
   sale         BranchSalesTransaction @relation(fields: [salesId], references: [id], onDelete: Cascade)
   packageType  PackageType?           @relation(fields: [packageTypeId], references: [id], onDelete: SetNull)
+  brand        Brand?                 @relation(fields: [brandId], references: [id], onDelete: SetNull)
   promoType    PromoType?             @relation(fields: [promoTypeId], references: [id], onDelete: SetNull)
   model        ProductModel?          @relation(fields: [modelId], references: [id], onDelete: SetNull)
   serialNumber SerialNumber           @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
 
   @@index([salesId])
   @@index([serialNumberId])
+  @@index([packageTypeId])
+  @@index([brandId])
+  @@index([promoTypeId])
   @@map("branch_sales_transaction_details")
 }
 

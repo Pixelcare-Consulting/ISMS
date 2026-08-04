@@ -69,8 +69,17 @@ yarn-error.log*
 /CLAUDE.md
 /docs/
 /.docs/
+.cursor-aor-restore-backup/
+.cursor-aor-restore-backup/*
+/cursor-aor-restore-backup/
+/cursor-aor-restore-backup/*
+.data/
+.data/*
+/data/
+/data/*
 
 .claude/
 _bmad/
 _bmad-output/
 ISMS.rar
+.agents/*

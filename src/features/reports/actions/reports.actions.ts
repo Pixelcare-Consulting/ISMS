@@ -93,7 +93,12 @@ export async function exportTransferReportCsvAction(input?: {
   from?: string;
   to?: string;
 }) {
-  const session = await requireAnyPermission([...REPORT_ACCESS, "logistics.manage"]);
+  const session = await requireAnyPermission([
+    ...REPORT_ACCESS,
+    "logistics.view",
+    "logistics.create",
+    "logistics.manage",
+  ]);
   const branchIds = await resolveReportBranchIds(session.user.tenantId, session.user.id);
 
   const csv = await transferReportService.generateCsv(session.user.tenantId, {

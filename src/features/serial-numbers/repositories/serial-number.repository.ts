@@ -21,7 +21,7 @@ const serialListInclude = {
     select: {
       updatedAt: true,
       branch: { select: { id: true, name: true } },
-      statusCode: { select: { id: true, code: true, name: true } },
+      statusCode: { select: { id: true, code: true, name: true, color: true } },
     },
   },
 } satisfies Prisma.SerialNumberInclude;
@@ -41,18 +41,24 @@ const serialTraceabilityInclude = {
       id: true,
       updatedAt: true,
       branch: { select: { name: true } },
-      statusCode: { select: { code: true, name: true } },
+      statusCode: { select: { code: true, name: true, color: true } },
     },
   },
-  branchSales: {
+  salesDetails: {
     select: {
       id: true,
-      transactionNo: true,
-      amount: true,
-      atrStatus: true,
-      createdAt: true,
-      branch: { select: { name: true } },
-      returnRequest: { select: { id: true, status: true, createdAt: true } },
+      saleAmount: true,
+      sale: {
+        select: {
+          id: true,
+          transactionNo: true,
+          amount: true,
+          atrStatus: true,
+          createdAt: true,
+          branch: { select: { name: true } },
+          returnRequest: { select: { id: true, status: true, createdAt: true } },
+        },
+      },
     },
   },
   transferLines: {
@@ -65,7 +71,7 @@ const serialTraceabilityInclude = {
           createdAt: true,
           fromBranch: { select: { name: true } },
           toBranch: { select: { name: true } },
-          statusCode: { select: { code: true, name: true } },
+          statusCode: { select: { code: true, name: true, color: true } },
         },
       },
     },
@@ -80,7 +86,7 @@ const serialTraceabilityInclude = {
           createdAt: true,
           branch: { select: { name: true } },
           warehouse: { select: { name: true } },
-          statusCode: { select: { code: true, name: true } },
+          statusCode: { select: { code: true, name: true, color: true } },
         },
       },
     },

@@ -2,7 +2,7 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.13.11`
+**Current version:** `0.13.23`
 
 ## Stack
 
@@ -13,20 +13,20 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | Area | Features |
 |------|----------|
 | **Auth** | Email/password (Better Auth), tenant-scoped sessions, demo seed users |
-| **Dashboard** | Ops KPIs (approvals, DIT, stock, ATR, planogram/MIL alerts); active announcement banner |
+| **Dashboard** | Role-aware activity cards (top 4); Inventory summary + Planning & alerts; This month (icons) beside Order pipeline; compliance overview when no ops access; active announcement banner |
 | **Announcements** | Tenant posts (title, body, publish/expiry); list + CRUD (`/announcements`) |
 | **Competitors** | Market observations with master Competitor + Competitor brand/model lookups, AOR-bound branch, optional promotion; KPIs + CRUD (`/competitors`) |
-| **Settings** | Company, users, departments, roles, branches, warehouses, dealers, AORs (assign pre-selects + sync), master data (incl. Competitors / Competitor brands), status codes |
+| **Settings** | Company, users, departments, roles, branches, warehouses, dealers, AORs (assign pre-selects + sync), master data (incl. Competitors / Competitor brands), status codes (per-module tabs + badge colors); collapsible Module guides on complex settings/ops pages |
 | **Planning** | BRS CSV forecast import, allocation, suggested auto-replenish orders (`/settings/planning`, `/planning/suggested-orders`) |
 | **Planogram** | Per-branch SKU shelf capacity, MIL, order enforcement |
 | **Policies** | Full document control (ISO track) |
 | **Inventory** | Serialized stock, AOR-scoped list, series QTY/VALUE + DR#/date/aging on Stock units, **physical stock count / P-Count** (`/inventory/stock-count`) |
 | **Orders** | Nav group: Manual / Special / Auto replenish (`/orders/manual` etc.); per-type `orders.manual`, `orders.special`, `orders.auto_replenish` with view/create/approve; PS → TL → SP; SO#, processed orders, delivery-due auto-reschedule |
-| **Logistics** | Deliveries (accept/reject), transfers, pull-outs with SN movement |
-| **Sales** | Encode at `/sales/new` (CTA from `/sales`); PS auto-branch; TL `sales.create` + branch picker; package detail modal (qty → N sets), reserved (RSV) sales, **BranchReturnRequest** ATR workflow |
+| **Logistics** | Deliveries (accept/reject), transfers, pull-outs with SN movement; gated by `logistics.view` / `create` / `manage` |
+| **Sales** | Encode at `/sales/new` (CTA from `/sales`); PS auto-branch; TL `sales.create` + branch picker; package detail modal (qty → N sets), reserved (RSV) sales, **BranchReturnRequest** ATR workflow gated by `sales.return.*` (Roles UI) |
 | **Reports** | Processed orders, daily stock, transfers, sales CSV (`/reports/sales`), **P-Count** (`/reports/pcount`), **Official Sales** staging (`/reports/official-sales`) |
 | **SAP** | Outbound job queue + mock processor; **Service Layer** settings (encrypted credentials) + in-process session client with status UI (Connect/Logout) and refresh-on-401 |
-| **RBAC** | ISO + BRS roles (PS, TL, SP/SPA, Logistics, AE), permission-gated sidebar |
+| **RBAC** | ISO + BRS roles (PS, TL, SP/SPA, Logistics, AE); shared action vocabulary + module allowlists; Roles simple checklist + module×action matrix; Sales ATR buttons use `sales.return.*`; Logistics uses `logistics.view` / `create` / `manage` |
 
 ### App routes
 
@@ -44,9 +44,9 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/orders/special` | `orders.special.view` / `create` / `approve` (or legacy `orders.*`) |
 | `/orders/auto-replenish` | `orders.auto_replenish.view` / `create` / `approve` (or legacy `orders.*`) |
 | `/planning/suggested-orders` | `forecast.manage` / `planogram.manage` |
-| `/logistics/deliveries`, `/transfers`, `/pickups` | `logistics.manage` |
+| `/logistics/deliveries`, `/transfers`, `/pickups` | `logistics.view` / `create` / `manage` (legacy `orders.*` aliases for list) |
 | `/operations` | `inventory.view` (combined ops view) |
-| `/sales` | `sales.create` (list + ATR; New transaction CTA) |
+| `/sales` | `sales.view` / `sales.create` / any `sales.return.*` (list + ATR; New transaction needs `sales.create`) |
 | `/sales/new` | `sales.create` (multi-detail encode) |
 | `/reports/processed-orders`, `/daily-stock`, `/transfers`, `/sales`, `/pcount`, `/official-sales` | `reports.view` (+ module-specific) |
 | `/policies`, `/policies/[id]`, `/policies/new` | Policy permissions |
@@ -71,6 +71,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 
 | Doc | Purpose |
 |-----|---------|
+| [`docs/CLIENT_WORKFLOW.md`](docs/CLIENT_WORKFLOW.md) | Client-facing How ISMS works (Mermaid master + role swimlanes) |
 | [`docs/DEVELOPMENT_README.md`](docs/DEVELOPMENT_README.md) | Spec index, Process Flow v1.0 traceability, BRS ↔ app mapping |
 | [`docs/sap-integration.md`](docs/sap-integration.md) | SAP queue, Service Layer config, implemented vs stub |
 | [`docs/official-sales-gap-spec.md`](docs/official-sales-gap-spec.md) | Accounting Official Sales ADD/UPD/DEL vs current staging |
@@ -94,7 +95,7 @@ src/
 │   └── api/             # Auth, exports, policy attachments
 ├── components/          # Shared UI (ShadCN, data-table)
 ├── config/              # app-navigation, app-modules
-├── content/             # releases.ts
+├── content/             # releases.ts, page-tutorials, module-guides
 ├── features/            # Domain modules (actions, repositories, services)
 ├── lib/                 # auth, database, crypto, notifications, storage
 └── proxy.ts             # Route protection

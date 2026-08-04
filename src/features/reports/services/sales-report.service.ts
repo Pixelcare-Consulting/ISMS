@@ -11,11 +11,15 @@ const HEADERS = [
   "DATE",
   "TRANSACTION NO",
   "BRANCH",
+  "STOCK SOURCE BRANCH",
   "SERIAL NO",
-  "AMOUNT",
+  "MODEL",
+  "PACKAGE",
+  "SALE AMOUNT",
   "ATR STATUS",
   "RETURN STATUS",
-  "NOTES",
+  "CUSTOMER",
+  "SI/TRANS",
 ];
 
 function formatDate(value: Date): string {
@@ -24,37 +28,75 @@ function formatDate(value: Date): string {
 
 export const salesReportService = {
   async generateCsv(tenantId: string, filters: SalesReportFilters = {}) {
-    const sales = await prisma.branchSalesTransaction.findMany({
+    const dateFilter =
+      filters.from || filters.to
+        ? {
+            ...(filters.from ? { gte: filters.from } : {}),
+            ...(filters.to ? { lte: filters.to } : {}),
+          }
+        : undefined;
+
+    const details = await prisma.branchSalesTransactionDetail.findMany({
       where: {
-        tenantId,
-        ...(filters.branchIds ? { branchId: { in: filters.branchIds } } : {}),
-        ...(filters.from || filters.to
-          ? {
-              createdAt: {
-                ...(filters.from ? { gte: filters.from } : {}),
-                ...(filters.to ? { lte: filters.to } : {}),
-              },
-            }
-          : {}),
+        sale: {
+          tenantId,
+          ...(filters.branchIds ? { branchId: { in: filters.branchIds } } : {}),
+          ...(dateFilter
+            ? {
+                OR: [
+                  { transactionDate: dateFilter },
+                  {
+                    AND: [
+                      { transactionDate: null },
+                      { createdAt: dateFilter },
+                    ],
+                  },
+                ],
+              }
+            : {}),
+        },
       },
       include: {
-        branch: { select: { name: true } },
         serialNumber: { select: { serialNo: true } },
-        returnRequest: { select: { status: true } },
+        model: { select: { skuCode: true, name: true } },
+        packageType: { select: { name: true } },
+        sale: {
+          select: {
+            transactionNo: true,
+            transactionDate: true,
+            createdAt: true,
+            atrStatus: true,
+            customerName: true,
+            siTrans: true,
+            branch: { select: { name: true } },
+            stockSourceBranch: { select: { name: true } },
+            returnRequest: { select: { status: true } },
+          },
+        },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ sale: { createdAt: "desc" } }, { createdAt: "asc" }],
     });
 
-    const rows = sales.map((s) => [
-      formatDate(s.createdAt),
-      s.transactionNo,
-      s.branch.name,
-      s.serialNumber?.serialNo ?? "",
-      s.amount.toString(),
-      s.atrStatus,
-      s.returnRequest?.status ?? "",
-      s.notes ?? "",
-    ]);
+    const rows = details.map((d) => {
+      const saleDate = d.sale.transactionDate ?? d.sale.createdAt;
+      const modelLabel = d.model
+        ? `${d.model.skuCode} · ${d.model.name}`
+        : "";
+      return [
+        formatDate(saleDate),
+        d.sale.transactionNo,
+        d.sale.branch.name,
+        d.sale.stockSourceBranch?.name ?? d.sale.branch.name,
+        d.serialNumber?.serialNo ?? "",
+        modelLabel,
+        d.packageType?.name ?? "",
+        (d.saleAmount ?? d.amount ?? 0).toString(),
+        d.sale.atrStatus,
+        d.sale.returnRequest?.status ?? "",
+        d.sale.customerName ?? "",
+        d.sale.siTrans ?? "",
+      ];
+    });
 
     return buildCsvContent(HEADERS, rows);
   },

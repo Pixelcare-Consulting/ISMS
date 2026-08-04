@@ -1,7 +1,33 @@
 import type { LookupRecordStatus, ReasonStatusCategory } from "@prisma/client";
 
 import { prisma } from "@/lib/database/client";
-import { CACHE_TTL, cacheKey, getOrSet } from "@/lib/cache/redis";
+import {
+  CACHE_TTL,
+  cacheKey,
+  deleteCache,
+  getOrSet,
+} from "@/lib/cache/redis";
+
+async function invalidateReasonStatusCache(tenantId: string) {
+  await Promise.all([
+    deleteCache(cacheKey("tenant", tenantId, "reason-status", "all")),
+    deleteCache(
+      cacheKey("tenant", tenantId, "reason-status", "active", "inventory_system"),
+    ),
+    deleteCache(
+      cacheKey("tenant", tenantId, "reason-status", "active", "pullout_reason"),
+    ),
+    deleteCache(
+      cacheKey("tenant", tenantId, "reason-status", "active", "delivery_workflow"),
+    ),
+    deleteCache(
+      cacheKey("tenant", tenantId, "reason-status", "active", "transfer_workflow"),
+    ),
+    deleteCache(
+      cacheKey("tenant", tenantId, "reason-status", "active", "pullout_workflow"),
+    ),
+  ]);
+}
 
 export const reasonStatusRepository = {
   listByTenant(tenantId: string) {
@@ -48,7 +74,7 @@ export const reasonStatusRepository = {
             recordStatus: "active",
             reasonStatus: { category, recordStatus: "active" },
           },
-          select: { id: true, name: true, code: true },
+          select: { id: true, name: true, code: true, color: true },
         }),
     );
   },
@@ -62,34 +88,45 @@ export const reasonStatusRepository = {
     });
   },
 
-  createCode(input: {
+  async createCode(input: {
     tenantId: string;
     reasonStatusId: string;
     name: string;
     code: string;
+    color?: string | null;
     sortOrder?: number;
   }) {
-    return prisma.reasonStatusCode.create({
+    const row = await prisma.reasonStatusCode.create({
       data: {
         tenantId: input.tenantId,
         reasonStatusId: input.reasonStatusId,
         name: input.name,
         code: input.code.toUpperCase(),
+        color: input.color ?? "slate",
         sortOrder: input.sortOrder ?? 0,
         isSystem: false,
       },
     });
+    await invalidateReasonStatusCache(input.tenantId);
+    return row;
   },
 
-  updateCode(
+  async updateCode(
     tenantId: string,
     id: string,
-    data: { name?: string; recordStatus?: LookupRecordStatus; sortOrder?: number },
+    data: {
+      name?: string;
+      recordStatus?: LookupRecordStatus;
+      sortOrder?: number;
+      color?: string | null;
+    },
   ) {
-    return prisma.reasonStatusCode.update({
+    const row = await prisma.reasonStatusCode.update({
       where: { id, tenantId },
       data,
     });
+    await invalidateReasonStatusCache(tenantId);
+    return row;
   },
 
   countCodeUsage(tenantId: string, codeId: string) {
