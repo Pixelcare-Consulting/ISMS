@@ -19,7 +19,10 @@ interface DashboardOpsKpisProps {
   visibleKeys: DashboardKpiKey[];
 }
 
-function alertTone(count: number, severity: "warning" | "danger" = "warning"): KpiCardTone {
+function alertTone(
+  count: number,
+  severity: "info" | "warning" | "danger" = "warning",
+): KpiCardTone {
   if (count <= 0) return "neutral";
   return severity;
 }

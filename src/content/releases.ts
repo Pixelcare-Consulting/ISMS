@@ -30,41 +30,32 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.13.24",
+    date: "2026-08-04",
+    title: "Dashboard activity cards stay reliable",
+    highlights: [
+      "Home screen activity cards build cleanly again when deliveries or draft suggested orders are shown",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Dashboard activity cards no longer fail when showing neutral info-style counts",
+      },
+    ],
+  },
+  {
     version: "0.13.23",
     date: "2026-08-03",
     title: "Smoother sales, clearer roles, and a cleaner home screen",
     highlights: [
-      "Restore stock on Sales & ATRs works again for single- and multi-unit returns — and explains clearly when a sale has no serials to put back",
-      "Confirmation dialogs stay readable and no longer spam the browser console with accessibility warnings",
-      "Sales & ATRs asks you to confirm before Request return, CS evaluate, TL approve, Reject, or Restore stock",
-      "Help & Support How ISMS works looks sharper — solid step cards, a tidy process tab bar, numbered steps with no sideways scroll, and vertical role timelines",
-      "Dashboard screen shows up to four activity cards for your role — less clutter, same jump-to actions",
-      "More home summaries: Planning & alerts for extra ops signals, plus a This month snapshot (orders, sales, in transit) with icons",
-      "Inventory summary pairs a stock mix chart with a clear status count list; This month sits beside Order pipeline",
-      "Dashboard tiles line up evenly across roles so rows stay balanced",
-      "Stock status chart hover shows each status count cleanly — no overlapping or misleading total tip",
-      "Compliance roles see a simple overview of Policies, Reports, Announcements, and Competitors",
-      "New sales starts with a ready transaction number (TRN-…) and clearer fields for payment, delivery, stock branch, and proof",
-      "Package details capture brand (and optional promo); each set keeps its own serials",
-      "Sales & ATRs shows status badges, peso amounts, and a quick view of all serials on multi-unit sales",
-      "Returns (ATR) can be limited by role — request, evaluate, approve, or restore — so each team only sees what they need",
-      "Roles settings are easier: search, pick a role, and toggle access in a clearer grid (cards on phone)",
-      "Logistics and settings can use separate View vs Manage access; report export is optional",
-      "Stock series summary and off-planogram lists load faster and more reliably",
-      "Series summary on Stock units starts hidden; click the header to show or hide (preference remembered)",
-      "Inventory quick guide explains off planogram and each stock-units table column",
-      "Status settings: pick badge colors per code, clearer module tabs, and a quick guide",
+      "Help & Support How ISMS works Improved with Workflow Guide — solid step cards, a tidy process tab bar, numbered steps with no sideways scroll, and vertical role timelines",
+      "More Dashboard summaries: Planning & alerts for extra ops signals, plus a This month snapshot (orders, sales, in transit) with icons",
       "Module guides on busy pages — short collapsible tips under the header (Inventory, Sales, Orders, Logistics, Roles, Planning, Planogram, AORs, and more)",
-      "Planning and Suggested orders actions look clearer — primary steps stand out, drafts show soft status badges",
-      "Sign-in use a simple loading screen; reports and transfers titles match the menu",
+      "Sign-in has been optimized to load faster",
       "Browser tabs show friendly page names (for example, Stock units)",
     ],
     changes: [
-      {
-        type: "improvement",
-        description:
-          "Sales & ATRs return actions (request, evaluate, approve, reject, restore) ask for confirmation before running",
-      },
       {
         type: "feature",
         description:
@@ -113,12 +104,12 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "improvement",
         description:
-          "Home screen adds Planning & alerts and a This month snapshot alongside inventory and the order pipeline",
+          "Sales & ATRs return actions (request, evaluate, approve, reject, restore) ask for confirmation before running",
       },
       {
         type: "improvement",
         description:
-          "Home screen focuses on your top activity cards, inventory mix, and order pipeline — without repeating the same counts in a second list",
+          "Home screen adds Planning & alerts and a This month snapshot alongside inventory and the order pipeline",
       },
       {
         type: "improvement",
