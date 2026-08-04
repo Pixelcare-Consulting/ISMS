@@ -78,6 +78,7 @@ async function loadSalesAtrCodesByCode(
   const codes = await reasonStatusRepository.listActiveCodesByCategory(
     tenantId,
     "sales_atr",
+    
   );
   return new Map(
     codes.map((row) => [
