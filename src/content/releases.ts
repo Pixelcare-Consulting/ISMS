@@ -30,68 +30,112 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
-    version: "0.13.24",
+    version: "0.13.25",
     date: "2026-08-04",
-    title: "Dashboard cards and order approvals",
+    title: "Sales encode, ATR status, and smoother orders",
     highlights: [
-      "Dashboard screen activity cards build cleanly again when deliveries or draft suggested orders are shown",
-      "Product Specialists can approve manual orders waiting on them again; if approval isn’t allowed, you stay on the orders page with a clear message",
-      "When you create a special (or other) order, you only pick branches in your area — so new orders show up in your list right away",
-      "Suggested orders and Planning links on the orders pages only appear when your role can open those screens",
-      "Orders and Logistics action buttons only appear when it is your step — no more greyed-out Review or Team Leader actions for Branch PS",
-      "Every order row has View details for notes, approval history (who acted), and line quantities — without approving",
-      "When recording a new sale, enter your own transaction number — it is no longer auto-filled or locked",
+      "Customize Sales & ATR return badge names and colors in Status settings",
+      "Sales list shows one row per serial with clear status badges (including TO FOLLOW)",
+      "Review multiple sale proofs in a preview window — images and PDFs side by side",
+      "Attach multiple proof files on a sale and type the transaction number from your invoice",
+      "Sales encode and returns are reliable again — TO FOLLOW saves, model price fills from the price list, and return status shows Pending CS",
+      "Orders and Logistics only show actions for your step; View details is always available",
     ],
     changes: [
       {
-        type: "improvement",
+        type: "feature",
         description:
-          "New sales lets you type the transaction number from your invoice instead of using a locked system-generated code",
+          "Settings → Status includes a Sales & ATR group to rename and recolor return and ATR badges",
       },
       {
         type: "feature",
         description:
-          "Orders list includes View details to read order notes and approval history (with the person who approved or rejected) without taking an approve or reject action",
+          "Sale Proof supports multiple photos or PDFs on one transaction",
+      },
+      {
+        type: "feature",
+        description:
+          "Sales and Orders lists include View details for the full transaction or approval history",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sale details opens proofs in a preview window with file list and next/previous — no need to leave the page",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sale details line table shows Status again (Sold, TO FOLLOW, return steps, and more)",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sales & ATR lists one row per serial; multi-unit sales share the same ID and transaction number",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sales return and ATR badges use names and colors from Status settings",
+      },
+      {
+        type: "improvement",
+        description:
+          "New sales lets you type the transaction number from your invoice",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sale details uses a clearer layout with return actions at the bottom and proof review from attachments",
+      },
+      {
+        type: "improvement",
+        description:
+          "Orders and Logistics row actions only show when it is your step",
+      },
+      {
+        type: "improvement",
+        description:
+          "New orders stay limited to branches in your area so they show up in your list right away",
       },
       {
         type: "fix",
         description:
-          "Dashboard activity cards no longer fail when showing neutral info-style counts",
+          "Saving a sale with TO FOLLOW no longer fails",
       },
       {
         type: "fix",
         description:
-          "Product Specialists can approve Pending PS manual orders again, and denied approvals show a message on the orders page instead of sending you to Dashboard",
+          "Branch stock source lists area locations with sellable stock, and serials come from that stock",
       },
       {
         type: "fix",
         description:
-          "Order create now limits dealers and branches to your area of responsibility, so new special orders appear in your orders list after you submit them",
+          "Model price fills from the price list when you pick a model",
       },
       {
-        type: "improvement",
+        type: "fix",
         description:
-          "Orders pages hide Suggested orders and Planning & suggestions when you don’t have access to planning suggestions",
+          "After a return is requested, Sales list status shows Pending CS instead of staying on TO FOLLOW",
       },
       {
-        type: "improvement",
+        type: "fix",
         description:
-          "Manual and Special order headers include a short workflow tip under the title, matching the Auto replenish page",
+          "Request return works again and asks for a return reason",
       },
       {
-        type: "improvement",
+        type: "fix",
         description:
-          "Branch orders quick guide and tips now match Help & Support for Manual, Special, and Auto replenish workflows",
+          "Sales proof attachments save and open correctly",
       },
       {
-        type: "improvement",
+        type: "fix",
         description:
-          "Orders Review and Logistics row actions only show when your role can take that step",
+          "Accept delivery on Logistics works again for pending order deliveries",
       },
       {
-        type: "improvement",
+        type: "fix",
         description:
-          "Order View details drops the duplicate SPA remarks block; table actions put Review on the left and a clearer View details button on the right",
+          "Dashboard activity cards and Product Specialist order approvals work reliably again",
       },
     ],
   },

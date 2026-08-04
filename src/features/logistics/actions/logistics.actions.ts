@@ -272,10 +272,46 @@ export async function acceptDeliveryAction(id: string, input?: unknown) {
     "STK",
   );
 
-  const serialNumberIds = parsed.data.serialNumberIds;
   let row;
+  let movedCount = 0;
   try {
-    row = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
+      const existing = await tx.branchDelivery.findFirst({
+        where: { id, tenantId: session.user.tenantId },
+        include: {
+          lines: { select: { serialNumberId: true } },
+          branch: { select: { name: true } },
+          order: { select: { orderNumber: true } },
+        },
+      });
+      if (!existing) {
+        throw new Error("Delivery not found");
+      }
+
+      // Explicit input → delivery line serials → none (header-only accept)
+      const lineSerialIds = existing.lines.map((line) => line.serialNumberId);
+      const serialNumberIds = parsed.data.serialNumberIds?.length
+        ? parsed.data.serialNumberIds
+        : lineSerialIds.length
+          ? lineSerialIds
+          : null;
+
+      let moved = { count: 0 };
+      if (serialNumberIds?.length) {
+        moved = await tx.branchInventory.updateMany({
+          where: {
+            tenantId: session.user.tenantId,
+            branchId: existing.branchId,
+            statusCodeId: ditCodeId,
+            serialNumberId: { in: serialNumberIds },
+          },
+          data: { statusCodeId: stkCodeId, updatedById: session.user.id },
+        });
+        if (moved.count !== serialNumberIds.length) {
+          throw new Error("Some serials are not in-transit at this branch");
+        }
+      }
+
       const delivery = await tx.branchDelivery.update({
         where: { id, tenantId: session.user.tenantId },
         data: { statusCodeId: acceptedCodeId, acceptedAt: new Date() },
@@ -285,25 +321,10 @@ export async function acceptDeliveryAction(id: string, input?: unknown) {
         },
       });
 
-      const moved = await tx.branchInventory.updateMany({
-        where: {
-          tenantId: session.user.tenantId,
-          branchId: delivery.branchId,
-          statusCodeId: ditCodeId,
-          ...(serialNumberIds?.length ? { serialNumberId: { in: serialNumberIds } } : {}),
-        },
-        data: { statusCodeId: stkCodeId, updatedById: session.user.id },
-      });
-
-      if (serialNumberIds?.length && moved.count !== serialNumberIds.length) {
-        throw new Error("Some serials are not in-transit at this branch");
-      }
-      if (!serialNumberIds?.length && moved.count === 0) {
-        throw new Error("No in-transit inventory found for this delivery");
-      }
-
-      return delivery;
+      return { delivery, movedCount: moved.count };
     });
+    row = result.delivery;
+    movedCount = result.movedCount;
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to accept delivery" };
   }
@@ -317,9 +338,7 @@ export async function acceptDeliveryAction(id: string, input?: unknown) {
     metadata: {
       deliveryNo: row.deliveryNo,
       branchName: row.branch.name,
-      ...(parsed.data.serialNumberIds?.length
-        ? { serialCount: parsed.data.serialNumberIds.length }
-        : {}),
+      movedCount,
       ...(row.order ? { orderNumber: row.order.orderNumber } : {}),
     },
   });
@@ -327,7 +346,7 @@ export async function acceptDeliveryAction(id: string, input?: unknown) {
   revalidateLogisticsPaths();
   revalidatePath("/inventory");
   revalidatePath("/operations");
-  return { success: true as const };
+  return { success: true as const, movedCount };
 }
 
 export async function rejectDeliveryAction(id: string, notes?: string) {
@@ -338,14 +357,19 @@ export async function rejectDeliveryAction(id: string, notes?: string) {
     "rejected",
   );
 
-  const row = await prisma.branchDelivery.update({
-    where: { id, tenantId: session.user.tenantId },
-    data: { statusCodeId: rejectedCodeId },
-    include: {
-      branch: { select: { name: true } },
-      order: { select: { orderNumber: true } },
-    },
-  });
+  let row;
+  try {
+    row = await prisma.branchDelivery.update({
+      where: { id, tenantId: session.user.tenantId },
+      data: { statusCodeId: rejectedCodeId },
+      include: {
+        branch: { select: { name: true } },
+        order: { select: { orderNumber: true } },
+      },
+    });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to reject delivery" };
+  }
 
   await auditService.log({
     tenantId: session.user.tenantId,

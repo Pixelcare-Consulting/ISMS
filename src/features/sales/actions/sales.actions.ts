@@ -6,6 +6,7 @@ import { z } from "zod";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { auditService } from "@/features/audit/services/audit.service";
 import { aorService } from "@/features/aors/services/aor.service";
+import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { salesRepository } from "@/features/sales/repositories/sales.repository";
 import type {
@@ -15,6 +16,7 @@ import type {
 import {
   isToFollowSerial,
   TO_FOLLOW_SERIAL_ID,
+  TO_FOLLOW_SERIAL_LABEL,
 } from "@/features/sales/constants/to-follow-serial";
 import {
   SALES_ACCESS_PERMISSIONS,
@@ -26,9 +28,120 @@ import {
   salesReturnRejectPermissions,
 } from "@/features/sales/constants/sales-permissions";
 import { isSaleTransactionNo } from "@/features/sales/utils/sale-transaction-no";
+import {
+  parseSaleProofPaths,
+  serializeSaleProofPaths,
+} from "@/features/sales/utils/sale-proof";
 import { hasPermission, requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/database/client";
 import { getObjectStorage } from "@/lib/storage";
+
+export type SaleStatusCodeRef = {
+  code: string;
+  name: string;
+  color: string | null;
+};
+
+const TO_FOLLOW_STATUS_FALLBACK: SaleStatusCodeRef = {
+  code: "FW",
+  name: "TO FOLLOW",
+  color: "orange",
+};
+
+/** Tiny fallbacks when sales_atr Settings codes are missing (unseeded tenant). */
+const SALES_ATR_STATUS_FALLBACK: Record<string, SaleStatusCodeRef> = {
+  pending_cs: { code: "pending_cs", name: "Pending CS", color: "amber" },
+  pending_tl: { code: "pending_tl", name: "Pending TL", color: "amber" },
+  approved: { code: "approved", name: "Approved", color: "emerald" },
+  rejected: { code: "rejected", name: "Rejected", color: "rose" },
+  completed: { code: "completed", name: "Completed", color: "emerald" },
+  open: { code: "open", name: "Open", color: "sky" },
+  reserve: { code: "reserve", name: "Reserve", color: "amber" },
+  closed: { code: "closed", name: "Closed", color: "slate" },
+};
+
+async function resolveToFollowStatusCode(
+  tenantId: string,
+): Promise<SaleStatusCodeRef> {
+  const fw = await reasonStatusRepository.findCodeId(
+    tenantId,
+    "inventory_system",
+    "FW",
+  );
+  if (!fw) return TO_FOLLOW_STATUS_FALLBACK;
+  return { code: fw.code, name: fw.name, color: fw.color };
+}
+
+async function loadSalesAtrCodesByCode(
+  tenantId: string,
+): Promise<Map<string, SaleStatusCodeRef>> {
+  const codes = await reasonStatusRepository.listActiveCodesByCategory(
+    tenantId,
+    "sales_atr",
+  );
+  return new Map(
+    codes.map((row) => [
+      row.code,
+      { code: row.code, name: row.name, color: row.color },
+    ]),
+  );
+}
+
+function resolveSalesAtrStatusCode(
+  code: string,
+  codesByCode: Map<string, SaleStatusCodeRef>,
+): SaleStatusCodeRef {
+  return (
+    codesByCode.get(code) ??
+    SALES_ATR_STATUS_FALLBACK[code] ?? {
+      code,
+      name: code.replaceAll("_", " "),
+      color: "amber",
+    }
+  );
+}
+
+/**
+ * List/details STATUS preference:
+ * 1) Active ATR return workflow (pending CS/TL/approved/rejected)
+ * 2) Inventory status (SLD/STK/…) or TO FOLLOW when no serial
+ * 3) ATR header status as last resort
+ */
+function resolveLineStatusCode(
+  detail: {
+    serialNumberId: string | null;
+    serialNumber?: {
+      branchInventories?: Array<{
+        statusCode: { code: string; name: string; color: string | null } | null;
+      }>;
+    } | null;
+  },
+  atrStatus: string,
+  toFollowStatus: SaleStatusCodeRef,
+  salesAtrCodes: Map<string, SaleStatusCodeRef>,
+  returnStatus?: string | null,
+): SaleStatusCodeRef | null {
+  if (returnStatus && returnStatus !== "completed") {
+    return resolveSalesAtrStatusCode(returnStatus, salesAtrCodes);
+  }
+
+  const invStatus = detail.serialNumber?.branchInventories?.[0]?.statusCode;
+  if (invStatus) {
+    return {
+      code: invStatus.code,
+      name: invStatus.name,
+      color: invStatus.color,
+    };
+  }
+  if (!detail.serialNumberId) {
+    // TO-FOLLOW line with no active return — still show FW / TO FOLLOW.
+    if (atrStatus === "reserve") {
+      return resolveSalesAtrStatusCode("reserve", salesAtrCodes);
+    }
+    return toFollowStatus;
+  }
+  return resolveSalesAtrStatusCode(atrStatus, salesAtrCodes);
+}
 
 const saleDetailSchema = z.object({
   packageTypeId: z.string().min(1),
@@ -58,7 +171,10 @@ const saleSchema = z.object({
   customerDeliveryMethodId: z.string().min(1),
   infoSlipVsoRrReleased: z.string().trim().optional(),
   rrReceiveDeliver: z.string().trim().optional(),
-  proof: z.array(z.string().trim().min(1)).optional().default([]),
+  // One path, or several (stored as Postgres text[] / Prisma String[]).
+  proof: z
+    .union([z.string().trim().min(1), z.array(z.string().trim().min(1))])
+    .optional(),
   transactionDate: z.string().optional(),
   reserved: z.boolean().optional(),
   details: z.array(saleDetailSchema).min(1),
@@ -84,15 +200,38 @@ async function assertBranchInAor(
 }
 
 /** Stock source must itself be within the user's area of responsibility. */
+/** Stock source may be an alternate warehouse of an AOR branch. */
 async function assertStockLocationReadable(
   tenantId: string,
   userId: string,
   stockBranchId: string,
   permissions: string[] | undefined,
 ) {
-  await assertBranchInAor(tenantId, userId, stockBranchId, permissions);
+  const unrestricted =
+    hasPermission(permissions, "branches.manage") ||
+    hasPermission(permissions, "master_data.manage");
+  if (unrestricted) return;
+
+  const branchIds = await aorService.getBranchIdsForUser(tenantId, userId);
+  if (branchIds?.includes(stockBranchId)) return;
+
+  const alt = await prisma.alternateWarehouse.findFirst({
+    where: {
+      alternateBranchId: stockBranchId,
+      branchId: { in: branchIds ?? [] },
+      branch: { tenantId },
+    },
+    select: { id: true },
+  });
+  if (!alt) {
+    throw new Error("Branch not in your area of responsibility");
+  }
 }
 
+/**
+ * Stock source may be: the sold branch, an AlternateWarehouse of the sold branch,
+ * or any other branch the user can read via AOR.
+ */
 async function assertValidStockSource(
   tenantId: string,
   userId: string,
@@ -100,9 +239,8 @@ async function assertValidStockSource(
   alternateBranchId: string,
   permissions: string[] | undefined,
 ) {
-  await assertBranchInAor(tenantId, userId, alternateBranchId, permissions);
-
   if (alternateBranchId === soldBranchId) return;
+
   const alt = await prisma.alternateWarehouse.findFirst({
     where: {
       branchId: soldBranchId,
@@ -111,14 +249,21 @@ async function assertValidStockSource(
     },
     select: { id: true },
   });
-  if (!alt) {
-    throw new Error("Stock source must be the sold branch or one of its alternate warehouses");
-  }
+  if (alt) return;
+
+  await assertStockLocationReadable(
+    tenantId,
+    userId,
+    alternateBranchId,
+    permissions,
+  );
 }
 
 const SALES_SORT_FIELDS = new Set<SalesListSort>([
   "transactionNo",
+  "date",
   "branch",
+  "customer",
   "amount",
   "atrStatus",
   "returnStatus",
@@ -143,50 +288,132 @@ export async function listSalesAction(input?: {
   sortDir?: string;
 }) {
   const session = await requireAnyPermission([...SALES_ACCESS_PERMISSIONS]);
-  const result = await salesRepository.listForTenant(
-    session.user.tenantId,
-    {
-      page: input?.page,
-      limit: parseTablePageSize(input?.limit),
-    },
-    { field: parseSalesSort(input?.sort), dir: parseSalesSortDir(input?.sortDir) },
-  );
+  const [result, toFollowStatus, salesAtrCodes] = await Promise.all([
+    salesRepository.listDetailsForTenant(
+      session.user.tenantId,
+      {
+        page: input?.page,
+        limit: parseTablePageSize(input?.limit),
+      },
+      { field: parseSalesSort(input?.sort), dir: parseSalesSortDir(input?.sortDir) },
+    ),
+    resolveToFollowStatusCode(session.user.tenantId),
+    loadSalesAtrCodesByCode(session.user.tenantId),
+  ]);
 
   return {
     ...result,
-    items: result.items.map((row) => {
-      const firstDetail = row.details[0];
-      const serialNumbers = row.details
-        .map((d) => d.serialNumber?.serialNo)
-        .filter((s): s is string => Boolean(s));
-      const firstSerial = serialNumbers[0] ?? null;
-      const serialCount = serialNumbers.length;
-      const firstSerialId = firstDetail?.serialNumberId ?? null;
-      const serialLabel =
-        serialCount <= 1
-          ? firstSerial
-          : firstSerial
-            ? `${firstSerial} (+${serialCount - 1})`
-            : null;
+    items: result.items.map((detail) => {
+      const sale = detail.sale;
+      const lineAmount = detail.saleAmount ?? detail.amount;
+      const modelPrice = detail.modelPrice;
       return {
-        id: row.id,
-        transactionNo: row.transactionNo,
-        amount: row.amount.toString(),
-        atrStatus: row.atrStatus,
+        // Row identity is the detail line (one serial / TO-FOLLOW per row).
+        id: detail.id,
+        detailId: detail.id,
+        saleId: sale.id,
+        transactionNo: sale.transactionNo,
+        transactionDate: sale.transactionDate
+          ? sale.transactionDate.toISOString()
+          : null,
+        customerName: sale.customerName,
+        packageName: detail.packageType?.name ?? null,
+        brandName: detail.brand?.name ?? null,
+        modelLabel: detail.model
+          ? detail.model.skuCode || detail.model.name
+          : null,
+        saleAmount: (lineAmount ?? 0).toString(),
+        modelPrice: modelPrice != null ? modelPrice.toString() : null,
+        atrStatus: sale.atrStatus,
         // Stock source drives edit-serial inventory picks; fall back to sold branch.
-        branchId: row.alternateBranchId ?? row.branchId,
-        branch: row.branch,
-        serialNumberId: firstSerialId,
-        serialNumber: serialLabel
-          ? {
-              id: firstDetail?.serialNumber?.id ?? firstSerialId ?? "",
-              serialNo: serialLabel,
-            }
+        branchId: sale.alternateBranchId ?? sale.branchId,
+        branch: sale.branch,
+        serialNumberId: detail.serialNumberId,
+        serialNumber: detail.serialNumber
+          ? { id: detail.serialNumber.id, serialNo: detail.serialNumber.serialNo }
           : null,
-        serialNumbers,
-        returnRequest: row.returnRequest
-          ? { id: row.returnRequest.id, status: row.returnRequest.status }
+        statusCode: resolveLineStatusCode(
+          detail,
+          sale.atrStatus,
+          toFollowStatus,
+          salesAtrCodes,
+          sale.returnRequest?.status,
+        ),
+        returnRequest: sale.returnRequest
+          ? { id: sale.returnRequest.id, status: sale.returnRequest.status }
           : null,
+      };
+    }),
+  };
+}
+
+export async function getSaleDetailsAction(saleId: string) {
+  const session = await requireAnyPermission([...SALES_ACCESS_PERMISSIONS]);
+  const [sale, toFollowStatus, salesAtrCodes] = await Promise.all([
+    salesRepository.findSaleDetailsForTenant(session.user.tenantId, saleId),
+    resolveToFollowStatusCode(session.user.tenantId),
+    loadSalesAtrCodesByCode(session.user.tenantId),
+  ]);
+
+  if (!sale) {
+    return { error: "Sale not found" as const };
+  }
+
+  const proofPaths = parseSaleProofPaths(sale.proof);
+  const atrStatusCode = resolveSalesAtrStatusCode(sale.atrStatus, salesAtrCodes);
+  const returnStatusCode = sale.returnRequest
+    ? resolveSalesAtrStatusCode(sale.returnRequest.status, salesAtrCodes)
+    : null;
+
+  return {
+    id: sale.id,
+    transactionNo: sale.transactionNo,
+    transactionDate: sale.transactionDate
+      ? sale.transactionDate.toISOString()
+      : null,
+    customerName: sale.customerName,
+    siTrans: sale.siTrans,
+    atrStatus: sale.atrStatus,
+    atrStatusCode,
+    notes: sale.notes,
+    proofPaths,
+    proofCount: proofPaths.length,
+    amount: sale.amount.toString(),
+    /** Stock-source branch used when editing serials (matches list row branchId). */
+    stockBranchId: sale.stockSourceBranch?.id ?? sale.branch.id,
+    branch: sale.branch,
+    stockSourceBranch: sale.stockSourceBranch,
+    paymentType: sale.paymentType,
+    saleType: sale.saleType,
+    customerDeliveryMethod: sale.customerDeliveryMethod,
+    returnRequest: sale.returnRequest
+      ? { id: sale.returnRequest.id, status: sale.returnRequest.status }
+      : null,
+    returnStatusCode,
+    createdByName: sale.createdBy?.name ?? sale.createdBy?.email ?? null,
+    lines: sale.details.map((detail) => {
+      const lineAmount = detail.saleAmount ?? detail.amount;
+      return {
+        detailId: detail.id,
+        packageName: detail.packageType?.name ?? null,
+        brandName: detail.brand?.name ?? null,
+        modelLabel: detail.model
+          ? detail.model.skuCode?.trim() ||
+            detail.model.name?.trim() ||
+            null
+          : null,
+        serialNumberId: detail.serialNumberId,
+        serialNo: detail.serialNumber?.serialNo ?? TO_FOLLOW_SERIAL_LABEL,
+        saleAmount: (lineAmount ?? 0).toString(),
+        modelPrice:
+          detail.modelPrice != null ? detail.modelPrice.toString() : null,
+        statusCode: resolveLineStatusCode(
+          detail,
+          sale.atrStatus,
+          toFollowStatus,
+          salesAtrCodes,
+          sale.returnRequest?.status,
+        ),
       };
     }),
   };
@@ -256,15 +483,31 @@ export async function listStockSourceBranchesForSalesAction(branchId: string) {
     session.user.permissions,
   );
 
+  const tenantId = session.user.tenantId;
   const unrestricted =
     hasPermission(session.user.permissions, "branches.manage") ||
     hasPermission(session.user.permissions, "master_data.manage");
-  const aorBranchIds = unrestricted
-    ? null
-    : await aorService.getBranchIdsForUser(session.user.tenantId, session.user.id);
+
+  // AOR-scoped branches first (same scope as Branch sold).
+  const byId = new Map<string, string>();
+  if (unrestricted) {
+    const all = await prisma.branch.findMany({
+      where: { tenantId, deletedAt: null, status: "active" },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    });
+    for (const b of all) byId.set(b.id, b.name);
+  } else {
+    const aors = await aorService.listAorsForUser(tenantId, session.user.id);
+    for (const aor of aors) {
+      if (aor.branch?.id) {
+        byId.set(aor.branch.id, aor.branch.name);
+      }
+    }
+  }
 
   const branch = await prisma.branch.findFirst({
-    where: { id: branchId, tenantId: session.user.tenantId },
+    where: { id: branchId, tenantId },
     select: {
       id: true,
       name: true,
@@ -277,15 +520,47 @@ export async function listStockSourceBranchesForSalesAction(branchId: string) {
   });
   if (!branch) return [];
 
-  const options = [{ id: branch.id, name: branch.name }];
+  // Ensure sold branch is present even if AOR rows were incomplete.
+  byId.set(branch.id, branch.name);
+
+  // Alternate warehouses of the sold branch (may sit outside AOR).
   for (const row of branch.alternateWarehouses) {
     if (row.alternateBranch.id === branch.id) continue;
-    if (aorBranchIds && !aorBranchIds.includes(row.alternateBranch.id)) continue;
-    options.push({
-      id: row.alternateBranch.id,
-      name: `${row.alternateBranch.name} (alternate)`,
-    });
+    if (byId.has(row.alternateBranch.id)) continue;
+    byId.set(
+      row.alternateBranch.id,
+      `${row.alternateBranch.name} (alternate)`,
+    );
   }
+
+  const candidateIds = [...byId.keys()];
+  const stkCodeId = await reasonStatusService.requireCodeId(
+    tenantId,
+    "inventory_system",
+    "STK",
+  );
+  // Only offer stock sources that actually hold sellable serials (plus sold branch for TO-FOLLOW).
+  const stocked = await prisma.branchInventory.groupBy({
+    by: ["branchId"],
+    where: {
+      tenantId,
+      branchId: { in: candidateIds },
+      statusCodeId: stkCodeId,
+    },
+    _count: { id: true },
+  });
+  const stockedIds = new Set(stocked.map((row) => row.branchId));
+
+  const options = [...byId.entries()]
+    .filter(([id]) => id === branch.id || stockedIds.has(id))
+    .map(([id, name]) => ({ id, name }));
+
+  // Sold branch first, then alphabetical.
+  options.sort((a, b) => {
+    if (a.id === branch.id) return -1;
+    if (b.id === branch.id) return 1;
+    return a.name.localeCompare(b.name);
+  });
   return options;
 }
 
@@ -310,29 +585,80 @@ export async function listModelsForSalesAction(brandId?: string) {
   }));
 }
 
+export type ResolvedModelPriceSource = "pricelist" | "srp";
+
+export type ResolvedModelPrice = {
+  amount: number;
+  source: ResolvedModelPriceSource;
+};
+
+/**
+ * Resolve Model price for a sales detail set.
+ * Price lists are tenant + model + optional package type + active calendar day.
+ * Prefers a package-specific row, then a generic (no package) row, then model SRP.
+ */
 export async function resolveModelPriceForSalesAction(input: {
   modelId: string;
   packageTypeId?: string;
-}) {
+}): Promise<ResolvedModelPrice | null> {
   const session = await requirePermission("sales.create");
   const now = new Date();
-  const priceList = await prisma.priceList.findFirst({
-    where: {
-      tenantId: session.user.tenantId,
-      modelId: input.modelId,
-      periodStart: { lte: now },
-      periodEnd: { gte: now },
-      ...(input.packageTypeId
-        ? {
-            OR: [{ packageTypeId: input.packageTypeId }, { packageTypeId: null }],
-          }
-        : {}),
-    },
-    orderBy: [{ packageTypeId: "desc" }, { periodStart: "desc" }],
+  // Date inputs store midnight UTC; treat the whole calendar day as in-range.
+  const dayStart = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+  );
+  const dayEnd = new Date(
+    Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
+      23,
+      59,
+      59,
+      999,
+    ),
+  );
+
+  const baseWhere = {
+    tenantId: session.user.tenantId,
+    modelId: input.modelId,
+    periodStart: { lte: dayEnd },
+    periodEnd: { gte: dayStart },
+  };
+
+  if (input.packageTypeId) {
+    const packagePrice = await prisma.priceList.findFirst({
+      where: { ...baseWhere, packageTypeId: input.packageTypeId },
+      orderBy: { periodStart: "desc" },
+      select: { amount: true },
+    });
+    if (packagePrice) {
+      return {
+        amount: Number(packagePrice.amount.toString()),
+        source: "pricelist",
+      };
+    }
+  }
+
+  const genericPrice = await prisma.priceList.findFirst({
+    where: { ...baseWhere, packageTypeId: null },
+    orderBy: { periodStart: "desc" },
     select: { amount: true },
   });
-  if (priceList) return Number(priceList.amount.toString());
+  if (genericPrice) {
+    return {
+      amount: Number(genericPrice.amount.toString()),
+      source: "pricelist",
+    };
+  }
 
+  const model = await prisma.productModel.findFirst({
+    where: { id: input.modelId, tenantId: session.user.tenantId },
+    select: { srp: true },
+  });
+  if (model?.srp != null) {
+    return { amount: Number(model.srp.toString()), source: "srp" };
+  }
   return null;
 }
 
@@ -389,23 +715,33 @@ export async function listSaleableSerialsAction(
 export async function uploadSaleProofAction(formData: FormData) {
   const session = await requirePermission("sales.create");
   try {
-    const file = formData.get("proof");
-    if (!(file instanceof File) || file.size === 0) {
+    const files = formData
+      .getAll("proof")
+      .filter((entry): entry is File => entry instanceof File && entry.size > 0);
+    if (files.length === 0) {
       return { error: "No file selected" as const };
     }
 
-    const fileId = crypto.randomUUID();
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const storagePath = `${SALES_PROOF_PREFIX}/tenants/${session.user.tenantId}/${fileId}-${safeName}`;
-    const buffer = Buffer.from(await file.arrayBuffer());
     const storage = getObjectStorage();
-    await storage.upload({
-      path: storagePath,
-      body: buffer,
-      contentType: file.type || "application/octet-stream",
-    });
+    const paths: string[] = [];
+    for (const file of files) {
+      const fileId = crypto.randomUUID();
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const storagePath = `${SALES_PROOF_PREFIX}/tenants/${session.user.tenantId}/${fileId}-${safeName}`;
+      const buffer = Buffer.from(await file.arrayBuffer());
+      await storage.upload({
+        path: storagePath,
+        body: buffer,
+        contentType: file.type || "application/octet-stream",
+      });
+      paths.push(storagePath);
+    }
 
-    return { success: true as const, path: storagePath };
+    return {
+      success: true as const,
+      path: paths[0]!,
+      paths,
+    };
   } catch (e) {
     return {
       error: e instanceof Error ? e.message : "Failed to upload proof",
@@ -573,7 +909,13 @@ export async function createSaleAction(input: unknown) {
           siTrans: parsed.data.siTrans,
           infoSlipVsoRrReleased: parsed.data.infoSlipVsoRrReleased || null,
           rrReceiveDeliver: parsed.data.rrReceiveDeliver || null,
-          proof: parsed.data.proof,
+          proof: parsed.data.proof
+            ? serializeSaleProofPaths(
+                Array.isArray(parsed.data.proof)
+                  ? parsed.data.proof
+                  : [parsed.data.proof],
+              )
+            : [],
           amount,
           modelPrice: modelPriceRollup ?? null,
           atrStatus: "open",
@@ -664,9 +1006,21 @@ export async function createSaleAction(input: unknown) {
 
 export async function requestReturnAction(saleId: string, notes?: string) {
   const session = await requireAnyPermission([SALES_RETURN_REQUEST, SALES_CREATE]);
+  const reason = notes?.trim() || "";
+  if (!reason) {
+    return { error: "Return reason is required" as const };
+  }
+
+  // Select only fields needed for ATR — avoid loading `proof` (text[]) on full-row reads.
   const sale = await prisma.branchSalesTransaction.findFirst({
     where: { id: saleId, tenantId: session.user.tenantId },
-    include: { returnRequest: true },
+    select: {
+      id: true,
+      transactionNo: true,
+      atrStatus: true,
+      notes: true,
+      returnRequest: { select: { id: true } },
+    },
   });
   if (!sale) return { error: "Sale not found" as const };
   if (sale.returnRequest) return { error: "Return already requested" as const };
@@ -678,18 +1032,16 @@ export async function requestReturnAction(saleId: string, notes?: string) {
         tenantId: session.user.tenantId,
         saleId,
         requestedById: session.user.id,
-        requestNotes: notes,
+        requestNotes: reason,
       },
     }),
     prisma.branchSalesTransaction.update({
       where: { id: saleId },
       data: {
         atrStatus: "reserve",
-        notes: notes
-          ? [sale.notes, `[Return requested] ${notes}`].filter(Boolean).join("\n")
-          : sale.notes
-            ? `${sale.notes}\n[Return requested]`
-            : "[Return requested]",
+        notes: [sale.notes, `[Return requested] ${reason}`]
+          .filter(Boolean)
+          .join("\n"),
       },
     }),
   ]);
@@ -700,7 +1052,11 @@ export async function requestReturnAction(saleId: string, notes?: string) {
     action: "sale.return_requested",
     entityType: "BranchSalesTransaction",
     entityId: saleId,
-    metadata: { transactionNo: sale.transactionNo, atrStatus: "reserve" },
+    metadata: {
+      transactionNo: sale.transactionNo,
+      atrStatus: "reserve",
+      hasReason: true,
+    },
   });
 
   revalidatePath("/sales");
@@ -902,12 +1258,14 @@ export async function completeReturnRestoreAction(returnRequestId: string) {
 }
 
 /**
- * Replace the first sale-detail serial. Used for TO-FOLLOW fill-in and
- * correcting any sale serial. Moves inventory at the stock source: old unit
- * back to STK (if any), new unit STK → SLD (or RSV if the old unit was reserved).
+ * Replace one sale-detail serial (per-line Edit). Defaults to the first detail
+ * when detailId is omitted. Moves inventory at the stock source: old unit back
+ * to STK (if any), new unit STK → SLD (or RSV if the old unit was reserved).
  */
 export async function updateSaleSerialAction(input: {
   saleId: string;
+  /** When set, only this detail line is updated. */
+  detailId?: string;
   /** Real serial id, or TO-FOLLOW to clear the linked unit. */
   serialNumberId: string;
 }) {
@@ -917,7 +1275,11 @@ export async function updateSaleSerialAction(input: {
 
   const sale = await prisma.branchSalesTransaction.findFirst({
     where: { id: input.saleId, tenantId: session.user.tenantId },
-    include: {
+    select: {
+      id: true,
+      transactionNo: true,
+      branchId: true,
+      alternateBranchId: true,
       details: {
         orderBy: { createdAt: "asc" },
         select: { id: true, serialNumberId: true },
@@ -939,7 +1301,11 @@ export async function updateSaleSerialAction(input: {
   }
 
   const stockBranchId = sale.alternateBranchId ?? sale.branchId;
-  const targetDetail = sale.details[0]!;
+  const targetDetail = input.detailId
+    ? sale.details.find((d) => d.id === input.detailId)
+    : sale.details[0];
+  if (!targetDetail) return { error: "Sale detail line not found" };
+
   const oldSerialId = targetDetail.serialNumberId;
   if (oldSerialId === nextSerialId) {
     return { success: true as const };
@@ -1005,17 +1371,10 @@ export async function updateSaleSerialAction(input: {
         }
       }
 
-      // Update matching detail lines (first serial or still-null TO-FOLLOW rows).
-      for (const detail of sale.details) {
-        const shouldUpdate =
-          detail.serialNumberId == null ||
-          (oldSerialId != null && detail.serialNumberId === oldSerialId);
-        if (!shouldUpdate) continue;
-        await tx.branchSalesTransactionDetail.update({
-          where: { id: detail.id },
-          data: { serialNumberId: nextSerialId },
-        });
-      }
+      await tx.branchSalesTransactionDetail.update({
+        where: { id: targetDetail.id },
+        data: { serialNumberId: nextSerialId },
+      });
     });
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to update serial" };
@@ -1029,6 +1388,7 @@ export async function updateSaleSerialAction(input: {
     entityId: sale.id,
     metadata: {
       transactionNo: sale.transactionNo,
+      detailId: targetDetail.id,
       fromSerialId: oldSerialId,
       toSerialId: nextSerialId,
       toFollow: nextIsToFollow,

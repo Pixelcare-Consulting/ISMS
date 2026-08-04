@@ -39,6 +39,8 @@ type SearchableSelectProps = {
   name?: string;
   id?: string;
   className?: string;
+  /** Extra classes for the options popover (e.g. raise z-index above a dialog). */
+  popoverClassName?: string;
   onOpenChange?: (open: boolean) => void;
 };
 
@@ -55,6 +57,7 @@ export function SearchableSelect({
   name,
   id,
   className,
+  popoverClassName,
   onOpenChange,
 }: SearchableSelectProps) {
   const [open, setOpen] = useState(false);
@@ -124,7 +127,10 @@ export function SearchableSelect({
           </Button>
         </PopoverTrigger>
         <PopoverContent
-          className="w-[var(--radix-popover-trigger-width)] p-0"
+          className={cn(
+            "w-[var(--radix-popover-trigger-width)] p-0",
+            popoverClassName,
+          )}
           align="start"
         >
           <Command shouldFilter={false}>
