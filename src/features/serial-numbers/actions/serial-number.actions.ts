@@ -6,15 +6,38 @@ import type { LookupRecordStatus } from "@prisma/client";
 
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { serialNumberService } from "@/features/serial-numbers/services/serial-number.service";
+import type {
+  SerialNumberListSort,
+  SerialNumberListSortDir,
+} from "@/features/serial-numbers/repositories/serial-number.repository";
 import { requirePermission } from "@/lib/auth/permissions";
 
 const SERIAL_NUMBERS_ROUTE = "/inventory/serial-numbers";
+
+const SERIAL_NUMBER_SORT_FIELDS = new Set<SerialNumberListSort>([
+  "serialNo",
+  "model",
+  "recordStatus",
+]);
+
+function parseSerialNumberSort(value?: string): SerialNumberListSort | undefined {
+  if (value && SERIAL_NUMBER_SORT_FIELDS.has(value as SerialNumberListSort)) {
+    return value as SerialNumberListSort;
+  }
+  return undefined;
+}
+
+function parseSerialNumberSortDir(value?: string): SerialNumberListSortDir | undefined {
+  return value === "asc" || value === "desc" ? value : undefined;
+}
 
 export async function listSerialNumbersAction(params: {
   page?: number;
   limit?: number;
   q?: string;
   status?: LookupRecordStatus;
+  sort?: string;
+  sortDir?: string;
 }) {
   const session = await requirePermission("inventory.view");
   const limit = parseTablePageSize(params.limit);
@@ -22,6 +45,7 @@ export async function listSerialNumbersAction(params: {
     session.user.tenantId,
     { page: params.page, limit },
     { q: params.q, status: params.status },
+    { field: parseSerialNumberSort(params.sort), dir: parseSerialNumberSortDir(params.sortDir) },
   );
 }
 

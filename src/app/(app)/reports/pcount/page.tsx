@@ -8,6 +8,8 @@ interface PcountReportPageProps {
     branchId?: string;
     from?: string;
     to?: string;
+    sort?: string;
+    dir?: string;
   }>;
 }
 
@@ -17,12 +19,15 @@ export default async function PcountReportPage({
   await requireAnyPermission(["reports.view", "inventory.view"]);
   const params = await searchParams;
   const page = Number(params.page) || 1;
+  const sortDir = params.dir === "asc" ? "asc" : "desc";
 
   const sessions = await listPcountReportAction({
     page,
     branchId: params.branchId,
     from: params.from,
     to: params.to,
+    sort: params.sort,
+    sortDir,
   });
 
   return (
@@ -31,6 +36,8 @@ export default async function PcountReportPage({
       currentBranchId={params.branchId}
       currentFrom={params.from}
       currentTo={params.to}
+      currentSort={params.sort}
+      currentSortDir={sortDir}
     />
   );
 }

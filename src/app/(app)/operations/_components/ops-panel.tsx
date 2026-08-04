@@ -27,6 +27,7 @@ import {
   DataTableShell,
 } from "@/components/data-table/data-table-shell";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
+import { GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 import {
   Dialog,
   DialogContent,
@@ -92,6 +93,21 @@ export function OpsPanel({ deliveries, transfers, pullouts, branches }: OpsPanel
   const transferSelection = useTableSelection(transfers.map((transfer) => transfer.id));
   const pulloutSelection = useTableSelection(pullouts.map((pullout) => pullout.id));
 
+  const deliverySort = useClientTableSort(deliveries, {
+    branch: (d) => d.branch.name,
+    reference: (d) => d.deliveryNo,
+    status: (d) => d.statusCode.name,
+  });
+  const transferSort = useClientTableSort(transfers, {
+    from: (t) => t.fromBranch.name,
+    to: (t) => t.toBranch.name,
+    status: (t) => t.statusCode.name,
+  });
+  const pulloutSort = useClientTableSort(pullouts, {
+    branch: (p) => p.branch.name,
+    status: (p) => p.statusCode.name,
+  });
+
   function confirmDeliveryAction() {
     if (!pendingDelivery) return;
     const { action, id } = pendingDelivery;
@@ -156,14 +172,14 @@ export function OpsPanel({ deliveries, transfers, pullouts, branches }: OpsPanel
                   />
                 </TableHead>
                 <TableHead className="w-12">#</TableHead>
-                <TableHead>Branch</TableHead>
-                <TableHead>Reference</TableHead>
-                <TableHead>Status</TableHead>
+                <GlobalTableHead {...deliverySort.sortProps("branch")}>Branch</GlobalTableHead>
+                <GlobalTableHead {...deliverySort.sortProps("reference")}>Reference</GlobalTableHead>
+                <GlobalTableHead {...deliverySort.sortProps("status")}>Status</GlobalTableHead>
                 <TableHead className="text-right">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {deliveries.map((d, index) => (
+              {deliverySort.sorted.map((d, index) => (
                 <TableRow key={d.id} data-state={deliverySelection.isRowSelected(d.id) ? "selected" : undefined}>
                   <TableCell>
                     <Checkbox
@@ -242,13 +258,13 @@ export function OpsPanel({ deliveries, transfers, pullouts, branches }: OpsPanel
                   />
                 </TableHead>
                 <TableHead className="w-12">#</TableHead>
-                <TableHead>From</TableHead>
-                <TableHead>To</TableHead>
-                <TableHead>Status</TableHead>
+                <GlobalTableHead {...transferSort.sortProps("from")}>From</GlobalTableHead>
+                <GlobalTableHead {...transferSort.sortProps("to")}>To</GlobalTableHead>
+                <GlobalTableHead {...transferSort.sortProps("status")}>Status</GlobalTableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {transfers.map((t, index) => (
+              {transferSort.sorted.map((t, index) => (
                 <TableRow key={t.id} data-state={transferSelection.isRowSelected(t.id) ? "selected" : undefined}>
                   <TableCell>
                     <Checkbox
@@ -291,12 +307,12 @@ export function OpsPanel({ deliveries, transfers, pullouts, branches }: OpsPanel
                   />
                 </TableHead>
                 <TableHead className="w-12">#</TableHead>
-                <TableHead>Branch</TableHead>
-                <TableHead>Status</TableHead>
+                <GlobalTableHead {...pulloutSort.sortProps("branch")}>Branch</GlobalTableHead>
+                <GlobalTableHead {...pulloutSort.sortProps("status")}>Status</GlobalTableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {pullouts.map((p, index) => (
+              {pulloutSort.sorted.map((p, index) => (
                 <TableRow key={p.id} data-state={pulloutSelection.isRowSelected(p.id) ? "selected" : undefined}>
                   <TableCell>
                     <Checkbox

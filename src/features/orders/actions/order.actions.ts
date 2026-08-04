@@ -4,6 +4,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { orderService } from "@/features/orders/services/order.service";
 import { orderRepository } from "@/features/orders/repositories/order.repository";
+import type {
+  OrderListSort,
+  OrderListSortDir,
+} from "@/features/orders/repositories/order.repository";
 import { branchService } from "@/features/branches/services/branch.service";
 import { branchRepository } from "@/features/branches/repositories/branch.repository";
 import { dealerRepository } from "@/features/dealers/repositories/dealer.repository";
@@ -11,17 +15,20 @@ import { orderingPolicyService } from "@/features/ordering/services/ordering-pol
 import { checkOrderingAllowed } from "@/features/orders/utils/order-window";
 import {
   anyOrderTypePermissions,
+  canAccessOrderType,
   hasAnyOrderPermission,
   hasOrderPermission,
   ORDER_TYPE_ROUTE,
   orderPermissionCandidates,
   orderTypeAccessPermissions,
 } from "@/features/orders/constants/order-permissions";
+import { canApproveOrder } from "@/features/orders/constants/order-workflow";
 import {
   hasPermission,
   requireAnyPermission,
   requireAuth,
 } from "@/lib/auth/permissions";
+import { getUserBranchIds } from "@/lib/aor/scope";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import type { BranchOrderType } from "@prisma/client";
 
@@ -30,6 +37,16 @@ function hasFullOrderAccess(permissions: string[] | undefined) {
     hasAnyOrderPermission(permissions, "approve") ||
     hasPermission(permissions, "branches.manage")
   );
+}
+
+/** AOR branch ids for scoped users; `null` means unrestricted (full access or no AOR rows). */
+async function resolveOrderBranchScope(
+  tenantId: string,
+  userId: string,
+  permissions: string[] | undefined,
+): Promise<string[] | null> {
+  if (hasFullOrderAccess(permissions)) return null;
+  return getUserBranchIds(tenantId, userId);
 }
 
 function revalidateOrderPaths(orderType?: BranchOrderType) {
@@ -54,10 +71,31 @@ async function requireOrderTypePageAccess(orderType: BranchOrderType) {
   return requireAnyPermission(orderTypeAccessPermissions(orderType));
 }
 
+const ORDER_SORT_FIELDS = new Set<OrderListSort>([
+  "orderNumber",
+  "branch",
+  "orderType",
+  "status",
+]);
+
+function parseOrderSort(value?: string): OrderListSort | undefined {
+  if (value && ORDER_SORT_FIELDS.has(value as OrderListSort)) {
+    return value as OrderListSort;
+  }
+  return undefined;
+}
+
+function parseOrderSortDir(value?: string): OrderListSortDir | undefined {
+  if (value === "asc" || value === "desc") return value;
+  return undefined;
+}
+
 export async function listOrdersAction(input?: {
   page?: number;
   limit?: number;
   orderType?: BranchOrderType;
+  sort?: string;
+  sortDir?: string;
 }) {
   const session = input?.orderType
     ? await requireOrderTypePageAccess(input.orderType)
@@ -68,6 +106,7 @@ export async function listOrdersAction(input?: {
     session.user.id,
     hasFullOrderAccess(session.user.permissions),
     { page: input?.page, limit, orderType: input?.orderType },
+    { field: parseOrderSort(input?.sort), dir: parseOrderSortDir(input?.sortDir) },
   );
   return {
     ...result,
@@ -101,10 +140,37 @@ export async function listActiveDealersForOrderAction(orderType?: BranchOrderTyp
     ? await requireOrderTypePermission(orderType, "create")
     : await requireAnyPermission(anyOrderTypePermissions("create"));
   const dealers = await dealerRepository.listActiveByTenant(session.user.tenantId);
-  return dealers.map((d) => ({
-    id: d.id,
-    name: d.sapCode ? `${d.name} (${d.sapCode})` : d.name,
-  }));
+  const branchScope = await resolveOrderBranchScope(
+    session.user.tenantId,
+    session.user.id,
+    session.user.permissions,
+  );
+
+  // Scoped user with no AOR branches cannot create for any dealer.
+  if (branchScope !== null && branchScope.length === 0) {
+    return [];
+  }
+
+  if (branchScope === null) {
+    return dealers.map((d) => ({
+      id: d.id,
+      name: d.sapCode ? `${d.name} (${d.sapCode})` : d.name,
+    }));
+  }
+
+  const allowedBranches = await branchService.listActiveBranches(session.user.tenantId);
+  const allowedDealerIds = new Set(
+    allowedBranches
+      .filter((b) => branchScope.includes(b.id) && b.dealerId)
+      .map((b) => b.dealerId as string),
+  );
+
+  return dealers
+    .filter((d) => allowedDealerIds.has(d.id))
+    .map((d) => ({
+      id: d.id,
+      name: d.sapCode ? `${d.name} (${d.sapCode})` : d.name,
+    }));
 }
 
 export async function listBranchesForOrderAction(
@@ -118,11 +184,24 @@ export async function listBranchesForOrderAction(
     session.user.tenantId,
     dealerId || null,
   );
-  return branches.map((b) => ({
-    id: b.id,
-    name: b.name,
-    dealerId: b.dealerId,
-  }));
+  const branchScope = await resolveOrderBranchScope(
+    session.user.tenantId,
+    session.user.id,
+    session.user.permissions,
+  );
+
+  if (branchScope !== null && branchScope.length === 0) {
+    return [];
+  }
+
+  const allowed = branchScope === null ? null : new Set(branchScope);
+  return branches
+    .filter((b) => (allowed ? allowed.has(b.id) : true))
+    .map((b) => ({
+      id: b.id,
+      name: b.name,
+      dealerId: b.dealerId,
+    }));
 }
 
 export async function listModelsForOrderAction(
@@ -167,7 +246,10 @@ export async function createOrderAction(input: {
 }) {
   const session = await requireOrderTypePermission(input.orderType, "create");
   try {
-    await orderService.create(session.user.tenantId, session.user.id, input);
+    await orderService.create(session.user.tenantId, session.user.id, {
+      ...input,
+      hasFullAccess: hasFullOrderAccess(session.user.permissions),
+    });
     revalidateOrderPaths(input.orderType);
     return { success: true as const };
   } catch (e) {
@@ -212,8 +294,11 @@ export async function approveOrderAction(
   if (!existing) {
     return { error: "Order not found" };
   }
-  if (!hasOrderPermission(session.user.permissions, existing.orderType, "approve")) {
-    redirect("/dashboard?error=forbidden");
+  if (
+    !canAccessOrderType(session.user.permissions, existing.orderType) ||
+    !canApproveOrder(existing.status, existing.orderType, session.user.roleSlugs ?? [])
+  ) {
+    return { error: "You are not allowed to approve this order at its current step." };
   }
   try {
     await orderService.approve(
@@ -246,8 +331,11 @@ export async function rejectOrderAction(orderId: string, comment?: string) {
   if (!existing) {
     return { error: "Order not found" };
   }
-  if (!hasOrderPermission(session.user.permissions, existing.orderType, "approve")) {
-    redirect("/dashboard?error=forbidden");
+  if (
+    !canAccessOrderType(session.user.permissions, existing.orderType) ||
+    !canApproveOrder(existing.status, existing.orderType, session.user.roleSlugs ?? [])
+  ) {
+    return { error: "You are not allowed to reject this order at its current step." };
   }
   try {
     await orderService.reject(

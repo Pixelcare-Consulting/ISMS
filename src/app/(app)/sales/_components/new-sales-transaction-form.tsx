@@ -19,6 +19,7 @@ import {
   listStockSourceBranchesForSalesAction,
   uploadSaleProofAction,
 } from "@/features/sales/actions/sales.actions";
+import { isToFollowSerial } from "@/features/sales/constants/to-follow-serial";
 import { formatPeso } from "@/utils/format-currency";
 
 interface SalesBranchOption {
@@ -32,7 +33,6 @@ interface LookupOption {
 }
 
 interface NewSalesTransactionFormProps {
-  transactionNo: string;
   branches: SalesBranchOption[];
   autoResolveBranch: boolean;
   paymentTypes: LookupOption[];
@@ -51,7 +51,6 @@ function todayInputValue(): string {
 }
 
 export function NewSalesTransactionForm({
-  transactionNo,
   branches,
   autoResolveBranch,
   paymentTypes,
@@ -70,6 +69,7 @@ export function NewSalesTransactionForm({
       ? [{ id: branches[0].id, name: branches[0].name }]
       : [],
   );
+  const [transactionNo, setTransactionNo] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [contactNo, setContactNo] = useState("");
   const [siTrans, setSiTrans] = useState("");
@@ -113,8 +113,14 @@ export function NewSalesTransactionForm({
     [details],
   );
 
+  // Exclude TO-FOLLOW so multiple pending lines can reuse the placeholder.
   const usedSerialIds = useMemo(
-    () => new Set(details.map((d) => d.serialNumberId)),
+    () =>
+      new Set(
+        details
+          .map((d) => d.serialNumberId)
+          .filter((id) => !isToFollowSerial(id)),
+      ),
     [details],
   );
 
@@ -167,6 +173,10 @@ export function NewSalesTransactionForm({
   }
 
   function submit() {
+    if (!transactionNo.trim()) {
+      toast.error("Transaction number is required");
+      return;
+    }
     if (!branchId) {
       toast.error("Select a branch");
       return;
@@ -202,7 +212,7 @@ export function NewSalesTransactionForm({
 
     startTransition(async () => {
       const result = await createSaleAction({
-        transactionNo,
+        transactionNo: transactionNo.trim(),
         branchId,
         alternateBranchId,
         customerName: customerName.trim(),
@@ -257,9 +267,11 @@ export function NewSalesTransactionForm({
             <Input
               id="sale-txn-no"
               value={transactionNo}
-              readOnly
-              disabled
-              className="bg-muted font-mono"
+              onChange={(e) => setTransactionNo(e.target.value)}
+              placeholder="Enter transaction number"
+              className="font-mono"
+              autoComplete="off"
+              maxLength={100}
             />
           </div>
           <div className="space-y-2">

@@ -13,6 +13,11 @@ import {
   listSaleableSerialsAction,
   resolveModelPriceForSalesAction,
 } from "@/features/sales/actions/sales.actions";
+import {
+  isToFollowSerial,
+  TO_FOLLOW_SERIAL_ID,
+  TO_FOLLOW_SERIAL_LABEL,
+} from "@/features/sales/constants/to-follow-serial";
 
 export type DraftSaleDetail = {
   key: string;
@@ -24,6 +29,7 @@ export type DraftSaleDetail = {
   promoTypeName: string | null;
   modelId: string;
   modelLabel: string;
+  // Holds a real serial id, or TO-FOLLOW when the unit serial is still pending.
   serialNumberId: string;
   serialNo: string;
   saleAmount: number;
@@ -187,16 +193,28 @@ export function AddTransactionDetailDialog({
   }
 
   function serialOptionsForSet(set: DetailSetDraft, index: number) {
+    // Only real serials count as "already used" — TO-FOLLOW can appear on multiple sets.
     const claimedInOtherSets = new Set(
       sets
         .map((s, i) => (i === index ? null : s.serialNumberId))
-        .filter((id): id is string => Boolean(id)),
+        .filter((id): id is string => Boolean(id) && !isToFollowSerial(id)),
     );
-    return serials.filter((s) => {
+    const realSerials = serials.filter((s) => {
       if (usedSerialIds.has(s.id) || claimedInOtherSets.has(s.id)) return false;
       if (set.modelId && s.modelId !== set.modelId) return false;
       return true;
     });
+    // Pin TO-FOLLOW at the top so it's always available for any model.
+    return [
+      {
+        id: TO_FOLLOW_SERIAL_ID,
+        serialNo: TO_FOLLOW_SERIAL_LABEL,
+        skuCode: "",
+        modelName: "",
+        modelId: set.modelId || "",
+      },
+      ...realSerials,
+    ];
   }
 
   function submit() {
@@ -221,8 +239,9 @@ export function AddTransactionDetailDialog({
         return;
       }
       const saleAmount = Number(set.saleAmount);
-      if (!Number.isFinite(saleAmount) || saleAmount <= 0) {
-        toast.error(`Set ${i + 1}: sale amount must be positive`);
+      // Allow 0 for free items; reject only negative / invalid numbers.
+      if (!Number.isFinite(saleAmount) || saleAmount < 0) {
+        toast.error(`Set ${i + 1}: sale amount cannot be negative`);
         return;
       }
       const modelPriceRaw = set.modelPrice.trim();
@@ -235,8 +254,12 @@ export function AddTransactionDetailDialog({
         return;
       }
       const model = models.find((m) => m.id === set.modelId);
-      const serial = serials.find((s) => s.id === set.serialNumberId);
-      if (!serial) {
+      // TO-FOLLOW is a UI placeholder — skip looking it up in branch STK serials.
+      const isToFollow = isToFollowSerial(set.serialNumberId);
+      const serial = isToFollow
+        ? null
+        : serials.find((s) => s.id === set.serialNumberId);
+      if (!isToFollow && !serial) {
         toast.error(`Set ${i + 1}: serial not found`);
         return;
       }
@@ -258,15 +281,18 @@ export function AddTransactionDetailDialog({
         promoTypeName: promo?.name ?? null,
         modelId: set.modelId,
         modelLabel: model ? `${model.skuCode} · ${model.name}` : set.modelId,
-        serialNumberId: serial.id,
-        serialNo: serial.serialNo,
+        serialNumberId: isToFollow ? TO_FOLLOW_SERIAL_ID : serial!.id,
+        serialNo: isToFollow ? TO_FOLLOW_SERIAL_LABEL : serial!.serialNo,
         saleAmount,
         modelPrice,
       });
     }
 
-    const serialIds = rows.map((r) => r.serialNumberId);
-    if (new Set(serialIds).size !== serialIds.length) {
+    // Allow multiple TO-FOLLOW lines; only block duplicate real serials.
+    const realSerialIds = rows
+      .map((r) => r.serialNumberId)
+      .filter((id) => !isToFollowSerial(id));
+    if (new Set(realSerialIds).size !== realSerialIds.length) {
       toast.error("Duplicate serials in this package are not allowed");
       return;
     }

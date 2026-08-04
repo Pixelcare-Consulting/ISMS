@@ -14,6 +14,10 @@ import {
   nextStatusAfterApprove,
 } from "@/features/orders/constants/order-workflow";
 import { orderRepository } from "@/features/orders/repositories/order.repository";
+import type {
+  OrderListSort,
+  OrderListSortDir,
+} from "@/features/orders/repositories/order.repository";
 import { sapService } from "@/features/sap/services/sap.service";
 import { branchQuotaService } from "@/features/branch-quotas/services/branch-quota.service";
 import { planogramRepository } from "@/features/planogram/repositories/planogram.repository";
@@ -124,9 +128,10 @@ export const orderService = {
     userId: string,
     hasFullAccess: boolean,
     pagination?: { page?: number; limit?: number; orderType?: BranchOrderType },
+    sort?: { field?: OrderListSort; dir?: OrderListSortDir },
   ) {
     const branchIds = hasFullAccess ? null : await getUserBranchIds(tenantId, userId);
-    return orderRepository.listForTenant(tenantId, branchIds, pagination);
+    return orderRepository.listForTenant(tenantId, branchIds, pagination, sort);
   },
 
   async getKpis(
@@ -142,7 +147,8 @@ export const orderService = {
     }));
 
     const branchIds = hasFullAccess ? null : await getUserBranchIds(tenantId, userId);
-    if (!hasFullAccess && (!branchIds || branchIds.length === 0)) {
+    // null = unrestricted; [] = scoped with no branches → empty KPIs.
+    if (!hasFullAccess && branchIds !== null && branchIds.length === 0) {
       return { totalOrders: 0, statuses: emptyStatuses };
     }
 
@@ -212,8 +218,20 @@ export const orderService = {
       orderType: BranchOrderType;
       notes?: string;
       details: { modelId: string; quantity: number }[];
+      /** When false, branch must be in the user's AOR (same scope as list). */
+      hasFullAccess?: boolean;
     },
   ) {
+    if (!data.hasFullAccess) {
+      // null = unrestricted (no AOR rows); an explicit list must include the branch.
+      const branchIds = await getUserBranchIds(tenantId, userId);
+      if (branchIds && !branchIds.includes(data.branchId)) {
+        throw new Error(
+          "You can only create orders for branches in your area of responsibility.",
+        );
+      }
+    }
+
     const [policy, scheduleCtx] = await Promise.all([
       orderingPolicyService.getPolicy(tenantId),
       branchRepository.findScheduleContext(tenantId, data.branchId),
@@ -512,6 +530,7 @@ export const orderService = {
     await orderRepository.addRejection(orderId, {
       level,
       roleSlug,
+      approvedById: userId,
       comment,
     });
 

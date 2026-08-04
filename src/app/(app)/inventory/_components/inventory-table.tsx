@@ -19,7 +19,7 @@ import {
 } from "@/components/data-table/table-page-size";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
-import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
 import type { PaginatedResult } from "@/lib/shared/pagination";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,7 +35,15 @@ import {
 import { matchesTableSearch } from "@/utils/match-table-search";
 import { cn } from "@/utils/cn";
 
-type InventorySortField = "aging" | "dr";
+type InventorySortField =
+  | "branch"
+  | "model"
+  | "serial"
+  | "dr"
+  | "drDate"
+  | "planogram"
+  | "aging"
+  | "status";
 type InventorySortDir = "asc" | "desc";
 
 interface InventoryTableProps {
@@ -76,15 +84,6 @@ function formatDrDate(iso: string | null): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
   return d.toLocaleDateString();
-}
-
-function sortIndicator(
-  field: InventorySortField,
-  currentSort: string,
-  currentDir: InventorySortDir,
-): string {
-  if (currentSort !== field) return "";
-  return currentDir === "asc" ? " ↑" : " ↓";
 }
 
 export function InventoryTable({
@@ -192,15 +191,8 @@ export function InventoryTable({
   }
 
   function toggleSort(field: InventorySortField) {
-    if (sort === field) {
-      pushHref({
-        sort: field,
-        sortDir: sortDir === "asc" ? "desc" : "asc",
-        page: 1,
-      });
-      return;
-    }
-    pushHref({ sort: field, sortDir: "desc", page: 1 });
+    const next = nextTableSort(field, sort, sortDir);
+    pushHref({ sort: next.sort, sortDir: next.dir, page: 1 });
   }
 
   function changeStatus(id: string, nextStatusCodeId: string) {
@@ -318,30 +310,72 @@ export function InventoryTable({
               />
             </GlobalTableHead>
             <TableIndexHead />
-            {hideBranch ? null : <GlobalTableHead>Branch</GlobalTableHead>}
-            <GlobalTableHead>Model</GlobalTableHead>
-            <GlobalTableHead>Serial</GlobalTableHead>
-            <GlobalTableHead>
-              <button
-                type="button"
-                className="inline-flex items-center gap-1 font-medium hover:underline"
-                onClick={() => toggleSort("dr")}
+            {hideBranch ? null : (
+              <GlobalTableHead
+                sortKey="branch"
+                activeSortKey={sort}
+                sortDirection={sortDir}
+                onSort={(key) => toggleSort(key as InventorySortField)}
               >
-                DR#{sortIndicator("dr", sort, sortDir)}
-              </button>
+                Branch
+              </GlobalTableHead>
+            )}
+            <GlobalTableHead
+              sortKey="model"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as InventorySortField)}
+            >
+              Model
             </GlobalTableHead>
-            <GlobalTableHead>DR DATE</GlobalTableHead>
-            <GlobalTableHead>Planogram</GlobalTableHead>
-            <GlobalTableHead>
-              <button
-                type="button"
-                className="inline-flex items-center gap-1 font-medium hover:underline"
-                onClick={() => toggleSort("aging")}
-              >
-                Aging in days{sortIndicator("aging", sort, sortDir)}
-              </button>
+            <GlobalTableHead
+              sortKey="serial"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as InventorySortField)}
+            >
+              Serial
             </GlobalTableHead>
-            <GlobalTableHead>Status</GlobalTableHead>
+            <GlobalTableHead
+              sortKey="dr"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as InventorySortField)}
+            >
+              DR#
+            </GlobalTableHead>
+            <GlobalTableHead
+              sortKey="drDate"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as InventorySortField)}
+            >
+              DR DATE
+            </GlobalTableHead>
+            <GlobalTableHead
+              sortKey="planogram"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as InventorySortField)}
+            >
+              Planogram
+            </GlobalTableHead>
+            <GlobalTableHead
+              sortKey="aging"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as InventorySortField)}
+            >
+              Aging in days
+            </GlobalTableHead>
+            <GlobalTableHead
+              sortKey="status"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as InventorySortField)}
+            >
+              Status
+            </GlobalTableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

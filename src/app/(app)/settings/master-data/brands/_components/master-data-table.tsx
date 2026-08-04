@@ -23,7 +23,7 @@ import {
   useClientTablePagination,
   useTableSelection,
 } from "@/components/data-table";
-import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 import {
   Dialog,
   DialogContent,
@@ -90,6 +90,11 @@ export function MasterDataTable({ brands, models }: MasterDataTableProps) {
   );
 
   const brandSelection = useTableSelection(filteredBrands.map((brand) => brand.id));
+  const brandSort = useClientTableSort(filteredBrands, {
+    name: (brand) => brand.name,
+    code: (brand) => brand.code,
+    models: (brand) => brand._count.models,
+  });
   const {
     page: brandPage,
     setPage: setBrandPage,
@@ -99,8 +104,8 @@ export function MasterDataTable({ brands, models }: MasterDataTableProps) {
     totalPages: brandTotalPages,
     pageItems: brandPageItems,
     indexOffset: brandIndexOffset,
-  } = useClientTablePagination(filteredBrands, {
-    resetKey: brandQuery,
+  } = useClientTablePagination(brandSort.sorted, {
+    resetKey: `${brandQuery}:${brandSort.sortKey}:${brandSort.sortDir}`,
   });
 
   const filteredModels = useMemo(
@@ -122,6 +127,12 @@ export function MasterDataTable({ brands, models }: MasterDataTableProps) {
   );
 
   const modelSelection = useTableSelection(filteredModels.map((model) => model.id));
+  const modelSort = useClientTableSort(filteredModels, {
+    sku: (m) => m.skuCode,
+    name: (m) => m.name,
+    brand: (m) => m.brand?.name,
+    status: (m) => m.status,
+  });
   const {
     page: modelPage,
     setPage: setModelPage,
@@ -131,8 +142,8 @@ export function MasterDataTable({ brands, models }: MasterDataTableProps) {
     totalPages: modelTotalPages,
     pageItems: modelPageItems,
     indexOffset: modelIndexOffset,
-  } = useClientTablePagination(filteredModels, {
-    resetKey: query,
+  } = useClientTablePagination(modelSort.sorted, {
+    resetKey: `${query}:${modelSort.sortKey}:${modelSort.sortDir}`,
   });
 
   function submitBrand(e: React.FormEvent<HTMLFormElement>) {
@@ -202,9 +213,14 @@ export function MasterDataTable({ brands, models }: MasterDataTableProps) {
                   aria-label="Select all brands"
                 />
                 <TableIndexHead />
-                <GlobalTableHead>Name</GlobalTableHead>
-                <GlobalTableHead>Code</GlobalTableHead>
-                <GlobalTableHead className="text-right">Models</GlobalTableHead>
+                <GlobalTableHead {...brandSort.sortProps("name")}>Name</GlobalTableHead>
+                <GlobalTableHead {...brandSort.sortProps("code")}>Code</GlobalTableHead>
+                <GlobalTableHead
+                  className="text-right"
+                  {...brandSort.sortProps("models")}
+                >
+                  Models
+                </GlobalTableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -279,10 +295,10 @@ export function MasterDataTable({ brands, models }: MasterDataTableProps) {
                   aria-label="Select all models"
                 />
                 <TableIndexHead />
-                <GlobalTableHead>SKU</GlobalTableHead>
-                <GlobalTableHead>Name</GlobalTableHead>
-                <GlobalTableHead>Brand</GlobalTableHead>
-                <GlobalTableHead>Status</GlobalTableHead>
+                <GlobalTableHead {...modelSort.sortProps("sku")}>SKU</GlobalTableHead>
+                <GlobalTableHead {...modelSort.sortProps("name")}>Name</GlobalTableHead>
+                <GlobalTableHead {...modelSort.sortProps("brand")}>Brand</GlobalTableHead>
+                <GlobalTableHead {...modelSort.sortProps("status")}>Status</GlobalTableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

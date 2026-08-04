@@ -16,6 +16,8 @@ interface AuditLogPageProps {
     q?: string;
     dateFrom?: string;
     dateTo?: string;
+    sort?: string;
+    dir?: string;
   }>;
 }
 
@@ -36,6 +38,8 @@ export default async function SettingsAuditLogPage({
       q: params.q,
       dateFrom: params.dateFrom,
       dateTo: params.dateTo,
+      sort: params.sort,
+      sortDir: params.dir,
     }),
     getAuditLogFilterOptionsAction(),
   ]);
@@ -63,6 +67,8 @@ export default async function SettingsAuditLogPage({
         currentSearch={params.q}
         currentDateFrom={params.dateFrom}
         currentDateTo={params.dateTo}
+        initialSort={params.sort ?? ""}
+        initialSortDir={params.dir ?? "desc"}
       />
     </div>
   );

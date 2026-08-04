@@ -9,6 +9,8 @@ import type {
   SerialActivityType,
 } from "@/features/serial-activity/constants/serial-activity-display";
 
+export type SerialActivitySortDir = "asc" | "desc";
+
 interface ListParams {
   page?: number;
   limit?: number;
@@ -16,6 +18,7 @@ interface ListParams {
   q?: string;
   dateFrom?: string;
   dateTo?: string;
+  sortDir?: SerialActivitySortDir;
 }
 
 interface SourceResult {
@@ -27,6 +30,7 @@ interface SourceOptions {
   window: number;
   q?: string;
   dateFilter?: Prisma.DateTimeFilter;
+  dir: SerialActivitySortDir;
 }
 
 /** Local-day boundary: start → 00:00:00.000, end → 23:59:59.999. */
@@ -127,7 +131,7 @@ function textContains(q?: string) {
 
 async function registeredSource(
   tenantId: string,
-  { window, q, dateFilter }: SourceOptions,
+  { window, q, dateFilter, dir }: SourceOptions,
 ): Promise<SourceResult> {
   const where: Prisma.SerialNumberWhereInput = {
     tenantId,
@@ -137,7 +141,7 @@ async function registeredSource(
   const [rows, count] = await Promise.all([
     prisma.serialNumber.findMany({
       where,
-      orderBy: { createdAt: "desc" },
+      orderBy: { createdAt: dir },
       take: window,
       select: {
         id: true,
@@ -174,7 +178,7 @@ async function registeredSource(
 
 async function statusSource(
   tenantId: string,
-  { window, q, dateFilter }: SourceOptions,
+  { window, q, dateFilter, dir }: SourceOptions,
 ): Promise<SourceResult> {
   const where: Prisma.BranchInventoryWhereInput = {
     tenantId,
@@ -184,7 +188,7 @@ async function statusSource(
   const [rows, count] = await Promise.all([
     prisma.branchInventory.findMany({
       where,
-      orderBy: { updatedAt: "desc" },
+      orderBy: { updatedAt: dir },
       take: window,
       select: {
         id: true,
@@ -224,7 +228,7 @@ async function statusSource(
 
 async function transferredSource(
   tenantId: string,
-  { window, q, dateFilter }: SourceOptions,
+  { window, q, dateFilter, dir }: SourceOptions,
 ): Promise<SourceResult> {
   const where: Prisma.BranchTransferLineWhereInput = {
     transfer: { tenantId, ...(dateFilter ? { createdAt: dateFilter } : {}) },
@@ -240,7 +244,7 @@ async function transferredSource(
   const [rows, count] = await Promise.all([
     prisma.branchTransferLine.findMany({
       where,
-      orderBy: { transfer: { createdAt: "desc" } },
+      orderBy: { transfer: { createdAt: dir } },
       take: window,
       select: {
         id: true,
@@ -288,7 +292,7 @@ async function transferredSource(
 
 async function soldSource(
   tenantId: string,
-  { window, q, dateFilter }: SourceOptions,
+  { window, q, dateFilter, dir }: SourceOptions,
 ): Promise<SourceResult> {
   const where: Prisma.BranchSalesTransactionDetailWhereInput = {
     sale: {
@@ -307,7 +311,7 @@ async function soldSource(
   const [rows, count] = await Promise.all([
     prisma.branchSalesTransactionDetail.findMany({
       where,
-      orderBy: { createdAt: "desc" },
+      orderBy: { createdAt: dir },
       take: window,
       select: {
         id: true,
@@ -363,7 +367,7 @@ async function soldSource(
 
 async function pulledOutSource(
   tenantId: string,
-  { window, q, dateFilter }: SourceOptions,
+  { window, q, dateFilter, dir }: SourceOptions,
 ): Promise<SourceResult> {
   const where: Prisma.BranchPulloutLineWhereInput = {
     pullout: { tenantId, ...(dateFilter ? { createdAt: dateFilter } : {}) },
@@ -379,7 +383,7 @@ async function pulledOutSource(
   const [rows, count] = await Promise.all([
     prisma.branchPulloutLine.findMany({
       where,
-      orderBy: { pullout: { createdAt: "desc" } },
+      orderBy: { pullout: { createdAt: dir } },
       take: window,
       select: {
         id: true,
@@ -436,7 +440,7 @@ async function pulledOutSource(
 
 async function countedSource(
   tenantId: string,
-  { window, q, dateFilter }: SourceOptions,
+  { window, q, dateFilter, dir }: SourceOptions,
 ): Promise<SourceResult> {
   const where: Prisma.StockCountLineWhereInput = {
     session: { tenantId },
@@ -453,7 +457,7 @@ async function countedSource(
   const [rows, count] = await Promise.all([
     prisma.stockCountLine.findMany({
       where,
-      orderBy: { countedAt: "desc" },
+      orderBy: { countedAt: dir },
       take: window,
       select: {
         id: true,
@@ -532,19 +536,21 @@ export const serialActivityRepository = {
     const window = skip + limit;
     const q = params.q?.trim() || undefined;
     const dateFilter = buildDateFilter(params.dateFrom, params.dateTo);
+    const dir: SerialActivitySortDir = params.sortDir === "asc" ? "asc" : "desc";
+    const mul = dir === "asc" ? 1 : -1;
 
     const active = params.type
       ? [SOURCES[params.type]]
       : Object.values(SOURCES);
 
     const results = await Promise.all(
-      active.map((source) => source(tenantId, { window, q, dateFilter })),
+      active.map((source) => source(tenantId, { window, q, dateFilter, dir })),
     );
 
     const total = results.reduce((sum, r) => sum + r.count, 0);
     const merged = results
       .flatMap((r) => r.events)
-      .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+      .sort((a, b) => (a.timestamp.getTime() - b.timestamp.getTime()) * mul)
       .slice(skip, skip + limit);
 
     return toPaginatedResult(merged, total, page, limit);

@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/table";
 import { TableIndexCell, TableIndexHead } from "@/components/data-table";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
-import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 
 interface StockCountDetailPanelProps {
   session: {
@@ -68,6 +68,18 @@ export function StockCountDetailPanel({ session }: StockCountDetailPanelProps) {
   const [permissionDialogOpen, setPermissionDialogOpen] = useState(false);
   const lineSelection = useTableSelection(session.lines.map((line) => line.id));
   const varianceSelection = useTableSelection(session.variances.map((variance) => variance.id));
+
+  const lineSort = useClientTableSort(session.lines, {
+    serial: (line) => line.serialNumber.serialNo,
+    sku: (line) => line.model.skuCode,
+    status: (line) => line.status,
+  });
+  const varianceSort = useClientTableSort(session.variances, {
+    serial: (v) => v.line?.serialNumber.serialNo ?? null,
+    type: (v) => v.varianceType,
+    status: (v) => v.status,
+    sapRef: (v) => v.sapDocRef,
+  });
 
   function runAction(action: () => Promise<{ error?: string; success?: boolean }>, message: string) {
     startTransition(async () => {
@@ -165,14 +177,14 @@ export function StockCountDetailPanel({ session }: StockCountDetailPanelProps) {
                   />
                 </GlobalTableHead>
                 <TableIndexHead />
-                <GlobalTableHead>Serial</GlobalTableHead>
-                <GlobalTableHead>SKU</GlobalTableHead>
-                <GlobalTableHead>Status</GlobalTableHead>
+                <GlobalTableHead {...lineSort.sortProps("serial")}>Serial</GlobalTableHead>
+                <GlobalTableHead {...lineSort.sortProps("sku")}>SKU</GlobalTableHead>
+                <GlobalTableHead {...lineSort.sortProps("status")}>Status</GlobalTableHead>
                 <GlobalTableHead className="text-right">Action</GlobalTableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {session.lines.map((line, index) => (
+              {lineSort.sorted.map((line, index) => (
                 <TableRow key={line.id} data-state={lineSelection.isRowSelected(line.id) ? "selected" : undefined}>
                   <TableCell>
                     <Checkbox
@@ -235,15 +247,17 @@ export function StockCountDetailPanel({ session }: StockCountDetailPanelProps) {
                     />
                   </GlobalTableHead>
                   <TableIndexHead />
-                  <GlobalTableHead>Serial / SKU</GlobalTableHead>
-                  <GlobalTableHead>Type</GlobalTableHead>
-                  <GlobalTableHead>Status</GlobalTableHead>
-                  <GlobalTableHead>SAP ref</GlobalTableHead>
+                  <GlobalTableHead {...varianceSort.sortProps("serial")}>
+                    Serial / SKU
+                  </GlobalTableHead>
+                  <GlobalTableHead {...varianceSort.sortProps("type")}>Type</GlobalTableHead>
+                  <GlobalTableHead {...varianceSort.sortProps("status")}>Status</GlobalTableHead>
+                  <GlobalTableHead {...varianceSort.sortProps("sapRef")}>SAP ref</GlobalTableHead>
                   <GlobalTableHead>Actions</GlobalTableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {session.variances.map((v, index) => (
+                {varianceSort.sorted.map((v, index) => (
                   <TableRow key={v.id} data-state={varianceSelection.isRowSelected(v.id) ? "selected" : undefined}>
                     <TableCell>
                       <Checkbox

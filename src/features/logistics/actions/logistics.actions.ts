@@ -10,6 +10,12 @@ import {
   LOGISTICS_PAGE_PERMISSIONS,
 } from "@/features/logistics/constants/logistics-permissions";
 import { logisticsRepository } from "@/features/logistics/repositories/logistics.repository";
+import type {
+  DeliveryListSort,
+  LogisticsListSortDir,
+  PulloutListSort,
+  TransferListSort,
+} from "@/features/logistics/repositories/logistics.repository";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
@@ -20,6 +26,48 @@ const LOGISTICS_WRITE_ALIASES = [
   LOGISTICS_MANAGE,
   "orders.create",
 ] as const;
+
+const DELIVERY_SORT_FIELDS = new Set<DeliveryListSort>([
+  "deliveryNo",
+  "orderNumber",
+  "branch",
+  "status",
+]);
+const TRANSFER_SORT_FIELDS = new Set<TransferListSort>([
+  "transferNo",
+  "fromBranch",
+  "toBranch",
+  "status",
+]);
+const PULLOUT_SORT_FIELDS = new Set<PulloutListSort>([
+  "pulloutNo",
+  "branch",
+  "warehouse",
+  "reason",
+  "status",
+]);
+
+function parseSortDir(value?: string): LogisticsListSortDir | undefined {
+  return value === "asc" || value === "desc" ? value : undefined;
+}
+
+function parseDeliverySort(value?: string): DeliveryListSort | undefined {
+  return value && DELIVERY_SORT_FIELDS.has(value as DeliveryListSort)
+    ? (value as DeliveryListSort)
+    : undefined;
+}
+
+function parseTransferSort(value?: string): TransferListSort | undefined {
+  return value && TRANSFER_SORT_FIELDS.has(value as TransferListSort)
+    ? (value as TransferListSort)
+    : undefined;
+}
+
+function parsePulloutSort(value?: string): PulloutListSort | undefined {
+  return value && PULLOUT_SORT_FIELDS.has(value as PulloutListSort)
+    ? (value as PulloutListSort)
+    : undefined;
+}
 
 const deliverySchema = z.object({ branchId: z.string().min(1) });
 const transferSchema = z.object({
@@ -146,12 +194,21 @@ export async function getPulloutKpisAction(): Promise<LogisticsKpis> {
   );
 }
 
-export async function listDeliveriesAction(input?: { page?: number; limit?: number }) {
+export async function listDeliveriesAction(input?: {
+  page?: number;
+  limit?: number;
+  sort?: string;
+  sortDir?: string;
+}) {
   const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
-  return logisticsRepository.listDeliveries(session.user.tenantId, {
-    page: input?.page,
-    limit: parseTablePageSize(input?.limit),
-  });
+  return logisticsRepository.listDeliveries(
+    session.user.tenantId,
+    {
+      page: input?.page,
+      limit: parseTablePageSize(input?.limit),
+    },
+    { field: parseDeliverySort(input?.sort), dir: parseSortDir(input?.sortDir) },
+  );
 }
 
 export async function createDeliveryAction(input: unknown) {
@@ -309,12 +366,21 @@ export async function rejectDeliveryAction(id: string, notes?: string) {
   return { success: true as const };
 }
 
-export async function listTransfersAction(input?: { page?: number; limit?: number }) {
+export async function listTransfersAction(input?: {
+  page?: number;
+  limit?: number;
+  sort?: string;
+  sortDir?: string;
+}) {
   const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
-  return logisticsRepository.listTransfers(session.user.tenantId, {
-    page: input?.page,
-    limit: parseTablePageSize(input?.limit),
-  });
+  return logisticsRepository.listTransfers(
+    session.user.tenantId,
+    {
+      page: input?.page,
+      limit: parseTablePageSize(input?.limit),
+    },
+    { field: parseTransferSort(input?.sort), dir: parseSortDir(input?.sortDir) },
+  );
 }
 
 export async function createTransferAction(input: unknown) {
@@ -564,12 +630,21 @@ export async function receiveTransferAction(id: string) {
   return { success: true as const };
 }
 
-export async function listPulloutsAction(input?: { page?: number; limit?: number }) {
+export async function listPulloutsAction(input?: {
+  page?: number;
+  limit?: number;
+  sort?: string;
+  sortDir?: string;
+}) {
   const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
-  return logisticsRepository.listPullouts(session.user.tenantId, {
-    page: input?.page,
-    limit: parseTablePageSize(input?.limit),
-  });
+  return logisticsRepository.listPullouts(
+    session.user.tenantId,
+    {
+      page: input?.page,
+      limit: parseTablePageSize(input?.limit),
+    },
+    { field: parsePulloutSort(input?.sort), dir: parseSortDir(input?.sortDir) },
+  );
 }
 
 export async function createPulloutAction(input: unknown) {

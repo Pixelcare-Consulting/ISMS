@@ -1,6 +1,5 @@
 import Link from "next/link";
 
-import { ORDER_WORKFLOW_DESCRIPTION } from "@/features/orders/constants/order-workflow";
 import { BRANCH_ORDER_TYPE_LABELS } from "@/features/orders/constants/order-status";
 import {
   getOrdersKpisAction,
@@ -14,7 +13,7 @@ import {
 import { OrderKpisStrip } from "@/features/orders/components/order-kpis";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { ModuleGuide } from "@/components/module-guide";
-import { requireAnyPermission } from "@/lib/auth/permissions";
+import { hasPermission, requireAnyPermission } from "@/lib/auth/permissions";
 import { ORDERS_MODULE_GUIDE } from "@/content/module-guides/orders";
 import { BRANCH_ORDERS_PAGE_TUTORIAL } from "@/content/page-tutorials/branch-orders";
 import { PageHeader } from "@/app/(app)/_components/page-header";
@@ -24,7 +23,27 @@ import type { BranchOrderType } from "@prisma/client";
 
 interface OrdersTypePageProps {
   orderType: BranchOrderType;
-  searchParams: Promise<{ page?: string; limit?: string }>;
+  searchParams: Promise<{
+    page?: string;
+    limit?: string;
+    sort?: string;
+    dir?: string;
+  }>;
+}
+
+function ordersTypePageDescription(orderType: BranchOrderType): string {
+  switch (orderType) {
+    case "auto_replenish":
+      return "Showing auto replenish orders only. Suggestions are generated under Settings → Planning.";
+    case "manual":
+      return "Showing manual orders only. Review path: Product Specialist → Team Leader → Supply Planning.";
+    case "special":
+      return "Showing special orders only. Team Leaders create these requests; Supply Planning gives final approval.";
+    default: {
+      const _exhaustive: never = orderType;
+      return _exhaustive;
+    }
+  }
 }
 
 export async function OrdersTypePage({
@@ -36,11 +55,14 @@ export async function OrdersTypePage({
   const page = Number(params.page) || 1;
   const limit = parseTablePageSize(params.limit);
   const [result, kpis] = await Promise.all([
-    listOrdersAction({ page, limit, orderType }),
+    listOrdersAction({ page, limit, orderType, sort: params.sort, sortDir: params.dir }),
     getOrdersKpisAction(orderType),
   ]);
   const viewerRoleSlugs = session.user.roleSlugs ?? [];
   const canEdit = hasOrderPermission(session.user.permissions, orderType, "create");
+  const canAccessSuggestedOrders =
+    hasPermission(session.user.permissions, "forecast.manage") ||
+    hasPermission(session.user.permissions, "planogram.manage");
   const typeLabel = BRANCH_ORDER_TYPE_LABELS[orderType];
 
   return (
@@ -49,15 +71,13 @@ export async function OrdersTypePage({
         title={`${typeLabel} orders`}
         sticky={false}
         tutorial={BRANCH_ORDERS_PAGE_TUTORIAL}
-        description={`${ORDER_WORKFLOW_DESCRIPTION} Showing ${typeLabel.toLowerCase()} orders only.${
-          orderType === "auto_replenish"
-            ? " Suggestions are generated under Settings → Planning."
-            : ""
-        }`}
+        description={ordersTypePageDescription(orderType)}
         actions={
-          <Button variant="outline" asChild>
-            <Link href="/settings/planning">Planning & suggestions</Link>
-          </Button>
+          canAccessSuggestedOrders ? (
+            <Button variant="outline" asChild>
+              <Link href="/settings/planning">Planning & suggestions</Link>
+            </Button>
+          ) : undefined
         }
       />
       <ModuleGuide {...ORDERS_MODULE_GUIDE} />
@@ -66,8 +86,11 @@ export async function OrdersTypePage({
         result={result}
         viewerRoleSlugs={viewerRoleSlugs}
         canEdit={canEdit}
+        canAccessSuggestedOrders={canAccessSuggestedOrders}
         fixedOrderType={orderType}
         basePath={ORDER_TYPE_ROUTE[orderType]}
+        initialSort={params.sort ?? ""}
+        initialSortDir={params.dir ?? "desc"}
       />
     </div>
   );

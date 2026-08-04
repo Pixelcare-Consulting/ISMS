@@ -44,9 +44,13 @@ export const LOGISTICS_PAGE_PERMISSIONS = [
 export const LOGISTICS_ACTION_CAPABILITIES = {
   canCreate: [LOGISTICS_CREATE, LOGISTICS_MANAGE, "orders.create"],
   canManage: LOGISTICS_MANAGE,
+  canApproveTl: ["orders.approve", LOGISTICS_MANAGE],
+  canRejectTransfer: ["orders.approve", LOGISTICS_MANAGE],
   canAcceptDelivery: [LOGISTICS_CREATE, LOGISTICS_MANAGE, "orders.create"],
   canExecuteTransfer: LOGISTICS_MANAGE,
+  canReceiveTransfer: [LOGISTICS_CREATE, LOGISTICS_MANAGE, "orders.create"],
   canSchedulePullout: LOGISTICS_MANAGE,
+  canReleasePullout: [LOGISTICS_CREATE, LOGISTICS_MANAGE, "orders.create"],
   canCompletePullout: LOGISTICS_MANAGE,
 } as const;
 

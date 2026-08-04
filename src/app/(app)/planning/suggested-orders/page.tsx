@@ -22,6 +22,10 @@ interface SuggestedOrdersPageProps {
     q?: string;
     draftBranch?: string;
     draftQ?: string;
+    sort?: string;
+    dir?: string;
+    draftSort?: string;
+    draftDir?: string;
   }>;
 }
 
@@ -49,12 +53,16 @@ export default async function SuggestedOrdersPage({
       page: draftPage,
       branchId: params.draftBranch,
       q: params.draftQ,
+      sort: params.draftSort,
+      sortDir: params.draftDir,
     }),
     dashboard.period != null
       ? listAllocationGapsAction(dashboard.period.id, {
           page: gapsPage,
           branchId: params.branch,
           q: params.q,
+          sort: params.sort,
+          sortDir: params.dir,
         })
       : Promise.resolve({ items: [], total: 0, page: 1, limit: 25, totalPages: 1 }),
     listBranchesForPlanningAction(),
@@ -64,12 +72,16 @@ export default async function SuggestedOrdersPage({
     page: draftPage > 1 ? String(draftPage) : undefined,
     draftBranch: params.draftBranch,
     draftQ: params.draftQ,
+    draftSort: params.draftSort,
+    draftDir: params.draftDir,
   });
 
   const draftsPreserveParams = buildPreserveParams({
     gapsPage: gapsPage > 1 ? String(gapsPage) : undefined,
     branch: params.branch,
     q: params.q,
+    sort: params.sort,
+    dir: params.dir,
   });
 
   return (
@@ -113,6 +125,10 @@ export default async function SuggestedOrdersPage({
         currentGapQ={params.q}
         draftsPreserveParams={draftsPreserveParams}
         gapsPreserveParams={gapsPreserveParams}
+        initialDraftSort={params.draftSort ?? ""}
+        initialDraftSortDir={params.draftDir ?? "desc"}
+        initialGapSort={params.sort ?? ""}
+        initialGapSortDir={params.dir ?? "desc"}
       />
     </div>
   );

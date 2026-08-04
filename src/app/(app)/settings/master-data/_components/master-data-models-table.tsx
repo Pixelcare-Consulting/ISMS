@@ -26,7 +26,7 @@ import {
   useClientTablePagination,
   useTableSelection,
 } from "@/components/data-table";
-import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -116,6 +116,14 @@ export function MasterDataModelsTable({
   );
 
   const selection = useTableSelection(filtered.map((model) => model.id));
+  const sort = useClientTableSort(filtered, {
+    sku: (m) => m.skuCode,
+    name: (m) => m.name,
+    brand: (m) => m.brand?.name,
+    category: (m) => m.category?.name,
+    srp: (m) => m.effectivePrice,
+    status: (m) => m.status,
+  });
   const {
     page,
     setPage,
@@ -125,7 +133,9 @@ export function MasterDataModelsTable({
     totalPages,
     pageItems,
     indexOffset,
-  } = useClientTablePagination(filtered, { resetKey: query });
+  } = useClientTablePagination(sort.sorted, {
+    resetKey: `${query}:${sort.sortKey}:${sort.sortDir}`,
+  });
 
   async function loadOptions() {
     if (options) return options;
@@ -266,12 +276,17 @@ export function MasterDataModelsTable({
                     aria-label="Select all models"
                   />
                   <TableIndexHead />
-                  <GlobalTableHead>SKU</GlobalTableHead>
-                  <GlobalTableHead>Name</GlobalTableHead>
-                  <GlobalTableHead>Brand</GlobalTableHead>
-                  <GlobalTableHead>Category</GlobalTableHead>
-                  <GlobalTableHead className="text-right">Price</GlobalTableHead>
-                  <GlobalTableHead>Status</GlobalTableHead>
+                  <GlobalTableHead {...sort.sortProps("sku")}>SKU</GlobalTableHead>
+                  <GlobalTableHead {...sort.sortProps("name")}>Name</GlobalTableHead>
+                  <GlobalTableHead {...sort.sortProps("brand")}>Brand</GlobalTableHead>
+                  <GlobalTableHead {...sort.sortProps("category")}>Category</GlobalTableHead>
+                  <GlobalTableHead
+                    className="text-right"
+                    {...sort.sortProps("srp")}
+                  >
+                    Price
+                  </GlobalTableHead>
+                  <GlobalTableHead {...sort.sortProps("status")}>Status</GlobalTableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
