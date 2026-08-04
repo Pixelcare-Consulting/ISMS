@@ -11,7 +11,14 @@ import {
   rejectReturnAction,
   requestReturnAction,
 } from "@/features/sales/actions/sales.actions";
-import { TableIndexCell, TableIndexHead, uniqueSearchSuggestions } from "@/components/data-table";
+import type { SalesActionCapabilities } from "@/features/sales/constants/sales-permissions";
+import {
+  TableAmountCell,
+  TableCodeCell,
+  TableIndexCell,
+  TableIndexHead,
+  uniqueSearchSuggestions,
+} from "@/components/data-table";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   parseTablePageSize,
@@ -19,10 +26,23 @@ import {
 } from "@/components/data-table/table-page-size";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { matchesTableSearch } from "@/utils/match-table-search";
+
+import { SaleSerialsDialog } from "./sale-serials-dialog";
+import { AtrStatusBadge, ReturnStatusBadge } from "./sales-status-badges";
 
 interface SaleRow {
   id: string;
@@ -31,6 +51,7 @@ interface SaleRow {
   atrStatus: string;
   branch: { name: string };
   serialNumber: { serialNo: string } | null;
+  serialNumbers: string[];
   returnRequest: { id: string; status: string } | null;
 }
 
@@ -42,14 +63,62 @@ interface SalesTableProps {
     limit: number;
     totalPages: number;
   };
+  capabilities: SalesActionCapabilities;
 }
 
-const RETURN_STATUS_LABELS: Record<string, string> = {
-  pending_cs: "Pending CS",
-  pending_tl: "Pending TL",
-  approved: "Approved",
-  rejected: "Rejected",
-  completed: "Completed",
+type ReturnConfirmAction =
+  | "request"
+  | "evaluate"
+  | "approve"
+  | "reject"
+  | "restore";
+
+type PendingConfirm = {
+  saleId: string;
+  returnRequestId?: string;
+  transactionNo: string;
+  branchName: string;
+  action: ReturnConfirmAction;
+};
+
+const CONFIRM_COPY: Record<
+  ReturnConfirmAction,
+  { title: string; description: string; confirmLabel: string; successMessage: string }
+> = {
+  request: {
+    title: "Are you sure you want to request a return?",
+    description:
+      "This starts an ATR return for this sale and sends it for CS evaluation.",
+    confirmLabel: "Request return",
+    successMessage: "Return request submitted",
+  },
+  evaluate: {
+    title: "Are you sure you want to complete CS evaluation?",
+    description:
+      "This marks CS evaluation complete and moves the return to Team Lead approval.",
+    confirmLabel: "CS evaluate",
+    successMessage: "CS evaluation complete",
+  },
+  approve: {
+    title: "Are you sure you want to approve this return?",
+    description: "This TL-approves the return so inventory can be restored.",
+    confirmLabel: "TL approve",
+    successMessage: "TL approved return",
+  },
+  reject: {
+    title: "Are you sure you want to reject this return?",
+    description:
+      "This rejects the return request and closes the ATR workflow for this sale.",
+    confirmLabel: "Reject",
+    successMessage: "Return rejected",
+  },
+  restore: {
+    title: "Are you sure you want to restore stock?",
+    description:
+      "This restores inventory for the returned units and closes the ATR. This cannot be undone from this screen.",
+    confirmLabel: "Restore stock",
+    successMessage: "Inventory restored — ATR closed",
+  },
 };
 
 function saleTransactionLabel(sale: SaleRow): string {
@@ -64,10 +133,12 @@ function buildSalesHref(page: number, limit: number): string {
   return query ? `/sales?${query}` : "/sales";
 }
 
-export function SalesTable({ result }: SalesTableProps) {
+export function SalesTable({ result, capabilities }: SalesTableProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
+  const [serialDialogSale, setSerialDialogSale] = useState<SaleRow | null>(null);
+  const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
   const pageSize = parseTablePageSize(result.limit);
 
   function handlePageSizeChange(limit: TablePageSize) {
@@ -82,6 +153,7 @@ export function SalesTable({ result }: SalesTableProps) {
           sale.branch.name,
           sale.amount,
           sale.serialNumber?.serialNo,
+          ...sale.serialNumbers,
           sale.atrStatus,
           sale.returnRequest?.status,
         ]),
@@ -100,20 +172,54 @@ export function SalesTable({ result }: SalesTableProps) {
   );
   const selection = useTableSelection(filtered.map((s) => s.id));
 
-  function runReturnAction(
-    action: () => Promise<{ error?: string; success?: boolean }>,
-    successMessage: string,
-  ) {
+  function confirmPendingAction() {
+    if (!pendingConfirm) return;
+    const { action, saleId, returnRequestId, successMessage } = {
+      ...pendingConfirm,
+      successMessage: CONFIRM_COPY[pendingConfirm.action].successMessage,
+    };
+
     startTransition(async () => {
-      const res = await action();
+      let res: { error?: string; success?: boolean };
+
+      switch (action) {
+        case "request":
+          res = await requestReturnAction(saleId);
+          break;
+        case "evaluate":
+          if (!returnRequestId) return;
+          res = await evaluateReturnAction(returnRequestId);
+          break;
+        case "approve":
+          if (!returnRequestId) return;
+          res = await approveReturnAction(returnRequestId);
+          break;
+        case "reject":
+          if (!returnRequestId) return;
+          res = await rejectReturnAction(returnRequestId);
+          break;
+        case "restore":
+          if (!returnRequestId) return;
+          res = await completeReturnRestoreAction(returnRequestId);
+          break;
+        default: {
+          const _exhaustive: never = action;
+          void _exhaustive;
+          return;
+        }
+      }
+
       if (res.error) {
         toast.error(res.error);
         return;
       }
       toast.success(successMessage);
+      setPendingConfirm(null);
       router.refresh();
     });
   }
+
+  const copy = pendingConfirm ? CONFIRM_COPY[pendingConfirm.action] : null;
 
   return (
     <div className="space-y-4">
@@ -169,42 +275,60 @@ export function SalesTable({ result }: SalesTableProps) {
                   <TableIndexCell
                     index={(result.page - 1) * result.limit + index + 1}
                   />
-                  <TableCell className="font-mono text-sm">{saleTransactionLabel(s)}</TableCell>
+                  <TableCodeCell value={saleTransactionLabel(s)} />
                   <TableCell>{s.branch.name}</TableCell>
-                  <TableCell>{s.amount}</TableCell>
-                  <TableCell>{s.serialNumber?.serialNo ?? "—"}</TableCell>
-                  <TableCell>{s.atrStatus}</TableCell>
+                  <TableAmountCell value={s.amount} />
+                  <TableCodeCell>
+                    {s.serialNumbers.length > 1 ? (
+                      <button
+                        type="button"
+                        className="cursor-pointer text-left underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        onClick={() => setSerialDialogSale(s)}
+                        aria-label={`View ${s.serialNumbers.length} serial numbers for ${saleTransactionLabel(s)}`}
+                      >
+                        {s.serialNumber?.serialNo}
+                      </button>
+                    ) : (
+                      (s.serialNumber?.serialNo ?? "—")
+                    )}
+                  </TableCodeCell>
                   <TableCell>
-                    {s.returnRequest
-                      ? RETURN_STATUS_LABELS[s.returnRequest.status] ?? s.returnRequest.status
-                      : "—"}
+                    <AtrStatusBadge status={s.atrStatus} />
+                  </TableCell>
+                  <TableCell>
+                    <ReturnStatusBadge status={s.returnRequest?.status} />
                   </TableCell>
                   <TableCell className="space-x-1">
-                    {!s.returnRequest && s.atrStatus === "open" ? (
+                    {!s.returnRequest && s.atrStatus === "open" && capabilities.canRequestReturn ? (
                       <Button
                         size="sm"
                         variant="outline"
                         disabled={pending}
                         onClick={() =>
-                          runReturnAction(
-                            () => requestReturnAction(s.id),
-                            "Return request submitted",
-                          )
+                          setPendingConfirm({
+                            saleId: s.id,
+                            transactionNo: saleTransactionLabel(s),
+                            branchName: s.branch.name,
+                            action: "request",
+                          })
                         }
                       >
                         Request return
                       </Button>
                     ) : null}
-                    {s.returnRequest?.status === "pending_cs" ? (
+                    {s.returnRequest?.status === "pending_cs" && capabilities.canEvaluateReturn ? (
                       <>
                         <Button
                           size="sm"
                           disabled={pending}
                           onClick={() =>
-                            runReturnAction(
-                              () => evaluateReturnAction(s.returnRequest!.id),
-                              "CS evaluation complete",
-                            )
+                            setPendingConfirm({
+                              saleId: s.id,
+                              returnRequestId: s.returnRequest!.id,
+                              transactionNo: saleTransactionLabel(s),
+                              branchName: s.branch.name,
+                              action: "evaluate",
+                            })
                           }
                         >
                           CS evaluate
@@ -214,27 +338,33 @@ export function SalesTable({ result }: SalesTableProps) {
                           variant="outline"
                           disabled={pending}
                           onClick={() =>
-                            runReturnAction(
-                              () => rejectReturnAction(s.returnRequest!.id),
-                              "Return rejected",
-                            )
+                            setPendingConfirm({
+                              saleId: s.id,
+                              returnRequestId: s.returnRequest!.id,
+                              transactionNo: saleTransactionLabel(s),
+                              branchName: s.branch.name,
+                              action: "reject",
+                            })
                           }
                         >
                           Reject
                         </Button>
                       </>
                     ) : null}
-                    {s.returnRequest?.status === "pending_tl" ? (
+                    {s.returnRequest?.status === "pending_tl" && capabilities.canApproveReturn ? (
                       <>
                         <Button
                           size="sm"
                           className="bg-amber-600 text-white hover:bg-amber-700"
                           disabled={pending}
                           onClick={() =>
-                            runReturnAction(
-                              () => approveReturnAction(s.returnRequest!.id),
-                              "TL approved return",
-                            )
+                            setPendingConfirm({
+                              saleId: s.id,
+                              returnRequestId: s.returnRequest!.id,
+                              transactionNo: saleTransactionLabel(s),
+                              branchName: s.branch.name,
+                              action: "approve",
+                            })
                           }
                         >
                           TL approve
@@ -244,26 +374,32 @@ export function SalesTable({ result }: SalesTableProps) {
                           variant="outline"
                           disabled={pending}
                           onClick={() =>
-                            runReturnAction(
-                              () => rejectReturnAction(s.returnRequest!.id),
-                              "Return rejected",
-                            )
+                            setPendingConfirm({
+                              saleId: s.id,
+                              returnRequestId: s.returnRequest!.id,
+                              transactionNo: saleTransactionLabel(s),
+                              branchName: s.branch.name,
+                              action: "reject",
+                            })
                           }
                         >
                           Reject
                         </Button>
                       </>
                     ) : null}
-                    {s.returnRequest?.status === "approved" ? (
+                    {s.returnRequest?.status === "approved" && capabilities.canCompleteReturn ? (
                       <Button
                         size="sm"
                         className="bg-emerald-600 text-white hover:bg-emerald-700"
                         disabled={pending}
                         onClick={() =>
-                          runReturnAction(
-                            () => completeReturnRestoreAction(s.returnRequest!.id),
-                            "Inventory restored — ATR closed",
-                          )
+                          setPendingConfirm({
+                            saleId: s.id,
+                            returnRequestId: s.returnRequest!.id,
+                            transactionNo: saleTransactionLabel(s),
+                            branchName: s.branch.name,
+                            action: "restore",
+                          })
                         }
                       >
                         Restore stock
@@ -274,6 +410,64 @@ export function SalesTable({ result }: SalesTableProps) {
               ))}
             </TableBody>
       </GlobalDataTable>
+
+      <SaleSerialsDialog
+        open={serialDialogSale != null}
+        onOpenChange={(open) => {
+          if (!open) setSerialDialogSale(null);
+        }}
+        transactionNo={
+          serialDialogSale ? saleTransactionLabel(serialDialogSale) : ""
+        }
+        serialNumbers={serialDialogSale?.serialNumbers ?? []}
+      />
+
+      <AlertDialog
+        open={pendingConfirm !== null}
+        onOpenChange={(open) => {
+          if (!open && !pending) setPendingConfirm(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {copy?.title ?? "Are you sure?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingConfirm && copy ? (
+                <>
+                  {copy.description} Transaction{" "}
+                  <span className="font-medium text-foreground">
+                    {pendingConfirm.transactionNo}
+                  </span>{" "}
+                  at {pendingConfirm.branchName}.
+                </>
+              ) : (
+                "Please confirm this action."
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={pending}
+              className={
+                pendingConfirm?.action === "approve"
+                  ? "bg-amber-600 text-white hover:bg-amber-700"
+                  : pendingConfirm?.action === "restore"
+                    ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                    : undefined
+              }
+              onClick={(event) => {
+                event.preventDefault();
+                confirmPendingAction();
+              }}
+            >
+              {pending ? "Working…" : (copy?.confirmLabel ?? "Confirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

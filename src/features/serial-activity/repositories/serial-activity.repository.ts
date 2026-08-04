@@ -55,6 +55,23 @@ function modelLabel(model: { skuCode: string; name: string }): string {
   return `${model.skuCode} — ${model.name}`;
 }
 
+type SerialRef = {
+  serialNo: string;
+  model: { skuCode: string; name: string };
+} | null;
+
+/** Skip orphaned FK rows where the related serial was deleted. */
+function serialFields(serial: SerialRef): {
+  serialNo: string;
+  modelLabel: string;
+} | null {
+  if (!serial) return null;
+  return {
+    serialNo: serial.serialNo,
+    modelLabel: modelLabel(serial.model),
+  };
+}
+
 const userSelect = {
   select: { name: true, email: true },
 } as const;
@@ -138,18 +155,24 @@ async function statusSource(
   ]);
   return {
     count,
-    events: rows.map((r) => ({
-      id: `status:${r.id}`,
-      type: "status",
-      timestamp: r.updatedAt,
-      serialNo: r.serialNumber.serialNo,
-      modelLabel: modelLabel(r.serialNumber.model),
-      location: r.branch.name,
-      reference: null,
-      status: r.statusCode.name,
-      amount: null,
-      performedBy: performedByLabel(r.updatedBy),
-    })),
+    events: rows.flatMap((r) => {
+      const serial = serialFields(r.serialNumber);
+      if (!serial) return [];
+      return [
+        {
+          id: `status:${r.id}`,
+          type: "status" as const,
+          timestamp: r.updatedAt,
+          serialNo: serial.serialNo,
+          modelLabel: serial.modelLabel,
+          location: r.branch.name,
+          reference: null,
+          status: r.statusCode.name,
+          amount: null,
+          performedBy: performedByLabel(r.updatedBy),
+        },
+      ];
+    }),
   };
 }
 
@@ -184,18 +207,24 @@ async function transferredSource(
   ]);
   return {
     count,
-    events: rows.map((r) => ({
-      id: `transferred:${r.id}`,
-      type: "transferred",
-      timestamp: r.transfer.createdAt,
-      serialNo: r.serialNumber.serialNo,
-      modelLabel: modelLabel(r.serialNumber.model),
-      location: `${r.transfer.fromBranch.name} → ${r.transfer.toBranch.name}`,
-      reference: r.transfer.transferNo,
-      status: null,
-      amount: null,
-      performedBy: performedByLabel(r.transfer.createdBy),
-    })),
+    events: rows.flatMap((r) => {
+      const serial = serialFields(r.serialNumber);
+      if (!serial) return [];
+      return [
+        {
+          id: `transferred:${r.id}`,
+          type: "transferred" as const,
+          timestamp: r.transfer.createdAt,
+          serialNo: serial.serialNo,
+          modelLabel: serial.modelLabel,
+          location: `${r.transfer.fromBranch.name} → ${r.transfer.toBranch.name}`,
+          reference: r.transfer.transferNo,
+          status: null,
+          amount: null,
+          performedBy: performedByLabel(r.transfer.createdBy),
+        },
+      ];
+    }),
   };
 }
 
@@ -203,49 +232,56 @@ async function soldSource(
   tenantId: string,
   { window, q, dateFilter }: SourceOptions,
 ): Promise<SourceResult> {
-  const where: Prisma.BranchSalesTransactionWhereInput = {
-    tenantId,
-    serialNumberId: { not: null },
+  const where: Prisma.BranchSalesTransactionDetailWhereInput = {
+    sale: {
+      tenantId,
+      ...(dateFilter ? { createdAt: dateFilter } : {}),
+    },
     ...(q ? { serialNumber: { serialNo: serialContains(q) } } : {}),
-    ...(dateFilter ? { createdAt: dateFilter } : {}),
   };
   const [rows, count] = await Promise.all([
-    prisma.branchSalesTransaction.findMany({
+    prisma.branchSalesTransactionDetail.findMany({
       where,
       orderBy: { createdAt: "desc" },
       take: window,
       select: {
         id: true,
         createdAt: true,
+        saleAmount: true,
         amount: true,
-        transactionNo: true,
-        branch: { select: { name: true } },
+        sale: {
+          select: {
+            transactionNo: true,
+            amount: true,
+            branch: { select: { name: true } },
+            createdBy: userSelect,
+          },
+        },
         serialNumber: { select: { serialNo: true, model: modelSelect } },
-        createdBy: userSelect,
       },
     }),
-    prisma.branchSalesTransaction.count({ where }),
+    prisma.branchSalesTransactionDetail.count({ where }),
   ]);
   return {
     count,
-    events: rows.flatMap((r) =>
-      r.serialNumber
-        ? [
-            {
-              id: `sold:${r.id}`,
-              type: "sold" as const,
-              timestamp: r.createdAt,
-              serialNo: r.serialNumber.serialNo,
-              modelLabel: modelLabel(r.serialNumber.model),
-              location: r.branch.name,
-              reference: r.transactionNo,
-              status: null,
-              amount: r.amount.toString(),
-              performedBy: performedByLabel(r.createdBy),
-            },
-          ]
-        : [],
-    ),
+    events: rows.flatMap((r) => {
+      const serial = serialFields(r.serialNumber);
+      if (!serial) return [];
+      return [
+        {
+          id: `sold:${r.id}`,
+          type: "sold" as const,
+          timestamp: r.createdAt,
+          serialNo: serial.serialNo,
+          modelLabel: serial.modelLabel,
+          location: r.sale.branch.name,
+          reference: r.sale.transactionNo,
+          status: null,
+          amount: (r.saleAmount ?? r.amount ?? r.sale.amount).toString(),
+          performedBy: performedByLabel(r.sale.createdBy),
+        },
+      ];
+    }),
   };
 }
 
@@ -280,18 +316,24 @@ async function pulledOutSource(
   ]);
   return {
     count,
-    events: rows.map((r) => ({
-      id: `pulled_out:${r.id}`,
-      type: "pulled_out",
-      timestamp: r.pullout.createdAt,
-      serialNo: r.serialNumber.serialNo,
-      modelLabel: modelLabel(r.serialNumber.model),
-      location: `${r.pullout.branch.name} → ${r.pullout.warehouse.name}`,
-      reference: r.pullout.pulloutNo,
-      status: null,
-      amount: null,
-      performedBy: performedByLabel(r.pullout.createdBy),
-    })),
+    events: rows.flatMap((r) => {
+      const serial = serialFields(r.serialNumber);
+      if (!serial) return [];
+      return [
+        {
+          id: `pulled_out:${r.id}`,
+          type: "pulled_out" as const,
+          timestamp: r.pullout.createdAt,
+          serialNo: serial.serialNo,
+          modelLabel: serial.modelLabel,
+          location: `${r.pullout.branch.name} → ${r.pullout.warehouse.name}`,
+          reference: r.pullout.pulloutNo,
+          status: null,
+          amount: null,
+          performedBy: performedByLabel(r.pullout.createdBy),
+        },
+      ];
+    }),
   };
 }
 
@@ -324,24 +366,25 @@ async function countedSource(
   ]);
   return {
     count,
-    events: rows.flatMap((r) =>
-      r.countedAt
-        ? [
-            {
-              id: `counted:${r.id}`,
-              type: "counted" as const,
-              timestamp: r.countedAt,
-              serialNo: r.serialNumber.serialNo,
-              modelLabel: modelLabel(r.serialNumber.model),
-              location: r.session.branch.name,
-              reference: r.session.sessionNo,
-              status: r.status,
-              amount: null,
-              performedBy: performedByLabel(r.countedBy),
-            },
-          ]
-        : [],
-    ),
+    events: rows.flatMap((r) => {
+      if (!r.countedAt) return [];
+      const serial = serialFields(r.serialNumber);
+      if (!serial) return [];
+      return [
+        {
+          id: `counted:${r.id}`,
+          type: "counted" as const,
+          timestamp: r.countedAt,
+          serialNo: serial.serialNo,
+          modelLabel: serial.modelLabel,
+          location: r.session.branch.name,
+          reference: r.session.sessionNo,
+          status: r.status,
+          amount: null,
+          performedBy: performedByLabel(r.countedBy),
+        },
+      ];
+    }),
   };
 }
 

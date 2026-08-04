@@ -7,7 +7,13 @@ import type { Prisma } from "@prisma/client";
 
 const salesListInclude = {
   branch: { select: { name: true } },
-  serialNumber: { select: { serialNo: true } },
+  details: {
+    orderBy: { createdAt: "asc" as const },
+    select: {
+      id: true,
+      serialNumber: { select: { serialNo: true } },
+    },
+  },
   returnRequest: { select: { id: true, status: true } },
 } satisfies Prisma.BranchSalesTransactionInclude;
 

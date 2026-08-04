@@ -11,6 +11,7 @@ import {
   rejectTransferAction,
   receiveTransferAction,
 } from "@/features/logistics/actions/logistics.actions";
+import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
 import { listStkSerialsForBranchAction } from "@/features/sales/actions/sales.actions";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { TableIndexCell, TableIndexHead } from "@/components/data-table";
@@ -46,6 +47,7 @@ interface StatusCodeRef {
   id: string;
   code: string;
   name: string;
+  color?: string | null;
 }
 
 interface PaginatedList<T> {
@@ -67,6 +69,7 @@ interface TransferRow {
 
 interface TransfersPanelProps {
   transfers: PaginatedList<TransferRow>;
+  capabilities: LogisticsActionCapabilities;
 }
 
 type PendingConfirm = {
@@ -83,7 +86,7 @@ interface SerialOption {
   skuCode: string;
 }
 
-export function TransfersPanel({ transfers }: TransfersPanelProps) {
+export function TransfersPanel({ transfers, capabilities }: TransfersPanelProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
@@ -203,7 +206,7 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
               </Button>
             ) : null}
             <LogisticsLoadRefsButton onClick={loadRefs} />
-          {branches.length >= 2 ? (
+          {capabilities.canCreate && branches.length >= 2 ? (
             <Button
               size="sm"
               className="w-full sm:w-auto"
@@ -267,10 +270,15 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
                     {t.fromBranch.name} → {t.toBranch.name}
                   </TableCell>
                   <TableCell>
-                    <StatusCodeBadge code={t.statusCode.code} name={t.statusCode.name} />
+                    <StatusCodeBadge
+                      code={t.statusCode.code}
+                      name={t.statusCode.name}
+                      color={t.statusCode.color}
+                    />
                   </TableCell>
                   <TableCell className="space-x-2">
-                    {["requested", "pending_tl"].includes(t.statusCode.code) ? (
+                    {["requested", "pending_tl"].includes(t.statusCode.code) &&
+                    capabilities.canApproveTl ? (
                       <Button
                         size="sm"
                         disabled={pending}
@@ -288,7 +296,8 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
                         TL approve
                       </Button>
                     ) : null}
-                    {["requested", "pending_tl"].includes(t.statusCode.code) ? (
+                    {["requested", "pending_tl"].includes(t.statusCode.code) &&
+                    capabilities.canRejectTransfer ? (
                       <Button
                         size="sm"
                         variant="outline"
@@ -306,7 +315,8 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
                         Reject
                       </Button>
                     ) : null}
-                    {["approved", "for_transfer"].includes(t.statusCode.code) ? (
+                    {["approved", "for_transfer"].includes(t.statusCode.code) &&
+                    capabilities.canExecuteTransfer ? (
                       <Button
                         size="sm"
                         disabled={pending}
@@ -315,7 +325,8 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
                         Execute
                       </Button>
                     ) : null}
-                    {t.statusCode.code === "in_transit" ? (
+                    {t.statusCode.code === "in_transit" &&
+                    capabilities.canReceiveTransfer ? (
                       <Button
                         size="sm"
                         disabled={pending}
@@ -356,34 +367,41 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
                     {pendingConfirm.transferNo}
                   </span>{" "}
                   ({pendingConfirm.route}). {confirmDescription}
-                  {pendingConfirm.action === "execute" ? (
-                    <div className="mt-3 max-h-40 space-y-1 overflow-y-auto rounded-md border p-2">
-                      {executeSerials.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">No STK serials at source branch.</p>
-                      ) : (
-                        executeSerials.map((s) => (
-                          <label key={s.id} className="flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
-                              checked={selectedSerialIds.includes(s.id)}
-                              onChange={(e) => {
-                                setSelectedSerialIds((prev) =>
-                                  e.target.checked
-                                    ? [...prev, s.id]
-                                    : prev.filter((id) => id !== s.id),
-                                );
-                              }}
-                            />
-                            {s.serialNo} · {s.skuCode}
-                          </label>
-                        ))
-                      )}
-                    </div>
-                  ) : null}
                 </>
-              ) : null}
+              ) : (
+                "Confirm this transfer action."
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {pendingConfirm?.action === "execute" ? (
+            <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border p-2">
+              {executeSerials.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No STK serials at source branch.
+                </p>
+              ) : (
+                executeSerials.map((s) => (
+                  <label
+                    key={s.id}
+                    className="flex items-center gap-2 text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedSerialIds.includes(s.id)}
+                      onChange={(e) => {
+                        setSelectedSerialIds((prev) =>
+                          e.target.checked
+                            ? [...prev, s.id]
+                            : prev.filter((id) => id !== s.id),
+                        );
+                      }}
+                    />
+                    {s.serialNo} · {s.skuCode}
+                  </label>
+                ))
+              )}
+            </div>
+          ) : null}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
             <AlertDialogAction

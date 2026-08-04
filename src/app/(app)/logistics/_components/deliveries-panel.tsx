@@ -8,6 +8,7 @@ import {
   acceptDeliveryAction,
   rejectDeliveryAction,
 } from "@/features/logistics/actions/logistics.actions";
+import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { TableIndexCell, TableIndexHead } from "@/components/data-table";
 import {
@@ -40,6 +41,7 @@ interface StatusCodeRef {
   id: string;
   code: string;
   name: string;
+  color?: string | null;
 }
 
 interface PaginatedList<T> {
@@ -60,6 +62,7 @@ interface DeliveryRow {
 
 interface DeliveriesPanelProps {
   deliveries: PaginatedList<DeliveryRow>;
+  capabilities: LogisticsActionCapabilities;
 }
 
 type PendingConfirm = {
@@ -70,7 +73,7 @@ type PendingConfirm = {
   action: "accept" | "reject";
 };
 
-export function DeliveriesPanel({ deliveries }: DeliveriesPanelProps) {
+export function DeliveriesPanel({ deliveries, capabilities }: DeliveriesPanelProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
@@ -182,10 +185,15 @@ export function DeliveriesPanel({ deliveries }: DeliveriesPanelProps) {
                   <TableCell>{d.order?.orderNumber ?? "—"}</TableCell>
                   <TableCell>{d.branch.name}</TableCell>
                   <TableCell>
-                    <StatusCodeBadge code={d.statusCode.code} name={d.statusCode.name} />
+                    <StatusCodeBadge
+                      code={d.statusCode.code}
+                      name={d.statusCode.name}
+                      color={d.statusCode.color}
+                    />
                   </TableCell>
                   <TableCell className="space-x-2 text-right">
-                    {d.statusCode.code === "pending" ? (
+                    {d.statusCode.code === "pending" &&
+                    capabilities.canAcceptDelivery ? (
                       <>
                         <Button
                           size="sm"

@@ -17,10 +17,10 @@ import {
 import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
 import {
   canApproveOrder,
-  getOrderReviewDenialReason,
   isOrderEditable,
   isOrderPendingApproval,
 } from "@/features/orders/constants/order-workflow";
+import { OrderDetailsDialog } from "@/app/(app)/orders/_components/order-details-dialog";
 import { OrderWorkflowDialog } from "@/app/(app)/orders/_components/order-workflow-dialog";
 import {
   EditOrderDialog,
@@ -48,12 +48,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { LoadingModal } from "@/components/ui/loading-modal";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
 interface OrderRow {
@@ -62,12 +56,25 @@ interface OrderRow {
   orderType: string;
   status: string;
   branchId: string;
+  notes?: string | null;
+  spaRemarks?: string | null;
+  deliveryDueDate?: string | Date | null;
   branch: { name: string; deliverySchedule?: unknown };
   createdBy: { name: string | null; email: string };
   details: {
     id: string;
     quantity: number;
+    approvedQty?: number | null;
+    remarks?: string | null;
     model: { id: string; skuCode: string };
+  }[];
+  approvalLevels?: {
+    level: number;
+    roleSlug: string;
+    approvedAt?: string | Date | null;
+    rejectedAt?: string | Date | null;
+    comment?: string | null;
+    approvedBy?: { name: string | null; email: string } | null;
   }[];
 }
 
@@ -91,6 +98,8 @@ interface OrdersTableProps {
   };
   viewerRoleSlugs: string[];
   canEdit?: boolean;
+  /** Same gate as `/planning/suggested-orders` (`forecast.manage` / `planogram.manage`). */
+  canAccessSuggestedOrders?: boolean;
   /** When set, list is type-scoped and create dialog locks this type. */
   fixedOrderType?: BranchOrderType;
   /** Base path for pagination links (defaults to `/orders`). */
@@ -132,12 +141,14 @@ export function OrdersTable({
   result,
   viewerRoleSlugs,
   canEdit = false,
+  canAccessSuggestedOrders = false,
   fixedOrderType,
   basePath = "/orders",
 }: OrdersTableProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [workflowOrder, setWorkflowOrder] = useState<OrderRow | null>(null);
+  const [detailsOrder, setDetailsOrder] = useState<OrderRow | null>(null);
   const [editingOrder, setEditingOrder] = useState<EditableOrder | null>(null);
   const [pending, startTransition] = useTransition();
   const [processingAction, setProcessingAction] = useState<"approve" | "reject" | null>(
@@ -207,7 +218,7 @@ export function OrdersTable({
       if (waitMs > 0) await delay(waitMs);
       setProcessingAction(null);
       if (result.error) {
-        toast.error("Could not reject");
+        toast.error(result.error);
         return;
       }
       toast.success("Order rejected");
@@ -234,9 +245,11 @@ export function OrdersTable({
                 {selection.selectedCount} selected
               </Button>
             ) : null}
-            <Button variant="outline" asChild>
-              <a href="/planning/suggested-orders">Suggested orders</a>
-            </Button>
+            {canAccessSuggestedOrders ? (
+              <Button variant="outline" asChild>
+                <a href="/planning/suggested-orders">Suggested orders</a>
+              </Button>
+            ) : null}
             {canEdit ? (
               <Button onClick={() => setShowCreate(true)}>Create order</Button>
             ) : null}
@@ -265,7 +278,7 @@ export function OrdersTable({
             <GlobalTableHead>Type</GlobalTableHead>
             <GlobalTableHead>Status</GlobalTableHead>
             <GlobalTableHead>Lines</GlobalTableHead>
-            <GlobalTableHead className="w-28" />
+            <GlobalTableHead className="w-44" />
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -297,6 +310,13 @@ export function OrdersTable({
               </TableCell>
               <TableCell>
                 <div className="flex justify-end gap-2">
+                  {isOrderPendingApproval(o.status as BranchOrderStatus) ? (
+                    <OrderReviewButton
+                      order={o}
+                      viewerRoleSlugs={viewerRoleSlugs}
+                      onReview={() => setWorkflowOrder(o)}
+                    />
+                  ) : null}
                   {canEdit && isOrderEditable(o.status as BranchOrderStatus) ? (
                     <Button
                       size="sm"
@@ -319,19 +339,38 @@ export function OrdersTable({
                       Edit
                     </Button>
                   ) : null}
-                  {isOrderPendingApproval(o.status as BranchOrderStatus) ? (
-                    <OrderReviewButton
-                      order={o}
-                      viewerRoleSlugs={viewerRoleSlugs}
-                      onReview={() => setWorkflowOrder(o)}
-                    />
-                  ) : null}
+                  <Button size="sm" variant="outline" onClick={() => setDetailsOrder(o)}>
+                    View details
+                  </Button>
                 </div>
               </TableCell>
             </TableRow>
           ))}
         </TableBody>
       </GlobalDataTable>
+      {detailsOrder ? (
+        <OrderDetailsDialog
+          orderNumber={detailsOrder.orderNumber}
+          orderType={detailsOrder.orderType as BranchOrderType}
+          branchName={detailsOrder.branch.name}
+          status={detailsOrder.status as BranchOrderStatus}
+          notes={detailsOrder.notes}
+          deliveryDueDate={detailsOrder.deliveryDueDate}
+          createdByName={detailsOrder.createdBy.name ?? detailsOrder.createdBy.email}
+          lines={detailsOrder.details.map((d) => ({
+            detailId: d.id,
+            skuCode: d.model.skuCode,
+            quantity: d.quantity,
+            approvedQty: d.approvedQty,
+            remarks: d.remarks,
+          }))}
+          approvalLevels={detailsOrder.approvalLevels}
+          open
+          onOpenChange={(open) => {
+            if (!open) setDetailsOrder(null);
+          }}
+        />
+      ) : null}
       {workflowOrder ? (
         <OrderWorkflowDialog
           orderNumber={workflowOrder.orderNumber}
@@ -355,6 +394,7 @@ export function OrdersTable({
         <CreateOrderDialog
           onClose={() => setShowCreate(false)}
           fixedOrderType={fixedOrderType}
+          canAccessSuggestedOrders={canAccessSuggestedOrders}
         />
       ) : null}
       {editingOrder ? (
@@ -383,50 +423,25 @@ interface OrderReviewButtonProps {
 function OrderReviewButton({ order, viewerRoleSlugs, onReview }: OrderReviewButtonProps) {
   const status = order.status as BranchOrderStatus;
   const orderType = order.orderType as BranchOrderType;
-  const canReview = canApproveOrder(status, orderType, viewerRoleSlugs);
-  const denialReason = getOrderReviewDenialReason(status, orderType);
-
-  const button = (
-    <Button
-      size="sm"
-      variant="outline"
-      disabled={!canReview}
-      onClick={() => {
-        if (canReview) onReview();
-      }}
-    >
-      Review
-    </Button>
-  );
-
-  if (canReview) {
-    return button;
+  if (!canApproveOrder(status, orderType, viewerRoleSlugs)) {
+    return null;
   }
 
   return (
-    <TooltipProvider delayDuration={200}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="inline-block w-fit cursor-not-allowed">{button}</span>
-        </TooltipTrigger>
-        <TooltipContent
-          side="left"
-          sideOffset={8}
-          className="w-max max-w-[14rem] text-left text-pretty"
-        >
-          {denialReason}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <Button size="sm" variant="outline" onClick={onReview}>
+      Review
+    </Button>
   );
 }
 
 function CreateOrderDialog({
   onClose,
   fixedOrderType,
+  canAccessSuggestedOrders = false,
 }: {
   onClose: () => void;
   fixedOrderType?: BranchOrderType;
+  canAccessSuggestedOrders?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -599,16 +614,19 @@ function CreateOrderDialog({
               )}
               {orderType === "auto_replenish" ? (
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Single-line auto-replenish here, or use suggested orders.
+                  Single-line auto-replenish here
+                  {canAccessSuggestedOrders ? ", or use suggested orders" : ""}.
                 </p>
-              ) : (
+              ) : canAccessSuggestedOrders ? (
                 <p className="mt-1 text-xs text-muted-foreground">
                   Auto-replenish bulk path: Planning → Suggested orders.
                 </p>
-              )}
-              <Button variant="outline" size="sm" className="mt-2" asChild>
-                <Link href="/planning/suggested-orders">View suggested orders</Link>
-              </Button>
+              ) : null}
+              {canAccessSuggestedOrders ? (
+                <Button variant="outline" size="sm" className="mt-2" asChild>
+                  <Link href="/planning/suggested-orders">View suggested orders</Link>
+                </Button>
+              ) : null}
             </div>
             <div>
               <SearchableSelect

@@ -1,0 +1,71 @@
+import {
+  resolveCapabilities,
+  type ResolvedCapabilities,
+} from "@/lib/auth/action-capabilities";
+import { hasPermission } from "@/lib/auth/permissions";
+
+/**
+ * Sales & ATR action-button permissions.
+ *
+ * Recipe: see `src/lib/auth/action-capabilities.ts`.
+ * Admins toggle these in Settings → Roles after seed.
+ */
+
+export const SALES_VIEW = "sales.view";
+export const SALES_CREATE = "sales.create";
+export const SALES_RETURN_REQUEST = "sales.return.request";
+export const SALES_RETURN_EVALUATE = "sales.return.evaluate";
+export const SALES_RETURN_APPROVE = "sales.return.approve";
+export const SALES_RETURN_COMPLETE = "sales.return.complete";
+
+/** Any of these grants Sales nav + `/sales` list access. */
+export const SALES_ACCESS_PERMISSIONS = [
+  SALES_VIEW,
+  SALES_CREATE,
+  SALES_RETURN_REQUEST,
+  SALES_RETURN_EVALUATE,
+  SALES_RETURN_APPROVE,
+  SALES_RETURN_COMPLETE,
+] as const;
+
+/**
+ * Capability map for Sales page CTA + ATR row buttons.
+ * Short alias lists keep pre-reseed tenants working for one release.
+ */
+export const SALES_ACTION_CAPABILITIES = {
+  canCreateSale: SALES_CREATE,
+  canRequestReturn: [SALES_RETURN_REQUEST, SALES_CREATE],
+  canEvaluateReturn: SALES_RETURN_EVALUATE,
+  canApproveReturn: [SALES_RETURN_APPROVE, "orders.approve"],
+  canCompleteReturn: [SALES_RETURN_COMPLETE, "logistics.manage", SALES_CREATE],
+} as const;
+
+export type SalesActionCapabilities = ResolvedCapabilities<
+  typeof SALES_ACTION_CAPABILITIES
+>;
+
+export function resolveSalesCapabilities(
+  permissions: string[] | undefined,
+): SalesActionCapabilities {
+  return resolveCapabilities(permissions, SALES_ACTION_CAPABILITIES);
+}
+
+export function canAccessSales(permissions: string[] | undefined): boolean {
+  return SALES_ACCESS_PERMISSIONS.some((slug) => hasPermission(permissions, slug));
+}
+
+/** Reject at pending_cs → evaluate; at pending_tl → approve (plus aliases). */
+export function salesReturnRejectPermissions(status: string): string[] {
+  if (status === "pending_cs") {
+    return [SALES_RETURN_EVALUATE, SALES_CREATE];
+  }
+  if (status === "pending_tl") {
+    return [SALES_RETURN_APPROVE, "orders.approve"];
+  }
+  return [
+    SALES_RETURN_EVALUATE,
+    SALES_RETURN_APPROVE,
+    SALES_CREATE,
+    "orders.approve",
+  ];
+}

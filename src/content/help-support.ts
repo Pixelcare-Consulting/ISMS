@@ -140,47 +140,74 @@ export const HELP_WORKFLOW_GUIDES: HelpWorkflowGuide[] = [
     ],
   },
   {
+    id: "admin-setup",
+    title: "Tenant admin essentials",
+    summary: "Recommended setup order for new tenants or major onboarding.",
+    audience: "Tenant admins",
+    href: "/settings/company",
+    steps: [
+      { label: "Company settings: branding and tenant profile." },
+      { label: "Departments, roles, and users: map staff to permissions." },
+      { label: "Branches, warehouses, master data: locations and catalog." },
+      { label: "Planning, planogram, and integrations: operational automation." },
+    ],
+    tips: [
+      "Grant least privilege—users should only see modules required for their job.",
+      "Test integrations in a non-peak window before enabling sync jobs.",
+    ],
+  },
+  {
+    id: "planning-suggested",
+    title: "Planning & suggested orders",
+    summary:
+      "Supply Planning refreshes forecast data, reviews suggestions, and creates auto-replenish drafts for Team Leader review.",
+    audience: "Supply Planning · Team Leader",
+    href: "/planning/suggested-orders",
+    steps: [
+      { label: "Open Planning settings and import or refresh forecast data for the period." },
+      { label: "Allocate demand to branches and review suggested quantities." },
+      { label: "From Suggested orders, promote accepted lines into auto-replenish drafts." },
+      {
+        label:
+          "Team Leader opens Auto replenish orders to review, then Supply Planning gives final approval.",
+      },
+    ],
+    tips: [
+      "Suggested orders feed the Auto replenish path (Team Leader → Supply Planning)—not Manual or Special.",
+    ],
+  },
+  {
     id: "branch-orders",
     title: "Branch order approvals",
     summary:
-      "Approval path depends on order type; logistics fulfills after final Supply Planning approval.",
+      "Approval path depends on order type; logistics fulfills only after final Supply Planning approval.",
     audience: "PS · TL · SP · Logistics",
     href: "/orders",
     steps: [
       {
-        label: "Create or open an order from Orders and confirm order type (auto-replenish, manual, or special).",
+        label:
+          "Open Orders and pick the type: Manual, Auto replenish, or Special (each has its own menu).",
       },
       {
-        label: "Auto-replenish: Team Leader review (optional path), then Supply Planning approval.",
+        label:
+          "Manual: create the order → Product Specialist review → Team Leader review → Supply Planning approval.",
       },
       {
-        label: "Manual: Product Specialist review, Team Leader review, then Supply Planning approval.",
+        label:
+          "Auto replenish: Team Leader review → Supply Planning approval (often started from Suggested orders).",
       },
       {
-        label: "Special: Team Leader creates the request, then Supply Planning approval.",
+        label: "Special: Team Leader creates the request → Supply Planning approval.",
       },
       {
-        label: "After approval, logistics schedules delivery; branch accepts stock in Operations when it arrives.",
+        label:
+          "After Supply Planning approves, logistics schedules delivery; the branch accepts stock in Operations when it arrives (In transit → On hand).",
       },
     ],
     tips: [
-      "Check order status badges to see the current approval gate before escalating.",
+      "Check order status badges to see who must act next before escalating.",
       "Use Processed orders report after fulfillment for audit trails.",
     ],
-  },
-  {
-    id: "stock-count",
-    title: "Stock count session",
-    summary: "Structured cycle to align physical stock with system records.",
-    audience: "Branch · Inventory",
-    href: "/inventory/stock-count",
-    steps: [
-      { label: "Create a session for the branch and scope (location or category)." },
-      { label: "Count units and enter quantities; flag discrepancies with notes." },
-      { label: "Submit for review; approvers validate large variances." },
-      { label: "Finalize accepted adjustments and close the session for audit lock." },
-    ],
-    tips: ["Do not reopen closed sessions—start a new session for recounts."],
   },
   {
     id: "deliveries",
@@ -194,6 +221,7 @@ export const HELP_WORKFLOW_GUIDES: HelpWorkflowGuide[] = [
       { label: "Branch opens Operations to accept delivery and confirm quantities received." },
       { label: "Resolve shortages or damages before closing the delivery line." },
     ],
+    tips: ["Accepted units move from In transit to On hand."],
   },
   {
     id: "transfers",
@@ -244,10 +272,45 @@ export const HELP_WORKFLOW_GUIDES: HelpWorkflowGuide[] = [
     href: "/sales",
     steps: [
       { label: "Open Sales and start a new transaction for the branch." },
-      { label: "Add line items (serials or SKU rules per your tenant setup)." },
-      { label: "Complete the sale; verify totals before submit." },
+      { label: "Add line items (serials or package sets per your tenant setup)." },
+      { label: "Complete the sale; verify totals and proof before submit." },
       { label: "Review Sales report for period close and management reporting." },
     ],
+  },
+  {
+    id: "sales-atr",
+    title: "ATR return after a sale",
+    summary:
+      "Request a return, evaluate it, get Team Leader approval, then restore units to on-hand stock.",
+    audience: "Sales · CS · TL · Inventory",
+    href: "/sales",
+    steps: [
+      { label: "From Sales & ATRs, open the completed sale and request an ATR return." },
+      { label: "Customer service evaluates the request (accept to continue, or reject to stop)." },
+      { label: "Team Leader approves the return when evaluation is complete." },
+      {
+        label:
+          "Inventory restores serials so stock returns to On hand; confirm status on Sales & ATRs.",
+      },
+    ],
+    tips: [
+      "Who can request, evaluate, approve, or restore depends on your role setup.",
+      "Reserved (RSV) sales follow the same return path when ATR is allowed.",
+    ],
+  },
+  {
+    id: "stock-count",
+    title: "P-Count (stock count) session",
+    summary: "Structured cycle to align physical stock with system records.",
+    audience: "Branch · Inventory",
+    href: "/inventory/stock-count",
+    steps: [
+      { label: "Create a session for the branch and scope (location or category)." },
+      { label: "Count units and enter quantities; flag discrepancies with notes." },
+      { label: "Submit for review; approvers validate large variances." },
+      { label: "Finalize accepted adjustments and close the session for audit lock." },
+    ],
+    tips: ["Do not reopen closed sessions—start a new session for recounts."],
   },
   {
     id: "policy-lifecycle",
@@ -277,28 +340,11 @@ export const HELP_WORKFLOW_GUIDES: HelpWorkflowGuide[] = [
         label: "Daily stock: point-in-time inventory positions by branch.",
       },
       {
-        label: "Transfers & Sales reports: movement and revenue analysis.",
+        label: "Transfers, Sales, and P-Count reports: movement, revenue, and count history.",
       },
       {
         label: "Audit log: filter by user, action, or module when troubleshooting changes.",
       },
-    ],
-  },
-  {
-    id: "admin-setup",
-    title: "Tenant admin essentials",
-    summary: "Recommended setup order for new tenants or major onboarding.",
-    audience: "Tenant admins",
-    href: "/settings/company",
-    steps: [
-      { label: "Company settings: branding and tenant profile." },
-      { label: "Departments, roles, and users: map staff to permissions." },
-      { label: "Branches, warehouses, master data: locations and catalog." },
-      { label: "Planning, planogram, SAP integration: operational automation." },
-    ],
-    tips: [
-      "Grant least privilege—users should only see modules required for their job.",
-      "Test SAP connection in a non-peak window before enabling sync jobs.",
     ],
   },
 ];

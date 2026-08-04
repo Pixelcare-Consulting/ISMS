@@ -81,13 +81,9 @@ export function RegisterForm() {
     <>
       <LoadingModal
         open={isRedirecting}
+        variant="minimal"
         title="Creating your account"
-        description="Please wait while we set up your organization and sign you in."
-        feedItems={[
-          { atSecond: 0, label: "Creating your account", hint: "Organization and admin user" },
-          { atSecond: 1, label: "Signing you in", hint: "Starting your session" },
-          { atSecond: 2, label: "Loading workspace", hint: "Dashboard and role-based access" },
-        ]}
+        description="Setting up your organization and signing you in."
       />
       <form id="register-form" action={formAction} className="space-y-5">
         <div className="space-y-2">

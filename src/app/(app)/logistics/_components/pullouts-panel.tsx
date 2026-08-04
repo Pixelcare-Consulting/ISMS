@@ -11,6 +11,7 @@ import {
   releasePulloutAction,
   schedulePulloutAction,
 } from "@/features/logistics/actions/logistics.actions";
+import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
 import { listStkSerialsForBranchAction } from "@/features/sales/actions/sales.actions";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { TableIndexCell, TableIndexHead } from "@/components/data-table";
@@ -37,6 +38,7 @@ interface StatusCodeRef {
   id: string;
   code: string;
   name: string;
+  color?: string | null;
 }
 
 interface PaginatedList<T> {
@@ -58,9 +60,10 @@ interface PulloutRow {
 
 interface PulloutsPanelProps {
   pullouts: PaginatedList<PulloutRow>;
+  capabilities: LogisticsActionCapabilities;
 }
 
-export function PulloutsPanel({ pullouts }: PulloutsPanelProps) {
+export function PulloutsPanel({ pullouts, capabilities }: PulloutsPanelProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
@@ -177,7 +180,7 @@ export function PulloutsPanel({ pullouts }: PulloutsPanelProps) {
             searchPlaceholder="Search branches…"
           />
         ) : null}
-        {branches[0] && warehouses[0] ? (
+        {capabilities.canCreate && branches[0] && warehouses[0] ? (
           <Button
             size="sm"
             className="w-full sm:w-auto"
@@ -271,16 +274,21 @@ export function PulloutsPanel({ pullouts }: PulloutsPanelProps) {
                     <StatusCodeBadge
                       code={p.reasonStatusCode.code}
                       name={p.reasonStatusCode.name}
+                      color={p.reasonStatusCode.color}
                     />
                   ) : (
                     "—"
                   )}
                 </TableCell>
                 <TableCell>
-                  <StatusCodeBadge code={p.statusCode.code} name={p.statusCode.name} />
+                  <StatusCodeBadge
+                    code={p.statusCode.code}
+                    name={p.statusCode.name}
+                    color={p.statusCode.color}
+                  />
                 </TableCell>
                 <TableCell className="space-x-2">
-                  {p.statusCode.code === "pending_tl" ? (
+                  {p.statusCode.code === "pending_tl" && capabilities.canApproveTl ? (
                     <Button
                       size="sm"
                       disabled={pending}
@@ -295,7 +303,8 @@ export function PulloutsPanel({ pullouts }: PulloutsPanelProps) {
                       TL approve
                     </Button>
                   ) : null}
-                  {p.statusCode.code === "for_pullout" ? (
+                  {p.statusCode.code === "for_pullout" &&
+                  capabilities.canSchedulePullout ? (
                     <Button
                       size="sm"
                       disabled={pending}
@@ -309,7 +318,8 @@ export function PulloutsPanel({ pullouts }: PulloutsPanelProps) {
                       Schedule
                     </Button>
                   ) : null}
-                  {p.statusCode.code === "pending_logistics" ? (
+                  {p.statusCode.code === "pending_logistics" &&
+                  capabilities.canReleasePullout ? (
                     <Button
                       size="sm"
                       disabled={pending}
@@ -323,7 +333,8 @@ export function PulloutsPanel({ pullouts }: PulloutsPanelProps) {
                       Release
                     </Button>
                   ) : null}
-                  {p.statusCode.code === "in_transit" ? (
+                  {p.statusCode.code === "in_transit" &&
+                  capabilities.canCompletePullout ? (
                     <Button
                       size="sm"
                       disabled={pending}

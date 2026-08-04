@@ -2,7 +2,9 @@ import {
   listAorFormOptionsAction,
   listAorsAction,
 } from "@/features/aors/actions/aor.actions";
+import { ModuleGuide } from "@/components/module-guide";
 import { requirePermission } from "@/lib/auth/permissions";
+import { AORS_MODULE_GUIDE } from "@/content/module-guides/aors";
 import { AORS_PAGE_TUTORIAL } from "@/content/page-tutorials/aors";
 import { PageHeader } from "@/app/(app)/_components/page-header";
 import { AorsKpisStrip } from "@/app/(app)/settings/aors/_components/aors-kpis";
@@ -57,6 +59,7 @@ export default async function SettingsAorsPage() {
         description="Assignments are stored per branch. The table groups them by user so you can see every branch in one place."
         sticky={false}
       />
+      <ModuleGuide {...AORS_MODULE_GUIDE} />
       <AorsKpisStrip rows={mappedAors} />
       <AorsTable
         aors={mappedAors}

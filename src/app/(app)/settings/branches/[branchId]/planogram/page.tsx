@@ -5,7 +5,9 @@ import {
   listAllowedModelsForBranchAction,
   listPlanogramAction,
 } from "@/features/planogram/actions/planogram.actions";
+import { ModuleGuide } from "@/components/module-guide";
 import { requirePlanogramView } from "@/lib/auth/permissions";
+import { BRANCH_PLANOGRAM_MODULE_GUIDE } from "@/content/module-guides/planogram";
 import { PageHeader } from "@/app/(app)/_components/page-header";
 import { AllowedModelsPanel } from "@/app/(app)/settings/branches/[branchId]/planogram/_components/allowed-models-panel";
 import { PlanogramTable } from "@/app/(app)/settings/branches/[branchId]/planogram/_components/planogram-table";
@@ -63,6 +65,7 @@ export default async function BranchPlanogramPage({ params }: PlanogramPageProps
           </Button>
         }
       />
+      <ModuleGuide {...BRANCH_PLANOGRAM_MODULE_GUIDE} />
       {canManage ? (
         <Tabs defaultValue="planogram">
           <TabsList className="gap-2">

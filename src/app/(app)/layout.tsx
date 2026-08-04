@@ -1,4 +1,5 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
+import type { Metadata } from "next";
 import { Suspense } from "react";
 
 import { requireAuth, resolveSessionPlatformOperator } from "@/lib/auth/permissions";
@@ -10,8 +11,17 @@ import { AppNavigationProgress } from "@/app/(app)/_components/app-navigation-pr
 import { AppSidebar } from "@/app/(app)/_components/app-sidebar";
 import { AppTopLoader } from "@/app/(app)/_components/app-top-loader";
 import { WhatsNewHeaderAction } from "@/app/(app)/_components/whats-new-header-action";
+import { DocumentTitle } from "@/components/document-title";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { resolveRouteTitle } from "@/config/route-titles";
 import { SapSyncReportDialogs } from "@/features/sap/components/sap-sync-report-dialogs";
+import { pageMetadata } from "@/lib/shared/seo";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const pathname = (await headers()).get("x-pathname") ?? "";
+  const title = resolveRouteTitle(pathname);
+  return title ? pageMetadata(title) : {};
+}
 
 export default async function AppLayout({
   children,
@@ -38,6 +48,7 @@ export default async function AppLayout({
 
   return (
     <SidebarProvider defaultOpen={defaultOpen}>
+      <DocumentTitle />
       <AppTopLoader />
       <Suspense fallback={null}>
         <AppNavigationProgress />

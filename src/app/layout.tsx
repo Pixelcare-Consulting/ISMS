@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 
 import { AppToaster } from "@/components/providers/app-toaster";
 import { AuthSessionProvider } from "@/components/providers/session-provider";
+import { APP_NAME } from "@/lib/shared/constants";
 
 import "./globals.css";
 
@@ -17,8 +18,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "FINDEN ISMS",
-  description: "ISMS SaaS",
+  title: {
+    default: APP_NAME,
+    template: `%s | ${APP_NAME}`,
+  },
+  description:
+    "Finden Technology ISMS — ISO-aligned security management and BRS inventory operations.",
 };
 
 export const viewport: Viewport = {

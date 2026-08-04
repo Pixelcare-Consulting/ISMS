@@ -76,6 +76,7 @@ export function SerialTimeline({ serial }: SerialTimelineProps) {
                   <StatusCodeBadge
                     code={serial.current.status.code}
                     name={serial.current.status.name}
+                    color={serial.current.status.color}
                   />
                 ) : (
                   "—"
@@ -147,7 +148,11 @@ function TimelineRow({
             </span>
           ) : null}
           {event.status ? (
-            <StatusCodeBadge code={event.status.code} name={event.status.name} />
+            <StatusCodeBadge
+              code={event.status.code}
+              name={event.status.name}
+              color={event.status.color}
+            />
           ) : null}
         </div>
         {event.detail ? (

@@ -51,6 +51,7 @@ export async function seedReasonStatusesForTenant(
               code: codeDef.code,
               name: codeDef.name,
               sortOrder: codeDef.sortOrder,
+              color: codeDef.color,
               isSystem: true,
             },
             update: {
@@ -58,6 +59,13 @@ export async function seedReasonStatusesForTenant(
               sortOrder: codeDef.sortOrder,
             },
           });
+
+          if (!codeRow.color) {
+            await prisma.reasonStatusCode.update({
+              where: { id: codeRow.id },
+              data: { color: codeDef.color },
+            });
+          }
 
           map[group.category][codeDef.code] = codeRow.id;
         }),

@@ -79,13 +79,9 @@ export function LoginForm() {
     <>
       <LoadingModal
         open={isRedirecting}
+        variant="minimal"
         title="Signing you in"
-        description="Please wait while we verify your credentials and load your workspace."
-        feedItems={[
-          { atSecond: 0, label: "Verifying credentials", hint: "Checking email and password" },
-          { atSecond: 1, label: "Starting your session", hint: "Secure cookie and permissions" },
-          { atSecond: 2, label: "Loading your workspace", hint: "Dashboard and role-based access" },
-        ]}
+        description="Verifying your credentials and loading your workspace."
       />
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">

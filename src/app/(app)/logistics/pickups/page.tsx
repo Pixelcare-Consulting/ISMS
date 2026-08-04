@@ -2,6 +2,10 @@ import {
   getPulloutKpisAction,
   listPulloutsAction,
 } from "@/features/logistics/actions/logistics.actions";
+import {
+  LOGISTICS_PAGE_PERMISSIONS,
+  resolveLogisticsCapabilities,
+} from "@/features/logistics/constants/logistics-permissions";
 import { PulloutKpisStrip } from "@/features/logistics/components/pullout-kpis";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { requireAnyPermission } from "@/lib/auth/permissions";
@@ -13,7 +17,8 @@ interface PickupsPageProps {
 }
 
 export default async function PickupsPage({ searchParams }: PickupsPageProps) {
-  await requireAnyPermission(["logistics.manage", "orders.create", "orders.view"]);
+  const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
+  const capabilities = resolveLogisticsCapabilities(session.user.permissions);
   const params = await searchParams;
   const page = Number(params.page) || 1;
   const limit = parseTablePageSize(params.limit);
@@ -28,7 +33,7 @@ export default async function PickupsPage({ searchParams }: PickupsPageProps) {
         PS creates → TL approves → logistics schedules → branch releases → warehouse validates.
       </SectionPageLead>
       <PulloutKpisStrip kpis={kpis} />
-      <PulloutsPanel pullouts={pullouts} />
+      <PulloutsPanel pullouts={pullouts} capabilities={capabilities} />
     </div>
   );
 }
