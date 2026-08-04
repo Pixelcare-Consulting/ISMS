@@ -141,10 +141,22 @@ export function DeliveriesPanel({
     const { action, id } = pendingConfirm;
     startTransition(async () => {
       if (action === "accept") {
-        await acceptDeliveryAction(id);
-        toast.success("Delivery accepted — DIT moved to Stock");
+        const result = await acceptDeliveryAction(id);
+        if (result.error) {
+          toast.error(result.error);
+          return;
+        }
+        toast.success(
+          result.movedCount
+            ? "Delivery accepted — DIT moved to Stock"
+            : "Delivery accepted",
+        );
       } else {
-        await rejectDeliveryAction(id);
+        const result = await rejectDeliveryAction(id);
+        if (result.error) {
+          toast.error(result.error);
+          return;
+        }
         toast.success("Delivery rejected");
       }
       setPendingConfirm(null);
@@ -326,7 +338,8 @@ export function DeliveriesPanel({
                     {pendingConfirm.orderNumber ? (
                       <> (order {pendingConfirm.orderNumber})</>
                     ) : null}{" "}
-                    at {pendingConfirm.branchName}. DIT inventory will move to Stock.
+                    at {pendingConfirm.branchName}. Linked in-transit units move to
+                    Stock when present.
                   </>
                 )
               ) : null}

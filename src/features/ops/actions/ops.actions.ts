@@ -47,14 +47,15 @@ export async function listOpsBranchOptionsAction() {
 export async function acceptDeliveryAction(deliveryId: string) {
   const session = await requirePermission("inventory.view");
   try {
-    await opsService.acceptDelivery({
+    const delivery = await opsService.acceptDelivery({
       tenantId: session.user.tenantId,
       actorUserId: session.user.id,
       deliveryId,
     });
     revalidatePath("/operations");
     revalidatePath("/inventory");
-    return { success: true };
+    revalidatePath("/logistics/deliveries");
+    return { success: true as const, movedCount: delivery.movedCount };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to accept delivery" };
   }

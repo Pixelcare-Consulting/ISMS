@@ -1,75 +1,81 @@
-import { Badge } from "@/components/ui/badge";
-import { cn } from "@/utils/cn";
+import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
+import type { SaleStatusCodeRef } from "@/features/sales/actions/sales.actions";
 
-const ATR_LABELS: Record<string, string> = {
-  open: "Open",
-  reserve: "Reserve",
-  closed: "Closed",
+/** Fallback when Settings sales_atr codes are not loaded (e.g. unused badge paths). */
+const ATR_STATUS_FALLBACK: Record<string, SaleStatusCodeRef> = {
+  open: { code: "open", name: "Open", color: "sky" },
+  reserve: { code: "reserve", name: "Reserve", color: "amber" },
+  closed: { code: "closed", name: "Closed", color: "slate" },
 };
 
-const ATR_VARIANTS: Record<string, string> = {
-  open: "border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-300",
-  reserve:
-    "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300",
-  closed:
-    "border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300",
-};
-
-const RETURN_LABELS: Record<string, string> = {
-  pending_cs: "Pending CS",
-  pending_tl: "Pending TL",
-  approved: "Approved",
-  rejected: "Rejected",
-  completed: "Completed",
-};
-
-const RETURN_VARIANTS: Record<string, string> = {
-  pending_cs:
-    "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300",
-  pending_tl:
-    "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300",
-  approved:
-    "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300",
-  rejected:
-    "border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300",
-  completed:
-    "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300",
+const RETURN_STATUS_FALLBACK: Record<string, SaleStatusCodeRef> = {
+  pending_cs: { code: "pending_cs", name: "Pending CS", color: "amber" },
+  pending_tl: { code: "pending_tl", name: "Pending TL", color: "amber" },
+  approved: { code: "approved", name: "Approved", color: "emerald" },
+  rejected: { code: "rejected", name: "Rejected", color: "rose" },
+  completed: { code: "completed", name: "Completed", color: "emerald" },
 };
 
 interface AtrStatusBadgeProps {
   status: string;
+  /** Prefer Settings-resolved display from getSaleDetailsAction / listSalesAction. */
+  statusCode?: SaleStatusCodeRef | null;
   className?: string;
 }
 
-export function AtrStatusBadge({ status, className }: AtrStatusBadgeProps) {
-  const label = ATR_LABELS[status] ?? status;
-  const variant =
-    ATR_VARIANTS[status] ?? "border-border bg-background text-foreground";
+export function AtrStatusBadge({
+  status,
+  statusCode,
+  className,
+}: AtrStatusBadgeProps) {
+  const resolved =
+    statusCode ??
+    ATR_STATUS_FALLBACK[status] ?? {
+      code: status,
+      name: status,
+      color: null,
+    };
 
   return (
-    <Badge variant="outline" className={cn("font-medium", variant, className)}>
-      {label}
-    </Badge>
+    <StatusCodeBadge
+      code={resolved.code}
+      name={resolved.name}
+      color={resolved.color}
+      className={className}
+    />
   );
 }
 
 interface ReturnStatusBadgeProps {
   status: string | null | undefined;
+  /** Prefer Settings-resolved display from getSaleDetailsAction / listSalesAction. */
+  statusCode?: SaleStatusCodeRef | null;
   className?: string;
 }
 
-export function ReturnStatusBadge({ status, className }: ReturnStatusBadgeProps) {
+export function ReturnStatusBadge({
+  status,
+  statusCode,
+  className,
+}: ReturnStatusBadgeProps) {
   if (!status) {
     return <span className="text-muted-foreground">—</span>;
   }
 
-  const label = RETURN_LABELS[status] ?? status;
-  const variant =
-    RETURN_VARIANTS[status] ?? "border-border bg-background text-foreground";
+  const resolved =
+    statusCode ??
+    RETURN_STATUS_FALLBACK[status] ?? {
+      code: status,
+      name: status.replaceAll("_", " "),
+      color: "amber",
+    };
 
   return (
-    <Badge variant="outline" className={cn("font-medium", variant, className)}>
-      {label}
-    </Badge>
+    <StatusCodeBadge
+      code={resolved.code}
+      name={resolved.name}
+      color={resolved.color}
+      className={className}
+    />
   );
 }

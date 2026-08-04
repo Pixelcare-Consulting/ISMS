@@ -63,11 +63,14 @@ type SerialOption = {
   modelId: string;
 };
 
+type ModelPriceSource = "pricelist" | "srp" | "none";
+
 type DetailSetDraft = {
   modelId: string;
   serialNumberId: string;
   saleAmount: string;
   modelPrice: string;
+  modelPriceSource: ModelPriceSource;
 };
 
 function emptySet(): DetailSetDraft {
@@ -76,6 +79,7 @@ function emptySet(): DetailSetDraft {
     serialNumberId: "",
     saleAmount: "",
     modelPrice: "",
+    modelPriceSource: "none",
   };
 }
 
@@ -155,7 +159,13 @@ export function AddTransactionDetailDialog({
         setSets((prev) =>
           prev.map((s) =>
             s.modelId && !modelRows.some((m) => m.id === s.modelId)
-              ? { ...s, modelId: "", serialNumberId: "" }
+              ? {
+                  ...s,
+                  modelId: "",
+                  serialNumberId: "",
+                  modelPrice: "",
+                  modelPriceSource: "none" as const,
+                }
               : s,
           ),
         );
@@ -185,25 +195,37 @@ export function AddTransactionDetailDialog({
   }
 
   async function onModelChange(index: number, modelId: string) {
-    updateSet(index, { modelId, serialNumberId: "" });
-    if (!modelId) {
-      updateSet(index, { modelPrice: "" });
+    updateSet(index, {
+      modelId,
+      serialNumberId: "",
+      modelPrice: "",
+      modelPriceSource: "none",
+    });
+    if (!modelId) return;
+    if (!packageTypeId) {
+      toast.error("Select a package type before choosing a model");
+      updateSet(index, { modelId: "" });
       return;
     }
     try {
-      const price = await resolveModelPriceForSalesAction({
+      const resolved = await resolveModelPriceForSalesAction({
         modelId,
-        packageTypeId: packageTypeId || undefined,
+        packageTypeId,
       });
-      if (price != null) {
-        updateSet(index, { modelPrice: String(price) });
-      } else {
-        const model = models.find((m) => m.id === modelId);
-        updateSet(index, { modelPrice: model?.srp ?? "" });
+      if (resolved) {
+        updateSet(index, {
+          modelPrice: String(resolved.amount),
+          modelPriceSource: resolved.source,
+        });
+        return;
       }
+      updateSet(index, { modelPrice: "", modelPriceSource: "none" });
     } catch {
       const model = models.find((m) => m.id === modelId);
-      updateSet(index, { modelPrice: model?.srp ?? "" });
+      updateSet(index, {
+        modelPrice: model?.srp ?? "",
+        modelPriceSource: model?.srp ? "srp" : "none",
+      });
     }
   }
 
@@ -392,11 +414,15 @@ export function AddTransactionDetailDialog({
                     value={set.modelId}
                     onChange={(id) => void onModelChange(index, id)}
                     placeholder={
-                      !brandId ? "Select brand first…" : "Select model…"
+                      !packageTypeId
+                        ? "Select package first…"
+                        : !brandId
+                          ? "Select brand first…"
+                          : "Select model…"
                     }
                     searchPlaceholder="Search models…"
                     emptyMessage="No models for this brand."
-                    disabled={loading || !brandId}
+                    disabled={loading || !packageTypeId || !brandId}
                   />
                   <SearchableSelect
                     label="Serial number *"
@@ -443,10 +469,29 @@ export function AddTransactionDetailDialog({
                       step="0.01"
                       value={set.modelPrice}
                       onChange={(e) =>
-                        updateSet(index, { modelPrice: e.target.value })
+                        updateSet(index, {
+                          modelPrice: e.target.value,
+                          modelPriceSource: "none",
+                        })
                       }
                       placeholder="0.00"
+                      readOnly={set.modelPriceSource === "pricelist"}
+                      disabled={set.modelPriceSource === "pricelist"}
+                      className={
+                        set.modelPriceSource === "pricelist"
+                          ? "bg-muted"
+                          : undefined
+                      }
                     />
+                    <p className="text-xs text-muted-foreground">
+                      {set.modelPriceSource === "pricelist"
+                        ? "Filled from the active price list for this model and package."
+                        : set.modelPriceSource === "srp"
+                          ? "No matching price list — using model SRP (you can edit)."
+                          : set.modelId
+                            ? "No price list or SRP for this model — enter a price if needed."
+                            : "Select a model to load the price list amount."}
+                    </p>
                   </div>
                 </div>
               </div>

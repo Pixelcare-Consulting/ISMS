@@ -20,22 +20,19 @@ export const opsService = {
     actorUserId: string;
     deliveryId: string;
   }) {
-    const delivery = await opsRepository.acceptDelivery(
-      input.tenantId,
-      input.deliveryId,
-    );
-
-    const [ditCodeId, stkCodeId] = await Promise.all([
+    const [acceptedCodeId, ditCodeId, stkCodeId] = await Promise.all([
+      reasonStatusService.requireCodeId(input.tenantId, "delivery_workflow", "accepted"),
       reasonStatusService.requireCodeId(input.tenantId, "inventory_system", "DIT"),
       reasonStatusService.requireCodeId(input.tenantId, "inventory_system", "STK"),
     ]);
 
-    await opsRepository.promoteInTransitToStock(
+    const delivery = await opsRepository.acceptDelivery(
       input.tenantId,
-      delivery.branchId,
+      input.deliveryId,
+      input.actorUserId,
+      acceptedCodeId,
       ditCodeId,
       stkCodeId,
-      input.actorUserId,
     );
 
     await auditService.log({
@@ -47,6 +44,7 @@ export const opsService = {
       metadata: {
         deliveryNo: delivery.deliveryNo,
         branchName: delivery.branch.name,
+        movedCount: delivery.movedCount,
         ...(delivery.order ? { orderNumber: delivery.order.orderNumber } : {}),
       },
     });

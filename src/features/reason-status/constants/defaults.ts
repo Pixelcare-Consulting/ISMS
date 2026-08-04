@@ -102,6 +102,23 @@ export const REASON_STATUS_DEFAULTS: ReasonStatusDefaultGroup[] = [
       { code: "cancelled", name: "Cancelled", sortOrder: 11, color: "rose" },
     ],
   },
+  {
+    category: "sales_atr",
+    name: "Sales & ATR",
+    code: "sales_atr",
+    usedIn:
+      "Sales & ATR — return request steps (Pending CS / TL, approved, rejected, completed) and ATR header status (open, reserve, closed).",
+    codes: [
+      { code: "pending_cs", name: "Pending CS", sortOrder: 1, color: "amber" },
+      { code: "pending_tl", name: "Pending TL", sortOrder: 2, color: "amber" },
+      { code: "approved", name: "Approved", sortOrder: 3, color: "emerald" },
+      { code: "rejected", name: "Rejected", sortOrder: 4, color: "rose" },
+      { code: "completed", name: "Completed", sortOrder: 5, color: "emerald" },
+      { code: "open", name: "Open", sortOrder: 6, color: "sky" },
+      { code: "reserve", name: "Reserve", sortOrder: 7, color: "amber" },
+      { code: "closed", name: "Closed", sortOrder: 8, color: "slate" },
+    ],
+  },
 ];
 
 /** Maps legacy Prisma enum values to new inventory_system codes. */
@@ -120,6 +137,7 @@ export const REASON_STATUS_CATEGORY_LABELS: Record<ReasonStatusCategory, string>
   delivery_workflow: "Delivery workflow",
   transfer_workflow: "Transfer workflow",
   pullout_workflow: "Pull-out workflow",
+  sales_atr: "Sales & ATR",
 };
 
 export const REASON_STATUS_CATEGORY_USED_IN: Record<ReasonStatusCategory, string> =

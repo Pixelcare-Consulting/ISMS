@@ -20,6 +20,7 @@ import {
   uploadSaleProofAction,
 } from "@/features/sales/actions/sales.actions";
 import { isToFollowSerial } from "@/features/sales/constants/to-follow-serial";
+import { SALE_PROOF_MAX_FILES } from "@/features/sales/utils/sale-proof";
 import { formatPeso } from "@/utils/format-currency";
 
 interface SalesBranchOption {
@@ -31,6 +32,11 @@ interface LookupOption {
   id: string;
   name: string;
 }
+
+type ProofAttachment = {
+  path: string;
+  name: string;
+};
 
 interface NewSalesTransactionFormProps {
   branches: SalesBranchOption[];
@@ -77,8 +83,8 @@ export function NewSalesTransactionForm({
   const [paymentTypeId, setPaymentTypeId] = useState("");
   const [saleTypeId, setSaleTypeId] = useState("");
   const [customerDeliveryMethodId, setCustomerDeliveryMethodId] = useState("");
-  const [proofPath, setProofPath] = useState<string | null>(null);
-  const [proofName, setProofName] = useState<string | null>(null);
+  const [proofs, setProofs] = useState<ProofAttachment[]>([]);
+  const [proofUploading, setProofUploading] = useState(false);
   const [transactionDate, setTransactionDate] = useState(todayInputValue);
   const [reserved, setReserved] = useState(false);
   const [details, setDetails] = useState<DraftSaleDetail[]>([]);
@@ -139,22 +145,48 @@ export function NewSalesTransactionForm({
     setAlternateBranchId("");
   }
 
-  async function onProofSelected(file: File | null) {
-    if (!file) {
-      setProofPath(null);
-      setProofName(null);
+  async function onProofsSelected(fileList: FileList | null) {
+    if (!fileList?.length) return;
+
+    const remaining = SALE_PROOF_MAX_FILES - proofs.length;
+    if (remaining <= 0) {
+      toast.error(`You can attach up to ${SALE_PROOF_MAX_FILES} proof files`);
       return;
     }
-    const formData = new FormData();
-    formData.set("proof", file);
-    const result = await uploadSaleProofAction(formData);
-    if (result.error || !("path" in result) || !result.path) {
-      toast.error(result.error ?? "Failed to upload proof");
-      return;
+
+    const selected = Array.from(fileList).slice(0, remaining);
+    if (fileList.length > remaining) {
+      toast.message(`Only ${remaining} more file${remaining === 1 ? "" : "s"} can be added`);
     }
-    setProofPath(result.path);
-    setProofName(file.name);
-    toast.success("Proof uploaded");
+
+    setProofUploading(true);
+    try {
+      const formData = new FormData();
+      for (const file of selected) {
+        formData.append("proof", file);
+      }
+      const result = await uploadSaleProofAction(formData);
+      if (result.error || !("paths" in result) || !result.paths?.length) {
+        toast.error(result.error ?? "Failed to upload proof");
+        return;
+      }
+      const uploaded = result.paths.map((path, index) => ({
+        path,
+        name: selected[index]?.name ?? path.split("/").pop() ?? "proof",
+      }));
+      setProofs((prev) => [...prev, ...uploaded]);
+      toast.success(
+        uploaded.length === 1
+          ? "Proof uploaded"
+          : `${uploaded.length} proof files uploaded`,
+      );
+    } finally {
+      setProofUploading(false);
+    }
+  }
+
+  function removeProof(path: string) {
+    setProofs((prev) => prev.filter((p) => p.path !== path));
   }
 
   function submit() {
@@ -207,7 +239,7 @@ export function NewSalesTransactionForm({
         customerDeliveryMethodId,
         infoSlipVsoRrReleased: infoSlipVsoRrReleased.trim() || undefined,
         rrReceiveDeliver: rrReceiveDeliver.trim() || undefined,
-        proof: proofPath ?? undefined,
+        proof: proofs.length > 0 ? proofs.map((p) => p.path) : undefined,
         transactionDate: transactionDate || undefined,
         reserved,
         details: details.map((d) => ({
@@ -283,8 +315,9 @@ export function NewSalesTransactionForm({
                 setAlternateBranchId(id);
                 setDetails([]);
               }}
-              placeholder={branchId ? "Select stock source…" : "Select branch sold first…"}
-              searchPlaceholder="Search stock sources…"
+              placeholder={branchId ? "Select branch with stock…" : "Select branch sold first…"}
+              searchPlaceholder="Search branches with stock…"
+              emptyMessage="No sellable stock in your area."
               disabled={!branchId || stockSources.length === 0}
             />
           </div>
@@ -372,13 +405,41 @@ export function NewSalesTransactionForm({
               id="sale-proof"
               type="file"
               accept="image/*,.pdf"
+              multiple
+              disabled={proofUploading || proofs.length >= SALE_PROOF_MAX_FILES}
               onChange={(e) => {
-                const file = e.target.files?.[0] ?? null;
-                void onProofSelected(file);
+                const files = e.target.files;
+                void onProofsSelected(files);
+                e.target.value = "";
               }}
             />
-            {proofName ? (
-              <p className="text-xs text-muted-foreground">Uploaded: {proofName}</p>
+            <p className="text-xs text-muted-foreground">
+              You can attach up to {SALE_PROOF_MAX_FILES} images or PDFs
+              {proofs.length > 0 ? ` · ${proofs.length} attached` : ""}.
+            </p>
+            {proofs.length > 0 ? (
+              <ul className="space-y-1.5">
+                {proofs.map((proof) => (
+                  <li
+                    key={proof.path}
+                    className="flex items-center justify-between gap-2 rounded-md border px-2 py-1.5 text-xs"
+                  >
+                    <span className="min-w-0 truncate" title={proof.name}>
+                      {proof.name}
+                    </span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      disabled={proofUploading || pending}
+                      onClick={() => removeProof(proof.path)}
+                      aria-label={`Remove ${proof.name}`}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
             ) : null}
           </div>
           <div className="flex items-end">

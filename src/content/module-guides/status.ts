@@ -5,7 +5,7 @@ import type { ModuleGuideContent } from "@/content/module-guides/types";
 
 const STATUS_TIPS: ModuleGuideContent["tips"] = [
   { label: "System codes stay — deactivate instead of delete" },
-  { label: "Badge colors show on Inventory and Logistics" },
+  { label: "Badge colors show on Inventory, Logistics, and Sales" },
 ];
 
 /** Per-category Module Guide copy for Status settings tabs. */
