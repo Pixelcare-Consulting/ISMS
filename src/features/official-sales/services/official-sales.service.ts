@@ -3,15 +3,17 @@ import {
   officialSalesRepository,
   type OfficialSalesRowCreateInput,
 } from "@/features/official-sales/repositories/official-sales.repository";
+import { buildOfficialSalesTemplateWorkbook } from "@/features/official-sales/services/official-sales.workbook";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { prisma } from "@/lib/database/client";
 import * as XLSX from "xlsx";
 
+/** Strip punctuation/spaces so "SI/TRANS NO." and "DR NO." match aliases. */
 function normalizeHeader(value: unknown): string {
   return String(value ?? "")
     .trim()
     .toLowerCase()
-    .replace(/[\s_-]+/g, "");
+    .replace(/[^a-z0-9]+/g, "");
 }
 
 function pickColumn(
@@ -22,9 +24,22 @@ function pickColumn(
   for (const alias of aliases) {
     const want = normalizeHeader(alias);
     const hit = entries.find(([key]) => normalizeHeader(key) === want);
-    if (hit) return hit[1];
+    if (hit) {
+      const value = hit[1];
+      if (value != null && value !== "") return value;
+    }
   }
   return undefined;
+}
+
+function pickOptionalText(
+  row: Record<string, unknown>,
+  aliases: string[],
+): string | null {
+  const raw = pickColumn(row, aliases);
+  if (raw == null || raw === "") return null;
+  const text = String(raw).trim();
+  return text.length > 0 ? text : null;
 }
 
 function parseDrDate(value: unknown): Date | null {
@@ -48,6 +63,15 @@ function parseDrDate(value: unknown): Date | null {
     return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
   }
   return null;
+}
+
+function parseSaleAmount(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const text = String(value).trim().replace(/,/g, "");
+  if (!text) return null;
+  const n = Number(text);
+  return Number.isFinite(n) ? n : null;
 }
 
 function normalizeAction(value: unknown): string | null {
@@ -78,45 +102,67 @@ function parseUploadBuffer(buffer: ArrayBuffer | Buffer): OfficialSalesRowCreate
       const serial = String(
         pickColumn(row, ["serial number", "serialnumber", "serial", "serialno", "sn"]) ?? "",
       ).trim();
+
+      // Prefer SI/TRANS NO. over DR NO. / Trans # (empty preferred falls through).
       const drNoRaw = pickColumn(row, [
+        "si/trans no.",
+        "si/trans no",
+        "sitransno",
+        "si trans no",
         "trans #",
         "trans#",
         "transno",
         "transactionno",
+        "dr no.",
+        "dr no",
         "drno",
         "dr number",
         "dr#",
         "deliveryno",
         "delivery no",
       ]);
+
+      // Prefer DATE over DR DATE / Trans Date (empty preferred falls through).
       const drDate = parseDrDate(
         pickColumn(row, [
+          "date",
           "trans date",
           "transdate",
-          "drdate",
           "dr date",
+          "drdate",
           "deliverydate",
-          "date",
         ]),
       );
-      const branchSoldRaw = pickColumn(row, ["branch sold", "branchsold", "branch"]);
-      const action = normalizeAction(pickColumn(row, ["action"]));
+
+      const branchSold = pickOptionalText(row, [
+        "branch name",
+        "branchname",
+        "branch sold",
+        "branchsold",
+        "branch",
+      ]);
+      const action = normalizeAction(
+        pickColumn(row, ["action key", "actionkey", "action"]),
+      );
+
       return {
         serial,
         drDate,
         drNo: drNoRaw == null || drNoRaw === "" ? null : String(drNoRaw).trim(),
-        branchSold:
-          branchSoldRaw == null || branchSoldRaw === ""
-            ? null
-            : String(branchSoldRaw).trim(),
+        branchSold,
         action,
+        dealer: pickOptionalText(row, ["dealer"]),
+        brand: pickOptionalText(row, ["brand"]),
+        itemModel: pickOptionalText(row, ["item/model", "itemmodel", "item model", "model"]),
+        saleAmount: parseSaleAmount(pickColumn(row, ["sale amount", "saleamount", "amount"])),
+        packageName: pickOptionalText(row, ["package", "packagename", "package name"]),
       };
     })
     .filter((row) => row.serial.length > 0);
 
   if (parsed.length === 0) {
     throw new Error(
-      "No rows found. Expected columns: Trans Date, Trans #, Serial Number, Branch Sold, Action (legacy: Serial, DR DATE, DR NO)",
+      "No rows found. Expected columns: DEALER–ACTION KEY (or legacy Trans Date / Serial Number / Action)",
     );
   }
   return parsed;
@@ -209,16 +255,9 @@ export const officialSalesService = {
     return result.count;
   },
 
-  /** Excel template matching Accounting upload columns. */
-  buildTemplate(): Buffer {
-    const sheet = XLSX.utils.aoa_to_sheet([
-      ["Trans Date", "Trans #", "Serial Number", "Branch Sold", "Action"],
-      ["2026-08-04", "DR-0001", "SAMPLE-SERIAL-001", "", "ADD"],
-    ]);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, sheet, "Official Sales");
-    const out = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
-    return Buffer.isBuffer(out) ? out : Buffer.from(out as ArrayBuffer);
+  /** ExcelJS dealer template (DEALER–ACTION KEY with header colors). */
+  async buildTemplate(): Promise<Buffer> {
+    return buildOfficialSalesTemplateWorkbook();
   },
 
   async processRows(tenantId: string, userId: string, rowIds?: string[]) {

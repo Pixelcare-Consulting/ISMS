@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/database/client";
-import type { OfficialSalesImportRowStatus } from "@prisma/client";
+import type { OfficialSalesImportRowStatus, Prisma } from "@prisma/client";
 
 export type OfficialSalesRowCreateInput = {
   serial: string;
@@ -7,6 +7,11 @@ export type OfficialSalesRowCreateInput = {
   drNo: string | null;
   branchSold: string | null;
   action: string | null;
+  dealer: string | null;
+  brand: string | null;
+  itemModel: string | null;
+  saleAmount: Prisma.Decimal | number | string | null;
+  packageName: string | null;
 };
 
 export const officialSalesRepository = {
@@ -47,6 +52,11 @@ export const officialSalesRepository = {
             drNo: row.drNo,
             branchSold: row.branchSold,
             action: row.action,
+            dealer: row.dealer,
+            brand: row.brand,
+            itemModel: row.itemModel,
+            saleAmount: row.saleAmount,
+            packageName: row.packageName,
           })),
         },
       },

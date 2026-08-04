@@ -19,6 +19,12 @@ export async function listOfficialSalesStagingAction() {
     drNo: row.drNo,
     branchSold: row.branchSold,
     action: row.action,
+    dealer: row.dealer,
+    brand: row.brand,
+    itemModel: row.itemModel,
+    saleAmount:
+      row.saleAmount == null ? null : row.saleAmount.toString(),
+    packageName: row.packageName,
     result: row.result,
     status: row.status,
     processedAt: row.processedAt?.toISOString() ?? null,
@@ -69,7 +75,7 @@ export async function clearOfficialSalesTempAction() {
 /** Returns the workbook base64-encoded — server action results must be serializable. */
 export async function downloadOfficialSalesTemplateAction(): Promise<string> {
   await requirePermission("official_sales.manage");
-  const workbook = officialSalesService.buildTemplate();
+  const workbook = await officialSalesService.buildTemplate();
   return workbook.toString("base64");
 }
 

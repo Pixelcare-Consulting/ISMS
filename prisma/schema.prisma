@@ -1301,13 +1301,18 @@ model OfficialSalesImportRow {
   tenantId    String                       @map("tenant_id")
   batchId     String                       @map("batch_id")
   serial      String
-  /** Trans Date (Accounting) — stored as dr_date for compatibility. */
+  /** Preferred DATE, else DR DATE / Trans Date — stored as dr_date for compatibility. */
   drDate      DateTime?                    @map("dr_date") @db.Date
-  /** Trans # (Accounting) — stored as dr_no for compatibility. */
+  /** Preferred SI/TRANS NO., else DR NO. / Trans # — stored as dr_no for compatibility. */
   drNo        String?                      @map("dr_no")
   branchSold  String?                      @map("branch_sold")
   /** ADD | UPD | DEL (display/storage; process still uses inventory status flips). */
   action      String?
+  dealer      String?
+  brand       String?
+  itemModel   String?                      @map("item_model")
+  saleAmount  Decimal?                     @map("sale_amount") @db.Decimal(12, 2)
+  packageName String?                      @map("package_name")
   result      String?
   status      OfficialSalesImportRowStatus @default(pending)
   processedAt DateTime?                    @map("processed_at")

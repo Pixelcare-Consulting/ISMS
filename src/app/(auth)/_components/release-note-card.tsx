@@ -1,6 +1,9 @@
 import { Badge } from "@/components/ui/badge";
 import { type ReleaseChangeType, type ReleaseNote } from "@/content/releases";
-import { formatReleaseDate, formatVersionLabel } from "@/lib/shared/version";
+import {
+  formatReleaseTimestamp,
+  formatVersionLabel,
+} from "@/lib/shared/version";
 import { cn } from "@/utils/cn";
 
 const changeTypeLabels: Record<ReleaseChangeType, string> = {
@@ -9,8 +12,8 @@ const changeTypeLabels: Record<ReleaseChangeType, string> = {
   improvement: "Improvement",
 };
 
-const latestBadgeClassName =
-  "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300";
+const newBadgeClassName =
+  "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/80 dark:text-amber-300";
 
 const changeTypeBadgeClassName: Record<ReleaseChangeType, string> = {
   feature:
@@ -22,25 +25,39 @@ const changeTypeBadgeClassName: Record<ReleaseChangeType, string> = {
 
 interface ReleaseNoteCardProps {
   release: ReleaseNote;
+  /** True for the first (newest) entry in RELEASES — drives the release-level NEW badge. */
   isLatest?: boolean;
 }
 
 export function ReleaseNoteCard({ release, isLatest = false }: ReleaseNoteCardProps) {
+  const releaseTimestamp = formatReleaseTimestamp(
+    release.date,
+    release.releasedAt,
+  );
+  const dateTimeValue = release.releasedAt ?? release.date;
+
   return (
     <article className="space-y-4">
-      <div className="space-y-1">
+      <header className="space-y-1">
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-lg font-semibold">{release.title}</h2>
           {isLatest ? (
-            <Badge variant="outline" className={latestBadgeClassName}>
-              Latest
+            <Badge variant="outline" className={newBadgeClassName}>
+              NEW
             </Badge>
           ) : null}
         </div>
-        <p className="text-sm text-muted-foreground">
-          {formatVersionLabel(release.version)} · {formatReleaseDate(release.date)}
+        <p
+          className="text-sm text-muted-foreground"
+          title={dateTimeValue}
+        >
+          <span className="font-medium text-foreground/80">
+            {formatVersionLabel(release.version)}
+          </span>
+          <span aria-hidden="true"> · </span>
+          <time dateTime={dateTimeValue}>{releaseTimestamp}</time>
         </p>
-      </div>
+      </header>
 
       <ul className="list-disc space-y-2 pl-5 text-sm text-muted-foreground">
         {release.highlights.map((highlight) => (

@@ -44,6 +44,11 @@ export interface OfficialSalesStagingRow {
   drNo: string | null;
   branchSold: string | null;
   action: string | null;
+  dealer: string | null;
+  brand: string | null;
+  itemModel: string | null;
+  saleAmount: string | null;
+  packageName: string | null;
   result: string | null;
   status: "pending" | "success" | "error";
   processedAt: string | null;
@@ -56,7 +61,8 @@ interface OfficialSalesPanelProps {
   canManage: boolean;
 }
 
-const BASE_COL_COUNT = 8;
+/** Index + dealer template columns + Status + Result */
+const BASE_COL_COUNT = 15;
 const XLSX_MIME =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
@@ -81,6 +87,10 @@ function canDeleteStatus(status: OfficialSalesStagingRow["status"]): boolean {
   return status === "pending" || status === "error";
 }
 
+function cellText(value: string | null | undefined): string {
+  return value && value.length > 0 ? value : "—";
+}
+
 export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -92,10 +102,15 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
     () =>
       rows.filter((row) =>
         matchesTableSearch(query, [
-          row.serial,
+          row.dealer ?? "",
+          row.brand ?? "",
+          row.branchSold ?? "",
           row.drDate ?? "",
           row.drNo ?? "",
-          row.branchSold ?? "",
+          row.itemModel ?? "",
+          row.serial,
+          row.saleAmount ?? "",
+          row.packageName ?? "",
           row.action ?? "",
           row.result ?? "",
           row.status,
@@ -117,15 +132,22 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
         rows.map((r) => r.serial),
         rows.map((r) => r.drNo),
         rows.map((r) => r.branchSold),
+        rows.map((r) => r.dealer),
+        rows.map((r) => r.brand),
       ),
     [rows],
   );
 
   const rowSort = useClientTableSort(filtered, {
+    dealer: (r) => r.dealer,
+    brand: (r) => r.brand,
+    branchSold: (r) => r.branchSold,
     drDate: (r) => r.drDate,
     drNo: (r) => r.drNo,
+    itemModel: (r) => r.itemModel,
     serial: (r) => r.serial,
-    branchSold: (r) => r.branchSold,
+    saleAmount: (r) => r.saleAmount,
+    packageName: (r) => r.packageName,
     action: (r) => r.action,
     status: (r) => r.status,
     result: (r) => r.result,
@@ -318,11 +340,18 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
                   />
                 ) : null}
                 <TableIndexHead />
-                <GlobalTableHead {...rowSort.sortProps("drDate")}>Trans Date</GlobalTableHead>
-                <GlobalTableHead {...rowSort.sortProps("drNo")}>Trans #</GlobalTableHead>
-                <GlobalTableHead {...rowSort.sortProps("serial")}>Serial Number</GlobalTableHead>
-                <GlobalTableHead {...rowSort.sortProps("branchSold")}>Branch Sold</GlobalTableHead>
-                <GlobalTableHead {...rowSort.sortProps("action")}>Action</GlobalTableHead>
+                <GlobalTableHead {...rowSort.sortProps("dealer")}>DEALER</GlobalTableHead>
+                <GlobalTableHead {...rowSort.sortProps("brand")}>BRAND</GlobalTableHead>
+                <GlobalTableHead {...rowSort.sortProps("branchSold")}>BRANCH NAME</GlobalTableHead>
+                <GlobalTableHead {...rowSort.sortProps("drDate")}>DR DATE</GlobalTableHead>
+                <GlobalTableHead {...rowSort.sortProps("drNo")}>DR NO.</GlobalTableHead>
+                <GlobalTableHead {...rowSort.sortProps("itemModel")}>ITEM/MODEL</GlobalTableHead>
+                <GlobalTableHead {...rowSort.sortProps("serial")}>SERIAL</GlobalTableHead>
+                <GlobalTableHead {...rowSort.sortProps("saleAmount")}>SALE AMOUNT</GlobalTableHead>
+                <GlobalTableHead {...rowSort.sortProps("drDate")}>DATE</GlobalTableHead>
+                <GlobalTableHead {...rowSort.sortProps("drNo")}>SI/TRANS NO.</GlobalTableHead>
+                <GlobalTableHead {...rowSort.sortProps("packageName")}>PACKAGE</GlobalTableHead>
+                <GlobalTableHead {...rowSort.sortProps("action")}>ACTION KEY</GlobalTableHead>
                 <GlobalTableHead {...rowSort.sortProps("status")}>Status</GlobalTableHead>
                 <GlobalTableHead {...rowSort.sortProps("result")}>Result</GlobalTableHead>
                 {canManage ? (
@@ -363,16 +392,23 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
                         />
                       ) : null}
                       <TableIndexCell index={indexOffset + index + 1} />
-                      <TableCell className="tabular-nums">{row.drDate ?? "—"}</TableCell>
-                      <TableCell>{row.drNo ?? "—"}</TableCell>
+                      <TableCell>{cellText(row.dealer)}</TableCell>
+                      <TableCell>{cellText(row.brand)}</TableCell>
+                      <TableCell>{cellText(row.branchSold)}</TableCell>
+                      <TableCell className="tabular-nums">{cellText(row.drDate)}</TableCell>
+                      <TableCell>{cellText(row.drNo)}</TableCell>
+                      <TableCell>{cellText(row.itemModel)}</TableCell>
                       <TableCell className="font-mono text-sm">{row.serial}</TableCell>
-                      <TableCell>{row.branchSold ?? "—"}</TableCell>
-                      <TableCell className="text-xs uppercase">{row.action ?? "—"}</TableCell>
+                      <TableCell className="tabular-nums">{cellText(row.saleAmount)}</TableCell>
+                      <TableCell className="tabular-nums">{cellText(row.drDate)}</TableCell>
+                      <TableCell>{cellText(row.drNo)}</TableCell>
+                      <TableCell>{cellText(row.packageName)}</TableCell>
+                      <TableCell className="text-xs uppercase">{cellText(row.action)}</TableCell>
                       <TableCell>
                         <span className="text-xs uppercase text-muted-foreground">{row.status}</span>
                       </TableCell>
                       <TableCell className="max-w-xs text-sm text-muted-foreground">
-                        {row.result ?? "—"}
+                        {cellText(row.result)}
                       </TableCell>
                       {canManage ? (
                         <TableCell className="text-right">
