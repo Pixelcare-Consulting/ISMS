@@ -14,8 +14,13 @@ import {
   TableIndexCell,
   TableIndexHead,
   uniqueSearchSuggestions,
+  useClientTablePagination,
 } from "@/components/data-table";
-import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
+import {
+  GlobalDataTable,
+  GlobalTableHead,
+  useClientTableSort,
+} from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import {
   TableBody,
@@ -80,6 +85,19 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
     drNo: (r) => r.drNo,
     status: (r) => r.status,
     result: (r) => r.result,
+  });
+
+  const {
+    page,
+    setPage,
+    pageSize,
+    setPageSize,
+    total,
+    totalPages,
+    pageItems,
+    indexOffset,
+  } = useClientTablePagination(rowSort.sorted, {
+    resetKey: `${query}:${rowSort.sortKey}:${rowSort.sortDir}`,
   });
 
   function onUpload(fileList: FileList | null) {
@@ -162,6 +180,18 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
           </>
         ) : null
       }
+      pageSize={{ value: pageSize, onChange: setPageSize }}
+      pagination={
+        rows.length > 0
+          ? {
+              total,
+              page,
+              totalPages,
+              itemLabel: "row",
+              onPageChange: setPage,
+            }
+          : undefined
+      }
       footer={
         rows.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">
@@ -178,17 +208,17 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
               <GlobalTableHead {...rowSort.sortProps("serial")}>Serial</GlobalTableHead>
               <GlobalTableHead {...rowSort.sortProps("drDate")}>DR DATE</GlobalTableHead>
               <GlobalTableHead {...rowSort.sortProps("drNo")}>DR NO</GlobalTableHead>
-              <GlobalTableHead>ACTION</GlobalTableHead>
+              <GlobalTableHead {...rowSort.sortProps("status")}>ACTION</GlobalTableHead>
               <GlobalTableHead {...rowSort.sortProps("result")}>RESULT</GlobalTableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rowSort.sorted.length === 0 ? (
+            {filtered.length === 0 ? (
               <TableEmptyRow colSpan={COL_COUNT} message="No results match your search." />
             ) : (
-              rowSort.sorted.map((row, index) => (
+              pageItems.map((row, index) => (
                 <TableRow key={row.id} className={cn(index % 2 === 1 && "bg-table-stripe")}>
-                  <TableIndexCell index={index + 1} />
+                  <TableIndexCell index={indexOffset + index + 1} />
                   <TableCell className="font-mono text-sm">{row.serial}</TableCell>
                   <TableCell className="tabular-nums">{row.drDate ?? "—"}</TableCell>
                   <TableCell>{row.drNo ?? "—"}</TableCell>

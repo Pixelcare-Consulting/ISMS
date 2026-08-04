@@ -32,8 +32,9 @@ export const RELEASES: ReleaseNote[] = [
   {
     version: "0.13.29",
     date: "2026-08-04",
-    title: "Sales encode, ATR status, and smoother orders",
+    title: "Sales encode, ATR status, sortable tables, and smoother orders",
     highlights: [
+      "Click a column header on most list tables to sort ascending or descending — arrows show which column is active",
       "Customize Sales & ATR return badge names and colors in Status settings",
       "Sales list shows one row per serial with clear status badges (including TO FOLLOW)",
       "When editing a sale serial, only stock units for that product model appear (plus TO FOLLOW)",
@@ -45,6 +46,16 @@ export const RELEASES: ReleaseNote[] = [
       "Orders and Logistics only show actions for your step; View details is always available",
     ],
     changes: [
+      {
+        type: "feature",
+        description:
+          "List tables across Inventory, Orders, Sales, Logistics, Settings, Audit, and more support Asc/Desc sorting from the column headers",
+      },
+      {
+        type: "feature",
+        description:
+          "Sales encode offers TO-FOLLOW when a serial is not available yet; use Edit on the sale row later to set or change the serial",
+      },
       {
         type: "feature",
         description:

@@ -55,22 +55,15 @@ interface PlanningPanelProps {
   gapsResult: {
     items: {
       id: string;
-
       gapQty: number;
-
       planogramMax: number;
-
       currentStock: number;
-
       branch: { name: string };
-
       model: { skuCode: string; name: string };
     }[];
-
     total: number;
-
     page: number;
-
+    limit: number;
     totalPages: number;
   };
 

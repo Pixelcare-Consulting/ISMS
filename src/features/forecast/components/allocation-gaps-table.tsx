@@ -6,8 +6,16 @@ import { useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DEFAULT_TABLE_PAGE_SIZE,
+  parseTablePageSize,
+  type TablePageSize,
+} from "@/components/data-table/table-page-size";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
-import { uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
+import {
+  TableSearchBar,
+  uniqueSearchSuggestions,
+} from "@/components/data-table/table-search-bar";
 import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SearchableSelect } from "@/components/ui/searchable-select";
@@ -16,9 +24,7 @@ import {
   TableCell,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
-
-export interface AllocationGapRow {
+} from "@/components/ui/table";export interface AllocationGapRow {
   id: string;
   gapQty: number;
   planogramMax: number;
@@ -32,6 +38,7 @@ interface AllocationGapsFilters {
   q?: string;
   sort?: string;
   dir?: string;
+  limit?: number;
 }
 
 type AllocationGapSortField = "branch" | "sku" | "currentStock" | "planogramMax" | "gapQty";
@@ -44,6 +51,7 @@ interface AllocationGapsTableProps {
     items: AllocationGapRow[];
     total: number;
     page: number;
+    limit: number;
     totalPages: number;
   };
   branches: { id: string; name: string }[];
@@ -81,6 +89,10 @@ function buildAllocationGapsHref(
   if (filters.sort && filters.dir) params.set("dir", filters.dir);
   else params.delete("dir");
 
+  const limit = parseTablePageSize(filters.limit);
+  if (limit !== DEFAULT_TABLE_PAGE_SIZE) params.set("limit", String(limit));
+  else params.delete("limit");
+
   const qs = params.toString();
   return qs ? `${basePath}?${qs}` : basePath;
 }
@@ -108,18 +120,32 @@ export function AllocationGapsTable({
   const sortDir = (
     (searchParams.get("dir") ?? initialSortDir) === "asc" ? "asc" : "desc"
   ) as AllocationGapSortDir;
+  const pageSize = parseTablePageSize(
+    searchParams.get("limit") ?? result.limit,
+  );
+  const indexOffset = (result.page - 1) * pageSize;
 
   const suggestions = useMemo(
     () =>
       uniqueSearchSuggestions(
+        branches.map((b) => b.name),
         result.items.map((item) => item.branch.name),
         result.items.map((item) => item.model.skuCode),
         result.items.map((item) => item.model.name),
       ),
-    [result.items],
+    [branches, result.items],
   );
 
   const hasActiveFilters = Boolean(currentBranch || currentQ);
+  const showClear = hasActiveFilters || Boolean(branch || q.trim());
+
+  const activeFilters = {
+    branch: currentBranch,
+    q: currentQ,
+    sort: sort || undefined,
+    dir: sort ? sortDir : undefined,
+    limit: pageSize,
+  };
 
   function applyFilters() {
     router.push(
@@ -132,6 +158,7 @@ export function AllocationGapsTable({
           q: q.trim() || undefined,
           sort: sort || undefined,
           dir: sort ? sortDir : undefined,
+          limit: pageSize,
         },
         preserveParams,
       ),
@@ -141,7 +168,33 @@ export function AllocationGapsTable({
   function clearFilters() {
     setBranch("");
     setQ("");
-    router.push(buildAllocationGapsHref(basePath, 1, pageParam, {}, preserveParams));
+    router.push(
+      buildAllocationGapsHref(
+        basePath,
+        1,
+        pageParam,
+        { limit: pageSize },
+        preserveParams,
+      ),
+    );
+  }
+
+  function handlePageSizeChange(limit: TablePageSize) {
+    router.push(
+      buildAllocationGapsHref(
+        basePath,
+        1,
+        pageParam,
+        {
+          branch: currentBranch,
+          q: currentQ,
+          sort: sort || undefined,
+          dir: sort ? sortDir : undefined,
+          limit,
+        },
+        preserveParams,
+      ),
+    );
   }
 
   function toggleSort(field: AllocationGapSortField) {
@@ -151,7 +204,13 @@ export function AllocationGapsTable({
         basePath,
         1,
         pageParam,
-        { branch: currentBranch, q: currentQ, sort: next.sort, dir: next.dir },
+        {
+          branch: currentBranch,
+          q: currentQ,
+          sort: next.sort,
+          dir: next.dir,
+          limit: pageSize,
+        },
         preserveParams,
       ),
     );
@@ -160,33 +219,45 @@ export function AllocationGapsTable({
   return (
       <GlobalDataTable
         stickyHeader
+        pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
         toolbarLeading={
-          <>
-            <span className="text-sm font-medium">Allocation gaps</span>
-            {result.total > 0 ? (
-              <Badge variant="outline" className="text-amber-600">
-                {result.total} SKU gap{result.total === 1 ? "" : "s"}
-              </Badge>
-            ) : null}
-            <SearchableSelect
-              label="Branch"
-              id="gaps-branch"
-              options={[
-                { id: "all", label: "All branches" },
-                ...branches.map((b) => ({ id: b.id, label: b.name })),
-              ]}
-              value={branch || "all"}
-              onChange={(value) => setBranch(value === "all" ? "" : value)}
-              searchPlaceholder="Search branches…"
+          <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="flex shrink-0 items-center gap-2">
+              <span className="whitespace-nowrap text-sm font-medium text-muted-foreground">
+                Branch
+              </span>
+              <SearchableSelect
+                id="gaps-branch"
+                className="w-52"
+                options={[
+                  { id: "all", label: "All branches" },
+                  ...branches.map((b) => ({ id: b.id, label: b.name })),
+                ]}
+                value={branch || "all"}
+                onChange={(value) => setBranch(value === "all" ? "" : value)}
+                placeholder="All branches"
+                searchPlaceholder="Search branches…"
+              />
+            </div>
+            <TableSearchBar
+              value={q}
+              onChange={setQ}
+              placeholder="Search Branch or SKU…"
+              suggestions={suggestions}
+              className="w-full sm:max-w-sm"
             />
-          </>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button type="button" size="sm" onClick={applyFilters}>
+                Apply
+              </Button>
+              {showClear ? (
+                <Button type="button" size="sm" variant="outline" onClick={clearFilters}>
+                  Clear
+                </Button>
+              ) : null}
+            </div>
+          </div>
         }
-        search={{
-          value: q,
-          onChange: setQ,
-          placeholder: "Branch or SKU…",
-          suggestions,
-        }}
         toolbarActions={
           <>
             {selection.selectedCount > 0 ? (
@@ -194,13 +265,11 @@ export function AllocationGapsTable({
                 {selection.selectedCount} selected
               </Button>
             ) : null}
-            <Button type="button" size="sm" onClick={applyFilters}>
-              Apply
-            </Button>
-            {hasActiveFilters ? (
-              <Button type="button" size="sm" variant="outline" onClick={clearFilters}>
-                Clear
-              </Button>
+            <span className="text-sm font-medium">Allocation gaps</span>
+            {result.total > 0 ? (
+              <Badge variant="outline" className="text-amber-600">
+                {result.total} SKU gap{result.total === 1 ? "" : "s"}
+              </Badge>
             ) : null}
           </>
         }
@@ -211,7 +280,15 @@ export function AllocationGapsTable({
             <p className="border-b px-4 py-2 text-xs text-muted-foreground">
               Filtered results.
               <Button variant="link" className="ml-1 h-auto p-0 text-xs" asChild>
-                <Link href={buildAllocationGapsHref(basePath, 1, pageParam, {}, preserveParams)}>
+                <Link
+                  href={buildAllocationGapsHref(
+                    basePath,
+                    1,
+                    pageParam,
+                    { limit: pageSize },
+                    preserveParams,
+                  )}
+                >
                   Show all gaps
                 </Link>
               </Button>
@@ -228,7 +305,7 @@ export function AllocationGapsTable({
               basePath,
               page,
               pageParam,
-              { branch: currentBranch, q: currentQ, sort: sort || undefined, dir: sort ? sortDir : undefined },
+              activeFilters,
               preserveParams,
             ),
         }}
@@ -299,7 +376,9 @@ export function AllocationGapsTable({
                       aria-label={`Select gap ${g.model.skuCode}`}
                     />
                   </TableCell>
-                  <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
+                  <TableCell className="tabular-nums text-muted-foreground">
+                    {indexOffset + index + 1}
+                  </TableCell>
                   <TableCell>{g.branch.name}</TableCell>
                   <TableCell className="font-mono text-sm">{g.model.skuCode}</TableCell>
                   {showStockColumns ? (
