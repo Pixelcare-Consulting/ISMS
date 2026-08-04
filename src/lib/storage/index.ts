@@ -1,11 +1,16 @@
 import { localFsStorage } from "@/lib/storage/local-fs";
+import { supabaseStorage } from "@/lib/storage/supabase-storage";
 import type { ObjectStorage } from "@/lib/storage/types";
 
 export const POLICY_DOCUMENTS_PREFIX = "policy-documents";
 export const AUDIT_ARCHIVES_PREFIX = "audit-archives";
 
 export function getObjectStorage(): ObjectStorage {
-  return localFsStorage;
+  // Vercel's deployed functions have a read-only filesystem (aside from /tmp,
+  // which isn't shared across invocations), so local-fs storage only works
+  // outside of Vercel (local dev, Docker). Fall back to Supabase Storage
+  // there instead — temporary until the app moves off serverless.
+  return process.env.VERCEL ? supabaseStorage : localFsStorage;
 }
 
 export function buildPolicyAttachmentPath(input: {
