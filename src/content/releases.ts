@@ -32,16 +32,28 @@ export const RELEASES: ReleaseNote[] = [
   {
     version: "0.13.25",
     date: "2026-08-04",
-    title: "Sales encode, ATR status, and smoother orders",
+    title: "Sales encode, ATR status, sortable tables, and smoother orders",
     highlights: [
+      "Click a column header on most list tables to sort ascending or descending — arrows show which column is active",
       "Customize Sales & ATR return badge names and colors in Status settings",
       "Sales list shows one row per serial with clear status badges (including TO FOLLOW)",
+      "When encoding a sale, pick TO-FOLLOW if the serial is not ready yet, then Edit later to assign the real serial",
       "Review multiple sale proofs in a preview window — images and PDFs side by side",
       "Attach multiple proof files on a sale and type the transaction number from your invoice",
       "Sales encode and returns are reliable again — TO FOLLOW saves, model price fills from the price list, and return status shows Pending CS",
       "Orders and Logistics only show actions for your step; View details is always available",
     ],
     changes: [
+      {
+        type: "feature",
+        description:
+          "List tables across Inventory, Orders, Sales, Logistics, Settings, Audit, and more support Asc/Desc sorting from the column headers",
+      },
+      {
+        type: "feature",
+        description:
+          "Sales encode offers TO-FOLLOW when a serial is not available yet; use Edit on the sale row later to set or change the serial",
+      },
       {
         type: "feature",
         description:

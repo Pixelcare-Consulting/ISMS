@@ -8,6 +8,7 @@ import {
 } from "@/features/forecast/actions/forecast.actions";
 import { forecastService } from "@/features/forecast/services/forecast.service";
 import { ModuleGuide } from "@/components/module-guide";
+import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { requireAnyPermission } from "@/lib/auth/permissions";
 import { PLANNING_MODULE_GUIDE } from "@/content/module-guides/planning";
 import { PLANNING_PAGE_TUTORIAL } from "@/content/page-tutorials/planning";
@@ -18,6 +19,7 @@ import { Button } from "@/components/ui/button";
 interface PlanningPageProps {
   searchParams: Promise<{
     page?: string;
+    limit?: string;
     branch?: string;
     q?: string;
     sort?: string;
@@ -30,6 +32,7 @@ export default async function PlanningPage({ searchParams }: PlanningPageProps) 
 
   const params = await searchParams;
   const gapPage = Number(params.page) || 1;
+  const gapLimit = parseTablePageSize(params.limit);
 
   const dashboard = await getPlanningDashboardAction();
   const period = dashboard.period;
@@ -39,6 +42,7 @@ export default async function PlanningPage({ searchParams }: PlanningPageProps) 
         listPlanningTargetsAction(period.id),
         listAllocationGapsAction(period.id, {
           page: gapPage,
+          limit: gapLimit,
           branchId: params.branch,
           q: params.q,
           sort: params.sort,
@@ -46,7 +50,7 @@ export default async function PlanningPage({ searchParams }: PlanningPageProps) 
         }),
         listBranchesForPlanningAction(),
       ])
-    : [[], { items: [], total: 0, page: 1, limit: 25, totalPages: 1 }, []];
+    : [[], { items: [], total: 0, page: 1, limit: gapLimit, totalPages: 1 }, []];
 
   const formattedTargets = targets.map((t) => ({
     id: t.id,
@@ -74,6 +78,7 @@ export default async function PlanningPage({ searchParams }: PlanningPageProps) 
     })),
     total: gapsResult.total,
     page: gapsResult.page,
+    limit: gapsResult.limit,
     totalPages: gapsResult.totalPages,
   };
 

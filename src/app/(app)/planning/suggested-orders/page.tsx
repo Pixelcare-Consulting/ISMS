@@ -7,6 +7,7 @@ import {
   listDraftSuggestedOrdersAction,
 } from "@/features/forecast/actions/forecast.actions";
 import { ModuleGuide } from "@/components/module-guide";
+import { parseTablePageSize, DEFAULT_TABLE_PAGE_SIZE } from "@/components/data-table/table-page-size";
 import { requireAnyPermission } from "@/lib/auth/permissions";
 import { SUGGESTED_ORDERS_MODULE_GUIDE } from "@/content/module-guides/planning";
 import { SUGGESTED_ORDERS_PAGE_TUTORIAL } from "@/content/page-tutorials/suggested-orders";
@@ -18,6 +19,7 @@ interface SuggestedOrdersPageProps {
   searchParams: Promise<{
     page?: string;
     gapsPage?: string;
+    limit?: string;
     branch?: string;
     q?: string;
     draftBranch?: string;
@@ -45,6 +47,7 @@ export default async function SuggestedOrdersPage({
   const params = await searchParams;
   const draftPage = Number(params.page) || 1;
   const gapsPage = Number(params.gapsPage) || 1;
+  const gapsLimit = parseTablePageSize(params.limit);
 
   const dashboard = await getPlanningDashboardAction();
 
@@ -59,12 +62,19 @@ export default async function SuggestedOrdersPage({
     dashboard.period != null
       ? listAllocationGapsAction(dashboard.period.id, {
           page: gapsPage,
+          limit: gapsLimit,
           branchId: params.branch,
           q: params.q,
           sort: params.sort,
           sortDir: params.dir,
         })
-      : Promise.resolve({ items: [], total: 0, page: 1, limit: 25, totalPages: 1 }),
+      : Promise.resolve({
+          items: [],
+          total: 0,
+          page: 1,
+          limit: gapsLimit,
+          totalPages: 1,
+        }),
     listBranchesForPlanningAction(),
   ]);
 
@@ -78,6 +88,7 @@ export default async function SuggestedOrdersPage({
 
   const draftsPreserveParams = buildPreserveParams({
     gapsPage: gapsPage > 1 ? String(gapsPage) : undefined,
+    limit: gapsLimit !== DEFAULT_TABLE_PAGE_SIZE ? String(gapsLimit) : undefined,
     branch: params.branch,
     q: params.q,
     sort: params.sort,
@@ -115,6 +126,7 @@ export default async function SuggestedOrdersPage({
           })),
           total: gapsResult.total,
           page: gapsResult.page,
+          limit: gapsResult.limit,
           totalPages: gapsResult.totalPages,
         }}
         branches={branches}

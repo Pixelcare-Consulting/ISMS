@@ -74,13 +74,20 @@ export async function listPlanningTargetsAction(periodId: string) {
 
 export async function listAllocationGapsAction(
   periodId: string,
-  input?: { page?: number; branchId?: string; q?: string; sort?: string; sortDir?: string },
+  input?: {
+    page?: number;
+    limit?: number;
+    branchId?: string;
+    q?: string;
+    sort?: string;
+    sortDir?: string;
+  },
 ) {
   const session = await requireForecastManage();
   return forecastRepository.listAllocationsForPeriodPaginated(
     session.user.tenantId,
     periodId,
-    { page: input?.page },
+    { page: input?.page, limit: input?.limit },
     { branchId: input?.branchId, q: input?.q },
     { field: parseAllocationGapSort(input?.sort), dir: parseSortDir(input?.sortDir) },
   );
