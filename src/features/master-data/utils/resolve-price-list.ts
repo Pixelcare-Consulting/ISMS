@@ -1,6 +1,7 @@
 /** Picks the price-list row that is currently active (periodStart <= today <= periodEnd).
  * Prefers a general row (no packageType) over a package-specific one, then the most recent start.
- * Returns null if no row is active today. */
+ * Returns null if no row is active today.
+ * Sales encode uses a separate server resolver that also falls back to the latest prior period. */
 export function pickActivePriceListRow<T>(
   rows: T[],
   getPeriod: (row: T) => { periodStart: string; periodEnd: string; packageTypeId: string | null },

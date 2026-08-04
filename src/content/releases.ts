@@ -30,20 +30,43 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
-    version: "0.13.25",
+    version: "0.13.27",
     date: "2026-08-04",
-    title: "Sales encode, ATR status, sortable tables, and smoother orders",
+    title: "Service center ops, sales encode polish, and sortable tables",
     highlights: [
+      "New Service menu for service center inventory, sales & returns, orders, deliveries, and pull-outs",
+      "Assign service centers in Areas of responsibility so people only see their sites",
+      "Stock in, sell, order, accept deliveries, and pull out units on the service center ledger",
       "Click a column header on most list tables to sort ascending or descending — arrows show which column is active",
       "Customize Sales & ATR return badge names and colors in Status settings",
       "Sales list shows one row per serial with clear status badges (including TO FOLLOW)",
       "When encoding a sale, pick TO-FOLLOW if the serial is not ready yet, then Edit later to assign the real serial",
       "Review multiple sale proofs in a preview window — images and PDFs side by side",
-      "Attach multiple proof files on a sale and type the transaction number from your invoice",
+      "Model price uses the latest price list when the current period is missing — and stays locked at 0 if none exists",
       "Sales encode and returns are reliable again — TO FOLLOW saves, model price fills from the price list, and return status shows Pending CS",
       "Orders and Logistics only show actions for your step; View details is always available",
     ],
     changes: [
+      {
+        type: "feature",
+        description:
+          "Service menu covers service center inventory, sales with ATR returns, orders, deliveries, and pull-outs",
+      },
+      {
+        type: "feature",
+        description:
+          "Model price falls back to the most recent master price list when today’s period is missing, and stays locked at 0 when no list exists",
+      },
+      {
+        type: "feature",
+        description:
+          "Areas of responsibility can assign service centers so Service screens stay scoped to each person",
+      },
+      {
+        type: "feature",
+        description:
+          "Manual stock-in, sell from STK, order → delivery accept, and pull-outs update service center stock only",
+      },
       {
         type: "feature",
         description:
@@ -127,7 +150,7 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "fix",
         description:
-          "Model price fills from the price list when you pick a model",
+          "Model price fills from the master price list when you pick a model (including the latest prior period when today has no list)",
       },
       {
         type: "fix",

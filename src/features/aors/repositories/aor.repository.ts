@@ -6,6 +6,8 @@ const aorListInclude = {
   branch: { select: { id: true, name: true, sapCode: true } },
   warehouse: { select: { id: true, name: true, code: true } },
   dealer: { select: { id: true, name: true, sapCode: true } },
+  serviceCenter: { select: { id: true, name: true, sapCode: true } },
+  serviceCenterLocation: { select: { id: true, name: true, code: true } },
 } as const;
 
 type AorCreateRow = {
@@ -14,6 +16,8 @@ type AorCreateRow = {
   branchId?: string | null;
   warehouseId?: string | null;
   dealerId?: string | null;
+  serviceCenterId?: string | null;
+  serviceCenterLocationId?: string | null;
 };
 
 export const aorRepository = {
@@ -41,6 +45,8 @@ export const aorRepository = {
       branchId?: string | null;
       warehouseId?: string | null;
       dealerId?: string | null;
+      serviceCenterId?: string | null;
+      serviceCenterLocationId?: string | null;
     },
   ) {
     return prisma.aor.create({
@@ -51,6 +57,8 @@ export const aorRepository = {
         branchId: data.branchId ?? null,
         warehouseId: data.warehouseId ?? null,
         dealerId: data.dealerId ?? null,
+        serviceCenterId: data.serviceCenterId ?? null,
+        serviceCenterLocationId: data.serviceCenterLocationId ?? null,
       },
       include: aorListInclude,
     });
@@ -66,6 +74,8 @@ export const aorRepository = {
         branchId: row.branchId ?? null,
         warehouseId: row.warehouseId ?? null,
         dealerId: row.dealerId ?? null,
+        serviceCenterId: row.serviceCenterId ?? null,
+        serviceCenterLocationId: row.serviceCenterLocationId ?? null,
         createdById: row.createdById ?? null,
       })),
       select: { id: true },
@@ -111,6 +121,13 @@ export const aorRepository = {
     });
   },
 
+  listServiceCenterAorsForUser(tenantId: string, userId: string) {
+    return prisma.aor.findMany({
+      where: { tenantId, userId, serviceCenterId: { not: null } },
+      select: { id: true, serviceCenterId: true, serviceCenterLocationId: true },
+    });
+  },
+
   listBranchAorsForUser(tenantId: string, userId: string) {
     return prisma.aor.findMany({
       where: { tenantId, userId, branchId: { not: null } },
@@ -137,6 +154,17 @@ export const aorRepository = {
     return rows
       .map((row) => row.dealerId)
       .filter((id): id is string => id !== null);
+  },
+
+  async listExistingServiceCenterIds(tenantId: string, userId: string) {
+    const rows = await this.listServiceCenterAorsForUser(tenantId, userId);
+    return [
+      ...new Set(
+        rows
+          .map((row) => row.serviceCenterId)
+          .filter((id): id is string => id !== null),
+      ),
+    ];
   },
 
   listBranchIdsByDealerIds(tenantId: string, dealerIds: string[]) {

@@ -219,6 +219,67 @@ export const appNavigation: NavEntry[] = [
   },
   {
     type: "group",
+    label: "Service",
+    icon: Building2,
+    items: [
+      {
+        href: "/service-centers/inventory",
+        label: "SC Inventory",
+        icon: Package,
+        permission: "service_centers.inventory.view",
+        badge: "new",
+      },
+      {
+        href: "/service-centers/sales",
+        label: "SC Sales",
+        icon: Store,
+        anyPermissions: [
+          "service_centers.sales.view",
+          "service_centers.sales.create",
+          "service_centers.return.request",
+          "service_centers.return.evaluate",
+          "service_centers.return.approve",
+          "service_centers.return.complete",
+        ],
+        badge: "new",
+      },
+      {
+        href: "/service-centers/orders",
+        label: "SC Orders",
+        icon: ShoppingCart,
+        anyPermissions: [
+          "service_centers.orders.view",
+          "service_centers.orders.create",
+          "service_centers.orders.approve",
+        ],
+        badge: "new",
+      },
+      {
+        href: "/service-centers/deliveries",
+        label: "SC Deliveries",
+        icon: Truck,
+        anyPermissions: [
+          "service_centers.logistics.view",
+          "service_centers.logistics.create",
+          "service_centers.logistics.manage",
+        ],
+        badge: "new",
+      },
+      {
+        href: "/service-centers/pullouts",
+        label: "SC Pull-outs",
+        icon: ArrowUpToLine,
+        anyPermissions: [
+          "service_centers.logistics.view",
+          "service_centers.logistics.create",
+          "service_centers.logistics.manage",
+        ],
+        badge: "new",
+      },
+    ],
+  },
+  {
+    type: "group",
     label: "Reports",
     icon: ClipboardList,
     items: [
