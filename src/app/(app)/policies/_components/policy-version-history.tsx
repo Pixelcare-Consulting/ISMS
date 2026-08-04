@@ -7,6 +7,7 @@ import {
   DataTableShell,
 } from "@/components/data-table/data-table-shell";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
+import { GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 import {
   Table,
   TableBody,
@@ -47,6 +48,13 @@ export function PolicyVersionHistory({
   onSelectVersion,
 }: PolicyVersionHistoryProps) {
   const selection = useTableSelection(versions.map((version) => version.id));
+  const sort = useClientTableSort(versions, {
+    version: (row) => row.version,
+    status: (row) => row.status,
+    author: (row) => row.authorName,
+    date: (row) => row.createdAt,
+  });
+
   if (versions.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">No versions recorded yet.</p>
@@ -67,14 +75,14 @@ export function PolicyVersionHistory({
                 />
               </TableHead>
               <TableHead className="w-12">#</TableHead>
-              <TableHead>Version</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Author</TableHead>
-              <TableHead>Date</TableHead>
+              <GlobalTableHead {...sort.sortProps("version")}>Version</GlobalTableHead>
+              <GlobalTableHead {...sort.sortProps("status")}>Status</GlobalTableHead>
+              <GlobalTableHead {...sort.sortProps("author")}>Author</GlobalTableHead>
+              <GlobalTableHead {...sort.sortProps("date")}>Date</GlobalTableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {versions.map((row, index) => (
+            {sort.sorted.map((row, index) => (
               <TableRow
                 key={row.id}
                 className="cursor-pointer"

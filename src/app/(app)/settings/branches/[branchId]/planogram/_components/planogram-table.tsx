@@ -29,6 +29,7 @@ import {
   uniqueSearchSuggestions,
   useTableSelection,
 } from "@/components/data-table";
+import { GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -102,6 +103,17 @@ export function PlanogramTable({
       ),
     [rows, query],
   );
+
+  const sort = useClientTableSort(filtered, {
+    sku: (row) => row.model.skuCode,
+    model: (row) => row.model.name,
+    series: (row) => row.model.series,
+    srp: (row) => row.model.srp,
+    brand: (row) => row.model.brand?.name ?? null,
+    effective: (row) => row.effectiveFrom ?? null,
+    stock: (row) => row.stockCount,
+    mil: (row) => row.daysThreshold,
+  });
 
   const suggestions = useMemo(
     () =>
@@ -240,22 +252,25 @@ export function PlanogramTable({
                   aria-label="Select all planogram rows"
                 />
                 <TableIndexHead />
-                <TableHead>SKU</TableHead>
-                <TableHead>Model</TableHead>
-                <TableHead>Series</TableHead>
-                <TableHead>SRP</TableHead>
-                <TableHead>Brand</TableHead>
-                <TableHead>Effective</TableHead>
-                <TableHead>Stock / Max</TableHead>
-                <TableHead title="Minimum inventory life — alert when oldest stock exceeds this age">
+                <GlobalTableHead {...sort.sortProps("sku")}>SKU</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("model")}>Model</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("series")}>Series</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("srp")}>SRP</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("brand")}>Brand</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("effective")}>Effective</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("stock")}>Stock / Max</GlobalTableHead>
+                <GlobalTableHead
+                  title="Minimum inventory life — alert when oldest stock exceeds this age"
+                  {...sort.sortProps("mil")}
+                >
                   MIL (days)
-                </TableHead>
+                </GlobalTableHead>
                 <TableHead className="w-28">Units</TableHead>
                 {canManage ? <TableHead className="w-24" /> : null}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.length === 0 ? (
+              {sort.sorted.length === 0 ? (
                 <TableEmptyRow
                   colSpan={colCount}
                   message={
@@ -265,7 +280,7 @@ export function PlanogramTable({
                   }
                 />
               ) : (
-                filtered.map((row, index) => (
+                sort.sorted.map((row, index) => (
                   <PlanogramRowEditor
                     key={row.id}
                     index={index}

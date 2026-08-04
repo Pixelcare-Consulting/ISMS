@@ -4,21 +4,25 @@ import { SectionPageLead } from "@/components/navigation/section-page-lead";
 import { SapIntegrationPanel } from "@/app/(app)/settings/sap-integration/_components/sap-integration-panel";
 
 interface SapIntegrationPageProps {
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{ page?: string; sort?: string; dir?: string }>;
 }
 
 export default async function SapIntegrationPage({ searchParams }: SapIntegrationPageProps) {
   await requirePermission("sap.manage");
   const params = await searchParams;
   const page = Number(params.page) || 1;
-  const jobs = await listSapJobsAction({ page });
+  const jobs = await listSapJobsAction({ page, sort: params.sort, sortDir: params.dir });
 
   return (
     <div className="space-y-4">
       <SectionPageLead>
         Outbound jobs with idempotency keys and mock order→SAP→delivery processor.
       </SectionPageLead>
-      <SapIntegrationPanel jobs={jobs} />
+      <SapIntegrationPanel
+        jobs={jobs}
+        initialSort={params.sort ?? ""}
+        initialSortDir={params.dir ?? "desc"}
+      />
     </div>
   );
 }

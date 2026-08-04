@@ -14,6 +14,10 @@ import { aorService } from "@/features/aors/services/aor.service";
 import { branchRepository } from "@/features/branches/repositories/branch.repository";
 import { STOCK_COUNT_PERMISSION_MESSAGE } from "@/features/stock-audit/constants/stock-count-permissions";
 import { stockAuditService } from "@/features/stock-audit/services/stock-audit.service";
+import type {
+  StockCountListSort,
+  StockCountListSortDir,
+} from "@/features/stock-audit/repositories/stock-audit.repository";
 
 const PCOUNT_REPORT_ACCESS = ["reports.view", "inventory.view"] as const;
 
@@ -22,6 +26,24 @@ function isUnrestricted(permissions: string[] | undefined) {
     hasPermission(permissions, "branches.manage") ||
     hasPermission(permissions, "master_data.manage")
   );
+}
+
+const STOCK_COUNT_SORT_FIELDS = new Set<StockCountListSort>([
+  "session",
+  "branch",
+  "status",
+  "createdBy",
+]);
+
+function parseStockCountSort(value?: string): StockCountListSort | undefined {
+  if (value && STOCK_COUNT_SORT_FIELDS.has(value as StockCountListSort)) {
+    return value as StockCountListSort;
+  }
+  return undefined;
+}
+
+function parseStockCountSortDir(value?: string): StockCountListSortDir | undefined {
+  return value === "asc" || value === "desc" ? value : undefined;
 }
 
 /** Soft permission check for client-called manage actions — returns error instead of redirecting. */
@@ -68,6 +90,8 @@ export async function listBranchesForStockCountAction() {
 export async function listStockCountSessionsAction(input?: {
   page?: number;
   limit?: number;
+  sort?: string;
+  sortDir?: string;
 }) {
   const session = await requirePermission("inventory.view");
   const unrestricted = isUnrestricted(session.user.permissions);
@@ -77,6 +101,7 @@ export async function listStockCountSessionsAction(input?: {
     session.user.id,
     unrestricted,
     { page: input?.page, limit },
+    { field: parseStockCountSort(input?.sort), dir: parseStockCountSortDir(input?.sortDir) },
   );
 }
 
@@ -234,6 +259,8 @@ export async function listPcountReportAction(input?: {
   from?: string;
   to?: string;
   page?: number;
+  sort?: string;
+  sortDir?: "asc" | "desc";
 }) {
   const session = await requireAnyPermission([...PCOUNT_REPORT_ACCESS]);
   const unrestricted = isUnrestricted(session.user.permissions);
@@ -246,6 +273,8 @@ export async function listPcountReportAction(input?: {
       from: input?.from ? new Date(input.from) : undefined,
       to: input?.to ? new Date(`${input.to}T23:59:59.999Z`) : undefined,
       page: input?.page,
+      sort: input?.sort,
+      sortDir: input?.sortDir,
     },
   );
 }

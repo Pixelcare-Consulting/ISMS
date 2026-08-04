@@ -62,6 +62,7 @@ yarn-error.log*
 .cursor/
 /.cursor/
 /.cursor/plans/
+.cursor-aor-restore-backup/
 .env.local
 
 # Others

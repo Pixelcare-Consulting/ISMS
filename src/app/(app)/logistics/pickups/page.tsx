@@ -13,7 +13,7 @@ import { SectionPageLead } from "@/components/navigation/section-page-lead";
 import { PulloutsPanel } from "@/app/(app)/logistics/_components/pullouts-panel";
 
 interface PickupsPageProps {
-  searchParams: Promise<{ page?: string; limit?: string }>;
+  searchParams: Promise<{ page?: string; limit?: string; sort?: string; dir?: string }>;
 }
 
 export default async function PickupsPage({ searchParams }: PickupsPageProps) {
@@ -23,7 +23,7 @@ export default async function PickupsPage({ searchParams }: PickupsPageProps) {
   const page = Number(params.page) || 1;
   const limit = parseTablePageSize(params.limit);
   const [pullouts, kpis] = await Promise.all([
-    listPulloutsAction({ page, limit }),
+    listPulloutsAction({ page, limit, sort: params.sort, sortDir: params.dir }),
     getPulloutKpisAction(),
   ]);
 
@@ -33,7 +33,12 @@ export default async function PickupsPage({ searchParams }: PickupsPageProps) {
         PS creates → TL approves → logistics schedules → branch releases → warehouse validates.
       </SectionPageLead>
       <PulloutKpisStrip kpis={kpis} />
-      <PulloutsPanel pullouts={pullouts} capabilities={capabilities} />
+      <PulloutsPanel
+        pullouts={pullouts}
+        capabilities={capabilities}
+        initialSort={params.sort ?? ""}
+        initialSortDir={params.dir ?? "desc"}
+      />
     </div>
   );
 }

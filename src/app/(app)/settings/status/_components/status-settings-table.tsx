@@ -38,7 +38,7 @@ import {
 } from "@/components/data-table";
 import { ModuleGuide } from "@/components/module-guide";
 import { statusModuleGuideForCategory } from "@/content/module-guides/status";
-import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -145,6 +145,13 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
   );
   const activeCodes = activeGroup?.codes ?? [];
   const selection = useTableSelection(activeCodes.map((code) => code.id));
+  const sort = useClientTableSort(activeCodes, {
+    code: (code) => code.code,
+    name: (code) => code.name,
+    color: (code) => resolveStatusColorKey(code.color, code.code),
+    type: (code) => (code.isSystem ? "System" : "Custom"),
+    record: (code) => code.recordStatus,
+  });
   const {
     page,
     setPage,
@@ -154,8 +161,8 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
     totalPages,
     pageItems,
     indexOffset,
-  } = useClientTablePagination(activeCodes, {
-    resetKey: expanded ?? "",
+  } = useClientTablePagination(sort.sorted, {
+    resetKey: `${expanded ?? ""}:${sort.sortKey}:${sort.sortDir}`,
   });
 
   function toggleCodeStatus(code: StatusCodeRow) {
@@ -350,12 +357,12 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
                   aria-label="Select all status codes"
                 />
                 <TableIndexHead />
-                <GlobalTableHead>Code</GlobalTableHead>
-                <GlobalTableHead>Name</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("code")}>Code</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("name")}>Name</GlobalTableHead>
                 <GlobalTableHead>Preview</GlobalTableHead>
-                <GlobalTableHead>Color</GlobalTableHead>
-                <GlobalTableHead>Type</GlobalTableHead>
-                <GlobalTableHead>Record</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("color")}>Color</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("type")}>Type</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("record")}>Record</GlobalTableHead>
                 <GlobalTableHead className="w-28" />
               </TableRow>
             </TableHeader>

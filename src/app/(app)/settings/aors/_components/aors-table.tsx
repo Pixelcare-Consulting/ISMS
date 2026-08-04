@@ -20,7 +20,7 @@ import {
   useClientTablePagination,
   useTableSelection,
 } from "@/components/data-table";
-import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -390,6 +390,12 @@ export function AorsTable({
   );
 
   const selection = useTableSelection(filtered.map((group) => group.userId));
+  const sort = useClientTableSort(filtered, {
+    user: (group) => formatPerson(group.user),
+    branches: (group) => group.aors.filter((aor) => aor.branch).length,
+    assignedAt: (group) => new Date(group.latestCreatedAt),
+    assignedBy: (group) => group.assignedByLabel,
+  });
   const {
     page,
     setPage,
@@ -399,7 +405,9 @@ export function AorsTable({
     totalPages,
     pageItems,
     indexOffset,
-  } = useClientTablePagination(filtered, { resetKey: query });
+  } = useClientTablePagination(sort.sorted, {
+    resetKey: `${query}:${sort.sortKey}:${sort.sortDir}`,
+  });
 
   const canAssign =
     Boolean(userId) &&
@@ -577,10 +585,10 @@ export function AorsTable({
                   aria-label="Select all AOR users"
                 />
                 <TableIndexHead />
-                <GlobalTableHead>User</GlobalTableHead>
-                <GlobalTableHead>Branches</GlobalTableHead>
-                <GlobalTableHead>Assigned at</GlobalTableHead>
-                <GlobalTableHead>Assigned by</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("user")}>User</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("branches")}>Branches</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("assignedAt")}>Assigned at</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("assignedBy")}>Assigned by</GlobalTableHead>
                 <GlobalTableHead className="w-16" />
               </TableRow>
             </TableHeader>

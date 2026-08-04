@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
@@ -21,7 +21,7 @@ import {
 } from "@/components/data-table/table-page-size";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
-import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SearchableSelect } from "@/components/ui/searchable-select";
@@ -61,10 +61,21 @@ interface PulloutRow {
 interface PulloutsPanelProps {
   pullouts: PaginatedList<PulloutRow>;
   capabilities: LogisticsActionCapabilities;
+  initialSort?: string;
+  initialSortDir?: string;
 }
 
-export function PulloutsPanel({ pullouts, capabilities }: PulloutsPanelProps) {
+type PulloutSortField = "pulloutNo" | "branch" | "warehouse" | "reason" | "status";
+type PulloutSortDir = "asc" | "desc";
+
+export function PulloutsPanel({
+  pullouts,
+  capabilities,
+  initialSort = "",
+  initialSortDir = "desc",
+}: PulloutsPanelProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
   const {
@@ -82,9 +93,20 @@ export function PulloutsPanel({ pullouts, capabilities }: PulloutsPanelProps) {
   >([]);
   const [selectedPulloutSerialIds, setSelectedPulloutSerialIds] = useState<string[]>([]);
   const pageSize = parseTablePageSize(pullouts.limit);
+  const sort = (searchParams.get("sort") ?? initialSort) || "";
+  const sortDir = (
+    (searchParams.get("dir") ?? initialSortDir) === "asc" ? "asc" : "desc"
+  ) as PulloutSortDir;
 
   function handlePageSizeChange(limit: TablePageSize) {
-    router.push(buildLogisticsPageHref(LOGISTICS_PICKUPS_PATH, 1, limit));
+    router.push(
+      buildLogisticsPageHref(LOGISTICS_PICKUPS_PATH, 1, limit, sort, sort ? sortDir : undefined),
+    );
+  }
+
+  function toggleSort(field: PulloutSortField) {
+    const next = nextTableSort(field, sort, sortDir);
+    router.push(buildLogisticsPageHref(LOGISTICS_PICKUPS_PATH, 1, pageSize, next.sort, next.dir));
   }
 
   const filtered = useMemo(
@@ -231,7 +253,13 @@ export function PulloutsPanel({ pullouts, capabilities }: PulloutsPanelProps) {
         totalPages: pullouts.totalPages,
         itemLabel: "pull-out",
         buildHref: (page) =>
-          buildLogisticsPageHref(LOGISTICS_PICKUPS_PATH, page, pageSize),
+          buildLogisticsPageHref(
+            LOGISTICS_PICKUPS_PATH,
+            page,
+            pageSize,
+            sort,
+            sort ? sortDir : undefined,
+          ),
       }}
       pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
     >
@@ -245,11 +273,46 @@ export function PulloutsPanel({ pullouts, capabilities }: PulloutsPanelProps) {
                 />
               </GlobalTableHead>
               <TableIndexHead />
-              <GlobalTableHead>No.</GlobalTableHead>
-              <GlobalTableHead>Branch</GlobalTableHead>
-              <GlobalTableHead>Warehouse</GlobalTableHead>
-              <GlobalTableHead>Reason</GlobalTableHead>
-              <GlobalTableHead>Status</GlobalTableHead>
+              <GlobalTableHead
+                sortKey="pulloutNo"
+                activeSortKey={sort}
+                sortDirection={sortDir}
+                onSort={(key) => toggleSort(key as PulloutSortField)}
+              >
+                No.
+              </GlobalTableHead>
+              <GlobalTableHead
+                sortKey="branch"
+                activeSortKey={sort}
+                sortDirection={sortDir}
+                onSort={(key) => toggleSort(key as PulloutSortField)}
+              >
+                Branch
+              </GlobalTableHead>
+              <GlobalTableHead
+                sortKey="warehouse"
+                activeSortKey={sort}
+                sortDirection={sortDir}
+                onSort={(key) => toggleSort(key as PulloutSortField)}
+              >
+                Warehouse
+              </GlobalTableHead>
+              <GlobalTableHead
+                sortKey="reason"
+                activeSortKey={sort}
+                sortDirection={sortDir}
+                onSort={(key) => toggleSort(key as PulloutSortField)}
+              >
+                Reason
+              </GlobalTableHead>
+              <GlobalTableHead
+                sortKey="status"
+                activeSortKey={sort}
+                sortDirection={sortDir}
+                onSort={(key) => toggleSort(key as PulloutSortField)}
+              >
+                Status
+              </GlobalTableHead>
               <GlobalTableHead />
             </TableRow>
           </TableHeader>

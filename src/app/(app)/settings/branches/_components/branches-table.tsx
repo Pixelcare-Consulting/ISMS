@@ -28,7 +28,7 @@ import {
   useClientTablePagination,
   useTableSelection,
 } from "@/components/data-table";
-import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import {
   TableBody,
@@ -94,6 +94,12 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
   );
 
   const selection = useTableSelection(filtered.map((branch) => branch.id));
+  const sort = useClientTableSort(filtered, {
+    sapCode: (b) => b.sapCode,
+    name: (b) => b.name,
+    area: (b) => b.branchArea?.name,
+    status: (b) => b.status,
+  });
   const {
     page,
     setPage,
@@ -103,7 +109,9 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
     totalPages,
     pageItems,
     indexOffset,
-  } = useClientTablePagination(filtered, { resetKey: query });
+  } = useClientTablePagination(sort.sorted, {
+    resetKey: `${query}:${sort.sortKey}:${sort.sortDir}`,
+  });
 
   function handleDelete() {
     if (!deleting) return;
@@ -175,10 +183,10 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
                   aria-label="Select all branches"
                 />
                 <TableIndexHead />
-                <GlobalTableHead>SAP code</GlobalTableHead>
-                <GlobalTableHead>Name</GlobalTableHead>
-                <GlobalTableHead>Area</GlobalTableHead>
-                <GlobalTableHead>Status</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("sapCode")}>SAP code</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("name")}>Name</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("area")}>Area</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("status")}>Status</GlobalTableHead>
                 <GlobalTableHead className="w-32" />
               </TableRow>
             </TableHeader>

@@ -1,7 +1,11 @@
 import { auditService } from "@/features/audit/services/audit.service";
 import { logisticsService } from "@/features/logistics/services/logistics.service";
 import { SAP_REFERENCE_TYPES } from "@/features/sap/constants/sap-job-types";
-import { sapIntegrationRepository } from "@/features/sap/repositories/sap-integration.repository";
+import {
+  sapIntegrationRepository,
+  type SapJobListSort,
+  type SapJobListSortDir,
+} from "@/features/sap/repositories/sap-integration.repository";
 import { prisma } from "@/lib/database/client";
 import type { Prisma, SapIntegrationJob } from "@prisma/client";
 
@@ -158,8 +162,12 @@ async function processStubJob(
 }
 
 export const sapService = {
-  listJobs(tenantId: string, pagination?: { page?: number; status?: string }) {
-    return sapIntegrationRepository.listJobs(tenantId, pagination);
+  listJobs(
+    tenantId: string,
+    pagination?: { page?: number; status?: string },
+    sort?: { field?: SapJobListSort; dir?: SapJobListSortDir },
+  ) {
+    return sapIntegrationRepository.listJobs(tenantId, pagination, sort);
   },
 
   /** CSV step 11 — emit approved order to SAP queue. */

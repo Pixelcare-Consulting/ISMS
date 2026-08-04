@@ -5,6 +5,10 @@ import { aorService } from "@/features/aors/services/aor.service";
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
 import { sapService } from "@/features/sap/services/sap.service";
 import { stockAuditRepository } from "@/features/stock-audit/repositories/stock-audit.repository";
+import type {
+  StockCountListSort,
+  StockCountListSortDir,
+} from "@/features/stock-audit/repositories/stock-audit.repository";
 import {
   STOCK_COUNT_SESSION_LABELS,
   VARIANCE_TYPES,
@@ -36,16 +40,17 @@ export const stockAuditService = {
     userId: string,
     isUnrestricted: boolean,
     pagination?: { page?: number; limit?: number },
+    sort?: { field?: StockCountListSort; dir?: StockCountListSortDir },
   ) {
     const branchIds = isUnrestricted
       ? undefined
       : await aorService.getBranchIdsForUser(tenantId, userId);
 
     if (!isUnrestricted && (!branchIds || branchIds.length === 0)) {
-      return stockAuditRepository.listSessions(tenantId, [], pagination);
+      return stockAuditRepository.listSessions(tenantId, [], pagination, sort);
     }
 
-    return stockAuditRepository.listSessions(tenantId, branchIds, pagination);
+    return stockAuditRepository.listSessions(tenantId, branchIds, pagination, sort);
   },
 
   async getKpis(
@@ -374,17 +379,21 @@ export const stockAuditService = {
       from?: Date;
       to?: Date;
       page?: number;
+      sort?: string;
+      sortDir?: "asc" | "desc";
     },
   ) {
     const branchIds = isUnrestricted
       ? undefined
       : await aorService.getBranchIdsForUser(tenantId, userId);
+    const sort = { field: filters?.sort, dir: filters?.sortDir };
 
     if (!isUnrestricted && (!branchIds || branchIds.length === 0)) {
       return stockAuditRepository.listClosedSessions(
         tenantId,
         { branchIds: [] },
         { page: filters?.page },
+        sort,
       );
     }
 
@@ -397,6 +406,7 @@ export const stockAuditService = {
         to: filters?.to,
       },
       { page: filters?.page },
+      sort,
     );
   },
 };

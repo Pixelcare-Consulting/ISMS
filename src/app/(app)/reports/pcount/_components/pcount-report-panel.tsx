@@ -16,11 +16,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { GlobalTableHead, nextTableSort, type TableSortDirection } from "@/lib/data-table";
 import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
@@ -51,6 +51,8 @@ interface PcountReportPanelProps {
   currentBranchId?: string;
   currentFrom?: string;
   currentTo?: string;
+  currentSort?: string;
+  currentSortDir?: TableSortDirection;
 }
 
 function formatDate(value: Date | string | null | undefined): string {
@@ -62,13 +64,21 @@ function formatDate(value: Date | string | null | undefined): string {
 
 function buildHref(
   page: number,
-  filters: { branchId?: string; from?: string; to?: string },
+  filters: {
+    branchId?: string;
+    from?: string;
+    to?: string;
+    sort?: string;
+    sortDir?: string;
+  },
 ): string {
   const params = new URLSearchParams();
   if (page > 1) params.set("page", String(page));
   if (filters.branchId) params.set("branchId", filters.branchId);
   if (filters.from) params.set("from", filters.from);
   if (filters.to) params.set("to", filters.to);
+  if (filters.sort) params.set("sort", filters.sort);
+  if (filters.sort && filters.sortDir) params.set("dir", filters.sortDir);
   const query = params.toString();
   return query ? `/reports/pcount?${query}` : "/reports/pcount";
 }
@@ -78,6 +88,8 @@ export function PcountReportPanel({
   currentBranchId,
   currentFrom,
   currentTo,
+  currentSort = "",
+  currentSortDir = "desc",
 }: PcountReportPanelProps) {
   const router = useRouter();
   const [branches, setBranches] = useState<{ id: string; name: string }[]>([]);
@@ -90,10 +102,25 @@ export function PcountReportPanel({
     branchId: currentBranchId,
     from: currentFrom,
     to: currentTo,
+    sort: currentSort,
+    sortDir: currentSortDir,
   };
   const hasActiveFilters = Boolean(
     currentBranchId || currentFrom || currentTo,
   );
+
+  function toggleSort(field: string) {
+    const next = nextTableSort(field, currentSort, currentSortDir);
+    router.push(
+      buildHref(1, {
+        branchId: currentBranchId,
+        from: currentFrom,
+        to: currentTo,
+        sort: next.sort,
+        sortDir: next.dir,
+      }),
+    );
+  }
 
   const totalLines = sessions.items.reduce((sum, row) => sum + row.lineCount, 0);
   const totalCounted = sessions.items.reduce(
@@ -213,14 +240,51 @@ export function PcountReportPanel({
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/30 hover:bg-muted/30">
-                    <TableHead className="w-12">#</TableHead>
-                    <TableHead>Session</TableHead>
-                    <TableHead>Branch</TableHead>
-                    <TableHead>Closed</TableHead>
-                    <TableHead className="text-right">Lines</TableHead>
-                    <TableHead className="text-right">Counted</TableHead>
-                    <TableHead className="text-right">Variances</TableHead>
-                    <TableHead>Created by</TableHead>
+                    <GlobalTableHead className="w-12">#</GlobalTableHead>
+                    <GlobalTableHead
+                      sortKey="session"
+                      activeSortKey={currentSort}
+                      sortDirection={currentSortDir}
+                      onSort={toggleSort}
+                    >
+                      Session
+                    </GlobalTableHead>
+                    <GlobalTableHead
+                      sortKey="branch"
+                      activeSortKey={currentSort}
+                      sortDirection={currentSortDir}
+                      onSort={toggleSort}
+                    >
+                      Branch
+                    </GlobalTableHead>
+                    <GlobalTableHead
+                      sortKey="closed"
+                      activeSortKey={currentSort}
+                      sortDirection={currentSortDir}
+                      onSort={toggleSort}
+                    >
+                      Closed
+                    </GlobalTableHead>
+                    <GlobalTableHead
+                      className="text-right"
+                      sortKey="lines"
+                      activeSortKey={currentSort}
+                      sortDirection={currentSortDir}
+                      onSort={toggleSort}
+                    >
+                      Lines
+                    </GlobalTableHead>
+                    <GlobalTableHead className="text-right">Counted</GlobalTableHead>
+                    <GlobalTableHead
+                      className="text-right"
+                      sortKey="variances"
+                      activeSortKey={currentSort}
+                      sortDirection={currentSortDir}
+                      onSort={toggleSort}
+                    >
+                      Variances
+                    </GlobalTableHead>
+                    <GlobalTableHead>Created by</GlobalTableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

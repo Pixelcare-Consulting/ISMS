@@ -13,7 +13,7 @@ import { SectionPageLead } from "@/components/navigation/section-page-lead";
 import { DeliveriesPanel } from "@/app/(app)/logistics/_components/deliveries-panel";
 
 interface DeliveriesPageProps {
-  searchParams: Promise<{ page?: string; limit?: string }>;
+  searchParams: Promise<{ page?: string; limit?: string; sort?: string; dir?: string }>;
 }
 
 export default async function DeliveriesPage({ searchParams }: DeliveriesPageProps) {
@@ -23,7 +23,7 @@ export default async function DeliveriesPage({ searchParams }: DeliveriesPagePro
   const page = Number(params.page) || 1;
   const limit = parseTablePageSize(params.limit);
   const [deliveries, kpis] = await Promise.all([
-    listDeliveriesAction({ page, limit }),
+    listDeliveriesAction({ page, limit, sort: params.sort, sortDir: params.dir }),
     getDeliveryKpisAction(),
   ]);
 
@@ -33,7 +33,12 @@ export default async function DeliveriesPage({ searchParams }: DeliveriesPagePro
         Deliveries sync from approved orders (SAP ITR/SO). Branch PS accepts DIT → Stock.
       </SectionPageLead>
       <DeliveryKpisStrip kpis={kpis} />
-      <DeliveriesPanel deliveries={deliveries} capabilities={capabilities} />
+      <DeliveriesPanel
+        deliveries={deliveries}
+        capabilities={capabilities}
+        initialSort={params.sort ?? ""}
+        initialSortDir={params.dir ?? "desc"}
+      />
     </div>
   );
 }

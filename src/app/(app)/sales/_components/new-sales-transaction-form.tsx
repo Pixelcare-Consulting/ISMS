@@ -19,6 +19,7 @@ import {
   listStockSourceBranchesForSalesAction,
   uploadSaleProofAction,
 } from "@/features/sales/actions/sales.actions";
+import { isToFollowSerial } from "@/features/sales/constants/to-follow-serial";
 import { formatPeso } from "@/utils/format-currency";
 
 interface SalesBranchOption {
@@ -111,8 +112,14 @@ export function NewSalesTransactionForm({
     [details],
   );
 
+  // Exclude TO-FOLLOW so multiple pending lines can reuse the placeholder.
   const usedSerialIds = useMemo(
-    () => new Set(details.map((d) => d.serialNumberId)),
+    () =>
+      new Set(
+        details
+          .map((d) => d.serialNumberId)
+          .filter((id) => !isToFollowSerial(id)),
+      ),
     [details],
   );
 

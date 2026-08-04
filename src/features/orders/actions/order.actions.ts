@@ -4,6 +4,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { orderService } from "@/features/orders/services/order.service";
 import { orderRepository } from "@/features/orders/repositories/order.repository";
+import type {
+  OrderListSort,
+  OrderListSortDir,
+} from "@/features/orders/repositories/order.repository";
 import { branchService } from "@/features/branches/services/branch.service";
 import { branchRepository } from "@/features/branches/repositories/branch.repository";
 import { dealerRepository } from "@/features/dealers/repositories/dealer.repository";
@@ -67,10 +71,31 @@ async function requireOrderTypePageAccess(orderType: BranchOrderType) {
   return requireAnyPermission(orderTypeAccessPermissions(orderType));
 }
 
+const ORDER_SORT_FIELDS = new Set<OrderListSort>([
+  "orderNumber",
+  "branch",
+  "orderType",
+  "status",
+]);
+
+function parseOrderSort(value?: string): OrderListSort | undefined {
+  if (value && ORDER_SORT_FIELDS.has(value as OrderListSort)) {
+    return value as OrderListSort;
+  }
+  return undefined;
+}
+
+function parseOrderSortDir(value?: string): OrderListSortDir | undefined {
+  if (value === "asc" || value === "desc") return value;
+  return undefined;
+}
+
 export async function listOrdersAction(input?: {
   page?: number;
   limit?: number;
   orderType?: BranchOrderType;
+  sort?: string;
+  sortDir?: string;
 }) {
   const session = input?.orderType
     ? await requireOrderTypePageAccess(input.orderType)
@@ -81,6 +106,7 @@ export async function listOrdersAction(input?: {
     session.user.id,
     hasFullOrderAccess(session.user.permissions),
     { page: input?.page, limit, orderType: input?.orderType },
+    { field: parseOrderSort(input?.sort), dir: parseOrderSortDir(input?.sortDir) },
   );
   return {
     ...result,

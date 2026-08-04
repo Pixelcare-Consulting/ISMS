@@ -17,7 +17,7 @@ import {
   useClientTablePagination,
   useTableSelection,
 } from "@/components/data-table";
-import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import {
   TableBody,
@@ -61,6 +61,10 @@ export function PlanogramBranchesTable({ branches }: PlanogramBranchesTableProps
   );
 
   const selection = useTableSelection(filtered.map((branch) => branch.id));
+  const sort = useClientTableSort(filtered, {
+    name: (branch) => branch.name,
+    sapCode: (branch) => branch.sapCode,
+  });
   const {
     page,
     setPage,
@@ -70,7 +74,9 @@ export function PlanogramBranchesTable({ branches }: PlanogramBranchesTableProps
     totalPages,
     pageItems,
     indexOffset,
-  } = useClientTablePagination(filtered, { resetKey: query });
+  } = useClientTablePagination(sort.sorted, {
+    resetKey: `${query}:${sort.sortKey}:${sort.sortDir}`,
+  });
 
   if (branches.length === 0) {
     return <DataTableEmptyState message="No branches available for your account." />;
@@ -112,8 +118,12 @@ export function PlanogramBranchesTable({ branches }: PlanogramBranchesTableProps
                 aria-label="Select all branches"
               />
               <TableIndexHead />
-              <GlobalTableHead className="w-[45%]">Branch</GlobalTableHead>
-              <GlobalTableHead className="w-[35%]">SAP code</GlobalTableHead>
+              <GlobalTableHead className="w-[45%]" {...sort.sortProps("name")}>
+                Branch
+              </GlobalTableHead>
+              <GlobalTableHead className="w-[35%]" {...sort.sortProps("sapCode")}>
+                SAP code
+              </GlobalTableHead>
               <GlobalTableHead className="w-[20%] text-right"> </GlobalTableHead>
             </TableRow>
           </TableHeader>

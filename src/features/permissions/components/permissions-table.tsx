@@ -20,6 +20,7 @@ import {
 } from "@/components/data-table/data-table-shell";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { TableSearchToolbar, uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
+import { GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
@@ -64,6 +65,13 @@ export function PermissionsTable({
       ),
     [permissions, query],
   );
+
+  const sort = useClientTableSort(filteredPermissions, {
+    name: (p) => p.name,
+    module: (p) => p.moduleName,
+    slug: (p) => p.slug,
+    roles: (p) => p.roleCount,
+  });
 
   const suggestions = useMemo(
     () =>
@@ -134,16 +142,18 @@ export function PermissionsTable({
                   <TableHead className="w-12 text-center text-muted-foreground">
                     #
                   </TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Module</TableHead>
-                  <TableHead>Slug</TableHead>
+                  <GlobalTableHead {...sort.sortProps("name")}>Name</GlobalTableHead>
+                  <GlobalTableHead {...sort.sortProps("module")}>Module</GlobalTableHead>
+                  <GlobalTableHead {...sort.sortProps("slug")}>Slug</GlobalTableHead>
                   <TableHead>Description</TableHead>
-                  <TableHead className="text-center">Roles</TableHead>
+                  <GlobalTableHead className="text-center" {...sort.sortProps("roles")}>
+                    Roles
+                  </GlobalTableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredPermissions.map((permission, index) => {
+                {sort.sorted.map((permission, index) => {
                   const canDelete =
                     !permission.isProtected && permission.roleCount === 0;
 

@@ -15,7 +15,7 @@ import {
   TableIndexHead,
   uniqueSearchSuggestions,
 } from "@/components/data-table";
-import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import {
   TableBody,
@@ -73,6 +73,14 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
       ),
     [rows],
   );
+
+  const rowSort = useClientTableSort(filtered, {
+    serial: (r) => r.serial,
+    drDate: (r) => r.drDate,
+    drNo: (r) => r.drNo,
+    status: (r) => r.status,
+    result: (r) => r.result,
+  });
 
   function onUpload(fileList: FileList | null) {
     const file = fileList?.[0];
@@ -167,18 +175,18 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
           <TableHeader>
             <TableRow>
               <TableIndexHead />
-              <GlobalTableHead>Serial</GlobalTableHead>
-              <GlobalTableHead>DR DATE</GlobalTableHead>
-              <GlobalTableHead>DR NO</GlobalTableHead>
+              <GlobalTableHead {...rowSort.sortProps("serial")}>Serial</GlobalTableHead>
+              <GlobalTableHead {...rowSort.sortProps("drDate")}>DR DATE</GlobalTableHead>
+              <GlobalTableHead {...rowSort.sortProps("drNo")}>DR NO</GlobalTableHead>
               <GlobalTableHead>ACTION</GlobalTableHead>
-              <GlobalTableHead>RESULT</GlobalTableHead>
+              <GlobalTableHead {...rowSort.sortProps("result")}>RESULT</GlobalTableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.length === 0 ? (
+            {rowSort.sorted.length === 0 ? (
               <TableEmptyRow colSpan={COL_COUNT} message="No results match your search." />
             ) : (
-              filtered.map((row, index) => (
+              rowSort.sorted.map((row, index) => (
                 <TableRow key={row.id} className={cn(index % 2 === 1 && "bg-table-stripe")}>
                   <TableIndexCell index={index + 1} />
                   <TableCell className="font-mono text-sm">{row.serial}</TableCell>

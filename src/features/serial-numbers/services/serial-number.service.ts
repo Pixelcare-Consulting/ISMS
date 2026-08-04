@@ -7,6 +7,8 @@ import {
 } from "@/features/serial-numbers/schemas/serial-number.schema";
 import {
   serialNumberRepository,
+  type SerialNumberListSort,
+  type SerialNumberListSortDir,
   type SerialTraceabilityRow,
 } from "@/features/serial-numbers/repositories/serial-number.repository";
 import { decimalToNumberOrNull } from "@/lib/database/decimal";
@@ -199,8 +201,9 @@ export const serialNumberService = {
     tenantId: string,
     pagination?: { page?: number; limit?: number },
     filters?: { q?: string; status?: LookupRecordStatus },
+    sort?: { field?: SerialNumberListSort; dir?: SerialNumberListSortDir },
   ) {
-    return serialNumberRepository.list(tenantId, pagination, filters);
+    return serialNumberRepository.list(tenantId, pagination, filters, sort);
   },
 
   listModelOptions(tenantId: string) {
