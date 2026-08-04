@@ -100,6 +100,11 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "fix",
         description:
+          "Serial number activity logs open again when viewing sold items",
+      },
+      {
+        type: "fix",
+        description:
           "Saving a sale with TO FOLLOW no longer fails",
       },
       {
