@@ -71,14 +71,15 @@ export function NewSalesTransactionForm({
   );
   const [transactionNo, setTransactionNo] = useState("");
   const [customerName, setCustomerName] = useState("");
+  const [contactNo, setContactNo] = useState("");
   const [siTrans, setSiTrans] = useState("");
   const [infoSlipVsoRrReleased, setInfoSlipVsoRrReleased] = useState("");
   const [rrReceiveDeliver, setRrReceiveDeliver] = useState("");
   const [paymentTypeId, setPaymentTypeId] = useState("");
   const [saleTypeId, setSaleTypeId] = useState("");
   const [customerDeliveryMethodId, setCustomerDeliveryMethodId] = useState("");
-  const [proofPath, setProofPath] = useState<string | null>(null);
-  const [proofName, setProofName] = useState<string | null>(null);
+  const [proofs, setProofs] = useState<{ path: string; name: string }[]>([]);
+  const [uploadingProof, setUploadingProof] = useState(false);
   const [transactionDate, setTransactionDate] = useState(todayInputValue);
   const [reserved, setReserved] = useState(false);
   const [details, setDetails] = useState<DraftSaleDetail[]>([]);
@@ -139,22 +140,36 @@ export function NewSalesTransactionForm({
     setAlternateBranchId("");
   }
 
-  async function onProofSelected(file: File | null) {
-    if (!file) {
-      setProofPath(null);
-      setProofName(null);
-      return;
+  async function onProofsSelected(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setUploadingProof(true);
+    try {
+      const uploaded: { path: string; name: string }[] = [];
+      for (const file of Array.from(files)) {
+        const formData = new FormData();
+        formData.set("proof", file);
+        const result = await uploadSaleProofAction(formData);
+        if (result.error || !("path" in result) || !result.path) {
+          toast.error(result.error ?? `Failed to upload ${file.name}`);
+          continue;
+        }
+        uploaded.push({ path: result.path, name: file.name });
+      }
+      if (uploaded.length > 0) {
+        setProofs((prev) => [...prev, ...uploaded]);
+        toast.success(
+          uploaded.length === 1
+            ? "Proof uploaded"
+            : `${uploaded.length} proofs uploaded`,
+        );
+      }
+    } finally {
+      setUploadingProof(false);
     }
-    const formData = new FormData();
-    formData.set("proof", file);
-    const result = await uploadSaleProofAction(formData);
-    if (result.error || !("path" in result) || !result.path) {
-      toast.error(result.error ?? "Failed to upload proof");
-      return;
-    }
-    setProofPath(result.path);
-    setProofName(file.name);
-    toast.success("Proof uploaded");
+  }
+
+  function removeProof(path: string) {
+    setProofs((prev) => prev.filter((p) => p.path !== path));
   }
 
   function submit() {
@@ -201,13 +216,14 @@ export function NewSalesTransactionForm({
         branchId,
         alternateBranchId,
         customerName: customerName.trim(),
+        contactNo: contactNo.trim() || undefined,
         siTrans: siTrans.trim(),
         paymentTypeId,
         saleTypeId,
         customerDeliveryMethodId,
         infoSlipVsoRrReleased: infoSlipVsoRrReleased.trim() || undefined,
         rrReceiveDeliver: rrReceiveDeliver.trim() || undefined,
-        proof: proofPath ?? undefined,
+        proof: proofs.map((p) => p.path),
         transactionDate: transactionDate || undefined,
         reserved,
         details: details.map((d) => ({
@@ -307,6 +323,17 @@ export function NewSalesTransactionForm({
             />
           </div>
           <div className="space-y-2">
+            <Label htmlFor="sale-contact">Contact no.</Label>
+            <Input
+              id="sale-contact"
+              type="tel"
+              inputMode="tel"
+              value={contactNo}
+              onChange={(e) => setContactNo(e.target.value)}
+              placeholder="09XX XXX XXXX"
+            />
+          </div>
+          <div className="space-y-2">
             <Label htmlFor="sale-si-trans">SI/Trans no *</Label>
             <Input
               id="sale-si-trans"
@@ -372,26 +399,54 @@ export function NewSalesTransactionForm({
               id="sale-proof"
               type="file"
               accept="image/*,.pdf"
+              multiple
+              disabled={uploadingProof}
               onChange={(e) => {
-                const file = e.target.files?.[0] ?? null;
-                void onProofSelected(file);
+                void onProofsSelected(e.target.files);
+                e.target.value = "";
               }}
             />
-            {proofName ? (
-              <p className="text-xs text-muted-foreground">Uploaded: {proofName}</p>
+            {uploadingProof ? (
+              <p className="text-xs text-muted-foreground">Uploading…</p>
+            ) : null}
+            {proofs.length > 0 ? (
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">
+                  {proofs.length} file{proofs.length === 1 ? "" : "s"}{" "}
+                  attached
+                </p>
+                <ul className="max-h-40 space-y-1 overflow-y-auto rounded-md border p-2">
+                  {proofs.map((p) => (
+                    <li
+                      key={p.path}
+                      className="flex items-center justify-between gap-2 text-xs text-muted-foreground"
+                    >
+                      <span className="truncate">{p.name}</span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => removeProof(p.path)}
+                        aria-label={`Remove ${p.name}`}
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ) : null}
           </div>
-          <div className="flex items-end">
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={reserved}
-                onChange={(e) => setReserved(e.target.checked)}
-              />
-              Reserved (RSV)
-            </label>
-          </div>
         </div>
+
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={reserved}
+            onChange={(e) => setReserved(e.target.checked)}
+          />
+          Reserved (RSV)
+        </label>
       </div>
 
       <div className="space-y-3 rounded-xl border bg-card p-4 shadow-sm sm:p-6">

@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
-import { Plus } from "lucide-react";
+import { Pencil, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -13,6 +13,7 @@ import {
   updateModelStatusAction,
 } from "@/features/master-data/actions/master-data.actions";
 import type { ClientModelRow } from "@/features/master-data/types/client-model";
+import { ModelPriceSheet } from "@/app/(app)/settings/master-data/_components/model-price-sheet";
 import {
   DataTableEmptyState,
   TableEmptyRow,
@@ -50,10 +51,17 @@ import { cn } from "@/utils/cn";
 
 const COL_COUNT = 8;
 
-export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) {
+export function MasterDataModelsTable({
+  models,
+  packageTypes,
+}: {
+  models: ClientModelRow[];
+  packageTypes: { id: string; name: string }[];
+}) {
   const router = useRouter();
   const [optimisticRows, setOptimisticRows] = useState<ClientModelRow[]>([]);
   const [statusOverrides, setStatusOverrides] = useState<Record<string, string>>({});
+  const [priceModel, setPriceModel] = useState<ClientModelRow | null>(null);
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
   const [addOpen, setAddOpen] = useState(false);
@@ -113,7 +121,7 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
     name: (m) => m.name,
     brand: (m) => m.brand?.name,
     category: (m) => m.category?.name,
-    srp: (m) => m.srp,
+    srp: (m) => m.effectivePrice,
     status: (m) => m.status,
   });
   const {
@@ -199,10 +207,11 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
             skuCode: result.model.skuCode,
             name: result.model.name,
             status: result.model.status,
-            srp: null,
+            effectivePrice: null,
             cbm: null,
             brand: selectedBrand ? { name: selectedBrand.name } : null,
             category: selectedCategory ? { name: selectedCategory.name } : null,
+            priceLists: [],
           },
           ...currentRows,
         ]);
@@ -275,7 +284,7 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
                     className="text-right"
                     {...sort.sortProps("srp")}
                   >
-                    SRP
+                    Price
                   </GlobalTableHead>
                   <GlobalTableHead {...sort.sortProps("status")}>Status</GlobalTableHead>
                 </TableRow>
@@ -304,7 +313,25 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
                       <TableCell>{m.brand?.name ?? "—"}</TableCell>
                       <TableCell>{m.category?.name ?? "—"}</TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {formatPeso(m.srp)}
+                        <div className="flex items-center justify-end gap-1.5">
+                          {m.effectivePrice != null ? (
+                            <span>{formatPeso(m.effectivePrice)}</span>
+                          ) : (
+                            <span className="text-xs font-normal text-muted-foreground">
+                              Price not available
+                            </span>
+                          )}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="size-6 text-muted-foreground hover:text-foreground"
+                            aria-label={`Change price for ${m.skuCode}`}
+                            onClick={() => setPriceModel(m)}
+                          >
+                            <Pencil className="size-3.5" />
+                          </Button>
+                        </div>
                       </TableCell>
                       <TableCell>
                         <ModelStatusSelect
@@ -441,6 +468,17 @@ export function MasterDataModelsTable({ models }: { models: ClientModelRow[] }) 
           </form>
         </SheetContent>
       </Sheet>
+
+      {priceModel ? (
+        <ModelPriceSheet
+          open
+          onOpenChange={(open) => {
+            if (!open) setPriceModel(null);
+          }}
+          model={priceModel}
+          packageTypes={packageTypes}
+        />
+      ) : null}
     </div>
   );
 }

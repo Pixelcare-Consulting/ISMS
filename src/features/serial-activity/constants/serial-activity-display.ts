@@ -36,14 +36,20 @@ export interface SerialActivityEvent {
   serialNo: string;
   /** `${skuCode} — ${name}` of the unit's model. */
   modelLabel: string;
-  /** Relevant branch/location for the event (may be a `from → to` route). */
+  /**
+   * Where the unit ended up for this event — the destination for routed events
+   * (transfers, pull-outs), the holding branch otherwise.
+   */
   location: string | null;
   /** Reference document number (transfer no, transaction no, session no, …). */
   reference: string | null;
-  /** Status label where applicable (inventory status, count outcome). */
+  /**
+   * Full reference context, one entry per line — the movement route
+   * (`Branch A → Branch B`), customer, amount, waybill, notes, and so on.
+   */
+  referenceDetails: string[];
+  /** Status label where applicable (inventory status, count outcome, …). */
   status: string | null;
-  /** Sale amount as a raw string, when the event is a sale. */
-  amount: string | null;
   /** User who performed the transaction, when captured. */
   performedBy: { name: string | null; email: string } | null;
 }

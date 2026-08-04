@@ -10,6 +10,7 @@ import {
   formatAuditDetails,
   formatAuditEntitySummary,
   formatAuditEntityTypeLabel,
+  formatAuditReference,
   formatAuditTimestamp,
 } from "@/features/audit/constants/audit-display";
 import {
@@ -361,6 +362,7 @@ export function AuditLogTable({
           >
             Area
           </GlobalTableHead>
+          <GlobalTableHead>Reference</GlobalTableHead>
           <GlobalTableHead>Details</GlobalTableHead>
         </TableRow>
       </TableHeader>
@@ -371,6 +373,12 @@ export function AuditLogTable({
             row.metadata,
           );
           const details = formatAuditDetails(row.metadata, row.action);
+          const reference = formatAuditReference(
+            row.entityType,
+            row.entityId,
+            row.metadata,
+            row.action,
+          );
 
           return (
             <TableRow
@@ -407,14 +415,29 @@ export function AuditLogTable({
                 <AuditActionBadge action={row.action} />
               </TableCell>
               <TableCell>
-                <div className="flex flex-col items-start gap-1.5">
-                  <AuditEntityBadge entityType={row.entityType} />
-                  {entitySummary ? (
-                    <span className="text-sm text-foreground">
-                      {entitySummary}
-                    </span>
-                  ) : null}
+                <AuditEntityBadge entityType={row.entityType} />
+              </TableCell>
+              <TableCell className="min-w-56 max-w-xs text-sm">
+                <div className="font-medium text-foreground">
+                  {reference.number ?? entitySummary ?? "—"}
                 </div>
+                {reference.details.map((detail) => (
+                  <div key={detail} className="text-xs text-muted-foreground">
+                    {detail}
+                  </div>
+                ))}
+                <div className="text-xs text-muted-foreground">
+                  {formatAuditTimestamp(row.createdAt)} ·{" "}
+                  {row.user ? (row.user.name ?? row.user.email) : "System"}
+                </div>
+                {reference.recordId ? (
+                  <div
+                    className="text-xs text-muted-foreground/70"
+                    title={reference.recordId}
+                  >
+                    Record #{reference.recordId.slice(-8)}
+                  </div>
+                ) : null}
               </TableCell>
               <TableCell className="max-w-sm text-sm text-muted-foreground">
                 {details}

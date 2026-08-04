@@ -31,6 +31,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { matchesTableSearch } from "@/utils/match-table-search";
+import { pickActivePriceListRow } from "@/features/master-data/utils/resolve-price-list";
 
 interface PriceListsPanelProps {
   initialRows: PriceListCardRow[];
@@ -39,25 +40,41 @@ interface PriceListsPanelProps {
 }
 
 function groupByModel(rows: PriceListCardRow[]): PriceListModelGroup[] {
-  const map = new Map<string, PriceListModelGroup>();
+  const map = new Map<
+    string,
+    { modelId: string; skuCode: string; name: string; rows: PriceListCardRow[] }
+  >();
 
   for (const row of rows) {
     const existing = map.get(row.model.id);
-    if (!existing) {
-      map.set(row.model.id, {
-        modelId: row.model.id,
-        skuCode: row.model.skuCode,
-        name: row.model.name,
-        latest: row,
-        periodCount: 1,
-      });
+    if (existing) {
+      existing.rows.push(row);
       continue;
     }
-    existing.periodCount += 1;
-    // Rows arrive periodStart desc; keep first as latest
+    map.set(row.model.id, {
+      modelId: row.model.id,
+      skuCode: row.model.skuCode,
+      name: row.model.name,
+      rows: [row],
+    });
   }
 
-  return Array.from(map.values());
+  return Array.from(map.values()).map((group) => {
+    // Rows arrive periodStart desc, so group.rows[0] is the most recently started period.
+    const active = pickActivePriceListRow(group.rows, (row) => ({
+      periodStart: row.periodStart,
+      periodEnd: row.periodEnd,
+      packageTypeId: row.packageType?.id ?? null,
+    }));
+    return {
+      modelId: group.modelId,
+      skuCode: group.skuCode,
+      name: group.name,
+      latest: active ?? group.rows[0],
+      isActive: active != null,
+      periodCount: group.rows.length,
+    };
+  });
 }
 
 export function PriceListsPanel({
