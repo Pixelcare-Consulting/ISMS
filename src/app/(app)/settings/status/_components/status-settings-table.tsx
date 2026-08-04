@@ -6,6 +6,7 @@ import {
   ArrowLeftRight,
   Info,
   Package,
+  ShoppingCart,
   Truck,
   Undo2,
   type LucideIcon,
@@ -126,6 +127,7 @@ const CATEGORY_ICONS: Record<ReasonStatusCategory, LucideIcon> = {
   delivery_workflow: Truck,
   transfer_workflow: ArrowLeftRight,
   pullout_workflow: Undo2,
+  sales_atr: ShoppingCart,
 };
 
 export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {

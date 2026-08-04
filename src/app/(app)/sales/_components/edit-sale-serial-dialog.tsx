@@ -4,6 +4,14 @@ import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   listSaleableSerialsAction,
@@ -23,6 +31,7 @@ type SerialOption = {
 
 export function EditSaleSerialDialog({
   saleId,
+  detailId,
   transactionNo,
   branchId,
   currentSerialId,
@@ -30,6 +39,7 @@ export function EditSaleSerialDialog({
   onClose,
 }: {
   saleId: string;
+  detailId?: string;
   transactionNo: string;
   branchId: string;
   currentSerialId: string | null;
@@ -45,7 +55,6 @@ export function EditSaleSerialDialog({
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     void (async () => {
       try {
         const rows = await listSaleableSerialsAction(branchId);
@@ -79,6 +88,7 @@ export function EditSaleSerialDialog({
     startTransition(async () => {
       const result = await updateSaleSerialAction({
         saleId,
+        detailId,
         serialNumberId,
       });
       if (result.error) {
@@ -95,15 +105,20 @@ export function EditSaleSerialDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md space-y-4 rounded-xl border bg-card p-4 shadow-lg sm:p-6">
-        <div>
-          <h3 className="text-lg font-semibold">Edit serial</h3>
-          <p className="text-sm text-muted-foreground">
+    <Dialog
+      open
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen && !pending) onClose();
+      }}
+    >
+      <DialogContent className="z-60 sm:max-w-md" overlayClassName="z-60">
+        <DialogHeader>
+          <DialogTitle>Edit serial</DialogTitle>
+          <DialogDescription>
             Transaction {transactionNo}. Current: {currentSerialLabel}. Only the
             serial can be changed here.
-          </p>
-        </div>
+          </DialogDescription>
+        </DialogHeader>
 
         <SearchableSelect
           label="Serial number *"
@@ -114,17 +129,23 @@ export function EditSaleSerialDialog({
           searchPlaceholder="Search serials…"
           emptyMessage="No sellable serials at this branch."
           disabled={loading || pending}
+          popoverClassName="z-70"
         />
 
-        <div className="flex flex-wrap justify-end gap-2 pt-2">
-          <Button type="button" variant="outline" disabled={pending} onClick={onClose}>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={pending}
+            onClick={onClose}
+          >
             Cancel
           </Button>
           <Button type="button" disabled={pending || loading} onClick={save}>
             Save serial
           </Button>
-        </div>
-      </div>
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

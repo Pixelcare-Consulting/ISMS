@@ -44,6 +44,7 @@ enum ReasonStatusCategory {
   delivery_workflow
   transfer_workflow
   pullout_workflow
+  sales_atr
 }
 
 enum LookupRecordStatus {

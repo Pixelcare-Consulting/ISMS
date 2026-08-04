@@ -14,6 +14,7 @@ const createCodeSchema = z.object({
     "delivery_workflow",
     "transfer_workflow",
     "pullout_workflow",
+    "sales_atr",
   ]),
   name: z.string().min(1).max(120),
   code: z.string().min(1).max(32),

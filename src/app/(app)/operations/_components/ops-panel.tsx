@@ -122,7 +122,9 @@ export function OpsPanel({ deliveries, transfers, pullouts, branches }: OpsPanel
       }
       toast.success(
         action === "accept"
-          ? "Delivery accepted — DIT moved to stock"
+          ? "movedCount" in result && result.movedCount
+            ? "Delivery accepted — DIT moved to stock"
+            : "Delivery accepted"
           : "Delivery rejected",
       );
       setPendingDelivery(null);
