@@ -52,6 +52,80 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.19.3",
+    date: "2026-08-04",
+    releasedAt: "2026-08-04T18:58:00+08:00",
+    title: "Clearer Official Sales staging details",
+    highlights: [
+      "Staging View shows all sale fields in one clean two-column layout",
+      "Long results are easier to read, with Process, Delete, and Close in the footer",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Official Sales staging details use one consistent layout for every field, with a clearer Result area and Process, Delete, and Close in the footer",
+      },
+    ],
+  },
+  {
+    version: "0.19.2",
+    date: "2026-08-04",
+    releasedAt: "2026-08-04T18:45:00+08:00",
+    title: "Official Sales staging View and mobile polish",
+    highlights: [
+      "Open any staging row with View to see full details, then Process or Delete when the row allows it",
+      "Download Template sits next to search so Upload and Process stay as the main actions",
+      "Staging table works more comfortably on phones with sideways scroll and a cleaner toolbar",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Official Sales Actions uses View to open a details window with Process and Delete for pending or failed rows",
+      },
+      {
+        type: "improvement",
+        description:
+          "Download Template moves beside the search bar; Upload sales and Process pending stay on the right",
+      },
+      {
+        type: "improvement",
+        description:
+          "Official Sales staging toolbar and table are easier to use on smaller screens",
+      },
+    ],
+  },
+  {
+    version: "0.19.1",
+    date: "2026-08-04",
+    releasedAt: "2026-08-04T18:35:00+08:00",
+    title: "Clearer Official Sales staging list",
+    highlights: [
+      "Official Sales staging opens with a shorter column set so rows are easier to scan",
+      "Dealer, brand, and model show under the serial; use Show all columns when you need the full template",
+      "Long result messages stay truncated until you hover for the full text",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Official Sales staging defaults to Serial, Branch, Date, SI/Trans No., Action, Status, and Result — with dealer details tucked under Serial",
+      },
+      {
+        type: "improvement",
+        description:
+          "Show all columns reveals Dealer, Brand, Item/Model, Sale Amount, and Package when you need the full dealer template",
+      },
+      {
+        type: "improvement",
+        description:
+          "Long Result messages truncate with a hover tip, and Serial stays visible while you scroll sideways",
+      },
+    ],
+  },
+
+  {
     version: "0.19.0",
     date: "2026-08-04",
     releasedAt: "2026-08-04T18:20:00+08:00",
