@@ -8,21 +8,21 @@ import type { Prisma } from "@prisma/client";
 const deliveryListInclude = {
   branch: { select: { name: true, sapCode: true } },
   order: { select: { id: true, orderNumber: true } },
-  statusCode: { select: { id: true, code: true, name: true } },
+  statusCode: { select: { id: true, code: true, name: true, color: true } },
 } satisfies Prisma.BranchDeliveryInclude;
 
 const transferListInclude = {
   fromBranch: { select: { id: true, name: true } },
   toBranch: { select: { id: true, name: true } },
-  statusCode: { select: { id: true, code: true, name: true } },
+  statusCode: { select: { id: true, code: true, name: true, color: true } },
   lines: { select: { serialNumberId: true } },
 } satisfies Prisma.BranchTransferInclude;
 
 const pulloutListInclude = {
   branch: { select: { name: true } },
   warehouse: { select: { name: true, code: true } },
-  statusCode: { select: { id: true, code: true, name: true } },
-  reasonStatusCode: { select: { id: true, code: true, name: true } },
+  statusCode: { select: { id: true, code: true, name: true, color: true } },
+  reasonStatusCode: { select: { id: true, code: true, name: true, color: true } },
 } satisfies Prisma.BranchPulloutInclude;
 
 export const logisticsRepository = {

@@ -1,7 +1,10 @@
-export interface PermissionActionOption {
-  value: string;
-  label: string;
-}
+import {
+  getPermissionActionLabel,
+  permissionActions,
+  type PermissionActionOption,
+} from "@/config/permission-actions";
+
+export type { PermissionActionOption };
 
 export interface AppModule {
   id: string;
@@ -11,6 +14,7 @@ export interface AppModule {
   description?: string;
   /** Permission slug that gates sidebar access to this module */
   navPermission?: string;
+  /** Allowlisted vocabulary actions for this module */
   actions: PermissionActionOption[];
 }
 
@@ -20,12 +24,8 @@ export const appModules: AppModule[] = [
     name: "Dashboard",
     route: "/dashboard",
     slugPrefix: "dashboard",
-    // navPermission: "dashboard.manage",
     description: "Main overview and module launcher",
-    actions: [
-      { value: "manage", label: "Manage" },
-      { value: "view", label: "View" },
-    ],
+    actions: permissionActions("manage", "view"),
   },
   {
     id: "company",
@@ -33,7 +33,7 @@ export const appModules: AppModule[] = [
     route: "/settings/company",
     slugPrefix: "company",
     description: "Tenant branding and company profile",
-    actions: [{ value: "manage", label: "Manage" }],
+    actions: permissionActions("view", "manage"),
   },
   {
     id: "users",
@@ -42,7 +42,7 @@ export const appModules: AppModule[] = [
     slugPrefix: "users",
     navPermission: "users.manage",
     description: "Team members and assignments",
-    actions: [{ value: "manage", label: "Manage" }],
+    actions: permissionActions("view", "manage"),
   },
   {
     id: "departments",
@@ -51,7 +51,7 @@ export const appModules: AppModule[] = [
     slugPrefix: "departments",
     navPermission: "departments.manage",
     description: "Org departments for user assignment",
-    actions: [{ value: "manage", label: "Manage" }],
+    actions: permissionActions("view", "manage"),
   },
   {
     id: "roles",
@@ -60,7 +60,7 @@ export const appModules: AppModule[] = [
     slugPrefix: "roles",
     navPermission: "roles.manage",
     description: "Role and permission matrix",
-    actions: [{ value: "manage", label: "Manage" }],
+    actions: permissionActions("view", "manage"),
   },
   {
     id: "policies",
@@ -69,11 +69,7 @@ export const appModules: AppModule[] = [
     slugPrefix: "policies",
     navPermission: "policies.view",
     description: "ISMS policy documents",
-    actions: [
-      { value: "view", label: "View" },
-      { value: "create", label: "Create" },
-      { value: "approve", label: "Approve" },
-    ],
+    actions: permissionActions("view", "create", "approve"),
   },
   {
     id: "audits",
@@ -81,10 +77,7 @@ export const appModules: AppModule[] = [
     route: null,
     slugPrefix: "audits",
     description: "Internal audit workflows",
-    actions: [
-      { value: "create", label: "Create" },
-      { value: "close", label: "Close" },
-    ],
+    actions: permissionActions("create", "close"),
   },
   {
     id: "reports",
@@ -92,7 +85,7 @@ export const appModules: AppModule[] = [
     route: "/reports",
     slugPrefix: "reports",
     description: "Compliance and management reports",
-    actions: [{ value: "view", label: "View" }],
+    actions: permissionActions("view", "export"),
   },
   {
     id: "audit_logs",
@@ -101,7 +94,7 @@ export const appModules: AppModule[] = [
     slugPrefix: "audit_logs",
     navPermission: "audit_logs.view",
     description: "System and account activity logs",
-    actions: [{ value: "view", label: "View" }],
+    actions: permissionActions("view"),
   },
   {
     id: "serial_logs",
@@ -110,7 +103,7 @@ export const appModules: AppModule[] = [
     slugPrefix: "serial_logs",
     navPermission: "serial_logs.view",
     description: "Serial-number lifecycle activity logs",
-    actions: [{ value: "view", label: "View" }],
+    actions: permissionActions("view"),
   },
   {
     id: "branches",
@@ -119,7 +112,7 @@ export const appModules: AppModule[] = [
     slugPrefix: "branches",
     navPermission: "branches.manage",
     description: "Dealer branch locations and delivery schedules",
-    actions: [{ value: "manage", label: "Manage" }],
+    actions: permissionActions("view", "manage"),
   },
   {
     id: "dealers",
@@ -128,7 +121,7 @@ export const appModules: AppModule[] = [
     slugPrefix: "dealers",
     navPermission: "dealers.manage",
     description: "Dealer master records and network setup",
-    actions: [{ value: "manage", label: "Manage" }],
+    actions: permissionActions("view", "manage"),
   },
   {
     id: "service_centers",
@@ -137,7 +130,7 @@ export const appModules: AppModule[] = [
     slugPrefix: "service_centers",
     navPermission: "service_centers.manage",
     description: "Service and repair location catalog",
-    actions: [{ value: "manage", label: "Manage" }],
+    actions: permissionActions("view", "manage"),
   },
   {
     id: "warehouses",
@@ -146,7 +139,7 @@ export const appModules: AppModule[] = [
     slugPrefix: "warehouses",
     navPermission: "warehouses.manage",
     description: "Warehouse and location setup",
-    actions: [{ value: "manage", label: "Manage" }],
+    actions: permissionActions("view", "manage"),
   },
   {
     id: "sap",
@@ -155,7 +148,7 @@ export const appModules: AppModule[] = [
     slugPrefix: "sap",
     navPermission: "sap.manage",
     description: "SAP outbound queue and Service Layer settings",
-    actions: [{ value: "manage", label: "Manage" }],
+    actions: permissionActions("view", "manage"),
   },
   {
     id: "master_data",
@@ -164,7 +157,7 @@ export const appModules: AppModule[] = [
     slugPrefix: "master_data",
     navPermission: "master_data.manage",
     description: "Brands, categories, and product models",
-    actions: [{ value: "manage", label: "Manage" }],
+    actions: permissionActions("view", "manage"),
   },
   {
     id: "status_settings",
@@ -173,7 +166,7 @@ export const appModules: AppModule[] = [
     slugPrefix: "status_settings",
     navPermission: "status_settings.manage",
     description: "Reason/Status codes for inventory, logistics, and pull-outs",
-    actions: [{ value: "manage", label: "Manage" }],
+    actions: permissionActions("view", "manage"),
   },
   {
     id: "ordering_settings",
@@ -182,7 +175,7 @@ export const appModules: AppModule[] = [
     slugPrefix: "ordering_settings",
     navPermission: "ordering_settings.manage",
     description: "Global locked ordering days (e.g. no orders on Sundays)",
-    actions: [{ value: "manage", label: "Manage" }],
+    actions: permissionActions("view", "manage"),
   },
   {
     id: "aors",
@@ -191,7 +184,7 @@ export const appModules: AppModule[] = [
     slugPrefix: "aors",
     navPermission: "aors.manage",
     description: "User scope by branch or warehouse",
-    actions: [{ value: "manage", label: "Manage" }],
+    actions: permissionActions("view", "manage"),
   },
   {
     id: "inventory",
@@ -200,10 +193,7 @@ export const appModules: AppModule[] = [
     slugPrefix: "inventory",
     navPermission: "inventory.view",
     description: "Serialized branch inventory (AOR-scoped)",
-    actions: [
-      { value: "view", label: "View" },
-      { value: "manage", label: "Manage" },
-    ],
+    actions: permissionActions("view", "manage"),
   },
   {
     id: "orders_manual",
@@ -212,11 +202,7 @@ export const appModules: AppModule[] = [
     slugPrefix: "orders.manual",
     navPermission: "orders.manual.view",
     description: "Manual branch orders (planogram SKUs)",
-    actions: [
-      { value: "view", label: "View" },
-      { value: "create", label: "Create" },
-      { value: "approve", label: "Approve" },
-    ],
+    actions: permissionActions("view", "create", "approve"),
   },
   {
     id: "orders_special",
@@ -225,11 +211,7 @@ export const appModules: AppModule[] = [
     slugPrefix: "orders.special",
     navPermission: "orders.special.view",
     description: "Special branch orders (off-planogram allowed)",
-    actions: [
-      { value: "view", label: "View" },
-      { value: "create", label: "Create" },
-      { value: "approve", label: "Approve" },
-    ],
+    actions: permissionActions("view", "create", "approve"),
   },
   {
     id: "orders_auto_replenish",
@@ -238,29 +220,32 @@ export const appModules: AppModule[] = [
     slugPrefix: "orders.auto_replenish",
     navPermission: "orders.auto_replenish.view",
     description: "Auto-replenish branch orders",
-    actions: [
-      { value: "view", label: "View" },
-      { value: "create", label: "Create" },
-      { value: "approve", label: "Approve" },
-    ],
+    actions: permissionActions("view", "create", "approve"),
   },
   {
     id: "logistics",
     name: "Logistics",
     route: "/logistics",
     slugPrefix: "logistics",
-    navPermission: "logistics.manage",
+    navPermission: "logistics.view",
     description: "Delivery, transfer, and pull-out",
-    actions: [{ value: "manage", label: "Manage" }],
+    actions: permissionActions("view", "create", "manage"),
   },
   {
     id: "sales",
     name: "Sales",
     route: "/sales",
     slugPrefix: "sales",
-    navPermission: "sales.create",
+    navPermission: "sales.view",
     description: "Branch sales and ATR status",
-    actions: [{ value: "create", label: "Create" }],
+    actions: permissionActions(
+      "view",
+      "create",
+      "return.request",
+      "return.evaluate",
+      "return.approve",
+      "return.complete",
+    ),
   },
   {
     id: "official_sales",
@@ -269,10 +254,7 @@ export const appModules: AppModule[] = [
     slugPrefix: "official_sales",
     navPermission: "official_sales.view",
     description: "Official sales Excel staging and inventory process",
-    actions: [
-      { value: "view", label: "View" },
-      { value: "manage", label: "Manage" },
-    ],
+    actions: permissionActions("view", "manage"),
   },
   {
     id: "forecast",
@@ -281,7 +263,7 @@ export const appModules: AppModule[] = [
     slugPrefix: "forecast",
     navPermission: "forecast.manage",
     description: "Forecast upload, allocation, and suggested orders",
-    actions: [{ value: "manage", label: "Manage" }],
+    actions: permissionActions("view", "manage"),
   },
   {
     id: "planogram",
@@ -290,10 +272,7 @@ export const appModules: AppModule[] = [
     slugPrefix: "planogram",
     navPermission: "planogram.view",
     description: "Branch authorized SKUs, shelf capacity, and MIL thresholds",
-    actions: [
-      { value: "view", label: "View" },
-      { value: "manage", label: "Manage" },
-    ],
+    actions: permissionActions("view", "manage"),
   },
   {
     id: "announcements",
@@ -302,10 +281,7 @@ export const appModules: AppModule[] = [
     slugPrefix: "announcements",
     navPermission: "announcements.view",
     description: "Tenant announcements and dashboard banners",
-    actions: [
-      { value: "view", label: "View" },
-      { value: "manage", label: "Manage" },
-    ],
+    actions: permissionActions("view", "manage"),
   },
   {
     id: "competitors",
@@ -314,10 +290,7 @@ export const appModules: AppModule[] = [
     slugPrefix: "competitors",
     navPermission: "competitors.view",
     description: "Competitor price and market observations",
-    actions: [
-      { value: "view", label: "View" },
-      { value: "manage", label: "Manage" },
-    ],
+    actions: permissionActions("view", "manage"),
   },
 ];
 
@@ -369,7 +342,7 @@ export function getModuleNavPermission(moduleId: string): string | undefined {
 export function formatPermissionName(appModule: AppModule, action: string): string {
   const actionLabel =
     appModule.actions.find((item) => item.value === action)?.label ??
-    action.charAt(0).toUpperCase() + action.slice(1);
+    getPermissionActionLabel(action);
 
   return `${actionLabel} ${appModule.name}`;
 }

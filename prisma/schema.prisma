@@ -1358,6 +1358,8 @@ model ReasonStatusCode {
   reasonStatusId String             @map("reason_status_id")
   name           String
   code           String
+  /** Palette key for badges (emerald, amber, sky, …). Null → fallback by code. */
+  color          String?
   sortOrder      Int                @default(0) @map("sort_order")
   isSystem       Boolean            @default(false) @map("is_system")
   recordStatus   LookupRecordStatus @default(active) @map("record_status")

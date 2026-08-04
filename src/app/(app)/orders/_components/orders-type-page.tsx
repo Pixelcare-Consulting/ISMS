@@ -1,9 +1,7 @@
 import Link from "next/link";
 
 import { ORDER_WORKFLOW_DESCRIPTION } from "@/features/orders/constants/order-workflow";
-import {
-  BRANCH_ORDER_TYPE_LABELS,
-} from "@/features/orders/constants/order-status";
+import { BRANCH_ORDER_TYPE_LABELS } from "@/features/orders/constants/order-status";
 import {
   getOrdersKpisAction,
   listOrdersAction,
@@ -15,7 +13,9 @@ import {
 } from "@/features/orders/constants/order-permissions";
 import { OrderKpisStrip } from "@/features/orders/components/order-kpis";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
+import { ModuleGuide } from "@/components/module-guide";
 import { requireAnyPermission } from "@/lib/auth/permissions";
+import { ORDERS_MODULE_GUIDE } from "@/content/module-guides/orders";
 import { BRANCH_ORDERS_PAGE_TUTORIAL } from "@/content/page-tutorials/branch-orders";
 import { PageHeader } from "@/app/(app)/_components/page-header";
 import { OrdersTable } from "@/app/(app)/orders/_components/orders-table";
@@ -60,6 +60,7 @@ export async function OrdersTypePage({
           </Button>
         }
       />
+      <ModuleGuide {...ORDERS_MODULE_GUIDE} />
       <OrderKpisStrip kpis={kpis} />
       <OrdersTable
         result={result}

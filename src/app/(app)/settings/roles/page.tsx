@@ -1,9 +1,11 @@
 import { getRolesPermissionsMatrixAction } from "@/features/roles/actions/role.actions";
 import { RolesSimpleView } from "@/features/roles/components/roles-simple-view";
+import { ModuleGuide } from "@/components/module-guide";
 import {
   requirePermission,
   resolveSessionPlatformOperator,
 } from "@/lib/auth/permissions";
+import { ROLES_MODULE_GUIDE } from "@/content/module-guides/roles";
 import { ROLES_PAGE_TUTORIAL } from "@/content/page-tutorials/roles";
 import { PageHeader } from "@/app/(app)/_components/page-header";
 
@@ -25,6 +27,7 @@ export default async function SettingsRolesPage() {
             : "Create custom roles and choose what people can see and do. Built-in system roles are not shown here."
         }
       />
+      <ModuleGuide {...ROLES_MODULE_GUIDE} />
       <RolesSimpleView
         matrix={matrix}
         isPlatformOperator={isPlatformOperator}

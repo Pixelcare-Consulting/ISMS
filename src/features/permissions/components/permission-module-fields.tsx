@@ -9,6 +9,7 @@ import {
   getAppModuleById,
   type AppModule,
 } from "@/config/app-modules";
+import { getPermissionActionLabel } from "@/config/permission-actions";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -109,7 +110,7 @@ export function PermissionModuleFields({
             value={
               linkedAction
                 ? linkedModule?.actions.find((item) => item.value === linkedAction)
-                    ?.label ?? linkedAction
+                    ?.label ?? getPermissionActionLabel(linkedAction)
                 : "—"
             }
             disabled
@@ -222,7 +223,8 @@ export function PermissionModuleFields({
         id="permission-action"
         options={actions.map((item) => ({
           id: item.value,
-          label: item.label,
+          label: item.label || getPermissionActionLabel(item.value),
+          description: item.value,
         }))}
         value={action}
         onChange={onActionChange}

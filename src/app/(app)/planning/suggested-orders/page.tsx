@@ -6,7 +6,9 @@ import {
   listBranchesForPlanningAction,
   listDraftSuggestedOrdersAction,
 } from "@/features/forecast/actions/forecast.actions";
+import { ModuleGuide } from "@/components/module-guide";
 import { requireAnyPermission } from "@/lib/auth/permissions";
+import { SUGGESTED_ORDERS_MODULE_GUIDE } from "@/content/module-guides/planning";
 import { SUGGESTED_ORDERS_PAGE_TUTORIAL } from "@/content/page-tutorials/suggested-orders";
 import { PageHeader } from "@/app/(app)/_components/page-header";
 import { SuggestedOrdersTable } from "@/app/(app)/planning/suggested-orders/_components/suggested-orders-table";
@@ -31,7 +33,9 @@ function buildPreserveParams(params: Record<string, string | undefined>) {
   return preserved;
 }
 
-export default async function SuggestedOrdersPage({ searchParams }: SuggestedOrdersPageProps) {
+export default async function SuggestedOrdersPage({
+  searchParams,
+}: SuggestedOrdersPageProps) {
   await requireAnyPermission(["forecast.manage", "planogram.manage"]);
 
   const params = await searchParams;
@@ -85,6 +89,7 @@ export default async function SuggestedOrdersPage({ searchParams }: SuggestedOrd
           </div>
         }
       />
+      <ModuleGuide {...SUGGESTED_ORDERS_MODULE_GUIDE} />
       <SuggestedOrdersTable
         draftsResult={draftsResult}
         gapsResult={{

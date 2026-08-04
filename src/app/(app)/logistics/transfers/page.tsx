@@ -2,6 +2,7 @@ import {
   getTransferKpisAction,
   listTransfersAction,
 } from "@/features/logistics/actions/logistics.actions";
+import { LOGISTICS_PAGE_PERMISSIONS } from "@/features/logistics/constants/logistics-permissions";
 import { TransferKpisStrip } from "@/features/logistics/components/transfer-kpis";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { requireAnyPermission } from "@/lib/auth/permissions";
@@ -13,7 +14,7 @@ interface TransfersPageProps {
 }
 
 export default async function TransfersPage({ searchParams }: TransfersPageProps) {
-  await requireAnyPermission(["logistics.manage", "orders.create", "orders.view"]);
+  await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
   const params = await searchParams;
   const page = Number(params.page) || 1;
   const limit = parseTablePageSize(params.limit);

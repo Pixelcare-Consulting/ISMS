@@ -122,7 +122,7 @@ export function RolesSimpleView({
             )}
           >
             <Grid3x3 className="size-3.5" />
-            Advanced matrix view
+            Permission matrix
           </Link>
           <CreateRoleWizard groups={groups} permissions={permissions} />
         </TableSearchToolbar>

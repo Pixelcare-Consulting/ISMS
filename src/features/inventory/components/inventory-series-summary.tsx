@@ -1,7 +1,7 @@
 "use client";
 
-import { Expand, Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { ChevronDown, ChevronUp, Expand, Search } from "lucide-react";
+import { useMemo, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -24,6 +24,46 @@ import {
 import type { InventorySeriesSummary } from "@/features/inventory/services/inventory.service";
 import { cn } from "@/utils/cn";
 import { formatPeso } from "@/utils/format-currency";
+
+const SERIES_SUMMARY_EXPANDED_KEY = "inventory.seriesSummary.expanded";
+
+const seriesSummaryExpandedListeners = new Set<() => void>();
+
+function subscribeSeriesSummaryExpanded(onStoreChange: () => void) {
+  seriesSummaryExpandedListeners.add(onStoreChange);
+  return () => {
+    seriesSummaryExpandedListeners.delete(onStoreChange);
+  };
+}
+
+function emitSeriesSummaryExpanded() {
+  for (const listener of seriesSummaryExpandedListeners) {
+    listener();
+  }
+}
+
+function readExpandedPreference(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const raw = window.localStorage.getItem(SERIES_SUMMARY_EXPANDED_KEY);
+    if (raw === null) return false;
+    return raw === "1" || raw === "true";
+  } catch {
+    return false;
+  }
+}
+
+function writeExpandedPreference(next: boolean) {
+  try {
+    window.localStorage.setItem(
+      SERIES_SUMMARY_EXPANDED_KEY,
+      next ? "1" : "0",
+    );
+  } catch {
+    // ignore quota / private mode
+  }
+  emitSeriesSummaryExpanded();
+}
 
 interface InventorySeriesSummaryProps {
   summary: InventorySeriesSummary;
@@ -99,6 +139,21 @@ function SeriesSummaryTable({
 export function InventorySeriesSummaryPanel({ summary }: InventorySeriesSummaryProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const expanded = useSyncExternalStore(
+    subscribeSeriesSummaryExpanded,
+    readExpandedPreference,
+    () => false,
+  );
+
+  function toggleExpanded() {
+    writeExpandedPreference(!expanded);
+  }
+
+  function onHeaderKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    toggleExpanded();
+  }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -120,33 +175,76 @@ export function InventorySeriesSummaryPanel({ summary }: InventorySeriesSummaryP
   return (
     <>
       <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
-        <div className="flex flex-wrap items-start justify-between gap-3 border-b px-4 py-3">
+        <div
+          role="button"
+          tabIndex={0}
+          className={cn(
+            "flex cursor-pointer flex-wrap items-start justify-between gap-3 px-4 py-3 outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+            expanded && "border-b",
+          )}
+          aria-expanded={expanded}
+          aria-controls="inventory-series-summary-body"
+          onClick={toggleExpanded}
+          onKeyDown={onHeaderKeyDown}
+        >
           <div className="min-w-0">
             <h2 className="text-sm font-semibold tracking-wide">Series summary</h2>
-            <p className="text-xs text-muted-foreground">
-              QTY and peso value by SKU series (trailing digits stripped). Follows applied filters.
-            </p>
+            {expanded ? (
+              <p className="text-xs text-muted-foreground">
+                QTY and peso value by SKU series (trailing digits stripped). Follows
+                applied filters.
+              </p>
+            ) : (
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {summary.rows.length === 0
+                  ? "Hidden — no series for current filters"
+                  : `Hidden — ${summary.rows.length} series · ${summary.totalQty.toLocaleString()} qty · ${formatPeso(summary.totalValue)}`}
+              </p>
+            )}
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="shrink-0"
-            onClick={() => setOpen(true)}
-            disabled={summary.rows.length === 0}
-          >
-            <Expand className="size-4" />
-            View series
-          </Button>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <span
+              className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm text-muted-foreground"
+              aria-hidden
+            >
+              {expanded ? (
+                <>
+                  <ChevronUp className="size-4" />
+                  Hide
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="size-4" />
+                  Show
+                </>
+              )}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              onClick={(event) => {
+                event.stopPropagation();
+                setOpen(true);
+              }}
+              disabled={summary.rows.length === 0}
+            >
+              <Expand className="size-4" />
+              View series
+            </Button>
+          </div>
         </div>
-        <div className="max-h-72 overflow-auto">
-          <SeriesSummaryTable
-            rows={summary.rows}
-            totalQty={summary.totalQty}
-            totalValue={summary.totalValue}
-            freezeChrome
-          />
-        </div>
+        {expanded ? (
+          <div id="inventory-series-summary-body" className="max-h-72 overflow-auto">
+            <SeriesSummaryTable
+              rows={summary.rows}
+              totalQty={summary.totalQty}
+              totalValue={summary.totalValue}
+              freezeChrome
+            />
+          </div>
+        ) : null}
       </div>
 
       <Dialog

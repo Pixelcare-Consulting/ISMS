@@ -3,6 +3,7 @@ import { NewSalesTransactionForm } from "@/app/(app)/sales/_components/new-sales
 import { aorService } from "@/features/aors/services/aor.service";
 import { branchService } from "@/features/branches/services/branch.service";
 import {
+  allocateSaleTransactionNoAction,
   listBrandsForSalesAction,
   listCustomerDeliveryMethodsForSalesAction,
   listPaymentTypesForSalesAction,
@@ -43,14 +44,23 @@ export default async function NewSalesTransactionPage() {
     branches = [...byId.entries()].map(([id, name]) => ({ id, name }));
   }
 
-  const [paymentTypes, saleTypes, deliveryMethods, promoTypes, brands] =
+  const [paymentTypes, saleTypes, deliveryMethods, promoTypes, brands, txnNoResult] =
     await Promise.all([
       listPaymentTypesForSalesAction(),
       listSaleTypesForSalesAction(),
       listCustomerDeliveryMethodsForSalesAction(),
       listPromoTypesForSalesAction(),
       listBrandsForSalesAction(),
+      allocateSaleTransactionNoAction(),
     ]);
+
+  if ("error" in txnNoResult) {
+    return (
+      <div className="rounded-xl border bg-card p-4 text-sm text-muted-foreground shadow-sm">
+        {txnNoResult.error}
+      </div>
+    );
+  }
 
   const autoResolveBranch = roleSlugs.includes("ps") && branches.length === 1;
 
@@ -62,6 +72,7 @@ export default async function NewSalesTransactionPage() {
         description="Enter header details, add package line sets, then save to update stock."
       />
       <NewSalesTransactionForm
+        transactionNo={txnNoResult.transactionNo}
         branches={branches}
         autoResolveBranch={autoResolveBranch}
         paymentTypes={paymentTypes}

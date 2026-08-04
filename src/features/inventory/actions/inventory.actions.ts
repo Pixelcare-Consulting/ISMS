@@ -12,7 +12,29 @@ import type {
 } from "@/features/inventory/repositories/inventory.repository";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
-import { decimalToNumberOrNull } from "@/lib/database/decimal";
+import type { PaginatedResult } from "@/lib/shared/pagination";
+
+/** DTO row returned by listInventoryAction (ISO dates, sku alias). */
+export type InventoryListItem = {
+  id: string;
+  onPlanogram: boolean;
+  deliveryNo: string | null;
+  deliveryDate: string | null;
+  agingDays: number;
+  statusCode: { id: string; code: string; name: string; color: string | null };
+  branch: { id: string; name: string; sapCode: string };
+  serialNumber: {
+    id: string;
+    serialNo: string;
+    model: { sku: string; name: string; brand: { name: string } };
+  };
+};
+
+export type InventoryStatusOption = {
+  id: string;
+  code: string;
+  name: string;
+};
 
 function isUnrestricted(permissions: string[] | undefined) {
   return (
@@ -40,7 +62,7 @@ export async function listInventoryAction(input?: {
   offPlanogram?: boolean;
   sort?: string;
   sortDir?: string;
-}) {
+}): Promise<PaginatedResult<InventoryListItem>> {
   const session = await requirePermission("inventory.view");
   const unrestricted = isUnrestricted(session.user.permissions);
   const limit = parseTablePageSize(input?.limit);
@@ -61,35 +83,53 @@ export async function listInventoryAction(input?: {
   );
   return {
     ...result,
-    items: result.items.map((r) => ({
-      ...r,
-      branchId: r.branchId,
-      onPlanogram: "onPlanogram" in r ? Boolean(r.onPlanogram) : false,
-      deliveryNo: "deliveryNo" in r ? (r.deliveryNo as string | null) : null,
-      deliveryDate:
-        "deliveryDate" in r && r.deliveryDate instanceof Date
-          ? r.deliveryDate.toISOString()
-          : null,
-      agingDays: "agingDays" in r ? Number(r.agingDays) : 0,
-      createdAt: r.createdAt.toISOString(),
-      branch: { ...r.branch, id: r.branchId },
-      serialNumber: {
-        id: r.serialNumber.id,
-        serialNo: r.serialNumber.serialNo,
-        model: {
-          ...r.serialNumber.model,
-          sku: r.serialNumber.model.skuCode,
-          srp: decimalToNumberOrNull(r.serialNumber.model.srp),
-          brand: r.serialNumber.model.brand ?? { name: "—" },
+    items: result.items.map(
+      (r): InventoryListItem => ({
+        id: r.id,
+        onPlanogram: r.onPlanogram,
+        deliveryNo: r.deliveryNo,
+        deliveryDate: r.deliveryDate ? r.deliveryDate.toISOString() : null,
+        agingDays: r.agingDays,
+        statusCode: {
+          id: r.statusCode.id,
+          code: r.statusCode.code,
+          name: r.statusCode.name,
+          color: r.statusCode.color,
         },
-      },
-    })),
+        branch: {
+          id: r.branch.id,
+          name: r.branch.name,
+          sapCode: r.branch.sapCode,
+        },
+        serialNumber: {
+          id: r.serialNumber.id,
+          serialNo: r.serialNumber.serialNo,
+          model: {
+            sku: r.serialNumber.model.skuCode,
+            name: r.serialNumber.model.name,
+            brand: r.serialNumber.model.brand ?? { name: "—" },
+          },
+        },
+      }),
+    ),
   };
 }
 
-export async function listInventoryStatusOptionsAction() {
+export async function listInventoryStatusOptionsAction(): Promise<
+  InventoryStatusOption[]
+> {
   const session = await requirePermission("inventory.view");
-  return reasonStatusService.listActiveCodes(session.user.tenantId, "inventory_system");
+  const codes = await reasonStatusService.listActiveCodes(
+    session.user.tenantId,
+    "inventory_system",
+  );
+  return (codes as Array<{ id: string; code: string; name: string }>).map(
+    (c) => ({
+      id: c.id,
+      code: c.code,
+      name: c.name,
+    }),
+  );
 }
 
 export async function getInventorySeriesSummaryAction(input?: {

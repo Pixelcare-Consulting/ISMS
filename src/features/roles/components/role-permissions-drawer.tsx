@@ -1,7 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { Search } from "lucide-react";
 import { toast } from "sonner";
 
 import { toggleRolePermissionAction } from "@/features/roles/actions/role.actions";
@@ -21,6 +22,7 @@ import type {
 } from "@/features/roles/lib/group-permissions-by-module";
 import type { RolePermissionRow } from "@/features/roles/types/role.types";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Sheet,
   SheetContent,
@@ -29,6 +31,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { matchesTableSearch } from "@/utils/match-table-search";
 
 interface RolePermissionsDrawerProps {
   role: RolePermissionRow | null;
@@ -54,13 +57,55 @@ export function RolePermissionsDrawer({
   isProtected,
 }: RolePermissionsDrawerProps) {
   const router = useRouter();
+  const [query, setQuery] = useState("");
   const [bulkPending, setBulkPending] = useState<BulkPending>(null);
   const [bulkBusy, startBulkTransition] = useTransition();
+
+  useEffect(() => {
+    if (!open) {
+      setQuery("");
+    }
+  }, [open]);
+
+  useEffect(() => {
+    setQuery("");
+  }, [role?.id]);
 
   const assignedSlugs = useMemo(
     () => new Set(role?.permissionSlugs ?? []),
     [role?.permissionSlugs],
   );
+
+  const filteredGroups = useMemo(() => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      return groups;
+    }
+
+    return groups
+      .map((group) => {
+        const moduleMatch = matchesTableSearch(trimmed, [
+          group.moduleName,
+          group.description,
+        ]);
+        if (moduleMatch) {
+          return group;
+        }
+
+        const permissions = group.permissions.filter((permission) =>
+          matchesTableSearch(trimmed, [
+            permission.label,
+            permission.slug,
+            permission.catalogName,
+          ]),
+        );
+        if (permissions.length === 0) {
+          return null;
+        }
+        return { ...group, permissions };
+      })
+      .filter((group): group is PermissionModuleGroup => group !== null);
+  }, [groups, query]);
 
   const {
     pendingChange,
@@ -177,19 +222,41 @@ export function RolePermissionsDrawer({
             ) : null}
           </SheetHeader>
 
+          <div className="border-b border-border/60 px-4 py-3">
+            <div className="relative">
+              <Search
+                className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                aria-hidden
+              />
+              <Input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search modules or permissions…"
+                className="pl-8"
+                aria-label="Search permissions"
+              />
+            </div>
+          </div>
+
           <div className="flex-1 overflow-y-auto px-4 py-4">
             {role ? (
-              <GroupedPermissionsChecklist
-                groups={groups}
-                assignedSlugs={assignedSlugs}
-                disabled={isProtected}
-                pending={isPending || bulkBusy}
-                mode="live"
-                onToggle={handleToggle}
-                onModuleSelectAll={
-                  isProtected ? undefined : handleModuleSelectAll
-                }
-              />
+              filteredGroups.length > 0 ? (
+                <GroupedPermissionsChecklist
+                  groups={filteredGroups}
+                  assignedSlugs={assignedSlugs}
+                  disabled={isProtected}
+                  pending={isPending || bulkBusy}
+                  mode="live"
+                  onToggle={handleToggle}
+                  onModuleSelectAll={
+                    isProtected ? undefined : handleModuleSelectAll
+                  }
+                />
+              ) : (
+                <p className="py-8 text-center text-sm text-muted-foreground">
+                  No permissions match “{query.trim()}”.
+                </p>
+              )
             ) : null}
           </div>
 

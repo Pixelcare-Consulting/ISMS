@@ -30,7 +30,7 @@ export interface SerialTimelineEvent {
   label: string;
   at: Date;
   branch: string | null;
-  status: { code: string; name: string } | null;
+  status: { code: string; name: string; color?: string | null } | null;
   detail: string | null;
 }
 
@@ -41,7 +41,7 @@ export interface SerialTraceability {
   model: { skuCode: string; name: string; brand: string | null };
   current: {
     branch: string | null;
-    status: { code: string; name: string } | null;
+    status: { code: string; name: string; color?: string | null } | null;
   } | null;
   events: SerialTimelineEvent[];
 }
@@ -66,7 +66,11 @@ function buildTimeline(row: SerialTraceabilityRow): SerialTimelineEvent[] {
       at: inv.updatedAt,
       branch: inv.branch?.name ?? null,
       status: inv.statusCode
-        ? { code: inv.statusCode.code, name: inv.statusCode.name }
+        ? {
+            code: inv.statusCode.code,
+            name: inv.statusCode.name,
+            color: inv.statusCode.color,
+          }
         : null,
       detail: null,
     });
@@ -115,7 +119,11 @@ function buildTimeline(row: SerialTraceabilityRow): SerialTimelineEvent[] {
       at: transfer.createdAt,
       branch: null,
       status: transfer.statusCode
-        ? { code: transfer.statusCode.code, name: transfer.statusCode.name }
+        ? {
+            code: transfer.statusCode.code,
+            name: transfer.statusCode.name,
+            color: transfer.statusCode.color,
+          }
         : null,
       detail: [
         `${transfer.fromBranch?.name ?? "—"} → ${transfer.toBranch?.name ?? "—"}`,
@@ -135,7 +143,11 @@ function buildTimeline(row: SerialTraceabilityRow): SerialTimelineEvent[] {
       at: pullout.createdAt,
       branch: pullout.branch?.name ?? null,
       status: pullout.statusCode
-        ? { code: pullout.statusCode.code, name: pullout.statusCode.name }
+        ? {
+            code: pullout.statusCode.code,
+            name: pullout.statusCode.name,
+            color: pullout.statusCode.color,
+          }
         : null,
       detail: [
         `${pullout.branch?.name ?? "—"} → ${pullout.warehouse?.name ?? "—"}`,
@@ -237,7 +249,11 @@ export const serialNumberService = {
         ? {
             branch: current.branch?.name ?? null,
             status: current.statusCode
-              ? { code: current.statusCode.code, name: current.statusCode.name }
+              ? {
+                  code: current.statusCode.code,
+                  name: current.statusCode.name,
+                  color: current.statusCode.color,
+                }
               : null,
           }
         : null,

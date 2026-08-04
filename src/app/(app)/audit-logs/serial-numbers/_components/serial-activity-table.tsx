@@ -11,6 +11,7 @@ import {
   formatSerialActivityPerformedBy,
   formatSerialActivityTimestamp,
 } from "@/features/serial-activity/constants/serial-activity-display";
+import { TableCodeCell } from "@/components/data-table";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   parseTablePageSize,
@@ -29,6 +30,7 @@ import {
 } from "@/components/ui/table";
 import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
 import { cn } from "@/utils/cn";
+import { formatPeso } from "@/utils/format-currency";
 
 interface SerialActivityTableProps {
   result: {
@@ -61,6 +63,11 @@ const TYPE_BADGE_CLASS: Record<SerialActivityType, string> = {
     "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
   counted: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
 };
+
+function formatReferenceAmount(amount: string): string {
+  const n = Number(amount.replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(n) ? formatPeso(n) : amount;
+}
 
 function buildHref(
   page: number,
@@ -244,9 +251,7 @@ export function SerialActivityTable({
                 {SERIAL_ACTIVITY_LABELS[row.type]}
               </span>
             </TableCell>
-            <TableCell className="font-medium tabular-nums">
-              {row.serialNo}
-            </TableCell>
+            <TableCodeCell value={row.serialNo} />
             <TableCell className="text-sm text-muted-foreground">
               {row.modelLabel}
             </TableCell>
@@ -260,8 +265,8 @@ export function SerialActivityTable({
                   <span className="text-xs">{row.status}</span>
                 ) : null}
                 {row.amount ? (
-                  <span className="text-xs tabular-nums">
-                    {row.amount}
+                  <span className="font-mono text-sm tabular-nums">
+                    {formatReferenceAmount(row.amount)}
                   </span>
                 ) : null}
                 {!row.reference && !row.status && !row.amount ? "—" : null}

@@ -12,6 +12,19 @@ import {
   isToFollowSerial,
   TO_FOLLOW_SERIAL_ID,
 } from "@/features/sales/constants/to-follow-serial";
+import {
+  SALES_ACCESS_PERMISSIONS,
+  SALES_CREATE,
+  SALES_RETURN_APPROVE,
+  SALES_RETURN_COMPLETE,
+  SALES_RETURN_EVALUATE,
+  SALES_RETURN_REQUEST,
+  salesReturnRejectPermissions,
+} from "@/features/sales/constants/sales-permissions";
+import {
+  generateSaleTransactionNo,
+  isSaleTransactionNo,
+} from "@/features/sales/utils/sale-transaction-no";
 import { hasPermission, requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/database/client";
 import { getObjectStorage } from "@/lib/storage";
@@ -29,6 +42,11 @@ const saleDetailSchema = z.object({
 });
 
 const saleSchema = z.object({
+  transactionNo: z
+    .string()
+    .trim()
+    .min(1)
+    .refine(isSaleTransactionNo, "Invalid transaction number"),
   branchId: z.string().min(1),
   alternateBranchId: z.string().min(1),
   customerName: z.string().trim().min(1),
@@ -111,7 +129,7 @@ async function assertValidStockSource(
 }
 
 export async function listSalesAction(input?: { page?: number; limit?: number }) {
-  const session = await requirePermission("sales.create");
+  const session = await requireAnyPermission([...SALES_ACCESS_PERMISSIONS]);
   const result = await salesRepository.listForTenant(session.user.tenantId, {
     page: input?.page,
     limit: parseTablePageSize(input?.limit),
@@ -121,8 +139,11 @@ export async function listSalesAction(input?: { page?: number; limit?: number })
     ...result,
     items: result.items.map((row) => {
       const firstDetail = row.details[0];
-      const serialCount = row.details.length;
-      const firstSerial = firstDetail?.serialNumber?.serialNo ?? null;
+      const serialNumbers = row.details
+        .map((d) => d.serialNumber?.serialNo)
+        .filter((s): s is string => Boolean(s));
+      const firstSerial = serialNumbers[0] ?? null;
+      const serialCount = serialNumbers.length;
       const firstSerialId = firstDetail?.serialNumberId ?? null;
       const serialLabel =
         serialCount <= 1
@@ -145,6 +166,7 @@ export async function listSalesAction(input?: { page?: number; limit?: number })
               serialNo: serialLabel,
             }
           : null,
+        serialNumbers,
         returnRequest: row.returnRequest
           ? { id: row.returnRequest.id, status: row.returnRequest.status }
           : null,
@@ -371,6 +393,21 @@ export async function uploadSaleProofAction(formData: FormData) {
   }
 }
 
+export async function allocateSaleTransactionNoAction() {
+  const session = await requirePermission("sales.create");
+
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const transactionNo = generateSaleTransactionNo(Date.now() + attempt);
+    const existing = await prisma.branchSalesTransaction.findFirst({
+      where: { tenantId: session.user.tenantId, transactionNo },
+      select: { id: true },
+    });
+    if (!existing) return { transactionNo };
+  }
+
+  return { error: "Could not allocate a transaction number" as const };
+}
+
 export async function createSaleAction(input: unknown) {
   const session = await requirePermission("sales.create");
   const parsed = saleSchema.safeParse(input);
@@ -401,7 +438,18 @@ export async function createSaleAction(input: unknown) {
     return { error: "Duplicate serials in the same transaction are not allowed" };
   }
 
-  const transactionNo = `SAL-${Date.now().toString(36).toUpperCase()}`;
+  const taken = await prisma.branchSalesTransaction.findFirst({
+    where: {
+      tenantId: session.user.tenantId,
+      transactionNo: parsed.data.transactionNo,
+    },
+    select: { id: true },
+  });
+  if (taken) {
+    return { error: "Transaction number already used. Reload the page for a new number." };
+  }
+
+  const transactionNo = parsed.data.transactionNo;
   const amount = details.reduce((sum, d) => sum + d.saleAmount, 0);
   const modelPriceRollup = details.find((d) => d.modelPrice != null)?.modelPrice;
   const stockBranchId = parsed.data.alternateBranchId;
@@ -607,7 +655,7 @@ export async function createSaleAction(input: unknown) {
 }
 
 export async function requestReturnAction(saleId: string, notes?: string) {
-  const session = await requirePermission("sales.create");
+  const session = await requireAnyPermission([SALES_RETURN_REQUEST, SALES_CREATE]);
   const sale = await prisma.branchSalesTransaction.findFirst({
     where: { id: saleId, tenantId: session.user.tenantId },
     include: { returnRequest: true },
@@ -652,7 +700,7 @@ export async function requestReturnAction(saleId: string, notes?: string) {
 }
 
 export async function evaluateReturnAction(returnRequestId: string, notes?: string) {
-  const session = await requirePermission("sales.create");
+  const session = await requirePermission(SALES_RETURN_EVALUATE);
   const row = await prisma.branchReturnRequest.findFirst({
     where: { id: returnRequestId, tenantId: session.user.tenantId },
   });
@@ -683,7 +731,7 @@ export async function evaluateReturnAction(returnRequestId: string, notes?: stri
 }
 
 export async function approveReturnAction(returnRequestId: string) {
-  const session = await requirePermission("orders.approve");
+  const session = await requireAnyPermission([SALES_RETURN_APPROVE, "orders.approve"]);
   const row = await prisma.branchReturnRequest.findFirst({
     where: { id: returnRequestId, tenantId: session.user.tenantId },
   });
@@ -713,13 +761,23 @@ export async function approveReturnAction(returnRequestId: string) {
 }
 
 export async function rejectReturnAction(returnRequestId: string, notes?: string) {
-  const session = await requireAnyPermission(["orders.approve", "sales.create"]);
+  const session = await requireAnyPermission([
+    SALES_RETURN_EVALUATE,
+    SALES_RETURN_APPROVE,
+    SALES_CREATE,
+    "orders.approve",
+  ]);
   const row = await prisma.branchReturnRequest.findFirst({
     where: { id: returnRequestId, tenantId: session.user.tenantId },
     include: { sale: true },
   });
   if (!row || !["pending_cs", "pending_tl"].includes(row.status)) {
     return { error: "Return request cannot be rejected" };
+  }
+
+  const allowed = salesReturnRejectPermissions(row.status);
+  if (!allowed.some((slug) => hasPermission(session.user.permissions, slug))) {
+    return { error: "You do not have permission to reject this return" };
   }
 
   await prisma.$transaction([
@@ -746,7 +804,11 @@ export async function rejectReturnAction(returnRequestId: string, notes?: string
 }
 
 export async function completeReturnRestoreAction(returnRequestId: string) {
-  const session = await requireAnyPermission(["logistics.manage", "sales.create"]);
+  const session = await requireAnyPermission([
+    SALES_RETURN_COMPLETE,
+    "logistics.manage",
+    SALES_CREATE,
+  ]);
   const row = await prisma.branchReturnRequest.findFirst({
     where: { id: returnRequestId, tenantId: session.user.tenantId },
     include: {
@@ -768,13 +830,22 @@ export async function completeReturnRestoreAction(returnRequestId: string) {
   );
 
   const stockBranchId = row.sale.alternateBranchId ?? row.sale.branchId;
+  // Detail.serialNumberId is required in Prisma, but the live DB previously allowed
+  // ON DELETE SET NULL — filter so restore never upserts a null serial key.
   const serialIds = [
     ...new Set(
       row.sale.details
         .map((d) => d.serialNumberId)
-        .filter((id): id is string => Boolean(id)),
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
     ),
   ];
+
+  if (serialIds.length === 0) {
+    return {
+      error:
+        "Cannot restore stock — this sale has no linked serial numbers. Check the sale details or contact support.",
+    };
+  }
 
   await prisma.$transaction(async (tx) => {
     for (const serialNumberId of serialIds) {

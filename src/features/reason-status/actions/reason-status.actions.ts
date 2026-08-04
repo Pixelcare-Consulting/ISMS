@@ -17,6 +17,9 @@ const createCodeSchema = z.object({
   ]),
   name: z.string().min(1).max(120),
   code: z.string().min(1).max(32),
+  color: z
+    .enum(["slate", "sky", "emerald", "amber", "orange", "rose", "violet", "teal"])
+    .optional(),
   sortOrder: z.coerce.number().int().min(0).optional(),
 });
 
@@ -24,6 +27,10 @@ const updateCodeSchema = z.object({
   name: z.string().min(1).max(120).optional(),
   recordStatus: z.enum(["active", "inactive"]).optional(),
   sortOrder: z.coerce.number().int().min(0).optional(),
+  color: z
+    .enum(["slate", "sky", "emerald", "amber", "orange", "rose", "violet", "teal"])
+    .nullable()
+    .optional(),
 });
 
 export async function listReasonStatusesAction() {
@@ -41,6 +48,7 @@ export async function listReasonStatusCodesAction(category: ReasonStatusCategory
     id: c.id,
     code: c.code,
     name: c.name,
+    color: c.color,
     category: c.reasonStatus.category,
   }));
 }
@@ -56,6 +64,7 @@ export async function createReasonStatusCodeAction(input: unknown) {
       category: parsed.data.category,
       name: parsed.data.name,
       code: parsed.data.code,
+      color: parsed.data.color,
       sortOrder: parsed.data.sortOrder,
     });
     revalidatePath("/settings/status");

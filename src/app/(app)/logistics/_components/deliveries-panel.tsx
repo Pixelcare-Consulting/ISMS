@@ -40,6 +40,7 @@ interface StatusCodeRef {
   id: string;
   code: string;
   name: string;
+  color?: string | null;
 }
 
 interface PaginatedList<T> {
@@ -182,7 +183,11 @@ export function DeliveriesPanel({ deliveries }: DeliveriesPanelProps) {
                   <TableCell>{d.order?.orderNumber ?? "—"}</TableCell>
                   <TableCell>{d.branch.name}</TableCell>
                   <TableCell>
-                    <StatusCodeBadge code={d.statusCode.code} name={d.statusCode.name} />
+                    <StatusCodeBadge
+                      code={d.statusCode.code}
+                      name={d.statusCode.name}
+                      color={d.statusCode.color}
+                    />
                   </TableCell>
                   <TableCell className="space-x-2 text-right">
                     {d.statusCode.code === "pending" ? (

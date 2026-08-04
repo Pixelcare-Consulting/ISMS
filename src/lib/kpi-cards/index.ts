@@ -7,4 +7,4 @@ export { KpiCard } from "@/lib/kpi-cards/kpi-card";
 export { buildStatusKpiItems } from "@/lib/kpi-cards/status-kpi-items";
 export type { GlobalKpiCardsProps } from "@/lib/kpi-cards/global-kpi-cards";
 export type { KpiCardProps } from "@/lib/kpi-cards/kpi-card";
-export type { KpiCardItem, KpiStatusCount } from "@/lib/kpi-cards/types";
+export type { KpiCardItem, KpiCardTone, KpiStatusCount } from "@/lib/kpi-cards/types";

@@ -50,6 +50,7 @@ interface StatusCodeRef {
   id: string;
   code: string;
   name: string;
+  color?: string | null;
 }
 
 interface OpsPanelProps {
@@ -175,7 +176,11 @@ export function OpsPanel({ deliveries, transfers, pullouts, branches }: OpsPanel
                   <TableCell>{d.branch.name}</TableCell>
                   <TableCell>{d.deliveryNo}</TableCell>
                   <TableCell>
-                    <StatusCodeBadge code={d.statusCode.code} name={d.statusCode.name} />
+                    <StatusCodeBadge
+                      code={d.statusCode.code}
+                      name={d.statusCode.name}
+                      color={d.statusCode.color}
+                    />
                   </TableCell>
                   <TableCell className="space-x-2 text-right">
                     {d.statusCode.code === "pending" ? (
@@ -256,7 +261,11 @@ export function OpsPanel({ deliveries, transfers, pullouts, branches }: OpsPanel
                   <TableCell>{t.fromBranch.name}</TableCell>
                   <TableCell>{t.toBranch.name}</TableCell>
                   <TableCell>
-                    <StatusCodeBadge code={t.statusCode.code} name={t.statusCode.name} />
+                    <StatusCodeBadge
+                      code={t.statusCode.code}
+                      name={t.statusCode.name}
+                      color={t.statusCode.color}
+                    />
                   </TableCell>
                 </TableRow>
               ))}
@@ -299,7 +308,11 @@ export function OpsPanel({ deliveries, transfers, pullouts, branches }: OpsPanel
                   <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
                   <TableCell>{p.branch.name}</TableCell>
                   <TableCell>
-                    <StatusCodeBadge code={p.statusCode.code} name={p.statusCode.name} />
+                    <StatusCodeBadge
+                      code={p.statusCode.code}
+                      name={p.statusCode.name}
+                      color={p.statusCode.color}
+                    />
                   </TableCell>
                 </TableRow>
               ))}
