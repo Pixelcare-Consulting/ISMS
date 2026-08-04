@@ -83,21 +83,22 @@ const userSelect = {
 } as const;
 
 const RECORD_STATUS_LABELS: Record<string, string> = {
-  active: "Active",
-  inactive: "Inactive",
+  active: "Record: Active",
+  inactive: "Record: Inactive",
 };
 
+/** ATR = the return-authorization case on the sale, not the sale itself. */
 const ATR_STATUS_LABELS: Record<string, string> = {
-  open: "Open",
-  reserve: "Reserved",
-  closed: "Closed",
+  open: "ATR: Open",
+  reserve: "ATR: Reserved",
+  closed: "ATR: Closed",
 };
 
 const COUNT_LINE_STATUS_LABELS: Record<string, string> = {
-  pending: "Pending count",
-  counted: "Counted",
-  variance: "Variance",
-  resolved: "Resolved",
+  pending: "Count: Pending",
+  counted: "Count: Counted",
+  variance: "Count: Variance",
+  resolved: "Count: Resolved",
 };
 
 /** Drops empty/blank entries so reference cells never render dangling separators. */
@@ -218,7 +219,7 @@ async function statusSource(
           referenceDetails: referenceDetails(
             `Status set to ${r.statusCode.name} (${r.statusCode.code})`,
           ),
-          status: r.statusCode.name,
+          status: `Inventory: ${r.statusCode.name}`,
           performedBy: performedByLabel(r.updatedBy),
         },
       ];
@@ -282,7 +283,7 @@ async function transferredSource(
             route(r.transfer.fromBranch.name, r.transfer.toBranch.name),
             r.transfer.notes ? `Note: ${r.transfer.notes}` : null,
           ),
-          status: r.transfer.statusCode.name,
+          status: `Transfer: ${r.transfer.statusCode.name}`,
           performedBy: performedByLabel(r.transfer.createdBy),
         },
       ];
@@ -432,7 +433,7 @@ async function pulledOutSource(
             r.pullout.waybillNo ? `Waybill ${r.pullout.waybillNo}` : null,
             r.pullout.notes ? `Note: ${r.pullout.notes}` : null,
           ),
-          status: r.pullout.statusCode.name,
+          status: `Pullout: ${r.pullout.statusCode.name}`,
           performedBy: performedByLabel(r.pullout.createdBy),
         },
       ];
