@@ -30,7 +30,7 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
-    version: "0.13.27",
+    version: "0.13.29",
     date: "2026-08-04",
     title: "Sales encode, ATR status, and smoother orders",
     highlights: [
@@ -39,7 +39,8 @@ export const RELEASES: ReleaseNote[] = [
       "When editing a sale serial, only stock units for that product model appear (plus TO FOLLOW)",
       "Review multiple sale proofs in a preview window — images and PDFs side by side",
       "Attach multiple proof files on a sale and type the transaction number from your invoice",
-      "Sales encode and returns are reliable again — TO FOLLOW saves, model price fills from the price list for the transaction date, and return status shows Pending CS",
+      "When you sell from another branch’s stock, the unit’s inventory location moves to the branch that sold it",
+      "Sales encode and returns are reliable again — TO FOLLOW saves, model price fills only from a matching price list for that package and date (no automatic SRP), and return status shows Pending CS",
       "Serial logs label sales clearly as Sales transaction with Inventory: Sold",
       "Orders and Logistics only show actions for your step; View details is always available",
     ],
@@ -107,6 +108,16 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "fix",
         description:
+          "When selling from another branch’s stock, the unit’s location moves to the branch that sold it",
+      },
+      {
+        type: "fix",
+        description:
+          "Edit serial and completed returns correctly return stock to the original stock source",
+      },
+      {
+        type: "fix",
+        description:
           "Edit serial on Sales & ATR only lists stock units for that product model, plus TO FOLLOW",
       },
       {
@@ -127,7 +138,7 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "fix",
         description:
-          "Model price fills from the price list for the sale’s transaction date when you pick a model",
+          "Model price fills only from a matching price list for that package and date — no automatic SRP fill",
       },
       {
         type: "fix",
