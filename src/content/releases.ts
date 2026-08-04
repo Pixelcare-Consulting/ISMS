@@ -52,6 +52,23 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.19.6",
+    date: "2026-08-04",
+    releasedAt: "2026-08-04T19:30:00+08:00",
+    title: "Official Sales quick guide",
+    highlights: [
+      "Official Sales has a ? quick guide beside the page title",
+      "Learn download, upload, review, process, view details, and delete in one short walkthrough",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Official Sales shows a quick guide (?) next to the title covering template download, upload, staging review, process pending, view details, delete, and show all columns",
+      },
+    ],
+  },
+  {
     version: "0.19.5",
     date: "2026-08-04",
     releasedAt: "2026-08-04T19:20:00+08:00",
