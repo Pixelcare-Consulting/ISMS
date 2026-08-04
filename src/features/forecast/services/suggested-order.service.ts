@@ -11,6 +11,25 @@ import {
 } from "@/lib/shared/pagination";
 import type { Prisma } from "@prisma/client";
 
+export type DraftOrderListSort = "orderNumber" | "branch" | "status";
+export type DraftOrderListSortDir = "asc" | "desc";
+
+function draftOrderPrismaOrderBy(
+  field: DraftOrderListSort,
+  dir: DraftOrderListSortDir,
+): Prisma.BranchOrderOrderByWithRelationInput {
+  switch (field) {
+    case "orderNumber":
+      return { orderNumber: dir };
+    case "branch":
+      return { branch: { name: dir } };
+    case "status":
+      return { status: dir };
+    default:
+      return { createdAt: dir };
+  }
+}
+
 function draftSuggestedOrdersWhere(
   tenantId: string,
   filters?: { branchId?: string; q?: string },
@@ -169,9 +188,13 @@ export const suggestedOrderService = {
     tenantId: string,
     pagination?: PaginationInput,
     filters?: { branchId?: string; q?: string },
+    sort?: { field?: DraftOrderListSort; dir?: DraftOrderListSortDir },
   ) {
     const { limit, page, skip } = resolvePagination(pagination);
     const where = draftSuggestedOrdersWhere(tenantId, filters);
+    const orderBy = sort?.field
+      ? draftOrderPrismaOrderBy(sort.field, sort.dir ?? "desc")
+      : { createdAt: "desc" as const };
 
     const [items, total] = await Promise.all([
       prisma.branchOrder.findMany({
@@ -182,7 +205,7 @@ export const suggestedOrderService = {
             include: { model: { select: { skuCode: true, name: true } } },
           },
         },
-        orderBy: { createdAt: "desc" },
+        orderBy,
         skip,
         take: limit,
       }),

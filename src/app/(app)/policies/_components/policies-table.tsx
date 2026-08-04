@@ -10,6 +10,7 @@ import {
 } from "@/components/data-table/data-table-shell";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { TableSearchToolbar, uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
+import { GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -65,6 +66,13 @@ export function PoliciesTable({
       ),
     [policies, query],
   );
+
+  const sort = useClientTableSort(filtered, {
+    title: (policy) => policy.title,
+    status: (policy) => policy.statusLabel,
+    owner: (policy) => policy.createdByName,
+    updated: (policy) => policy.updatedAt,
+  });
 
   const suggestions = useMemo(
     () =>
@@ -128,14 +136,14 @@ export function PoliciesTable({
                 <TableHead className="w-12 text-center text-muted-foreground">
                   #
                 </TableHead>
-                <TableHead>Title</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Owner</TableHead>
-                <TableHead>Updated</TableHead>
+                <GlobalTableHead {...sort.sortProps("title")}>Title</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("status")}>Status</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("owner")}>Owner</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("updated")}>Updated</GlobalTableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((policy, index) => (
+              {sort.sorted.map((policy, index) => (
                 <TableRow
                   key={policy.id}
                   data-state={selection.isRowSelected(policy.id) ? "selected" : undefined}

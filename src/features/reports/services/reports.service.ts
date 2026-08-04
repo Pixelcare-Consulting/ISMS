@@ -220,7 +220,7 @@ export const reportsService = {
 
     const soldByBranchModel = new Map<string, number>();
     for (const row of soldDetails) {
-      const modelId = row.modelId ?? row.serialNumber.modelId;
+      const modelId = row.modelId ?? row.serialNumber?.modelId;
       if (!modelId || !modelIds.includes(modelId)) continue;
       const key = `${row.sale.branchId}:${modelId}`;
       soldByBranchModel.set(key, (soldByBranchModel.get(key) ?? 0) + 1);

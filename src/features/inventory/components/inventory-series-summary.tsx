@@ -17,10 +17,10 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 import type { InventorySeriesSummary } from "@/features/inventory/services/inventory.service";
 import { cn } from "@/utils/cn";
 import { formatPeso } from "@/utils/format-currency";
@@ -83,6 +83,12 @@ function SeriesSummaryTable({
   /** Sticky SERIES header + TOTAL footer inside the nearest overflow scroller. */
   freezeChrome?: boolean;
 }) {
+  const sort = useClientTableSort(rows, {
+    series: (row) => row.series,
+    qty: (row) => row.qty,
+    value: (row) => row.value,
+  });
+
   return (
     <Table scrollContainer={false}>
       <TableHeader
@@ -92,20 +98,26 @@ function SeriesSummaryTable({
         )}
       >
         <TableRow className="hover:bg-transparent">
-          <TableHead className="bg-card">SERIES</TableHead>
-          <TableHead className="bg-card text-right">QTY</TableHead>
-          <TableHead className="bg-card text-right">VALUE</TableHead>
+          <GlobalTableHead className="bg-card" {...sort.sortProps("series")}>
+            SERIES
+          </GlobalTableHead>
+          <GlobalTableHead className="bg-card text-right" {...sort.sortProps("qty")}>
+            QTY
+          </GlobalTableHead>
+          <GlobalTableHead className="bg-card text-right" {...sort.sortProps("value")}>
+            VALUE
+          </GlobalTableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
-        {rows.length === 0 ? (
+        {sort.sorted.length === 0 ? (
           <TableRow>
             <TableCell colSpan={3} className="py-6 text-center text-sm text-muted-foreground">
               {emptyLabel}
             </TableCell>
           </TableRow>
         ) : (
-          rows.map((row) => (
+          sort.sorted.map((row) => (
             <TableRow key={row.series}>
               <TableCell className="font-mono text-sm">{row.series}</TableCell>
               <TableCell className="text-right tabular-nums">{row.qty}</TableCell>

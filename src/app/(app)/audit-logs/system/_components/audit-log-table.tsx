@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { AuditActionBadge } from "@/features/audit/components/audit-action-badge";
@@ -30,7 +30,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
 import { cn } from "@/utils/cn";
 
 interface AuditLogUser {
@@ -66,7 +66,12 @@ interface AuditLogTableProps {
   currentSearch?: string;
   currentDateFrom?: string;
   currentDateTo?: string;
+  initialSort?: string;
+  initialSortDir?: string;
 }
+
+type AuditLogSortField = "createdAt" | "user" | "action" | "entityType";
+type AuditLogSortDir = "asc" | "desc";
 
 interface AuditLogFilters {
   action?: string;
@@ -74,6 +79,8 @@ interface AuditLogFilters {
   q?: string;
   dateFrom?: string;
   dateTo?: string;
+  sort?: string;
+  sortDir?: string;
 }
 
 function buildAuditLogHref(
@@ -104,6 +111,12 @@ function buildAuditLogHref(
   if (filters.dateTo) {
     params.set("dateTo", filters.dateTo);
   }
+  if (filters.sort) {
+    params.set("sort", filters.sort);
+  }
+  if (filters.sort && filters.sortDir) {
+    params.set("dir", filters.sortDir);
+  }
 
   const query = params.toString();
   return query ? `/audit-logs/system?${query}` : "/audit-logs/system";
@@ -117,14 +130,21 @@ export function AuditLogTable({
   currentSearch,
   currentDateFrom,
   currentDateTo,
+  initialSort = "",
+  initialSortDir = "desc",
 }: AuditLogTableProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [action, setAction] = useState(currentAction ?? "");
   const [entityType, setEntityType] = useState(currentEntityType ?? "");
   const [search, setSearch] = useState(currentSearch ?? "");
   const [dateFrom, setDateFrom] = useState(currentDateFrom ?? "");
   const [dateTo, setDateTo] = useState(currentDateTo ?? "");
   const pageSize = parseTablePageSize(result.pageSize);
+  const sort = (searchParams.get("sort") ?? initialSort) || "";
+  const sortDir = (
+    (searchParams.get("dir") ?? initialSortDir) === "asc" ? "asc" : "desc"
+  ) as AuditLogSortDir;
 
   const rows = useMemo(() => result.items, [result.items]);
   const selection = useTableSelection(rows.map((row) => row.id));
@@ -148,6 +168,8 @@ export function AuditLogTable({
     q: currentSearch,
     dateFrom: currentDateFrom,
     dateTo: currentDateTo,
+    sort: sort || undefined,
+    sortDir: sort ? sortDir : undefined,
   };
 
   function handlePageSizeChange(limit: TablePageSize) {
@@ -162,6 +184,8 @@ export function AuditLogTable({
         q: search.trim() || undefined,
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined,
+        sort: sort || undefined,
+        sortDir: sort ? sortDir : undefined,
       }),
     );
   }
@@ -173,6 +197,17 @@ export function AuditLogTable({
     setDateFrom("");
     setDateTo("");
     router.push("/audit-logs/system");
+  }
+
+  function toggleSort(field: AuditLogSortField) {
+    const next = nextTableSort(field, sort, sortDir);
+    router.push(
+      buildAuditLogHref(1, pageSize, {
+        ...activeFilters,
+        sort: next.sort,
+        sortDir: next.dir,
+      }),
+    );
   }
 
   const hasActiveFilters = Boolean(
@@ -294,10 +329,38 @@ export function AuditLogTable({
             />
           </GlobalTableHead>
           <GlobalTableHead className="w-12">#</GlobalTableHead>
-          <GlobalTableHead>Date & time</GlobalTableHead>
-          <GlobalTableHead>User</GlobalTableHead>
-          <GlobalTableHead>Activity</GlobalTableHead>
-          <GlobalTableHead>Area</GlobalTableHead>
+          <GlobalTableHead
+            sortKey="createdAt"
+            activeSortKey={sort}
+            sortDirection={sortDir}
+            onSort={(key) => toggleSort(key as AuditLogSortField)}
+          >
+            Date & time
+          </GlobalTableHead>
+          <GlobalTableHead
+            sortKey="user"
+            activeSortKey={sort}
+            sortDirection={sortDir}
+            onSort={(key) => toggleSort(key as AuditLogSortField)}
+          >
+            User
+          </GlobalTableHead>
+          <GlobalTableHead
+            sortKey="action"
+            activeSortKey={sort}
+            sortDirection={sortDir}
+            onSort={(key) => toggleSort(key as AuditLogSortField)}
+          >
+            Activity
+          </GlobalTableHead>
+          <GlobalTableHead
+            sortKey="entityType"
+            activeSortKey={sort}
+            sortDirection={sortDir}
+            onSort={(key) => toggleSort(key as AuditLogSortField)}
+          >
+            Area
+          </GlobalTableHead>
           <GlobalTableHead>Details</GlobalTableHead>
         </TableRow>
       </TableHeader>

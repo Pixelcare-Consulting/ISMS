@@ -5,6 +5,35 @@ import {
   toPaginatedResult,
 } from "@/lib/shared/pagination";
 
+export type SapJobListSort =
+  | "jobType"
+  | "status"
+  | "referenceId"
+  | "sapDocNum"
+  | "attempts"
+  | "createdAt";
+export type SapJobListSortDir = "asc" | "desc";
+
+function sapJobPrismaOrderBy(
+  field: SapJobListSort,
+  dir: SapJobListSortDir,
+): Prisma.SapIntegrationJobOrderByWithRelationInput {
+  switch (field) {
+    case "jobType":
+      return { jobType: dir };
+    case "status":
+      return { status: dir };
+    case "referenceId":
+      return { referenceId: dir };
+    case "sapDocNum":
+      return { sapDocRef: dir };
+    case "attempts":
+      return { attemptCount: dir };
+    default:
+      return { createdAt: dir };
+  }
+}
+
 export const sapIntegrationRepository = {
   findByIdempotencyKey(tenantId: string, idempotencyKey: string) {
     return prisma.sapIntegrationJob.findUnique({
@@ -36,17 +65,21 @@ export const sapIntegrationRepository = {
   listJobs(
     tenantId: string,
     pagination?: { page?: number; status?: string },
+    sort?: { field?: SapJobListSort; dir?: SapJobListSortDir },
   ) {
     const { limit, page, skip } = resolvePagination(pagination);
     const where: Prisma.SapIntegrationJobWhereInput = {
       tenantId,
       ...(pagination?.status ? { status: pagination.status as Prisma.EnumSapIntegrationJobStatusFilter["equals"] } : {}),
     };
+    const orderBy = sort?.field
+      ? sapJobPrismaOrderBy(sort.field, sort.dir ?? "desc")
+      : { createdAt: "desc" as const };
 
     return Promise.all([
       prisma.sapIntegrationJob.findMany({
         where,
-        orderBy: { createdAt: "desc" },
+        orderBy,
         skip,
         take: limit,
       }),

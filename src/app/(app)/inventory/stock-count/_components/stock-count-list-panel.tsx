@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
@@ -21,7 +21,7 @@ import {
   type TablePageSize,
 } from "@/components/data-table/table-page-size";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
-import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -48,18 +48,35 @@ interface PaginatedList<T> {
 
 interface StockCountListPanelProps {
   sessions: PaginatedList<SessionRow>;
+  initialSort?: string;
+  initialSortDir?: string;
 }
 
-function buildStockCountHref(page: number, limit: number): string {
+type StockCountSortField = "session" | "branch" | "status" | "createdBy";
+type StockCountSortDir = "asc" | "desc";
+
+function buildStockCountHref(
+  page: number,
+  limit: number,
+  sort?: string,
+  sortDir?: string,
+): string {
   const params = new URLSearchParams();
   if (page > 1) params.set("page", String(page));
   if (limit !== DEFAULT_TABLE_PAGE_SIZE) params.set("limit", String(limit));
+  if (sort) params.set("sort", sort);
+  if (sort && sortDir) params.set("dir", sortDir);
   const query = params.toString();
   return query ? `/inventory/stock-count?${query}` : "/inventory/stock-count";
 }
 
-export function StockCountListPanel({ sessions }: StockCountListPanelProps) {
+export function StockCountListPanel({
+  sessions,
+  initialSort = "",
+  initialSortDir = "desc",
+}: StockCountListPanelProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
   const [branches, setBranches] = useState<{ id: string; name: string }[]>([]);
   const [selectedBranchId, setSelectedBranchId] = useState("");
@@ -67,9 +84,18 @@ export function StockCountListPanel({ sessions }: StockCountListPanelProps) {
   const [permissionDialogOpen, setPermissionDialogOpen] = useState(false);
   const selection = useTableSelection(sessions.items.map((session) => session.id));
   const pageSize = parseTablePageSize(sessions.limit);
+  const sort = (searchParams.get("sort") ?? initialSort) || "";
+  const sortDir = (
+    (searchParams.get("dir") ?? initialSortDir) === "asc" ? "asc" : "desc"
+  ) as StockCountSortDir;
 
   function handlePageSizeChange(limit: TablePageSize) {
-    router.push(buildStockCountHref(1, limit));
+    router.push(buildStockCountHref(1, limit, sort, sort ? sortDir : undefined));
+  }
+
+  function toggleSort(field: StockCountSortField) {
+    const next = nextTableSort(field, sort, sortDir);
+    router.push(buildStockCountHref(1, pageSize, next.sort, next.dir));
   }
 
   async function loadBranches() {
@@ -142,7 +168,8 @@ export function StockCountListPanel({ sessions }: StockCountListPanelProps) {
         page: sessions.page,
         totalPages: sessions.totalPages,
         itemLabel: "session",
-        buildHref: (page) => buildStockCountHref(page, pageSize),
+        buildHref: (page) =>
+          buildStockCountHref(page, pageSize, sort, sort ? sortDir : undefined),
       }}
       pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
     >
@@ -156,12 +183,40 @@ export function StockCountListPanel({ sessions }: StockCountListPanelProps) {
                 />
               </GlobalTableHead>
               <TableIndexHead />
-              <GlobalTableHead>Session</GlobalTableHead>
-              <GlobalTableHead>Branch</GlobalTableHead>
-              <GlobalTableHead>Status</GlobalTableHead>
+              <GlobalTableHead
+                sortKey="session"
+                activeSortKey={sort}
+                sortDirection={sortDir}
+                onSort={(key) => toggleSort(key as StockCountSortField)}
+              >
+                Session
+              </GlobalTableHead>
+              <GlobalTableHead
+                sortKey="branch"
+                activeSortKey={sort}
+                sortDirection={sortDir}
+                onSort={(key) => toggleSort(key as StockCountSortField)}
+              >
+                Branch
+              </GlobalTableHead>
+              <GlobalTableHead
+                sortKey="status"
+                activeSortKey={sort}
+                sortDirection={sortDir}
+                onSort={(key) => toggleSort(key as StockCountSortField)}
+              >
+                Status
+              </GlobalTableHead>
               <GlobalTableHead className="text-right">Lines</GlobalTableHead>
               <GlobalTableHead className="text-right">Variances</GlobalTableHead>
-              <GlobalTableHead>Created by</GlobalTableHead>
+              <GlobalTableHead
+                sortKey="createdBy"
+                activeSortKey={sort}
+                sortDirection={sortDir}
+                onSort={(key) => toggleSort(key as StockCountSortField)}
+              >
+                Created by
+              </GlobalTableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

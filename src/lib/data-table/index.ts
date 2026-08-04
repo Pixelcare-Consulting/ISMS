@@ -5,6 +5,16 @@
 export { GlobalDataTable } from "@/lib/data-table/global-data-table";
 export { GlobalTableHead } from "@/lib/data-table/global-table-head";
 export { useGlobalTableStickyHeader } from "@/lib/data-table/sticky-context";
+export {
+  compareTableValues,
+  nextTableSort,
+  sortTableRows,
+} from "@/lib/data-table/table-sort";
+export type {
+  TableSortComparable,
+  TableSortDirection,
+} from "@/lib/data-table/table-sort";
+export { useClientTableSort } from "@/lib/data-table/use-client-table-sort";
 export type {
   GlobalDataTablePageSize,
   GlobalDataTablePagination,

@@ -20,6 +20,8 @@ interface PlanningPageProps {
     page?: string;
     branch?: string;
     q?: string;
+    sort?: string;
+    dir?: string;
   }>;
 }
 
@@ -39,6 +41,8 @@ export default async function PlanningPage({ searchParams }: PlanningPageProps) 
           page: gapPage,
           branchId: params.branch,
           q: params.q,
+          sort: params.sort,
+          sortDir: params.dir,
         }),
         listBranchesForPlanningAction(),
       ])
@@ -96,6 +100,8 @@ export default async function PlanningPage({ searchParams }: PlanningPageProps) 
         branches={branches}
         currentBranch={params.branch}
         currentQ={params.q}
+        initialSort={params.sort ?? ""}
+        initialSortDir={params.dir ?? "desc"}
       />
     </div>
   );

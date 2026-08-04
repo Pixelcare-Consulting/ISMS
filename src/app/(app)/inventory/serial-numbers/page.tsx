@@ -17,6 +17,8 @@ interface SerialNumbersPageProps {
     limit?: string;
     q?: string;
     status?: string;
+    sort?: string;
+    dir?: string;
   }>;
 }
 
@@ -36,7 +38,14 @@ export default async function SerialNumbersPage({
   const status = parseStatus(params.status);
 
   const [result, modelOptions, kpis] = await Promise.all([
-    listSerialNumbersAction({ page, limit, q: params.q, status }),
+    listSerialNumbersAction({
+      page,
+      limit,
+      q: params.q,
+      status,
+      sort: params.sort,
+      sortDir: params.dir,
+    }),
     canManage ? listSerialModelOptionsAction() : Promise.resolve([]),
     getSerialNumberKpisAction(),
   ]);
@@ -54,6 +63,8 @@ export default async function SerialNumbersPage({
         canManage={canManage}
         currentSearch={params.q}
         currentStatus={status}
+        initialSort={params.sort ?? ""}
+        initialSortDir={params.dir ?? "desc"}
       />
     </div>
   );

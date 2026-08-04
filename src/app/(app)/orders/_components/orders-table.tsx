@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
@@ -37,7 +37,7 @@ import {
   type TablePageSize,
 } from "@/components/data-table/table-page-size";
 import { uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
-import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
@@ -88,6 +88,9 @@ interface OrderModelOption {
   onPlanogram: boolean;
 }
 
+type OrderSortField = "orderNumber" | "branch" | "orderType" | "status";
+type OrderSortDir = "asc" | "desc";
+
 interface OrdersTableProps {
   result: {
     items: OrderRow[];
@@ -104,6 +107,8 @@ interface OrdersTableProps {
   fixedOrderType?: BranchOrderType;
   /** Base path for pagination links (defaults to `/orders`). */
   basePath?: string;
+  initialSort?: string;
+  initialSortDir?: string;
 }
 
 const ORDER_APPROVE_FEED = [
@@ -129,10 +134,18 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function buildOrdersHref(basePath: string, page: number, limit: number): string {
+function buildOrdersHref(
+  basePath: string,
+  page: number,
+  limit: number,
+  sort?: string,
+  sortDir?: string,
+): string {
   const params = new URLSearchParams();
   if (page > 1) params.set("page", String(page));
   if (limit !== DEFAULT_TABLE_PAGE_SIZE) params.set("limit", String(limit));
+  if (sort) params.set("sort", sort);
+  if (sort && sortDir) params.set("dir", sortDir);
   const query = params.toString();
   return query ? `${basePath}?${query}` : basePath;
 }
@@ -144,8 +157,11 @@ export function OrdersTable({
   canAccessSuggestedOrders = false,
   fixedOrderType,
   basePath = "/orders",
+  initialSort = "",
+  initialSortDir = "desc",
 }: OrdersTableProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
   const [workflowOrder, setWorkflowOrder] = useState<OrderRow | null>(null);
   const [detailsOrder, setDetailsOrder] = useState<OrderRow | null>(null);
@@ -156,9 +172,18 @@ export function OrdersTable({
   );
   const [showCreate, setShowCreate] = useState(false);
   const pageSize = parseTablePageSize(result.limit);
+  const sort = (searchParams.get("sort") ?? initialSort) || "";
+  const sortDir = (
+    (searchParams.get("dir") ?? initialSortDir) === "asc" ? "asc" : "desc"
+  ) as OrderSortDir;
 
   function handlePageSizeChange(limit: TablePageSize) {
-    router.push(buildOrdersHref(basePath, 1, limit));
+    router.push(buildOrdersHref(basePath, 1, limit, sort, sort ? sortDir : undefined));
+  }
+
+  function toggleSort(field: OrderSortField) {
+    const next = nextTableSort(field, sort, sortDir);
+    router.push(buildOrdersHref(basePath, 1, pageSize, next.sort, next.dir));
   }
 
   const filtered = useMemo(
@@ -260,7 +285,8 @@ export function OrdersTable({
           page: result.page,
           totalPages: result.totalPages,
           itemLabel: "order",
-          buildHref: (page) => buildOrdersHref(basePath, page, pageSize),
+          buildHref: (page) =>
+            buildOrdersHref(basePath, page, pageSize, sort, sort ? sortDir : undefined),
         }}
       >
         <TableHeader>
@@ -273,10 +299,38 @@ export function OrdersTable({
               />
             </GlobalTableHead>
             <GlobalTableHead className="w-12">#</GlobalTableHead>
-            <GlobalTableHead>Order #</GlobalTableHead>
-            <GlobalTableHead>Branch</GlobalTableHead>
-            <GlobalTableHead>Type</GlobalTableHead>
-            <GlobalTableHead>Status</GlobalTableHead>
+            <GlobalTableHead
+              sortKey="orderNumber"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as OrderSortField)}
+            >
+              Order #
+            </GlobalTableHead>
+            <GlobalTableHead
+              sortKey="branch"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as OrderSortField)}
+            >
+              Branch
+            </GlobalTableHead>
+            <GlobalTableHead
+              sortKey="orderType"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as OrderSortField)}
+            >
+              Type
+            </GlobalTableHead>
+            <GlobalTableHead
+              sortKey="status"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as OrderSortField)}
+            >
+              Status
+            </GlobalTableHead>
             <GlobalTableHead>Lines</GlobalTableHead>
             <GlobalTableHead className="w-44" />
           </TableRow>

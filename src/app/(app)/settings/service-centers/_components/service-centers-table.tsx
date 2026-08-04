@@ -19,7 +19,7 @@ import {
   uniqueSearchSuggestions,
   useClientTablePagination,
 } from "@/components/data-table";
-import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -105,6 +105,11 @@ export function ServiceCentersTable({ centers }: { centers: CenterRow[] }) {
     [rows],
   );
 
+  const sort = useClientTableSort(filtered, {
+    sapCode: (row) => row.sapCode,
+    name: (row) => row.name,
+    area: (row) => row.area?.name,
+  });
   const {
     page,
     setPage,
@@ -113,7 +118,9 @@ export function ServiceCentersTable({ centers }: { centers: CenterRow[] }) {
     total,
     totalPages,
     pageItems,
-  } = useClientTablePagination(filtered, { resetKey: query });
+  } = useClientTablePagination(sort.sorted, {
+    resetKey: `${query}:${sort.sortKey}:${sort.sortDir}`,
+  });
 
   async function loadAreas() {
     if (areas.length) return;
@@ -230,9 +237,9 @@ export function ServiceCentersTable({ centers }: { centers: CenterRow[] }) {
       >
             <TableHeader>
               <TableRow className="bg-muted/30 hover:bg-muted/30">
-                <GlobalTableHead>SAP</GlobalTableHead>
-                <GlobalTableHead>Name</GlobalTableHead>
-                <GlobalTableHead>Area</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("sapCode")}>SAP</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("name")}>Name</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("area")}>Area</GlobalTableHead>
                 <GlobalTableHead>Locations</GlobalTableHead>
                 <GlobalTableHead className="w-28 text-right">Actions</GlobalTableHead>
               </TableRow>

@@ -1,9 +1,10 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import { EditSaleSerialDialog } from "@/app/(app)/sales/_components/edit-sale-serial-dialog";
 import {
   approveReturnAction,
   completeReturnRestoreAction,
@@ -11,6 +12,7 @@ import {
   rejectReturnAction,
   requestReturnAction,
 } from "@/features/sales/actions/sales.actions";
+import { TO_FOLLOW_SERIAL_LABEL } from "@/features/sales/constants/to-follow-serial";
 import type { SalesActionCapabilities } from "@/features/sales/constants/sales-permissions";
 import {
   TableAmountCell,
@@ -25,7 +27,7 @@ import {
   type TablePageSize,
 } from "@/components/data-table/table-page-size";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
-import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -49,11 +51,16 @@ interface SaleRow {
   transactionNo: string;
   amount: string;
   atrStatus: string;
-  branch: { name: string };
-  serialNumber: { serialNo: string } | null;
+  branchId: string;
+  branch: { id: string; name: string };
+  serialNumberId: string | null;
+  serialNumber: { id: string; serialNo: string } | null;
   serialNumbers: string[];
   returnRequest: { id: string; status: string } | null;
 }
+
+type SalesSortField = "transactionNo" | "branch" | "amount" | "atrStatus" | "returnStatus";
+type SalesSortDir = "asc" | "desc";
 
 interface SalesTableProps {
   result: {
@@ -64,6 +71,8 @@ interface SalesTableProps {
     totalPages: number;
   };
   capabilities: SalesActionCapabilities;
+  initialSort?: string;
+  initialSortDir?: string;
 }
 
 type ReturnConfirmAction =
@@ -125,24 +134,52 @@ function saleTransactionLabel(sale: SaleRow): string {
   return sale.transactionNo || sale.id.slice(-8);
 }
 
-function buildSalesHref(page: number, limit: number): string {
+/** Null serial means TO-FOLLOW was encoded (placeholder pending a real unit). */
+function saleSerialLabel(sale: SaleRow): string {
+  return sale.serialNumber?.serialNo ?? TO_FOLLOW_SERIAL_LABEL;
+}
+
+function buildSalesHref(
+  page: number,
+  limit: number,
+  sort?: string,
+  sortDir?: string,
+): string {
   const params = new URLSearchParams();
   if (page > 1) params.set("page", String(page));
   if (limit !== DEFAULT_TABLE_PAGE_SIZE) params.set("limit", String(limit));
+  if (sort) params.set("sort", sort);
+  if (sort && sortDir) params.set("dir", sortDir);
   const query = params.toString();
   return query ? `/sales?${query}` : "/sales";
 }
 
-export function SalesTable({ result, capabilities }: SalesTableProps) {
+export function SalesTable({
+  result,
+  capabilities,
+  initialSort = "",
+  initialSortDir = "desc",
+}: SalesTableProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
+  const [editingSale, setEditingSale] = useState<SaleRow | null>(null);
   const [serialDialogSale, setSerialDialogSale] = useState<SaleRow | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
   const pageSize = parseTablePageSize(result.limit);
+  const sort = (searchParams.get("sort") ?? initialSort) || "";
+  const sortDir = (
+    (searchParams.get("dir") ?? initialSortDir) === "asc" ? "asc" : "desc"
+  ) as SalesSortDir;
 
   function handlePageSizeChange(limit: TablePageSize) {
-    router.push(buildSalesHref(1, limit));
+    router.push(buildSalesHref(1, limit, sort, sort ? sortDir : undefined));
+  }
+
+  function toggleSort(field: SalesSortField) {
+    const next = nextTableSort(field, sort, sortDir);
+    router.push(buildSalesHref(1, pageSize, next.sort, next.dir));
   }
   const filtered = useMemo(
     () =>
@@ -152,7 +189,7 @@ export function SalesTable({ result, capabilities }: SalesTableProps) {
           sale.transactionNo,
           sale.branch.name,
           sale.amount,
-          sale.serialNumber?.serialNo,
+          saleSerialLabel(sale),
           ...sale.serialNumbers,
           sale.atrStatus,
           sale.returnRequest?.status,
@@ -165,7 +202,7 @@ export function SalesTable({ result, capabilities }: SalesTableProps) {
       uniqueSearchSuggestions(
         result.items.map((sale) => sale.transactionNo),
         result.items.map((sale) => sale.branch.name),
-        result.items.map((sale) => sale.serialNumber?.serialNo),
+        result.items.map((sale) => saleSerialLabel(sale)),
         result.items.map((sale) => sale.atrStatus),
       ),
     [result.items],
@@ -239,177 +276,234 @@ export function SalesTable({ result, capabilities }: SalesTableProps) {
           page: result.page,
           totalPages: result.totalPages,
           itemLabel: "sale",
-          buildHref: (page) => buildSalesHref(page, pageSize),
+          buildHref: (page) => buildSalesHref(page, pageSize, sort, sort ? sortDir : undefined),
         }}
         pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
       >
-            <TableHeader>
-              <TableRow>
-                <GlobalTableHead className="w-10">
-                  <Checkbox
-                    checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
-                    onCheckedChange={(checked) => selection.toggleAll(checked === true)}
-                    aria-label="Select all sales rows"
-                  />
-                </GlobalTableHead>
-                <TableIndexHead />
-                <GlobalTableHead>Transaction</GlobalTableHead>
-                <GlobalTableHead>Branch</GlobalTableHead>
-                <GlobalTableHead>Amount</GlobalTableHead>
-                <GlobalTableHead>Serial</GlobalTableHead>
-                <GlobalTableHead>ATR</GlobalTableHead>
-                <GlobalTableHead>Return</GlobalTableHead>
-                <GlobalTableHead className="w-48" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((s, index) => (
-                <TableRow key={s.id} data-state={selection.isRowSelected(s.id) ? "selected" : undefined}>
-                  <TableCell>
-                    <Checkbox
-                      checked={selection.isRowSelected(s.id)}
-                      onCheckedChange={(checked) => selection.toggleRow(s.id, checked === true)}
-                      aria-label={`Select sale ${saleTransactionLabel(s)}`}
-                    />
-                  </TableCell>
-                  <TableIndexCell
-                    index={(result.page - 1) * result.limit + index + 1}
-                  />
-                  <TableCodeCell value={saleTransactionLabel(s)} />
-                  <TableCell>{s.branch.name}</TableCell>
-                  <TableAmountCell value={s.amount} />
-                  <TableCodeCell>
-                    {s.serialNumbers.length > 1 ? (
-                      <button
-                        type="button"
-                        className="cursor-pointer text-left underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        onClick={() => setSerialDialogSale(s)}
-                        aria-label={`View ${s.serialNumbers.length} serial numbers for ${saleTransactionLabel(s)}`}
-                      >
-                        {s.serialNumber?.serialNo}
-                      </button>
-                    ) : (
-                      (s.serialNumber?.serialNo ?? "—")
-                    )}
-                  </TableCodeCell>
-                  <TableCell>
-                    <AtrStatusBadge status={s.atrStatus} />
-                  </TableCell>
-                  <TableCell>
-                    <ReturnStatusBadge status={s.returnRequest?.status} />
-                  </TableCell>
-                  <TableCell className="space-x-1">
-                    {!s.returnRequest && s.atrStatus === "open" && capabilities.canRequestReturn ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={pending}
-                        onClick={() =>
-                          setPendingConfirm({
-                            saleId: s.id,
-                            transactionNo: saleTransactionLabel(s),
-                            branchName: s.branch.name,
-                            action: "request",
-                          })
-                        }
-                      >
-                        Request return
-                      </Button>
-                    ) : null}
-                    {s.returnRequest?.status === "pending_cs" && capabilities.canEvaluateReturn ? (
-                      <>
-                        <Button
-                          size="sm"
-                          disabled={pending}
-                          onClick={() =>
-                            setPendingConfirm({
-                              saleId: s.id,
-                              returnRequestId: s.returnRequest!.id,
-                              transactionNo: saleTransactionLabel(s),
-                              branchName: s.branch.name,
-                              action: "evaluate",
-                            })
-                          }
-                        >
-                          CS evaluate
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={pending}
-                          onClick={() =>
-                            setPendingConfirm({
-                              saleId: s.id,
-                              returnRequestId: s.returnRequest!.id,
-                              transactionNo: saleTransactionLabel(s),
-                              branchName: s.branch.name,
-                              action: "reject",
-                            })
-                          }
-                        >
-                          Reject
-                        </Button>
-                      </>
-                    ) : null}
-                    {s.returnRequest?.status === "pending_tl" && capabilities.canApproveReturn ? (
-                      <>
-                        <Button
-                          size="sm"
-                          className="bg-amber-600 text-white hover:bg-amber-700"
-                          disabled={pending}
-                          onClick={() =>
-                            setPendingConfirm({
-                              saleId: s.id,
-                              returnRequestId: s.returnRequest!.id,
-                              transactionNo: saleTransactionLabel(s),
-                              branchName: s.branch.name,
-                              action: "approve",
-                            })
-                          }
-                        >
-                          TL approve
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={pending}
-                          onClick={() =>
-                            setPendingConfirm({
-                              saleId: s.id,
-                              returnRequestId: s.returnRequest!.id,
-                              transactionNo: saleTransactionLabel(s),
-                              branchName: s.branch.name,
-                              action: "reject",
-                            })
-                          }
-                        >
-                          Reject
-                        </Button>
-                      </>
-                    ) : null}
-                    {s.returnRequest?.status === "approved" && capabilities.canCompleteReturn ? (
-                      <Button
-                        size="sm"
-                        className="bg-emerald-600 text-white hover:bg-emerald-700"
-                        disabled={pending}
-                        onClick={() =>
-                          setPendingConfirm({
-                            saleId: s.id,
-                            returnRequestId: s.returnRequest!.id,
-                            transactionNo: saleTransactionLabel(s),
-                            branchName: s.branch.name,
-                            action: "restore",
-                          })
-                        }
-                      >
-                        Restore stock
-                      </Button>
-                    ) : null}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
+        <TableHeader>
+          <TableRow>
+            <GlobalTableHead className="w-10">
+              <Checkbox
+                checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
+                onCheckedChange={(checked) => selection.toggleAll(checked === true)}
+                aria-label="Select all sales rows"
+              />
+            </GlobalTableHead>
+            <TableIndexHead />
+            <GlobalTableHead
+              sortKey="transactionNo"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as SalesSortField)}
+            >
+              Transaction
+            </GlobalTableHead>
+            <GlobalTableHead
+              sortKey="branch"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as SalesSortField)}
+            >
+              Branch
+            </GlobalTableHead>
+            <GlobalTableHead
+              sortKey="amount"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as SalesSortField)}
+            >
+              Amount
+            </GlobalTableHead>
+            <GlobalTableHead>Serial</GlobalTableHead>
+            <GlobalTableHead
+              sortKey="atrStatus"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as SalesSortField)}
+            >
+              ATR
+            </GlobalTableHead>
+            <GlobalTableHead
+              sortKey="returnStatus"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as SalesSortField)}
+            >
+              Return
+            </GlobalTableHead>
+            <GlobalTableHead className="w-64" />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {filtered.map((s, index) => (
+            <TableRow key={s.id} data-state={selection.isRowSelected(s.id) ? "selected" : undefined}>
+              <TableCell>
+                <Checkbox
+                  checked={selection.isRowSelected(s.id)}
+                  onCheckedChange={(checked) => selection.toggleRow(s.id, checked === true)}
+                  aria-label={`Select sale ${saleTransactionLabel(s)}`}
+                />
+              </TableCell>
+              <TableIndexCell
+                index={(result.page - 1) * result.limit + index + 1}
+              />
+              <TableCodeCell value={saleTransactionLabel(s)} />
+              <TableCell>{s.branch.name}</TableCell>
+              <TableAmountCell value={s.amount} />
+              <TableCodeCell>
+                {s.serialNumbers.length > 1 ? (
+                  <button
+                    type="button"
+                    className="cursor-pointer text-left underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    onClick={() => setSerialDialogSale(s)}
+                    aria-label={`View ${s.serialNumbers.length} serial numbers for ${saleTransactionLabel(s)}`}
+                  >
+                    {saleSerialLabel(s)}
+                  </button>
+                ) : (
+                  saleSerialLabel(s)
+                )}
+              </TableCodeCell>
+              <TableCell>
+                <AtrStatusBadge status={s.atrStatus} />
+              </TableCell>
+              <TableCell>
+                <ReturnStatusBadge status={s.returnRequest?.status} />
+              </TableCell>
+              <TableCell className="space-x-1 whitespace-nowrap">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={pending}
+                  onClick={() => setEditingSale(s)}
+                >
+                  Edit
+                </Button>
+                {!s.returnRequest && s.atrStatus === "open" && capabilities.canRequestReturn ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={pending}
+                    onClick={() =>
+                      setPendingConfirm({
+                        saleId: s.id,
+                        transactionNo: saleTransactionLabel(s),
+                        branchName: s.branch.name,
+                        action: "request",
+                      })
+                    }
+                  >
+                    Request return
+                  </Button>
+                ) : null}
+                {s.returnRequest?.status === "pending_cs" && capabilities.canEvaluateReturn ? (
+                  <>
+                    <Button
+                      size="sm"
+                      disabled={pending}
+                      onClick={() =>
+                        setPendingConfirm({
+                          saleId: s.id,
+                          returnRequestId: s.returnRequest!.id,
+                          transactionNo: saleTransactionLabel(s),
+                          branchName: s.branch.name,
+                          action: "evaluate",
+                        })
+                      }
+                    >
+                      CS evaluate
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={pending}
+                      onClick={() =>
+                        setPendingConfirm({
+                          saleId: s.id,
+                          returnRequestId: s.returnRequest!.id,
+                          transactionNo: saleTransactionLabel(s),
+                          branchName: s.branch.name,
+                          action: "reject",
+                        })
+                      }
+                    >
+                      Reject
+                    </Button>
+                  </>
+                ) : null}
+                {s.returnRequest?.status === "pending_tl" && capabilities.canApproveReturn ? (
+                  <>
+                    <Button
+                      size="sm"
+                      className="bg-amber-600 text-white hover:bg-amber-700"
+                      disabled={pending}
+                      onClick={() =>
+                        setPendingConfirm({
+                          saleId: s.id,
+                          returnRequestId: s.returnRequest!.id,
+                          transactionNo: saleTransactionLabel(s),
+                          branchName: s.branch.name,
+                          action: "approve",
+                        })
+                      }
+                    >
+                      TL approve
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={pending}
+                      onClick={() =>
+                        setPendingConfirm({
+                          saleId: s.id,
+                          returnRequestId: s.returnRequest!.id,
+                          transactionNo: saleTransactionLabel(s),
+                          branchName: s.branch.name,
+                          action: "reject",
+                        })
+                      }
+                    >
+                      Reject
+                    </Button>
+                  </>
+                ) : null}
+                {s.returnRequest?.status === "approved" && capabilities.canCompleteReturn ? (
+                  <Button
+                    size="sm"
+                    className="bg-emerald-600 text-white hover:bg-emerald-700"
+                    disabled={pending}
+                    onClick={() =>
+                      setPendingConfirm({
+                        saleId: s.id,
+                        returnRequestId: s.returnRequest!.id,
+                        transactionNo: saleTransactionLabel(s),
+                        branchName: s.branch.name,
+                        action: "restore",
+                      })
+                    }
+                  >
+                    Restore stock
+                  </Button>
+                ) : null}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
       </GlobalDataTable>
+
+      {editingSale ? (
+        <EditSaleSerialDialog
+          saleId={editingSale.id}
+          transactionNo={saleTransactionLabel(editingSale)}
+          branchId={editingSale.branchId}
+          currentSerialId={editingSale.serialNumberId}
+          currentSerialLabel={saleSerialLabel(editingSale)}
+          onClose={() => {
+            setEditingSale(null);
+            router.refresh();
+          }}
+        />
+      ) : null}
 
       <SaleSerialsDialog
         open={serialDialogSale != null}
