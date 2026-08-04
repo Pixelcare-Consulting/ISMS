@@ -52,6 +52,62 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.19.5",
+    date: "2026-08-04",
+    releasedAt: "2026-08-04T19:20:00+08:00",
+    title: "Official Sales progress popup",
+    highlights: [
+      "Upload, Process, and Download Template open a progress window with a live step checklist",
+      "You can follow each step with checkmarks; errors stay open so you can read what failed",
+      "Toolbar spinners still show while work runs, and row selection stays responsive",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Official Sales Upload, Process pending, and Download Template show a progress popup with a live timeline of steps",
+      },
+      {
+        type: "improvement",
+        description:
+          "Successful Official Sales actions briefly show Done then close; failures stay open with a Close button",
+      },
+      {
+        type: "improvement",
+        description:
+          "Process pending shows how many rows are being worked and the ok / failed counts when finished",
+      },
+    ],
+  },
+  {
+    version: "0.19.4",
+    date: "2026-08-04",
+    releasedAt: "2026-08-04T19:10:00+08:00",
+    title: "Clearer Official Sales action feedback",
+    highlights: [
+      "Download, Upload, Process, and Delete show a spinner so you know work is in progress",
+      "Row checkboxes stay responsive while other actions run",
+      "Processing many rows starts with a clear progress toast",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Official Sales staging buttons show loading feedback for download, upload, process, and delete without freezing the whole table",
+      },
+      {
+        type: "improvement",
+        description:
+          "Selecting staging rows stays snappy while template download or other actions are running",
+      },
+      {
+        type: "improvement",
+        description:
+          "Process pending shows how many rows are being worked on when you start",
+      },
+    ],
+  },
+  {
     version: "0.19.3",
     date: "2026-08-04",
     releasedAt: "2026-08-04T18:58:00+08:00",

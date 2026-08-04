@@ -1,5 +1,7 @@
 "use client";
 
+import { Loader2 } from "lucide-react";
+
 import {
   Dialog,
   DialogContent,
@@ -52,7 +54,14 @@ export function DeleteConfirmDialog({
             onClick={onConfirm}
             disabled={pending}
           >
-            {pending ? "Deleting…" : confirmLabel}
+            {pending ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                Deleting…
+              </>
+            ) : (
+              confirmLabel
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>

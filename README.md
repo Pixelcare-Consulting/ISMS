@@ -2,7 +2,7 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.19.3`
+**Current version:** `0.19.5`
 
 ## Stack
 
@@ -25,7 +25,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | **Logistics** | Deliveries (accept/reject), transfers, pull-outs with SN movement; gated by `logistics.view` / `create` / `manage` |
 | **Sales** | Encode at `/sales/new` (CTA from `/sales`); PS auto-branch; TL `sales.create` + branch picker; package detail modal (qty → N sets), reserved (RSV) sales, **BranchReturnRequest** ATR workflow gated by `sales.return.*` (Roles UI) |
 | **Service** | Service center ops (AOR-scoped): inventory + manual stock-in, sales + ATR (`ServiceCenterReturnRequest`), orders, deliveries (backload → STK), pull-outs under `/service-centers/*` |
-| **Reports** | Processed orders, daily stock, transfers, sales CSV (`/reports/sales`), **P-Count** (`/reports/pcount`), **Official Sales** dealer-template staging with polished View details + compact columns (`/reports/official-sales`) |
+| **Reports** | Processed orders, daily stock, transfers, sales CSV (`/reports/sales`), **P-Count** (`/reports/pcount`), **Official Sales** dealer-template staging with progress popup (upload / process / template download) + polished View details (`/reports/official-sales`) |
 | **SAP** | Outbound job queue + mock processor; **Service Layer** settings (encrypted credentials) + in-process session client with status UI (Connect/Logout) and refresh-on-401 |
 | **RBAC** | ISO + BRS roles (PS, TL, SP/SPA, Logistics, AE); shared action vocabulary + module allowlists; Roles simple checklist + module×action matrix; Sales ATR buttons use `sales.return.*`; Logistics uses `logistics.view` / `create` / `manage`; Service uses `service_centers.*` ops perms |
 

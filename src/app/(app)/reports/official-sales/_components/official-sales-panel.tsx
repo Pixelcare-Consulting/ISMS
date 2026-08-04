@@ -4,9 +4,9 @@ import {
   useMemo,
   useRef,
   useState,
-  useTransition,
   type ReactNode,
 } from "react";
+import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -34,6 +34,11 @@ import {
   GlobalTableHead,
   useClientTableSort,
 } from "@/lib/data-table";
+import {
+  ActionProgressDialog,
+  runWithActionProgress,
+  type ActionProgressState,
+} from "@/components/ui/action-progress-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -57,6 +62,8 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/utils/cn";
 import { matchesTableSearch } from "@/utils/match-table-search";
+
+type WriteBusyAction = "upload" | "process" | "delete";
 
 export interface OfficialSalesStagingRow {
   id: string;
@@ -238,14 +245,16 @@ function ResultCell({ result }: { result: string | null }) {
 function StagingRowDetailsDialog({
   row,
   open,
-  pending,
+  processBusy,
+  deleteBusy,
   onOpenChange,
   onProcess,
   onDelete,
 }: {
   row: OfficialSalesStagingRow | null;
   open: boolean;
-  pending: boolean;
+  processBusy: boolean;
+  deleteBusy: boolean;
   onOpenChange: (open: boolean) => void;
   onProcess: (rowId: string) => void;
   onDelete: (row: OfficialSalesStagingRow) => void;
@@ -255,6 +264,7 @@ function StagingRowDetailsDialog({
   const deletable = canDeleteStatus(row.status);
   const canProcess = row.status === "pending";
   const resultText = row.result?.trim() ? row.result : null;
+  const actionsLocked = processBusy || deleteBusy;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -309,10 +319,18 @@ function StagingRowDetailsDialog({
             <Button
               type="button"
               size="sm"
-              disabled={pending}
+              className="min-w-26"
+              disabled={actionsLocked}
               onClick={() => onProcess(row.id)}
             >
-              Process
+              {processBusy ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Processing…
+                </>
+              ) : (
+                "Process"
+              )}
             </Button>
           ) : null}
           {deletable ? (
@@ -320,7 +338,7 @@ function StagingRowDetailsDialog({
               type="button"
               size="sm"
               variant="destructive"
-              disabled={pending}
+              disabled={actionsLocked}
               onClick={() => onDelete(row)}
             >
               Delete
@@ -330,7 +348,7 @@ function StagingRowDetailsDialog({
             type="button"
             size="sm"
             variant="outline"
-            disabled={pending}
+            disabled={actionsLocked}
             onClick={() => onOpenChange(false)}
           >
             Close
@@ -348,7 +366,18 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
   const [showAllColumns, setShowAllColumns] = useState(false);
   const [detailRow, setDetailRow] = useState<OfficialSalesStagingRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
-  const [pending, startTransition] = useTransition();
+  /** Download busy is independent so it never clears/blocks write actions. */
+  const [isDownloading, setIsDownloading] = useState(false);
+  /** Per write-action busy — avoids one global pending that freezes selection. */
+  const [writeAction, setWriteAction] = useState<WriteBusyAction | null>(null);
+  const [actionProgress, setActionProgress] =
+    useState<ActionProgressState | null>(null);
+
+  const isUploading = writeAction === "upload";
+  const isProcessing = writeAction === "process";
+  const isDeleting = writeAction === "delete";
+  const writeBusy = writeAction !== null;
+  const progressOpen = actionProgress !== null;
 
   const filtered = useMemo(
     () =>
@@ -428,60 +457,188 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
     [selection.selectedIds, selectableIdSet],
   );
 
-  function onUpload(fileList: FileList | null) {
+  const pendingRowCount = useMemo(
+    () => rows.filter((row) => row.status === "pending").length,
+    [rows],
+  );
+
+  async function onUpload(fileList: FileList | null) {
     const file = fileList?.[0];
-    if (!file) return;
+    if (!file || writeBusy || progressOpen) return;
     const formData = new FormData();
     formData.set("file", file);
-    startTransition(async () => {
-      const result = await uploadOfficialSalesAction(formData);
-      if ("error" in result && result.error) {
-        toast.error(result.error);
-        return;
-      }
-      if (!("rowCount" in result)) return;
-      toast.success(`Uploaded ${result.rowCount} row(s)`);
-      if (fileRef.current) fileRef.current.value = "";
-      router.refresh();
+    setWriteAction("upload");
+    const outcome = await runWithActionProgress(setActionProgress, {
+      title: "Uploading sales",
+      description: "Staging your file. Steps update while the upload runs.",
+      steps: [
+        {
+          id: "read",
+          label: "Reading file",
+          hint: "Sending the workbook to the server…",
+        },
+        {
+          id: "validate",
+          label: "Validating rows",
+          hint: "Checking required columns and values…",
+        },
+        {
+          id: "save",
+          label: "Saving to staging",
+          hint: "Writing validated rows…",
+        },
+        { id: "done", label: "Done" },
+      ],
+      run: () => uploadOfficialSalesAction(formData),
+      getError: (result) =>
+        "error" in result && result.error ? result.error : null,
+      getSuccessSummary: (result) =>
+        "rowCount" in result ? `Uploaded ${result.rowCount} row(s)` : "Uploaded",
+      mapSuccessSteps: (steps, result) =>
+        "rowCount" in result
+          ? steps.map((step) =>
+              step.id === "save"
+                ? {
+                    ...step,
+                    label: `Saving to staging (${result.rowCount} row${result.rowCount === 1 ? "" : "s"})`,
+                  }
+                : step.id === "done"
+                  ? { ...step, label: "Done" }
+                  : step,
+            )
+          : steps,
     });
+    setWriteAction(null);
+    if (!outcome.ok) return;
+    if (!("rowCount" in outcome.result)) return;
+    if (fileRef.current) fileRef.current.value = "";
+    toast.success(`Uploaded ${outcome.result.rowCount} row(s)`);
+    router.refresh();
   }
 
-  function onDownloadTemplate() {
-    startTransition(async () => {
-      try {
+  async function onDownloadTemplate() {
+    if (isDownloading || writeBusy || progressOpen) return;
+    setIsDownloading(true);
+    const outcome = await runWithActionProgress(setActionProgress, {
+      title: "Downloading template",
+      description: "Preparing the dealer sales template.",
+      stepIntervalMs: 500,
+      autoCloseMs: 900,
+      steps: [
+        {
+          id: "build",
+          label: "Building workbook",
+          hint: "Generating the Excel template…",
+        },
+        {
+          id: "prepare",
+          label: "Preparing download",
+          hint: "Getting the file ready…",
+        },
+        { id: "done", label: "Done" },
+      ],
+      run: async () => {
         const base64 = await downloadOfficialSalesTemplateAction();
         downloadWorkbook(base64, "official-sales-template.xlsx");
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Could not download template");
-      }
+        return true;
+      },
+      getSuccessSummary: () => "Template ready",
     });
+    setIsDownloading(false);
+    if (!outcome.ok) return;
+    toast.success("Template downloaded");
   }
 
-  function onProcess(rowIds?: string[]) {
-    startTransition(async () => {
-      const result = await processOfficialSalesAction(
-        rowIds?.length ? { rowIds } : undefined,
-      );
-      if ("error" in result && result.error) {
-        toast.error(result.error);
-        return;
-      }
-      if (!("processed" in result) || !("successCount" in result)) return;
-      setDetailRow(null);
-      toast.success(
-        `Processed ${result.processed}: ${result.successCount} ok, ${result.errorCount} failed`,
-      );
-      router.refresh();
+  async function onProcess(rowIds?: string[]) {
+    if (writeBusy || progressOpen) return;
+    const targetCount = rowIds?.length ?? pendingRowCount;
+    const processingLabel =
+      targetCount > 0
+        ? targetCount === 1
+          ? "Processing 1 row"
+          : `Processing ${targetCount} rows`
+        : "Processing pending rows";
+    setWriteAction("process");
+    const outcome = await runWithActionProgress(setActionProgress, {
+      title: "Processing pending",
+      description:
+        targetCount > 0
+          ? `Working through ${targetCount} staged row${targetCount === 1 ? "" : "s"}.`
+          : "Working through pending staged rows.",
+      steps: [
+        {
+          id: "prepare",
+          label: "Preparing",
+          hint: "Gathering pending staging rows…",
+        },
+        {
+          id: "process",
+          label: processingLabel,
+          hint: "Applying sales updates…",
+        },
+        {
+          id: "statuses",
+          label: "Updating statuses",
+          hint: "Saving success and failure results…",
+        },
+        { id: "done", label: "Done" },
+      ],
+      run: () =>
+        processOfficialSalesAction(rowIds?.length ? { rowIds } : undefined),
+      getError: (result) =>
+        "error" in result && result.error ? result.error : null,
+      getSuccessSummary: (result) =>
+        "processed" in result && "successCount" in result
+          ? `${result.successCount} ok, ${result.errorCount} failed`
+          : "Processed",
+      mapSuccessSteps: (steps, result) => {
+        if (!("processed" in result) || !("successCount" in result)) {
+          return steps;
+        }
+        return steps.map((step) => {
+          if (step.id === "process") {
+            return {
+              ...step,
+              label:
+                result.processed === 1
+                  ? "Processed 1 row"
+                  : `Processed ${result.processed} rows`,
+            };
+          }
+          if (step.id === "statuses") {
+            return {
+              ...step,
+              label: `Updating statuses (${result.successCount} ok, ${result.errorCount} failed)`,
+            };
+          }
+          if (step.id === "done") return { ...step, label: "Done" };
+          return step;
+        });
+      },
     });
+    setWriteAction(null);
+    if (!outcome.ok) return;
+    if (
+      !("processed" in outcome.result) ||
+      !("successCount" in outcome.result)
+    ) {
+      return;
+    }
+    setDetailRow(null);
+    toast.success(
+      `Processed ${outcome.result.processed}: ${outcome.result.successCount} ok, ${outcome.result.errorCount} failed`,
+    );
+    router.refresh();
   }
 
-  function onDeleteConfirm() {
-    if (!deleteTarget) return;
+  async function onDeleteConfirm() {
+    if (!deleteTarget || writeBusy) return;
     const rowIds =
       deleteTarget.mode === "single" ? [deleteTarget.row.id] : deleteTarget.rowIds;
     if (rowIds.length === 0) return;
 
-    startTransition(async () => {
+    setWriteAction("delete");
+    try {
       const result = await deleteOfficialSalesRowsAction({ rowIds });
       if ("error" in result && result.error) {
         toast.error(result.error);
@@ -493,7 +650,11 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
       selection.clearSelection();
       toast.success(`Deleted ${result.deleted} row(s)`);
       router.refresh();
-    });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setWriteAction(null);
+    }
   }
 
   const deleteDescription =
@@ -521,10 +682,18 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
               type="button"
               size="sm"
               variant="outline"
-              disabled={pending}
-              onClick={onDownloadTemplate}
+              className="min-w-38"
+              disabled={isDownloading || writeBusy || progressOpen}
+              onClick={() => void onDownloadTemplate()}
             >
-              Download Template
+              {isDownloading ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Downloading…
+                </>
+              ) : (
+                "Download Template"
+              )}
             </Button>
           ) : null
         }
@@ -538,13 +707,20 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
                   type="button"
                   size="sm"
                   variant="outline"
-                  className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  disabled={pending || selectedDeletableIds.length === 0}
+                  className="min-w-30 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  disabled={writeBusy || selectedDeletableIds.length === 0}
                   onClick={() =>
                     setDeleteTarget({ mode: "bulk", rowIds: selectedDeletableIds })
                   }
                 >
-                  Delete selected
+                  {isDeleting ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" />
+                      Deleting…
+                    </>
+                  ) : (
+                    "Delete selected"
+                  )}
                 </Button>
               }
             />
@@ -557,7 +733,6 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
                 type="button"
                 size="sm"
                 variant="ghost"
-                disabled={pending}
                 onClick={() => setShowAllColumns((v) => !v)}
               >
                 {showAllColumns ? "Fewer columns" : "Show all columns"}
@@ -570,13 +745,39 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
                   type="file"
                   accept=".xlsx,.xls,.csv"
                   className="hidden"
-                  onChange={(e) => onUpload(e.target.files)}
+                  disabled={writeBusy || progressOpen}
+                  onChange={(e) => void onUpload(e.target.files)}
                 />
-                <Button type="button" disabled={pending} onClick={() => fileRef.current?.click()}>
-                  Upload sales
+                <Button
+                  type="button"
+                  className="min-w-34"
+                  disabled={writeBusy || progressOpen}
+                  onClick={() => fileRef.current?.click()}
+                >
+                  {isUploading ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" />
+                      Uploading…
+                    </>
+                  ) : (
+                    "Upload sales"
+                  )}
                 </Button>
-                <Button type="button" variant="outline" disabled={pending} onClick={() => onProcess()}>
-                  Process pending
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="min-w-36"
+                  disabled={writeBusy || progressOpen || pendingRowCount === 0}
+                  onClick={() => void onProcess()}
+                >
+                  {isProcessing ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" />
+                      Processing…
+                    </>
+                  ) : (
+                    "Process pending"
+                  )}
                 </Button>
               </>
             ) : null}
@@ -759,7 +960,6 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
                           <Button
                             size="sm"
                             variant="outline"
-                            disabled={pending}
                             onClick={() => setDetailRow(row)}
                           >
                             View
@@ -778,11 +978,12 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
       <StagingRowDetailsDialog
         row={detailRow}
         open={detailRow !== null}
-        pending={pending}
+        processBusy={isProcessing}
+        deleteBusy={isDeleting}
         onOpenChange={(open) => {
-          if (!open) setDetailRow(null);
+          if (!open && !isProcessing && !isDeleting) setDetailRow(null);
         }}
-        onProcess={(rowId) => onProcess([rowId])}
+        onProcess={(rowId) => void onProcess([rowId])}
         onDelete={(row) => {
           setDetailRow(null);
           setDeleteTarget({ mode: "single", row });
@@ -792,7 +993,7 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
       <DeleteConfirmDialog
         open={deleteTarget !== null}
         onOpenChange={(open) => {
-          if (!open) setDeleteTarget(null);
+          if (!open && !isDeleting) setDeleteTarget(null);
         }}
         title={
           deleteTarget?.mode === "bulk"
@@ -800,8 +1001,13 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
             : "Delete staging row?"
         }
         description={deleteDescription}
-        pending={pending}
-        onConfirm={onDeleteConfirm}
+        pending={isDeleting}
+        onConfirm={() => void onDeleteConfirm()}
+      />
+
+      <ActionProgressDialog
+        state={actionProgress}
+        onClose={() => setActionProgress(null)}
       />
     </TooltipProvider>
   );
