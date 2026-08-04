@@ -32,7 +32,6 @@ interface LookupOption {
 }
 
 interface NewSalesTransactionFormProps {
-  transactionNo: string;
   branches: SalesBranchOption[];
   autoResolveBranch: boolean;
   paymentTypes: LookupOption[];
@@ -51,7 +50,6 @@ function todayInputValue(): string {
 }
 
 export function NewSalesTransactionForm({
-  transactionNo,
   branches,
   autoResolveBranch,
   paymentTypes,
@@ -70,6 +68,7 @@ export function NewSalesTransactionForm({
       ? [{ id: branches[0].id, name: branches[0].name }]
       : [],
   );
+  const [transactionNo, setTransactionNo] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [siTrans, setSiTrans] = useState("");
   const [infoSlipVsoRrReleased, setInfoSlipVsoRrReleased] = useState("");
@@ -152,6 +151,10 @@ export function NewSalesTransactionForm({
   }
 
   function submit() {
+    if (!transactionNo.trim()) {
+      toast.error("Transaction number is required");
+      return;
+    }
     if (!branchId) {
       toast.error("Select a branch");
       return;
@@ -187,7 +190,7 @@ export function NewSalesTransactionForm({
 
     startTransition(async () => {
       const result = await createSaleAction({
-        transactionNo,
+        transactionNo: transactionNo.trim(),
         branchId,
         alternateBranchId,
         customerName: customerName.trim(),
@@ -241,9 +244,11 @@ export function NewSalesTransactionForm({
             <Input
               id="sale-txn-no"
               value={transactionNo}
-              readOnly
-              disabled
-              className="bg-muted font-mono"
+              onChange={(e) => setTransactionNo(e.target.value)}
+              placeholder="Enter transaction number"
+              className="font-mono"
+              autoComplete="off"
+              maxLength={100}
             />
           </div>
           <div className="space-y-2">

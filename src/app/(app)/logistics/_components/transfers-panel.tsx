@@ -11,6 +11,7 @@ import {
   rejectTransferAction,
   receiveTransferAction,
 } from "@/features/logistics/actions/logistics.actions";
+import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
 import { listStkSerialsForBranchAction } from "@/features/sales/actions/sales.actions";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { TableIndexCell, TableIndexHead } from "@/components/data-table";
@@ -68,6 +69,7 @@ interface TransferRow {
 
 interface TransfersPanelProps {
   transfers: PaginatedList<TransferRow>;
+  capabilities: LogisticsActionCapabilities;
 }
 
 type PendingConfirm = {
@@ -84,7 +86,7 @@ interface SerialOption {
   skuCode: string;
 }
 
-export function TransfersPanel({ transfers }: TransfersPanelProps) {
+export function TransfersPanel({ transfers, capabilities }: TransfersPanelProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
@@ -204,7 +206,7 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
               </Button>
             ) : null}
             <LogisticsLoadRefsButton onClick={loadRefs} />
-          {branches.length >= 2 ? (
+          {capabilities.canCreate && branches.length >= 2 ? (
             <Button
               size="sm"
               className="w-full sm:w-auto"
@@ -275,7 +277,8 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
                     />
                   </TableCell>
                   <TableCell className="space-x-2">
-                    {["requested", "pending_tl"].includes(t.statusCode.code) ? (
+                    {["requested", "pending_tl"].includes(t.statusCode.code) &&
+                    capabilities.canApproveTl ? (
                       <Button
                         size="sm"
                         disabled={pending}
@@ -293,7 +296,8 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
                         TL approve
                       </Button>
                     ) : null}
-                    {["requested", "pending_tl"].includes(t.statusCode.code) ? (
+                    {["requested", "pending_tl"].includes(t.statusCode.code) &&
+                    capabilities.canRejectTransfer ? (
                       <Button
                         size="sm"
                         variant="outline"
@@ -311,7 +315,8 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
                         Reject
                       </Button>
                     ) : null}
-                    {["approved", "for_transfer"].includes(t.statusCode.code) ? (
+                    {["approved", "for_transfer"].includes(t.statusCode.code) &&
+                    capabilities.canExecuteTransfer ? (
                       <Button
                         size="sm"
                         disabled={pending}
@@ -320,7 +325,8 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
                         Execute
                       </Button>
                     ) : null}
-                    {t.statusCode.code === "in_transit" ? (
+                    {t.statusCode.code === "in_transit" &&
+                    capabilities.canReceiveTransfer ? (
                       <Button
                         size="sm"
                         disabled={pending}

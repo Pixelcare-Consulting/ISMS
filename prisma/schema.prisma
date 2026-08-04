@@ -248,6 +248,7 @@ model User {
   aorsCreated               Aor[]               @relation("AorCreatedBy")
   branchOrdersCreated       BranchOrder[]       @relation("BranchOrderCreatedBy")
   branchOrdersApproved      BranchOrder[]       @relation("BranchOrderApprovedBy")
+  branchOrderApprovals      BranchOrderApprovalLevel[] @relation("BranchOrderApprovalLevelApprovedBy")
   branchInventoriesUpdated  BranchInventory[]   @relation("BranchInventoryUpdatedBy")
   branchPulloutsCreated     BranchPullout[]     @relation("BranchPulloutCreatedBy")
   serialNumbersCreated      SerialNumber[]      @relation("SerialNumberCreatedBy")
@@ -1622,7 +1623,8 @@ model BranchOrderApprovalLevel {
   rejectedAt   DateTime? @map("rejected_at")
   comment      String?
 
-  order BranchOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order      BranchOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  approvedBy User?       @relation("BranchOrderApprovalLevelApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
 
   @@unique([orderId, level])
   @@map("branch_order_approval_levels")

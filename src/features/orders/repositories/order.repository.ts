@@ -16,7 +16,12 @@ const orderListInclude = {
       model: { select: { id: true, skuCode: true, name: true, brandId: true } },
     },
   },
-  approvalLevels: { orderBy: { level: "asc" as const } },
+  approvalLevels: {
+    orderBy: { level: "asc" as const },
+    include: {
+      approvedBy: { select: { id: true, name: true, email: true } },
+    },
+  },
 } satisfies Prisma.BranchOrderInclude;
 
 function orderScopeWhere(
@@ -24,9 +29,10 @@ function orderScopeWhere(
   branchIds: string[] | null,
   orderType?: BranchOrderType,
 ): Prisma.BranchOrderWhereInput {
+  // null = unrestricted (full access / no AOR). [] = scoped with no branches → match none.
   return {
     tenantId,
-    ...(branchIds?.length ? { branchId: { in: branchIds } } : {}),
+    ...(branchIds === null ? {} : { branchId: { in: branchIds } }),
     ...(orderType ? { orderType } : {}),
   };
 }
@@ -82,7 +88,12 @@ export const orderRepository = {
       include: {
         branch: true,
         details: { include: { model: true } },
-        approvalLevels: { orderBy: { level: "asc" } },
+        approvalLevels: {
+          orderBy: { level: "asc" },
+          include: {
+            approvedBy: { select: { id: true, name: true, email: true } },
+          },
+        },
       },
     });
   },
@@ -196,11 +207,15 @@ export const orderRepository = {
 
   addRejection(
     orderId: string,
-    data: { level: number; roleSlug: string; comment?: string },
+    data: { level: number; roleSlug: string; approvedById: string; comment?: string },
   ) {
     return prisma.branchOrderApprovalLevel.update({
       where: { orderId_level: { orderId, level: data.level } },
-      data: { rejectedAt: new Date(), comment: data.comment ?? null },
+      data: {
+        rejectedAt: new Date(),
+        approvedById: data.approvedById,
+        comment: data.comment ?? null,
+      },
     });
   },
 

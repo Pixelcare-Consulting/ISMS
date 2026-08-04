@@ -2,7 +2,10 @@ import {
   getDeliveryKpisAction,
   listDeliveriesAction,
 } from "@/features/logistics/actions/logistics.actions";
-import { LOGISTICS_PAGE_PERMISSIONS } from "@/features/logistics/constants/logistics-permissions";
+import {
+  LOGISTICS_PAGE_PERMISSIONS,
+  resolveLogisticsCapabilities,
+} from "@/features/logistics/constants/logistics-permissions";
 import { DeliveryKpisStrip } from "@/features/logistics/components/delivery-kpis";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { requireAnyPermission } from "@/lib/auth/permissions";
@@ -14,7 +17,8 @@ interface DeliveriesPageProps {
 }
 
 export default async function DeliveriesPage({ searchParams }: DeliveriesPageProps) {
-  await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
+  const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
+  const capabilities = resolveLogisticsCapabilities(session.user.permissions);
   const params = await searchParams;
   const page = Number(params.page) || 1;
   const limit = parseTablePageSize(params.limit);
@@ -29,7 +33,7 @@ export default async function DeliveriesPage({ searchParams }: DeliveriesPagePro
         Deliveries sync from approved orders (SAP ITR/SO). Branch PS accepts DIT → Stock.
       </SectionPageLead>
       <DeliveryKpisStrip kpis={kpis} />
-      <DeliveriesPanel deliveries={deliveries} />
+      <DeliveriesPanel deliveries={deliveries} capabilities={capabilities} />
     </div>
   );
 }

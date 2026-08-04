@@ -32,22 +32,74 @@ export const RELEASES: ReleaseNote[] = [
   {
     version: "0.13.24",
     date: "2026-08-04",
-    title: "Dashboard activity cards stay reliable",
+    title: "Dashboard cards and order approvals",
     highlights: [
-      "Home screen activity cards build cleanly again when deliveries or draft suggested orders are shown",
+      "Dashboard screen activity cards build cleanly again when deliveries or draft suggested orders are shown",
+      "Product Specialists can approve manual orders waiting on them again; if approval isn’t allowed, you stay on the orders page with a clear message",
+      "When you create a special (or other) order, you only pick branches in your area — so new orders show up in your list right away",
+      "Suggested orders and Planning links on the orders pages only appear when your role can open those screens",
+      "Orders and Logistics action buttons only appear when it is your step — no more greyed-out Review or Team Leader actions for Branch PS",
+      "Every order row has View details for notes, approval history (who acted), and line quantities — without approving",
+      "When recording a new sale, enter your own transaction number — it is no longer auto-filled or locked",
     ],
     changes: [
+      {
+        type: "improvement",
+        description:
+          "New sales lets you type the transaction number from your invoice instead of using a locked system-generated code",
+      },
+      {
+        type: "feature",
+        description:
+          "Orders list includes View details to read order notes and approval history (with the person who approved or rejected) without taking an approve or reject action",
+      },
       {
         type: "fix",
         description:
           "Dashboard activity cards no longer fail when showing neutral info-style counts",
       },
+      {
+        type: "fix",
+        description:
+          "Product Specialists can approve Pending PS manual orders again, and denied approvals show a message on the orders page instead of sending you to Dashboard",
+      },
+      {
+        type: "fix",
+        description:
+          "Order create now limits dealers and branches to your area of responsibility, so new special orders appear in your orders list after you submit them",
+      },
+      {
+        type: "improvement",
+        description:
+          "Orders pages hide Suggested orders and Planning & suggestions when you don’t have access to planning suggestions",
+      },
+      {
+        type: "improvement",
+        description:
+          "Manual and Special order headers include a short workflow tip under the title, matching the Auto replenish page",
+      },
+      {
+        type: "improvement",
+        description:
+          "Branch orders quick guide and tips now match Help & Support for Manual, Special, and Auto replenish workflows",
+      },
+      {
+        type: "improvement",
+        description:
+          "Orders Review and Logistics row actions only show when your role can take that step",
+      },
+      {
+        type: "improvement",
+        description:
+          "Order View details drops the duplicate SPA remarks block; table actions put Review on the left and a clearer View details button on the right",
+      },
     ],
   },
+
   {
     version: "0.13.23",
     date: "2026-08-03",
-    title: "Smoother sales, clearer roles, and a cleaner home screen",
+    title: "Smoother sales, clearer roles, and a cleaner dashboard screen",
     highlights: [
       "Help & Support How ISMS works Improved with Workflow Guide — solid step cards, a tidy process tab bar, numbered steps with no sideways scroll, and vertical role timelines",
       "More Dashboard summaries: Planning & alerts for extra ops signals, plus a This month snapshot (orders, sales, in transit) with icons",
@@ -109,7 +161,7 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "improvement",
         description:
-          "Home screen adds Planning & alerts and a This month snapshot alongside inventory and the order pipeline",
+          "Dashboard screen adds Planning & alerts and a This month snapshot alongside inventory and the order pipeline",
       },
       {
         type: "improvement",
@@ -124,7 +176,7 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "improvement",
         description:
-          "Activity cards share rows evenly so the home layout stays tidy for every role",
+          "Activity cards share rows evenly so the dashboard layout stays tidy for every role",
       },
       {
         type: "improvement",
