@@ -675,19 +675,97 @@ export async function listModelsForSalesAction(brandId?: string) {
   }));
 }
 
-export type ResolvedModelPriceSource = "pricelist";
+export type ResolvedModelPriceSource = "pricelist" | "pricelist_fallback";
 
 export type ResolvedModelPrice = {
   amount: number;
   source: ResolvedModelPriceSource;
+  /** Calendar day of the chosen price list period start (UTC YYYY-MM-DD). */
+  periodStart: string;
 };
 
+function utcDayBounds(now: Date = new Date()) {
+  // Date inputs store midnight UTC; treat the whole calendar day as in-range.
+  const dayStart = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+  );
+  const dayEnd = new Date(
+    Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
+      23,
+      59,
+      59,
+      999,
+    ),
+  );
+  return { dayStart, dayEnd };
+}
+
 /**
- * Resolve Model price for a sales detail set from an exact PriceList match only.
- * Lookup is tenant + model + package type (when provided) covering the transaction
- * calendar day (or today). No SRP and no silent package substitutes:
- * - With packageTypeId: only a row for that package; otherwise null.
- * - Without packageTypeId: only a generic (null package) row; otherwise null.
+ * Resolve Model price from master price lists only (no SRP / no manual override).
+ * 1) Active row for as-of day (package-specific, then generic)
+ * 2) Else latest row with periodStart <= as-of day (same package preference)
+ * 3) Else null → caller locks amount at 0
+ */
+async function resolveModelPriceForSales(
+  tenantId: string,
+  modelId: string,
+  packageTypeId?: string,
+  asOf?: Date,
+): Promise<ResolvedModelPrice | null> {
+  const { dayStart, dayEnd } = utcDayBounds(asOf);
+  const packageIds: Array<string | null> = packageTypeId
+    ? [packageTypeId, null]
+    : [null];
+
+  for (const packageTypeFilter of packageIds) {
+    const active = await prisma.priceList.findFirst({
+      where: {
+        tenantId,
+        modelId,
+        packageTypeId: packageTypeFilter,
+        periodStart: { lte: dayEnd },
+        periodEnd: { gte: dayStart },
+      },
+      orderBy: { periodStart: "desc" },
+      select: { amount: true, periodStart: true },
+    });
+    if (active) {
+      return {
+        amount: Number(active.amount.toString()),
+        source: "pricelist",
+        periodStart: active.periodStart.toISOString().slice(0, 10),
+      };
+    }
+  }
+
+  for (const packageTypeFilter of packageIds) {
+    const latest = await prisma.priceList.findFirst({
+      where: {
+        tenantId,
+        modelId,
+        packageTypeId: packageTypeFilter,
+        periodStart: { lte: dayEnd },
+      },
+      orderBy: { periodStart: "desc" },
+      select: { amount: true, periodStart: true },
+    });
+    if (latest) {
+      return {
+        amount: Number(latest.amount.toString()),
+        source: "pricelist_fallback",
+        periodStart: latest.periodStart.toISOString().slice(0, 10),
+      };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Resolve Model price for a sales detail set (see resolveModelPriceForSales).
  */
 export async function resolveModelPriceForSalesAction(input: {
   modelId: string;
@@ -700,42 +778,12 @@ export async function resolveModelPriceForSalesAction(input: {
     ? new Date(input.transactionDate)
     : new Date();
   const asOfValid = Number.isNaN(asOf.getTime()) ? new Date() : asOf;
-  // Date inputs store midnight UTC; treat the whole calendar day as in-range.
-  const dayStart = new Date(
-    Date.UTC(
-      asOfValid.getUTCFullYear(),
-      asOfValid.getUTCMonth(),
-      asOfValid.getUTCDate(),
-    ),
+  return resolveModelPriceForSales(
+    session.user.tenantId,
+    input.modelId,
+    input.packageTypeId,
+    asOfValid,
   );
-  const dayEnd = new Date(
-    Date.UTC(
-      asOfValid.getUTCFullYear(),
-      asOfValid.getUTCMonth(),
-      asOfValid.getUTCDate(),
-      23,
-      59,
-      59,
-      999,
-    ),
-  );
-
-  const price = await prisma.priceList.findFirst({
-    where: {
-      tenantId: session.user.tenantId,
-      modelId: input.modelId,
-      packageTypeId: input.packageTypeId ?? null,
-      periodStart: { lte: dayEnd },
-      periodEnd: { gte: dayStart },
-    },
-    orderBy: { periodStart: "desc" },
-    select: { amount: true },
-  });
-  if (!price) return null;
-  return {
-    amount: Number(price.amount.toString()),
-    source: "pricelist",
-  };
 }
 
 export async function listSaleableSerialsAction(
@@ -848,7 +896,30 @@ export async function createSaleAction(input: unknown) {
     return { error: e instanceof Error ? e.message : "Access denied" };
   }
 
-  const details = parsed.data.details;
+  let transactionDate: Date | null = null;
+  if (parsed.data.transactionDate) {
+    const d = new Date(parsed.data.transactionDate);
+    if (Number.isNaN(d.getTime())) {
+      return { error: "Invalid transaction date" };
+    }
+    transactionDate = d;
+  }
+
+  // Re-resolve model prices from master lists so clients cannot override.
+  const details = await Promise.all(
+    parsed.data.details.map(async (detail) => {
+      const resolved = await resolveModelPriceForSales(
+        session.user.tenantId,
+        detail.modelId,
+        detail.packageTypeId,
+        transactionDate ?? undefined,
+      );
+      return {
+        ...detail,
+        modelPrice: resolved?.amount ?? 0,
+      };
+    }),
+  );
   // TO-FOLLOW is not a stock unit — only real ids must be unique in one sale.
   const realSerialIds = details
     .map((d) => d.serialNumberId)
@@ -872,15 +943,6 @@ export async function createSaleAction(input: unknown) {
   const amount = details.reduce((sum, d) => sum + d.saleAmount, 0);
   const modelPriceRollup = details.find((d) => d.modelPrice != null)?.modelPrice;
   const stockBranchId = parsed.data.alternateBranchId;
-
-  let transactionDate: Date | null = null;
-  if (parsed.data.transactionDate) {
-    const d = new Date(parsed.data.transactionDate);
-    if (Number.isNaN(d.getTime())) {
-      return { error: "Invalid transaction date" };
-    }
-    transactionDate = d;
-  }
 
   // Skip status lookups when every line is TO-FOLLOW (no inventory move).
   const hasRealSerials = realSerialIds.length > 0;
