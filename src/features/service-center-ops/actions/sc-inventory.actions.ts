@@ -16,7 +16,6 @@ import {
 } from "@/features/service-center-ops/services/sc-scope";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import {
-  hasPermission,
   requireAnyPermission,
   requirePermission,
 } from "@/lib/auth/permissions";
@@ -198,8 +197,4 @@ export async function searchSerialsForScStockInAction(query: string) {
 export async function canManualScStockInAction() {
   const session = await requirePermission(SC_INVENTORY_VIEW);
   return canManualStockIn(session.user.permissions);
-}
-
-export function hasScInventoryView(permissions: string[] | undefined) {
-  return hasPermission(permissions, SC_INVENTORY_VIEW);
 }
