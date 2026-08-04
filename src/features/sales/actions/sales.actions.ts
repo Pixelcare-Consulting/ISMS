@@ -51,7 +51,7 @@ const saleSchema = z.object({
   customerDeliveryMethodId: z.string().min(1),
   infoSlipVsoRrReleased: z.string().trim().optional(),
   rrReceiveDeliver: z.string().trim().optional(),
-  proof: z.string().trim().optional(),
+  proof: z.array(z.string().trim().min(1)).optional().default([]),
   transactionDate: z.string().optional(),
   reserved: z.boolean().optional(),
   details: z.array(saleDetailSchema).min(1),
@@ -76,39 +76,25 @@ async function assertBranchInAor(
   }
 }
 
-/** Stock source may be an alternate warehouse of an AOR branch. */
+/** Stock source must itself be within the user's area of responsibility. */
 async function assertStockLocationReadable(
   tenantId: string,
   userId: string,
   stockBranchId: string,
   permissions: string[] | undefined,
 ) {
-  const unrestricted =
-    hasPermission(permissions, "branches.manage") ||
-    hasPermission(permissions, "master_data.manage");
-  if (unrestricted) return;
-
-  const branchIds = await aorService.getBranchIdsForUser(tenantId, userId);
-  if (branchIds?.includes(stockBranchId)) return;
-
-  const alt = await prisma.alternateWarehouse.findFirst({
-    where: {
-      alternateBranchId: stockBranchId,
-      branchId: { in: branchIds ?? [] },
-      branch: { tenantId },
-    },
-    select: { id: true },
-  });
-  if (!alt) {
-    throw new Error("Branch not in your area of responsibility");
-  }
+  await assertBranchInAor(tenantId, userId, stockBranchId, permissions);
 }
 
 async function assertValidStockSource(
   tenantId: string,
+  userId: string,
   soldBranchId: string,
   alternateBranchId: string,
+  permissions: string[] | undefined,
 ) {
+  await assertBranchInAor(tenantId, userId, alternateBranchId, permissions);
+
   if (alternateBranchId === soldBranchId) return;
   const alt = await prisma.alternateWarehouse.findFirst({
     where: {
@@ -224,6 +210,13 @@ export async function listStockSourceBranchesForSalesAction(branchId: string) {
     session.user.permissions,
   );
 
+  const unrestricted =
+    hasPermission(session.user.permissions, "branches.manage") ||
+    hasPermission(session.user.permissions, "master_data.manage");
+  const aorBranchIds = unrestricted
+    ? null
+    : await aorService.getBranchIdsForUser(session.user.tenantId, session.user.id);
+
   const branch = await prisma.branch.findFirst({
     where: { id: branchId, tenantId: session.user.tenantId },
     select: {
@@ -241,6 +234,7 @@ export async function listStockSourceBranchesForSalesAction(branchId: string) {
   const options = [{ id: branch.id, name: branch.name }];
   for (const row of branch.alternateWarehouses) {
     if (row.alternateBranch.id === branch.id) continue;
+    if (aorBranchIds && !aorBranchIds.includes(row.alternateBranch.id)) continue;
     options.push({
       id: row.alternateBranch.id,
       name: `${row.alternateBranch.name} (alternate)`,
@@ -293,11 +287,6 @@ export async function resolveModelPriceForSalesAction(input: {
   });
   if (priceList) return Number(priceList.amount.toString());
 
-  const model = await prisma.productModel.findFirst({
-    where: { id: input.modelId, tenantId: session.user.tenantId },
-    select: { srp: true },
-  });
-  if (model?.srp != null) return Number(model.srp.toString());
   return null;
 }
 
@@ -407,8 +396,10 @@ export async function createSaleAction(input: unknown) {
     );
     await assertValidStockSource(
       session.user.tenantId,
+      session.user.id,
       parsed.data.branchId,
       parsed.data.alternateBranchId,
+      session.user.permissions,
     );
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Access denied" };
@@ -542,7 +533,7 @@ export async function createSaleAction(input: unknown) {
           siTrans: parsed.data.siTrans,
           infoSlipVsoRrReleased: parsed.data.infoSlipVsoRrReleased || null,
           rrReceiveDeliver: parsed.data.rrReceiveDeliver || null,
-          proof: parsed.data.proof || null,
+          proof: parsed.data.proof,
           amount,
           modelPrice: modelPriceRollup ?? null,
           atrStatus: "open",
