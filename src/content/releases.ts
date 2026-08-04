@@ -30,7 +30,7 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
-    version: "0.13.29",
+    version: "0.13.35",
     date: "2026-08-04",
     title: "Service center ops, sales encode polish, and sortable tables",
     highlights: [
@@ -40,6 +40,11 @@ export const RELEASES: ReleaseNote[] = [
       "Click a column header on most list tables to sort ascending or descending — arrows show which column is active",
       "Customize Sales & ATR return badge names and colors in Status settings",
       "Sales list shows one row per serial with clear status badges (including TO FOLLOW)",
+      "Sales & ATR status stays with the sale — editing inventory no longer flips Sold to Stock on the sales list",
+      "Official Sales SALE keeps Sold on the sale line; RETURN puts stock back without changing sale status",
+      "Official Sales template and staging use Trans Date, Trans #, Serial Number, Branch Sold, and Action",
+      "Delete Official Sales staging rows that have not been successfully processed yet — with a clear confirm dialog and Delete button beside Process",
+      "Select several pending or failed Official Sales staging rows at once and delete them together",
       "When editing a sale serial, only stock units for that product model appear (plus TO FOLLOW)",
       "Review multiple sale proofs in a preview window — images and PDFs side by side",
       "Attach multiple proof files on a sale and type the transaction number from your invoice",
@@ -48,8 +53,25 @@ export const RELEASES: ReleaseNote[] = [
       "Sales encode and returns are reliable again — TO FOLLOW saves, model price fills from the price list (no automatic SRP), and return status shows Pending CS",
       "Serial logs label sales clearly as Sales transaction with Inventory: Sold",
       "Orders and Logistics only show actions for your step; View details is always available",
+      "Ordering frequency codes now include Daily and Three times a month — pick them when setting up branch delivery cadence",
+      "Set company hours when nobody can place or approve orders (Order Policy daily time lock, Manila time)",
     ],
     changes: [
+      {
+        type: "feature",
+        description:
+          "Delete Official Sales staging rows that are still pending or failed — successfully processed rows stay protected",
+      },
+      {
+        type: "feature",
+        description:
+          "Order Policy can lock create, submit, and approve during daily company hours you choose (Manila time)",
+      },
+      {
+        type: "feature",
+        description:
+          "Order Policy frequency codes can use Daily and Three times a month cadences (alongside existing weekly options)",
+      },
       {
         type: "feature",
         description:
@@ -98,6 +120,11 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "improvement",
         description:
+          "Select multiple pending or failed Official Sales staging rows and delete them in one step",
+      },
+      {
+        type: "improvement",
+        description:
           "Sale details opens proofs in a preview window with file list and next/previous — no need to leave the page",
       },
       {
@@ -139,6 +166,26 @@ export const RELEASES: ReleaseNote[] = [
         type: "improvement",
         description:
           "Serial number logs show Sales transaction with Inventory: Sold (or Reserved when reserved)",
+      },
+      {
+        type: "improvement",
+        description:
+          "Official Sales template and staging use Trans Date, Trans #, Serial Number, Branch Sold, and Action (older Serial / DR DATE / DR NO files still upload)",
+      },
+      {
+        type: "improvement",
+        description:
+          "Official Sales SALE keeps Sold on the sale line; RETURN restores stock without flipping sale status to Stock",
+      },
+      {
+        type: "improvement",
+        description:
+          "Official Sales Delete asks for confirmation in a dialog and sits as a clear button next to Process",
+      },
+      {
+        type: "fix",
+        description:
+          "Sales & ATR status stays with the sale line and no longer changes when inventory status is edited",
       },
       {
         type: "fix",

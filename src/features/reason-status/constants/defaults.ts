@@ -33,6 +33,7 @@ export const REASON_STATUS_DEFAULTS: ReasonStatusDefaultGroup[] = [
       { code: "RSV", name: "Reserved", sortOrder: 4, color: "orange" },
       { code: "DEF", name: "Defective", sortOrder: 5, color: "rose" },
       { code: "FPO", name: "For pull-out", sortOrder: 6, color: "violet" },
+      { code: "FW", name: "TO FOLLOW", sortOrder: 7, color: "orange" },
     ],
   },
   {

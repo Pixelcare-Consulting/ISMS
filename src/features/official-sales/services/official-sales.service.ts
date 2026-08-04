@@ -1,5 +1,8 @@
 import { auditService } from "@/features/audit/services/audit.service";
-import { officialSalesRepository } from "@/features/official-sales/repositories/official-sales.repository";
+import {
+  officialSalesRepository,
+  type OfficialSalesRowCreateInput,
+} from "@/features/official-sales/repositories/official-sales.repository";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { prisma } from "@/lib/database/client";
 import * as XLSX from "xlsx";
@@ -47,11 +50,18 @@ function parseDrDate(value: unknown): Date | null {
   return null;
 }
 
-function parseUploadBuffer(buffer: ArrayBuffer | Buffer): {
-  serial: string;
-  drDate: Date | null;
-  drNo: string | null;
-}[] {
+function normalizeAction(value: unknown): string | null {
+  if (value == null || value === "") return null;
+  const text = String(value).trim().toUpperCase();
+  if (!text) return null;
+  // Light validation: known Accounting actions preferred; other text kept for display.
+  if (["ADD", "UPD", "DEL", "UPDATE", "DELETE"].includes(text)) {
+    return text === "UPDATE" ? "UPD" : text === "DELETE" ? "DEL" : text;
+  }
+  return text.slice(0, 32);
+}
+
+function parseUploadBuffer(buffer: ArrayBuffer | Buffer): OfficialSalesRowCreateInput[] {
   const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) throw new Error("Workbook has no sheets");
@@ -66,22 +76,48 @@ function parseUploadBuffer(buffer: ArrayBuffer | Buffer): {
   const parsed = rows
     .map((row) => {
       const serial = String(
-        pickColumn(row, ["serial", "serialno", "serialnumber", "sn"]) ?? "",
+        pickColumn(row, ["serial number", "serialnumber", "serial", "serialno", "sn"]) ?? "",
       ).trim();
-      const drNoRaw = pickColumn(row, ["drno", "dr number", "dr#", "deliveryno"]);
+      const drNoRaw = pickColumn(row, [
+        "trans #",
+        "trans#",
+        "transno",
+        "transactionno",
+        "drno",
+        "dr number",
+        "dr#",
+        "deliveryno",
+        "delivery no",
+      ]);
       const drDate = parseDrDate(
-        pickColumn(row, ["drdate", "dr date", "deliverydate", "date"]),
+        pickColumn(row, [
+          "trans date",
+          "transdate",
+          "drdate",
+          "dr date",
+          "deliverydate",
+          "date",
+        ]),
       );
+      const branchSoldRaw = pickColumn(row, ["branch sold", "branchsold", "branch"]);
+      const action = normalizeAction(pickColumn(row, ["action"]));
       return {
         serial,
         drDate,
         drNo: drNoRaw == null || drNoRaw === "" ? null : String(drNoRaw).trim(),
+        branchSold:
+          branchSoldRaw == null || branchSoldRaw === ""
+            ? null
+            : String(branchSoldRaw).trim(),
+        action,
       };
     })
     .filter((row) => row.serial.length > 0);
 
   if (parsed.length === 0) {
-    throw new Error("No rows found. Expected columns: Serial, DR DATE, DR NO");
+    throw new Error(
+      "No rows found. Expected columns: Trans Date, Trans #, Serial Number, Branch Sold, Action (legacy: Serial, DR DATE, DR NO)",
+    );
   }
   return parsed;
 }
@@ -127,6 +163,64 @@ export const officialSalesService = {
     return result.count;
   },
 
+  /**
+   * Hard-delete staging rows that have not mutated inventory (pending/error only).
+   * Rejects any request that includes a success row.
+   */
+  async deleteRows(tenantId: string, userId: string, rowIds: string[]) {
+    const uniqueIds = [...new Set(rowIds.filter(Boolean))];
+    if (uniqueIds.length === 0) {
+      throw new Error("Select at least one row to delete");
+    }
+
+    const total = await officialSalesRepository.countRowsByIds(tenantId, uniqueIds);
+    if (total !== uniqueIds.length) {
+      throw new Error("One or more rows were not found");
+    }
+
+    const deletable = await officialSalesRepository.findDeletableRows(
+      tenantId,
+      uniqueIds,
+    );
+    if (deletable.length !== uniqueIds.length) {
+      throw new Error(
+        "Only pending or error rows can be deleted. Successfully processed rows cannot be removed here.",
+      );
+    }
+
+    const result = await officialSalesRepository.deleteDeletableRows(
+      tenantId,
+      uniqueIds,
+    );
+
+    await auditService.log({
+      tenantId,
+      userId,
+      action: "official_sales.row_deleted",
+      entityType: "OfficialSalesImportRow",
+      entityId: tenantId,
+      metadata: {
+        deleted: result.count,
+        rowIds: uniqueIds,
+        serials: deletable.map((r) => r.serial),
+      },
+    });
+
+    return result.count;
+  },
+
+  /** Excel template matching Accounting upload columns. */
+  buildTemplate(): Buffer {
+    const sheet = XLSX.utils.aoa_to_sheet([
+      ["Trans Date", "Trans #", "Serial Number", "Branch Sold", "Action"],
+      ["2026-08-04", "DR-0001", "SAMPLE-SERIAL-001", "", "ADD"],
+    ]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, sheet, "Official Sales");
+    const out = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+    return Buffer.isBuffer(out) ? out : Buffer.from(out as ArrayBuffer);
+  },
+
   async processRows(tenantId: string, userId: string, rowIds?: string[]) {
     const rows = await officialSalesRepository.findPendingRows(tenantId, rowIds);
     if (rows.length === 0) return { processed: 0, successCount: 0, errorCount: 0 };
@@ -167,11 +261,26 @@ export const officialSalesService = {
 
         const statusCode = inventory.statusCode.code.toUpperCase();
         if (statusCode === "STK") {
+          const openSale = await officialSalesRepository.findOpenSaleDetailBySerial(
+            tenantId,
+            row.serial,
+          );
+          if (openSale) {
+            await officialSalesRepository.updateRowResult(row.id, {
+              status: "error",
+              result: `Serial already has an open sale (${openSale.sale.transactionNo})`,
+            });
+            error += 1;
+            continue;
+          }
+
           const transactionNo = `OFS-${Date.now().toString(36).toUpperCase()}-${row.id.slice(-4)}`;
           const noteParts = [
             "Official sales import",
-            row.drNo ? `DR NO ${row.drNo}` : null,
-            row.drDate ? `DR DATE ${row.drDate.toISOString().slice(0, 10)}` : null,
+            row.drNo ? `Trans # ${row.drNo}` : null,
+            row.drDate ? `Trans Date ${row.drDate.toISOString().slice(0, 10)}` : null,
+            row.branchSold ? `Branch Sold ${row.branchSold}` : null,
+            row.action ? `Action ${row.action}` : null,
           ].filter(Boolean);
 
           await prisma.$transaction(async (tx) => {
@@ -195,6 +304,7 @@ export const officialSalesService = {
                 salesId: created.id,
                 modelId: inventory.serialNumber.model?.id ?? null,
                 serialNumberId: inventory.serialNumberId,
+                statusCodeId: sldCodeId,
                 saleAmount: 0,
                 amount: 0,
               },
@@ -223,6 +333,8 @@ export const officialSalesService = {
         }
 
         if (statusCode === "SLD" || statusCode === "RSV") {
+          // Stay Sold: restore inventory to STK only — do not flip sale-line status.
+          // Action is stored for display; process still uses inventory status flips.
           const fromCodeId = statusCode === "RSV" ? rsvCodeId : sldCodeId;
           await prisma.$transaction(async (tx) => {
             const updated = await tx.branchInventory.updateMany({

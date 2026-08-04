@@ -17,6 +17,8 @@ export async function listOfficialSalesStagingAction() {
     serial: row.serial,
     drDate: row.drDate ? row.drDate.toISOString().slice(0, 10) : null,
     drNo: row.drNo,
+    branchSold: row.branchSold,
+    action: row.action,
     result: row.result,
     status: row.status,
     processedAt: row.processedAt?.toISOString() ?? null,
@@ -64,6 +66,13 @@ export async function clearOfficialSalesTempAction() {
   }
 }
 
+/** Returns the workbook base64-encoded — server action results must be serializable. */
+export async function downloadOfficialSalesTemplateAction(): Promise<string> {
+  await requirePermission("official_sales.manage");
+  const workbook = officialSalesService.buildTemplate();
+  return workbook.toString("base64");
+}
+
 export async function processOfficialSalesAction(input?: { rowIds?: string[] }) {
   const session = await requirePermission("official_sales.manage");
   const parsed = z
@@ -81,5 +90,25 @@ export async function processOfficialSalesAction(input?: { rowIds?: string[] }) 
     return { success: true as const, ...result };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Process failed" };
+  }
+}
+
+export async function deleteOfficialSalesRowsAction(input: { rowIds: string[] }) {
+  const session = await requirePermission("official_sales.manage");
+  const parsed = z
+    .object({ rowIds: z.array(z.string().min(1)).min(1) })
+    .safeParse(input);
+  if (!parsed.success) return { error: "Select at least one row to delete" };
+
+  try {
+    const deleted = await officialSalesService.deleteRows(
+      session.user.tenantId,
+      session.user.id,
+      parsed.data.rowIds,
+    );
+    revalidatePath("/reports/official-sales");
+    return { success: true as const, deleted };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Delete failed" };
   }
 }

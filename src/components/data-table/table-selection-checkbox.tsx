@@ -38,6 +38,7 @@ interface TableRowCheckboxProps {
   onCheckedChange: (checked: boolean) => void;
   "aria-label"?: string;
   className?: string;
+  disabled?: boolean;
 }
 
 /** Body checkbox cell wired to `useTableSelection` per-row toggle. */
@@ -46,11 +47,13 @@ export function TableRowCheckbox({
   onCheckedChange,
   "aria-label": ariaLabel = "Select row",
   className,
+  disabled = false,
 }: TableRowCheckboxProps) {
   return (
     <TableCell className={className}>
       <Checkbox
         checked={checked}
+        disabled={disabled}
         onCheckedChange={(value) => onCheckedChange(value === true)}
         aria-label={ariaLabel}
       />

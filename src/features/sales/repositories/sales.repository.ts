@@ -41,7 +41,7 @@ function salesDetailPrismaOrderBy(
   }
 }
 
-const inventoryStatusSelect = {
+const detailStatusCodeSelect = {
   statusCode: { select: { code: true, name: true, color: true } },
 } as const;
 
@@ -69,15 +69,11 @@ export const salesRepository = {
       prisma.branchSalesTransactionDetail.findMany({
         where,
         include: {
+          ...detailStatusCodeSelect,
           serialNumber: {
             select: {
               id: true,
               serialNo: true,
-              branchInventories: {
-                take: 1,
-                orderBy: { updatedAt: "desc" as const },
-                select: inventoryStatusSelect,
-              },
             },
           },
           packageType: { select: { id: true, name: true } },
@@ -139,6 +135,7 @@ export const salesRepository = {
             saleAmount: true,
             amount: true,
             modelPrice: true,
+            ...detailStatusCodeSelect,
             packageType: { select: { name: true } },
             brand: { select: { name: true } },
             model: { select: { id: true, skuCode: true, name: true } },
@@ -146,11 +143,6 @@ export const salesRepository = {
               select: {
                 id: true,
                 serialNo: true,
-                branchInventories: {
-                  take: 1,
-                  orderBy: { updatedAt: "desc" as const },
-                  select: inventoryStatusSelect,
-                },
               },
             },
           },

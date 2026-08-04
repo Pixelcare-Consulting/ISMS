@@ -1,6 +1,14 @@
 import { prisma } from "@/lib/database/client";
 import type { OfficialSalesImportRowStatus } from "@prisma/client";
 
+export type OfficialSalesRowCreateInput = {
+  serial: string;
+  drDate: Date | null;
+  drNo: string | null;
+  branchSold: string | null;
+  action: string | null;
+};
+
 export const officialSalesRepository = {
   listStagingRows(tenantId: string) {
     return prisma.officialSalesImportRow.findMany({
@@ -24,7 +32,7 @@ export const officialSalesRepository = {
     tenantId: string,
     uploadedById: string,
     fileName: string | null,
-    rows: { serial: string; drDate: Date | null; drNo: string | null }[],
+    rows: OfficialSalesRowCreateInput[],
   ) {
     return prisma.officialSalesImportBatch.create({
       data: {
@@ -37,6 +45,8 @@ export const officialSalesRepository = {
             serial: row.serial,
             drDate: row.drDate,
             drNo: row.drNo,
+            branchSold: row.branchSold,
+            action: row.action,
           })),
         },
       },
@@ -58,6 +68,33 @@ export const officialSalesRepository = {
         ...(ids?.length ? { id: { in: ids } } : {}),
       },
       orderBy: { createdAt: "asc" },
+    });
+  },
+
+  findDeletableRows(tenantId: string, ids: string[]) {
+    return prisma.officialSalesImportRow.findMany({
+      where: {
+        tenantId,
+        id: { in: ids },
+        status: { in: ["pending", "error"] },
+      },
+      select: { id: true, status: true, serial: true, batchId: true },
+    });
+  },
+
+  countRowsByIds(tenantId: string, ids: string[]) {
+    return prisma.officialSalesImportRow.count({
+      where: { tenantId, id: { in: ids } },
+    });
+  },
+
+  deleteDeletableRows(tenantId: string, ids: string[]) {
+    return prisma.officialSalesImportRow.deleteMany({
+      where: {
+        tenantId,
+        id: { in: ids },
+        status: { in: ["pending", "error"] },
+      },
     });
   },
 
@@ -105,6 +142,32 @@ export const officialSalesRepository = {
         },
         statusCode: { select: { id: true, code: true, name: true } },
       },
+    });
+  },
+
+  /**
+   * Open (non-closed) sale detail for a serial with frozen Sold/Reserved STATUS.
+   * Used to block duplicate Official Sales SALE rows after inventory was reset to STK.
+   */
+  findOpenSaleDetailBySerial(tenantId: string, serialNo: string) {
+    return prisma.branchSalesTransactionDetail.findFirst({
+      where: {
+        serialNumber: { tenantId, serialNo },
+        sale: {
+          tenantId,
+          atrStatus: { not: "closed" },
+        },
+        statusCode: {
+          code: { in: ["SLD", "RSV"] },
+        },
+      },
+      select: {
+        id: true,
+        salesId: true,
+        sale: { select: { transactionNo: true, atrStatus: true } },
+        statusCode: { select: { code: true, name: true } },
+      },
+      orderBy: { createdAt: "desc" },
     });
   },
 };

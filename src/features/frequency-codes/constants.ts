@@ -8,6 +8,8 @@ export const FREQUENCY_LABELS: Record<DeliveryFrequencyValue, string> = {
   triweekly: "Once every three weeks",
   monthly: "Once a month",
   twice_weekly: "Twice a week",
+  daily: "Daily",
+  thrice_monthly: "Three times a month",
 };
 
 export const FREQUENCY_OPTIONS = DELIVERY_FREQUENCIES.map((value) => ({

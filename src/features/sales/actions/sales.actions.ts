@@ -103,19 +103,16 @@ function resolveSalesAtrStatusCode(
 }
 
 /**
- * List/details STATUS preference:
+ * List/details STATUS preference (never live inventory):
  * 1) Active ATR return workflow (pending CS/TL/approved/rejected)
- * 2) Inventory status (SLD/STK/…) or TO FOLLOW when no serial
- * 3) ATR header status as last resort
+ * 2) Closed ATR header
+ * 3) Frozen detail.statusCode (FW / SLD / RSV)
+ * 4) Legacy derive from serial + atrStatus
  */
 function resolveLineStatusCode(
   detail: {
     serialNumberId: string | null;
-    serialNumber?: {
-      branchInventories?: Array<{
-        statusCode: { code: string; name: string; color: string | null } | null;
-      }>;
-    } | null;
+    statusCode?: { code: string; name: string; color: string | null } | null;
   },
   atrStatus: string,
   toFollowStatus: SaleStatusCodeRef,
@@ -126,16 +123,19 @@ function resolveLineStatusCode(
     return resolveSalesAtrStatusCode(returnStatus, salesAtrCodes);
   }
 
-  const invStatus = detail.serialNumber?.branchInventories?.[0]?.statusCode;
-  if (invStatus) {
+  if (atrStatus === "closed") {
+    return resolveSalesAtrStatusCode("closed", salesAtrCodes);
+  }
+
+  if (detail.statusCode) {
     return {
-      code: invStatus.code,
-      name: invStatus.name,
-      color: invStatus.color,
+      code: detail.statusCode.code,
+      name: detail.statusCode.name,
+      color: detail.statusCode.color,
     };
   }
+
   if (!detail.serialNumberId) {
-    // TO-FOLLOW line with no active return — still show FW / TO FOLLOW.
     if (atrStatus === "reserve") {
       return resolveSalesAtrStatusCode("reserve", salesAtrCodes);
     }
@@ -944,8 +944,9 @@ export async function createSaleAction(input: unknown) {
   const modelPriceRollup = details.find((d) => d.modelPrice != null)?.modelPrice;
   const stockBranchId = parsed.data.alternateBranchId;
 
-  // Skip status lookups when every line is TO-FOLLOW (no inventory move).
+  // Skip inventory status lookups when every line is TO-FOLLOW (no inventory move).
   const hasRealSerials = realSerialIds.length > 0;
+  const hasToFollow = details.some((d) => isToFollowSerial(d.serialNumberId));
   const stkCodeId = hasRealSerials
     ? await reasonStatusService.requireCodeId(
         session.user.tenantId,
@@ -960,6 +961,14 @@ export async function createSaleAction(input: unknown) {
         parsed.data.reserved ? "RSV" : "SLD",
       )
     : null;
+  const fwCodeRow = hasToFollow
+    ? await reasonStatusRepository.findCodeId(
+        session.user.tenantId,
+        "inventory_system",
+        "FW",
+      )
+    : null;
+  const fwCodeId = fwCodeRow?.id ?? null;
 
   let row;
   try {
@@ -1088,6 +1097,7 @@ export async function createSaleAction(input: unknown) {
               promoTypeId: detail.promoTypeId ?? null,
               modelId: detail.modelId,
               serialNumberId,
+              statusCodeId: targetStatusCodeId,
               saleAmount: detail.saleAmount,
               modelPrice: detail.modelPrice ?? null,
               amount: detail.saleAmount,
@@ -1103,6 +1113,7 @@ export async function createSaleAction(input: unknown) {
               promoTypeId: detail.promoTypeId ?? null,
               modelId: detail.modelId,
               serialNumberId: null,
+              statusCodeId: fwCodeId,
               saleAmount: detail.saleAmount,
               modelPrice: detail.modelPrice ?? null,
               amount: detail.saleAmount,
@@ -1476,6 +1487,14 @@ export async function updateSaleSerialAction(input: {
     "inventory_system",
     "RSV",
   );
+  const fwCodeRow = nextIsToFollow
+    ? await reasonStatusRepository.findCodeId(
+        session.user.tenantId,
+        "inventory_system",
+        "FW",
+      )
+    : null;
+  const fwCodeId = fwCodeRow?.id ?? null;
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -1512,7 +1531,11 @@ export async function updateSaleSerialAction(input: {
 
       await tx.branchSalesTransactionDetail.update({
         where: { id: targetDetail.id },
-        data: { serialNumberId: nextSerialId },
+        data: {
+          serialNumberId: nextSerialId,
+          // Freeze line STATUS with the sale — do not mirror inventory after ATR complete.
+          statusCodeId: nextSerialId ? soldStatusCodeId : fwCodeId,
+        },
       });
     });
   } catch (e) {
