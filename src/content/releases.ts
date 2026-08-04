@@ -32,8 +32,10 @@ export const RELEASES: ReleaseNote[] = [
   {
     version: "0.13.24",
     date: "2026-08-04",
-    title: "Dashboard cards and order approvals",
+    title: "Sortable tables, TO-FOLLOW sales, and order approvals",
     highlights: [
+      "Click a column header on most list tables to sort ascending or descending — arrows show which column is active",
+      "When encoding a sale, pick TO-FOLLOW if the serial is not ready yet, then Edit later to assign the real serial",
       "Dashboard screen activity cards build cleanly again when deliveries or draft suggested orders are shown",
       "Product Specialists can approve manual orders waiting on them again; if approval isn’t allowed, you stay on the orders page with a clear message",
       "When you create a special (or other) order, you only pick branches in your area — so new orders show up in your list right away",
@@ -43,6 +45,16 @@ export const RELEASES: ReleaseNote[] = [
       "When recording a new sale, enter your own transaction number — it is no longer auto-filled or locked",
     ],
     changes: [
+      {
+        type: "feature",
+        description:
+          "List tables across Inventory, Orders, Sales, Logistics, Settings, Audit, and more support Asc/Desc sorting from the column headers",
+      },
+      {
+        type: "feature",
+        description:
+          "Sales encode offers TO-FOLLOW when a serial is not available yet; use Edit on the sale row later to set or change the serial",
+      },
       {
         type: "improvement",
         description:
