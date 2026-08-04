@@ -135,12 +135,13 @@ export const salesRepository = {
           select: {
             id: true,
             serialNumberId: true,
+            modelId: true,
             saleAmount: true,
             amount: true,
             modelPrice: true,
             packageType: { select: { name: true } },
             brand: { select: { name: true } },
-            model: { select: { skuCode: true, name: true } },
+            model: { select: { id: true, skuCode: true, name: true } },
             serialNumber: {
               select: {
                 id: true,

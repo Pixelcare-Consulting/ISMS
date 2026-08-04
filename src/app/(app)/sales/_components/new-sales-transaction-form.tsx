@@ -554,6 +554,7 @@ export function NewSalesTransactionForm({
           brands={brands}
           promoTypes={promoTypes}
           usedSerialIds={usedSerialIds}
+          transactionDate={transactionDate || undefined}
           onAdd={appendDetails}
           onClose={() => setDetailOpen(false)}
         />

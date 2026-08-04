@@ -34,6 +34,7 @@ export function EditSaleSerialDialog({
   detailId,
   transactionNo,
   branchId,
+  modelId,
   currentSerialId,
   currentSerialLabel,
   onClose,
@@ -42,6 +43,7 @@ export function EditSaleSerialDialog({
   detailId?: string;
   transactionNo: string;
   branchId: string;
+  modelId: string | null;
   currentSerialId: string | null;
   currentSerialLabel: string;
   onClose: () => void;
@@ -57,7 +59,10 @@ export function EditSaleSerialDialog({
     let cancelled = false;
     void (async () => {
       try {
-        const rows = await listSaleableSerialsAction(branchId);
+        // Prefer same-model STK only; if model is unknown, do not list other models.
+        const rows = modelId
+          ? await listSaleableSerialsAction(branchId, modelId)
+          : [];
         if (cancelled) return;
         setSerials(rows);
       } catch {
@@ -70,7 +75,7 @@ export function EditSaleSerialDialog({
     return () => {
       cancelled = true;
     };
-  }, [branchId]);
+  }, [branchId, modelId]);
 
   const options = [
     { id: TO_FOLLOW_SERIAL_ID, label: TO_FOLLOW_SERIAL_LABEL },
@@ -127,7 +132,7 @@ export function EditSaleSerialDialog({
           onChange={setSerialNumberId}
           placeholder={loading ? "Loading serials…" : "Select serial…"}
           searchPlaceholder="Search serials…"
-          emptyMessage="No sellable serials at this branch."
+          emptyMessage="No sellable serials for this product model at this branch."
           disabled={loading || pending}
           popoverClassName="z-70"
         />

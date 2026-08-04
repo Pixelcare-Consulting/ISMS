@@ -94,6 +94,7 @@ export function AddTransactionDetailDialog({
   brands,
   promoTypes,
   usedSerialIds,
+  transactionDate,
   onAdd,
   onClose,
 }: {
@@ -101,6 +102,8 @@ export function AddTransactionDetailDialog({
   brands: LookupOption[];
   promoTypes: LookupOption[];
   usedSerialIds: Set<string>;
+  /** YYYY-MM-DD — used to resolve model price against the right price list period. */
+  transactionDate?: string;
   onAdd: (rows: DraftSaleDetail[]) => void;
   onClose: () => void;
 }) {
@@ -176,6 +179,7 @@ export function AddTransactionDetailDialog({
       const resolved = await resolveModelPriceForSalesAction({
         modelId,
         packageTypeId: packageTypeId || undefined,
+        transactionDate: transactionDate || undefined,
       });
       if (resolved) {
         updateSet(index, {

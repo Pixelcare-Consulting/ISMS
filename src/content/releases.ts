@@ -30,15 +30,17 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
-    version: "0.13.25",
+    version: "0.13.27",
     date: "2026-08-04",
     title: "Sales encode, ATR status, and smoother orders",
     highlights: [
       "Customize Sales & ATR return badge names and colors in Status settings",
       "Sales list shows one row per serial with clear status badges (including TO FOLLOW)",
+      "When editing a sale serial, only stock units for that product model appear (plus TO FOLLOW)",
       "Review multiple sale proofs in a preview window — images and PDFs side by side",
       "Attach multiple proof files on a sale and type the transaction number from your invoice",
-      "Sales encode and returns are reliable again — TO FOLLOW saves, model price fills from the price list, and return status shows Pending CS",
+      "Sales encode and returns are reliable again — TO FOLLOW saves, model price fills from the price list for the transaction date, and return status shows Pending CS",
+      "Serial logs label sales clearly as Sales transaction with Inventory: Sold",
       "Orders and Logistics only show actions for your step; View details is always available",
     ],
     changes: [
@@ -98,6 +100,16 @@ export const RELEASES: ReleaseNote[] = [
           "New orders stay limited to branches in your area so they show up in your list right away",
       },
       {
+        type: "improvement",
+        description:
+          "Serial number logs show Sales transaction with Inventory: Sold (or Reserved when reserved)",
+      },
+      {
+        type: "fix",
+        description:
+          "Edit serial on Sales & ATR only lists stock units for that product model, plus TO FOLLOW",
+      },
+      {
         type: "fix",
         description:
           "Serial number activity logs open again when viewing sold items",
@@ -115,7 +127,7 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "fix",
         description:
-          "Model price fills from the price list when you pick a model",
+          "Model price fills from the price list for the sale’s transaction date when you pick a model",
       },
       {
         type: "fix",

@@ -397,6 +397,7 @@ export async function getSaleDetailsAction(saleId: string) {
         detailId: detail.id,
         packageName: detail.packageType?.name ?? null,
         brandName: detail.brand?.name ?? null,
+        modelId: detail.modelId ?? detail.model?.id ?? null,
         modelLabel: detail.model
           ? detail.model.skuCode?.trim() ||
             detail.model.name?.trim() ||
@@ -600,18 +601,27 @@ export type ResolvedModelPrice = {
 export async function resolveModelPriceForSalesAction(input: {
   modelId: string;
   packageTypeId?: string;
+  /** YYYY-MM-DD (or ISO); price list window uses this calendar day. */
+  transactionDate?: string;
 }): Promise<ResolvedModelPrice | null> {
   const session = await requirePermission("sales.create");
-  const now = new Date();
+  const asOf = input.transactionDate
+    ? new Date(input.transactionDate)
+    : new Date();
+  const asOfValid = Number.isNaN(asOf.getTime()) ? new Date() : asOf;
   // Date inputs store midnight UTC; treat the whole calendar day as in-range.
   const dayStart = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    Date.UTC(
+      asOfValid.getUTCFullYear(),
+      asOfValid.getUTCMonth(),
+      asOfValid.getUTCDate(),
+    ),
   );
   const dayEnd = new Date(
     Date.UTC(
-      now.getUTCFullYear(),
-      now.getUTCMonth(),
-      now.getUTCDate(),
+      asOfValid.getUTCFullYear(),
+      asOfValid.getUTCMonth(),
+      asOfValid.getUTCDate(),
       23,
       59,
       59,

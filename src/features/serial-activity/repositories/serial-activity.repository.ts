@@ -87,13 +87,6 @@ const RECORD_STATUS_LABELS: Record<string, string> = {
   inactive: "Record: Inactive",
 };
 
-/** ATR = the return-authorization case on the sale, not the sale itself. */
-const ATR_STATUS_LABELS: Record<string, string> = {
-  open: "ATR: Open",
-  reserve: "ATR: Reserved",
-  closed: "ATR: Closed",
-};
-
 const COUNT_LINE_STATUS_LABELS: Record<string, string> = {
   pending: "Count: Pending",
   counted: "Count: Counted",
@@ -326,13 +319,24 @@ async function soldSource(
             customerName: true,
             contactNo: true,
             deliveryNo: true,
-            atrStatus: true,
             amount: true,
             branch: { select: { name: true } },
             createdBy: userSelect,
           },
         },
-        serialNumber: { select: { serialNo: true, model: modelSelect } },
+        // Reserved sales have no sale.reserved flag — createSaleAction sets
+        // inventory status to RSV (vs SLD). atrStatus "reserve" is ATR return only.
+        serialNumber: {
+          select: {
+            serialNo: true,
+            model: modelSelect,
+            branchInventories: {
+              take: 1,
+              orderBy: { updatedAt: "desc" },
+              select: { statusCode: { select: { code: true } } },
+            },
+          },
+        },
       },
     }),
     prisma.branchSalesTransactionDetail.count({ where }),
@@ -342,6 +346,8 @@ async function soldSource(
     events: rows.flatMap((r) => {
       const serial = serialFields(r.serialNumber);
       if (!serial) return [];
+      const inventoryCode =
+        r.serialNumber?.branchInventories[0]?.statusCode.code ?? null;
       return [
         {
           id: `sold:${r.id}`,
@@ -360,7 +366,10 @@ async function soldSource(
               ? `Transaction date: ${formatEventDate(r.sale.transactionDate)}`
               : null,
           ),
-          status: ATR_STATUS_LABELS[r.sale.atrStatus] ?? r.sale.atrStatus,
+          status:
+            inventoryCode === "RSV"
+              ? "Inventory: Reserved"
+              : "Inventory: Sold",
           performedBy: performedByLabel(r.sale.createdBy),
         },
       ];
