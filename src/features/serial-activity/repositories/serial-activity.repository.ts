@@ -323,6 +323,7 @@ async function soldSource(
             transactionNo: true,
             transactionDate: true,
             customerName: true,
+            contactNo: true,
             deliveryNo: true,
             atrStatus: true,
             amount: true,
@@ -352,6 +353,7 @@ async function soldSource(
           referenceDetails: referenceDetails(
             formatPeso(Number(r.saleAmount ?? r.amount ?? r.sale.amount)),
             r.sale.customerName ? `Customer: ${r.sale.customerName}` : null,
+            r.sale.contactNo ? `Contact: ${r.sale.contactNo}` : null,
             r.sale.deliveryNo ? `DR ${r.sale.deliveryNo}` : null,
             r.sale.transactionDate
               ? `Transaction date: ${formatEventDate(r.sale.transactionDate)}`
