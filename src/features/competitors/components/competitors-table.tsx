@@ -21,13 +21,13 @@ import {
   TableSearchBar,
   uniqueSearchSuggestions,
 } from "@/components/data-table";
+import { GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
@@ -92,6 +92,15 @@ export function CompetitorsTable({
       ]);
     });
   }, [observations, query, branchFilter, brandFilter]);
+
+  const sort = useClientTableSort(filtered, {
+    competitor: (row) => row.competitorName,
+    branch: (row) => row.branch?.name ?? null,
+    price: (row) => row.price,
+    promotion: (row) => row.promotion,
+    observed: (row) => row.observedAt,
+    loggedBy: (row) => row.createdBy.name ?? row.createdBy.email,
+  });
 
   const suggestions = useMemo(
     () =>
@@ -192,22 +201,24 @@ export function CompetitorsTable({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Competitor</TableHead>
-                <TableHead>Branch</TableHead>
-                <TableHead>Brand / Model</TableHead>
-                <TableHead className="text-right">Price</TableHead>
-                <TableHead>Promotion</TableHead>
-                <TableHead>Observed</TableHead>
-                <TableHead>Notes</TableHead>
-                <TableHead>Logged by</TableHead>
-                {canManage ? <TableHead className="text-right">Actions</TableHead> : null}
+                <GlobalTableHead {...sort.sortProps("competitor")}>Competitor</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("branch")}>Branch</GlobalTableHead>
+                <GlobalTableHead>Brand / Model</GlobalTableHead>
+                <GlobalTableHead className="text-right" {...sort.sortProps("price")}>
+                  Price
+                </GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("promotion")}>Promotion</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("observed")}>Observed</GlobalTableHead>
+                <GlobalTableHead>Notes</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("loggedBy")}>Logged by</GlobalTableHead>
+                {canManage ? <GlobalTableHead className="text-right">Actions</GlobalTableHead> : null}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.length === 0 ? (
+              {sort.sorted.length === 0 ? (
                 <TableEmptyRow colSpan={colSpan} message={emptyMessage} />
               ) : (
-                filtered.map((row, index) => (
+                sort.sorted.map((row, index) => (
                   <TableRow
                     key={row.id}
                     className={cn(index % 2 === 1 && "bg-table-stripe")}

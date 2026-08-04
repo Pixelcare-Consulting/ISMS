@@ -31,20 +31,45 @@ function orderScopeWhere(
   };
 }
 
+export type OrderListSort = "orderNumber" | "branch" | "orderType" | "status";
+export type OrderListSortDir = "asc" | "desc";
+
+function orderPrismaOrderBy(
+  field: OrderListSort,
+  dir: OrderListSortDir,
+): Prisma.BranchOrderOrderByWithRelationInput {
+  switch (field) {
+    case "orderNumber":
+      return { orderNumber: dir };
+    case "branch":
+      return { branch: { name: dir } };
+    case "orderType":
+      return { orderType: dir };
+    case "status":
+      return { status: dir };
+    default:
+      return { createdAt: dir };
+  }
+}
+
 export const orderRepository = {
   async listForTenant(
     tenantId: string,
     branchIds: string[] | null,
     pagination?: { page?: number; limit?: number; orderType?: BranchOrderType },
+    sort?: { field?: OrderListSort; dir?: OrderListSortDir },
   ) {
     const { limit, page, skip } = resolvePagination(pagination);
     const where = orderScopeWhere(tenantId, branchIds, pagination?.orderType);
+    const orderBy = sort?.field
+      ? orderPrismaOrderBy(sort.field, sort.dir ?? "desc")
+      : { createdAt: "desc" as const };
 
     const [items, total] = await Promise.all([
       prisma.branchOrder.findMany({
         where,
         include: orderListInclude,
-        orderBy: { createdAt: "desc" },
+        orderBy,
         skip,
         take: limit,
       }),

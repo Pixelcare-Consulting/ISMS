@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -24,7 +24,7 @@ import {
   parseTablePageSize,
   type TablePageSize,
 } from "@/components/data-table/table-page-size";
-import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -75,18 +75,25 @@ interface SerialNumberTableProps {
   canManage: boolean;
   currentSearch?: string;
   currentStatus?: LookupRecordStatus;
+  initialSort?: string;
+  initialSortDir?: string;
 }
+
+type SerialNumberSortField = "serialNo" | "model" | "recordStatus";
+type SerialNumberSortDir = "asc" | "desc";
 
 function buildHref(
   page: number,
   limit: number,
-  filters: { q?: string; status?: LookupRecordStatus } = {},
+  filters: { q?: string; status?: LookupRecordStatus; sort?: string; sortDir?: string } = {},
 ): string {
   const params = new URLSearchParams();
   if (page > 1) params.set("page", String(page));
   if (limit !== DEFAULT_TABLE_PAGE_SIZE) params.set("limit", String(limit));
   if (filters.q) params.set("q", filters.q);
   if (filters.status) params.set("status", filters.status);
+  if (filters.sort) params.set("sort", filters.sort);
+  if (filters.sort && filters.sortDir) params.set("dir", filters.sortDir);
   const query = params.toString();
   return query ? `/inventory/serial-numbers?${query}` : "/inventory/serial-numbers";
 }
@@ -97,8 +104,11 @@ export function SerialNumberTable({
   canManage,
   currentSearch,
   currentStatus,
+  initialSort = "",
+  initialSortDir = "desc",
 }: SerialNumberTableProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [search, setSearch] = useState(currentSearch ?? "");
   const [status, setStatus] = useState<string>(currentStatus ?? "");
   const [open, setOpen] = useState(false);
@@ -107,13 +117,34 @@ export function SerialNumberTable({
   const [formModelId, setFormModelId] = useState("");
   const [pending, startTransition] = useTransition();
   const pageSize = parseTablePageSize(result.limit);
+  const sort = (searchParams.get("sort") ?? initialSort) || "";
+  const sortDir = (
+    (searchParams.get("dir") ?? initialSortDir) === "asc" ? "asc" : "desc"
+  ) as SerialNumberSortDir;
 
   const rows = result.items;
-  const activeFilters = { q: currentSearch, status: currentStatus };
+  const activeFilters = {
+    q: currentSearch,
+    status: currentStatus,
+    sort: sort || undefined,
+    sortDir: sort ? sortDir : undefined,
+  };
   const hasActiveFilters = Boolean(currentSearch || currentStatus);
 
   function handlePageSizeChange(limit: TablePageSize) {
     router.push(buildHref(1, limit, activeFilters));
+  }
+
+  function toggleSort(field: SerialNumberSortField) {
+    const next = nextTableSort(field, sort, sortDir);
+    router.push(
+      buildHref(1, pageSize, {
+        q: currentSearch,
+        status: currentStatus,
+        sort: next.sort,
+        sortDir: next.dir,
+      }),
+    );
   }
 
   const modelLabelById = useMemo(
@@ -135,6 +166,8 @@ export function SerialNumberTable({
       buildHref(1, pageSize, {
         q: search.trim() || undefined,
         status: (status || undefined) as LookupRecordStatus | undefined,
+        sort: sort || undefined,
+        sortDir: sort ? sortDir : undefined,
       }),
     );
   }
@@ -255,11 +288,32 @@ export function SerialNumberTable({
             <TableHeader>
               <TableRow>
                 <TableIndexHead />
-                <GlobalTableHead>Serial no</GlobalTableHead>
-                <GlobalTableHead>Model</GlobalTableHead>
+                <GlobalTableHead
+                  sortKey="serialNo"
+                  activeSortKey={sort}
+                  sortDirection={sortDir}
+                  onSort={(key) => toggleSort(key as SerialNumberSortField)}
+                >
+                  Serial no
+                </GlobalTableHead>
+                <GlobalTableHead
+                  sortKey="model"
+                  activeSortKey={sort}
+                  sortDirection={sortDir}
+                  onSort={(key) => toggleSort(key as SerialNumberSortField)}
+                >
+                  Model
+                </GlobalTableHead>
                 <GlobalTableHead>Current branch</GlobalTableHead>
                 <GlobalTableHead>Current status</GlobalTableHead>
-                <GlobalTableHead>Record</GlobalTableHead>
+                <GlobalTableHead
+                  sortKey="recordStatus"
+                  activeSortKey={sort}
+                  sortDirection={sortDir}
+                  onSort={(key) => toggleSort(key as SerialNumberSortField)}
+                >
+                  Record
+                </GlobalTableHead>
                 {canManage ? <GlobalTableHead className="w-48" /> : null}
               </TableRow>
             </TableHeader>

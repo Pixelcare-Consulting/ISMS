@@ -45,6 +45,26 @@ const sessionDetailInclude = {
   },
 } satisfies Prisma.StockCountSessionInclude;
 
+function resolveClosedSessionOrderBy(
+  sort?: { field?: string; dir?: "asc" | "desc" },
+): Prisma.StockCountSessionOrderByWithRelationInput[] {
+  const dir = sort?.dir ?? "desc";
+  switch (sort?.field) {
+    case "session":
+      return [{ sessionNo: dir }];
+    case "branch":
+      return [{ branch: { name: dir } }];
+    case "closed":
+      return [{ closedAt: dir }];
+    case "lines":
+      return [{ lines: { _count: dir } }];
+    case "variances":
+      return [{ variances: { _count: dir } }];
+    default:
+      return [{ closedAt: "desc" }, { createdAt: "desc" }];
+  }
+}
+
 function sessionScopeWhere(
   tenantId: string,
   branchIds: string[] | undefined,
@@ -55,20 +75,45 @@ function sessionScopeWhere(
   };
 }
 
+export type StockCountListSort = "session" | "branch" | "status" | "createdBy";
+export type StockCountListSortDir = "asc" | "desc";
+
+function stockCountPrismaOrderBy(
+  field: StockCountListSort,
+  dir: StockCountListSortDir,
+): Prisma.StockCountSessionOrderByWithRelationInput {
+  switch (field) {
+    case "session":
+      return { sessionNo: dir };
+    case "branch":
+      return { branch: { name: dir } };
+    case "status":
+      return { status: dir };
+    case "createdBy":
+      return { createdBy: { name: dir } };
+    default:
+      return { createdAt: dir };
+  }
+}
+
 export const stockAuditRepository = {
   listSessions(
     tenantId: string,
     branchIds: string[] | undefined,
     pagination?: { page?: number; limit?: number },
+    sort?: { field?: StockCountListSort; dir?: StockCountListSortDir },
   ) {
     const { limit, page, skip } = resolvePagination(pagination);
     const where = sessionScopeWhere(tenantId, branchIds);
+    const orderBy = sort?.field
+      ? stockCountPrismaOrderBy(sort.field, sort.dir ?? "desc")
+      : { createdAt: "desc" as const };
 
     return Promise.all([
       prisma.stockCountSession.findMany({
         where,
         include: sessionListInclude,
-        orderBy: { createdAt: "desc" },
+        orderBy,
         skip,
         take: limit,
       }),
@@ -253,8 +298,10 @@ export const stockAuditRepository = {
       to?: Date;
     },
     pagination?: { page?: number },
+    sort?: { field?: string; dir?: "asc" | "desc" },
   ) {
     const { limit, page, skip } = resolvePagination(pagination);
+    const orderBy = resolveClosedSessionOrderBy(sort);
 
     if (filters.branchIds && filters.branchIds.length === 0) {
       return Promise.resolve(toPaginatedResult([], 0, page, limit));
@@ -295,7 +342,7 @@ export const stockAuditRepository = {
             select: { status: true, countedAt: true },
           },
         },
-        orderBy: [{ closedAt: "desc" }, { createdAt: "desc" }],
+        orderBy,
         skip,
         take: limit,
       }),

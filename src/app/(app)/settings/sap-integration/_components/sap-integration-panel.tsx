@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useTransition } from "react";
 import { toast } from "sonner";
 
@@ -13,7 +13,7 @@ import {
   SAP_JOB_TYPE_LABELS,
 } from "@/features/sap/constants/sap-job-types";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
-import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -48,14 +48,48 @@ interface PaginatedList<T> {
   totalPages: number;
 }
 
+type SapJobSortField =
+  | "jobType"
+  | "status"
+  | "referenceId"
+  | "sapDocNum"
+  | "attempts"
+  | "createdAt";
+type SapJobSortDir = "asc" | "desc";
+
 interface SapIntegrationPanelProps {
   jobs: PaginatedList<SapJobRow>;
+  initialSort?: string;
+  initialSortDir?: string;
 }
 
-export function SapIntegrationPanel({ jobs }: SapIntegrationPanelProps) {
+function buildSapJobsHref(page: number, sort?: string, sortDir?: string): string {
+  const params = new URLSearchParams();
+  if (page > 1) params.set("page", String(page));
+  if (sort) params.set("sort", sort);
+  if (sort && sortDir) params.set("dir", sortDir);
+  const query = params.toString();
+  return query ? `/settings/sap-integration?${query}` : "/settings/sap-integration";
+}
+
+export function SapIntegrationPanel({
+  jobs,
+  initialSort = "",
+  initialSortDir = "desc",
+}: SapIntegrationPanelProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
   const selection = useTableSelection(jobs.items.map((job) => job.id));
+  const sort = (searchParams.get("sort") ?? initialSort) || "";
+  const sortDir = (
+    (searchParams.get("dir") ?? initialSortDir) === "asc" ? "asc" : "desc"
+  ) as SapJobSortDir;
+
+  function toggleSort(field: SapJobSortField) {
+    const next = nextTableSort(field, sort, sortDir);
+    router.push(buildSapJobsHref(1, next.sort, next.dir));
+  }
 
   function runQueue() {
     startTransition(async () => {
@@ -101,7 +135,7 @@ export function SapIntegrationPanel({ jobs }: SapIntegrationPanelProps) {
           page: jobs.page,
           totalPages: jobs.totalPages,
           itemLabel: "job",
-          buildHref: (page) => `/settings/sap-integration?page=${page}`,
+          buildHref: (page) => buildSapJobsHref(page, sort || undefined, sort ? sortDir : undefined),
         }}
       >
             <TableHeader>
@@ -114,11 +148,46 @@ export function SapIntegrationPanel({ jobs }: SapIntegrationPanelProps) {
                   />
                 </GlobalTableHead>
                 <GlobalTableHead className="w-12">#</GlobalTableHead>
-                <GlobalTableHead>Type</GlobalTableHead>
-                <GlobalTableHead>Status</GlobalTableHead>
-                <GlobalTableHead>Reference</GlobalTableHead>
-                <GlobalTableHead>SAP doc</GlobalTableHead>
-                <GlobalTableHead>Attempts</GlobalTableHead>
+                <GlobalTableHead
+                  sortKey="jobType"
+                  activeSortKey={sort}
+                  sortDirection={sortDir}
+                  onSort={(key) => toggleSort(key as SapJobSortField)}
+                >
+                  Type
+                </GlobalTableHead>
+                <GlobalTableHead
+                  sortKey="status"
+                  activeSortKey={sort}
+                  sortDirection={sortDir}
+                  onSort={(key) => toggleSort(key as SapJobSortField)}
+                >
+                  Status
+                </GlobalTableHead>
+                <GlobalTableHead
+                  sortKey="referenceId"
+                  activeSortKey={sort}
+                  sortDirection={sortDir}
+                  onSort={(key) => toggleSort(key as SapJobSortField)}
+                >
+                  Reference
+                </GlobalTableHead>
+                <GlobalTableHead
+                  sortKey="sapDocNum"
+                  activeSortKey={sort}
+                  sortDirection={sortDir}
+                  onSort={(key) => toggleSort(key as SapJobSortField)}
+                >
+                  SAP doc
+                </GlobalTableHead>
+                <GlobalTableHead
+                  sortKey="attempts"
+                  activeSortKey={sort}
+                  sortDirection={sortDir}
+                  onSort={(key) => toggleSort(key as SapJobSortField)}
+                >
+                  Attempts
+                </GlobalTableHead>
                 <GlobalTableHead>Error</GlobalTableHead>
               </TableRow>
             </TableHeader>

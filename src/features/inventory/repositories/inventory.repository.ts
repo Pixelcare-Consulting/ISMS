@@ -48,8 +48,44 @@ export type InventoryListRow = {
   };
 };
 
-export type InventoryListSort = "updatedAt" | "aging" | "dr";
+export type InventoryListSort =
+  | "updatedAt"
+  | "branch"
+  | "model"
+  | "serial"
+  | "dr"
+  | "drDate"
+  | "planogram"
+  | "aging"
+  | "status";
 export type InventoryListSortDir = "asc" | "desc";
+
+const PRISMA_ORDERABLE_SORTS = new Set<InventoryListSort>([
+  "updatedAt",
+  "branch",
+  "model",
+  "serial",
+  "status",
+]);
+
+function inventoryPrismaOrderBy(
+  field: InventoryListSort,
+  dir: InventoryListSortDir,
+): Prisma.BranchInventoryOrderByWithRelationInput {
+  switch (field) {
+    case "branch":
+      return { branch: { name: dir } };
+    case "model":
+      return { serialNumber: { model: { skuCode: dir } } };
+    case "serial":
+      return { serialNumber: { serialNo: dir } };
+    case "status":
+      return { statusCode: { code: dir } };
+    case "updatedAt":
+    default:
+      return { updatedAt: dir };
+  }
+}
 
 export type InventoryListFilters = {
   branchId?: string;
@@ -175,12 +211,12 @@ export const inventoryRepository = {
     const sortField = sort?.field ?? "updatedAt";
     const sortDir = sort?.dir ?? "desc";
 
-    if (sortField === "updatedAt") {
+    if (PRISMA_ORDERABLE_SORTS.has(sortField)) {
       const [items, total] = await Promise.all([
         prisma.branchInventory.findMany({
           where,
           include: inventoryListInclude,
-          orderBy: { updatedAt: sortDir },
+          orderBy: inventoryPrismaOrderBy(sortField, sortDir),
           skip,
           take: limit,
         }),
@@ -189,14 +225,16 @@ export const inventoryRepository = {
       return toPaginatedResult(items as InventoryListRow[], total, page, limit);
     }
 
-    // Aging / DR# require delivery enrichment before sort + page slice.
+    // Aging / DR# / DR date / planogram need enrichment before sort + page slice.
     const [candidates, total] = await Promise.all([
       prisma.branchInventory.findMany({
         where,
         select: {
           id: true,
+          branchId: true,
           serialNumberId: true,
           createdAt: true,
+          serialNumber: { select: { modelId: true } },
         },
       }),
       prisma.branchInventory.count({ where }),
@@ -206,18 +244,48 @@ export const inventoryRepository = {
       return toPaginatedResult<InventoryListRow>([], 0, page, limit);
     }
 
+    type Candidate = (typeof candidates)[number];
+    type Ranked = {
+      id: string;
+      agingDays: number;
+      deliveryNo: string;
+      deliveryDateMs: number | null;
+      onPlanogram: boolean;
+    };
+
     const deliveries = await this.findLatestAcceptedDeliveries(
       tenantId,
-      candidates.map((c: { serialNumberId: string }) => c.serialNumberId),
+      candidates.map((c) => c.serialNumberId),
     );
     const deliveryBySerial = new Map(
       deliveries.map((d) => [d.serialNumberId, d] as const),
     );
 
+    let onPlanogramKeys = new Set<string>();
+    if (sortField === "planogram") {
+      const branchIdsForPo = [...new Set(candidates.map((c) => c.branchId))];
+      const modelIdsForPo = [
+        ...new Set(candidates.map((c) => c.serialNumber.modelId)),
+      ];
+      const planogramRows = await prisma.branchPlanogram.findMany({
+        where: {
+          tenantId,
+          branchId: { in: branchIdsForPo },
+          modelId: { in: modelIdsForPo },
+        },
+        select: { branchId: true, modelId: true },
+      });
+      onPlanogramKeys = new Set(
+        planogramRows.map((r) => `${r.branchId}:${r.modelId}`),
+      );
+    }
+
     const nowMs = Date.now();
     const dayMs = 24 * 60 * 60 * 1000;
-    const ranked = candidates
-      .map((c: { id: string; serialNumberId: string; createdAt: Date }) => {
+    const mul = sortDir === "asc" ? 1 : -1;
+
+    const ranked: Ranked[] = candidates
+      .map((c: Candidate): Ranked => {
         const delivery = deliveryBySerial.get(c.serialNumberId);
         const agingAnchor = delivery?.deliveryDate ?? c.createdAt;
         const agingDays = Math.max(
@@ -228,33 +296,49 @@ export const inventoryRepository = {
           id: c.id,
           agingDays,
           deliveryNo: delivery?.deliveryNo ?? "",
+          deliveryDateMs: delivery?.deliveryDate
+            ? delivery.deliveryDate.getTime()
+            : null,
+          onPlanogram: onPlanogramKeys.has(
+            `${c.branchId}:${c.serialNumber.modelId}`,
+          ),
         };
       })
-      .sort(
-        (
-          a: { id: string; agingDays: number; deliveryNo: string },
-          b: { id: string; agingDays: number; deliveryNo: string },
-        ) => {
-          const mul = sortDir === "asc" ? 1 : -1;
-          if (sortField === "dr") {
-            // Rows without DR# always sort last.
-            if (!a.deliveryNo && b.deliveryNo) return 1;
-            if (a.deliveryNo && !b.deliveryNo) return -1;
-            if (!a.deliveryNo && !b.deliveryNo) {
-              return (a.agingDays - b.agingDays) * mul;
-            }
-            const cmp = a.deliveryNo.localeCompare(b.deliveryNo, undefined, {
-              numeric: true,
-              sensitivity: "base",
-            });
-            if (cmp !== 0) return cmp * mul;
+      .sort((a, b) => {
+        if (sortField === "dr") {
+          // Rows without DR# always sort last.
+          if (!a.deliveryNo && b.deliveryNo) return 1;
+          if (a.deliveryNo && !b.deliveryNo) return -1;
+          if (!a.deliveryNo && !b.deliveryNo) {
             return (a.agingDays - b.agingDays) * mul;
           }
+          const cmp = a.deliveryNo.localeCompare(b.deliveryNo, undefined, {
+            numeric: true,
+            sensitivity: "base",
+          });
+          if (cmp !== 0) return cmp * mul;
           return (a.agingDays - b.agingDays) * mul;
-        },
-      );
+        }
+        if (sortField === "drDate") {
+          if (a.deliveryDateMs == null && b.deliveryDateMs != null) return 1;
+          if (a.deliveryDateMs != null && b.deliveryDateMs == null) return -1;
+          if (a.deliveryDateMs == null && b.deliveryDateMs == null) {
+            return (a.agingDays - b.agingDays) * mul;
+          }
+          const cmp = (a.deliveryDateMs! - b.deliveryDateMs!) * mul;
+          if (cmp !== 0) return cmp;
+          return (a.agingDays - b.agingDays) * mul;
+        }
+        if (sortField === "planogram") {
+          if (a.onPlanogram !== b.onPlanogram) {
+            return (Number(a.onPlanogram) - Number(b.onPlanogram)) * mul;
+          }
+          return (a.agingDays - b.agingDays) * mul;
+        }
+        return (a.agingDays - b.agingDays) * mul;
+      });
 
-    const pageIds = ranked.slice(skip, skip + limit).map((r: { id: string }) => r.id);
+    const pageIds = ranked.slice(skip, skip + limit).map((r) => r.id);
     if (pageIds.length === 0) {
       return toPaginatedResult<InventoryListRow>([], total, page, limit);
     }
@@ -267,7 +351,7 @@ export const inventoryRepository = {
       (items as InventoryListRow[]).map((item) => [item.id, item]),
     );
     const ordered = pageIds
-      .map((id: string) => byId.get(id))
+      .map((id) => byId.get(id))
       .filter(
         (item: InventoryListRow | undefined): item is InventoryListRow =>
           Boolean(item),

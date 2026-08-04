@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import {
@@ -44,13 +44,17 @@ interface SerialActivityTableProps {
   currentSearch?: string;
   currentDateFrom?: string;
   currentDateTo?: string;
+  initialSortDir?: string;
 }
+
+type SerialActivitySortDir = "asc" | "desc";
 
 interface SerialActivityFilters {
   type?: string;
   q?: string;
   dateFrom?: string;
   dateTo?: string;
+  dir?: string;
 }
 
 const TYPE_BADGE_CLASS: Record<SerialActivityType, string> = {
@@ -81,6 +85,7 @@ function buildHref(
   if (filters.q) params.set("q", filters.q);
   if (filters.dateFrom) params.set("dateFrom", filters.dateFrom);
   if (filters.dateTo) params.set("dateTo", filters.dateTo);
+  if (filters.dir) params.set("dir", filters.dir);
   const query = params.toString();
   return query
     ? `/audit-logs/serial-numbers?${query}`
@@ -93,13 +98,18 @@ export function SerialActivityTable({
   currentSearch,
   currentDateFrom,
   currentDateTo,
+  initialSortDir = "desc",
 }: SerialActivityTableProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [type, setType] = useState(currentType ?? "");
   const [search, setSearch] = useState(currentSearch ?? "");
   const [dateFrom, setDateFrom] = useState(currentDateFrom ?? "");
   const [dateTo, setDateTo] = useState(currentDateTo ?? "");
   const pageSize = parseTablePageSize(result.pageSize);
+  const sortDir = (
+    (searchParams.get("dir") ?? initialSortDir) === "asc" ? "asc" : "desc"
+  ) as SerialActivitySortDir;
 
   const rows = result.items;
 
@@ -113,6 +123,7 @@ export function SerialActivityTable({
     q: currentSearch,
     dateFrom: currentDateFrom,
     dateTo: currentDateTo,
+    dir: sortDir,
   };
   const hasActiveFilters = Boolean(
     currentType || currentSearch || currentDateFrom || currentDateTo,
@@ -129,6 +140,7 @@ export function SerialActivityTable({
         q: search.trim() || undefined,
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined,
+        dir: sortDir,
       }),
     );
   }
@@ -139,6 +151,11 @@ export function SerialActivityTable({
     setDateFrom("");
     setDateTo("");
     router.push("/audit-logs/serial-numbers");
+  }
+
+  function toggleSortDir() {
+    const next: SerialActivitySortDir = sortDir === "asc" ? "desc" : "asc";
+    router.push(buildHref(1, pageSize, { ...activeFilters, dir: next }));
   }
 
   return (
@@ -220,7 +237,14 @@ export function SerialActivityTable({
       <TableHeader>
         <TableRow className="bg-muted/30 hover:bg-muted/30">
           <GlobalTableHead className="w-12">#</GlobalTableHead>
-          <GlobalTableHead>Date &amp; time</GlobalTableHead>
+          <GlobalTableHead
+            sortKey="timestamp"
+            activeSortKey="timestamp"
+            sortDirection={sortDir}
+            onSort={toggleSortDir}
+          >
+            Date &amp; time
+          </GlobalTableHead>
           <GlobalTableHead>Event</GlobalTableHead>
           <GlobalTableHead>Serial</GlobalTableHead>
           <GlobalTableHead>Model</GlobalTableHead>

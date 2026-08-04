@@ -112,11 +112,31 @@ export type SerialTraceabilityRow = Prisma.SerialNumberGetPayload<{
   include: typeof serialTraceabilityInclude;
 }>;
 
+export type SerialNumberListSort = "serialNo" | "model" | "recordStatus";
+export type SerialNumberListSortDir = "asc" | "desc";
+
+function serialNumberPrismaOrderBy(
+  field: SerialNumberListSort,
+  dir: SerialNumberListSortDir,
+): Prisma.SerialNumberOrderByWithRelationInput {
+  switch (field) {
+    case "serialNo":
+      return { serialNo: dir };
+    case "model":
+      return { model: { skuCode: dir } };
+    case "recordStatus":
+      return { recordStatus: dir };
+    default:
+      return { createdAt: dir };
+  }
+}
+
 export const serialNumberRepository = {
   async list(
     tenantId: string,
     pagination?: { page?: number; limit?: number },
     filters?: { q?: string; status?: LookupRecordStatus },
+    sort?: { field?: SerialNumberListSort; dir?: SerialNumberListSortDir },
   ) {
     const { limit, page, skip } = resolvePagination(pagination);
     const q = filters?.q?.trim();
@@ -134,12 +154,15 @@ export const serialNumberRepository = {
           }
         : {}),
     };
+    const orderBy = sort?.field
+      ? serialNumberPrismaOrderBy(sort.field, sort.dir ?? "desc")
+      : { createdAt: "desc" as const };
 
     const [items, total] = await Promise.all([
       prisma.serialNumber.findMany({
         where,
         include: serialListInclude,
-        orderBy: { createdAt: "desc" },
+        orderBy,
         skip,
         take: limit,
       }),

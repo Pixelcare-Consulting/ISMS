@@ -47,6 +47,10 @@ export function SuggestedOrdersTable({
   currentGapQ,
   draftsPreserveParams,
   gapsPreserveParams,
+  initialDraftSort,
+  initialDraftSortDir,
+  initialGapSort,
+  initialGapSortDir,
 }: {
   draftsResult: Paginated<DraftOrder>;
   gapsResult: Paginated<GapRow>;
@@ -58,6 +62,10 @@ export function SuggestedOrdersTable({
   currentGapQ?: string;
   draftsPreserveParams: Record<string, string>;
   gapsPreserveParams: Record<string, string>;
+  initialDraftSort?: string;
+  initialDraftSortDir?: string;
+  initialGapSort?: string;
+  initialGapSortDir?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -119,6 +127,8 @@ export function SuggestedOrdersTable({
         currentBranch={currentDraftBranch}
         currentQ={currentDraftQ}
         preserveParams={draftsPreserveParams}
+        initialSort={initialDraftSort}
+        initialSortDir={initialDraftSortDir}
       />
 
       <AllocationGapsTable
@@ -132,6 +142,8 @@ export function SuggestedOrdersTable({
         showStockColumns={false}
         suggestedQtyLabel
         emptyMessage="No gaps with qty > 0."
+        initialSort={initialGapSort}
+        initialSortDir={initialGapSortDir}
       />
     </div>
   );

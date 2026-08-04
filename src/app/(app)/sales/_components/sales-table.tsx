@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
@@ -27,7 +27,7 @@ import {
   type TablePageSize,
 } from "@/components/data-table/table-page-size";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
-import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -59,6 +59,9 @@ interface SaleRow {
   returnRequest: { id: string; status: string } | null;
 }
 
+type SalesSortField = "transactionNo" | "branch" | "amount" | "atrStatus" | "returnStatus";
+type SalesSortDir = "asc" | "desc";
+
 interface SalesTableProps {
   result: {
     items: SaleRow[];
@@ -68,6 +71,8 @@ interface SalesTableProps {
     totalPages: number;
   };
   capabilities: SalesActionCapabilities;
+  initialSort?: string;
+  initialSortDir?: string;
 }
 
 type ReturnConfirmAction =
@@ -134,25 +139,47 @@ function saleSerialLabel(sale: SaleRow): string {
   return sale.serialNumber?.serialNo ?? TO_FOLLOW_SERIAL_LABEL;
 }
 
-function buildSalesHref(page: number, limit: number): string {
+function buildSalesHref(
+  page: number,
+  limit: number,
+  sort?: string,
+  sortDir?: string,
+): string {
   const params = new URLSearchParams();
   if (page > 1) params.set("page", String(page));
   if (limit !== DEFAULT_TABLE_PAGE_SIZE) params.set("limit", String(limit));
+  if (sort) params.set("sort", sort);
+  if (sort && sortDir) params.set("dir", sortDir);
   const query = params.toString();
   return query ? `/sales?${query}` : "/sales";
 }
 
-export function SalesTable({ result, capabilities }: SalesTableProps) {
+export function SalesTable({
+  result,
+  capabilities,
+  initialSort = "",
+  initialSortDir = "desc",
+}: SalesTableProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
   const [editingSale, setEditingSale] = useState<SaleRow | null>(null);
   const [serialDialogSale, setSerialDialogSale] = useState<SaleRow | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
   const pageSize = parseTablePageSize(result.limit);
+  const sort = (searchParams.get("sort") ?? initialSort) || "";
+  const sortDir = (
+    (searchParams.get("dir") ?? initialSortDir) === "asc" ? "asc" : "desc"
+  ) as SalesSortDir;
 
   function handlePageSizeChange(limit: TablePageSize) {
-    router.push(buildSalesHref(1, limit));
+    router.push(buildSalesHref(1, limit, sort, sort ? sortDir : undefined));
+  }
+
+  function toggleSort(field: SalesSortField) {
+    const next = nextTableSort(field, sort, sortDir);
+    router.push(buildSalesHref(1, pageSize, next.sort, next.dir));
   }
   const filtered = useMemo(
     () =>
@@ -249,7 +276,7 @@ export function SalesTable({ result, capabilities }: SalesTableProps) {
           page: result.page,
           totalPages: result.totalPages,
           itemLabel: "sale",
-          buildHref: (page) => buildSalesHref(page, pageSize),
+          buildHref: (page) => buildSalesHref(page, pageSize, sort, sort ? sortDir : undefined),
         }}
         pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
       >
@@ -263,12 +290,47 @@ export function SalesTable({ result, capabilities }: SalesTableProps) {
               />
             </GlobalTableHead>
             <TableIndexHead />
-            <GlobalTableHead>Transaction</GlobalTableHead>
-            <GlobalTableHead>Branch</GlobalTableHead>
-            <GlobalTableHead>Amount</GlobalTableHead>
+            <GlobalTableHead
+              sortKey="transactionNo"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as SalesSortField)}
+            >
+              Transaction
+            </GlobalTableHead>
+            <GlobalTableHead
+              sortKey="branch"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as SalesSortField)}
+            >
+              Branch
+            </GlobalTableHead>
+            <GlobalTableHead
+              sortKey="amount"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as SalesSortField)}
+            >
+              Amount
+            </GlobalTableHead>
             <GlobalTableHead>Serial</GlobalTableHead>
-            <GlobalTableHead>ATR</GlobalTableHead>
-            <GlobalTableHead>Return</GlobalTableHead>
+            <GlobalTableHead
+              sortKey="atrStatus"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as SalesSortField)}
+            >
+              ATR
+            </GlobalTableHead>
+            <GlobalTableHead
+              sortKey="returnStatus"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as SalesSortField)}
+            >
+              Return
+            </GlobalTableHead>
             <GlobalTableHead className="w-64" />
           </TableRow>
         </TableHeader>

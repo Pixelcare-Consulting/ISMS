@@ -1,14 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
-import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
@@ -30,7 +30,12 @@ export interface AllocationGapRow {
 interface AllocationGapsFilters {
   branch?: string;
   q?: string;
+  sort?: string;
+  dir?: string;
 }
+
+type AllocationGapSortField = "branch" | "sku" | "currentStock" | "planogramMax" | "gapQty";
+type AllocationGapSortDir = "asc" | "desc";
 
 interface AllocationGapsTableProps {
   basePath: string;
@@ -48,6 +53,8 @@ interface AllocationGapsTableProps {
   showStockColumns?: boolean;
   suggestedQtyLabel?: boolean;
   emptyMessage?: string;
+  initialSort?: string;
+  initialSortDir?: string;
 }
 
 function buildAllocationGapsHref(
@@ -68,6 +75,12 @@ function buildAllocationGapsHref(
   if (filters.q) params.set("q", filters.q);
   else params.delete("q");
 
+  if (filters.sort) params.set("sort", filters.sort);
+  else params.delete("sort");
+
+  if (filters.sort && filters.dir) params.set("dir", filters.dir);
+  else params.delete("dir");
+
   const qs = params.toString();
   return qs ? `${basePath}?${qs}` : basePath;
 }
@@ -83,11 +96,18 @@ export function AllocationGapsTable({
   showStockColumns = true,
   suggestedQtyLabel = false,
   emptyMessage = "No gaps — run allocation after planogram sync.",
+  initialSort = "",
+  initialSortDir = "desc",
 }: AllocationGapsTableProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [branch, setBranch] = useState(currentBranch ?? "");
   const [q, setQ] = useState(currentQ ?? "");
   const selection = useTableSelection(result.items.map((item) => item.id));
+  const sort = (searchParams.get("sort") ?? initialSort) || "";
+  const sortDir = (
+    (searchParams.get("dir") ?? initialSortDir) === "asc" ? "asc" : "desc"
+  ) as AllocationGapSortDir;
 
   const suggestions = useMemo(
     () =>
@@ -107,7 +127,12 @@ export function AllocationGapsTable({
         basePath,
         1,
         pageParam,
-        { branch: branch || undefined, q: q.trim() || undefined },
+        {
+          branch: branch || undefined,
+          q: q.trim() || undefined,
+          sort: sort || undefined,
+          dir: sort ? sortDir : undefined,
+        },
         preserveParams,
       ),
     );
@@ -117,6 +142,19 @@ export function AllocationGapsTable({
     setBranch("");
     setQ("");
     router.push(buildAllocationGapsHref(basePath, 1, pageParam, {}, preserveParams));
+  }
+
+  function toggleSort(field: AllocationGapSortField) {
+    const next = nextTableSort(field, sort, sortDir);
+    router.push(
+      buildAllocationGapsHref(
+        basePath,
+        1,
+        pageParam,
+        { branch: currentBranch, q: currentQ, sort: next.sort, dir: next.dir },
+        preserveParams,
+      ),
+    );
   }
 
   return (
@@ -190,7 +228,7 @@ export function AllocationGapsTable({
               basePath,
               page,
               pageParam,
-              { branch: currentBranch, q: currentQ },
+              { branch: currentBranch, q: currentQ, sort: sort || undefined, dir: sort ? sortDir : undefined },
               preserveParams,
             ),
         }}
@@ -205,15 +243,50 @@ export function AllocationGapsTable({
                   />
                 </GlobalTableHead>
                 <GlobalTableHead className="w-12">#</GlobalTableHead>
-                <GlobalTableHead>Branch</GlobalTableHead>
-                <GlobalTableHead>SKU</GlobalTableHead>
+                <GlobalTableHead
+                  sortKey="branch"
+                  activeSortKey={sort}
+                  sortDirection={sortDir}
+                  onSort={(key) => toggleSort(key as AllocationGapSortField)}
+                >
+                  Branch
+                </GlobalTableHead>
+                <GlobalTableHead
+                  sortKey="sku"
+                  activeSortKey={sort}
+                  sortDirection={sortDir}
+                  onSort={(key) => toggleSort(key as AllocationGapSortField)}
+                >
+                  SKU
+                </GlobalTableHead>
                 {showStockColumns ? (
                   <>
-                    <GlobalTableHead>Stock</GlobalTableHead>
-                    <GlobalTableHead>Max</GlobalTableHead>
+                    <GlobalTableHead
+                      sortKey="currentStock"
+                      activeSortKey={sort}
+                      sortDirection={sortDir}
+                      onSort={(key) => toggleSort(key as AllocationGapSortField)}
+                    >
+                      Stock
+                    </GlobalTableHead>
+                    <GlobalTableHead
+                      sortKey="planogramMax"
+                      activeSortKey={sort}
+                      sortDirection={sortDir}
+                      onSort={(key) => toggleSort(key as AllocationGapSortField)}
+                    >
+                      Max
+                    </GlobalTableHead>
                   </>
                 ) : null}
-                <GlobalTableHead>{suggestedQtyLabel ? "Suggested qty" : "Gap"}</GlobalTableHead>
+                <GlobalTableHead
+                  sortKey="gapQty"
+                  activeSortKey={sort}
+                  sortDirection={sortDir}
+                  onSort={(key) => toggleSort(key as AllocationGapSortField)}
+                >
+                  {suggestedQtyLabel ? "Suggested qty" : "Gap"}
+                </GlobalTableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

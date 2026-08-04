@@ -23,7 +23,7 @@ export const metadata = pageMetadata(
 );
 
 interface SalesPageProps {
-  searchParams: Promise<{ page?: string; limit?: string }>;
+  searchParams: Promise<{ page?: string; limit?: string; sort?: string; dir?: string }>;
 }
 
 export default async function SalesPage({ searchParams }: SalesPageProps) {
@@ -36,7 +36,7 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
   const params = await searchParams;
   const page = Number(params.page) || 1;
   const limit = parseTablePageSize(params.limit);
-  const result = await listSalesAction({ page, limit });
+  const result = await listSalesAction({ page, limit, sort: params.sort, sortDir: params.dir });
 
   return (
     <div className="space-y-6">
@@ -57,7 +57,12 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
         }
       />
       <ModuleGuide {...SALES_MODULE_GUIDE} />
-      <SalesTable result={result} capabilities={capabilities} />
+      <SalesTable
+        result={result}
+        capabilities={capabilities}
+        initialSort={params.sort ?? ""}
+        initialSortDir={params.dir ?? "desc"}
+      />
     </div>
   );
 }

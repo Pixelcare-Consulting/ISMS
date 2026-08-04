@@ -24,7 +24,12 @@ import type { BranchOrderType } from "@prisma/client";
 
 interface OrdersTypePageProps {
   orderType: BranchOrderType;
-  searchParams: Promise<{ page?: string; limit?: string }>;
+  searchParams: Promise<{
+    page?: string;
+    limit?: string;
+    sort?: string;
+    dir?: string;
+  }>;
 }
 
 export async function OrdersTypePage({
@@ -36,7 +41,7 @@ export async function OrdersTypePage({
   const page = Number(params.page) || 1;
   const limit = parseTablePageSize(params.limit);
   const [result, kpis] = await Promise.all([
-    listOrdersAction({ page, limit, orderType }),
+    listOrdersAction({ page, limit, orderType, sort: params.sort, sortDir: params.dir }),
     getOrdersKpisAction(orderType),
   ]);
   const viewerRoleSlugs = session.user.roleSlugs ?? [];
@@ -68,6 +73,8 @@ export async function OrdersTypePage({
         canEdit={canEdit}
         fixedOrderType={orderType}
         basePath={ORDER_TYPE_ROUTE[orderType]}
+        initialSort={params.sort ?? ""}
+        initialSortDir={params.dir ?? "desc"}
       />
     </div>
   );

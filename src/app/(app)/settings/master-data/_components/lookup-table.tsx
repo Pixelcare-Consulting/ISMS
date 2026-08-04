@@ -24,7 +24,7 @@ import {
   uniqueSearchSuggestions,
   useClientTablePagination,
 } from "@/components/data-table";
-import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 import {
   Dialog,
   DialogContent,
@@ -169,6 +169,14 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
     [rows, parentNameOf],
   );
 
+  const sort = useClientTableSort(filtered, {
+    name: (row) => row.name,
+    code: (row) => row.code,
+    class: (row) => row.class,
+    quantity: (row) => row.quantity,
+    parent: (row) => parentNameOf(row),
+    status: (row) => row.recordStatus,
+  });
   const {
     page,
     setPage,
@@ -178,7 +186,9 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
     totalPages,
     pageItems,
     indexOffset,
-  } = useClientTablePagination(filtered, { resetKey: query });
+  } = useClientTablePagination(sort.sorted, {
+    resetKey: `${query}:${sort.sortKey}:${sort.sortDir}`,
+  });
 
   function openCreate() {
     setEditing(null);
@@ -289,12 +299,22 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
             <TableHeader>
               <TableRow>
                 <TableIndexHead />
-                <GlobalTableHead>Name</GlobalTableHead>
-                {config.code ? <GlobalTableHead>Code</GlobalTableHead> : null}
-                {config.classField ? <GlobalTableHead>Class</GlobalTableHead> : null}
-                {config.quantityField ? <GlobalTableHead>Qty</GlobalTableHead> : null}
-                {config.parent ? <GlobalTableHead>{config.parent.label}</GlobalTableHead> : null}
-                <GlobalTableHead>Status</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("name")}>Name</GlobalTableHead>
+                {config.code ? (
+                  <GlobalTableHead {...sort.sortProps("code")}>Code</GlobalTableHead>
+                ) : null}
+                {config.classField ? (
+                  <GlobalTableHead {...sort.sortProps("class")}>Class</GlobalTableHead>
+                ) : null}
+                {config.quantityField ? (
+                  <GlobalTableHead {...sort.sortProps("quantity")}>Qty</GlobalTableHead>
+                ) : null}
+                {config.parent ? (
+                  <GlobalTableHead {...sort.sortProps("parent")}>
+                    {config.parent.label}
+                  </GlobalTableHead>
+                ) : null}
+                <GlobalTableHead {...sort.sortProps("status")}>Status</GlobalTableHead>
                 <GlobalTableHead className="w-48" />
               </TableRow>
             </TableHeader>

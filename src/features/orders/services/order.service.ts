@@ -14,6 +14,10 @@ import {
   nextStatusAfterApprove,
 } from "@/features/orders/constants/order-workflow";
 import { orderRepository } from "@/features/orders/repositories/order.repository";
+import type {
+  OrderListSort,
+  OrderListSortDir,
+} from "@/features/orders/repositories/order.repository";
 import { sapService } from "@/features/sap/services/sap.service";
 import { branchQuotaService } from "@/features/branch-quotas/services/branch-quota.service";
 import { planogramRepository } from "@/features/planogram/repositories/planogram.repository";
@@ -124,9 +128,10 @@ export const orderService = {
     userId: string,
     hasFullAccess: boolean,
     pagination?: { page?: number; limit?: number; orderType?: BranchOrderType },
+    sort?: { field?: OrderListSort; dir?: OrderListSortDir },
   ) {
     const branchIds = hasFullAccess ? null : await getUserBranchIds(tenantId, userId);
-    return orderRepository.listForTenant(tenantId, branchIds, pagination);
+    return orderRepository.listForTenant(tenantId, branchIds, pagination, sort);
   },
 
   async getKpis(

@@ -8,6 +8,10 @@ import { auditService } from "@/features/audit/services/audit.service";
 import { aorService } from "@/features/aors/services/aor.service";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { salesRepository } from "@/features/sales/repositories/sales.repository";
+import type {
+  SalesListSort,
+  SalesListSortDir,
+} from "@/features/sales/repositories/sales.repository";
 import {
   isToFollowSerial,
   TO_FOLLOW_SERIAL_ID,
@@ -128,12 +132,41 @@ async function assertValidStockSource(
   }
 }
 
-export async function listSalesAction(input?: { page?: number; limit?: number }) {
+const SALES_SORT_FIELDS = new Set<SalesListSort>([
+  "transactionNo",
+  "branch",
+  "amount",
+  "atrStatus",
+  "returnStatus",
+]);
+
+function parseSalesSort(value?: string): SalesListSort | undefined {
+  if (value && SALES_SORT_FIELDS.has(value as SalesListSort)) {
+    return value as SalesListSort;
+  }
+  return undefined;
+}
+
+function parseSalesSortDir(value?: string): SalesListSortDir | undefined {
+  if (value === "asc" || value === "desc") return value;
+  return undefined;
+}
+
+export async function listSalesAction(input?: {
+  page?: number;
+  limit?: number;
+  sort?: string;
+  sortDir?: string;
+}) {
   const session = await requireAnyPermission([...SALES_ACCESS_PERMISSIONS]);
-  const result = await salesRepository.listForTenant(session.user.tenantId, {
-    page: input?.page,
-    limit: parseTablePageSize(input?.limit),
-  });
+  const result = await salesRepository.listForTenant(
+    session.user.tenantId,
+    {
+      page: input?.page,
+      limit: parseTablePageSize(input?.limit),
+    },
+    { field: parseSalesSort(input?.sort), dir: parseSalesSortDir(input?.sortDir) },
+  );
 
   return {
     ...result,

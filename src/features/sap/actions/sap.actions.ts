@@ -5,7 +5,32 @@ import { revalidatePath } from "next/cache";
 import { sapServiceLayerSchema } from "@/features/sap/schemas/sap-service-layer.schema";
 import { sapServiceLayerService } from "@/features/sap/services/sap-service-layer.service";
 import { sapService } from "@/features/sap/services/sap.service";
+import type {
+  SapJobListSort,
+  SapJobListSortDir,
+} from "@/features/sap/repositories/sap-integration.repository";
 import { requirePermission } from "@/lib/auth/permissions";
+
+const SAP_JOB_SORT_FIELDS = new Set<SapJobListSort>([
+  "jobType",
+  "status",
+  "referenceId",
+  "sapDocNum",
+  "attempts",
+  "createdAt",
+]);
+
+function parseSapJobSort(value?: string): SapJobListSort | undefined {
+  if (value && SAP_JOB_SORT_FIELDS.has(value as SapJobListSort)) {
+    return value as SapJobListSort;
+  }
+  return undefined;
+}
+
+function parseSapJobSortDir(value?: string): SapJobListSortDir | undefined {
+  if (value === "asc" || value === "desc") return value;
+  return undefined;
+}
 
 export async function listSapServiceLayerSettingsAction() {
   const session = await requirePermission("sap.manage");
@@ -145,9 +170,17 @@ export async function setSapServiceLayerStatusAction(input: {
   }
 }
 
-export async function listSapJobsAction(input?: { page?: number }) {
+export async function listSapJobsAction(input?: {
+  page?: number;
+  sort?: string;
+  sortDir?: string;
+}) {
   const session = await requirePermission("sap.manage");
-  return sapService.listJobs(session.user.tenantId, { page: input?.page });
+  return sapService.listJobs(
+    session.user.tenantId,
+    { page: input?.page },
+    { field: parseSapJobSort(input?.sort), dir: parseSapJobSortDir(input?.sortDir) },
+  );
 }
 
 export async function processSapQueueAction() {
