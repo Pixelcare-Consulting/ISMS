@@ -12,6 +12,7 @@ import {
 import { ChevronsUpDown } from "lucide-react";
 
 import { DeleteConfirmDialog, TableEmptyRow } from "@/components/data-table";
+import { GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -55,6 +56,12 @@ export function AllowedModelsPanel({
       ),
     [rows, query],
   );
+
+  const sort = useClientTableSort(filtered, {
+    sku: (row) => row.model.skuCode,
+    model: (row) => row.model.name,
+    status: (row) => row.model.status,
+  });
 
   const filteredCandidates = useMemo(
     () =>
@@ -248,14 +255,14 @@ export function AllowedModelsPanel({
       <Table>
         <TableHeader>
           <TableRow className="bg-muted/30 hover:bg-muted/30">
-            <TableHead>SKU</TableHead>
-            <TableHead>Model</TableHead>
-            <TableHead>Status</TableHead>
+            <GlobalTableHead {...sort.sortProps("sku")}>SKU</GlobalTableHead>
+            <GlobalTableHead {...sort.sortProps("model")}>Model</GlobalTableHead>
+            <GlobalTableHead {...sort.sortProps("status")}>Status</GlobalTableHead>
             {canManage ? <TableHead className="w-24" /> : null}
           </TableRow>
         </TableHeader>
         <TableBody>
-          {filtered.length === 0 ? (
+          {sort.sorted.length === 0 ? (
             <TableEmptyRow
               colSpan={canManage ? 4 : 3}
               message={
@@ -265,7 +272,7 @@ export function AllowedModelsPanel({
               }
             />
           ) : (
-            filtered.map((row) => (
+            sort.sorted.map((row) => (
               <TableRow key={row.id}>
                 <TableCell className="font-mono text-sm">{row.model.skuCode}</TableCell>
                 <TableCell>{row.model.name}</TableCell>

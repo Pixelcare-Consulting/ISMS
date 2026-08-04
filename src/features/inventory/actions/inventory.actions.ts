@@ -43,8 +43,22 @@ function isUnrestricted(permissions: string[] | undefined) {
   );
 }
 
+const INVENTORY_SORT_FIELDS = new Set<InventoryListSort>([
+  "updatedAt",
+  "branch",
+  "model",
+  "serial",
+  "dr",
+  "drDate",
+  "planogram",
+  "aging",
+  "status",
+]);
+
 function parseSort(value?: string): InventoryListSort | undefined {
-  if (value === "aging" || value === "dr" || value === "updatedAt") return value;
+  if (value && INVENTORY_SORT_FIELDS.has(value as InventoryListSort)) {
+    return value as InventoryListSort;
+  }
   return undefined;
 }
 

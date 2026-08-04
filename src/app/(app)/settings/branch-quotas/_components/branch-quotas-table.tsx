@@ -20,7 +20,7 @@ import {
   uniqueSearchSuggestions,
   useClientTablePagination,
 } from "@/components/data-table";
-import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -115,6 +115,12 @@ export function BranchQuotasTable({ quotas }: { quotas: QuotaRow[] }) {
     [rows],
   );
 
+  const sort = useClientTableSort(filtered, {
+    branch: (row) => row.branch.name,
+    brand: (row) => row.brand.name,
+    month: (row) => new Date(row.quotaDate),
+    quotaAmount: (row) => Number(row.quotaAmount),
+  });
   const {
     page,
     setPage,
@@ -124,7 +130,9 @@ export function BranchQuotasTable({ quotas }: { quotas: QuotaRow[] }) {
     totalPages,
     pageItems,
     indexOffset,
-  } = useClientTablePagination(filtered, { resetKey: query });
+  } = useClientTablePagination(sort.sorted, {
+    resetKey: `${query}:${sort.sortKey}:${sort.sortDir}`,
+  });
 
   async function ensureOptions() {
     if (options) return;
@@ -220,10 +228,15 @@ export function BranchQuotasTable({ quotas }: { quotas: QuotaRow[] }) {
             <TableHeader>
               <TableRow>
                 <TableIndexHead />
-                <GlobalTableHead>Branch</GlobalTableHead>
-                <GlobalTableHead>Brand</GlobalTableHead>
-                <GlobalTableHead>Month</GlobalTableHead>
-                <GlobalTableHead className="text-right">Quota</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("branch")}>Branch</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("brand")}>Brand</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("month")}>Month</GlobalTableHead>
+                <GlobalTableHead
+                  className="text-right"
+                  {...sort.sortProps("quotaAmount")}
+                >
+                  Quota
+                </GlobalTableHead>
                 <GlobalTableHead className="w-40" />
               </TableRow>
             </TableHeader>

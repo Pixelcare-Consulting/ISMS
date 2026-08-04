@@ -18,7 +18,7 @@ import {
 import { AllocationGapsTable } from "@/features/forecast/components/allocation-gaps-table";
 
 import { useTableSelection } from "@/components/data-table/use-table-selection";
-import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 import { KpiCard } from "@/lib/kpi-cards";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -79,6 +79,10 @@ interface PlanningPanelProps {
   currentBranch?: string;
 
   currentQ?: string;
+
+  initialSort?: string;
+
+  initialSortDir?: string;
 }
 
 export function PlanningPanel({
@@ -97,6 +101,10 @@ export function PlanningPanel({
   currentBranch,
 
   currentQ,
+
+  initialSort,
+
+  initialSortDir,
 }: PlanningPanelProps) {
   const router = useRouter();
 
@@ -104,6 +112,11 @@ export function PlanningPanel({
 
   const [pending, startTransition] = useTransition();
   const targetSelection = useTableSelection(targets.map((target) => target.id));
+  const targetSort = useClientTableSort(targets, {
+    branch: (t) => t.branch.name,
+    sap: (t) => t.branch.sapCode,
+    target: (t) => t.revenueLabel,
+  });
 
   function runAction(
     label: string,
@@ -265,13 +278,18 @@ export function PlanningPanel({
                       />
                     </GlobalTableHead>
                     <GlobalTableHead className="w-12">#</GlobalTableHead>
-                    <GlobalTableHead>Branch</GlobalTableHead>
-                    <GlobalTableHead>SAP</GlobalTableHead>
-                    <GlobalTableHead className="text-right">Target</GlobalTableHead>
+                    <GlobalTableHead {...targetSort.sortProps("branch")}>Branch</GlobalTableHead>
+                    <GlobalTableHead {...targetSort.sortProps("sap")}>SAP</GlobalTableHead>
+                    <GlobalTableHead
+                      className="text-right"
+                      {...targetSort.sortProps("target")}
+                    >
+                      Target
+                    </GlobalTableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {targets.map((t, index) => (
+                  {targetSort.sorted.map((t, index) => (
                     <TableRow key={t.id} data-state={targetSelection.isRowSelected(t.id) ? "selected" : undefined}>
                       <TableCell>
                         <Checkbox
@@ -295,6 +313,8 @@ export function PlanningPanel({
             branches={branches}
             currentBranch={currentBranch}
             currentQ={currentQ}
+            initialSort={initialSort}
+            initialSortDir={initialSortDir}
           />
         </>
       ) : (

@@ -26,7 +26,7 @@ import {
   useClientTablePagination,
   useTableSelection,
 } from "@/components/data-table";
-import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -95,6 +95,12 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
   );
 
   const selection = useTableSelection(filtered.map((warehouse) => warehouse.id));
+  const sort = useClientTableSort(filtered, {
+    code: (w) => w.code,
+    name: (w) => w.name,
+    locations: (w) => w.locations.length,
+    links: (w) => w._count.aors + w._count.pulloutsDestination,
+  });
   const {
     page,
     setPage,
@@ -104,7 +110,9 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
     totalPages,
     pageItems,
     indexOffset,
-  } = useClientTablePagination(filtered, { resetKey: query });
+  } = useClientTablePagination(sort.sorted, {
+    resetKey: `${query}:${sort.sortKey}:${sort.sortDir}`,
+  });
 
   function createWarehouse() {
     startTransition(async () => {
@@ -271,10 +279,10 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
                   aria-label="Select all warehouses"
                 />
                 <TableIndexHead />
-                <GlobalTableHead>Code</GlobalTableHead>
-                <GlobalTableHead>Name</GlobalTableHead>
-                <GlobalTableHead>Locations</GlobalTableHead>
-                <GlobalTableHead>Links</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("code")}>Code</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("name")}>Name</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("locations")}>Locations</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("links")}>Links</GlobalTableHead>
                 <GlobalTableHead className="w-28 text-right">Actions</GlobalTableHead>
               </TableRow>
             </TableHeader>

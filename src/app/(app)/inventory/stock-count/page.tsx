@@ -9,7 +9,7 @@ import { SectionPageLead } from "@/components/navigation/section-page-lead";
 import { StockCountListPanel } from "@/app/(app)/inventory/stock-count/_components/stock-count-list-panel";
 
 interface StockCountPageProps {
-  searchParams: Promise<{ page?: string; limit?: string }>;
+  searchParams: Promise<{ page?: string; limit?: string; sort?: string; dir?: string }>;
 }
 
 export default async function StockCountPage({ searchParams }: StockCountPageProps) {
@@ -18,7 +18,7 @@ export default async function StockCountPage({ searchParams }: StockCountPagePro
   const page = Number(params.page) || 1;
   const limit = parseTablePageSize(params.limit);
   const [sessions, kpis] = await Promise.all([
-    listStockCountSessionsAction({ page, limit }),
+    listStockCountSessionsAction({ page, limit, sort: params.sort, sortDir: params.dir }),
     getStockCountKpisAction(),
   ]);
 
@@ -28,7 +28,11 @@ export default async function StockCountPage({ searchParams }: StockCountPagePro
         Count list from branch STK, PS scan, variance report, TL investigation, SAP adjustment handoff.
       </SectionPageLead>
       <StockCountKpisStrip kpis={kpis} />
-      <StockCountListPanel sessions={sessions} />
+      <StockCountListPanel
+        sessions={sessions}
+        initialSort={params.sort ?? ""}
+        initialSortDir={params.dir ?? "desc"}
+      />
     </div>
   );
 }

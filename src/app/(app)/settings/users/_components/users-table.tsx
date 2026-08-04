@@ -28,7 +28,7 @@ import {
   useClientTablePagination,
   useTableSelection,
 } from "@/components/data-table";
-import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   TableBody,
@@ -127,6 +127,12 @@ export function UsersTable({
   );
 
   const selection = useTableSelection(filteredUsers.map((user) => user.id));
+  const sort = useClientTableSort(filteredUsers, {
+    name: (user) => user.name,
+    email: (user) => user.email,
+    roles: (user) => user.userRoles.map((userRole) => userRole.role.name).join(", "),
+    department: (user) => user.department?.name,
+  });
   const {
     page,
     setPage,
@@ -136,7 +142,9 @@ export function UsersTable({
     totalPages,
     pageItems,
     indexOffset,
-  } = useClientTablePagination(filteredUsers, { resetKey: query });
+  } = useClientTablePagination(sort.sorted, {
+    resetKey: `${query}:${sort.sortKey}:${sort.sortDir}`,
+  });
 
   function handleDeleteConfirm() {
     if (!deletingUser) {
@@ -219,10 +227,10 @@ export function UsersTable({
                   aria-label="Select all users"
                 />
                 <TableIndexHead />
-                <GlobalTableHead>Name</GlobalTableHead>
-                <GlobalTableHead>Email</GlobalTableHead>
-                <GlobalTableHead>Roles</GlobalTableHead>
-                <GlobalTableHead>Department</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("name")}>Name</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("email")}>Email</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("roles")}>Roles</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("department")}>Department</GlobalTableHead>
                 <GlobalTableHead className="w-28 text-right">Actions</GlobalTableHead>
               </TableRow>
             </TableHeader>

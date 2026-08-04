@@ -2018,7 +2018,8 @@ model BranchSalesTransactionDetail {
   brandId        String?  @map("brand_id")
   promoTypeId    String?  @map("promo_type_id")
   modelId        String?  @map("model_id")
-  serialNumberId String   @map("serial_number_id")
+  // Optional so we can encode TO-FOLLOW lines before the real serial is known.
+  serialNumberId String?  @map("serial_number_id")
   modelPrice     Decimal? @map("model_price") @db.Decimal(12, 2)
   saleAmount     Decimal? @map("sale_amount") @db.Decimal(12, 2)
   amount         Decimal? @db.Decimal(12, 2)
@@ -2030,7 +2031,7 @@ model BranchSalesTransactionDetail {
   brand        Brand?                 @relation(fields: [brandId], references: [id], onDelete: SetNull)
   promoType    PromoType?             @relation(fields: [promoTypeId], references: [id], onDelete: SetNull)
   model        ProductModel?          @relation(fields: [modelId], references: [id], onDelete: SetNull)
-  serialNumber SerialNumber           @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
+  serialNumber SerialNumber?          @relation(fields: [serialNumberId], references: [id], onDelete: SetNull)
 
   @@index([salesId])
   @@index([serialNumberId])

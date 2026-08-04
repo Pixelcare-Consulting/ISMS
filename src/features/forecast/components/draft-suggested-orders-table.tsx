@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import {
@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/table";
 import { OrderStatusBadge } from "@/features/orders/components/order-status-badge";
 import { OrderTypeBadge } from "@/features/orders/components/order-type-badge";
-import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
 import { cn } from "@/utils/cn";
 
 interface DraftOrderRow {
@@ -37,7 +37,12 @@ interface DraftOrderRow {
 interface DraftFilters {
   branch?: string;
   q?: string;
+  sort?: string;
+  dir?: string;
 }
+
+type DraftSortField = "orderNumber" | "branch" | "status";
+type DraftSortDir = "asc" | "desc";
 
 interface DraftSuggestedOrdersTableProps {
   basePath: string;
@@ -53,6 +58,8 @@ interface DraftSuggestedOrdersTableProps {
   currentBranch?: string;
   currentQ?: string;
   preserveParams?: Record<string, string>;
+  initialSort?: string;
+  initialSortDir?: string;
 }
 
 function buildDraftsHref(
@@ -73,6 +80,12 @@ function buildDraftsHref(
   if (filters.q) params.set("draftQ", filters.q);
   else params.delete("draftQ");
 
+  if (filters.sort) params.set("draftSort", filters.sort);
+  else params.delete("draftSort");
+
+  if (filters.sort && filters.dir) params.set("draftDir", filters.dir);
+  else params.delete("draftDir");
+
   const qs = params.toString();
   return qs ? `${basePath}?${qs}` : basePath;
 }
@@ -85,11 +98,18 @@ export function DraftSuggestedOrdersTable({
   currentBranch,
   currentQ,
   preserveParams = {},
+  initialSort = "",
+  initialSortDir = "desc",
 }: DraftSuggestedOrdersTableProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [branch, setBranch] = useState(currentBranch ?? "");
   const [q, setQ] = useState(currentQ ?? "");
   const selection = useTableSelection(result.items.map((item) => item.id));
+  const sort = (searchParams.get("draftSort") ?? initialSort) || "";
+  const sortDir = (
+    (searchParams.get("draftDir") ?? initialSortDir) === "asc" ? "asc" : "desc"
+  ) as DraftSortDir;
 
   const suggestions = useMemo(
     () =>
@@ -112,7 +132,12 @@ export function DraftSuggestedOrdersTable({
         basePath,
         1,
         pageParam,
-        { branch: branch || undefined, q: q.trim() || undefined },
+        {
+          branch: branch || undefined,
+          q: q.trim() || undefined,
+          sort: sort || undefined,
+          dir: sort ? sortDir : undefined,
+        },
         preserveParams,
       ),
     );
@@ -122,6 +147,19 @@ export function DraftSuggestedOrdersTable({
     setBranch("");
     setQ("");
     router.push(buildDraftsHref(basePath, 1, pageParam, {}, preserveParams));
+  }
+
+  function toggleSort(field: DraftSortField) {
+    const next = nextTableSort(field, sort, sortDir);
+    router.push(
+      buildDraftsHref(
+        basePath,
+        1,
+        pageParam,
+        { branch: currentBranch, q: currentQ, sort: next.sort, dir: next.dir },
+        preserveParams,
+      ),
+    );
   }
 
   return (
@@ -191,7 +229,7 @@ export function DraftSuggestedOrdersTable({
               basePath,
               page,
               pageParam,
-              { branch: currentBranch, q: currentQ },
+              { branch: currentBranch, q: currentQ, sort: sort || undefined, dir: sort ? sortDir : undefined },
               preserveParams,
             ),
         }}
@@ -205,11 +243,32 @@ export function DraftSuggestedOrdersTable({
               aria-label="Select all draft orders"
             />
             <TableIndexHead />
-            <GlobalTableHead>Order #</GlobalTableHead>
-            <GlobalTableHead>Branch</GlobalTableHead>
+            <GlobalTableHead
+              sortKey="orderNumber"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as DraftSortField)}
+            >
+              Order #
+            </GlobalTableHead>
+            <GlobalTableHead
+              sortKey="branch"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as DraftSortField)}
+            >
+              Branch
+            </GlobalTableHead>
             <GlobalTableHead>Type</GlobalTableHead>
             <GlobalTableHead>Lines</GlobalTableHead>
-            <GlobalTableHead>Status</GlobalTableHead>
+            <GlobalTableHead
+              sortKey="status"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as DraftSortField)}
+            >
+              Status
+            </GlobalTableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

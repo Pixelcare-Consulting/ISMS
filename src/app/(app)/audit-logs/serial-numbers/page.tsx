@@ -16,6 +16,7 @@ interface SerialLogsPageProps {
     q?: string;
     dateFrom?: string;
     dateTo?: string;
+    dir?: string;
   }>;
 }
 
@@ -39,6 +40,7 @@ export default async function SerialNumberLogsPage({
     q: params.q,
     dateFrom: params.dateFrom,
     dateTo: params.dateTo,
+    sortDir: params.dir,
   });
 
   const result = {
@@ -62,6 +64,7 @@ export default async function SerialNumberLogsPage({
         currentSearch={params.q}
         currentDateFrom={params.dateFrom}
         currentDateTo={params.dateTo}
+        initialSortDir={params.dir ?? "desc"}
       />
     </div>
   );

@@ -4,9 +4,51 @@ import { revalidatePath } from "next/cache";
 
 import { branchService } from "@/features/branches/services/branch.service";
 import { forecastService } from "@/features/forecast/services/forecast.service";
-import { suggestedOrderService } from "@/features/forecast/services/suggested-order.service";
-import { forecastRepository } from "@/features/forecast/repositories/forecast.repository";
+import {
+  suggestedOrderService,
+  type DraftOrderListSort,
+  type DraftOrderListSortDir,
+} from "@/features/forecast/services/suggested-order.service";
+import {
+  forecastRepository,
+  type AllocationGapListSort,
+  type AllocationGapListSortDir,
+} from "@/features/forecast/repositories/forecast.repository";
 import { hasPermission, requireAnyPermission } from "@/lib/auth/permissions";
+
+const ALLOCATION_GAP_SORT_FIELDS = new Set<AllocationGapListSort>([
+  "branch",
+  "sku",
+  "currentStock",
+  "planogramMax",
+  "gapQty",
+]);
+const DRAFT_ORDER_SORT_FIELDS = new Set<DraftOrderListSort>([
+  "orderNumber",
+  "branch",
+  "status",
+]);
+
+function parseAllocationGapSort(value?: string): AllocationGapListSort | undefined {
+  if (value && ALLOCATION_GAP_SORT_FIELDS.has(value as AllocationGapListSort)) {
+    return value as AllocationGapListSort;
+  }
+  return undefined;
+}
+
+function parseDraftOrderSort(value?: string): DraftOrderListSort | undefined {
+  if (value && DRAFT_ORDER_SORT_FIELDS.has(value as DraftOrderListSort)) {
+    return value as DraftOrderListSort;
+  }
+  return undefined;
+}
+
+function parseSortDir(
+  value?: string,
+): DraftOrderListSortDir | AllocationGapListSortDir | undefined {
+  if (value === "asc" || value === "desc") return value;
+  return undefined;
+}
 
 function revalidatePlanning() {
   revalidatePath("/settings/planning");
@@ -32,7 +74,7 @@ export async function listPlanningTargetsAction(periodId: string) {
 
 export async function listAllocationGapsAction(
   periodId: string,
-  input?: { page?: number; branchId?: string; q?: string },
+  input?: { page?: number; branchId?: string; q?: string; sort?: string; sortDir?: string },
 ) {
   const session = await requireForecastManage();
   return forecastRepository.listAllocationsForPeriodPaginated(
@@ -40,6 +82,7 @@ export async function listAllocationGapsAction(
     periodId,
     { page: input?.page },
     { branchId: input?.branchId, q: input?.q },
+    { field: parseAllocationGapSort(input?.sort), dir: parseSortDir(input?.sortDir) },
   );
 }
 
@@ -124,12 +167,15 @@ export async function listDraftSuggestedOrdersAction(input?: {
   page?: number;
   branchId?: string;
   q?: string;
+  sort?: string;
+  sortDir?: string;
 }) {
   const session = await requireForecastManage();
   return suggestedOrderService.listDraftSuggestedOrdersPaginated(
     session.user.tenantId,
     { page: input?.page },
     { branchId: input?.branchId, q: input?.q },
+    { field: parseDraftOrderSort(input?.sort), dir: parseSortDir(input?.sortDir) },
   );
 }
 

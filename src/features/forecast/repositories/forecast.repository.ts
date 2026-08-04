@@ -6,6 +6,29 @@ import {
 } from "@/lib/shared/pagination";
 import type { Prisma } from "@prisma/client";
 
+export type AllocationGapListSort = "branch" | "sku" | "currentStock" | "planogramMax" | "gapQty";
+export type AllocationGapListSortDir = "asc" | "desc";
+
+function allocationGapPrismaOrderBy(
+  field: AllocationGapListSort,
+  dir: AllocationGapListSortDir,
+): Prisma.BranchAllocationOrderByWithRelationInput[] {
+  switch (field) {
+    case "branch":
+      return [{ branch: { name: dir } }];
+    case "sku":
+      return [{ model: { skuCode: dir } }];
+    case "currentStock":
+      return [{ currentStock: dir }];
+    case "planogramMax":
+      return [{ planogramMax: dir }];
+    case "gapQty":
+      return [{ gapQty: dir }];
+    default:
+      return [{ branch: { name: "asc" } }, { model: { skuCode: "asc" } }];
+  }
+}
+
 function allocationGapsWhere(
   tenantId: string,
   periodId: string,
@@ -74,9 +97,13 @@ export const forecastRepository = {
     periodId: string,
     pagination?: PaginationInput,
     filters?: { branchId?: string; q?: string },
+    sort?: { field?: AllocationGapListSort; dir?: AllocationGapListSortDir },
   ) {
     const { limit, page, skip } = resolvePagination(pagination);
     const where = allocationGapsWhere(tenantId, periodId, filters);
+    const orderBy = sort?.field
+      ? allocationGapPrismaOrderBy(sort.field, sort.dir ?? "desc")
+      : [{ branch: { name: "asc" as const } }, { model: { skuCode: "asc" as const } }];
 
     const [items, total] = await Promise.all([
       prisma.branchAllocation.findMany({
@@ -85,7 +112,7 @@ export const forecastRepository = {
           branch: { select: { id: true, name: true } },
           model: { select: { id: true, skuCode: true, name: true } },
         },
-        orderBy: [{ branch: { name: "asc" } }, { model: { skuCode: "asc" } }],
+        orderBy,
         skip,
         take: limit,
       }),

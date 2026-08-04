@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
@@ -20,7 +20,7 @@ import {
 } from "@/components/data-table/table-page-size";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
-import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -68,7 +68,12 @@ interface TransferRow {
 
 interface TransfersPanelProps {
   transfers: PaginatedList<TransferRow>;
+  initialSort?: string;
+  initialSortDir?: string;
 }
+
+type TransferSortField = "transferNo" | "fromBranch" | "toBranch" | "status";
+type TransferSortDir = "asc" | "desc";
 
 type PendingConfirm = {
   id: string;
@@ -84,8 +89,13 @@ interface SerialOption {
   skuCode: string;
 }
 
-export function TransfersPanel({ transfers }: TransfersPanelProps) {
+export function TransfersPanel({
+  transfers,
+  initialSort = "",
+  initialSortDir = "desc",
+}: TransfersPanelProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
   const { branches, loadRefs } = useLogisticsRefs();
@@ -93,9 +103,22 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
   const [executeSerials, setExecuteSerials] = useState<SerialOption[]>([]);
   const [selectedSerialIds, setSelectedSerialIds] = useState<string[]>([]);
   const pageSize = parseTablePageSize(transfers.limit);
+  const sort = (searchParams.get("sort") ?? initialSort) || "";
+  const sortDir = (
+    (searchParams.get("dir") ?? initialSortDir) === "asc" ? "asc" : "desc"
+  ) as TransferSortDir;
 
   function handlePageSizeChange(limit: TablePageSize) {
-    router.push(buildLogisticsPageHref(LOGISTICS_TRANSFERS_PATH, 1, limit));
+    router.push(
+      buildLogisticsPageHref(LOGISTICS_TRANSFERS_PATH, 1, limit, sort, sort ? sortDir : undefined),
+    );
+  }
+
+  function toggleSort(field: TransferSortField) {
+    const next = nextTableSort(field, sort, sortDir);
+    router.push(
+      buildLogisticsPageHref(LOGISTICS_TRANSFERS_PATH, 1, pageSize, next.sort, next.dir),
+    );
   }
 
   const filtered = useMemo(
@@ -230,7 +253,13 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
           totalPages: transfers.totalPages,
           itemLabel: "transfer",
           buildHref: (page) =>
-            buildLogisticsPageHref(LOGISTICS_TRANSFERS_PATH, page, pageSize),
+            buildLogisticsPageHref(
+              LOGISTICS_TRANSFERS_PATH,
+              page,
+              pageSize,
+              sort,
+              sort ? sortDir : undefined,
+            ),
         }}
         pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
       >
@@ -244,9 +273,30 @@ export function TransfersPanel({ transfers }: TransfersPanelProps) {
                   />
                 </GlobalTableHead>
                 <TableIndexHead />
-                <GlobalTableHead>No.</GlobalTableHead>
-                <GlobalTableHead>From → To</GlobalTableHead>
-                <GlobalTableHead>Status</GlobalTableHead>
+                <GlobalTableHead
+                  sortKey="transferNo"
+                  activeSortKey={sort}
+                  sortDirection={sortDir}
+                  onSort={(key) => toggleSort(key as TransferSortField)}
+                >
+                  No.
+                </GlobalTableHead>
+                <GlobalTableHead
+                  sortKey="fromBranch"
+                  activeSortKey={sort}
+                  sortDirection={sortDir}
+                  onSort={(key) => toggleSort(key as TransferSortField)}
+                >
+                  From → To
+                </GlobalTableHead>
+                <GlobalTableHead
+                  sortKey="status"
+                  activeSortKey={sort}
+                  sortDirection={sortDir}
+                  onSort={(key) => toggleSort(key as TransferSortField)}
+                >
+                  Status
+                </GlobalTableHead>
                 <GlobalTableHead />
               </TableRow>
             </TableHeader>

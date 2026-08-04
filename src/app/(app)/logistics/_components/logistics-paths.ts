@@ -8,10 +8,14 @@ export function buildLogisticsPageHref(
   basePath: string,
   page: number,
   limit: number = DEFAULT_TABLE_PAGE_SIZE,
+  sort?: string,
+  sortDir?: string,
 ): string {
   const params = new URLSearchParams();
   if (page > 1) params.set("page", String(page));
   if (limit !== DEFAULT_TABLE_PAGE_SIZE) params.set("limit", String(limit));
+  if (sort) params.set("sort", sort);
+  if (sort && sortDir) params.set("dir", sortDir);
   const query = params.toString();
   return query ? `${basePath}?${query}` : basePath;
 }

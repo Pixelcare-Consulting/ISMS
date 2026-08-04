@@ -11,6 +11,9 @@ export interface CreateAuditLogInput {
   metadata?: Prisma.InputJsonValue;
 }
 
+export type AuditLogListSort = "createdAt" | "user" | "action" | "entityType";
+export type AuditLogListSortDir = "asc" | "desc";
+
 export interface ListAuditLogsInput {
   tenantId: string;
   limit?: number;
@@ -21,6 +24,24 @@ export interface ListAuditLogsInput {
   search?: string;
   dateFrom?: string;
   dateTo?: string;
+  sort?: AuditLogListSort;
+  sortDir?: AuditLogListSortDir;
+}
+
+function auditLogPrismaOrderBy(
+  field: AuditLogListSort,
+  dir: AuditLogListSortDir,
+): Prisma.AuditLogOrderByWithRelationInput {
+  switch (field) {
+    case "user":
+      return { user: { name: dir } };
+    case "action":
+      return { action: dir };
+    case "entityType":
+      return { entityType: dir };
+    default:
+      return { createdAt: dir };
+  }
 }
 
 function parseDateBoundary(value: string, boundary: "start" | "end"): Date {
@@ -95,10 +116,14 @@ export const auditLogRepository = {
         : {}),
     };
 
+    const orderBy = input.sort
+      ? auditLogPrismaOrderBy(input.sort, input.sortDir ?? "desc")
+      : { createdAt: "desc" as const };
+
     const [items, total] = await Promise.all([
       prisma.auditLog.findMany({
         where,
-        orderBy: { createdAt: "desc" },
+        orderBy,
         skip,
         take: limit,
         include: {

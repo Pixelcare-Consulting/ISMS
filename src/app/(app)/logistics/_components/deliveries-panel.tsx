@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
@@ -16,7 +16,7 @@ import {
 } from "@/components/data-table/table-page-size";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
-import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -61,7 +61,12 @@ interface DeliveryRow {
 
 interface DeliveriesPanelProps {
   deliveries: PaginatedList<DeliveryRow>;
+  initialSort?: string;
+  initialSortDir?: string;
 }
+
+type DeliverySortField = "deliveryNo" | "orderNumber" | "branch" | "status";
+type DeliverySortDir = "asc" | "desc";
 
 type PendingConfirm = {
   id: string;
@@ -71,15 +76,33 @@ type PendingConfirm = {
   action: "accept" | "reject";
 };
 
-export function DeliveriesPanel({ deliveries }: DeliveriesPanelProps) {
+export function DeliveriesPanel({
+  deliveries,
+  initialSort = "",
+  initialSortDir = "desc",
+}: DeliveriesPanelProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
   const pageSize = parseTablePageSize(deliveries.limit);
+  const sort = (searchParams.get("sort") ?? initialSort) || "";
+  const sortDir = (
+    (searchParams.get("dir") ?? initialSortDir) === "asc" ? "asc" : "desc"
+  ) as DeliverySortDir;
 
   function handlePageSizeChange(limit: TablePageSize) {
-    router.push(buildLogisticsPageHref(LOGISTICS_DELIVERIES_PATH, 1, limit));
+    router.push(
+      buildLogisticsPageHref(LOGISTICS_DELIVERIES_PATH, 1, limit, sort, sort ? sortDir : undefined),
+    );
+  }
+
+  function toggleSort(field: DeliverySortField) {
+    const next = nextTableSort(field, sort, sortDir);
+    router.push(
+      buildLogisticsPageHref(LOGISTICS_DELIVERIES_PATH, 1, pageSize, next.sort, next.dir),
+    );
   }
 
   const filtered = useMemo(
@@ -145,7 +168,13 @@ export function DeliveriesPanel({ deliveries }: DeliveriesPanelProps) {
           totalPages: deliveries.totalPages,
           itemLabel: "delivery",
           buildHref: (page) =>
-            buildLogisticsPageHref(LOGISTICS_DELIVERIES_PATH, page, pageSize),
+            buildLogisticsPageHref(
+              LOGISTICS_DELIVERIES_PATH,
+              page,
+              pageSize,
+              sort,
+              sort ? sortDir : undefined,
+            ),
         }}
         pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
       >
@@ -159,10 +188,38 @@ export function DeliveriesPanel({ deliveries }: DeliveriesPanelProps) {
                   />
                 </GlobalTableHead>
                 <TableIndexHead />
-                <GlobalTableHead>No.</GlobalTableHead>
-                <GlobalTableHead>Order</GlobalTableHead>
-                <GlobalTableHead>Branch</GlobalTableHead>
-                <GlobalTableHead>Status</GlobalTableHead>
+                <GlobalTableHead
+                  sortKey="deliveryNo"
+                  activeSortKey={sort}
+                  sortDirection={sortDir}
+                  onSort={(key) => toggleSort(key as DeliverySortField)}
+                >
+                  No.
+                </GlobalTableHead>
+                <GlobalTableHead
+                  sortKey="orderNumber"
+                  activeSortKey={sort}
+                  sortDirection={sortDir}
+                  onSort={(key) => toggleSort(key as DeliverySortField)}
+                >
+                  Order
+                </GlobalTableHead>
+                <GlobalTableHead
+                  sortKey="branch"
+                  activeSortKey={sort}
+                  sortDirection={sortDir}
+                  onSort={(key) => toggleSort(key as DeliverySortField)}
+                >
+                  Branch
+                </GlobalTableHead>
+                <GlobalTableHead
+                  sortKey="status"
+                  activeSortKey={sort}
+                  sortDirection={sortDir}
+                  onSort={(key) => toggleSort(key as DeliverySortField)}
+                >
+                  Status
+                </GlobalTableHead>
                 <GlobalTableHead />
               </TableRow>
             </TableHeader>

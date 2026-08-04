@@ -18,7 +18,7 @@ import {
   uniqueSearchSuggestions,
   useClientTablePagination,
 } from "@/components/data-table";
-import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -106,6 +106,14 @@ export function DealersTable({ dealers }: { dealers: DealerRow[] }) {
     [rows],
   );
 
+  const sort = useClientTableSort(filtered, {
+    name: (row) => row.name,
+    sapCode: (row) => row.sapCode,
+    type: (row) => row.dealerType?.name,
+    payment: (row) => row.modeOfPayment?.name,
+    branches: (row) => row._count.branches,
+    status: (row) => row.status,
+  });
   const {
     page,
     setPage,
@@ -114,7 +122,9 @@ export function DealersTable({ dealers }: { dealers: DealerRow[] }) {
     total,
     totalPages,
     pageItems,
-  } = useClientTablePagination(filtered, { resetKey: query });
+  } = useClientTablePagination(sort.sorted, {
+    resetKey: `${query}:${sort.sortKey}:${sort.sortDir}`,
+  });
 
   async function ensureOptions() {
     if (options) return options;
@@ -208,12 +218,12 @@ export function DealersTable({ dealers }: { dealers: DealerRow[] }) {
       >
             <TableHeader>
               <TableRow className="bg-muted/30 hover:bg-muted/30">
-                <GlobalTableHead>Name</GlobalTableHead>
-                <GlobalTableHead>SAP</GlobalTableHead>
-                <GlobalTableHead>Type</GlobalTableHead>
-                <GlobalTableHead>Payment</GlobalTableHead>
-                <GlobalTableHead>Branches</GlobalTableHead>
-                <GlobalTableHead>Status</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("name")}>Name</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("sapCode")}>SAP</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("type")}>Type</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("payment")}>Payment</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("branches")}>Branches</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("status")}>Status</GlobalTableHead>
                 <GlobalTableHead className="w-28 text-right">Actions</GlobalTableHead>
               </TableRow>
             </TableHeader>

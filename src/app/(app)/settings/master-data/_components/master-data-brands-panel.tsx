@@ -12,7 +12,7 @@ import {
 import { DataTableEmpty } from "@/components/data-table";
 import { useClientTablePagination } from "@/components/data-table/use-client-table-pagination";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
-import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -49,6 +49,13 @@ export function MasterDataBrandsPanel({ brands, categories }: MasterDataBrandsPa
   const [catName, setCatName] = useState("");
   const brandSelection = useTableSelection(brands.map((brand) => brand.id));
   const categorySelection = useTableSelection(categories.map((category) => category.id));
+  const brandSort = useClientTableSort(brandRows, {
+    code: (b) => b.code,
+    name: (b) => b.name,
+  });
+  const categorySort = useClientTableSort(categoryRows, {
+    name: (c) => c.name,
+  });
   const {
     page: brandPage,
     setPage: setBrandPage,
@@ -58,7 +65,9 @@ export function MasterDataBrandsPanel({ brands, categories }: MasterDataBrandsPa
     totalPages: brandTotalPages,
     pageItems: brandPageItems,
     indexOffset: brandIndexOffset,
-  } = useClientTablePagination(brandRows);
+  } = useClientTablePagination(brandSort.sorted, {
+    resetKey: `${brandSort.sortKey}:${brandSort.sortDir}`,
+  });
   const {
     page: categoryPage,
     setPage: setCategoryPage,
@@ -68,7 +77,9 @@ export function MasterDataBrandsPanel({ brands, categories }: MasterDataBrandsPa
     totalPages: categoryTotalPages,
     pageItems: categoryPageItems,
     indexOffset: categoryIndexOffset,
-  } = useClientTablePagination(categoryRows);
+  } = useClientTablePagination(categorySort.sorted, {
+    resetKey: `${categorySort.sortKey}:${categorySort.sortDir}`,
+  });
 
   useEffect(() => {
     setBrandRows(brands);
@@ -183,8 +194,8 @@ export function MasterDataBrandsPanel({ brands, categories }: MasterDataBrandsPa
                       />
                     </GlobalTableHead>
                     <GlobalTableHead className="w-12">#</GlobalTableHead>
-                    <GlobalTableHead>Code</GlobalTableHead>
-                    <GlobalTableHead>Name</GlobalTableHead>
+                    <GlobalTableHead {...brandSort.sortProps("code")}>Code</GlobalTableHead>
+                    <GlobalTableHead {...brandSort.sortProps("name")}>Name</GlobalTableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -270,7 +281,7 @@ export function MasterDataBrandsPanel({ brands, categories }: MasterDataBrandsPa
                       />
                     </GlobalTableHead>
                     <GlobalTableHead className="w-12">#</GlobalTableHead>
-                    <GlobalTableHead>Name</GlobalTableHead>
+                    <GlobalTableHead {...categorySort.sortProps("name")}>Name</GlobalTableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

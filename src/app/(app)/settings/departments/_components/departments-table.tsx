@@ -22,7 +22,7 @@ import {
   useClientTablePagination,
   useTableSelection,
 } from "@/components/data-table";
-import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 import {
   TableBody,
   TableCell,
@@ -68,6 +68,10 @@ export function DepartmentsTable({ departments }: DepartmentsTableProps) {
   );
 
   const selection = useTableSelection(filtered.map((department) => department.id));
+  const sort = useClientTableSort(filtered, {
+    name: (department) => department.name,
+    users: (department) => department._count.users,
+  });
   const {
     page,
     setPage,
@@ -77,7 +81,9 @@ export function DepartmentsTable({ departments }: DepartmentsTableProps) {
     totalPages,
     pageItems,
     indexOffset,
-  } = useClientTablePagination(filtered, { resetKey: query });
+  } = useClientTablePagination(sort.sorted, {
+    resetKey: `${query}:${sort.sortKey}:${sort.sortDir}`,
+  });
 
   function handleDeleteConfirm() {
     if (!deleting) return;
@@ -146,8 +152,13 @@ export function DepartmentsTable({ departments }: DepartmentsTableProps) {
                   aria-label="Select all departments"
                 />
                 <TableIndexHead />
-                <GlobalTableHead>Name</GlobalTableHead>
-                <GlobalTableHead className="w-24 text-right">Users</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("name")}>Name</GlobalTableHead>
+                <GlobalTableHead
+                  className="w-24 text-right"
+                  {...sort.sortProps("users")}
+                >
+                  Users
+                </GlobalTableHead>
                 <GlobalTableHead className="w-28 text-right">Actions</GlobalTableHead>
               </TableRow>
             </TableHeader>
