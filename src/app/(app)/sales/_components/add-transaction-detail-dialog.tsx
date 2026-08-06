@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
@@ -34,6 +35,8 @@ export type DraftSaleDetail = {
   serialNo: string;
   saleAmount: number;
   modelPrice: number | null;
+  deliveryNo: string | null;
+  deliveryDate: string | null;
 };
 
 type PackageOption = {
@@ -74,6 +77,14 @@ type DetailSetDraft = {
   noPriceList: boolean;
   /** When set, price came from an older (non-current) price list period. */
   priceFallbackDate: string | null;
+  /**
+   * Delivery is captured once for the whole package and inherited by every set.
+   * A set only carries its own values when it ships separately (typically a
+   * TO-FOLLOW unit that goes out on a later delivery receipt).
+   */
+  deliveryOverride: boolean;
+  deliveryNo: string;
+  deliveryDate: string;
 };
 
 function emptySet(): DetailSetDraft {
@@ -86,6 +97,9 @@ function emptySet(): DetailSetDraft {
     modelPrice: "",
     noPriceList: false,
     priceFallbackDate: null,
+    deliveryOverride: false,
+    deliveryNo: "",
+    deliveryDate: "",
   };
 }
 
@@ -110,6 +124,7 @@ export function AddTransactionDetailDialog({
   promoTypes,
   usedSerialIds,
   transactionDate,
+  showDelivery,
   onAdd,
   onClose,
 }: {
@@ -119,6 +134,8 @@ export function AddTransactionDetailDialog({
   usedSerialIds: Set<string>;
   /** YYYY-MM-DD — used to resolve model price against the right price list period. */
   transactionDate?: string;
+  /** False for pickup sales, which never produce a delivery receipt. */
+  showDelivery: boolean;
   onAdd: (rows: DraftSaleDetail[]) => void;
   onClose: () => void;
 }) {
@@ -128,6 +145,8 @@ export function AddTransactionDetailDialog({
   const [serials, setSerials] = useState<SerialOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [packageTypeId, setPackageTypeId] = useState("");
+  const [deliveryNo, setDeliveryNo] = useState("");
+  const [deliveryDate, setDeliveryDate] = useState("");
   const [sets, setSets] = useState<DetailSetDraft[]>([emptySet()]);
 
   const selectedPackage = useMemo(
@@ -321,6 +340,12 @@ export function AddTransactionDetailDialog({
         serialNo: isToFollow ? TO_FOLLOW_SERIAL_LABEL : serial!.serialNo,
         saleAmount,
         modelPrice,
+        deliveryNo: showDelivery
+          ? (set.deliveryOverride ? set.deliveryNo : deliveryNo).trim() || null
+          : null,
+        deliveryDate: showDelivery
+          ? (set.deliveryOverride ? set.deliveryDate : deliveryDate) || null
+          : null,
       });
     }
 
@@ -377,6 +402,34 @@ export function AddTransactionDetailDialog({
               This package creates {selectedPackage.quantity} set
               {selectedPackage.quantity === 1 ? "" : "s"}.
             </p>
+          ) : null}
+
+          {showDelivery ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="delivery-no">Delivery number</Label>
+                <Input
+                  id="delivery-no"
+                  value={deliveryNo}
+                  onChange={(e) => setDeliveryNo(e.target.value)}
+                  placeholder="Delivery number"
+                  autoComplete="off"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="delivery-date">Delivery date</Label>
+                <Input
+                  id="delivery-date"
+                  type="date"
+                  value={deliveryDate}
+                  onChange={(e) => setDeliveryDate(e.target.value)}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground sm:col-span-2">
+                Applies to every set below. Leave blank when the delivery
+                receipt is not issued yet — it can be filled in later per line.
+              </p>
+            </div>
           ) : null}
 
           <div className="space-y-3">
@@ -494,6 +547,67 @@ export function AddTransactionDetailDialog({
                       ) : null}
                     </div>
                   </div>
+
+                  {showDelivery ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id={`delivery-override-${index}`}
+                          checked={set.deliveryOverride}
+                          onCheckedChange={(checked) => {
+                            const on = checked === true;
+                            updateSet(index, {
+                              deliveryOverride: on,
+                              // Seed from the package default so the override
+                              // starts where the user left off, not empty.
+                              deliveryNo: on ? deliveryNo : "",
+                              deliveryDate: on ? deliveryDate : "",
+                            });
+                          }}
+                        />
+                        <Label
+                          htmlFor={`delivery-override-${index}`}
+                          className="text-sm font-normal"
+                        >
+                          This set ships on a different delivery
+                        </Label>
+                      </div>
+
+                      {set.deliveryOverride ? (
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label htmlFor={`delivery-no-${index}`}>
+                              Delivery number
+                            </Label>
+                            <Input
+                              id={`delivery-no-${index}`}
+                              value={set.deliveryNo}
+                              onChange={(e) =>
+                                updateSet(index, { deliveryNo: e.target.value })
+                              }
+                              placeholder="Delivery number"
+                              autoComplete="off"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor={`delivery-date-${index}`}>
+                              Delivery date
+                            </Label>
+                            <Input
+                              id={`delivery-date-${index}`}
+                              type="date"
+                              value={set.deliveryDate}
+                              onChange={(e) =>
+                                updateSet(index, {
+                                  deliveryDate: e.target.value,
+                                })
+                              }
+                            />
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               );
             })}

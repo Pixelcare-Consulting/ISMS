@@ -21,6 +21,7 @@ import {
   type SaleStatusCodeRef,
 } from "@/features/sales/actions/sales.actions";
 import { TO_FOLLOW_SERIAL_LABEL } from "@/features/sales/constants/to-follow-serial";
+import { capturesDeliveryReceipt } from "@/features/sales/utils/delivery-method";
 import type { SalesActionCapabilities } from "@/features/sales/constants/sales-permissions";
 import {
   TableAmountCell,
@@ -80,6 +81,9 @@ type EditingLine = {
   modelId: string | null;
   serialNumberId: string | null;
   serialNo: string;
+  deliveryNo: string | null;
+  deliveryDate: string | null;
+  showDelivery: boolean;
 };
 
 type SalesSortField =
@@ -292,6 +296,11 @@ export function SalesTable({
       modelId: line.modelId,
       serialNumberId: line.serialNumberId,
       serialNo: line.serialNo,
+      deliveryNo: line.deliveryNo,
+      deliveryDate: line.deliveryDate,
+      showDelivery: capturesDeliveryReceipt(
+        saleDetails.customerDeliveryMethod?.name,
+      ),
     });
   }
 
@@ -516,6 +525,9 @@ export function SalesTable({
           modelId={editingLine.modelId}
           currentSerialId={editingLine.serialNumberId}
           currentSerialLabel={editingLine.serialNo}
+          currentDeliveryNo={editingLine.deliveryNo}
+          currentDeliveryDate={editingLine.deliveryDate}
+          showDelivery={editingLine.showDelivery}
           onClose={() => {
             const saleId = editingLine.saleId;
             setEditingLine(null);

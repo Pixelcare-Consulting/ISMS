@@ -135,6 +135,8 @@ export const salesRepository = {
             saleAmount: true,
             amount: true,
             modelPrice: true,
+            deliveryNo: true,
+            deliveryDate: true,
             ...detailStatusCodeSelect,
             packageType: { select: { name: true } },
             brand: { select: { name: true } },
