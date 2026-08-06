@@ -86,6 +86,23 @@ function normalizeAction(value: unknown): string | null {
   return text.slice(0, 32);
 }
 
+/** Spreadsheet row number for messages — SheetJS stamps a 0-indexed `__rowNum__`. */
+function rowNumberOf(row: Record<string, unknown>, fallbackIndex: number): number {
+  const raw = row.__rowNum__;
+  return typeof raw === "number" && Number.isFinite(raw) ? raw + 1 : fallbackIndex + 2;
+}
+
+/** "3", "3 and 7", "3, 7 and 12" — with an overflow tail past 20 rows. */
+function formatRowList(rowNumbers: number[]): string {
+  const shown = rowNumbers.slice(0, 20);
+  const rest = rowNumbers.length - shown.length;
+  const list =
+    shown.length === 1
+      ? String(shown[0])
+      : `${shown.slice(0, -1).join(", ")} and ${shown[shown.length - 1]}`;
+  return rest > 0 ? `${list} (+${rest} more)` : list;
+}
+
 function parseUploadBuffer(buffer: ArrayBuffer | Buffer): OfficialSalesRowCreateInput[] {
   const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
   const sheetName = workbook.SheetNames[0];
@@ -99,7 +116,7 @@ function parseUploadBuffer(buffer: ArrayBuffer | Buffer): OfficialSalesRowCreate
   });
 
   const parsed = rows
-    .map((row) => {
+    .map((row, index) => {
       const serial = String(
         pickColumn(row, ["serial number", "serialnumber", "serial", "serialno", "sn"]) ?? "",
       ).trim();
@@ -147,26 +164,41 @@ function parseUploadBuffer(buffer: ArrayBuffer | Buffer): OfficialSalesRowCreate
       );
 
       return {
-        serial,
-        drDate,
-        drNo: drNoRaw == null || drNoRaw === "" ? null : String(drNoRaw).trim(),
-        branchSold,
-        action,
-        dealer: pickOptionalText(row, ["dealer"]),
-        brand: pickOptionalText(row, ["brand"]),
-        itemModel: pickOptionalText(row, ["item/model", "itemmodel", "item model", "model"]),
-        saleAmount: parseSaleAmount(pickColumn(row, ["sale amount", "saleamount", "amount"])),
-        packageName: pickOptionalText(row, ["package", "packagename", "package name"]),
+        rowNumber: rowNumberOf(row, index),
+        row: {
+          serial,
+          drDate,
+          drNo: drNoRaw == null || drNoRaw === "" ? null : String(drNoRaw).trim(),
+          branchSold,
+          action,
+          dealer: pickOptionalText(row, ["dealer"]),
+          brand: pickOptionalText(row, ["brand"]),
+          itemModel: pickOptionalText(row, ["item/model", "itemmodel", "item model", "model"]),
+          saleAmount: parseSaleAmount(pickColumn(row, ["sale amount", "saleamount", "amount"])),
+          packageName: pickOptionalText(row, ["package", "packagename", "package name"]),
+        } satisfies OfficialSalesRowCreateInput,
       };
     })
-    .filter((row) => row.serial.length > 0);
+    .filter((entry) => entry.row.serial.length > 0);
 
   if (parsed.length === 0) {
     throw new Error(
       "No rows found. Expected columns: DEALER–ACTION KEY (or legacy Trans Date / Serial Number / Action)",
     );
   }
-  return parsed;
+
+  // ACTION KEY decides what processing does with the serial, so a blank one
+  // rejects the whole upload instead of landing in staging as an unusable row.
+  const missingAction = parsed
+    .filter((entry) => entry.row.action == null)
+    .map((entry) => entry.rowNumber);
+  if (missingAction.length > 0) {
+    throw new Error(
+      `Missing ACTION KEY on ${missingAction.length === 1 ? "row" : "rows"} ${formatRowList(missingAction)}. Every row needs an action (e.g. ADD, UPD, DEL) — nothing was uploaded.`,
+    );
+  }
+
+  return parsed.map((entry) => entry.row);
 }
 
 export const officialSalesService = {
