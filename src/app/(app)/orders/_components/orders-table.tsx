@@ -604,12 +604,18 @@ function CreateOrderDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md max-h-[calc(100svh-2rem)] overflow-y-auto space-y-4 rounded-xl border bg-card p-4 sm:p-6 shadow-lg">
-        <h3 className="font-medium">Create branch order</h3>
-        {!loaded ? (
-          <p className="text-sm text-muted-foreground">Loading dealers and branches…</p>
-        ) : (
-          <>
+      <div className="flex w-full max-w-md max-h-[calc(100svh-2rem)] min-h-0 flex-col overflow-hidden rounded-xl border bg-card shadow-xl">
+        <div className="shrink-0 rounded-t-xl border-b bg-card p-4 sm:p-6">
+          <h3 className="font-medium">Create branch order</h3>
+        </div>
+
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-6">
+          {!loaded ? (
+            <p className="text-sm text-muted-foreground">
+              Loading dealers and branches…
+            </p>
+          ) : (
+            <>
             <SearchableSelect
               label="Dealer"
               options={dealers.map((d) => ({ id: d.id, label: d.name }))}
@@ -730,19 +736,28 @@ function CreateOrderDialog({
                 </p>
               ) : null}
             </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={onClose}>
-                Cancel
-              </Button>
-              <Button
-                disabled={pending || !dealerId || !branchId || !modelId || windowBlock !== null}
-                onClick={submit}
-              >
-                Submit
-              </Button>
-            </div>
-          </>
-        )}
+            </>
+          )}
+        </div>
+
+        <div className="flex shrink-0 flex-wrap justify-end gap-2 rounded-b-xl border-t bg-card p-4 sm:p-6">
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            disabled={
+              pending ||
+              !loaded ||
+              !dealerId ||
+              !branchId ||
+              !modelId ||
+              windowBlock !== null
+            }
+            onClick={submit}
+          >
+            Submit
+          </Button>
+        </div>
       </div>
     </div>
   );
