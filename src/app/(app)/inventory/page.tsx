@@ -1,8 +1,10 @@
 import {
+  getInventoryKpisAction,
   getInventorySeriesSummaryAction,
   listInventoryAction,
   listInventoryStatusOptionsAction,
 } from "@/features/inventory/actions/inventory.actions";
+import { InventoryKpisStrip } from "@/features/inventory/components/inventory-kpis";
 import { InventorySeriesSummaryPanel } from "@/features/inventory/components/inventory-series-summary";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { ModuleGuide } from "@/components/module-guide";
@@ -47,16 +49,18 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
     offPlanogram,
   };
 
-  const [result, statusOptions, seriesSummary] = await Promise.all([
+  const [result, statusOptions, seriesSummary, kpis] = await Promise.all([
     listInventoryAction(listFilters),
     listInventoryStatusOptionsAction(),
     getInventorySeriesSummaryAction(summaryFilters),
+    getInventoryKpisAction(),
   ]);
 
   const hideBranch = (session.user.roleSlugs ?? []).includes("ps");
 
   return (
     <div className="space-y-4">
+      <InventoryKpisStrip kpis={kpis} />
       <ModuleGuide {...INVENTORY_MODULE_GUIDE} />
       <InventorySeriesSummaryPanel summary={seriesSummary} />
       <InventoryTable
