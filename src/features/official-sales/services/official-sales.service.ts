@@ -1,4 +1,5 @@
 import { auditService } from "@/features/audit/services/audit.service";
+import { OFFICIAL_SALES_TRANSACTION_PREFIX } from "@/features/official-sales/constants/official-sales-import";
 import {
   officialSalesRepository,
   type OfficialSalesRowCreateInput,
@@ -313,7 +314,7 @@ export const officialSalesService = {
             continue;
           }
 
-          const transactionNo = `OFS-${Date.now().toString(36).toUpperCase()}-${row.id.slice(-4)}`;
+          const transactionNo = `${OFFICIAL_SALES_TRANSACTION_PREFIX}${Date.now().toString(36).toUpperCase()}-${row.id.slice(-4)}`;
           const noteParts = [
             "Official sales import",
             row.drNo ? `Trans # ${row.drNo}` : null,

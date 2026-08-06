@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/database/client";
+import { OFFICIAL_SALES_TRANSACTION_PREFIX } from "@/features/official-sales/constants/official-sales-import";
 import { resolvePagination, toPaginatedResult } from "@/lib/shared/pagination";
 import { STOCK_COUNT_SESSION_LABELS } from "@/features/stock-audit/constants/stock-count-workflow";
 import { formatPeso } from "@/utils/format-currency";
@@ -352,6 +353,14 @@ async function soldSource(
         {
           id: `sold:${r.id}`,
           type: "sold" as const,
+          // Official Sales imports mint their transaction no with an OFS- prefix
+          // (official-sales.service.ts) — the only thing distinguishing them
+          // from a branch-encoded sale.
+          typeLabel: r.sale.transactionNo.startsWith(
+            OFFICIAL_SALES_TRANSACTION_PREFIX,
+          )
+            ? "Official Sales"
+            : undefined,
           timestamp: r.createdAt,
           serialNo: serial.serialNo,
           modelLabel: serial.modelLabel,

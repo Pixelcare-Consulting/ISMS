@@ -32,6 +32,12 @@ export interface SerialActivityEvent {
   /** Stable per-event id, e.g. `sold:<txnId>`. */
   id: string;
   type: SerialActivityType;
+  /**
+   * Overrides the type label in the Event column when the source needs a finer
+   * name than the type carries — e.g. an Official Sales import vs a branch sale,
+   * both of which are `sold`.
+   */
+  typeLabel?: string;
   timestamp: Date;
   serialNo: string;
   /** `${skuCode} — ${name}` of the unit's model. */
@@ -61,8 +67,10 @@ export function formatSerialActivityPerformedBy(
   return performedBy.name ?? performedBy.email;
 }
 
-export function formatSerialActivityType(type: SerialActivityType): string {
-  return SERIAL_ACTIVITY_LABELS[type] ?? type;
+export function formatSerialActivityType(
+  event: Pick<SerialActivityEvent, "type" | "typeLabel">,
+): string {
+  return event.typeLabel ?? SERIAL_ACTIVITY_LABELS[event.type] ?? event.type;
 }
 
 export function formatSerialActivityTimestamp(value: Date): string {
