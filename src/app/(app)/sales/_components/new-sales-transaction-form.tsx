@@ -30,6 +30,7 @@ import {
   uploadSaleProofAction,
 } from "@/features/sales/actions/sales.actions";
 import { isToFollowSerial } from "@/features/sales/constants/to-follow-serial";
+import { capturesDeliveryReceipt } from "@/features/sales/utils/delivery-method";
 import { SALE_PROOF_MAX_FILES } from "@/features/sales/utils/sale-proof";
 import { formatPeso } from "@/utils/format-currency";
 
@@ -101,6 +102,11 @@ export function NewSalesTransactionForm({
   const [detailOpen, setDetailOpen] = useState(false);
   const [editingGroupKey, setEditingGroupKey] = useState<string | null>(null);
   const [deleteGroupKey, setDeleteGroupKey] = useState<string | null>(null);
+
+  // Pickup sales never get a delivery receipt, so the DR fields drop out.
+  const showDelivery = capturesDeliveryReceipt(
+    deliveryMethods.find((m) => m.id === customerDeliveryMethodId)?.name,
+  );
 
   useEffect(() => {
     if (!branchId) return;
@@ -316,6 +322,8 @@ export function NewSalesTransactionForm({
           serialNumberId: d.serialNumberId,
           saleAmount: d.saleAmount,
           modelPrice: d.modelPrice ?? undefined,
+          deliveryNo: d.deliveryNo ?? undefined,
+          deliveryDate: d.deliveryDate ?? undefined,
         })),
       });
       if (result.error) {
@@ -553,6 +561,12 @@ export function NewSalesTransactionForm({
                   <th className="pb-2 pr-3 font-medium">Serial number</th>
                   <th className="pb-2 pr-3 font-medium text-right">Sale amount</th>
                   <th className="pb-2 pr-3 font-medium text-right">Model price</th>
+                  {showDelivery ? (
+                    <>
+                      <th className="pb-2 pr-3 font-medium">Delivery no.</th>
+                      <th className="pb-2 pr-3 font-medium">Delivery date</th>
+                    </>
+                  ) : null}
                   <th className="pb-2 font-medium">Action</th>
                 </tr>
               </thead>
@@ -570,6 +584,12 @@ export function NewSalesTransactionForm({
                     <td className="py-2 pr-3 text-right font-mono text-sm tabular-nums">
                       {formatPeso(d.modelPrice)}
                     </td>
+                    {showDelivery ? (
+                      <>
+                        <td className="py-2 pr-3">{d.deliveryNo ?? "—"}</td>
+                        <td className="py-2 pr-3">{d.deliveryDate ?? "—"}</td>
+                      </>
+                    ) : null}
                     <td className="py-2">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <Button
@@ -622,6 +642,7 @@ export function NewSalesTransactionForm({
           usedSerialIds={usedSerialIds}
           transactionDate={transactionDate || undefined}
           initialRows={editingRows}
+          showDelivery={showDelivery}
           onAdd={saveDetails}
           onClose={closeDetailDialog}
         />

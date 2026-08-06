@@ -22,6 +22,7 @@ import {
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import type { SaleStatusCodeRef } from "@/features/sales/actions/sales.actions";
 import type { SalesActionCapabilities } from "@/features/sales/constants/sales-permissions";
+import { capturesDeliveryReceipt } from "@/features/sales/utils/delivery-method";
 import { formatPeso } from "@/utils/format-currency";
 
 export interface SaleDetailsLine {
@@ -34,6 +35,9 @@ export interface SaleDetailsLine {
   serialNo: string;
   saleAmount: string;
   modelPrice: string | null;
+  deliveryNo: string | null;
+  /** YYYY-MM-DD, ready for an <input type="date">. */
+  deliveryDate: string | null;
   statusCode: SaleStatusCodeRef | null;
 }
 
@@ -87,6 +91,45 @@ function formatOptionalDate(value: string | null | undefined): string | null {
     month: "short",
     day: "numeric",
   });
+}
+
+/** Formats a YYYY-MM-DD day without letting the local zone shift it. */
+function formatDayOnly(value: string | null): string | null {
+  if (!value) return null;
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return null;
+  return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+function DeliveryStack({
+  deliveryNo,
+  deliveryDate,
+}: {
+  deliveryNo: string | null;
+  deliveryDate: string | null;
+}) {
+  const no = deliveryNo?.trim() || null;
+  const date = formatDayOnly(deliveryDate);
+  if (!no && !date) {
+    return <span className="text-muted-foreground">—</span>;
+  }
+  return (
+    <div className="min-w-0 leading-tight">
+      <p className="truncate font-medium" title={no ?? undefined}>
+        {no ?? "—"}
+      </p>
+      {date ? (
+        <p className="truncate text-[11px] text-muted-foreground">{date}</p>
+      ) : (
+        <p className="text-[11px] text-muted-foreground">No date</p>
+      )}
+    </div>
+  );
 }
 
 function BrandModelStack({
@@ -186,6 +229,10 @@ export function SaleDetailsDialog({
 }: SaleDetailsDialogProps) {
   const [proofViewerOpen, setProofViewerOpen] = useState(false);
   const dateLabel = formatOptionalDate(sale.transactionDate);
+  // Pickup sales have no delivery receipt, so the column is noise.
+  const showDelivery = capturesDeliveryReceipt(
+    sale.customerDeliveryMethod?.name,
+  );
   const totalLines = sale.lines.length;
   const returnStatus = sale.returnRequest?.status;
   const showRequestReturn =
@@ -379,6 +426,17 @@ export function SaleDetailsDialog({
                           )}
                         </dd>
                       </div>
+                      {showDelivery ? (
+                        <div className="col-span-2 min-w-0">
+                          <dt className="text-muted-foreground">Delivery</dt>
+                          <dd className="min-w-0">
+                            <DeliveryStack
+                              deliveryNo={line.deliveryNo}
+                              deliveryDate={line.deliveryDate}
+                            />
+                          </dd>
+                        </div>
+                      ) : null}
                     </dl>
                   </div>
                 ))}
@@ -395,6 +453,7 @@ export function SaleDetailsDialog({
                     <col className="w-28" />
                     <col className="w-16" />
                     <col className="w-24" />
+                    {showDelivery ? <col className="w-28" /> : null}
                     <col className="w-16" />
                   </colgroup>
                   <thead className="sticky top-0 z-10 bg-muted/95 text-xs text-muted-foreground backdrop-blur-sm">
@@ -420,6 +479,11 @@ export function SaleDetailsDialog({
                       <th className="whitespace-nowrap px-2 py-2 text-right font-medium">
                         Model price
                       </th>
+                      {showDelivery ? (
+                        <th className="whitespace-nowrap px-2 py-2 text-left font-medium">
+                          Delivery
+                        </th>
+                      ) : null}
                       <th className="sticky right-0 whitespace-nowrap bg-muted/95 px-2 py-2 text-right font-medium shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.12)]">
                         Edit
                       </th>
@@ -467,6 +531,14 @@ export function SaleDetailsDialog({
                             <span className="text-muted-foreground">—</span>
                           )}
                         </td>
+                        {showDelivery ? (
+                          <td className="min-w-0 px-2 py-2 text-xs">
+                            <DeliveryStack
+                              deliveryNo={line.deliveryNo}
+                              deliveryDate={line.deliveryDate}
+                            />
+                          </td>
+                        ) : null}
                         <td className="sticky right-0 whitespace-nowrap bg-card px-2 py-2 text-right shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.12)]">
                           <Button
                             size="sm"

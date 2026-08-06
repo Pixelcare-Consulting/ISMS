@@ -31,6 +31,7 @@ import {
   SALES_RETURN_REQUEST,
   salesReturnRejectPermissions,
 } from "@/features/sales/constants/sales-permissions";
+import { capturesDeliveryReceipt } from "@/features/sales/utils/delivery-method";
 import { isSaleTransactionNo } from "@/features/sales/utils/sale-transaction-no";
 import {
   parseSaleProofPaths,
@@ -148,6 +149,35 @@ function resolveLineStatusCode(
   return resolveSalesAtrStatusCode(atrStatus, salesAtrCodes);
 }
 
+const DATE_INPUT_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * `<input type="date">` value → UTC-midnight Date. Anchoring to UTC keeps the
+ * stored day identical to the day the user picked, whatever the server zone is.
+ */
+function parseDateInputValue(value: string): Date | null {
+  if (!DATE_INPUT_PATTERN.test(value)) return null;
+  const ms = Date.parse(`${value}T00:00:00.000Z`);
+  return Number.isNaN(ms) ? null : new Date(ms);
+}
+
+/** Inverse of parseDateInputValue, for pre-filling a date input. */
+function toDateInputValue(value: Date | null | undefined): string | null {
+  return value ? value.toISOString().slice(0, 10) : null;
+}
+
+const deliveryNoSchema = z.string().trim().max(100);
+
+/** Blank clears the date; anything else must be a real calendar day. */
+const deliveryDateSchema = z
+  .string()
+  .trim()
+  .refine(
+    (value) => value === "" || parseDateInputValue(value) !== null,
+    "Invalid delivery date",
+  )
+  .transform((value) => (value === "" ? null : parseDateInputValue(value)));
+
 const saleDetailSchema = z.object({
   packageTypeId: z.string().min(1),
   brandId: z.string().min(1),
@@ -158,6 +188,22 @@ const saleDetailSchema = z.object({
   // 0 is allowed for free items; negatives are not.
   saleAmount: z.coerce.number().nonnegative(),
   modelPrice: z.coerce.number().nonnegative().optional(),
+  deliveryNo: deliveryNoSchema.optional(),
+  deliveryDate: deliveryDateSchema.optional(),
+});
+
+/**
+ * Per-line Edit. Delivery fields are omit-to-keep / blank-to-clear, so they
+ * land as `undefined` (Prisma skips the column) or `null` (Prisma clears it).
+ */
+const updateSaleSerialSchema = z.object({
+  saleId: z.string().min(1),
+  /** When set, only this detail line is updated. */
+  detailId: z.string().min(1).optional(),
+  /** Real serial id, or TO-FOLLOW to clear the linked unit. */
+  serialNumberId: z.string().min(1),
+  deliveryNo: deliveryNoSchema.transform((value) => value || null).optional(),
+  deliveryDate: deliveryDateSchema.optional(),
 });
 
 const saleSchema = z.object({
@@ -414,6 +460,9 @@ export async function getSaleDetailsAction(saleId: string) {
         saleAmount: (lineAmount ?? 0).toString(),
         modelPrice:
           detail.modelPrice != null ? detail.modelPrice.toString() : null,
+        deliveryNo: detail.deliveryNo,
+        // YYYY-MM-DD so <input type="date"> round-trips without timezone drift.
+        deliveryDate: toDateInputValue(detail.deliveryDate),
         statusCode: resolveLineStatusCode(
           detail,
           sale.atrStatus,
@@ -945,7 +994,7 @@ export async function createSaleAction(input: unknown) {
             tenantId: session.user.tenantId,
             recordStatus: "active",
           },
-          select: { id: true },
+          select: { id: true, name: true },
         }),
       ]);
 
@@ -957,6 +1006,10 @@ export async function createSaleAction(input: unknown) {
       if (!payment) throw new Error("Payment type not found");
       if (!saleType) throw new Error("Sale type not found");
       if (!delivery) throw new Error("Customer delivery method not found");
+
+      // Pickup sales never produce a delivery receipt — drop anything the
+      // client sent rather than trusting the form to have hidden the fields.
+      const keepsDeliveryReceipt = capturesDeliveryReceipt(delivery.name);
 
       const created = await tx.branchSalesTransaction.create({
         data: {
@@ -1018,6 +1071,10 @@ export async function createSaleAction(input: unknown) {
               saleAmount: detail.saleAmount,
               modelPrice: detail.modelPrice ?? null,
               amount: detail.saleAmount,
+              deliveryNo: keepsDeliveryReceipt ? detail.deliveryNo || null : null,
+              deliveryDate: keepsDeliveryReceipt
+                ? (detail.deliveryDate ?? null)
+                : null,
             },
           });
         } else {
@@ -1034,6 +1091,10 @@ export async function createSaleAction(input: unknown) {
               saleAmount: detail.saleAmount,
               modelPrice: detail.modelPrice ?? null,
               amount: detail.saleAmount,
+              deliveryNo: keepsDeliveryReceipt ? detail.deliveryNo || null : null,
+              deliveryDate: keepsDeliveryReceipt
+                ? (detail.deliveryDate ?? null)
+                : null,
             },
           });
         }
@@ -1338,28 +1399,35 @@ export async function completeReturnRestoreAction(returnRequestId: string) {
  * when detailId is omitted. Restores the old unit to STK at the stock source
  * (moving back from the sold branch when relocate encode applied), then marks
  * the new unit STK → SLD/RSV at the sold branch via the same helper as encode.
+ *
+ * Also carries the line's delivery receipt: a TO-FOLLOW unit usually learns its
+ * DR at the same moment it learns its serial, so both settle in one write.
  */
-export async function updateSaleSerialAction(input: {
-  saleId: string;
-  /** When set, only this detail line is updated. */
-  detailId?: string;
-  /** Real serial id, or TO-FOLLOW to clear the linked unit. */
-  serialNumberId: string;
-}) {
+export async function updateSaleSerialAction(input: unknown) {
   const session = await requirePermission("sales.create");
-  const nextIsToFollow = isToFollowSerial(input.serialNumberId);
-  const nextSerialId = nextIsToFollow ? null : input.serialNumberId;
+  const parsed = updateSaleSerialSchema.safeParse(input);
+  if (!parsed.success) return { error: "Invalid sale line update" };
+
+  const { saleId, detailId, serialNumberId } = parsed.data;
+  const nextIsToFollow = isToFollowSerial(serialNumberId);
+  const nextSerialId = nextIsToFollow ? null : serialNumberId;
 
   const sale = await prisma.branchSalesTransaction.findFirst({
-    where: { id: input.saleId, tenantId: session.user.tenantId },
+    where: { id: saleId, tenantId: session.user.tenantId },
     select: {
       id: true,
       transactionNo: true,
       branchId: true,
       alternateBranchId: true,
+      customerDeliveryMethod: { select: { name: true } },
       details: {
         orderBy: { createdAt: "asc" },
-        select: { id: true, serialNumberId: true },
+        select: {
+          id: true,
+          serialNumberId: true,
+          deliveryNo: true,
+          deliveryDate: true,
+        },
       },
     },
   });
@@ -1379,13 +1447,53 @@ export async function updateSaleSerialAction(input: {
 
   const soldBranchId = sale.branchId;
   const stockBranchId = sale.alternateBranchId ?? sale.branchId;
-  const targetDetail = input.detailId
-    ? sale.details.find((d) => d.id === input.detailId)
+  const targetDetail = detailId
+    ? sale.details.find((d) => d.id === detailId)
     : sale.details[0];
   if (!targetDetail) return { error: "Sale detail line not found" };
 
+  // A pickup sale has no delivery receipt, so ignore whatever was submitted.
+  const keepsDeliveryReceipt = capturesDeliveryReceipt(
+    sale.customerDeliveryMethod?.name,
+  );
+  const deliveryNo = keepsDeliveryReceipt ? parsed.data.deliveryNo : undefined;
+  const deliveryDate = keepsDeliveryReceipt
+    ? parsed.data.deliveryDate
+    : undefined;
+
   const oldSerialId = targetDetail.serialNumberId;
+  // Only treat delivery as edited when a supplied value differs from what is
+  // stored — the edit dialog always sends both fields, changed or not.
+  const deliveryChanged =
+    (deliveryNo !== undefined && deliveryNo !== targetDetail.deliveryNo) ||
+    (deliveryDate !== undefined &&
+      toDateInputValue(deliveryDate) !==
+        toDateInputValue(targetDetail.deliveryDate));
+
+  // Serial unchanged: skip the inventory dance, but still persist a DR edit.
   if (oldSerialId === nextSerialId) {
+    if (!deliveryChanged) return { success: true as const };
+
+    await prisma.branchSalesTransactionDetail.update({
+      where: { id: targetDetail.id },
+      data: { deliveryNo, deliveryDate },
+    });
+
+    await auditService.log({
+      tenantId: session.user.tenantId,
+      userId: session.user.id,
+      action: "sale.delivery_updated",
+      entityType: "BranchSalesTransaction",
+      entityId: sale.id,
+      metadata: {
+        transactionNo: sale.transactionNo,
+        detailId: targetDetail.id,
+        deliveryNo: deliveryNo ?? null,
+        deliveryDate: toDateInputValue(deliveryDate),
+      },
+    });
+
+    revalidatePath("/sales");
     return { success: true as const };
   }
 
@@ -1452,6 +1560,8 @@ export async function updateSaleSerialAction(input: {
           serialNumberId: nextSerialId,
           // Freeze line STATUS with the sale — do not mirror inventory after ATR complete.
           statusCodeId: nextSerialId ? soldStatusCodeId : fwCodeId,
+          deliveryNo,
+          deliveryDate,
         },
       });
     });
@@ -1472,6 +1582,8 @@ export async function updateSaleSerialAction(input: {
       toSerialId: nextSerialId,
       toFollow: nextIsToFollow,
       stockSourceBranchId: stockBranchId,
+      deliveryNo: deliveryNo ?? null,
+      deliveryDate: toDateInputValue(deliveryDate),
     },
   });
 

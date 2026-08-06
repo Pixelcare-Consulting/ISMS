@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/database/client";
+import { OFFICIAL_SALES_TRANSACTION_PREFIX } from "@/features/official-sales/constants/official-sales-import";
 import { resolvePagination, toPaginatedResult } from "@/lib/shared/pagination";
 import { STOCK_COUNT_SESSION_LABELS } from "@/features/stock-audit/constants/stock-count-workflow";
 import { formatPeso } from "@/utils/format-currency";
@@ -312,13 +313,13 @@ async function soldSource(
         createdAt: true,
         saleAmount: true,
         amount: true,
+        deliveryNo: true,
         sale: {
           select: {
             transactionNo: true,
             transactionDate: true,
             customerName: true,
             contactNo: true,
-            deliveryNo: true,
             amount: true,
             branch: { select: { name: true } },
             createdBy: userSelect,
@@ -352,6 +353,14 @@ async function soldSource(
         {
           id: `sold:${r.id}`,
           type: "sold" as const,
+          // Official Sales imports mint their transaction no with an OFS- prefix
+          // (official-sales.service.ts) — the only thing distinguishing them
+          // from a branch-encoded sale.
+          typeLabel: r.sale.transactionNo.startsWith(
+            OFFICIAL_SALES_TRANSACTION_PREFIX,
+          )
+            ? "Official Sales"
+            : undefined,
           timestamp: r.createdAt,
           serialNo: serial.serialNo,
           modelLabel: serial.modelLabel,
@@ -361,7 +370,7 @@ async function soldSource(
             formatPeso(Number(r.saleAmount ?? r.amount ?? r.sale.amount)),
             r.sale.customerName ? `Customer: ${r.sale.customerName}` : null,
             r.sale.contactNo ? `Contact: ${r.sale.contactNo}` : null,
-            r.sale.deliveryNo ? `DR ${r.sale.deliveryNo}` : null,
+            r.deliveryNo ? `DR ${r.deliveryNo}` : null,
             r.sale.transactionDate
               ? `Transaction date: ${formatEventDate(r.sale.transactionDate)}`
               : null,

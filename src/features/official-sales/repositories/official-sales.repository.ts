@@ -5,6 +5,8 @@ export type OfficialSalesRowCreateInput = {
   serial: string;
   drDate: Date | null;
   drNo: string | null;
+  siDate: Date | null;
+  siNo: string | null;
   branchSold: string | null;
   action: string | null;
   dealer: string | null;
@@ -78,6 +80,8 @@ export const officialSalesRepository = {
             serial: row.serial,
             drDate: row.drDate,
             drNo: row.drNo,
+            siDate: row.siDate,
+            siNo: row.siNo,
             branchSold: row.branchSold,
             action: row.action,
             dealer: row.dealer,
@@ -264,8 +268,8 @@ export const officialSalesRepository = {
   },
 
   /**
-   * Match sale detail by serial + Trans # (drNo / transactionNo / deliveryNo / siTrans)
-   * and sold branch. Used by DEL and ADD matching.
+   * Match sale detail by serial + Trans # (sale transactionNo / siTrans, or the
+   * line's own deliveryNo) and sold branch. Used by DEL and ADD matching.
    */
   findSaleDetailBySerialTransBranch(
     tenantId: string,
@@ -281,15 +285,12 @@ export const officialSalesRepository = {
         ...(statusCodes?.length
           ? { statusCode: { code: { in: statusCodes } } }
           : {}),
-        sale: {
-          tenantId,
-          branchId,
-          OR: [
-            { transactionNo: txn },
-            { deliveryNo: txn },
-            { siTrans: txn },
-          ],
-        },
+        sale: { tenantId, branchId },
+        OR: [
+          { deliveryNo: txn },
+          { sale: { transactionNo: txn } },
+          { sale: { siTrans: txn } },
+        ],
       },
       select: OPEN_SALE_DETAIL_SELECT,
       orderBy: { createdAt: "desc" },
@@ -331,15 +332,15 @@ export const officialSalesRepository = {
           sale: {
             tenantId,
             atrStatus: { not: "closed" },
-            OR: [
-              { transactionNo: txn },
-              { deliveryNo: txn },
-              { siTrans: txn },
-            ],
             ...(opts.transactionDate
               ? { transactionDate: opts.transactionDate }
               : {}),
           },
+          OR: [
+            { deliveryNo: txn },
+            { sale: { transactionNo: txn } },
+            { sale: { siTrans: txn } },
+          ],
         },
         select: OPEN_SALE_DETAIL_SELECT,
         orderBy: { createdAt: "desc" },
