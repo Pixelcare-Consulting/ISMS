@@ -6,6 +6,8 @@ export const DELIVERY_FREQUENCIES = [
   "triweekly",
   "monthly",
   "twice_weekly",
+  "daily",
+  "thrice_monthly",
 ] as const;
 
 const weekday = z.number().int().min(0).max(6);

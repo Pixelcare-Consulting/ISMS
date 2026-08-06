@@ -1,14 +1,22 @@
 import { auditService } from "@/features/audit/services/audit.service";
-import { officialSalesRepository } from "@/features/official-sales/repositories/official-sales.repository";
+import {
+  officialSalesRepository,
+  type OfficialSalesRowCreateInput,
+} from "@/features/official-sales/repositories/official-sales.repository";
+import {
+  normalizeProcessAction,
+  processOfficialSalesRow,
+} from "@/features/official-sales/services/official-sales-process";
+import { buildOfficialSalesTemplateWorkbook } from "@/features/official-sales/services/official-sales.workbook";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
-import { prisma } from "@/lib/database/client";
 import * as XLSX from "xlsx";
 
+/** Strip punctuation/spaces so "SI/TRANS NO." and "DR NO." match aliases. */
 function normalizeHeader(value: unknown): string {
   return String(value ?? "")
     .trim()
     .toLowerCase()
-    .replace(/[\s_-]+/g, "");
+    .replace(/[^a-z0-9]+/g, "");
 }
 
 function pickColumn(
@@ -19,9 +27,22 @@ function pickColumn(
   for (const alias of aliases) {
     const want = normalizeHeader(alias);
     const hit = entries.find(([key]) => normalizeHeader(key) === want);
-    if (hit) return hit[1];
+    if (hit) {
+      const value = hit[1];
+      if (value != null && value !== "") return value;
+    }
   }
   return undefined;
+}
+
+function pickOptionalText(
+  row: Record<string, unknown>,
+  aliases: string[],
+): string | null {
+  const raw = pickColumn(row, aliases);
+  if (raw == null || raw === "") return null;
+  const text = String(raw).trim();
+  return text.length > 0 ? text : null;
 }
 
 function parseDrDate(value: unknown): Date | null {
@@ -47,11 +68,26 @@ function parseDrDate(value: unknown): Date | null {
   return null;
 }
 
-function parseUploadBuffer(buffer: ArrayBuffer | Buffer): {
-  serial: string;
-  drDate: Date | null;
-  drNo: string | null;
-}[] {
+function parseSaleAmount(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const text = String(value).trim().replace(/,/g, "");
+  if (!text) return null;
+  const n = Number(text);
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalizeAction(value: unknown): string | null {
+  if (value == null || value === "") return null;
+  const processAction = normalizeProcessAction(String(value));
+  if (processAction) return processAction;
+  const text = String(value).trim().toUpperCase();
+  if (!text) return null;
+  // Keep unknown action text for staging display; process will reject it.
+  return text.slice(0, 32);
+}
+
+function parseUploadBuffer(buffer: ArrayBuffer | Buffer): OfficialSalesRowCreateInput[] {
   const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) throw new Error("Workbook has no sheets");
@@ -66,22 +102,70 @@ function parseUploadBuffer(buffer: ArrayBuffer | Buffer): {
   const parsed = rows
     .map((row) => {
       const serial = String(
-        pickColumn(row, ["serial", "serialno", "serialnumber", "sn"]) ?? "",
+        pickColumn(row, ["serial number", "serialnumber", "serial", "serialno", "sn"]) ?? "",
       ).trim();
-      const drNoRaw = pickColumn(row, ["drno", "dr number", "dr#", "deliveryno"]);
+
+      // Prefer SI/TRANS NO. over DR NO. / Trans # (empty preferred falls through).
+      const drNoRaw = pickColumn(row, [
+        "si/trans no.",
+        "si/trans no",
+        "sitransno",
+        "si trans no",
+        "trans #",
+        "trans#",
+        "transno",
+        "transactionno",
+        "dr no.",
+        "dr no",
+        "drno",
+        "dr number",
+        "dr#",
+        "deliveryno",
+        "delivery no",
+      ]);
+
+      // Prefer DATE over DR DATE / Trans Date (empty preferred falls through).
       const drDate = parseDrDate(
-        pickColumn(row, ["drdate", "dr date", "deliverydate", "date"]),
+        pickColumn(row, [
+          "date",
+          "trans date",
+          "transdate",
+          "dr date",
+          "drdate",
+          "deliverydate",
+        ]),
       );
+
+      const branchSold = pickOptionalText(row, [
+        "branch name",
+        "branchname",
+        "branch sold",
+        "branchsold",
+        "branch",
+      ]);
+      const action = normalizeAction(
+        pickColumn(row, ["action key", "actionkey", "action"]),
+      );
+
       return {
         serial,
         drDate,
         drNo: drNoRaw == null || drNoRaw === "" ? null : String(drNoRaw).trim(),
+        branchSold,
+        action,
+        dealer: pickOptionalText(row, ["dealer"]),
+        brand: pickOptionalText(row, ["brand"]),
+        itemModel: pickOptionalText(row, ["item/model", "itemmodel", "item model", "model"]),
+        saleAmount: parseSaleAmount(pickColumn(row, ["sale amount", "saleamount", "amount"])),
+        packageName: pickOptionalText(row, ["package", "packagename", "package name"]),
       };
     })
     .filter((row) => row.serial.length > 0);
 
   if (parsed.length === 0) {
-    throw new Error("No rows found. Expected columns: Serial, DR DATE, DR NO");
+    throw new Error(
+      "No rows found. Expected columns: DEALER–ACTION KEY (or legacy Trans Date / Serial Number / Action)",
+    );
   }
   return parsed;
 }
@@ -127,132 +211,80 @@ export const officialSalesService = {
     return result.count;
   },
 
+  /**
+   * Hard-delete staging rows that have not mutated inventory (pending/error only).
+   * Rejects any request that includes a success row.
+   */
+  async deleteRows(tenantId: string, userId: string, rowIds: string[]) {
+    const uniqueIds = [...new Set(rowIds.filter(Boolean))];
+    if (uniqueIds.length === 0) {
+      throw new Error("Select at least one row to delete");
+    }
+
+    const total = await officialSalesRepository.countRowsByIds(tenantId, uniqueIds);
+    if (total !== uniqueIds.length) {
+      throw new Error("One or more rows were not found");
+    }
+
+    const deletable = await officialSalesRepository.findDeletableRows(
+      tenantId,
+      uniqueIds,
+    );
+    if (deletable.length !== uniqueIds.length) {
+      throw new Error(
+        "Only pending or error rows can be deleted. Successfully processed rows cannot be removed here.",
+      );
+    }
+
+    const result = await officialSalesRepository.deleteDeletableRows(
+      tenantId,
+      uniqueIds,
+    );
+
+    await auditService.log({
+      tenantId,
+      userId,
+      action: "official_sales.row_deleted",
+      entityType: "OfficialSalesImportRow",
+      entityId: tenantId,
+      metadata: {
+        deleted: result.count,
+        rowIds: uniqueIds,
+        serials: deletable.map((r) => r.serial),
+      },
+    });
+
+    return result.count;
+  },
+
+  /** ExcelJS dealer template (DEALER–ACTION KEY with header colors). */
+  async buildTemplate(): Promise<Buffer> {
+    return buildOfficialSalesTemplateWorkbook();
+  },
+
   async processRows(tenantId: string, userId: string, rowIds?: string[]) {
     const rows = await officialSalesRepository.findPendingRows(tenantId, rowIds);
     if (rows.length === 0) return { processed: 0, successCount: 0, errorCount: 0 };
 
-    const stkCodeId = await reasonStatusService.requireCodeId(
-      tenantId,
-      "inventory_system",
-      "STK",
-    );
-    const sldCodeId = await reasonStatusService.requireCodeId(
-      tenantId,
-      "inventory_system",
-      "SLD",
-    );
-    const rsvCodeId = await reasonStatusService.requireCodeId(
-      tenantId,
-      "inventory_system",
-      "RSV",
-    );
+    const [stkCodeId, sldCodeId, rsvCodeId, ofsCodeId] = await Promise.all([
+      reasonStatusService.requireCodeId(tenantId, "inventory_system", "STK"),
+      reasonStatusService.requireCodeId(tenantId, "inventory_system", "SLD"),
+      reasonStatusService.requireCodeId(tenantId, "inventory_system", "RSV"),
+      reasonStatusService.requireCodeId(tenantId, "inventory_system", "OFS"),
+    ]);
 
+    const codes = { stkCodeId, sldCodeId, rsvCodeId, ofsCodeId };
     let success = 0;
     let error = 0;
 
     for (const row of rows) {
       try {
-        const inventory = await officialSalesRepository.findInventoryBySerial(
-          tenantId,
-          row.serial,
-        );
-        if (!inventory) {
-          await officialSalesRepository.updateRowResult(row.id, {
-            status: "error",
-            result: "Serial not found in branch inventory",
-          });
-          error += 1;
-          continue;
-        }
-
-        const statusCode = inventory.statusCode.code.toUpperCase();
-        if (statusCode === "STK") {
-          const transactionNo = `OFS-${Date.now().toString(36).toUpperCase()}-${row.id.slice(-4)}`;
-          const noteParts = [
-            "Official sales import",
-            row.drNo ? `DR NO ${row.drNo}` : null,
-            row.drDate ? `DR DATE ${row.drDate.toISOString().slice(0, 10)}` : null,
-          ].filter(Boolean);
-
-          await prisma.$transaction(async (tx) => {
-            const created = await tx.branchSalesTransaction.create({
-              data: {
-                tenantId,
-                branchId: inventory.branchId,
-                alternateBranchId: inventory.branchId,
-                transactionNo,
-                transactionDate: row.drDate,
-                deliveryNo: row.drNo,
-                deliveryDate: row.drDate,
-                amount: 0,
-                notes: noteParts.join(" · "),
-                atrStatus: "open",
-                createdById: userId,
-              },
-            });
-            await tx.branchSalesTransactionDetail.create({
-              data: {
-                salesId: created.id,
-                modelId: inventory.serialNumber.model?.id ?? null,
-                serialNumberId: inventory.serialNumberId,
-                saleAmount: 0,
-                amount: 0,
-              },
-            });
-            const updated = await tx.branchInventory.updateMany({
-              where: {
-                id: inventory.id,
-                statusCodeId: stkCodeId,
-              },
-              data: {
-                statusCodeId: sldCodeId,
-                updatedById: userId,
-              },
-            });
-            if (updated.count === 0) {
-              throw new Error("Inventory status changed; expected STK");
-            }
-          });
-
-          await officialSalesRepository.updateRowResult(row.id, {
-            status: "success",
-            result: "SALE — marked sold (SLD)",
-          });
-          success += 1;
-          continue;
-        }
-
-        if (statusCode === "SLD" || statusCode === "RSV") {
-          const fromCodeId = statusCode === "RSV" ? rsvCodeId : sldCodeId;
-          await prisma.$transaction(async (tx) => {
-            const updated = await tx.branchInventory.updateMany({
-              where: {
-                id: inventory.id,
-                statusCodeId: fromCodeId,
-              },
-              data: {
-                statusCodeId: stkCodeId,
-                updatedById: userId,
-              },
-            });
-            if (updated.count === 0) {
-              throw new Error(`Inventory status changed; expected ${statusCode}`);
-            }
-          });
-
-          await officialSalesRepository.updateRowResult(row.id, {
-            status: "success",
-            result: `RETURN — restored to STK from ${statusCode}`,
-          });
-          success += 1;
-          continue;
-        }
-
+        const result = await processOfficialSalesRow(tenantId, userId, row, codes);
         await officialSalesRepository.updateRowResult(row.id, {
-          status: "error",
-          result: `Unsupported inventory status ${statusCode}`,
+          status: "success",
+          result,
         });
-        error += 1;
+        success += 1;
       } catch (e) {
         await officialSalesRepository.updateRowResult(row.id, {
           status: "error",

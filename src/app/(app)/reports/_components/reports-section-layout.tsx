@@ -2,8 +2,19 @@
 
 import { usePathname } from "next/navigation";
 
+import type { PageTutorialContent } from "@/components/page-tutorial/types";
 import { SectionLayout } from "@/components/navigation/section-layout";
 import { resolveRouteTitle } from "@/config/route-titles";
+import { OFFICIAL_SALES_PAGE_TUTORIAL } from "@/content/page-tutorials/official-sales";
+
+function resolveReportsTutorial(
+  pathname: string,
+): PageTutorialContent | undefined {
+  if (pathname.startsWith("/reports/official-sales")) {
+    return OFFICIAL_SALES_PAGE_TUTORIAL;
+  }
+  return undefined;
+}
 
 function resolveReportsDescription(pathname: string): string {
   if (pathname.startsWith("/reports/official-sales")) {
@@ -63,6 +74,7 @@ export function ReportsSectionLayout({
     <SectionLayout
       title={title}
       description={resolveReportsDescription(pathname)}
+      tutorial={resolveReportsTutorial(pathname)}
     >
       {children}
     </SectionLayout>

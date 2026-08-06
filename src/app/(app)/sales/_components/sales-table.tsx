@@ -77,6 +77,7 @@ type EditingLine = {
   detailId: string;
   transactionNo: string;
   branchId: string;
+  modelId: string | null;
   serialNumberId: string | null;
   serialNo: string;
 };
@@ -288,6 +289,7 @@ export function SalesTable({
       detailId: line.detailId,
       transactionNo: saleDetails.transactionNo,
       branchId: saleDetails.stockBranchId,
+      modelId: line.modelId,
       serialNumberId: line.serialNumberId,
       serialNo: line.serialNo,
     });
@@ -511,6 +513,7 @@ export function SalesTable({
           detailId={editingLine.detailId}
           transactionNo={editingLine.transactionNo}
           branchId={editingLine.branchId}
+          modelId={editingLine.modelId}
           currentSerialId={editingLine.serialNumberId}
           currentSerialLabel={editingLine.serialNo}
           onClose={() => {

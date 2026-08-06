@@ -41,6 +41,8 @@ export interface GlobalDataTableProps {
   pageSize?: GlobalDataTablePageSize;
   /** Extra controls before search (after Show dropdown). */
   toolbarLeading?: ReactNode;
+  /** Controls placed immediately after the search input (e.g. Download Template). */
+  searchTrailing?: ReactNode;
   toolbarActions?: ReactNode;
   /** Banner row between toolbar and table (e.g. active URL filters). */
   banner?: ReactNode;
@@ -68,6 +70,7 @@ export function GlobalDataTable({
   search,
   pageSize,
   toolbarLeading,
+  searchTrailing,
   toolbarActions,
   banner,
   footer,
@@ -83,7 +86,9 @@ export function GlobalDataTable({
   // it didn't need to is invisible, while one that spills before hydration is not.
   const [overflowsCard, setOverflowsCard] = useState(true);
   const hasSearch = Boolean(search);
-  const hasToolbar = Boolean(search || pageSize || toolbarActions || toolbarLeading);
+  const hasToolbar = Boolean(
+    search || pageSize || toolbarActions || toolbarLeading || searchTrailing,
+  );
   /**
    * responsive table: sticky headers need a scrollport-free ancestor chain, but
    * a horizontally scrolling wrapper *is* a scrollport — the two can't coexist.
@@ -146,6 +151,7 @@ export function GlobalDataTable({
       suggestions={search?.suggestions}
       className={stickyHeader ? "border-b-0" : undefined}
       leading={toolbarLeadingContent}
+      searchTrailing={searchTrailing}
       showSearch={hasSearch}
     >
       {toolbarActions}

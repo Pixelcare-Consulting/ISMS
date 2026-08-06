@@ -25,6 +25,50 @@ export function manilaWeekday(now: Date = new Date()): number {
   return idx === -1 ? now.getDay() : idx;
 }
 
+/** Minutes from midnight in Asia/Manila (0–1439). */
+export function manilaMinutesOfDay(now: Date = new Date()): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Manila",
+    hour: "numeric",
+    minute: "numeric",
+    hour12: false,
+  }).formatToParts(now);
+  const hour = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
+  const minute = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
+  // Intl may return "24" for midnight in some environments.
+  const normalizedHour = hour === 24 ? 0 : hour;
+  return normalizedHour * 60 + minute;
+}
+
+/** Format minutes-from-midnight as a short 12-hour clock label (e.g. 540 → "9:00 AM"). */
+export function formatMinutesAsClock(minutes: number): string {
+  const clamped = Math.max(0, Math.min(1439, Math.floor(minutes)));
+  const h24 = Math.floor(clamped / 60);
+  const m = clamped % 60;
+  const period = h24 >= 12 ? "PM" : "AM";
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
+}
+
+/** Convert `HH:MM` (from `<input type="time">`) to minutes from midnight, or null. */
+export function timeValueToMinutes(value: string): number | null {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return null;
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+  return hours * 60 + minutes;
+}
+
+/** Convert minutes from midnight to `HH:MM` for `<input type="time">`. */
+export function minutesToTimeValue(minutes: number): string {
+  const clamped = Math.max(0, Math.min(1439, Math.floor(minutes)));
+  const h = Math.floor(clamped / 60);
+  const m = clamped % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
 export function formatWeekdayList(days: number[]): string {
   const sorted = [...new Set(days)].filter((d) => d >= 0 && d <= 6).sort((a, b) => a - b);
   if (sorted.length === 0) return "none";
@@ -43,6 +87,9 @@ export interface BranchOrderingSchedule {
 
 export interface OrderingPolicyConfig {
   globalLockedWeekdays: number[];
+  dailyLockEnabled?: boolean;
+  dailyLockStartMinutes?: number | null;
+  dailyLockEndMinutes?: number | null;
 }
 
 /** Default policy when a tenant has no explicit row: Sunday is locked. */
@@ -67,6 +114,26 @@ export function checkOrderingAllowed(params: {
   if (locked.includes(weekday)) {
     const verb = params.action === "create" ? "created or submitted" : "approved";
     return `Orders cannot be ${verb} on ${WEEKDAY_LABELS[weekday]} (company ordering policy).`;
+  }
+
+  const dailyEnabled = params.policy?.dailyLockEnabled === true;
+  const start = params.policy?.dailyLockStartMinutes;
+  const end = params.policy?.dailyLockEndMinutes;
+  if (
+    dailyEnabled &&
+    typeof start === "number" &&
+    typeof end === "number" &&
+    Number.isInteger(start) &&
+    Number.isInteger(end) &&
+    start >= 0 &&
+    end <= 1439 &&
+    start < end
+  ) {
+    const nowMinutes = manilaMinutesOfDay(params.now);
+    if (nowMinutes >= start && nowMinutes < end) {
+      const verb = params.action === "create" ? "created or submitted" : "approved";
+      return `Orders cannot be ${verb} between ${formatMinutesAsClock(start)} and ${formatMinutesAsClock(end)} (company ordering policy).`;
+    }
   }
 
   // Branch ordering window only gates order placement, not internal approvals.

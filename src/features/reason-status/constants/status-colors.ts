@@ -108,6 +108,7 @@ const CODE_FALLBACK_COLOR: Record<string, StatusColorKey> = {
   scheduled: "teal",
   requested: "sky",
   SLD: "slate",
+  OFS: "teal",
   RSV: "orange",
   reserve: "amber",
   FW: "orange",

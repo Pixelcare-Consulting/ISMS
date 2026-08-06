@@ -2,15 +2,31 @@
  * Release history for in-app "What's New" and update logs.
  *
  * Maintenance (each release):
- * 1. Bump `version` in package.json (semver: major.minor.patch)
- * 2. Prepend a new entry below with matching version, date, and highlights
- *    — Same calendar day: consolidate into the latest version (do not stack patches)
- * 3. Deploy — login footer and What's new dialog update automatically
+ * 1. Bump `version` in package.json AND README "Current version" to match the newest entry
+ * 2. Prepend a new entry below (newest first) with matching version, date, title, highlights,
+ *    and typed changes (feature | improvement | fix)
+ * 3. Set `releasedAt` (ISO datetime, Asia/Manila +08:00) on the latest entry for ship clock time
+ * 4. Deploy — login footer and What's new dialog update automatically
  *
- * Writing style (always):
- * - Write for end users, not developers
- * - Describe what they can do or what feels better — not file names, SQL, slugs, or reseed steps
- * - Avoid jargon (RBAC, FK, hydration, pool timeout, GROUP BY, etc.)
+ * Semver / when to bump (do NOT dump unrelated work into one mega note):
+ * - patch (x.y.Z): fixes, polish, small UX tweaks (confirm dialogs, NEW badge placement,
+ *   sticky header removal, timestamp display, copy/layout polish)
+ * - minor (x.Y.0): new core modules or capabilities (e.g. Service center ops, sales status
+ *   staying with the sale line, Official Sales accounting columns & bulk delete, Order Policy
+ *   daily lock). Each distinct core module/capability gets its OWN version — never mash
+ *   unrelated core features into one entry
+ * - major (X.0.0): breaking product changes (rare)
+ *
+ * Same-day consolidation:
+ * - ONLY consolidate when changes share the same patch theme (related polish/fixes)
+ * - NEVER consolidate a new core module/capability into an existing patch or into another
+ *   unrelated core feature — bump a new minor (or major) instead
+ *
+ * Writing style (always — end users, not developers):
+ * - Describe what people can do or what feels better
+ * - No file names, SQL, FK, schema fields, migration names, reseed steps, or RBAC jargon dumps
+ * - Avoid technical jargon (hydration, pool timeout, GROUP BY, slugs, etc.)
+ * - Keep highlights short; order changes as feature → improvement → fix
  */
 
 export type ReleaseChangeType = "feature" | "fix" | "improvement";
@@ -22,7 +38,13 @@ export interface ReleaseChange {
 
 export interface ReleaseNote {
   version: string;
+  /** Calendar date (YYYY-MM-DD). Used for sorting/display when `releasedAt` is absent. */
   date: string;
+  /**
+   * Optional ISO datetime of the ship/push moment (e.g. 2026-08-04T18:03:00+08:00).
+   * What's New shows clock time when set; older entries without it fall back to date-only.
+   */
+  releasedAt?: string;
   title: string;
   highlights: string[];
   changes?: ReleaseChange[];
@@ -30,40 +52,285 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
-    version: "0.13.25",
-    date: "2026-08-04",
-    title: "Sales encode, ATR status, sortable tables, and smoother orders",
+    version: "0.20.0",
+    date: "2026-08-06",
+    releasedAt: "2026-08-06T17:15:00+08:00",
+    title: "Official Sales by Action Key",
     highlights: [
-      "Click a column header on most list tables to sort ascending or descending — arrows show which column is active",
-      "Customize Sales & ATR return badge names and colors in Status settings",
-      "Sales list shows one row per serial with clear status badges (including TO FOLLOW)",
-      "When encoding a sale, pick TO-FOLLOW if the serial is not ready yet, then Edit later to assign the real serial",
-      "Review multiple sale proofs in a preview window — images and PDFs side by side",
-      "Attach multiple proof files on a sale and type the transaction number from your invoice",
-      "Sales encode and returns are reliable again — TO FOLLOW saves, model price fills from the price list, and return status shows Pending CS",
-      "Orders and Logistics only show actions for your step; View details is always available",
+      "Official Sales now follows the Action Key on each row — ADD, warehouse ADD, or delete — instead of guessing from stock status",
+      "Processed rows mark units Official Sold; delete puts stock back so you can correct dealer files confidently",
+      "Download Template includes sample rows for each Action Key, and the ? guide matches the new flow",
     ],
     changes: [
       {
         type: "feature",
         description:
-          "List tables across Inventory, Orders, Sales, Logistics, Settings, Audit, and more support Asc/Desc sorting from the column headers",
+          "Official Sales process uses Action Key: ADD for branch official sales, WHSE_ADD when the serial is still in the warehouse, and DEL to reverse an official or sold line and restore stock",
       },
       {
         type: "feature",
         description:
-          "Sales encode offers TO-FOLLOW when a serial is not available yet; use Edit on the sale row later to set or change the serial",
+          "Units processed as official sales show as Official Sold — separate from everyday Sold / Reserved on Sales & ATR",
+      },
+      {
+        type: "improvement",
+        description:
+          "Staging results spell out the path taken (for example Official Sold or stock restored), and the template plus quick guide show ADD, DEL, and WHSE_ADD",
+      },
+      {
+        type: "improvement",
+        description:
+          "Branch name on the file must match a real branch; transaction number from the file is kept when present",
+      },
+      {
+        type: "fix",
+        description:
+          "UPD on the file no longer pretends to process — you get a clear message to edit that sale under Sales instead",
+      },
+    ],
+  },
+  {
+    version: "0.19.7",
+    date: "2026-08-06",
+    releasedAt: "2026-08-06T17:05:00+08:00",
+    title: "Cleaner sales encode details",
+    highlights: [
+      "When adding package line items, pick promo type once above the sets — it applies to every serial",
+      "SI/Trans no is no longer a separate field; transaction number is enough",
+      "Edit a package set to fix serials or other details; delete removes the whole package set after confirm",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Transaction details can be edited — opens Add Line Items again with the package sets filled in so you can correct serials and other fields",
+      },
+      {
+        type: "improvement",
+        description:
+          "Promo type on Add Line Items sits above the sets and applies to all serials in the package instead of being chosen per set",
+      },
+      {
+        type: "improvement",
+        description:
+          "New sales transaction no longer asks for SI/Trans no separately — it follows the transaction number",
+      },
+      {
+        type: "improvement",
+        description:
+          "Deleting a detail asks for confirmation and removes the entire package set (all serials), not just one line",
+      },
+    ],
+  },
+  {
+    version: "0.19.6",
+    date: "2026-08-04",
+    releasedAt: "2026-08-04T19:30:00+08:00",
+    title: "Official Sales quick guide",
+    highlights: [
+      "Official Sales has a ? quick guide beside the page title",
+      "Learn download, upload, review, process, view details, and delete in one short walkthrough",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Official Sales shows a quick guide (?) next to the title covering template download, upload, staging review, process pending, view details, delete, and show all columns",
+      },
+    ],
+  },
+  {
+    version: "0.19.5",
+    date: "2026-08-04",
+    releasedAt: "2026-08-04T19:20:00+08:00",
+    title: "Official Sales progress popup",
+    highlights: [
+      "Upload, Process, and Download Template open a progress window with a live step checklist",
+      "You can follow each step with checkmarks; errors stay open so you can read what failed",
+      "Toolbar spinners still show while work runs, and row selection stays responsive",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Official Sales Upload, Process pending, and Download Template show a progress popup with a live timeline of steps",
+      },
+      {
+        type: "improvement",
+        description:
+          "Successful Official Sales actions briefly show Done then close; failures stay open with a Close button",
+      },
+      {
+        type: "improvement",
+        description:
+          "Process pending shows how many rows are being worked and the ok / failed counts when finished",
+      },
+    ],
+  },
+  {
+    version: "0.19.4",
+    date: "2026-08-04",
+    releasedAt: "2026-08-04T19:10:00+08:00",
+    title: "Clearer Official Sales action feedback",
+    highlights: [
+      "Download, Upload, Process, and Delete show a spinner so you know work is in progress",
+      "Row checkboxes stay responsive while other actions run",
+      "Processing many rows starts with a clear progress toast",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Official Sales staging buttons show loading feedback for download, upload, process, and delete without freezing the whole table",
+      },
+      {
+        type: "improvement",
+        description:
+          "Selecting staging rows stays snappy while template download or other actions are running",
+      },
+      {
+        type: "improvement",
+        description:
+          "Process pending shows how many rows are being worked on when you start",
+      },
+    ],
+  },
+  {
+    version: "0.19.3",
+    date: "2026-08-04",
+    releasedAt: "2026-08-04T18:58:00+08:00",
+    title: "Clearer Official Sales staging details",
+    highlights: [
+      "Staging View shows all sale fields in one clean two-column layout",
+      "Long results are easier to read, with Process, Delete, and Close in the footer",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Official Sales staging details use one consistent layout for every field, with a clearer Result area and Process, Delete, and Close in the footer",
+      },
+    ],
+  },
+  {
+    version: "0.19.2",
+    date: "2026-08-04",
+    releasedAt: "2026-08-04T18:45:00+08:00",
+    title: "Official Sales staging View and mobile polish",
+    highlights: [
+      "Open any staging row with View to see full details, then Process or Delete when the row allows it",
+      "Download Template sits next to search so Upload and Process stay as the main actions",
+      "Staging table works more comfortably on phones with sideways scroll and a cleaner toolbar",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Official Sales Actions uses View to open a details window with Process and Delete for pending or failed rows",
+      },
+      {
+        type: "improvement",
+        description:
+          "Download Template moves beside the search bar; Upload sales and Process pending stay on the right",
+      },
+      {
+        type: "improvement",
+        description:
+          "Official Sales staging toolbar and table are easier to use on smaller screens",
+      },
+    ],
+  },
+  {
+    version: "0.19.1",
+    date: "2026-08-04",
+    releasedAt: "2026-08-04T18:35:00+08:00",
+    title: "Clearer Official Sales staging list",
+    highlights: [
+      "Official Sales staging opens with a shorter column set so rows are easier to scan",
+      "Dealer, brand, and model show under the serial; use Show all columns when you need the full template",
+      "Long result messages stay truncated until you hover for the full text",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Official Sales staging defaults to Serial, Branch, Date, SI/Trans No., Action, Status, and Result — with dealer details tucked under Serial",
+      },
+      {
+        type: "improvement",
+        description:
+          "Show all columns reveals Dealer, Brand, Item/Model, Sale Amount, and Package when you need the full dealer template",
+      },
+      {
+        type: "improvement",
+        description:
+          "Long Result messages truncate with a hover tip, and Serial stays visible while you scroll sideways",
+      },
+    ],
+  },
+
+  {
+    version: "0.19.0",
+    date: "2026-08-04",
+    releasedAt: "2026-08-04T18:20:00+08:00",
+    title: "Official Sales dealer template",
+    highlights: [
+      "Download Template matches the dealer spreadsheet — Dealer through Action Key with clear column colors",
+      "Upload keeps Dealer, Brand, Item/Model, Sale Amount, and Package in the staging list",
+      "Date and SI/Trans No. are preferred when both dealer and DR columns are filled",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Official Sales Download Template matches the dealer layout (Dealer, Brand, Branch Name, dates, serial, sale amount, package, Action Key) with colored headers",
       },
       {
         type: "feature",
         description:
-          "Settings → Status includes a Sales & ATR group to rename and recolor return and ATR badges",
+          "Official Sales staging shows the same dealer columns so uploaded rows stay easy to review before Process",
       },
       {
-        type: "feature",
+        type: "improvement",
         description:
-          "Sale Proof supports multiple photos or PDFs on one transaction",
+          "When both Date and DR Date (or SI/Trans No. and DR No.) are present, Official Sales uses Date and SI/Trans No. for processing",
       },
+    ],
+  },
+
+  {
+    version: "0.18.2",
+    date: "2026-08-04",
+    releasedAt: "2026-08-04T18:06:00+08:00",
+    title: "What’s New shows date, time, and one NEW badge",
+    highlights: [
+      "What’s New shows the release date and ship time (for example 04.08.26 · 6:06pm)",
+      "The NEW badge appears once on the latest release title — not on every change row",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "What’s New shows the release date and ship time above the update list",
+      },
+      {
+        type: "fix",
+        description:
+          "What’s New shows NEW once on the latest release title — not on every Feature, Improvement, or Fix row",
+      },
+    ],
+  },
+
+  {
+    version: "0.18.1",
+    date: "2026-08-04",
+    title: "Clearer Orders, Logistics, and dashboard reliability",
+    highlights: [
+      "Orders and Logistics only show actions for your step; View details is always available",
+      "New orders stay limited to branches in your area so they show up in your list right away",
+      "Accept delivery and dashboard activity cards work reliably again",
+    ],
+    changes: [
       {
         type: "feature",
         description:
@@ -72,22 +339,130 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "improvement",
         description:
+          "Orders and Logistics row actions only show when it is your step",
+      },
+      {
+        type: "improvement",
+        description:
+          "New orders stay limited to branches in your area so they show up in your list right away",
+      },
+      {
+        type: "fix",
+        description:
+          "Accept delivery on Logistics works again for pending order deliveries",
+      },
+      {
+        type: "fix",
+        description:
+          "Dashboard activity cards and Product Specialist order approvals work reliably again",
+      },
+    ],
+  },
+
+  {
+    version: "0.18.0",
+    date: "2026-08-04",
+    title: "Sort any list by column headers",
+    highlights: [
+      "Click a column header on most list tables to sort ascending or descending",
+      "Arrows show which column is active so you can find rows faster",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "List tables across Inventory, Orders, Sales, Logistics, Settings, Audit, and more support ascending or descending sort from the column headers",
+      },
+    ],
+  },
+
+  {
+    version: "0.17.0",
+    date: "2026-08-04",
+    title: "Order Policy daily lock and new delivery cadences",
+    highlights: [
+      "Set company hours when nobody can place or approve orders (daily time lock, Manila time)",
+      "Ordering frequency codes now include Daily and Three times a month for branch delivery cadence",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Order Policy can lock create, submit, and approve during daily company hours you choose (Manila time)",
+      },
+      {
+        type: "feature",
+        description:
+          "Order Policy frequency codes can use Daily and Three times a month cadences (alongside existing weekly options)",
+      },
+    ],
+  },
+
+  {
+    version: "0.16.0",
+    date: "2026-08-04",
+    title: "Official Sales accounting columns and staging cleanup",
+    highlights: [
+      "Official Sales template and staging use Trans Date, Trans #, Serial Number, Branch Sold, and Action",
+      "SALE keeps Sold on the sale line; RETURN puts stock back without changing sale status",
+      "Delete pending or failed staging rows — with a clear confirm dialog beside Process",
+      "Select several pending or failed staging rows at once and delete them together",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Delete Official Sales staging rows that are still pending or failed — successfully processed rows stay protected",
+      },
+      {
+        type: "improvement",
+        description:
+          "Official Sales template and staging use Trans Date, Trans #, Serial Number, Branch Sold, and Action (older Serial / DR DATE / DR NO files still upload)",
+      },
+      {
+        type: "improvement",
+        description:
+          "Official Sales SALE keeps Sold on the sale line; RETURN restores stock without flipping sale status to Stock",
+      },
+      {
+        type: "improvement",
+        description:
+          "Select multiple pending or failed Official Sales staging rows and delete them in one step",
+      },
+      {
+        type: "improvement",
+        description:
+          "Official Sales Delete asks for confirmation in a dialog and sits as a clear button next to Process",
+      },
+    ],
+  },
+
+  {
+    version: "0.15.1",
+    date: "2026-08-04",
+    title: "Sales encode polish and reliability",
+    highlights: [
+      "Attach multiple proof files and review them in a preview window",
+      "Type the transaction number from your invoice when encoding a sale",
+      "Model price fills from the latest price list — and stays at 0 when none exists",
+      "TO FOLLOW saves reliably; returns show Pending CS and ask for a reason",
+      "When you sell from another branch’s stock, the unit moves to the selling branch",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Sale Proof supports multiple photos or PDFs on one transaction",
+      },
+      {
+        type: "feature",
+        description:
+          "Model price falls back to the most recent master price list when today’s period is missing, and stays locked at 0 when no list exists",
+      },
+      {
+        type: "improvement",
+        description:
           "Sale details opens proofs in a preview window with file list and next/previous — no need to leave the page",
-      },
-      {
-        type: "improvement",
-        description:
-          "Sale details line table shows Status again (Sold, TO FOLLOW, return steps, and more)",
-      },
-      {
-        type: "improvement",
-        description:
-          "Sales & ATR lists one row per serial; multi-unit sales share the same ID and transaction number",
-      },
-      {
-        type: "improvement",
-        description:
-          "Sales return and ATR badges use names and colors from Status settings",
       },
       {
         type: "improvement",
@@ -102,12 +477,22 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "improvement",
         description:
-          "Orders and Logistics row actions only show when it is your step",
+          "Serial number logs show Sales transaction with Inventory: Sold (or Reserved when reserved)",
       },
       {
-        type: "improvement",
+        type: "fix",
         description:
-          "New orders stay limited to branches in your area so they show up in your list right away",
+          "When selling from another branch’s stock, the unit’s location moves to the branch that sold it",
+      },
+      {
+        type: "fix",
+        description:
+          "Edit serial and completed returns correctly return stock to the original stock source",
+      },
+      {
+        type: "fix",
+        description:
+          "Edit serial on Sales & ATR only lists stock units for that product model, plus TO FOLLOW",
       },
       {
         type: "fix",
@@ -127,7 +512,7 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "fix",
         description:
-          "Model price fills from the price list when you pick a model",
+          "Model price fills from the master price list when you pick a model (including the latest prior period when today has no list)",
       },
       {
         type: "fix",
@@ -144,15 +529,77 @@ export const RELEASES: ReleaseNote[] = [
         description:
           "Sales proof attachments save and open correctly",
       },
+    ],
+  },
+
+  {
+    version: "0.15.0",
+    date: "2026-08-04",
+    title: "Sales status stays with the sale",
+    highlights: [
+      "Sales & ATR status stays with the sale — editing inventory no longer flips Sold to Stock",
+      "Sales list shows one row per serial with clear status badges (including TO FOLLOW)",
+      "Customize Sales & ATR return badge names and colors in Status settings",
+      "Encode with TO FOLLOW when a serial is not available yet, then edit the sale later",
+    ],
+    changes: [
       {
-        type: "fix",
+        type: "feature",
         description:
-          "Accept delivery on Logistics works again for pending order deliveries",
+          "Sales encode offers TO FOLLOW when a serial is not available yet; use Edit on the sale row later to set or change the serial",
+      },
+      {
+        type: "feature",
+        description:
+          "Settings → Status includes a Sales & ATR group to rename and recolor return and ATR badges",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sale details line table shows Status again (Sold, TO FOLLOW, return steps, and more)",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sales & ATR lists one row per serial; multi-unit sales share the same ID and transaction number",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sales return and ATR badges use names and colors from Status settings",
       },
       {
         type: "fix",
         description:
-          "Dashboard activity cards and Product Specialist order approvals work reliably again",
+          "Sales & ATR status stays with the sale line and no longer changes when inventory status is edited",
+      },
+    ],
+  },
+
+  {
+    version: "0.14.0",
+    date: "2026-08-04",
+    title: "Service center operations",
+    highlights: [
+      "New Service menu for service center inventory, sales & returns, orders, deliveries, and pull-outs",
+      "Assign service centers in Areas of responsibility so people only see their sites",
+      "Stock in, sell, order, accept deliveries, and pull out units on the service center ledger",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Service menu covers service center inventory, sales with returns, orders, deliveries, and pull-outs",
+      },
+      {
+        type: "feature",
+        description:
+          "Areas of responsibility can assign service centers so Service screens stay scoped to each person",
+      },
+      {
+        type: "feature",
+        description:
+          "Manual stock-in, sell from stock, order to delivery accept, and pull-outs update service center stock only",
       },
     ],
   },

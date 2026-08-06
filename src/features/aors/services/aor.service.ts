@@ -19,6 +19,7 @@ const syncUserAorsSchema = z.object({
   branchIds: z.array(z.string().min(1)).optional().default([]),
   dealerIds: z.array(z.string().min(1)).optional().default([]),
   warehouseIds: z.array(z.string().min(1)).optional().default([]),
+  serviceCenterIds: z.array(z.string().min(1)).optional().default([]),
 });
 
 export const aorService = {
@@ -32,6 +33,10 @@ export const aorService = {
 
   async getBranchIdsForUser(tenantId: string, userId: string) {
     return aorRepository.listExistingBranchIds(tenantId, userId);
+  },
+
+  async getServiceCenterIdsForUser(tenantId: string, userId: string) {
+    return aorRepository.listExistingServiceCenterIds(tenantId, userId);
   },
 
   async createAor(input: {
@@ -158,6 +163,7 @@ export const aorService = {
     branchIds?: string[];
     dealerIds?: string[];
     warehouseIds?: string[];
+    serviceCenterIds?: string[];
   }) {
     const parsed = syncUserAorsSchema.safeParse(input);
     if (!parsed.success) {
@@ -167,13 +173,17 @@ export const aorService = {
     const explicitBranchIds = [...new Set(parsed.data.branchIds)];
     const dealerIds = [...new Set(parsed.data.dealerIds)];
     const warehouseIds = [...new Set(parsed.data.warehouseIds)];
+    const serviceCenterIds = [...new Set(parsed.data.serviceCenterIds)];
 
     if (
       explicitBranchIds.length === 0 &&
       dealerIds.length === 0 &&
-      warehouseIds.length === 0
+      warehouseIds.length === 0 &&
+      serviceCenterIds.length === 0
     ) {
-      throw new Error("Select at least one branch, dealer, or warehouse");
+      throw new Error(
+        "Select at least one branch, dealer, warehouse, or service center",
+      );
     }
 
     const dealerBranches = await aorRepository.listBranchIdsByDealerIds(
@@ -188,7 +198,8 @@ export const aorService = {
     if (
       dealerIds.length > 0 &&
       targetBranchIds.length === 0 &&
-      warehouseIds.length === 0
+      warehouseIds.length === 0 &&
+      serviceCenterIds.length === 0
     ) {
       throw new Error("Selected dealers have no active branches");
     }
@@ -205,6 +216,11 @@ export const aorService = {
       input.tenantId,
       parsed.data.userId,
     );
+    const existingServiceCenterAors =
+      await aorRepository.listServiceCenterAorsForUser(
+        input.tenantId,
+        parsed.data.userId,
+      );
 
     const existingBranchIds = new Set(
       existingBranchAors
@@ -221,10 +237,16 @@ export const aorService = {
         .map((row) => row.dealerId)
         .filter((id): id is string => id !== null),
     );
+    const existingServiceCenterIds = new Set(
+      existingServiceCenterAors
+        .map((row) => row.serviceCenterId)
+        .filter((id): id is string => id !== null),
+    );
 
     const targetBranchSet = new Set(targetBranchIds);
     const targetWarehouseSet = new Set(warehouseIds);
     const targetDealerSet = new Set(dealerIds);
+    const targetServiceCenterSet = new Set(serviceCenterIds);
 
     const branchIdsToCreate = targetBranchIds.filter(
       (id) => !existingBranchIds.has(id),
@@ -234,6 +256,9 @@ export const aorService = {
     );
     const dealerIdsToCreate = dealerIds.filter(
       (id) => !existingDealerIds.has(id),
+    );
+    const serviceCenterIdsToCreate = serviceCenterIds.filter(
+      (id) => !existingServiceCenterIds.has(id),
     );
 
     const branchIdsToDelete = existingBranchAors
@@ -252,11 +277,19 @@ export const aorService = {
         (row) => row.dealerId !== null && !targetDealerSet.has(row.dealerId),
       )
       .map((row) => row.id);
+    const serviceCenterIdsToDelete = existingServiceCenterAors
+      .filter(
+        (row) =>
+          row.serviceCenterId !== null &&
+          !targetServiceCenterSet.has(row.serviceCenterId),
+      )
+      .map((row) => row.id);
 
     const idsToDelete = [
       ...branchIdsToDelete,
       ...warehouseIdsToDelete,
       ...dealerIdsToDelete,
+      ...serviceCenterIdsToDelete,
     ];
 
     if (idsToDelete.length > 0) {
@@ -277,6 +310,11 @@ export const aorService = {
       ...dealerIdsToCreate.map((dealerId) => ({
         userId: parsed.data.userId,
         dealerId,
+        createdById: input.actorUserId,
+      })),
+      ...serviceCenterIdsToCreate.map((serviceCenterId) => ({
+        userId: parsed.data.userId,
+        serviceCenterId,
         createdById: input.actorUserId,
       })),
     ];
@@ -303,6 +341,7 @@ export const aorService = {
           branchIds: targetBranchIds,
           dealerIds,
           warehouseIds,
+          serviceCenterIds,
         },
       });
     }

@@ -6,6 +6,10 @@ import { z } from "zod";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { auditService } from "@/features/audit/services/audit.service";
 import { aorService } from "@/features/aors/services/aor.service";
+import {
+  markSerialSoldFromStockSource,
+  restoreSerialToStockSource,
+} from "@/features/inventory/services/inventory-serial-moves";
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { salesRepository } from "@/features/sales/repositories/sales.repository";
@@ -78,6 +82,7 @@ async function loadSalesAtrCodesByCode(
   const codes = await reasonStatusRepository.listActiveCodesByCategory(
     tenantId,
     "sales_atr",
+    
   );
   return new Map(
     codes.map((row) => [
@@ -102,19 +107,16 @@ function resolveSalesAtrStatusCode(
 }
 
 /**
- * List/details STATUS preference:
+ * List/details STATUS preference (never live inventory):
  * 1) Active ATR return workflow (pending CS/TL/approved/rejected)
- * 2) Inventory status (SLD/STK/…) or TO FOLLOW when no serial
- * 3) ATR header status as last resort
+ * 2) Closed ATR header
+ * 3) Frozen detail.statusCode (FW / SLD / RSV)
+ * 4) Legacy derive from serial + atrStatus
  */
 function resolveLineStatusCode(
   detail: {
     serialNumberId: string | null;
-    serialNumber?: {
-      branchInventories?: Array<{
-        statusCode: { code: string; name: string; color: string | null } | null;
-      }>;
-    } | null;
+    statusCode?: { code: string; name: string; color: string | null } | null;
   },
   atrStatus: string,
   toFollowStatus: SaleStatusCodeRef,
@@ -125,16 +127,19 @@ function resolveLineStatusCode(
     return resolveSalesAtrStatusCode(returnStatus, salesAtrCodes);
   }
 
-  const invStatus = detail.serialNumber?.branchInventories?.[0]?.statusCode;
-  if (invStatus) {
+  if (atrStatus === "closed") {
+    return resolveSalesAtrStatusCode("closed", salesAtrCodes);
+  }
+
+  if (detail.statusCode) {
     return {
-      code: invStatus.code,
-      name: invStatus.name,
-      color: invStatus.color,
+      code: detail.statusCode.code,
+      name: detail.statusCode.name,
+      color: detail.statusCode.color,
     };
   }
+
   if (!detail.serialNumberId) {
-    // TO-FOLLOW line with no active return — still show FW / TO FOLLOW.
     if (atrStatus === "reserve") {
       return resolveSalesAtrStatusCode("reserve", salesAtrCodes);
     }
@@ -165,7 +170,8 @@ const saleSchema = z.object({
   alternateBranchId: z.string().min(1),
   customerName: z.string().trim().min(1),
   contactNo: z.string().trim().max(50).optional(),
-  siTrans: z.string().trim().min(1),
+  /** Optional — defaults to transactionNo when omitted (same value; UI no longer collects it). */
+  siTrans: z.string().trim().optional(),
   paymentTypeId: z.string().min(1),
   saleTypeId: z.string().min(1),
   customerDeliveryMethodId: z.string().min(1),
@@ -397,6 +403,7 @@ export async function getSaleDetailsAction(saleId: string) {
         detailId: detail.id,
         packageName: detail.packageType?.name ?? null,
         brandName: detail.brand?.name ?? null,
+        modelId: detail.modelId ?? detail.model?.id ?? null,
         modelLabel: detail.model
           ? detail.model.skuCode?.trim() ||
             detail.model.name?.trim() ||
@@ -585,24 +592,16 @@ export async function listModelsForSalesAction(brandId?: string) {
   }));
 }
 
-export type ResolvedModelPriceSource = "pricelist" | "srp";
+export type ResolvedModelPriceSource = "pricelist" | "pricelist_fallback";
 
 export type ResolvedModelPrice = {
   amount: number;
   source: ResolvedModelPriceSource;
+  /** Calendar day of the chosen price list period start (UTC YYYY-MM-DD). */
+  periodStart: string;
 };
 
-/**
- * Resolve Model price for a sales detail set.
- * Price lists are tenant + model + optional package type + active calendar day.
- * Prefers a package-specific row, then a generic (no package) row, then model SRP.
- */
-export async function resolveModelPriceForSalesAction(input: {
-  modelId: string;
-  packageTypeId?: string;
-}): Promise<ResolvedModelPrice | null> {
-  const session = await requirePermission("sales.create");
-  const now = new Date();
+function utcDayBounds(now: Date = new Date()) {
   // Date inputs store midnight UTC; treat the whole calendar day as in-range.
   const dayStart = new Date(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
@@ -618,48 +617,90 @@ export async function resolveModelPriceForSalesAction(input: {
       999,
     ),
   );
+  return { dayStart, dayEnd };
+}
 
-  const baseWhere = {
-    tenantId: session.user.tenantId,
-    modelId: input.modelId,
-    periodStart: { lte: dayEnd },
-    periodEnd: { gte: dayStart },
-  };
+/**
+ * Resolve Model price from master price lists only (no SRP / no manual override).
+ * 1) Active row for as-of day (package-specific, then generic)
+ * 2) Else latest row with periodStart <= as-of day (same package preference)
+ * 3) Else null → caller locks amount at 0
+ */
+async function resolveModelPriceForSales(
+  tenantId: string,
+  modelId: string,
+  packageTypeId?: string,
+  asOf?: Date,
+): Promise<ResolvedModelPrice | null> {
+  const { dayStart, dayEnd } = utcDayBounds(asOf);
+  const packageIds: Array<string | null> = packageTypeId
+    ? [packageTypeId, null]
+    : [null];
 
-  if (input.packageTypeId) {
-    const packagePrice = await prisma.priceList.findFirst({
-      where: { ...baseWhere, packageTypeId: input.packageTypeId },
+  for (const packageTypeFilter of packageIds) {
+    const active = await prisma.priceList.findFirst({
+      where: {
+        tenantId,
+        modelId,
+        packageTypeId: packageTypeFilter,
+        periodStart: { lte: dayEnd },
+        periodEnd: { gte: dayStart },
+      },
       orderBy: { periodStart: "desc" },
-      select: { amount: true },
+      select: { amount: true, periodStart: true },
     });
-    if (packagePrice) {
+    if (active) {
       return {
-        amount: Number(packagePrice.amount.toString()),
+        amount: Number(active.amount.toString()),
         source: "pricelist",
+        periodStart: active.periodStart.toISOString().slice(0, 10),
       };
     }
   }
 
-  const genericPrice = await prisma.priceList.findFirst({
-    where: { ...baseWhere, packageTypeId: null },
-    orderBy: { periodStart: "desc" },
-    select: { amount: true },
-  });
-  if (genericPrice) {
-    return {
-      amount: Number(genericPrice.amount.toString()),
-      source: "pricelist",
-    };
+  for (const packageTypeFilter of packageIds) {
+    const latest = await prisma.priceList.findFirst({
+      where: {
+        tenantId,
+        modelId,
+        packageTypeId: packageTypeFilter,
+        periodStart: { lte: dayEnd },
+      },
+      orderBy: { periodStart: "desc" },
+      select: { amount: true, periodStart: true },
+    });
+    if (latest) {
+      return {
+        amount: Number(latest.amount.toString()),
+        source: "pricelist_fallback",
+        periodStart: latest.periodStart.toISOString().slice(0, 10),
+      };
+    }
   }
 
-  const model = await prisma.productModel.findFirst({
-    where: { id: input.modelId, tenantId: session.user.tenantId },
-    select: { srp: true },
-  });
-  if (model?.srp != null) {
-    return { amount: Number(model.srp.toString()), source: "srp" };
-  }
   return null;
+}
+
+/**
+ * Resolve Model price for a sales detail set (see resolveModelPriceForSales).
+ */
+export async function resolveModelPriceForSalesAction(input: {
+  modelId: string;
+  packageTypeId?: string;
+  /** YYYY-MM-DD (or ISO); price list window uses this calendar day. */
+  transactionDate?: string;
+}): Promise<ResolvedModelPrice | null> {
+  const session = await requirePermission("sales.create");
+  const asOf = input.transactionDate
+    ? new Date(input.transactionDate)
+    : new Date();
+  const asOfValid = Number.isNaN(asOf.getTime()) ? new Date() : asOf;
+  return resolveModelPriceForSales(
+    session.user.tenantId,
+    input.modelId,
+    input.packageTypeId,
+    asOfValid,
+  );
 }
 
 export async function listSaleableSerialsAction(
@@ -772,7 +813,30 @@ export async function createSaleAction(input: unknown) {
     return { error: e instanceof Error ? e.message : "Access denied" };
   }
 
-  const details = parsed.data.details;
+  let transactionDate: Date | null = null;
+  if (parsed.data.transactionDate) {
+    const d = new Date(parsed.data.transactionDate);
+    if (Number.isNaN(d.getTime())) {
+      return { error: "Invalid transaction date" };
+    }
+    transactionDate = d;
+  }
+
+  // Re-resolve model prices from master lists so clients cannot override.
+  const details = await Promise.all(
+    parsed.data.details.map(async (detail) => {
+      const resolved = await resolveModelPriceForSales(
+        session.user.tenantId,
+        detail.modelId,
+        detail.packageTypeId,
+        transactionDate ?? undefined,
+      );
+      return {
+        ...detail,
+        modelPrice: resolved?.amount ?? 0,
+      };
+    }),
+  );
   // TO-FOLLOW is not a stock unit — only real ids must be unique in one sale.
   const realSerialIds = details
     .map((d) => d.serialNumberId)
@@ -797,17 +861,9 @@ export async function createSaleAction(input: unknown) {
   const modelPriceRollup = details.find((d) => d.modelPrice != null)?.modelPrice;
   const stockBranchId = parsed.data.alternateBranchId;
 
-  let transactionDate: Date | null = null;
-  if (parsed.data.transactionDate) {
-    const d = new Date(parsed.data.transactionDate);
-    if (Number.isNaN(d.getTime())) {
-      return { error: "Invalid transaction date" };
-    }
-    transactionDate = d;
-  }
-
-  // Skip status lookups when every line is TO-FOLLOW (no inventory move).
+  // Skip inventory status lookups when every line is TO-FOLLOW (no inventory move).
   const hasRealSerials = realSerialIds.length > 0;
+  const hasToFollow = details.some((d) => isToFollowSerial(d.serialNumberId));
   const stkCodeId = hasRealSerials
     ? await reasonStatusService.requireCodeId(
         session.user.tenantId,
@@ -822,6 +878,14 @@ export async function createSaleAction(input: unknown) {
         parsed.data.reserved ? "RSV" : "SLD",
       )
     : null;
+  const fwCodeRow = hasToFollow
+    ? await reasonStatusRepository.findCodeId(
+        session.user.tenantId,
+        "inventory_system",
+        "FW",
+      )
+    : null;
+  const fwCodeId = fwCodeRow?.id ?? null;
 
   let row;
   try {
@@ -906,7 +970,7 @@ export async function createSaleAction(input: unknown) {
           transactionDate,
           customerName: parsed.data.customerName,
           contactNo: parsed.data.contactNo || null,
-          siTrans: parsed.data.siTrans,
+          siTrans: parsed.data.siTrans || transactionNo,
           infoSlipVsoRrReleased: parsed.data.infoSlipVsoRrReleased || null,
           rrReceiveDeliver: parsed.data.rrReceiveDeliver || null,
           proof: parsed.data.proof
@@ -927,23 +991,20 @@ export async function createSaleAction(input: unknown) {
         const toFollow = isToFollowSerial(detail.serialNumberId);
 
         if (!toFollow) {
-          // Real serial: move stock-source STK -> SLD/RSV, then save the detail.
+          // Real serial: STK at stock source → SLD/RSV at sold branch (relocate if alternate).
           if (!stkCodeId || !targetStatusCodeId) {
             throw new Error("Inventory status codes are not configured");
           }
           const serialNumberId = detail.serialNumberId;
-          const updated = await tx.branchInventory.updateMany({
-            where: {
-              tenantId: session.user.tenantId,
-              serialNumberId,
-              branchId: stockBranchId,
-              statusCodeId: stkCodeId,
-            },
-            data: { statusCodeId: targetStatusCodeId, updatedById: session.user.id },
+          await markSerialSoldFromStockSource(tx, {
+            tenantId: session.user.tenantId,
+            serialNumberId,
+            stockBranchId,
+            soldBranchId: parsed.data.branchId,
+            stkCodeId,
+            targetStatusCodeId,
+            updatedById: session.user.id,
           });
-          if (updated.count === 0) {
-            throw new Error("Serial is not in sellable stock at the stock source branch");
-          }
 
           await tx.branchSalesTransactionDetail.create({
             data: {
@@ -953,6 +1014,7 @@ export async function createSaleAction(input: unknown) {
               promoTypeId: detail.promoTypeId ?? null,
               modelId: detail.modelId,
               serialNumberId,
+              statusCodeId: targetStatusCodeId,
               saleAmount: detail.saleAmount,
               modelPrice: detail.modelPrice ?? null,
               amount: detail.saleAmount,
@@ -968,6 +1030,7 @@ export async function createSaleAction(input: unknown) {
               promoTypeId: detail.promoTypeId ?? null,
               modelId: detail.modelId,
               serialNumberId: null,
+              statusCodeId: fwCodeId,
               saleAmount: detail.saleAmount,
               modelPrice: detail.modelPrice ?? null,
               amount: detail.saleAmount,
@@ -1213,22 +1276,35 @@ export async function completeReturnRestoreAction(returnRequestId: string) {
 
   await prisma.$transaction(async (tx) => {
     for (const serialNumberId of serialIds) {
-      await tx.branchInventory.upsert({
+      // Prefer updating the existing row (often SLD at the sold branch after
+      // alternate-stock encode) so we never leave an orphan SLD at branch B.
+      const existing = await tx.branchInventory.findFirst({
         where: {
-          branchId_serialNumberId: {
+          tenantId: session.user.tenantId,
+          serialNumberId,
+        },
+        select: { id: true },
+      });
+      if (existing) {
+        await tx.branchInventory.update({
+          where: { id: existing.id },
+          data: {
+            branchId: stockBranchId,
+            statusCodeId: stkCodeId,
+            updatedById: session.user.id,
+          },
+        });
+      } else {
+        await tx.branchInventory.create({
+          data: {
+            tenantId: session.user.tenantId,
             branchId: stockBranchId,
             serialNumberId,
+            statusCodeId: stkCodeId,
+            updatedById: session.user.id,
           },
-        },
-        update: { statusCodeId: stkCodeId, updatedById: session.user.id },
-        create: {
-          tenantId: session.user.tenantId,
-          branchId: stockBranchId,
-          serialNumberId,
-          statusCodeId: stkCodeId,
-          updatedById: session.user.id,
-        },
-      });
+        });
+      }
     }
     await tx.branchReturnRequest.update({
       where: { id: returnRequestId },
@@ -1259,8 +1335,9 @@ export async function completeReturnRestoreAction(returnRequestId: string) {
 
 /**
  * Replace one sale-detail serial (per-line Edit). Defaults to the first detail
- * when detailId is omitted. Moves inventory at the stock source: old unit back
- * to STK (if any), new unit STK → SLD (or RSV if the old unit was reserved).
+ * when detailId is omitted. Restores the old unit to STK at the stock source
+ * (moving back from the sold branch when relocate encode applied), then marks
+ * the new unit STK → SLD/RSV at the sold branch via the same helper as encode.
  */
 export async function updateSaleSerialAction(input: {
   saleId: string;
@@ -1300,6 +1377,7 @@ export async function updateSaleSerialAction(input: {
     return { error: e instanceof Error ? e.message : "Access denied" };
   }
 
+  const soldBranchId = sale.branchId;
   const stockBranchId = sale.alternateBranchId ?? sale.branchId;
   const targetDetail = input.detailId
     ? sale.details.find((d) => d.id === input.detailId)
@@ -1326,54 +1404,55 @@ export async function updateSaleSerialAction(input: {
     "inventory_system",
     "RSV",
   );
+  const fwCodeRow = nextIsToFollow
+    ? await reasonStatusRepository.findCodeId(
+        session.user.tenantId,
+        "inventory_system",
+        "FW",
+      )
+    : null;
+  const fwCodeId = fwCodeRow?.id ?? null;
 
   try {
     await prisma.$transaction(async (tx) => {
       let soldStatusCodeId = sldCodeId;
 
-      // Put the previous unit back to STK when we are replacing or clearing it.
+      // Put the previous unit back to STK at stock source (sold branch first, then legacy).
       if (oldSerialId) {
-        const oldInv = await tx.branchInventory.findFirst({
-          where: {
-            tenantId: session.user.tenantId,
-            branchId: stockBranchId,
-            serialNumberId: oldSerialId,
-          },
-          select: { statusCodeId: true },
+        const previousStatusCodeId = await restoreSerialToStockSource(tx, {
+          tenantId: session.user.tenantId,
+          serialNumberId: oldSerialId,
+          stockBranchId,
+          soldBranchId,
+          stkCodeId,
+          soldStatusCodeIds: [sldCodeId, rsvCodeId],
+          updatedById: session.user.id,
         });
-        if (oldInv?.statusCodeId === rsvCodeId) {
+        if (previousStatusCodeId === rsvCodeId) {
           soldStatusCodeId = rsvCodeId;
         }
-        await tx.branchInventory.updateMany({
-          where: {
-            tenantId: session.user.tenantId,
-            branchId: stockBranchId,
-            serialNumberId: oldSerialId,
-            statusCodeId: { in: [sldCodeId, rsvCodeId] },
-          },
-          data: { statusCodeId: stkCodeId, updatedById: session.user.id },
-        });
       }
 
-      // Assign a real serial: it must be sellable STK at the stock source.
+      // Assign a real serial: STK at stock source → SLD/RSV at sold branch.
       if (nextSerialId) {
-        const moved = await tx.branchInventory.updateMany({
-          where: {
-            tenantId: session.user.tenantId,
-            branchId: stockBranchId,
-            serialNumberId: nextSerialId,
-            statusCodeId: stkCodeId,
-          },
-          data: { statusCodeId: soldStatusCodeId, updatedById: session.user.id },
+        await markSerialSoldFromStockSource(tx, {
+          tenantId: session.user.tenantId,
+          serialNumberId: nextSerialId,
+          stockBranchId,
+          soldBranchId,
+          stkCodeId,
+          targetStatusCodeId: soldStatusCodeId,
+          updatedById: session.user.id,
         });
-        if (moved.count === 0) {
-          throw new Error("Serial is not in sellable stock at the stock source branch");
-        }
       }
 
       await tx.branchSalesTransactionDetail.update({
         where: { id: targetDetail.id },
-        data: { serialNumberId: nextSerialId },
+        data: {
+          serialNumberId: nextSerialId,
+          // Freeze line STATUS with the sale — do not mirror inventory after ATR complete.
+          statusCodeId: nextSerialId ? soldStatusCodeId : fwCodeId,
+        },
       });
     });
   } catch (e) {

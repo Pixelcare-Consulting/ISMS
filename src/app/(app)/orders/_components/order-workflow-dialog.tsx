@@ -208,7 +208,7 @@ export function OrderWorkflowDialog({
               <Label>Order lines</Label>
               <span className="text-xs text-muted-foreground">Total {totalLines}</span>
             </div>
-            <div className="min-h-0 max-h-[420px] flex-1 overflow-y-auto rounded-md border">
+            <div className="min-h-0 max-h-105 flex-1 overflow-y-auto rounded-md border">
               <table className="w-full text-sm">
                 <thead className="bg-muted/40 text-xs text-muted-foreground">
                   <tr>

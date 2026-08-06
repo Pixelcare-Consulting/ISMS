@@ -28,6 +28,7 @@ export interface SaleDetailsLine {
   detailId: string;
   packageName: string | null;
   brandName: string | null;
+  modelId: string | null;
   modelLabel: string | null;
   serialNumberId: string | null;
   serialNo: string;

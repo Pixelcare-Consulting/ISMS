@@ -22,7 +22,7 @@ export const SERIAL_ACTIVITY_LABELS: Record<SerialActivityType, string> = {
   registered: "Registered",
   status: "Status update",
   transferred: "Transferred",
-  sold: "Sold",
+  sold: "Sales transaction",
   pulled_out: "Pulled out",
   counted: "Counted",
 };

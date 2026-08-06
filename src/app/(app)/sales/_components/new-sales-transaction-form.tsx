@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
@@ -10,6 +10,16 @@ import {
   AddTransactionDetailDialog,
   type DraftSaleDetail,
 } from "@/app/(app)/sales/_components/add-transaction-detail-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -78,7 +88,6 @@ export function NewSalesTransactionForm({
   const [transactionNo, setTransactionNo] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [contactNo, setContactNo] = useState("");
-  const [siTrans, setSiTrans] = useState("");
   const [infoSlipVsoRrReleased, setInfoSlipVsoRrReleased] = useState("");
   const [rrReceiveDeliver, setRrReceiveDeliver] = useState("");
   const [paymentTypeId, setPaymentTypeId] = useState("");
@@ -90,6 +99,8 @@ export function NewSalesTransactionForm({
   const [reserved, setReserved] = useState(false);
   const [details, setDetails] = useState<DraftSaleDetail[]>([]);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [editingGroupKey, setEditingGroupKey] = useState<string | null>(null);
+  const [deleteGroupKey, setDeleteGroupKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (!branchId) return;
@@ -119,24 +130,78 @@ export function NewSalesTransactionForm({
     [details],
   );
 
+  const editingRows = useMemo(
+    () =>
+      editingGroupKey
+        ? details.filter((d) => d.packageGroupKey === editingGroupKey)
+        : undefined,
+    [details, editingGroupKey],
+  );
+
+  const deleteGroupRows = useMemo(
+    () =>
+      deleteGroupKey
+        ? details.filter((d) => d.packageGroupKey === deleteGroupKey)
+        : [],
+    [details, deleteGroupKey],
+  );
+
   // Exclude TO-FOLLOW so multiple pending lines can reuse the placeholder.
+  // When editing a package group, free its serials so they stay selectable.
   const usedSerialIds = useMemo(
     () =>
       new Set(
         details
+          .filter(
+            (d) => !editingGroupKey || d.packageGroupKey !== editingGroupKey,
+          )
           .map((d) => d.serialNumberId)
           .filter((id) => !isToFollowSerial(id)),
       ),
-    [details],
+    [details, editingGroupKey],
   );
 
-  function removeDetail(key: string) {
-    setDetails((prev) => prev.filter((d) => d.key !== key));
+  function openAddDetail() {
+    setEditingGroupKey(null);
+    setDetailOpen(true);
   }
 
-  function appendDetails(rows: DraftSaleDetail[]) {
-    setDetails((prev) => [...prev, ...rows]);
+  function openEditPackage(groupKey: string) {
+    setEditingGroupKey(groupKey);
+    setDetailOpen(true);
+  }
+
+  function closeDetailDialog() {
     setDetailOpen(false);
+    setEditingGroupKey(null);
+  }
+
+  function saveDetails(rows: DraftSaleDetail[]) {
+    if (editingGroupKey) {
+      setDetails((prev) => [
+        ...prev.filter((d) => d.packageGroupKey !== editingGroupKey),
+        ...rows,
+      ]);
+    } else {
+      setDetails((prev) => [...prev, ...rows]);
+    }
+    closeDetailDialog();
+  }
+
+  function confirmDeletePackage() {
+    if (!deleteGroupKey) return;
+    const count = details.filter(
+      (d) => d.packageGroupKey === deleteGroupKey,
+    ).length;
+    setDetails((prev) =>
+      prev.filter((d) => d.packageGroupKey !== deleteGroupKey),
+    );
+    setDeleteGroupKey(null);
+    toast.success(
+      count === 1
+        ? "Removed package set"
+        : `Removed package set (${count} serials)`,
+    );
   }
 
   function onBranchChange(id: string) {
@@ -209,10 +274,6 @@ export function NewSalesTransactionForm({
       toast.error("Customer name is required");
       return;
     }
-    if (!siTrans.trim()) {
-      toast.error("SI/Trans no is required");
-      return;
-    }
     if (!paymentTypeId) {
       toast.error("Payment type is required");
       return;
@@ -237,7 +298,8 @@ export function NewSalesTransactionForm({
         alternateBranchId,
         customerName: customerName.trim(),
         contactNo: contactNo.trim() || undefined,
-        siTrans: siTrans.trim(),
+        // SI/Trans mirrors transaction number — field removed from the form as redundant.
+        siTrans: transactionNo.trim(),
         paymentTypeId,
         saleTypeId,
         customerDeliveryMethodId,
@@ -276,6 +338,7 @@ export function NewSalesTransactionForm({
 
   const resolvedBranch = autoResolveBranch ? branches[0] : null;
   const showBranchPicker = !autoResolveBranch;
+  const deletePackageName = deleteGroupRows[0]?.packageTypeName ?? "this package";
 
   return (
     <div className="space-y-4">
@@ -352,15 +415,6 @@ export function NewSalesTransactionForm({
               value={contactNo}
               onChange={(e) => setContactNo(e.target.value)}
               placeholder="09XX XXX XXXX"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="sale-si-trans">SI/Trans no *</Label>
-            <Input
-              id="sale-si-trans"
-              value={siTrans}
-              onChange={(e) => setSiTrans(e.target.value)}
-              placeholder="SI / Trans number"
             />
           </div>
           <div className="space-y-2">
@@ -476,7 +530,7 @@ export function NewSalesTransactionForm({
             type="button"
             variant="outline"
             disabled={!branchId || !alternateBranchId}
-            onClick={() => setDetailOpen(true)}
+            onClick={openAddDetail}
           >
             <Plus className="size-4" />
             Add Detail
@@ -517,15 +571,26 @@ export function NewSalesTransactionForm({
                       {formatPeso(d.modelPrice)}
                     </td>
                     <td className="py-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => removeDetail(d.key)}
-                        aria-label={`Remove ${d.serialNo}`}
-                      >
-                        <Trash2 className="size-4" />
-                      </Button>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openEditPackage(d.packageGroupKey)}
+                          aria-label={`Edit package ${d.packageTypeName}`}
+                        >
+                          <Pencil className="size-4" />
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setDeleteGroupKey(d.packageGroupKey)}
+                          aria-label={`Delete package ${d.packageTypeName}`}
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -550,14 +615,47 @@ export function NewSalesTransactionForm({
 
       {detailOpen && branchId && alternateBranchId ? (
         <AddTransactionDetailDialog
+          key={editingGroupKey ?? "new-detail"}
           stockBranchId={alternateBranchId}
           brands={brands}
           promoTypes={promoTypes}
           usedSerialIds={usedSerialIds}
-          onAdd={appendDetails}
-          onClose={() => setDetailOpen(false)}
+          transactionDate={transactionDate || undefined}
+          initialRows={editingRows}
+          onAdd={saveDetails}
+          onClose={closeDetailDialog}
         />
       ) : null}
+
+      <AlertDialog
+        open={deleteGroupKey !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteGroupKey(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete package set?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes all {deleteGroupRows.length} serial
+              {deleteGroupRows.length === 1 ? "" : "s"} in{" "}
+              <span className="font-medium text-foreground">
+                {deletePackageName}
+              </span>
+              , not just one line. Continue?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>No</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeletePackage}
+              className="bg-destructive text-white hover:bg-destructive/90"
+            >
+              Yes, delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
