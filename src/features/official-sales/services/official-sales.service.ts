@@ -121,16 +121,9 @@ function parseUploadBuffer(buffer: ArrayBuffer | Buffer): OfficialSalesRowCreate
         pickColumn(row, ["serial number", "serialnumber", "serial", "serialno", "sn"]) ?? "",
       ).trim();
 
-      // Prefer SI/TRANS NO. over DR NO. / Trans # (empty preferred falls through).
+      // DR NO. / DR DATE and SI/TRANS NO. / DATE are separate documents — the
+      // delivery receipt and the sales invoice — so they stay in separate columns.
       const drNoRaw = pickColumn(row, [
-        "si/trans no.",
-        "si/trans no",
-        "sitransno",
-        "si trans no",
-        "trans #",
-        "trans#",
-        "transno",
-        "transactionno",
         "dr no.",
         "dr no",
         "drno",
@@ -139,17 +132,26 @@ function parseUploadBuffer(buffer: ArrayBuffer | Buffer): OfficialSalesRowCreate
         "deliveryno",
         "delivery no",
       ]);
-
-      // Prefer DATE over DR DATE / Trans Date (empty preferred falls through).
       const drDate = parseDrDate(
-        pickColumn(row, [
-          "date",
-          "trans date",
-          "transdate",
-          "dr date",
-          "drdate",
-          "deliverydate",
-        ]),
+        pickColumn(row, ["dr date", "drdate", "deliverydate", "delivery date"]),
+      );
+
+      // Legacy dealer files used "Trans #" / "Trans Date" for the invoice pair.
+      const siNoRaw = pickColumn(row, [
+        "si/trans no.",
+        "si/trans no",
+        "sitransno",
+        "si trans no",
+        "si no.",
+        "si no",
+        "sino",
+        "trans #",
+        "trans#",
+        "transno",
+        "transactionno",
+      ]);
+      const siDate = parseDrDate(
+        pickColumn(row, ["date", "si date", "sidate", "trans date", "transdate"]),
       );
 
       const branchSold = pickOptionalText(row, [
@@ -169,6 +171,8 @@ function parseUploadBuffer(buffer: ArrayBuffer | Buffer): OfficialSalesRowCreate
           serial,
           drDate,
           drNo: drNoRaw == null || drNoRaw === "" ? null : String(drNoRaw).trim(),
+          siDate,
+          siNo: siNoRaw == null || siNoRaw === "" ? null : String(siNoRaw).trim(),
           branchSold,
           action,
           dealer: pickOptionalText(row, ["dealer"]),
@@ -347,10 +351,15 @@ export const officialSalesService = {
           }
 
           const transactionNo = `${OFFICIAL_SALES_TRANSACTION_PREFIX}${Date.now().toString(36).toUpperCase()}-${row.id.slice(-4)}`;
+          // Invoice date drives the sale; DR date is the fallback for older rows
+          // staged before the columns were split.
+          const transactionDate = row.siDate ?? row.drDate;
           const noteParts = [
             "Official sales import",
-            row.drNo ? `Trans # ${row.drNo}` : null,
-            row.drDate ? `Trans Date ${row.drDate.toISOString().slice(0, 10)}` : null,
+            row.siNo ? `SI/Trans # ${row.siNo}` : null,
+            row.siDate ? `SI Date ${row.siDate.toISOString().slice(0, 10)}` : null,
+            row.drNo ? `DR # ${row.drNo}` : null,
+            row.drDate ? `DR Date ${row.drDate.toISOString().slice(0, 10)}` : null,
             row.branchSold ? `Branch Sold ${row.branchSold}` : null,
             row.action ? `Action ${row.action}` : null,
           ].filter(Boolean);
@@ -362,7 +371,7 @@ export const officialSalesService = {
                 branchId: inventory.branchId,
                 alternateBranchId: inventory.branchId,
                 transactionNo,
-                transactionDate: row.drDate,
+                transactionDate,
                 amount: 0,
                 notes: noteParts.join(" · "),
                 atrStatus: "open",

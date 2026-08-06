@@ -5,6 +5,8 @@ export type OfficialSalesRowCreateInput = {
   serial: string;
   drDate: Date | null;
   drNo: string | null;
+  siDate: Date | null;
+  siNo: string | null;
   branchSold: string | null;
   action: string | null;
   dealer: string | null;
@@ -50,6 +52,8 @@ export const officialSalesRepository = {
             serial: row.serial,
             drDate: row.drDate,
             drNo: row.drNo,
+            siDate: row.siDate,
+            siNo: row.siNo,
             branchSold: row.branchSold,
             action: row.action,
             dealer: row.dealer,

@@ -1301,10 +1301,14 @@ model OfficialSalesImportRow {
   tenantId    String                       @map("tenant_id")
   batchId     String                       @map("batch_id")
   serial      String
-  /** Preferred DATE, else DR DATE / Trans Date — stored as dr_date for compatibility. */
+  /** DR DATE — delivery receipt date. Feeds BranchSalesTransactionDetail.deliveryDate. */
   drDate      DateTime?                    @map("dr_date") @db.Date
-  /** Preferred SI/TRANS NO., else DR NO. / Trans # — stored as dr_no for compatibility. */
+  /** DR NO. — delivery receipt number. Feeds BranchSalesTransactionDetail.deliveryNo. */
   drNo        String?                      @map("dr_no")
+  /** DATE — sales invoice date. Feeds BranchSalesTransaction.transactionDate. */
+  siDate      DateTime?                    @map("si_date") @db.Date
+  /** SI/TRANS NO. — sales invoice / transaction number (legacy "Trans #"). */
+  siNo        String?                      @map("si_no")
   branchSold  String?                      @map("branch_sold")
   /** ADD | UPD | DEL (display/storage; process still uses inventory status flips). */
   action      String?

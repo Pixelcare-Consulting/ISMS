@@ -70,6 +70,8 @@ export interface OfficialSalesStagingRow {
   serial: string;
   drDate: string | null;
   drNo: string | null;
+  siDate: string | null;
+  siNo: string | null;
   branchSold: string | null;
   action: string | null;
   dealer: string | null;
@@ -89,10 +91,10 @@ interface OfficialSalesPanelProps {
   canManage: boolean;
 }
 
-/** Default: # Serial Branch Date SI/Trans Action Status Result (+ checkbox/Actions when manage) */
+/** Default: # Serial Branch SI Date SI/Trans Action Status Result (+ checkbox/Actions when manage) */
 const DEFAULT_COL_COUNT = 8;
-/** Extra dealer-template columns when "Show all columns" is on */
-const SECONDARY_COL_COUNT = 5;
+/** Extra dealer-template columns when "Show all columns" is on — incl. the DR pair */
+const SECONDARY_COL_COUNT = 7;
 const XLSX_MIME =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
@@ -281,8 +283,10 @@ function StagingRowDetailsDialog({
           <dl className="grid shrink-0 grid-cols-1 gap-x-6 gap-y-2.5 text-sm sm:grid-cols-2">
             <DetailField label="Serial" value={row.serial} mono />
             <DetailField label="Branch" value={cellText(row.branchSold)} />
-            <DetailField label="Date" value={cellText(row.drDate)} />
-            <DetailField label="SI/Trans No." value={cellText(row.drNo)} mono />
+            <DetailField label="Date" value={cellText(row.siDate)} />
+            <DetailField label="SI/Trans No." value={cellText(row.siNo)} mono />
+            <DetailField label="DR Date" value={cellText(row.drDate)} />
+            <DetailField label="DR No." value={cellText(row.drNo)} mono />
             <DetailField
               label="Action"
               value={cellText(row.action).toUpperCase()}
@@ -388,6 +392,8 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
           row.branchSold ?? "",
           row.drDate ?? "",
           row.drNo ?? "",
+          row.siDate ?? "",
+          row.siNo ?? "",
           row.itemModel ?? "",
           row.serial,
           row.saleAmount ?? "",
@@ -411,6 +417,7 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
     () =>
       uniqueSearchSuggestions(
         rows.map((r) => r.serial),
+        rows.map((r) => r.siNo),
         rows.map((r) => r.drNo),
         rows.map((r) => r.branchSold),
         rows.map((r) => r.dealer),
@@ -425,6 +432,8 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
     branchSold: (r) => r.branchSold,
     drDate: (r) => r.drDate,
     drNo: (r) => r.drNo,
+    siDate: (r) => r.siDate,
+    siNo: (r) => r.siNo,
     itemModel: (r) => r.itemModel,
     serial: (r) => r.serial,
     saleAmount: (r) => r.saleAmount,
@@ -833,10 +842,12 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
                   </>
                 ) : null}
                 <GlobalTableHead {...rowSort.sortProps("branchSold")}>Branch</GlobalTableHead>
-                <GlobalTableHead {...rowSort.sortProps("drDate")}>Date</GlobalTableHead>
-                <GlobalTableHead {...rowSort.sortProps("drNo")}>SI/Trans No.</GlobalTableHead>
+                <GlobalTableHead {...rowSort.sortProps("siDate")}>Date</GlobalTableHead>
+                <GlobalTableHead {...rowSort.sortProps("siNo")}>SI/Trans No.</GlobalTableHead>
                 {showAllColumns ? (
                   <>
+                    <GlobalTableHead {...rowSort.sortProps("drDate")}>DR Date</GlobalTableHead>
+                    <GlobalTableHead {...rowSort.sortProps("drNo")}>DR No.</GlobalTableHead>
                     <GlobalTableHead {...rowSort.sortProps("itemModel")}>
                       Item/Model
                     </GlobalTableHead>
@@ -926,13 +937,19 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
                         {cellText(row.branchSold)}
                       </TableCell>
                       <TableCell className="whitespace-nowrap py-2 tabular-nums sm:py-2.5">
-                        {cellText(row.drDate)}
+                        {cellText(row.siDate)}
                       </TableCell>
                       <TableCell className="whitespace-nowrap py-2 sm:py-2.5">
-                        {cellText(row.drNo)}
+                        {cellText(row.siNo)}
                       </TableCell>
                       {showAllColumns ? (
                         <>
+                          <TableCell className="whitespace-nowrap py-2 tabular-nums sm:py-2.5">
+                            {cellText(row.drDate)}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap py-2 sm:py-2.5">
+                            {cellText(row.drNo)}
+                          </TableCell>
                           <TableCell className="py-2 sm:py-2.5">
                             {cellText(row.itemModel)}
                           </TableCell>
