@@ -312,13 +312,13 @@ async function soldSource(
         createdAt: true,
         saleAmount: true,
         amount: true,
+        deliveryNo: true,
         sale: {
           select: {
             transactionNo: true,
             transactionDate: true,
             customerName: true,
             contactNo: true,
-            deliveryNo: true,
             amount: true,
             branch: { select: { name: true } },
             createdBy: userSelect,
@@ -361,7 +361,7 @@ async function soldSource(
             formatPeso(Number(r.saleAmount ?? r.amount ?? r.sale.amount)),
             r.sale.customerName ? `Customer: ${r.sale.customerName}` : null,
             r.sale.contactNo ? `Contact: ${r.sale.contactNo}` : null,
-            r.sale.deliveryNo ? `DR ${r.sale.deliveryNo}` : null,
+            r.deliveryNo ? `DR ${r.deliveryNo}` : null,
             r.sale.transactionDate
               ? `Transaction date: ${formatEventDate(r.sale.transactionDate)}`
               : null,
