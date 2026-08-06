@@ -14,6 +14,34 @@ export type OfficialSalesRowCreateInput = {
   packageName: string | null;
 };
 
+const OPEN_SALE_DETAIL_SELECT = {
+  id: true,
+  salesId: true,
+  serialNumberId: true,
+  statusCodeId: true,
+  modelId: true,
+  sale: {
+    select: {
+      id: true,
+      transactionNo: true,
+      transactionDate: true,
+      atrStatus: true,
+      branchId: true,
+      alternateBranchId: true,
+      branch: { select: { id: true, name: true, sapCode: true } },
+    },
+  },
+  statusCode: { select: { id: true, code: true, name: true } },
+  serialNumber: {
+    select: {
+      id: true,
+      serialNo: true,
+      modelId: true,
+      model: { select: { id: true, skuCode: true, name: true } },
+    },
+  },
+} as const;
+
 export const officialSalesRepository = {
   listStagingRows(tenantId: string) {
     return prisma.officialSalesImportRow.findMany({
@@ -142,11 +170,12 @@ export const officialSalesRepository = {
         serialNumber: { serialNo },
       },
       include: {
-        branch: { select: { id: true, name: true } },
+        branch: { select: { id: true, name: true, sapCode: true } },
         serialNumber: {
           select: {
             id: true,
             serialNo: true,
+            modelId: true,
             model: { select: { id: true, skuCode: true, name: true } },
           },
         },
@@ -155,11 +184,69 @@ export const officialSalesRepository = {
     });
   },
 
+  findWarehouseInventoryBySerial(tenantId: string, serialNo: string) {
+    return prisma.warehouseInventory.findFirst({
+      where: {
+        tenantId,
+        serialNumber: { serialNo },
+      },
+      include: {
+        warehouseLocation: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            warehouse: { select: { id: true, code: true, name: true } },
+          },
+        },
+        serialNumber: {
+          select: {
+            id: true,
+            serialNo: true,
+            modelId: true,
+            model: { select: { id: true, skuCode: true, name: true } },
+          },
+        },
+      },
+    });
+  },
+
   /**
-   * Open (non-closed) sale detail for a serial with frozen Sold/Reserved STATUS.
-   * Used to block duplicate Official Sales SALE rows after inventory was reset to STK.
+   * Resolve tenant branch by name, SAP code, or exact id (case-insensitive for name/code).
    */
-  findOpenSaleDetailBySerial(tenantId: string, serialNo: string) {
+  async resolveBranch(tenantId: string, branchSold: string) {
+    const trimmed = branchSold.trim();
+    if (!trimmed) return null;
+
+    const byId = await prisma.branch.findFirst({
+      where: { tenantId, id: trimmed, deletedAt: null },
+      select: { id: true, name: true, sapCode: true },
+    });
+    if (byId) return byId;
+
+    const rows = await prisma.branch.findMany({
+      where: {
+        tenantId,
+        deletedAt: null,
+        OR: [
+          { name: { equals: trimmed, mode: "insensitive" } },
+          { sapCode: { equals: trimmed, mode: "insensitive" } },
+        ],
+      },
+      select: { id: true, name: true, sapCode: true },
+      take: 2,
+    });
+    return rows[0] ?? null;
+  },
+
+  /**
+   * Open (non-closed) sale detail for a serial with frozen Sold/Reserved/Official Sold STATUS.
+   */
+  findOpenSaleDetailBySerial(
+    tenantId: string,
+    serialNo: string,
+    statusCodes: string[] = ["SLD", "RSV", "OFS"],
+  ) {
     return prisma.branchSalesTransactionDetail.findFirst({
       where: {
         serialNumber: { tenantId, serialNo },
@@ -168,16 +255,124 @@ export const officialSalesRepository = {
           atrStatus: { not: "closed" },
         },
         statusCode: {
-          code: { in: ["SLD", "RSV"] },
+          code: { in: statusCodes },
         },
       },
-      select: {
-        id: true,
-        salesId: true,
-        sale: { select: { transactionNo: true, atrStatus: true } },
-        statusCode: { select: { code: true, name: true } },
-      },
+      select: OPEN_SALE_DETAIL_SELECT,
       orderBy: { createdAt: "desc" },
     });
+  },
+
+  /**
+   * Match sale detail by serial + Trans # (drNo / transactionNo / deliveryNo / siTrans)
+   * and sold branch. Used by DEL and ADD matching.
+   */
+  findSaleDetailBySerialTransBranch(
+    tenantId: string,
+    serialNo: string,
+    transactionNo: string,
+    branchId: string,
+    statusCodes?: string[],
+  ) {
+    const txn = transactionNo.trim();
+    return prisma.branchSalesTransactionDetail.findFirst({
+      where: {
+        serialNumber: { tenantId, serialNo },
+        ...(statusCodes?.length
+          ? { statusCode: { code: { in: statusCodes } } }
+          : {}),
+        sale: {
+          tenantId,
+          branchId,
+          OR: [
+            { transactionNo: txn },
+            { deliveryNo: txn },
+            { siTrans: txn },
+          ],
+        },
+      },
+      select: OPEN_SALE_DETAIL_SELECT,
+      orderBy: { createdAt: "desc" },
+    });
+  },
+
+  /**
+   * Prefer match by serial + Trans # + branch + optional date; fall back to serial-only open SLD.
+   */
+  async findSaleDetailForRetag(
+    tenantId: string,
+    serialNo: string,
+    opts: {
+      transactionNo?: string | null;
+      branchId?: string | null;
+      transactionDate?: Date | null;
+      statusCodes?: string[];
+    },
+  ) {
+    const statusCodes = opts.statusCodes ?? ["SLD", "RSV", "OFS"];
+    const txn = opts.transactionNo?.trim();
+
+    if (txn && opts.branchId) {
+      const matched = await this.findSaleDetailBySerialTransBranch(
+        tenantId,
+        serialNo,
+        txn,
+        opts.branchId,
+        statusCodes,
+      );
+      if (matched) return matched;
+    }
+
+    if (txn) {
+      const byTxn = await prisma.branchSalesTransactionDetail.findFirst({
+        where: {
+          serialNumber: { tenantId, serialNo },
+          statusCode: { code: { in: statusCodes } },
+          sale: {
+            tenantId,
+            atrStatus: { not: "closed" },
+            OR: [
+              { transactionNo: txn },
+              { deliveryNo: txn },
+              { siTrans: txn },
+            ],
+            ...(opts.transactionDate
+              ? { transactionDate: opts.transactionDate }
+              : {}),
+          },
+        },
+        select: OPEN_SALE_DETAIL_SELECT,
+        orderBy: { createdAt: "desc" },
+      });
+      if (byTxn) return byTxn;
+    }
+
+    return this.findOpenSaleDetailBySerial(tenantId, serialNo, statusCodes);
+  },
+
+  /**
+   * True when inventory is FPO or the serial is on an open pullout that is
+   * for_pullout / in_transit (mid-pullout hold — do not force inventory to OFS).
+   */
+  async isPulloutHold(
+    tenantId: string,
+    serialNumberId: string,
+    inventoryStatusCode?: string | null,
+  ): Promise<boolean> {
+    if ((inventoryStatusCode ?? "").toUpperCase() === "FPO") return true;
+
+    const openPullout = await prisma.branchPulloutLine.findFirst({
+      where: {
+        serialNumberId,
+        pullout: {
+          tenantId,
+          statusCode: {
+            code: { in: ["for_pullout", "in_transit", "pending_logistics", "scheduled"] },
+          },
+        },
+      },
+      select: { id: true },
+    });
+    return Boolean(openPullout);
   },
 };

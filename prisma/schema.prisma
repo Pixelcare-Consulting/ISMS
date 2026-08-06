@@ -1306,7 +1306,7 @@ model OfficialSalesImportRow {
   /** Preferred SI/TRANS NO., else DR NO. / Trans # — stored as dr_no for compatibility. */
   drNo        String?                      @map("dr_no")
   branchSold  String?                      @map("branch_sold")
-  /** ADD | UPD | DEL (display/storage; process still uses inventory status flips). */
+  /** WHSE_ADD | ADD | UPD | DEL — process dispatches by Action Key (UPD rejected). */
   action      String?
   dealer      String?
   brand       String?

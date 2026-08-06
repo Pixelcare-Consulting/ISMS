@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,8 @@ import {
 
 export type DraftSaleDetail = {
   key: string;
+  /** Ties all sets from one Add/Edit Line Items session for package-level edit/delete. */
+  packageGroupKey: string;
   packageTypeId: string;
   packageTypeName: string;
   brandId: string;
@@ -65,7 +67,6 @@ type SerialOption = {
 
 type DetailSetDraft = {
   brandId: string;
-  promoTypeId: string;
   modelId: string;
   serialNumberId: string;
   saleAmount: string;
@@ -79,7 +80,6 @@ type DetailSetDraft = {
 function emptySet(): DetailSetDraft {
   return {
     brandId: "",
-    promoTypeId: "",
     modelId: "",
     serialNumberId: "",
     saleAmount: "",
@@ -104,12 +104,25 @@ function newClientKey(): string {
   return `d-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function draftToSet(row: DraftSaleDetail): DetailSetDraft {
+  return {
+    brandId: row.brandId,
+    modelId: row.modelId,
+    serialNumberId: row.serialNumberId,
+    saleAmount: String(row.saleAmount),
+    modelPrice: row.modelPrice == null ? "" : String(row.modelPrice),
+    noPriceList: false,
+    priceFallbackDate: null,
+  };
+}
+
 export function AddTransactionDetailDialog({
   stockBranchId,
   brands,
   promoTypes,
   usedSerialIds,
   transactionDate,
+  initialRows,
   onAdd,
   onClose,
 }: {
@@ -119,16 +132,30 @@ export function AddTransactionDetailDialog({
   usedSerialIds: Set<string>;
   /** YYYY-MM-DD — used to resolve model price against the right price list period. */
   transactionDate?: string;
+  /** When set, dialog opens in edit mode with these package sets prefilled. */
+  initialRows?: DraftSaleDetail[];
   onAdd: (rows: DraftSaleDetail[]) => void;
   onClose: () => void;
 }) {
+  const isEdit = Boolean(initialRows && initialRows.length > 0);
+  const editGroupKey = initialRows?.[0]?.packageGroupKey;
+  const initialRowsRef = useRef(initialRows);
   const [pending, startTransition] = useTransition();
   const [packages, setPackages] = useState<PackageOption[]>([]);
   const [models, setModels] = useState<ModelOption[]>([]);
   const [serials, setSerials] = useState<SerialOption[]>([]);
   const [loading, setLoading] = useState(true);
-  const [packageTypeId, setPackageTypeId] = useState("");
-  const [sets, setSets] = useState<DetailSetDraft[]>([emptySet()]);
+  const [packageTypeId, setPackageTypeId] = useState(
+    () => initialRows?.[0]?.packageTypeId ?? "",
+  );
+  /** Shared across every set in the package — promo applies to all serials. */
+  const [promoTypeId, setPromoTypeId] = useState(
+    () => initialRows?.[0]?.promoTypeId ?? "",
+  );
+  const [sets, setSets] = useState<DetailSetDraft[]>(() =>
+    initialRows?.length ? initialRows.map(draftToSet) : [emptySet()],
+  );
+  const [hydrated, setHydrated] = useState(!isEdit);
 
   const selectedPackage = useMemo(
     () => packages.find((p) => p.id === packageTypeId) ?? null,
@@ -149,6 +176,16 @@ export function AddTransactionDetailDialog({
         setPackages(pkgRows);
         setSerials(serialRows);
         setModels(modelRows);
+
+        // Re-apply edit values after options load so selects resolve correctly.
+        const rows = initialRowsRef.current;
+        if (rows?.length) {
+          const first = rows[0]!;
+          setPackageTypeId(first.packageTypeId);
+          setPromoTypeId(first.promoTypeId ?? "");
+          setSets(rows.map(draftToSet));
+          setHydrated(true);
+        }
       } catch {
         if (cancelled) return;
         toast.error("Failed to load detail options");
@@ -244,7 +281,12 @@ export function AddTransactionDetailDialog({
       return true;
     });
     // Pin TO-FOLLOW at the top so it's always available for any model.
-    return [
+    // Also keep the currently selected serial visible even if already in usedSerialIds
+    // (edit mode) or not in the fresh STK list.
+    const selected = set.serialNumberId
+      ? serials.find((s) => s.id === set.serialNumberId)
+      : undefined;
+    const options = [
       {
         id: TO_FOLLOW_SERIAL_ID,
         serialNo: TO_FOLLOW_SERIAL_LABEL,
@@ -254,6 +296,14 @@ export function AddTransactionDetailDialog({
       },
       ...realSerials,
     ];
+    if (
+      selected &&
+      !isToFollowSerial(selected.id) &&
+      !options.some((o) => o.id === selected.id)
+    ) {
+      options.splice(1, 0, selected);
+    }
+    return options;
   }
 
   function submit() {
@@ -262,6 +312,7 @@ export function AddTransactionDetailDialog({
       return;
     }
 
+    const packageGroupKey = editGroupKey ?? newClientKey();
     const rows: DraftSaleDetail[] = [];
     for (let i = 0; i < sets.length; i++) {
       const set = sets[i]!;
@@ -304,11 +355,12 @@ export function AddTransactionDetailDialog({
         toast.error(`Set ${i + 1}: brand not found`);
         return;
       }
-      const promo = set.promoTypeId
-        ? (promoTypes.find((p) => p.id === set.promoTypeId) ?? null)
+      const promo = promoTypeId
+        ? (promoTypes.find((p) => p.id === promoTypeId) ?? null)
         : null;
       rows.push({
         key: newClientKey(),
+        packageGroupKey,
         packageTypeId: selectedPackage.id,
         packageTypeName: selectedPackage.name,
         brandId: brand.id,
@@ -336,9 +388,13 @@ export function AddTransactionDetailDialog({
     startTransition(() => {
       onAdd(rows);
       toast.success(
-        rows.length === 1
-          ? "Added 1 detail line"
-          : `Added ${rows.length} detail lines`,
+        isEdit
+          ? rows.length === 1
+            ? "Updated 1 detail line"
+            : `Updated ${rows.length} detail lines`
+          : rows.length === 1
+            ? "Added 1 detail line"
+            : `Added ${rows.length} detail lines`,
       );
     });
   }
@@ -348,7 +404,9 @@ export function AddTransactionDetailDialog({
       <div className="flex w-full max-w-2xl max-h-[calc(100svh-2rem)] flex-col rounded-xl border bg-card shadow-lg">
         <div className="flex-1 overflow-y-auto space-y-4 p-4 sm:p-6">
           <div>
-            <h3 className="text-lg font-semibold">Add Line Items</h3>
+            <h3 className="text-lg font-semibold">
+              {isEdit ? "Edit Line Items" : "Add Line Items"}
+            </h3>
             <p className="text-sm text-muted-foreground">
               Choose a package. Quantity expands into one set per unit; each set
               needs its own brand, model, and STK serial from the stock source
@@ -368,7 +426,7 @@ export function AddTransactionDetailDialog({
               placeholder={loading ? "Loading packages…" : "Select package…"}
               searchPlaceholder="Search packages…"
               emptyMessage="No active package types."
-              disabled={loading || packages.length === 0}
+              disabled={loading || packages.length === 0 || !hydrated}
             />
           </div>
 
@@ -378,6 +436,25 @@ export function AddTransactionDetailDialog({
               {selectedPackage.quantity === 1 ? "" : "s"}.
             </p>
           ) : null}
+
+          <div className="space-y-2">
+            <SearchableSelect
+              label="Promo type"
+              options={promoTypes.map((p) => ({
+                id: p.id,
+                label: p.name,
+              }))}
+              value={promoTypeId}
+              onChange={setPromoTypeId}
+              placeholder="Optional promo…"
+              searchPlaceholder="Search promo types…"
+              emptyMessage="No promo types."
+              disabled={loading || !hydrated}
+            />
+            <p className="text-xs text-muted-foreground">
+              Applies to every serial in this package.
+            </p>
+          </div>
 
           <div className="space-y-3">
             {sets.map((set, index) => {
@@ -398,20 +475,7 @@ export function AddTransactionDetailDialog({
                       placeholder="Select brand…"
                       searchPlaceholder="Search brands…"
                       emptyMessage="No brands."
-                      disabled={loading || brands.length === 0}
-                    />
-                    <SearchableSelect
-                      label="Promo type"
-                      options={promoTypes.map((p) => ({
-                        id: p.id,
-                        label: p.name,
-                      }))}
-                      value={set.promoTypeId}
-                      onChange={(id) => updateSet(index, { promoTypeId: id })}
-                      placeholder="Optional promo…"
-                      searchPlaceholder="Search promo types…"
-                      emptyMessage="No promo types."
-                      disabled={loading}
+                      disabled={loading || brands.length === 0 || !hydrated}
                     />
                     <SearchableSelect
                       label="Model *"
@@ -426,13 +490,15 @@ export function AddTransactionDetailDialog({
                       }
                       searchPlaceholder="Search models…"
                       emptyMessage="No models for this brand."
-                      disabled={loading || !set.brandId}
+                      disabled={loading || !set.brandId || !hydrated}
                     />
                     <SearchableSelect
                       label="Serial number *"
                       options={serialOpts.map((s) => ({
                         id: s.id,
-                        label: `${s.serialNo} · ${s.skuCode}`,
+                        label: isToFollowSerial(s.id)
+                          ? s.serialNo
+                          : `${s.serialNo} · ${s.skuCode}`,
                       }))}
                       value={set.serialNumberId}
                       onChange={(id) =>
@@ -448,7 +514,10 @@ export function AddTransactionDetailDialog({
                       searchPlaceholder="Search serials…"
                       emptyMessage="No sellable serials for this model at the stock source."
                       disabled={
-                        loading || !set.modelId || serialOpts.length === 0
+                        loading ||
+                        !set.modelId ||
+                        !hydrated ||
+                        serialOpts.length === 0
                       }
                     />
                     <div className="space-y-2">
@@ -465,6 +534,7 @@ export function AddTransactionDetailDialog({
                           updateSet(index, { saleAmount: e.target.value })
                         }
                         placeholder="0.00"
+                        disabled={!hydrated}
                       />
                     </div>
                     <div className="space-y-2">
@@ -509,8 +579,12 @@ export function AddTransactionDetailDialog({
           >
             Cancel
           </Button>
-          <Button type="button" disabled={pending || loading} onClick={submit}>
-            Add Details
+          <Button
+            type="button"
+            disabled={pending || loading || !hydrated}
+            onClick={submit}
+          >
+            {isEdit ? "Save Changes" : "Add Details"}
           </Button>
         </div>
       </div>

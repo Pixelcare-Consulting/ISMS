@@ -52,6 +52,77 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.20.0",
+    date: "2026-08-06",
+    releasedAt: "2026-08-06T17:15:00+08:00",
+    title: "Official Sales by Action Key",
+    highlights: [
+      "Official Sales now follows the Action Key on each row — ADD, warehouse ADD, or delete — instead of guessing from stock status",
+      "Processed rows mark units Official Sold; delete puts stock back so you can correct dealer files confidently",
+      "Download Template includes sample rows for each Action Key, and the ? guide matches the new flow",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Official Sales process uses Action Key: ADD for branch official sales, WHSE_ADD when the serial is still in the warehouse, and DEL to reverse an official or sold line and restore stock",
+      },
+      {
+        type: "feature",
+        description:
+          "Units processed as official sales show as Official Sold — separate from everyday Sold / Reserved on Sales & ATR",
+      },
+      {
+        type: "improvement",
+        description:
+          "Staging results spell out the path taken (for example Official Sold or stock restored), and the template plus quick guide show ADD, DEL, and WHSE_ADD",
+      },
+      {
+        type: "improvement",
+        description:
+          "Branch name on the file must match a real branch; transaction number from the file is kept when present",
+      },
+      {
+        type: "fix",
+        description:
+          "UPD on the file no longer pretends to process — you get a clear message to edit that sale under Sales instead",
+      },
+    ],
+  },
+  {
+    version: "0.19.7",
+    date: "2026-08-06",
+    releasedAt: "2026-08-06T17:05:00+08:00",
+    title: "Cleaner sales encode details",
+    highlights: [
+      "When adding package line items, pick promo type once above the sets — it applies to every serial",
+      "SI/Trans no is no longer a separate field; transaction number is enough",
+      "Edit a package set to fix serials or other details; delete removes the whole package set after confirm",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Transaction details can be edited — opens Add Line Items again with the package sets filled in so you can correct serials and other fields",
+      },
+      {
+        type: "improvement",
+        description:
+          "Promo type on Add Line Items sits above the sets and applies to all serials in the package instead of being chosen per set",
+      },
+      {
+        type: "improvement",
+        description:
+          "New sales transaction no longer asks for SI/Trans no separately — it follows the transaction number",
+      },
+      {
+        type: "improvement",
+        description:
+          "Deleting a detail asks for confirmation and removes the entire package set (all serials), not just one line",
+      },
+    ],
+  },
+  {
     version: "0.19.6",
     date: "2026-08-04",
     releasedAt: "2026-08-04T19:30:00+08:00",

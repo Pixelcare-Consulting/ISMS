@@ -6,6 +6,10 @@ import { z } from "zod";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { auditService } from "@/features/audit/services/audit.service";
 import { aorService } from "@/features/aors/services/aor.service";
+import {
+  markSerialSoldFromStockSource,
+  restoreSerialToStockSource,
+} from "@/features/inventory/services/inventory-serial-moves";
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { salesRepository } from "@/features/sales/repositories/sales.repository";
@@ -166,7 +170,8 @@ const saleSchema = z.object({
   alternateBranchId: z.string().min(1),
   customerName: z.string().trim().min(1),
   contactNo: z.string().trim().max(50).optional(),
-  siTrans: z.string().trim().min(1),
+  /** Optional — defaults to transactionNo when omitted (same value; UI no longer collects it). */
+  siTrans: z.string().trim().optional(),
   paymentTypeId: z.string().min(1),
   saleTypeId: z.string().min(1),
   customerDeliveryMethodId: z.string().min(1),
@@ -258,94 +263,6 @@ async function assertValidStockSource(
     alternateBranchId,
     permissions,
   );
-}
-
-/**
- * Mark a STK unit at the stock source as sold/reserved. When stock was taken
- * from an alternate branch, relocate the BranchInventory row to the sold branch
- * in the same update (same pattern as transfer receive).
- */
-async function markSerialSoldFromStockSource(
-  tx: Pick<typeof prisma, "branchInventory">,
-  input: {
-    tenantId: string;
-    serialNumberId: string;
-    stockBranchId: string;
-    soldBranchId: string;
-    stkCodeId: string;
-    targetStatusCodeId: string;
-    updatedById: string;
-  },
-) {
-  const relocate = input.stockBranchId !== input.soldBranchId;
-  const updated = await tx.branchInventory.updateMany({
-    where: {
-      tenantId: input.tenantId,
-      serialNumberId: input.serialNumberId,
-      branchId: input.stockBranchId,
-      statusCodeId: input.stkCodeId,
-    },
-    data: {
-      statusCodeId: input.targetStatusCodeId,
-      updatedById: input.updatedById,
-      ...(relocate ? { branchId: input.soldBranchId } : {}),
-    },
-  });
-  if (updated.count === 0) {
-    throw new Error("Serial is not in sellable stock at the stock source branch");
-  }
-}
-
-/**
- * Restore a sold/reserved unit to STK at the stock source. Prefers the row at
- * the sold branch (post-relocate encode); falls back to stock source for legacy
- * rows that were never moved.
- */
-async function restoreSerialToStockSource(
-  tx: Pick<typeof prisma, "branchInventory">,
-  input: {
-    tenantId: string;
-    serialNumberId: string;
-    stockBranchId: string;
-    soldBranchId: string;
-    stkCodeId: string;
-    soldStatusCodeIds: string[];
-    updatedById: string;
-  },
-): Promise<string | null> {
-  let oldInv = await tx.branchInventory.findFirst({
-    where: {
-      tenantId: input.tenantId,
-      branchId: input.soldBranchId,
-      serialNumberId: input.serialNumberId,
-      statusCodeId: { in: input.soldStatusCodeIds },
-    },
-    select: { id: true, branchId: true, statusCodeId: true },
-  });
-  if (!oldInv && input.stockBranchId !== input.soldBranchId) {
-    oldInv = await tx.branchInventory.findFirst({
-      where: {
-        tenantId: input.tenantId,
-        branchId: input.stockBranchId,
-        serialNumberId: input.serialNumberId,
-        statusCodeId: { in: input.soldStatusCodeIds },
-      },
-      select: { id: true, branchId: true, statusCodeId: true },
-    });
-  }
-  if (!oldInv) return null;
-
-  await tx.branchInventory.update({
-    where: { id: oldInv.id },
-    data: {
-      statusCodeId: input.stkCodeId,
-      updatedById: input.updatedById,
-      ...(oldInv.branchId !== input.stockBranchId
-        ? { branchId: input.stockBranchId }
-        : {}),
-    },
-  });
-  return oldInv.statusCodeId;
 }
 
 const SALES_SORT_FIELDS = new Set<SalesListSort>([
@@ -1053,7 +970,7 @@ export async function createSaleAction(input: unknown) {
           transactionDate,
           customerName: parsed.data.customerName,
           contactNo: parsed.data.contactNo || null,
-          siTrans: parsed.data.siTrans,
+          siTrans: parsed.data.siTrans || transactionNo,
           infoSlipVsoRrReleased: parsed.data.infoSlipVsoRrReleased || null,
           rrReceiveDeliver: parsed.data.rrReceiveDeliver || null,
           proof: parsed.data.proof

@@ -3,9 +3,12 @@ import {
   officialSalesRepository,
   type OfficialSalesRowCreateInput,
 } from "@/features/official-sales/repositories/official-sales.repository";
+import {
+  normalizeProcessAction,
+  processOfficialSalesRow,
+} from "@/features/official-sales/services/official-sales-process";
 import { buildOfficialSalesTemplateWorkbook } from "@/features/official-sales/services/official-sales.workbook";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
-import { prisma } from "@/lib/database/client";
 import * as XLSX from "xlsx";
 
 /** Strip punctuation/spaces so "SI/TRANS NO." and "DR NO." match aliases. */
@@ -76,12 +79,11 @@ function parseSaleAmount(value: unknown): number | null {
 
 function normalizeAction(value: unknown): string | null {
   if (value == null || value === "") return null;
+  const processAction = normalizeProcessAction(String(value));
+  if (processAction) return processAction;
   const text = String(value).trim().toUpperCase();
   if (!text) return null;
-  // Light validation: known Accounting actions preferred; other text kept for display.
-  if (["ADD", "UPD", "DEL", "UPDATE", "DELETE"].includes(text)) {
-    return text === "UPDATE" ? "UPD" : text === "DELETE" ? "DEL" : text;
-  }
+  // Keep unknown action text for staging display; process will reject it.
   return text.slice(0, 32);
 }
 
@@ -264,146 +266,25 @@ export const officialSalesService = {
     const rows = await officialSalesRepository.findPendingRows(tenantId, rowIds);
     if (rows.length === 0) return { processed: 0, successCount: 0, errorCount: 0 };
 
-    const stkCodeId = await reasonStatusService.requireCodeId(
-      tenantId,
-      "inventory_system",
-      "STK",
-    );
-    const sldCodeId = await reasonStatusService.requireCodeId(
-      tenantId,
-      "inventory_system",
-      "SLD",
-    );
-    const rsvCodeId = await reasonStatusService.requireCodeId(
-      tenantId,
-      "inventory_system",
-      "RSV",
-    );
+    const [stkCodeId, sldCodeId, rsvCodeId, ofsCodeId] = await Promise.all([
+      reasonStatusService.requireCodeId(tenantId, "inventory_system", "STK"),
+      reasonStatusService.requireCodeId(tenantId, "inventory_system", "SLD"),
+      reasonStatusService.requireCodeId(tenantId, "inventory_system", "RSV"),
+      reasonStatusService.requireCodeId(tenantId, "inventory_system", "OFS"),
+    ]);
 
+    const codes = { stkCodeId, sldCodeId, rsvCodeId, ofsCodeId };
     let success = 0;
     let error = 0;
 
     for (const row of rows) {
       try {
-        const inventory = await officialSalesRepository.findInventoryBySerial(
-          tenantId,
-          row.serial,
-        );
-        if (!inventory) {
-          await officialSalesRepository.updateRowResult(row.id, {
-            status: "error",
-            result: "Serial not found in branch inventory",
-          });
-          error += 1;
-          continue;
-        }
-
-        const statusCode = inventory.statusCode.code.toUpperCase();
-        if (statusCode === "STK") {
-          const openSale = await officialSalesRepository.findOpenSaleDetailBySerial(
-            tenantId,
-            row.serial,
-          );
-          if (openSale) {
-            await officialSalesRepository.updateRowResult(row.id, {
-              status: "error",
-              result: `Serial already has an open sale (${openSale.sale.transactionNo})`,
-            });
-            error += 1;
-            continue;
-          }
-
-          const transactionNo = `OFS-${Date.now().toString(36).toUpperCase()}-${row.id.slice(-4)}`;
-          const noteParts = [
-            "Official sales import",
-            row.drNo ? `Trans # ${row.drNo}` : null,
-            row.drDate ? `Trans Date ${row.drDate.toISOString().slice(0, 10)}` : null,
-            row.branchSold ? `Branch Sold ${row.branchSold}` : null,
-            row.action ? `Action ${row.action}` : null,
-          ].filter(Boolean);
-
-          await prisma.$transaction(async (tx) => {
-            const created = await tx.branchSalesTransaction.create({
-              data: {
-                tenantId,
-                branchId: inventory.branchId,
-                alternateBranchId: inventory.branchId,
-                transactionNo,
-                transactionDate: row.drDate,
-                deliveryNo: row.drNo,
-                deliveryDate: row.drDate,
-                amount: 0,
-                notes: noteParts.join(" · "),
-                atrStatus: "open",
-                createdById: userId,
-              },
-            });
-            await tx.branchSalesTransactionDetail.create({
-              data: {
-                salesId: created.id,
-                modelId: inventory.serialNumber.model?.id ?? null,
-                serialNumberId: inventory.serialNumberId,
-                statusCodeId: sldCodeId,
-                saleAmount: 0,
-                amount: 0,
-              },
-            });
-            const updated = await tx.branchInventory.updateMany({
-              where: {
-                id: inventory.id,
-                statusCodeId: stkCodeId,
-              },
-              data: {
-                statusCodeId: sldCodeId,
-                updatedById: userId,
-              },
-            });
-            if (updated.count === 0) {
-              throw new Error("Inventory status changed; expected STK");
-            }
-          });
-
-          await officialSalesRepository.updateRowResult(row.id, {
-            status: "success",
-            result: "SALE — marked sold (SLD)",
-          });
-          success += 1;
-          continue;
-        }
-
-        if (statusCode === "SLD" || statusCode === "RSV") {
-          // Stay Sold: restore inventory to STK only — do not flip sale-line status.
-          // Action is stored for display; process still uses inventory status flips.
-          const fromCodeId = statusCode === "RSV" ? rsvCodeId : sldCodeId;
-          await prisma.$transaction(async (tx) => {
-            const updated = await tx.branchInventory.updateMany({
-              where: {
-                id: inventory.id,
-                statusCodeId: fromCodeId,
-              },
-              data: {
-                statusCodeId: stkCodeId,
-                updatedById: userId,
-              },
-            });
-            if (updated.count === 0) {
-              throw new Error(`Inventory status changed; expected ${statusCode}`);
-            }
-          });
-
-          await officialSalesRepository.updateRowResult(row.id, {
-            status: "success",
-            result: `RETURN — restored to STK from ${statusCode}`,
-          });
-          success += 1;
-          continue;
-        }
-
+        const result = await processOfficialSalesRow(tenantId, userId, row, codes);
         await officialSalesRepository.updateRowResult(row.id, {
-          status: "error",
-          result: `Unsupported inventory status ${statusCode}`,
+          status: "success",
+          result,
         });
-        error += 1;
+        success += 1;
       } catch (e) {
         await officialSalesRepository.updateRowResult(row.id, {
           status: "error",

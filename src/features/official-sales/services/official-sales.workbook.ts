@@ -52,6 +52,7 @@ export async function buildOfficialSalesTemplateWorkbook(): Promise<Buffer> {
 
   const sheet = workbook.addWorksheet(SHEET_NAME);
   sheet.addRow([...OFFICIAL_SALES_TEMPLATE_HEADERS]);
+  // Sample rows: Action Key drives process (ADD / DEL / WHSE_ADD).
   sheet.addRow([
     "Sample Dealer",
     "Sample Brand",
@@ -65,6 +66,34 @@ export async function buildOfficialSalesTemplateWorkbook(): Promise<Buffer> {
     "SI-0001",
     "Sample Package",
     "ADD",
+  ]);
+  sheet.addRow([
+    "Sample Dealer",
+    "Sample Brand",
+    "Sample Branch",
+    "2026-08-04",
+    "DR-0002",
+    "SAMPLE-MODEL",
+    "SAMPLE-SERIAL-002",
+    0,
+    "2026-08-04",
+    "SI-0002",
+    "Sample Package",
+    "DEL",
+  ]);
+  sheet.addRow([
+    "Sample Dealer",
+    "Sample Brand",
+    "Sample Branch",
+    "2026-08-04",
+    "DR-0003",
+    "SAMPLE-MODEL",
+    "SAMPLE-SERIAL-003",
+    0,
+    "2026-08-04",
+    "SI-0003",
+    "Sample Package",
+    "WHSE_ADD",
   ]);
 
   const headerRow = sheet.getRow(1);
@@ -85,10 +114,12 @@ export async function buildOfficialSalesTemplateWorkbook(): Promise<Buffer> {
     }
   });
 
-  const sampleRow = sheet.getRow(2);
-  sampleRow.eachCell({ includeEmpty: true }, (cell) => {
-    cell.border = THIN_BORDER;
-  });
+  for (let rowIndex = 2; rowIndex <= 4; rowIndex += 1) {
+    const sampleRow = sheet.getRow(rowIndex);
+    sampleRow.eachCell({ includeEmpty: true }, (cell) => {
+      cell.border = THIN_BORDER;
+    });
+  }
 
   COLUMN_WIDTHS.forEach((width, index) => {
     sheet.getColumn(index + 1).width = width;
