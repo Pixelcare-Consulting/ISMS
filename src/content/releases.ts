@@ -57,7 +57,8 @@ export const RELEASES: ReleaseNote[] = [
     releasedAt: "2026-08-07T14:10:00+08:00",
     title: "Official Sales cleanup & activity trail",
     highlights: [
-      "Remove TO-FOLLOW placeholder lines from Official Sales delete or Sales & ATR when the real serial is not needed",
+      "Remove TO-FOLLOW placeholder lines from Official Sales when the real serial is not needed",
+      "Sales & ATR no longer shows Delete on TO-FOLLOW rows — clean those up from Official Sales instead",
       "Serial Number Logs keep each Official Sales add and delete in the history, even after a correction",
       "Rows already marked Official Sold now show as Error instead of Success when you process them again",
       "Official Sales delete confirms which branch stock returned to after removing a sold line",
@@ -66,7 +67,7 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "feature",
         description:
-          "Delete TO-FOLLOW placeholder lines from Official Sales or Sales & ATR without moving stock",
+          "Delete TO-FOLLOW placeholder lines from Official Sales without moving stock",
       },
       {
         type: "feature",
@@ -77,6 +78,11 @@ export const RELEASES: ReleaseNote[] = [
         type: "improvement",
         description:
           "Official Sales delete messaging shows where stock was restored after removing a sold line",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sales & ATR list no longer shows Delete on TO-FOLLOW rows; cleanup stays in Official Sales",
       },
       {
         type: "fix",

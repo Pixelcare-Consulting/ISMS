@@ -14,7 +14,6 @@ import {
 import {
   approveReturnAction,
   completeReturnRestoreAction,
-  deleteToFollowSaleDetailAction,
   evaluateReturnAction,
   getSaleDetailsAction,
   rejectReturnAction,
@@ -119,12 +118,6 @@ type PendingConfirm = {
   transactionNo: string;
   branchName: string;
   action: SaleReturnConfirmAction;
-};
-
-type PendingToFollowDelete = {
-  detailId: string;
-  transactionNo: string;
-  branchName: string;
 };
 
 const CONFIRM_COPY: Record<
@@ -284,8 +277,6 @@ export function SalesTable({
   const [detailsSaleId, setDetailsSaleId] = useState<string | null>(null);
   const [saleDetails, setSaleDetails] = useState<SaleDetailsPayload | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
-  const [pendingToFollowDelete, setPendingToFollowDelete] =
-    useState<PendingToFollowDelete | null>(null);
   const [returnReason, setReturnReason] = useState("");
   const pageSize = parseTablePageSize(result.limit);
   const colCount =
@@ -454,26 +445,6 @@ export function SalesTable({
     });
   }
 
-  function confirmToFollowDelete() {
-    if (!pendingToFollowDelete) return;
-    const { detailId } = pendingToFollowDelete;
-
-    startTransition(async () => {
-      const res = await deleteToFollowSaleDetailAction(detailId);
-      if (res.error) {
-        toast.error(res.error);
-        return;
-      }
-      toast.success("TO-FOLLOW line removed");
-      setPendingToFollowDelete(null);
-      if (detailsSaleId) {
-        setDetailsSaleId(null);
-        setSaleDetails(null);
-      }
-      router.refresh();
-    });
-  }
-
   const copy = pendingConfirm ? CONFIRM_COPY[pendingConfirm.action] : null;
 
   return (
@@ -575,8 +546,6 @@ export function SalesTable({
                 stripe ? "bg-table-stripe" : "bg-card",
                 "group-hover:bg-accent/60",
               );
-              const canDeleteToFollow =
-                capabilities.canCreateSale && s.serialNumberId == null;
               return (
                 <TableRow
                   key={s.id}
@@ -657,23 +626,6 @@ export function SalesTable({
                       >
                         View details
                       </Button>
-                      {canDeleteToFollow ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={pending}
-                          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                          onClick={() =>
-                            setPendingToFollowDelete({
-                              detailId: s.detailId,
-                              transactionNo: saleTransactionLabel(s),
-                              branchName: s.branch.name,
-                            })
-                          }
-                        >
-                          Delete
-                        </Button>
-                      ) : null}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -786,44 +738,6 @@ export function SalesTable({
               }}
             >
               {pending ? "Working…" : (copy?.confirmLabel ?? "Confirm")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog
-        open={pendingToFollowDelete !== null}
-        onOpenChange={(open) => {
-          if (!open && !pending) {
-            setPendingToFollowDelete(null);
-          }
-        }}
-      >
-        <AlertDialogContent className="z-60" overlayClassName="z-60">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete TO-FOLLOW line?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This removes the placeholder line for accounting cleanup. No stock
-              is moved. Transaction{" "}
-              <span className="font-medium text-foreground">
-                {pendingToFollowDelete?.transactionNo}
-              </span>
-              {pendingToFollowDelete
-                ? ` at ${pendingToFollowDelete.branchName}.`
-                : "."}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={pending}
-              className="bg-destructive text-white hover:bg-destructive/90"
-              onClick={(event) => {
-                event.preventDefault();
-                confirmToFollowDelete();
-              }}
-            >
-              {pending ? "Working…" : "Delete line"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
