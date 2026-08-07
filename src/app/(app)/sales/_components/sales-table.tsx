@@ -26,6 +26,7 @@ import type { SalesActionCapabilities } from "@/features/sales/constants/sales-p
 import {
   TableAmountCell,
   TableCodeCell,
+  TableEmptyRow,
   uniqueSearchSuggestions,
 } from "@/components/data-table";
 import {
@@ -49,6 +50,7 @@ import { Label } from "@/components/ui/label";
 import { TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
+import { cn } from "@/utils/cn";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
 /** One table row = one transaction detail (serial / TO-FOLLOW line). */
@@ -451,50 +453,85 @@ export function SalesTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {filtered.map((s) => (
-            <TableRow key={s.id}>
-              <TableCell className="tabular-nums text-muted-foreground">
-                {saleIdMap.get(s.saleId) ?? "—"}
-              </TableCell>
-              <TableCodeCell value={saleTransactionLabel(s)} className="font-semibold" />
-              <TableCell className="whitespace-nowrap tabular-nums">
-                {formatSaleDate(s.transactionDate)}
-              </TableCell>
-              <TableCell>{s.branch.name}</TableCell>
-              <TableCell>{s.customerName?.trim() || "—"}</TableCell>
-              <TableCell>{s.packageName ?? "—"}</TableCell>
-              <TableCell>{s.brandName ?? "—"}</TableCell>
-              <TableCell className="font-mono text-sm">{s.modelLabel ?? "—"}</TableCell>
-              <TableCodeCell value={saleSerialLabel(s)} />
-              <TableAmountCell value={s.saleAmount} />
-              {s.modelPrice != null ? (
-                <TableAmountCell value={s.modelPrice} />
-              ) : (
-                <TableCell className="text-muted-foreground">—</TableCell>
-              )}
-              <TableCell>
-                {s.statusCode ? (
-                  <StatusCodeBadge
-                    code={s.statusCode.code}
-                    name={s.statusCode.name}
-                    color={s.statusCode.color}
-                  />
-                ) : (
-                  <span className="text-muted-foreground">—</span>
-                )}
-              </TableCell>
-              <TableCell className="whitespace-nowrap">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={pending}
-                  onClick={() => openSaleDetails(s.saleId)}
+          {filtered.length === 0 ? (
+            <TableEmptyRow
+              colSpan={13}
+              message="No results match your search."
+            />
+          ) : (
+            filtered.map((s, index) => {
+              const stripe = index % 2 === 1;
+              return (
+                <TableRow
+                  key={s.id}
+                  className={cn("group", stripe && "bg-table-stripe")}
                 >
-                  View details
-                </Button>
-              </TableCell>
-            </TableRow>
-          ))}
+                  <TableCell className="py-2 tabular-nums text-muted-foreground sm:py-2.5">
+                    {saleIdMap.get(s.saleId) ?? "—"}
+                  </TableCell>
+                  <TableCodeCell
+                    value={saleTransactionLabel(s)}
+                    className="py-2 font-semibold sm:py-2.5"
+                  />
+                  <TableCell className="whitespace-nowrap py-2 tabular-nums sm:py-2.5">
+                    {formatSaleDate(s.transactionDate)}
+                  </TableCell>
+                  <TableCell className="py-2 sm:py-2.5">{s.branch.name}</TableCell>
+                  <TableCell className="py-2 sm:py-2.5">
+                    {s.customerName?.trim() || "—"}
+                  </TableCell>
+                  <TableCell className="py-2 sm:py-2.5">
+                    {s.packageName ?? "—"}
+                  </TableCell>
+                  <TableCell className="py-2 sm:py-2.5">
+                    {s.brandName ?? "—"}
+                  </TableCell>
+                  <TableCell className="py-2 font-mono text-sm sm:py-2.5">
+                    {s.modelLabel ?? "—"}
+                  </TableCell>
+                  <TableCodeCell
+                    value={saleSerialLabel(s)}
+                    className="py-2 sm:py-2.5"
+                  />
+                  <TableAmountCell
+                    value={s.saleAmount}
+                    className="py-2 sm:py-2.5"
+                  />
+                  {s.modelPrice != null ? (
+                    <TableAmountCell
+                      value={s.modelPrice}
+                      className="py-2 sm:py-2.5"
+                    />
+                  ) : (
+                    <TableCell className="py-2 text-muted-foreground sm:py-2.5">
+                      —
+                    </TableCell>
+                  )}
+                  <TableCell className="py-2 sm:py-2.5">
+                    {s.statusCode ? (
+                      <StatusCodeBadge
+                        code={s.statusCode.code}
+                        name={s.statusCode.name}
+                        color={s.statusCode.color}
+                      />
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap py-2 sm:py-2.5">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={pending}
+                      onClick={() => openSaleDetails(s.saleId)}
+                    >
+                      View details
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              );
+            })
+          )}
         </TableBody>
       </GlobalDataTable>
 

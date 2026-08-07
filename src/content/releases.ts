@@ -52,6 +52,23 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.20.1",
+    date: "2026-08-07",
+    releasedAt: "2026-08-07T13:20:00+08:00",
+    title: "Clearer Sales & ATR list",
+    highlights: [
+      "Sales & ATR rows alternate shading so long lists are easier to scan",
+      "Empty search results show a clear message instead of a blank table",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Sales & ATR list is easier to scan with alternating row shading, denser spacing, and a clear empty-search message",
+      },
+    ],
+  },
+  {
     version: "0.20.0",
     date: "2026-08-06",
     releasedAt: "2026-08-06T17:15:00+08:00",
