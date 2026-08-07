@@ -1,7 +1,6 @@
 import type { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/database/client";
-import { OFFICIAL_SALES_TRANSACTION_PREFIX } from "@/features/official-sales/constants/official-sales-import";
 import { resolvePagination, toPaginatedResult } from "@/lib/shared/pagination";
 import { STOCK_COUNT_SESSION_LABELS } from "@/features/stock-audit/constants/stock-count-workflow";
 import { formatPeso } from "@/utils/format-currency";
@@ -294,6 +293,8 @@ async function soldSource(
       tenantId,
       ...(dateFilter ? { createdAt: dateFilter } : {}),
     },
+    // Official Sold (OFS) lifecycle is append-only via AuditLog ADD/DEL/WHSE_ADD.
+    NOT: { statusCode: { code: { equals: "OFS", mode: "insensitive" } } },
     ...(q
       ? {
           OR: [
@@ -353,14 +354,6 @@ async function soldSource(
         {
           id: `sold:${r.id}`,
           type: "sold" as const,
-          // Official Sales imports mint their transaction no with an OFS- prefix
-          // (official-sales.service.ts) — the only thing distinguishing them
-          // from a branch-encoded sale.
-          typeLabel: r.sale.transactionNo.startsWith(
-            OFFICIAL_SALES_TRANSACTION_PREFIX,
-          )
-            ? "Official Sales"
-            : undefined,
           timestamp: r.createdAt,
           serialNo: serial.serialNo,
           modelLabel: serial.modelLabel,
@@ -465,6 +458,15 @@ const OFFICIAL_SALES_AUDIT_ACTIONS = [
   "official_sales.whse_add",
 ] as const;
 
+const OFFICIAL_SALES_ACTION_KEY_LABEL: Record<
+  (typeof OFFICIAL_SALES_AUDIT_ACTIONS)[number],
+  "ADD" | "DEL" | "WHSE_ADD"
+> = {
+  "official_sales.add": "ADD",
+  "official_sales.del": "DEL",
+  "official_sales.whse_add": "WHSE_ADD",
+};
+
 function auditMetadataRecord(
   metadata: Prisma.JsonValue | null,
 ): Record<string, unknown> | null {
@@ -484,6 +486,17 @@ function auditMetadataString(
   return trimmed || null;
 }
 
+function officialSalesActionKey(
+  action: (typeof OFFICIAL_SALES_AUDIT_ACTIONS)[number],
+  metadata: Record<string, unknown> | null,
+): "ADD" | "DEL" | "WHSE_ADD" {
+  const fromMeta = auditMetadataString(metadata, "actionKey")?.toUpperCase();
+  if (fromMeta === "ADD" || fromMeta === "DEL" || fromMeta === "WHSE_ADD") {
+    return fromMeta;
+  }
+  return OFFICIAL_SALES_ACTION_KEY_LABEL[action];
+}
+
 /**
  * Append-only Official Sales ADD/DEL/WHSE_ADD trail from AuditLog so cycles
  * remain visible after sale details are hard-deleted.
@@ -492,28 +505,45 @@ async function officialSalesAuditSource(
   tenantId: string,
   { window, q, dateFilter, dir }: SourceOptions,
 ): Promise<SourceResult> {
+  // Resolve serial matches first — Prisma JSON `string_contains` is brittle and
+  // case-sensitive; catalog lookup keeps Serial Number Logs search reliable.
+  const serialMatches = q
+    ? await prisma.serialNumber.findMany({
+        where: { tenantId, serialNo: textContains(q) },
+        select: { serialNo: true },
+        take: 200,
+      })
+    : [];
+
+  const searchOr: Prisma.AuditLogWhereInput[] | undefined = q
+    ? [
+        ...serialMatches.map((row) => ({
+          metadata: {
+            path: ["serial"],
+            equals: row.serialNo,
+          },
+        })),
+        {
+          metadata: {
+            path: ["serial"],
+            string_contains: q,
+          },
+        },
+        {
+          metadata: {
+            path: ["transactionNo"],
+            string_contains: q,
+          },
+        },
+        { entityId: { contains: q, mode: "insensitive" as const } },
+      ]
+    : undefined;
+
   const where: Prisma.AuditLogWhereInput = {
     tenantId,
     action: { in: [...OFFICIAL_SALES_AUDIT_ACTIONS] },
     ...(dateFilter ? { createdAt: dateFilter } : {}),
-    ...(q
-      ? {
-          OR: [
-            {
-              metadata: {
-                path: ["serial"],
-                string_contains: q,
-              },
-            },
-            {
-              metadata: {
-                path: ["transactionNo"],
-                string_contains: q,
-              },
-            },
-          ],
-        }
-      : {}),
+    ...(searchOr ? { OR: searchOr } : {}),
   };
 
   const [rows, count] = await Promise.all([
@@ -524,6 +554,7 @@ async function officialSalesAuditSource(
       select: {
         id: true,
         action: true,
+        entityId: true,
         createdAt: true,
         metadata: true,
         user: userSelect,
@@ -559,6 +590,8 @@ async function officialSalesAuditSource(
     serialModels.map((row) => [row.serialNo, modelLabel(row.model)]),
   );
 
+  const qLower = q?.toLowerCase();
+
   return {
     count,
     events: rows.flatMap((row) => {
@@ -570,35 +603,42 @@ async function officialSalesAuditSource(
       const previousStatus = auditMetadataString(metadata, "previousStatus");
       const restoredBranch = auditMetadataString(metadata, "restoredBranch");
       const soldBranch = auditMetadataString(metadata, "soldBranch");
-      const statusFromMeta = auditMetadataString(metadata, "status");
       const toFollowCleanup = metadata?.toFollowCleanup === true;
+
+      // Keep serial / transaction / entityId hits; drop unrelated JSON contains noise.
+      if (
+        qLower &&
+        !serialNo.toLowerCase().includes(qLower) &&
+        !(transactionNo?.toLowerCase().includes(qLower) ?? false) &&
+        !(row.entityId?.toLowerCase().includes(qLower) ?? false)
+      ) {
+        return [];
+      }
 
       const action =
         row.action as (typeof OFFICIAL_SALES_AUDIT_ACTIONS)[number];
-      let typeLabel = "Official Sales";
-      let statusLabel: string | null = statusFromMeta
-        ? `Official Sales: ${statusFromMeta}`
-        : "Official Sales";
+      const actionKey = officialSalesActionKey(action, metadata);
+      const typeLabel = `Official Sales ${actionKey}`;
+
+      let statusLabel: string;
       switch (action) {
         case "official_sales.del":
-          typeLabel = "Official Sales delete";
           statusLabel = toFollowCleanup
-            ? "Official Sales: TO-FOLLOW removed"
+            ? `Action Key: ${actionKey} · TO-FOLLOW removed`
             : previousStatus
-              ? `Official Sales: deleted (${previousStatus} → STK)`
-              : "Official Sales: deleted";
+              ? `Action Key: ${actionKey} · ${previousStatus} → STK`
+              : `Action Key: ${actionKey}`;
           break;
         case "official_sales.add":
-          typeLabel = "Official Sales";
-          statusLabel = "Official Sales: Official Sold";
+          statusLabel = `Action Key: ${actionKey} · Official Sold`;
           break;
         case "official_sales.whse_add":
-          typeLabel = "Official Sales";
-          statusLabel = "Official Sales: warehouse ADD";
+          statusLabel = `Action Key: ${actionKey} · Official Sold`;
           break;
         default: {
           const _exhaustive: never = action;
           void _exhaustive;
+          statusLabel = `Action Key: ${actionKey}`;
           break;
         }
       }
@@ -614,6 +654,7 @@ async function officialSalesAuditSource(
           location: soldBranch ?? restoredBranch,
           reference: transactionNo,
           referenceDetails: referenceDetails(
+            `Action Key: ${actionKey}`,
             transactionNo ? `Transaction ${transactionNo}` : null,
             soldBranch && restoredBranch && soldBranch !== restoredBranch
               ? route(soldBranch, restoredBranch)

@@ -111,6 +111,52 @@ function buildSaleNotes(row: OfficialSalesProcessRow, action: string): string {
     .join(" · ");
 }
 
+type OfficialSalesTrailAction =
+  | "official_sales.add"
+  | "official_sales.del"
+  | "official_sales.whse_add";
+
+const OFFICIAL_SALES_ACTION_KEY: Record<
+  OfficialSalesTrailAction,
+  "ADD" | "DEL" | "WHSE_ADD"
+> = {
+  "official_sales.add": "ADD",
+  "official_sales.del": "DEL",
+  "official_sales.whse_add": "WHSE_ADD",
+};
+
+/** Append-only Serial Number Logs trail for every successful ADD / DEL / WHSE_ADD. */
+async function logOfficialSalesTrail(input: {
+  tenantId: string;
+  userId: string;
+  action: OfficialSalesTrailAction;
+  entityType: string;
+  entityId: string;
+  serial: string;
+  transactionNo?: string | null;
+  soldBranch?: string | null;
+  metadata?: Record<string, unknown>;
+}) {
+  await auditService.log({
+    tenantId: input.tenantId,
+    userId: input.userId,
+    action: input.action,
+    entityType: input.entityType,
+    entityId: input.entityId,
+    metadata: {
+      serial: input.serial.trim(),
+      actionKey: OFFICIAL_SALES_ACTION_KEY[input.action],
+      ...(input.transactionNo?.trim()
+        ? { transactionNo: input.transactionNo.trim() }
+        : {}),
+      ...(input.soldBranch?.trim()
+        ? { soldBranch: input.soldBranch.trim() }
+        : {}),
+      ...input.metadata,
+    },
+  });
+}
+
 async function resolveSoldBranch(tenantId: string, branchSold: string) {
   const branch = await officialSalesRepository.resolveBranch(tenantId, branchSold);
   if (!branch) {
@@ -328,16 +374,17 @@ async function processWhseAdd(
       });
     }
 
-    await auditService.log({
+    await logOfficialSalesTrail({
       tenantId,
       userId,
       action: "official_sales.whse_add",
       entityType: "BranchSalesTransaction",
       entityId: transactionNo,
+      serial: row.serial,
+      transactionNo,
+      soldBranch: soldBranch.name,
       metadata: {
-        serial: row.serial,
         branchId: soldBranch.id,
-        transactionNo,
         status: "OFS",
       },
     });
@@ -387,16 +434,17 @@ async function processAdd(
 
     await prisma.$transaction(async (tx) => {
       await retagDetailToOfficialSold(tx, detail.id, codes.ofsCodeId);
-      await auditService.log({
+      await logOfficialSalesTrail({
         tenantId,
         userId,
         action: "official_sales.add",
         entityType: "BranchSalesTransactionDetail",
         entityId: detail.id,
+        serial: row.serial,
+        transactionNo: detail.sale.transactionNo,
+        soldBranch: soldBranch.name,
         metadata: {
-          serial: row.serial,
-          transactionNo: detail.sale.transactionNo,
-          path: "retag_no_inventory",
+          processPath: "retag_no_inventory",
           status: "OFS",
         },
       });
@@ -461,6 +509,20 @@ async function processAdd(
             ofsCodeId: codes.ofsCodeId,
             updatedById: userId,
           });
+          await logOfficialSalesTrail({
+            tenantId,
+            userId,
+            action: "official_sales.add",
+            entityType: "BranchSalesTransactionDetail",
+            entityId: detail.id,
+            serial: row.serial,
+            transactionNo: detail.sale.transactionNo,
+            soldBranch: soldBranch.name,
+            metadata: {
+              processPath: "inventory_align",
+              status: "OFS",
+            },
+          });
         });
         return "ADD — Official Sold (inventory aligned)";
       }
@@ -480,16 +542,17 @@ async function processAdd(
           updatedById: userId,
         });
       }
-      await auditService.log({
+      await logOfficialSalesTrail({
         tenantId,
         userId,
         action: "official_sales.add",
         entityType: "BranchSalesTransactionDetail",
         entityId: detail.id,
+        serial: row.serial,
+        transactionNo: detail.sale.transactionNo,
+        soldBranch: soldBranch.name,
         metadata: {
-          serial: row.serial,
-          transactionNo: detail.sale.transactionNo,
-          path: "retag",
+          processPath: "retag",
           inventoryForcedOfs: !pulloutHold,
           pulloutHold,
           status: "OFS",
@@ -536,17 +599,20 @@ async function processAdd(
           ofsCodeId: codes.ofsCodeId,
         });
       }
-      await auditService.log({
+      await logOfficialSalesTrail({
         tenantId,
         userId,
         action: "official_sales.add",
         entityType: "BranchSalesTransaction",
         entityId: transactionNo,
+        serial: row.serial,
+        transactionNo,
+        soldBranch: soldBranch.name,
         metadata: {
-          serial: row.serial,
-          path: "pullout_hold",
+          processPath: "pullout_hold",
           pulloutHold: true,
           inventoryStatus: statusCode,
+          status: "OFS",
         },
       });
     });
@@ -583,6 +649,20 @@ async function processAdd(
         stkCodeId: codes.stkCodeId,
         targetStatusCodeId: codes.ofsCodeId,
         updatedById: userId,
+      });
+      await logOfficialSalesTrail({
+        tenantId,
+        userId,
+        action: "official_sales.add",
+        entityType: "BranchSalesTransactionDetail",
+        entityId: duplicate.id,
+        serial: row.serial,
+        transactionNo: duplicate.sale.transactionNo,
+        soldBranch: soldBranch.name,
+        metadata: {
+          processPath: "duplicate_retag",
+          status: "OFS",
+        },
       });
     });
     return "ADD — Official Sold";
@@ -644,16 +724,18 @@ async function processAdd(
       ofsCodeId: codes.ofsCodeId,
     });
 
-    await auditService.log({
+    await logOfficialSalesTrail({
       tenantId,
       userId,
       action: "official_sales.add",
       entityType: "BranchSalesTransaction",
       entityId: transactionNo,
+      serial: row.serial,
+      transactionNo,
+      soldBranch: soldBranch.name,
       metadata: {
-        serial: row.serial,
+        processPath: "sellable_create",
         branchId: soldBranch.id,
-        transactionNo,
         branchConflict,
         status: "OFS",
       },
@@ -708,18 +790,18 @@ async function processDel(
         });
       }
 
-      await auditService.log({
+      await logOfficialSalesTrail({
         tenantId,
         userId,
         action: "official_sales.del",
         entityType: "BranchSalesTransactionDetail",
         entityId: toFollowDetail.id,
+        serial: row.serial,
+        transactionNo: toFollowTransactionNo,
+        soldBranch: soldBranch.name,
         metadata: {
-          serial: row.serial,
-          transactionNo: toFollowTransactionNo,
           previousStatus: toFollowPreviousStatus,
           toFollowCleanup: true,
-          soldBranch: soldBranch.name,
           notes: "Official Delete — TO-FOLLOW",
         },
       });
@@ -780,19 +862,19 @@ async function processDel(
       updatedById: userId,
     });
 
-    await auditService.log({
+    await logOfficialSalesTrail({
       tenantId,
       userId,
       action: "official_sales.del",
       entityType: "BranchSalesTransactionDetail",
       entityId: detail.id,
+      serial: row.serial,
+      transactionNo: detail.sale.transactionNo,
+      soldBranch: soldBranchName,
       metadata: {
-        serial: row.serial,
-        transactionNo: detail.sale.transactionNo,
         previousStatus: detailCode,
         restored: "STK",
         restoredBranch: stockBranchName,
-        soldBranch: soldBranchName,
         notes: "Official Delete",
       },
     });

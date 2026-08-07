@@ -54,12 +54,13 @@ export const RELEASES: ReleaseNote[] = [
   {
     version: "0.20.2",
     date: "2026-08-07",
-    releasedAt: "2026-08-07T14:10:00+08:00",
+    releasedAt: "2026-08-07T14:15:00+08:00",
     title: "Official Sales cleanup & activity trail",
     highlights: [
       "Remove TO-FOLLOW placeholder lines from Official Sales when the real serial is not needed",
       "Sales & ATR no longer shows Delete on TO-FOLLOW rows — clean those up from Official Sales instead",
-      "Serial Number Logs keep each Official Sales add and delete in the history, even after a correction",
+      "Serial Number Logs keep every Official Sales ADD, DEL, and WHSE_ADD as its own history row — including after corrections",
+      "Each Official Sales log clearly shows the Action Key (ADD, DEL, or WHSE_ADD)",
       "Rows already marked Official Sold now show as Error instead of Success when you process them again",
       "Official Sales delete confirms which branch stock returned to after removing a sold line",
     ],
@@ -72,7 +73,12 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "feature",
         description:
-          "Serial Number Logs show each Official Sales add and delete so the full cycle stays visible",
+          "Serial Number Logs keep every Official Sales ADD, DEL, and WHSE_ADD so ADD→DEL→ADD cycles stay visible",
+      },
+      {
+        type: "improvement",
+        description:
+          "Official Sales rows in Serial Number Logs show the Action Key (ADD, DEL, WHSE_ADD) in the event and status",
       },
       {
         type: "improvement",
@@ -88,6 +94,11 @@ export const RELEASES: ReleaseNote[] = [
         type: "fix",
         description:
           "Processing an already Official Sold row marks the staging line as Error instead of Success",
+      },
+      {
+        type: "fix",
+        description:
+          "Successful Official Sales ADD paths that previously skipped history now appear in Serial Number Logs",
       },
     ],
   },
