@@ -2,7 +2,7 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.20.8`
+**Current version:** `0.21.0`
 
 ## Stack
 
@@ -60,7 +60,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/settings/departments` | `departments.manage` |
 | `/audit-logs/system`, `/audit-logs/serial-numbers` | `audit_logs.view` |
 | `/settings/branches`, `/settings/branch-quotas` | `branches.manage` (Import template: form-aligned Branches sheet + prefills; creates missing sap_codes; accepts PSG ISMS; optional legacy Allowed Models; schedule UX shows company locked days + frequency suggestions) |
-| `/settings/ordering` | `ordering_settings.manage` (company locked weekdays + optional daily time lock in Manila + frequency code catalog incl. Daily / Three times a month) |
+| `/settings/ordering` | `ordering_settings.manage` (company locked weekdays + optional daily time lock in Manila, scoped to selected order modules; frequency code catalog incl. Daily / Three times a month) |
 | `/settings/warehouses` | `warehouses.manage` |
 | `/settings/dealers` | `dealers.manage` |
 | `/settings/service-centers` | `service_centers.manage` |

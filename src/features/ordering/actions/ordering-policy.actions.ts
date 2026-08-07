@@ -8,12 +8,17 @@ import { requirePermission } from "@/lib/auth/permissions";
 
 const minutesSchema = z.number().int().min(0).max(1439).nullable();
 
+const orderTypeSchema = z.enum(["manual", "special", "auto_replenish"]);
+
 const updateSchema = z
   .object({
     globalLockedWeekdays: z.array(z.number().int().min(0).max(6)),
     dailyLockEnabled: z.boolean(),
     dailyLockStartMinutes: minutesSchema,
     dailyLockEndMinutes: minutesSchema,
+    lockAppliesToOrderTypes: z.array(orderTypeSchema).min(1, {
+      message: "Select at least one order module for company locks.",
+    }),
   })
   .superRefine((data, ctx) => {
     if (!data.dailyLockEnabled) return;
@@ -48,6 +53,7 @@ export async function updateOrderingPolicyAction(input: unknown) {
       dailyLockEnabled: parsed.data.dailyLockEnabled,
       dailyLockStartMinutes: parsed.data.dailyLockStartMinutes,
       dailyLockEndMinutes: parsed.data.dailyLockEndMinutes,
+      lockAppliesToOrderTypes: parsed.data.lockAppliesToOrderTypes,
     });
     revalidatePath("/settings/ordering");
     return { success: true as const };

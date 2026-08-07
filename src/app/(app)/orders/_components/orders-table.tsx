@@ -557,13 +557,13 @@ function CreateOrderDialog({
         if (!cancelled) setWindowBlock(null);
         return;
       }
-      const res = await checkOrderWindowAction(branch, fixedOrderType);
+      const res = await checkOrderWindowAction(branch, orderType);
       if (!cancelled) setWindowBlock(res.blocked ? res.reason : null);
     });
     return () => {
       cancelled = true;
     };
-  }, [branchId, fixedOrderType]);
+  }, [branchId, orderType]);
 
   useEffect(() => {
     if (!branchId) return;

@@ -56,7 +56,7 @@ export function EditOrderDialog({
     void (async () => {
       const [modelRows, windowRes] = await Promise.all([
         listModelsForOrderAction(order.branchId, order.orderType),
-        checkOrderWindowAction(order.branchId),
+        checkOrderWindowAction(order.branchId, order.orderType),
       ]);
       if (cancelled) return;
       setModels(modelRows);

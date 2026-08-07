@@ -3,6 +3,10 @@
  * (advisory notices). Weekdays are integers 0=Sunday … 6=Saturday.
  */
 
+import type { BranchOrderType } from "@prisma/client";
+
+import { BRANCH_ORDER_TYPE_LABELS } from "@/features/orders/constants/order-status";
+
 export const WEEKDAY_LABELS = [
   "Sunday",
   "Monday",
@@ -90,12 +94,27 @@ export interface OrderingPolicyConfig {
   dailyLockEnabled?: boolean;
   dailyLockStartMinutes?: number | null;
   dailyLockEndMinutes?: number | null;
+  /** Order modules company weekday + daily time locks apply to. */
+  lockAppliesToOrderTypes?: BranchOrderType[];
 }
 
 /** Default policy when a tenant has no explicit row: Sunday is locked. */
 export const DEFAULT_LOCKED_WEEKDAYS = [0];
 
+/** Default company lock scope when unset: Manual orders only. */
+export const DEFAULT_LOCK_APPLIES_TO: BranchOrderType[] = ["manual"];
+
+export const ALL_LOCK_ORDER_TYPES: BranchOrderType[] = [
+  "manual",
+  "special",
+  "auto_replenish",
+];
+
 export type OrderWindowAction = "create" | "approve";
+
+function orderTypeSubject(orderType: BranchOrderType): string {
+  return `${BRANCH_ORDER_TYPE_LABELS[orderType]} orders`;
+}
 
 /**
  * Returns a human-readable reason when the action is blocked, or `null` when
@@ -103,36 +122,45 @@ export type OrderWindowAction = "create" | "approve";
  */
 export function checkOrderingAllowed(params: {
   action: OrderWindowAction;
+  orderType: BranchOrderType;
   now?: Date;
   policy: OrderingPolicyConfig | null;
   branchName?: string;
   schedule: BranchOrderingSchedule | null;
 }): string | null {
   const weekday = manilaWeekday(params.now);
-  const locked = params.policy?.globalLockedWeekdays ?? DEFAULT_LOCKED_WEEKDAYS;
+  const appliesTo = params.policy?.lockAppliesToOrderTypes?.length
+    ? params.policy.lockAppliesToOrderTypes
+    : DEFAULT_LOCK_APPLIES_TO;
+  const companyLocksApply = appliesTo.includes(params.orderType);
+  const subject = orderTypeSubject(params.orderType);
 
-  if (locked.includes(weekday)) {
-    const verb = params.action === "create" ? "created or submitted" : "approved";
-    return `Orders cannot be ${verb} on ${WEEKDAY_LABELS[weekday]} (company ordering policy).`;
-  }
+  if (companyLocksApply) {
+    const locked = params.policy?.globalLockedWeekdays ?? DEFAULT_LOCKED_WEEKDAYS;
 
-  const dailyEnabled = params.policy?.dailyLockEnabled === true;
-  const start = params.policy?.dailyLockStartMinutes;
-  const end = params.policy?.dailyLockEndMinutes;
-  if (
-    dailyEnabled &&
-    typeof start === "number" &&
-    typeof end === "number" &&
-    Number.isInteger(start) &&
-    Number.isInteger(end) &&
-    start >= 0 &&
-    end <= 1439 &&
-    start < end
-  ) {
-    const nowMinutes = manilaMinutesOfDay(params.now);
-    if (nowMinutes >= start && nowMinutes < end) {
+    if (locked.includes(weekday)) {
       const verb = params.action === "create" ? "created or submitted" : "approved";
-      return `Orders cannot be ${verb} between ${formatMinutesAsClock(start)} and ${formatMinutesAsClock(end)} (company ordering policy).`;
+      return `${subject} cannot be ${verb} on ${WEEKDAY_LABELS[weekday]} (company ordering policy).`;
+    }
+
+    const dailyEnabled = params.policy?.dailyLockEnabled === true;
+    const start = params.policy?.dailyLockStartMinutes;
+    const end = params.policy?.dailyLockEndMinutes;
+    if (
+      dailyEnabled &&
+      typeof start === "number" &&
+      typeof end === "number" &&
+      Number.isInteger(start) &&
+      Number.isInteger(end) &&
+      start >= 0 &&
+      end <= 1439 &&
+      start < end
+    ) {
+      const nowMinutes = manilaMinutesOfDay(params.now);
+      if (nowMinutes >= start && nowMinutes < end) {
+        const verb = params.action === "create" ? "created or submitted" : "approved";
+        return `${subject} cannot be ${verb} between ${formatMinutesAsClock(start)} and ${formatMinutesAsClock(end)} (company ordering policy).`;
+      }
     }
   }
 
@@ -159,6 +187,7 @@ export class OrderWindowError extends Error {
 /** Throwing variant used by the order service to hard-block the action. */
 export function assertOrderingAllowed(params: {
   action: OrderWindowAction;
+  orderType: BranchOrderType;
   now?: Date;
   policy: OrderingPolicyConfig | null;
   branchName?: string;

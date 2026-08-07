@@ -52,6 +52,28 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.21.0",
+    date: "2026-08-07",
+    releasedAt: "2026-08-07T16:15:00+08:00",
+    title: "Ordering locks by module",
+    highlights: [
+      "Choose which order modules company locked days and daily hours apply to",
+      "Defaults to Manual orders so Special and Auto replenish stay open unless you include them",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Ordering policy adds Applies to checkboxes (Manual, Special, Auto replenish) shared by weekday and daily time locks",
+      },
+      {
+        type: "improvement",
+        description:
+          "Lock messages name the order module when company policy blocks create, submit, or approve",
+      },
+    ],
+  },
+  {
     version: "0.20.8",
     date: "2026-08-07",
     releasedAt: "2026-08-07T15:55:00+08:00",

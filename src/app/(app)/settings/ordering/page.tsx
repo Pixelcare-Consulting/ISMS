@@ -18,17 +18,18 @@ export default async function OrderingSettingsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Ordering policy"
-        description="Company-wide days and hours when branch orders cannot be created, submitted, or approved, plus the reusable delivery-frequency codes branches select from."
+        description="Company-wide days and hours when selected order modules cannot be created, submitted, or approved, plus the reusable delivery-frequency codes branches select from."
       />
       <SettingsSection
         title="Global order lock"
-        description="Weekday locks and optional daily time lock (Manila) apply on top of each branch's own ordering window."
+        description="Choose which order modules company weekday and daily time locks apply to. They sit on top of each branch's own ordering window."
       >
         <OrderingPolicyForm
           initialLockedWeekdays={policy.globalLockedWeekdays}
           initialDailyLockEnabled={policy.dailyLockEnabled ?? false}
           initialDailyLockStartMinutes={policy.dailyLockStartMinutes ?? null}
           initialDailyLockEndMinutes={policy.dailyLockEndMinutes ?? null}
+          initialLockAppliesToOrderTypes={policy.lockAppliesToOrderTypes ?? ["manual"]}
           canEdit={canEdit}
         />
       </SettingsSection>

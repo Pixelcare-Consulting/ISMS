@@ -238,6 +238,7 @@ export const orderService = {
     ]);
     assertOrderingAllowed({
       action: "create",
+      orderType: data.orderType,
       policy,
       branchName: scheduleCtx?.name,
       schedule: scheduleCtx?.deliveryScheduleConfig
@@ -327,6 +328,7 @@ export const orderService = {
     ]);
     assertOrderingAllowed({
       action: "create",
+      orderType: order.orderType,
       policy,
       branchName: scheduleCtx?.name,
       schedule: scheduleCtx?.deliveryScheduleConfig
@@ -377,6 +379,7 @@ export const orderService = {
     const policy = await orderingPolicyService.getPolicy(tenantId);
     assertOrderingAllowed({
       action: "approve",
+      orderType: order.orderType,
       policy,
       branchName: order.branch.name,
       schedule: null,

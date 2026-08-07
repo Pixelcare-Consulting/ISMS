@@ -1170,6 +1170,8 @@ model OrderingPolicy {
   dailyLockStartMinutes  Int?     @map("daily_lock_start_minutes")
   /// Minutes from midnight (0–1439), Asia/Manila. Exclusive end of block window.
   dailyLockEndMinutes    Int?     @map("daily_lock_end_minutes")
+  /// Order modules company weekday + daily time locks apply to.
+  lockAppliesToOrderTypes BranchOrderType[] @default([manual]) @map("lock_applies_to_order_types")
   createdAt              DateTime @default(now()) @map("created_at")
   updatedAt              DateTime @updatedAt @map("updated_at")
 
