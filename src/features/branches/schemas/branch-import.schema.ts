@@ -1,18 +1,37 @@
 /**
  * Workbook contract for the bulk branch import.
  *
- * Sheet 1 (Branches)       — sap_code, branch_name (+ optional PSG: AREA, STATUS, quotas)
- * Sheet 2 (Allowed Models) — sap_code, sku_code
+ * Sheet 1 (Branches) — form-aligned columns (sap_code, branch_name, dealer, geo,
+ * alternates, schedule, …). Also accepts a single-sheet PSG ISMS export (sheet
+ * named ISMS or first sheet with BRANCH CODE / AREA / STATUS headers).
  *
- * Also accepts a single-sheet PSG ISMS export (sheet named ISMS or first sheet with
- * BRANCH CODE / AREA / STATUS headers). Unknown sap_codes are created; existing
- * ones are updated. Allowed Models still require existing product models (SKUs).
+ * Optional legacy sheet (Allowed Models) — sap_code, sku_code. Still parsed/applied
+ * when present in an older file; the download template no longer includes it.
+ *
+ * Unknown sap_codes are created; existing ones are updated. Allowed Models still
+ * require existing product models (SKUs).
  */
 
 export const BRANCH_SHEET_NAME = "Branches";
 export const ALLOWED_MODEL_SHEET_NAME = "Allowed Models";
 
-export const BRANCH_SHEET_HEADERS = ["sap_code", "branch_name"];
+export const BRANCH_SHEET_HEADERS = [
+  "sap_code",
+  "branch_name",
+  "status",
+  "dealer",
+  "primary_warehouse",
+  "branch_area",
+  "area",
+  "region",
+  "province",
+  "alternate_branches",
+  "frequency_code",
+  "delivery_days",
+  "order_days",
+  "schedule_notes",
+] as const;
+
 export const ALLOWED_MODEL_SHEET_HEADERS = ["sap_code", "sku_code"];
 
 /** Normalized header → canonical key, so "SAP Code"/"sap_code"/"sapcode" all match. */
@@ -27,8 +46,25 @@ export const BRANCH_IMPORT_ALIAS_MAP: Record<string, string> = {
   sku: "skucode",
   modelcode: "skucode",
   modelsku: "skucode",
-  area: "area",
   status: "status",
+  dealer: "dealer",
+  dealersapcode: "dealer",
+  dealername: "dealer",
+  primarywarehouse: "primarywarehouse",
+  warehouse: "primarywarehouse",
+  warehousecode: "primarywarehouse",
+  brancharea: "brancharea",
+  area: "area",
+  region: "region",
+  province: "province",
+  alternatebranches: "alternatebranches",
+  alternates: "alternatebranches",
+  frequencycode: "frequencycode",
+  frequency: "frequencycode",
+  deliverydays: "deliverydays",
+  orderdays: "orderdays",
+  schedulenotes: "schedulenotes",
+  notes: "schedulenotes",
   devantquota: "devantquota",
   hisenseblquota: "hisenseblquota",
   hisensewlquota: "hisensewlquota",
@@ -39,7 +75,17 @@ export const BRANCH_IMPORT_ALIAS_MAP: Record<string, string> = {
 export const BRANCH_IMPORT_FIELD_LABELS: Record<string, string> = {
   name: "Name",
   status: "Status",
+  dealer: "Dealer",
+  primaryWarehouse: "Primary warehouse",
+  branchArea: "Branch area",
   area: "Area",
+  region: "Region",
+  province: "Province",
+  alternateBranches: "Alternate branches",
+  frequencyCode: "Frequency code",
+  deliveryDays: "Delivery days",
+  orderDays: "Order days",
+  scheduleNotes: "Schedule notes",
   devantQuota: "Devant quota",
   hisenseQuota: "Hisense quota",
 };

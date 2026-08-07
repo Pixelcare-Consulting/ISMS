@@ -52,6 +52,44 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.20.8",
+    date: "2026-08-07",
+    releasedAt: "2026-08-07T15:55:00+08:00",
+    title: "Richer branch forms and import",
+    highlights: [
+      "Add and Edit branch put SAP code beside name, with Active/Inactive as an on/off switch",
+      "Alternate branches follow the Dealer you pick at the top — no second dealer filter",
+      "Branch import download includes dealer, warehouse, geo, alternates, and schedule columns — without an Allowed Models sheet",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Choosing a dealer lists and can select that dealer’s active branches as alternates (same idea as AOR)",
+      },
+      {
+        type: "feature",
+        description:
+          "Branch import template covers the full branch form (dealer, warehouse, areas, alternates, delivery schedule) and applies those fields on upload",
+      },
+      {
+        type: "improvement",
+        description:
+          "SAP code and name sit on one row; status is an Active/Inactive switch; Add and Edit dialogs stay wider for denser forms",
+      },
+      {
+        type: "improvement",
+        description:
+          "Import download is a single Branches sheet; older files with Allowed Models still work if you upload them",
+      },
+      {
+        type: "fix",
+        description:
+          "Removed the duplicate dealer filter under alternate branches — the main Dealer field drives the list",
+      },
+    ],
+  },
+  {
     version: "0.20.7",
     date: "2026-08-07",
     releasedAt: "2026-08-07T15:40:00+08:00",

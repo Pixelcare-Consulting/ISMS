@@ -226,7 +226,33 @@ export const branchRepository = {
         sapCode: true,
         name: true,
         status: true,
-        branchArea: { select: { name: true } },
+        dealerId: true,
+        primaryWarehouseId: true,
+        areaId: true,
+        branchAreaId: true,
+        regionId: true,
+        provinceId: true,
+        dealer: { select: { id: true, name: true, sapCode: true } },
+        primaryWarehouse: { select: { id: true, name: true, code: true } },
+        area: { select: { id: true, name: true, code: true } },
+        branchArea: { select: { id: true, name: true } },
+        region: { select: { id: true, name: true } },
+        province: { select: { id: true, name: true } },
+        alternateWarehouses: {
+          select: {
+            alternateBranchId: true,
+            alternateBranch: { select: { sapCode: true } },
+          },
+        },
+        deliveryScheduleConfig: {
+          select: {
+            frequencyCodeId: true,
+            deliveryDays: true,
+            orderDays: true,
+            notes: true,
+            frequencyCode: { select: { code: true } },
+          },
+        },
       },
     });
   },
@@ -283,7 +309,30 @@ export const branchRepository = {
   listActiveForTemplate(tenantId: string) {
     return prisma.branch.findMany({
       where: { tenantId, deletedAt: null, status: "active" },
-      select: { sapCode: true, name: true },
+      select: {
+        sapCode: true,
+        name: true,
+        status: true,
+        dealer: { select: { sapCode: true, name: true } },
+        primaryWarehouse: { select: { code: true, name: true } },
+        branchArea: { select: { name: true } },
+        area: { select: { code: true, name: true } },
+        region: { select: { name: true } },
+        province: { select: { name: true } },
+        alternateWarehouses: {
+          select: {
+            alternateBranch: { select: { sapCode: true } },
+          },
+        },
+        deliveryScheduleConfig: {
+          select: {
+            deliveryDays: true,
+            orderDays: true,
+            notes: true,
+            frequencyCode: { select: { code: true } },
+          },
+        },
+      },
       orderBy: { sapCode: "asc" },
     });
   },
@@ -301,7 +350,7 @@ export const branchRepository = {
       prisma.province.findMany({ where: { tenantId }, orderBy: { name: "asc" } }),
       prisma.branch.findMany({
         where: { tenantId, deletedAt: null, status: "active" },
-        select: { id: true, name: true, sapCode: true },
+        select: { id: true, name: true, sapCode: true, dealerId: true },
         orderBy: { name: "asc" },
       }),
       prisma.frequencyCode.findMany({

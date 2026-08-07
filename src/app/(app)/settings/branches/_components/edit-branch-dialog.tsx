@@ -19,6 +19,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { Switch } from "@/components/ui/switch";
 import {
   BranchScheduleFields,
   EMPTY_SCHEDULE,
@@ -45,11 +46,6 @@ function scheduleStateFrom(config?: BranchScheduleConfig | null): BranchSchedule
     notes: config.notes ?? "",
   };
 }
-
-const STATUS_OPTIONS = [
-  { id: "active", label: "Active" },
-  { id: "inactive", label: "Inactive" },
-];
 
 interface EditBranchDialogProps {
   branch: {
@@ -85,7 +81,7 @@ export function EditBranchDialog({
 }: EditBranchDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Edit branch</DialogTitle>
         </DialogHeader>
@@ -137,14 +133,18 @@ function EditBranchForm({
 
   const alternateBranchOptions = useMemo(() => {
     if (!options) return [];
+    const selected = new Set(alternateIds);
     return options.branches
       .filter((b) => b.id !== branch.id)
+      .filter(
+        (b) => !dealerId || b.dealerId === dealerId || selected.has(b.id),
+      )
       .map((b) => ({
         id: b.id,
         label: `${b.sapCode} — ${b.name}`,
         description: b.name,
       }));
-  }, [options, branch.id]);
+  }, [options, branch.id, dealerId, alternateIds]);
 
   const dealerOptions = useMemo(
     () =>
@@ -154,6 +154,16 @@ function EditBranchForm({
       })),
     [options],
   );
+
+  function onDealerChange(nextDealerId: string) {
+    setDealerId(nextDealerId);
+    if (!nextDealerId || !options) return;
+    const matchingIds = options.branches
+      .filter((b) => b.id !== branch.id && b.dealerId === nextDealerId)
+      .map((b) => b.id);
+    if (matchingIds.length === 0) return;
+    setAlternateIds((prev) => [...new Set([...prev, ...matchingIds])]);
+  }
 
   const primaryWarehouseOptions = useMemo(
     () =>
@@ -239,23 +249,31 @@ function EditBranchForm({
 
   return (
     <form onSubmit={onSubmit} className="space-y-3">
-      <div className="space-y-2">
-        <Label htmlFor="edit-sapCode">SAP code</Label>
-        <Input id="edit-sapCode" name="sapCode" defaultValue={branch.sapCode} required />
+      <div className="grid grid-cols-[minmax(0,9rem)_1fr] gap-2">
+        <div className="space-y-2">
+          <Label htmlFor="edit-sapCode">SAP code</Label>
+          <Input id="edit-sapCode" name="sapCode" defaultValue={branch.sapCode} required />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="edit-name">Name</Label>
+          <Input id="edit-name" name="name" defaultValue={branch.name} required />
+        </div>
       </div>
-      <div className="space-y-2">
-        <Label htmlFor="edit-name">Name</Label>
-        <Input id="edit-name" name="name" defaultValue={branch.name} required />
+      <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
+        <div className="space-y-0.5">
+          <Label htmlFor="edit-status">Status</Label>
+          <p className="text-xs text-muted-foreground">
+            {status === "active" ? "Active" : "Inactive"}
+          </p>
+        </div>
+        <Switch
+          id="edit-status"
+          checked={status === "active"}
+          onCheckedChange={(checked) => setStatus(checked ? "active" : "inactive")}
+          disabled={pending}
+          aria-label="Branch status"
+        />
       </div>
-      <SearchableSelect
-        label="Status"
-        id="edit-status"
-        options={STATUS_OPTIONS}
-        value={status}
-        onChange={setStatus}
-        searchPlaceholder="Search status…"
-        disabled={pending}
-      />
       {options ? (
         <>
           <div className="grid grid-cols-2 gap-2">
@@ -263,7 +281,7 @@ function EditBranchForm({
               label="Dealer"
               options={dealerOptions}
               value={dealerId}
-              onChange={setDealerId}
+              onChange={onDealerChange}
               allowClear
               placeholder="—"
               searchPlaceholder="Search dealers…"
@@ -328,7 +346,7 @@ function EditBranchForm({
             placeholder="Search and select branches…"
             searchPlaceholder="Filter by code or name…"
             emptyMessage="No branches available."
-            hint="Other active branches that can fulfill for this location."
+            hint="Uses the Dealer above to list that dealer’s active branches (same idea as AOR)."
             disabled={pending}
           />
           <BranchScheduleFields

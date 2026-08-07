@@ -120,15 +120,9 @@ export function ImportBranchesDialog({
         <div className="space-y-4">
           <div className="text-muted-foreground space-y-2 text-sm">
             <p>
-              The template has two sheets:{" "}
-              <strong>Branches</strong> (
-              <code className="font-mono text-xs">sap_code</code>,{" "}
-              <code className="font-mono text-xs">branch_name</code>) and{" "}
-              <strong>Allowed Models</strong> (
-              <code className="font-mono text-xs">sap_code</code>,{" "}
-              <code className="font-mono text-xs">sku_code</code>) — one row per model,
-              repeating the branch&apos;s <code className="font-mono text-xs">sap_code</code>{" "}
-              to list several.
+              The download template is a single <strong>Branches</strong> sheet with columns for
+              SAP code, name, status, dealer, warehouse, geo, alternate branches, and delivery
+              schedule — pre-filled from your active branches.
             </p>
             <p>
               Unknown <code className="font-mono text-xs">sap_code</code> values are{" "}
@@ -136,9 +130,10 @@ export function ImportBranchesDialog({
               ISMS workbook (sheet <code className="font-mono text-xs">ISMS</code> or columns
               like <code className="font-mono text-xs">BRANCH CODE</code>,{" "}
               <code className="font-mono text-xs">AREA</code>,{" "}
-              <code className="font-mono text-xs">STATUS</code>, Devant / Hisense quotas).
-              Product models (SKUs) must already exist. Blank cells are left untouched, and
-              nothing is ever deleted.
+              <code className="font-mono text-xs">STATUS</code>, Devant / Hisense quotas). Older
+              files that still include an <strong>Allowed Models</strong> sheet are accepted
+              (SKUs must already exist). Blank cells are left untouched, and nothing is ever
+              deleted.
             </p>
           </div>
 
@@ -175,8 +170,13 @@ export function ImportBranchesDialog({
             <div className="space-y-4">
               <div className="flex flex-wrap gap-4 rounded-lg border px-4 py-3 text-sm">
                 <span>
-                  <strong>{preview.branchRowCount}</strong> branch rows ·{" "}
-                  <strong>{preview.allowedModelRowCount}</strong> model rows
+                  <strong>{preview.branchRowCount}</strong> branch rows
+                  {preview.allowedModelRowCount > 0 ? (
+                    <>
+                      {" "}
+                      · <strong>{preview.allowedModelRowCount}</strong> model rows
+                    </>
+                  ) : null}
                 </span>
                 <span>
                   <strong>{preview.branchCreateCount}</strong> branches to create
@@ -184,9 +184,11 @@ export function ImportBranchesDialog({
                 <span>
                   <strong>{preview.branchUpdateCount}</strong> branches to update
                 </span>
-                <span>
-                  <strong>{preview.allowedModelAddCount}</strong> allowed models to add
-                </span>
+                {preview.allowedModelRowCount > 0 || preview.allowedModelAddCount > 0 ? (
+                  <span>
+                    <strong>{preview.allowedModelAddCount}</strong> allowed models to add
+                  </span>
+                ) : null}
                 <span className="text-muted-foreground">
                   {preview.unchangedCount} unchanged (skipped)
                 </span>
@@ -226,7 +228,10 @@ export function ImportBranchesDialog({
                         <TableHead>Branch</TableHead>
                         <TableHead>Action</TableHead>
                         <TableHead>Changes</TableHead>
-                        <TableHead className="text-right">Allowed models</TableHead>
+                        {preview.allowedModelRowCount > 0 ||
+                        preview.branches.some((b) => b.allowedModelsToAdd.length > 0) ? (
+                          <TableHead className="text-right">Allowed models</TableHead>
+                        ) : null}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -242,17 +247,20 @@ export function ImportBranchesDialog({
                               <span className="text-muted-foreground">No field changes</span>
                             ) : (
                               branch.changes.map((change) => (
-                                <div key={change.field}>
+                                <div key={`${change.field}-${change.to}`}>
                                   {change.label}: {change.from} → <strong>{change.to}</strong>
                                 </div>
                               ))
                             )}
                           </TableCell>
-                          <TableCell className="text-right text-sm">
-                            {branch.allowedModelsToAdd.length > 0
-                              ? `+${branch.allowedModelsToAdd.length}`
-                              : "—"}
-                          </TableCell>
+                          {preview.allowedModelRowCount > 0 ||
+                          preview.branches.some((b) => b.allowedModelsToAdd.length > 0) ? (
+                            <TableCell className="text-right text-sm">
+                              {branch.allowedModelsToAdd.length > 0
+                                ? `+${branch.allowedModelsToAdd.length}`
+                                : "—"}
+                            </TableCell>
+                          ) : null}
                         </TableRow>
                       ))}
                     </TableBody>

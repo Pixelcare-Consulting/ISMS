@@ -1,12 +1,12 @@
 import ExcelJS from "exceljs";
 
 import {
-  ALLOWED_MODEL_SHEET_HEADERS,
   ALLOWED_MODEL_SHEET_NAME,
   BRANCH_IMPORT_ALIAS_MAP,
   BRANCH_SHEET_HEADERS,
   BRANCH_SHEET_NAME,
 } from "@/features/branches/schemas/branch-import.schema";
+import { WEEKDAY_SHORT } from "@/features/orders/utils/order-window";
 import { normalizeHeader, parseCsvTable } from "@/lib/shared/parse-csv";
 
 /** A sheet reduced to header-keyed rows, with the row numbers users see in Excel. */
@@ -21,6 +21,23 @@ export interface ImportWorkbook {
   allowedModels: SheetRows;
   /** True when the Branches side came from a PSG-style ISMS / single sheet. */
   psgStyle: boolean;
+}
+
+export interface BranchTemplateRow {
+  sapCode: string;
+  name: string;
+  status: string;
+  dealer: string;
+  primaryWarehouse: string;
+  branchArea: string;
+  area: string;
+  region: string;
+  province: string;
+  alternateBranches: string;
+  frequencyCode: string;
+  deliveryDays: string;
+  orderDays: string;
+  scheduleNotes: string;
 }
 
 const EMPTY_SHEET: SheetRows = { present: false, columns: new Set(), rows: [] };
@@ -75,7 +92,8 @@ function readSheet(sheet: ExcelJS.Worksheet | undefined): SheetRows {
 function looksLikePsgColumns(columns: Set<string>): boolean {
   return (
     columns.has("sapcode") &&
-    (columns.has("area") || columns.has("devantquota") || columns.has("hisenseblquota") || columns.has("status"))
+    (columns.has("area") || columns.has("devantquota") || columns.has("hisenseblquota") || columns.has("status")) &&
+    !columns.has("brancharea")
   );
 }
 
@@ -89,6 +107,7 @@ function looksLikeXlsx(buffer: Buffer): boolean {
  * Branches sheet alone — handy for a quick rename pass with no allowed models.
  * PSG ISMS workbooks (sheet named ISMS, or first sheet with PSG headers) are
  * accepted as a single Branches sheet.
+ * Legacy "Allowed Models" sheets are still parsed when present.
  */
 export async function readImportWorkbook(buffer: Buffer): Promise<ImportWorkbook> {
   if (!looksLikeXlsx(buffer)) {
@@ -180,30 +199,61 @@ function styleHeader(sheet: ExcelJS.Worksheet, widths: number[]) {
   });
 }
 
+export function formatWeekdayListForTemplate(days: number[]): string {
+  return days
+    .filter((day) => day >= 0 && day <= 6)
+    .map((day) => WEEKDAY_SHORT[day])
+    .join(",");
+}
+
 /**
- * Build the downloadable template: Branches pre-filled with the tenant's active
- * branches, Allowed Models left empty for the user to fill in.
+ * Build the downloadable template: a single Branches sheet pre-filled with the
+ * tenant's active branches (form-aligned columns). Allowed Models is not added.
  */
-export async function buildTemplateWorkbook(
-  branches: { sapCode: string; name: string }[],
-): Promise<Buffer> {
+export async function buildTemplateWorkbook(branches: BranchTemplateRow[]): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "ISMS";
   workbook.created = new Date();
 
   const branchSheet = workbook.addWorksheet(BRANCH_SHEET_NAME);
-  branchSheet.addRow(BRANCH_SHEET_HEADERS);
+  branchSheet.addRow([...BRANCH_SHEET_HEADERS]);
   for (const branch of branches) {
-    branchSheet.addRow([branch.sapCode, branch.name]);
+    branchSheet.addRow([
+      branch.sapCode,
+      branch.name,
+      branch.status,
+      branch.dealer,
+      branch.primaryWarehouse,
+      branch.branchArea,
+      branch.area,
+      branch.region,
+      branch.province,
+      branch.alternateBranches,
+      branch.frequencyCode,
+      branch.deliveryDays,
+      branch.orderDays,
+      branch.scheduleNotes,
+    ]);
   }
   if (branches.length === 0) {
-    branchSheet.addRow(["BR-001", "Example Branch"]);
+    branchSheet.addRow([
+      "BR-001",
+      "Example Branch",
+      "active",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "Mon,Wed,Fri",
+      "Tue,Thu",
+      "",
+    ]);
   }
-  styleHeader(branchSheet, [18, 40]);
-
-  const allowedSheet = workbook.addWorksheet(ALLOWED_MODEL_SHEET_NAME);
-  allowedSheet.addRow(ALLOWED_MODEL_SHEET_HEADERS);
-  styleHeader(allowedSheet, [18, 24]);
+  styleHeader(branchSheet, [14, 28, 10, 22, 20, 16, 16, 14, 14, 28, 14, 16, 16, 24]);
 
   const buffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(buffer);
