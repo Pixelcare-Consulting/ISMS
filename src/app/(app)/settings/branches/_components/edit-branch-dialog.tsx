@@ -105,14 +105,17 @@ function EditBranchForm({
 }: Omit<EditBranchDialogProps, "open">) {
   const [pending, startTransition] = useTransition();
   const [options, setOptions] = useState<FormOptions | null>(null);
-  const [alternateIds, setAlternateIds] = useState<string[]>(
+  const initialAlternateIds = useMemo(
     () => branch.alternateWarehouses?.map((row) => row.alternateBranchId) ?? [],
+    [branch.alternateWarehouses],
   );
+  const [alternateIds, setAlternateIds] = useState<string[]>(() => initialAlternateIds);
   const [primaryWarehouseId, setPrimaryWarehouseId] = useState(
     branch.primaryWarehouseId ?? "",
   );
   const [status, setStatus] = useState(branch.status || "active");
   const [dealerId, setDealerId] = useState(branch.dealerId ?? "");
+  const [alternateFilterDealerId, setAlternateFilterDealerId] = useState("");
   const [branchAreaId, setBranchAreaId] = useState(branch.branchAreaId ?? "");
   const [areaId, setAreaId] = useState(branch.areaId ?? "");
   const [regionId, setRegionId] = useState(branch.regionId ?? "");
@@ -137,14 +140,17 @@ function EditBranchForm({
     return options.branches
       .filter((b) => b.id !== branch.id)
       .filter(
-        (b) => !dealerId || b.dealerId === dealerId || selected.has(b.id),
+        (b) =>
+          !alternateFilterDealerId ||
+          b.dealerId === alternateFilterDealerId ||
+          selected.has(b.id),
       )
       .map((b) => ({
         id: b.id,
         label: `${b.sapCode} — ${b.name}`,
         description: b.name,
       }));
-  }, [options, branch.id, dealerId, alternateIds]);
+  }, [options, branch.id, alternateFilterDealerId, alternateIds]);
 
   const dealerOptions = useMemo(
     () =>
@@ -155,14 +161,20 @@ function EditBranchForm({
     [options],
   );
 
-  function onDealerChange(nextDealerId: string) {
-    setDealerId(nextDealerId);
-    if (!nextDealerId || !options) return;
-    const matchingIds = options.branches
-      .filter((b) => b.id !== branch.id && b.dealerId === nextDealerId)
-      .map((b) => b.id);
-    if (matchingIds.length === 0) return;
-    setAlternateIds((prev) => [...new Set([...prev, ...matchingIds])]);
+  function onAlternateFilterDealerChange(nextDealerId: string) {
+    setAlternateFilterDealerId(nextDealerId);
+    if (!nextDealerId) {
+      // Clearing the filter restores the branch’s original alternate picks.
+      setAlternateIds(initialAlternateIds);
+      return;
+    }
+    if (!options) return;
+    // Replace (do not merge) so switching dealers clears the previous auto-select.
+    setAlternateIds(
+      options.branches
+        .filter((b) => b.id !== branch.id && b.dealerId === nextDealerId)
+        .map((b) => b.id),
+    );
   }
 
   const primaryWarehouseOptions = useMemo(
@@ -281,7 +293,7 @@ function EditBranchForm({
               label="Dealer"
               options={dealerOptions}
               value={dealerId}
-              onChange={onDealerChange}
+              onChange={setDealerId}
               allowClear
               placeholder="—"
               searchPlaceholder="Search dealers…"
@@ -338,6 +350,16 @@ function EditBranchForm({
               disabled={pending}
             />
           </div>
+          <SearchableSelect
+            label="Filter by dealer"
+            options={dealerOptions}
+            value={alternateFilterDealerId}
+            onChange={onAlternateFilterDealerChange}
+            allowClear
+            placeholder="—"
+            searchPlaceholder="Search dealers…"
+            disabled={pending}
+          />
           <SearchableMultiSelect
             label="Alternate branches"
             options={alternateBranchOptions}
@@ -346,7 +368,7 @@ function EditBranchForm({
             placeholder="Search and select branches…"
             searchPlaceholder="Filter by code or name…"
             emptyMessage="No branches available."
-            hint="Uses the Dealer above to list that dealer’s active branches (same idea as AOR)."
+            hint="Uses Filter by dealer to list that dealer’s branches and select them (same idea as AOR)."
             disabled={pending}
           />
           <BranchScheduleFields

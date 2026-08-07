@@ -52,6 +52,77 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.23.4",
+    date: "2026-08-07",
+    releasedAt: "2026-08-07T17:50:00+08:00",
+    title: "Alternate branch filter clears on dealer change",
+    highlights: [
+      "Changing Filter by dealer now clears the previous alternate branch picks and selects the new dealer’s branches",
+      "Clearing Filter by dealer restores the original alternate branch picks",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Filter by dealer on add/edit branch replaces alternate branch selections instead of stacking dealers together",
+      },
+      {
+        type: "improvement",
+        description:
+          "Clearing Filter by dealer restores the branch’s original alternate picks instead of leaving the last auto-select",
+      },
+    ],
+  },
+  {
+    version: "0.23.3",
+    date: "2026-08-07",
+    releasedAt: "2026-08-07T17:45:00+08:00",
+    title: "Official Sales delete restore and sale details",
+    highlights: [
+      "Deleting an Official Sales row puts the unit back in stock at the branch where it was sold",
+      "Adding Official Sales now carries package, brand, sale amount, and model price into Sales & ATR",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Official Sales ADD and warehouse add now fill package, brand, sale amount, and model price on the sales line so Sales & ATR matches the upload",
+      },
+      {
+        type: "improvement",
+        description:
+          "Official Sales delete restores stock at the sold branch instead of the earlier delivery branch",
+      },
+      {
+        type: "fix",
+        description:
+          "Unknown package or brand names in an Official Sales upload now show a clear error instead of saving blank values",
+      },
+    ],
+  },
+  {
+    version: "0.23.2",
+    date: "2026-08-07",
+    releasedAt: "2026-08-07T17:35:00+08:00",
+    title: "Easier alternate branch picking by dealer",
+    highlights: [
+      "When adding or editing a branch, use Filter by dealer to find and select alternate branches",
+      "The main Dealer field only sets who owns the branch — it no longer drives alternate picks",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Add or edit branch now has a Filter by dealer control for alternate branches (lists and selects that dealer’s branches)",
+      },
+      {
+        type: "improvement",
+        description:
+          "Changing the main Dealer no longer changes which alternate branches are listed or selected",
+      },
+    ],
+  },
+  {
     version: "0.23.1",
     date: "2026-08-07",
     releasedAt: "2026-08-07T17:30:00+08:00",

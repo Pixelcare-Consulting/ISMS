@@ -48,6 +48,7 @@ export function CreateBranchDialog({ onCreated }: CreateBranchDialogProps) {
   const [primaryWarehouseId, setPrimaryWarehouseId] = useState("");
   const [status, setStatus] = useState<"active" | "inactive">("active");
   const [dealerId, setDealerId] = useState("");
+  const [alternateFilterDealerId, setAlternateFilterDealerId] = useState("");
   const [branchAreaId, setBranchAreaId] = useState("");
   const [areaId, setAreaId] = useState("");
   const [regionId, setRegionId] = useState("");
@@ -58,13 +59,18 @@ export function CreateBranchDialog({ onCreated }: CreateBranchDialogProps) {
     if (!options) return [];
     const selected = new Set(alternateIds);
     return options.branches
-      .filter((b) => !dealerId || b.dealerId === dealerId || selected.has(b.id))
+      .filter(
+        (b) =>
+          !alternateFilterDealerId ||
+          b.dealerId === alternateFilterDealerId ||
+          selected.has(b.id),
+      )
       .map((b) => ({
         id: b.id,
         label: `${b.sapCode} — ${b.name}`,
         description: b.name,
       }));
-  }, [options, dealerId, alternateIds]);
+  }, [options, alternateFilterDealerId, alternateIds]);
 
   const dealerOptions = useMemo(
     () =>
@@ -75,14 +81,20 @@ export function CreateBranchDialog({ onCreated }: CreateBranchDialogProps) {
     [options],
   );
 
-  function onDealerChange(nextDealerId: string) {
-    setDealerId(nextDealerId);
-    if (!nextDealerId || !options) return;
-    const matchingIds = options.branches
-      .filter((b) => b.dealerId === nextDealerId)
-      .map((b) => b.id);
-    if (matchingIds.length === 0) return;
-    setAlternateIds((prev) => [...new Set([...prev, ...matchingIds])]);
+  function onAlternateFilterDealerChange(nextDealerId: string) {
+    setAlternateFilterDealerId(nextDealerId);
+    if (!nextDealerId) {
+      // Clearing the filter restores the empty starting selection.
+      setAlternateIds([]);
+      return;
+    }
+    if (!options) return;
+    // Replace (do not merge) so switching dealers clears the previous auto-select.
+    setAlternateIds(
+      options.branches
+        .filter((b) => b.dealerId === nextDealerId)
+        .map((b) => b.id),
+    );
   }
 
   const primaryWarehouseOptions = useMemo(
@@ -141,6 +153,7 @@ export function CreateBranchDialog({ onCreated }: CreateBranchDialogProps) {
     setPrimaryWarehouseId("");
     setStatus("active");
     setDealerId("");
+    setAlternateFilterDealerId("");
     setBranchAreaId("");
     setAreaId("");
     setRegionId("");
@@ -239,7 +252,7 @@ export function CreateBranchDialog({ onCreated }: CreateBranchDialogProps) {
                     label="Dealer"
                     options={dealerOptions}
                     value={dealerId}
-                    onChange={onDealerChange}
+                    onChange={setDealerId}
                     allowClear
                     placeholder="—"
                     searchPlaceholder="Search dealers…"
@@ -296,6 +309,16 @@ export function CreateBranchDialog({ onCreated }: CreateBranchDialogProps) {
                     disabled={pending}
                   />
                 </div>
+                <SearchableSelect
+                  label="Filter by dealer"
+                  options={dealerOptions}
+                  value={alternateFilterDealerId}
+                  onChange={onAlternateFilterDealerChange}
+                  allowClear
+                  placeholder="—"
+                  searchPlaceholder="Search dealers…"
+                  disabled={pending}
+                />
                 <SearchableMultiSelect
                   label="Alternate branches"
                   options={alternateBranchOptions}
@@ -304,7 +327,7 @@ export function CreateBranchDialog({ onCreated }: CreateBranchDialogProps) {
                   placeholder="Search and select branches…"
                   searchPlaceholder="Filter by code or name…"
                   emptyMessage="No branches available."
-                  hint="Uses the Dealer above to list that dealer’s active branches (same idea as AOR)."
+                  hint="Uses Filter by dealer to list that dealer’s branches and select them (same idea as AOR)."
                   disabled={pending}
                 />
                 <BranchScheduleFields
