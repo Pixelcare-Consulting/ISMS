@@ -199,7 +199,7 @@ export const appModules: AppModule[] = [
     route: "/settings/master-data",
     slugPrefix: "master_data",
     navPermission: "master_data.manage",
-    description: "Brands, categories, and product models",
+    description: "Brands, series, categories, and product models",
     actions: permissionActions("view", "manage"),
   },
   {

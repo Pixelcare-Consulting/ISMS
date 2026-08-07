@@ -52,6 +52,83 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.23.1",
+    date: "2026-08-07",
+    releasedAt: "2026-08-07T17:30:00+08:00",
+    title: "Smoother large Branch and Models imports",
+    highlights: [
+      "Large Branch and Models imports show a progress bar while they run",
+      "Imports show time remaining and remind you to keep the page open",
+      "Finished import totals now match what the preview said would change",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Branch and Models import now show real progress while applying large files",
+      },
+      {
+        type: "improvement",
+        description:
+          "While importing, you see an estimated time left and a reminder not to refresh or close the page",
+      },
+      {
+        type: "improvement",
+        description:
+          "Import dialogs use shorter help text so the preview stays easier to scan",
+      },
+      {
+        type: "fix",
+        description:
+          "Large Branch and Models imports no longer time out or crash the page mid-apply",
+      },
+      {
+        type: "fix",
+        description:
+          "Branch import success totals now match the preview create and update counts for the whole file",
+      },
+    ],
+  },
+  {
+    version: "0.23.0",
+    date: "2026-08-07",
+    releasedAt: "2026-08-07T16:55:00+08:00",
+    title: "Bulk import for product models",
+    highlights: [
+      "Download a Models template and upload it to add or update many SKUs at once",
+      "New codes are created; existing ones are updated when details change",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Master data Models adds Import with Download template and upload preview — new SKUs are created and existing ones are updated when values differ",
+      },
+    ],
+  },
+  {
+    version: "0.22.0",
+    date: "2026-08-07",
+    releasedAt: "2026-08-07T16:40:00+08:00",
+    title: "Series and Categories in Master data",
+    highlights: [
+      "Model-linked product groups now appear as Series in Master data",
+      "Categories is available as its own empty list for your own product classification",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Master data Products adds Series (linked to models) and a separate Categories list you can manage on its own",
+      },
+      {
+        type: "improvement",
+        description:
+          "Models, planogram, and forecast imports keep using the same series values under the Series name",
+      },
+    ],
+  },
+  {
     version: "0.21.0",
     date: "2026-08-07",
     releasedAt: "2026-08-07T16:15:00+08:00",

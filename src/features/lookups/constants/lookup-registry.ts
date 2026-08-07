@@ -37,6 +37,7 @@ export interface LookupEntityConfig {
 }
 
 export type LookupEntityKey =
+  | "series"
   | "category"
   | "feature"
   | "size"
@@ -63,6 +64,16 @@ export type LookupEntityKey =
   | "branchStatusType";
 
 export const LOOKUP_ENTITIES: Record<LookupEntityKey, LookupEntityConfig> = {
+  series: {
+    key: "series",
+    label: "Series",
+    singular: "series",
+    slug: "series",
+    group: "Products",
+    auditEntity: "Series",
+    auditKey: "series",
+    code: { required: false },
+  },
   category: {
     key: "category",
     label: "Categories",

@@ -105,20 +105,20 @@ export async function importPlanogramCsvForBranchAction(
     brandRecords.set(brandName, { id: brand.id, code: brand.code ?? code });
   }
 
-  const categoryRecords = new Map<string, string>();
-  async function getCategoryId(brandName: string, series: string) {
+  const seriesRecords = new Map<string, string>();
+  async function getSeriesId(brandName: string, series: string) {
     const key = `${brandName}:${series}`;
-    if (categoryRecords.has(key)) return categoryRecords.get(key)!;
+    if (seriesRecords.has(key)) return seriesRecords.get(key)!;
     const brandId = brandRecords.get(brandName)?.id;
     if (!brandId) throw new Error(`Brand not found: ${brandName}`);
-    const categoryName = series || "General";
-    const category = await prisma.category.upsert({
-      where: { tenantId_name: { tenantId: session.user.tenantId, name: categoryName } },
-      create: { tenantId: session.user.tenantId, name: categoryName },
+    const seriesName = series || "General";
+    const seriesRow = await prisma.series.upsert({
+      where: { tenantId_name: { tenantId: session.user.tenantId, name: seriesName } },
+      create: { tenantId: session.user.tenantId, name: seriesName },
       update: {},
     });
-    categoryRecords.set(key, category.id);
-    return category.id;
+    seriesRecords.set(key, seriesRow.id);
+    return seriesRow.id;
   }
 
   const modelIdBySku = await upsertModelsFromPlanogramRows(
@@ -126,7 +126,7 @@ export async function importPlanogramCsvForBranchAction(
     session.user.tenantId,
     planogramRows,
     brandRecords,
-    getCategoryId,
+    getSeriesId,
   );
 
   try {

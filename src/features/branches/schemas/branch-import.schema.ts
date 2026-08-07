@@ -136,3 +136,21 @@ export interface BranchImportResult {
   allowedModelsAdded: number;
   unchanged: number;
 }
+
+export type BranchImportChunkPhase = "core" | "enrich";
+
+/** Progress payload for client-driven chunked branch import apply. */
+export interface BranchImportChunkProgress {
+  processed: number;
+  total: number;
+  nextOffset: number;
+  phase: BranchImportChunkPhase;
+  done: boolean;
+  /**
+   * Planned totals from the pre-write preview (client echoes these every chunk).
+   * Final `result` must use these — never a plan rebuilt after core upserts.
+   */
+  plannedResult?: BranchImportResult;
+  /** Present only when the final enrich chunk succeeds. */
+  result?: BranchImportResult;
+}

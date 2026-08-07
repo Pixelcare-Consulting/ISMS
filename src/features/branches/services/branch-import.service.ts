@@ -6,6 +6,8 @@ import {
   BRANCH_IMPORT_FIELD_LABELS,
   BRANCH_SHEET_NAME,
   type BranchImportBranchPlan,
+  type BranchImportChunkPhase,
+  type BranchImportChunkProgress,
   type BranchImportFieldChange,
   type BranchImportPreview,
   type BranchImportResult,
@@ -33,7 +35,9 @@ import { prisma } from "@/lib/database/client";
  */
 
 const MAX_ROWS = 20_000;
-const APPLY_CHUNK_SIZE = 25;
+/** Matches `psg-branch-upsert` internal batch size. */
+const CORE_CHUNK_SIZE = 40;
+const ENRICH_CHUNK_SIZE = 25;
 
 type BranchRecord = Awaited<ReturnType<typeof branchRepository.findManyBySapCodes>>[number];
 
@@ -57,7 +61,12 @@ interface BranchPlanInternal extends BranchImportBranchPlan {
 
 interface ImportPlan {
   preview: BranchImportPreview;
+  /** Filtered preview/apply list (rows with something to do). */
   branches: BranchPlanInternal[];
+  /** Full sap → plan map (includes unchanged rows) for stable enrich walks. */
+  entryBySap: Map<string, BranchPlanInternal>;
+  /** Stable enrich order: PSG sheet SAPs first, then models-only SAPs. */
+  enrichKeys: string[];
   psgRows: PsgBranchRow[];
 }
 
@@ -841,8 +850,25 @@ export const branchImportService = {
 
     void skippedEmpty;
 
+    // Stable enrich walk order: branch-sheet PSG rows first, then models-only SAPs.
+    const enrichKeys: string[] = [];
+    const enrichSeen = new Set<string>();
+    for (const row of psgRows) {
+      const key = lookupKey(row.sapCode);
+      if (enrichSeen.has(key)) continue;
+      enrichSeen.add(key);
+      enrichKeys.push(key);
+    }
+    for (const key of planBySap.keys()) {
+      if (enrichSeen.has(key)) continue;
+      enrichSeen.add(key);
+      enrichKeys.push(key);
+    }
+
     return {
       branches: plan,
+      entryBySap: planBySap,
+      enrichKeys,
       psgRows,
       preview: {
         branchRowCount: branchSheet.rows.length,
@@ -866,27 +892,149 @@ export const branchImportService = {
     };
   },
 
-  async apply(input: {
+  /**
+   * Core phase: upsert name/status/area/quotas for a slice of PSG rows.
+   * When core finishes, response advances to `enrich` at offset 0 (not done yet).
+   */
+  async applyCoreChunk(input: {
     tenantId: string;
-    actorUserId: string;
     file: Buffer;
-  }): Promise<BranchImportResult> {
-    const { preview, branches, psgRows } = await this.buildPlan(input.tenantId, input.file);
-
+    offset: number;
+    plannedResult?: BranchImportResult;
+  }): Promise<BranchImportChunkProgress> {
+    const { preview, psgRows } = await this.buildPlan(input.tenantId, input.file);
     if (preview.errors.length > 0) {
       throw new Error("Fix the reported rows before importing.");
     }
 
-    // Shared upsert: creates missing sap_codes, updates name/status/area/quotas.
-    if (psgRows.length > 0) {
-      await upsertPsgBranches(prisma, input.tenantId, psgRows);
+    // Freeze planned totals from the first build (before any writes). Later chunks
+    // must echo these — rebuilds after core upserts under-count creates/updates.
+    const plannedResult: BranchImportResult =
+      input.plannedResult ??
+      ({
+        branchesCreated: preview.branchCreateCount,
+        branchesUpdated: preview.branchUpdateCount,
+        allowedModelsAdded: preview.allowedModelAddCount,
+        unchanged: preview.unchangedCount,
+      } satisfies BranchImportResult);
+
+    const total = psgRows.length;
+    if (total === 0 || input.offset >= total) {
+      return {
+        processed: total,
+        total,
+        nextOffset: 0,
+        phase: "enrich",
+        done: false,
+        plannedResult,
+      };
     }
+
+    const chunk = psgRows.slice(input.offset, input.offset + CORE_CHUNK_SIZE);
+    await upsertPsgBranches(prisma, input.tenantId, chunk);
+    const nextOffset = input.offset + chunk.length;
+    const coreDone = nextOffset >= total;
+
+    if (coreDone) {
+      return {
+        processed: total,
+        total,
+        nextOffset: 0,
+        phase: "enrich",
+        done: false,
+        plannedResult,
+      };
+    }
+
+    return {
+      processed: nextOffset,
+      total,
+      nextOffset,
+      phase: "core",
+      done: false,
+      plannedResult,
+    };
+  },
+
+  /**
+   * Enrich phase: FKs, alternates, schedule, allowed models, and per-row audits
+   * for a stable slice of file SAP codes (not the shrinking post-core plan list).
+   * Bulk import audit only on the last slice.
+   */
+  async applyEnrichChunk(input: {
+    tenantId: string;
+    actorUserId: string;
+    file: Buffer;
+    offset: number;
+    plannedResult?: BranchImportResult;
+  }): Promise<BranchImportChunkProgress> {
+    const { preview, entryBySap, enrichKeys } = await this.buildPlan(
+      input.tenantId,
+      input.file,
+    );
+    if (preview.errors.length > 0) {
+      throw new Error("Fix the reported rows before importing.");
+    }
+
+    // Prefer client-echoed pre-apply totals; never trust a plan rebuilt after core.
+    const plannedResult: BranchImportResult =
+      input.plannedResult ??
+      ({
+        branchesCreated: preview.branchCreateCount,
+        branchesUpdated: preview.branchUpdateCount,
+        allowedModelsAdded: preview.allowedModelAddCount,
+        unchanged: preview.unchangedCount,
+      } satisfies BranchImportResult);
+
+    const total = enrichKeys.length;
+    if (total === 0) {
+      await auditService.log({
+        tenantId: input.tenantId,
+        userId: input.actorUserId,
+        action: "branch.imported",
+        entityType: "Branch",
+        entityId: "bulk",
+        metadata: {
+          branchRows: preview.branchRowCount,
+          allowedModelRows: preview.allowedModelRowCount,
+          branchesCreated: plannedResult.branchesCreated,
+          branchesUpdated: plannedResult.branchesUpdated,
+          allowedModelsAdded: plannedResult.allowedModelsAdded,
+        },
+      });
+      return {
+        processed: 0,
+        total: 0,
+        nextOffset: 0,
+        phase: "enrich",
+        done: true,
+        plannedResult,
+        result: plannedResult,
+      };
+    }
+
+    if (input.offset >= total) {
+      return {
+        processed: total,
+        total,
+        nextOffset: total,
+        phase: "enrich",
+        done: true,
+        plannedResult,
+        result: plannedResult,
+      };
+    }
+
+    const chunk = enrichKeys
+      .slice(input.offset, input.offset + ENRICH_CHUNK_SIZE)
+      .map((key) => entryBySap.get(key))
+      .filter((entry): entry is BranchPlanInternal => Boolean(entry));
 
     // Re-resolve branch ids after creates (for models, alternates, schedule, FKs).
     const sapCodesNeedingResolve = [
       ...new Set([
-        ...branches.map((entry) => entry.sapCode),
-        ...branches.flatMap((entry) => entry.fields.alternateSapCodes ?? []),
+        ...chunk.map((entry) => entry.sapCode),
+        ...chunk.flatMap((entry) => entry.fields.alternateSapCodes ?? []),
       ]),
     ];
     const resolvedBranches = sapCodesNeedingResolve.length
@@ -894,10 +1042,9 @@ export const branchImportService = {
       : [];
     const idBySap = new Map(resolvedBranches.map((b) => [lookupKey(b.sapCode), b.id]));
 
-    // Resolve branch_area names created by PSG upsert for FK patching.
     const branchAreaNames = [
       ...new Set(
-        branches
+        chunk
           .map((entry) => entry.fields.branchAreaName)
           .filter((name): name is string => Boolean(name)),
       ),
@@ -912,95 +1059,92 @@ export const branchImportService = {
       branchAreaRows.map((row) => [lookupKey(row.name), row.id]),
     );
 
-    for (let i = 0; i < branches.length; i += APPLY_CHUNK_SIZE) {
-      const chunk = branches.slice(i, i + APPLY_CHUNK_SIZE);
-      await prisma.$transaction(
-        async (tx) => {
-          for (const entry of chunk) {
-            const branchId = entry.branchId || idBySap.get(lookupKey(entry.sapCode));
-            if (!branchId) continue;
+    await prisma.$transaction(
+      async (tx) => {
+        for (const entry of chunk) {
+          const branchId = entry.branchId || idBySap.get(lookupKey(entry.sapCode));
+          if (!branchId) continue;
 
-            const data: {
-              dealerId?: string | null;
-              primaryWarehouseId?: string | null;
-              areaId?: string | null;
-              branchAreaId?: string | null;
-              regionId?: string | null;
-              provinceId?: string | null;
-            } = {};
+          const data: {
+            dealerId?: string | null;
+            primaryWarehouseId?: string | null;
+            areaId?: string | null;
+            branchAreaId?: string | null;
+            regionId?: string | null;
+            provinceId?: string | null;
+          } = {};
 
-            if (entry.fields.dealerId !== undefined) data.dealerId = entry.fields.dealerId;
-            if (entry.fields.primaryWarehouseId !== undefined) {
-              data.primaryWarehouseId = entry.fields.primaryWarehouseId;
-            }
-            if (entry.fields.areaId !== undefined) data.areaId = entry.fields.areaId;
-            if (entry.fields.regionId !== undefined) data.regionId = entry.fields.regionId;
-            if (entry.fields.provinceId !== undefined) data.provinceId = entry.fields.provinceId;
-            if (entry.fields.branchAreaName) {
-              const areaId = branchAreaIdByName.get(lookupKey(entry.fields.branchAreaName));
-              if (areaId) data.branchAreaId = areaId;
-            }
+          if (entry.fields.dealerId !== undefined) data.dealerId = entry.fields.dealerId;
+          if (entry.fields.primaryWarehouseId !== undefined) {
+            data.primaryWarehouseId = entry.fields.primaryWarehouseId;
+          }
+          if (entry.fields.areaId !== undefined) data.areaId = entry.fields.areaId;
+          if (entry.fields.regionId !== undefined) data.regionId = entry.fields.regionId;
+          if (entry.fields.provinceId !== undefined) data.provinceId = entry.fields.provinceId;
+          if (entry.fields.branchAreaName) {
+            const areaId = branchAreaIdByName.get(lookupKey(entry.fields.branchAreaName));
+            if (areaId) data.branchAreaId = areaId;
+          }
 
-            if (Object.keys(data).length > 0) {
-              await tx.branch.update({
-                where: { id: branchId, tenantId: input.tenantId },
-                data,
-              });
-            }
+          if (Object.keys(data).length > 0) {
+            await tx.branch.update({
+              where: { id: branchId, tenantId: input.tenantId },
+              data,
+            });
+          }
 
-            if (entry.fields.alternateSapCodes !== undefined) {
-              const alternateIds = entry.fields.alternateSapCodes
-                .map((code) => idBySap.get(lookupKey(code)))
-                .filter((id): id is string => Boolean(id) && id !== branchId);
-              await tx.alternateWarehouse.deleteMany({ where: { branchId } });
-              if (alternateIds.length > 0) {
-                await tx.alternateWarehouse.createMany({
-                  data: alternateIds.map((alternateBranchId) => ({
-                    branchId,
-                    alternateBranchId,
-                  })),
-                  skipDuplicates: true,
-                });
-              }
-            }
-
-            if (entry.fields.schedule) {
-              await tx.branchDeliverySchedule.upsert({
-                where: { branchId },
-                create: {
-                  tenantId: input.tenantId,
+          if (entry.fields.alternateSapCodes !== undefined) {
+            const alternateIds = entry.fields.alternateSapCodes
+              .map((code) => idBySap.get(lookupKey(code)))
+              .filter((id): id is string => Boolean(id) && id !== branchId);
+            await tx.alternateWarehouse.deleteMany({ where: { branchId } });
+            if (alternateIds.length > 0) {
+              await tx.alternateWarehouse.createMany({
+                data: alternateIds.map((alternateBranchId) => ({
                   branchId,
-                  frequencyCodeId: entry.fields.schedule.frequencyCodeId,
-                  deliveryDays: entry.fields.schedule.deliveryDays,
-                  orderDays: entry.fields.schedule.orderDays,
-                  notes: entry.fields.schedule.notes ?? null,
-                },
-                update: {
-                  frequencyCodeId: entry.fields.schedule.frequencyCodeId,
-                  deliveryDays: entry.fields.schedule.deliveryDays,
-                  orderDays: entry.fields.schedule.orderDays,
-                  notes: entry.fields.schedule.notes ?? null,
-                },
-              });
-            }
-
-            if (entry.allowedModelsToAdd.length > 0) {
-              await tx.branchAllowedModel.createMany({
-                data: entry.allowedModelsToAdd.map((model) => ({
-                  tenantId: input.tenantId,
-                  branchId,
-                  modelId: model.modelId,
+                  alternateBranchId,
                 })),
                 skipDuplicates: true,
               });
             }
           }
-        },
-        { timeout: 30_000 },
-      );
-    }
 
-    for (const entry of branches) {
+          if (entry.fields.schedule) {
+            await tx.branchDeliverySchedule.upsert({
+              where: { branchId },
+              create: {
+                tenantId: input.tenantId,
+                branchId,
+                frequencyCodeId: entry.fields.schedule.frequencyCodeId,
+                deliveryDays: entry.fields.schedule.deliveryDays,
+                orderDays: entry.fields.schedule.orderDays,
+                notes: entry.fields.schedule.notes ?? null,
+              },
+              update: {
+                frequencyCodeId: entry.fields.schedule.frequencyCodeId,
+                deliveryDays: entry.fields.schedule.deliveryDays,
+                orderDays: entry.fields.schedule.orderDays,
+                notes: entry.fields.schedule.notes ?? null,
+              },
+            });
+          }
+
+          if (entry.allowedModelsToAdd.length > 0) {
+            await tx.branchAllowedModel.createMany({
+              data: entry.allowedModelsToAdd.map((model) => ({
+                tenantId: input.tenantId,
+                branchId,
+                modelId: model.modelId,
+              })),
+              skipDuplicates: true,
+            });
+          }
+        }
+      },
+      { timeout: 30_000 },
+    );
+
+    for (const entry of chunk) {
       const branchId =
         entry.branchId || idBySap.get(lookupKey(entry.sapCode)) || entry.sapCode;
       await auditService.log({
@@ -1023,27 +1167,93 @@ export const branchImportService = {
       });
     }
 
-    await auditService.log({
-      tenantId: input.tenantId,
-      userId: input.actorUserId,
-      action: "branch.imported",
-      entityType: "Branch",
-      entityId: "bulk",
-      metadata: {
-        branchRows: preview.branchRowCount,
-        allowedModelRows: preview.allowedModelRowCount,
-        branchesCreated: preview.branchCreateCount,
-        branchesUpdated: preview.branchUpdateCount,
-        allowedModelsAdded: preview.allowedModelAddCount,
-      },
-    });
+    const nextOffset = input.offset + chunk.length;
+    const done = nextOffset >= total;
+
+    if (done) {
+      await auditService.log({
+        tenantId: input.tenantId,
+        userId: input.actorUserId,
+        action: "branch.imported",
+        entityType: "Branch",
+        entityId: "bulk",
+        metadata: {
+          branchRows: preview.branchRowCount,
+          allowedModelRows: preview.allowedModelRowCount,
+          branchesCreated: plannedResult.branchesCreated,
+          branchesUpdated: plannedResult.branchesUpdated,
+          allowedModelsAdded: plannedResult.allowedModelsAdded,
+        },
+      });
+    }
 
     return {
-      branchesCreated: preview.branchCreateCount,
-      branchesUpdated: preview.branchUpdateCount,
-      allowedModelsAdded: preview.allowedModelAddCount,
-      unchanged: preview.unchangedCount,
+      processed: nextOffset,
+      total,
+      nextOffset,
+      phase: "enrich",
+      done,
+      plannedResult,
+      result: done ? plannedResult : undefined,
     };
+  },
+
+  async applyChunk(input: {
+    tenantId: string;
+    actorUserId: string;
+    file: Buffer;
+    phase: BranchImportChunkPhase;
+    offset: number;
+    plannedResult?: BranchImportResult;
+  }): Promise<BranchImportChunkProgress> {
+    if (input.phase === "core") {
+      return this.applyCoreChunk({
+        tenantId: input.tenantId,
+        file: input.file,
+        offset: input.offset,
+        plannedResult: input.plannedResult,
+      });
+    }
+    return this.applyEnrichChunk({
+      tenantId: input.tenantId,
+      actorUserId: input.actorUserId,
+      file: input.file,
+      offset: input.offset,
+      plannedResult: input.plannedResult,
+    });
+  },
+
+  /** Full apply via core then enrich chunks (non-UI / backwards-compatible callers). */
+  async apply(input: {
+    tenantId: string;
+    actorUserId: string;
+    file: Buffer;
+  }): Promise<BranchImportResult> {
+    let phase: BranchImportChunkPhase = "core";
+    let offset = 0;
+    let plannedResult: BranchImportResult | undefined;
+
+    for (;;) {
+      const progress = await this.applyChunk({
+        tenantId: input.tenantId,
+        actorUserId: input.actorUserId,
+        file: input.file,
+        phase,
+        offset,
+        plannedResult,
+      });
+      if (progress.plannedResult) {
+        plannedResult = progress.plannedResult;
+      }
+      if (progress.done) {
+        if (!progress.result) {
+          throw new Error("Import finished without a result.");
+        }
+        return progress.result;
+      }
+      phase = progress.phase;
+      offset = progress.nextOffset;
+    }
   },
 };
 

@@ -17,7 +17,8 @@ export const MASTER_DATA_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "How to navigate",
       bullets: [
-        "Use the hub cards or tabs to open brands, models, categories, regions, payment types, and other lookups.",
+        "Use the hub cards or tabs to open brands, models, series, categories, regions, payment types, and other lookups.",
+        "On Models, use Import to download the template and upload it — only that template is accepted; new SKUs are added and existing ones are updated when details change.",
         "Create rows before they are needed on operational forms — missing lookups block create flows.",
         "This guide opens once for the whole master-data section; use ? anytime to reopen.",
       ],

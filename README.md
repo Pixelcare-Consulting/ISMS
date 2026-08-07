@@ -2,7 +2,7 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.21.0`
+**Current version:** `0.23.1`
 
 ## Stack
 
@@ -16,7 +16,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | **Dashboard** | Role-aware activity cards (top 4); Inventory summary + Planning & alerts; This month (icons) beside Order pipeline; compliance overview when no ops access; active announcement banner |
 | **Announcements** | Tenant posts (title, body, publish/expiry); list + CRUD (`/announcements`) |
 | **Competitors** | Market observations with master Competitor + Competitor brand/model lookups, AOR-bound branch, optional promotion; KPIs + CRUD (`/competitors`) |
-| **Settings** | Company, users, departments, roles, branches, warehouses, dealers, service centers, AORs (branches / warehouses / service centers assign + sync), master data (incl. Competitors / Competitor brands), status codes (per-module tabs + badge colors); collapsible Module guides on complex settings/ops pages |
+| **Settings** | Company, users, departments, roles, branches, warehouses, dealers, service centers, AORs (branches / warehouses / service centers assign + sync), master data (incl. Series / Categories, Competitors / Competitor brands), status codes (per-module tabs + badge colors); collapsible Module guides on complex settings/ops pages |
 | **Planning** | BRS CSV forecast import, allocation, suggested auto-replenish orders (`/settings/planning`, `/planning/suggested-orders`) |
 | **Planogram** | Per-branch SKU shelf capacity, MIL, order enforcement |
 | **Policies** | Full document control (ISO track) |
@@ -66,7 +66,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/settings/service-centers` | `service_centers.manage` |
 | `/settings/aors` | `aors.manage` |
 | `/settings/planning`, `/planogram` | `forecast.manage` / `planogram.*` |
-| `/settings/master-data/*` | `master_data.manage` |
+| `/settings/master-data/*` | `master_data.manage` (Models: Import template + upload; creates new SKUs / updates existing; our template only) |
 | `/settings/sap-integration` | `sap.manage` (queue) |
 | `/settings/sap-integration/service-layer` | `sap.manage` (B1 Service Layer config) |
 | `/settings/permissions` | Super Admin only |

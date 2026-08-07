@@ -44,6 +44,7 @@ interface LookupDelegate {
 
 const delegates: Record<LookupEntityKey | "brand", LookupDelegate> = {
   brand: prisma.brand as unknown as LookupDelegate,
+  series: prisma.series as unknown as LookupDelegate,
   category: prisma.category as unknown as LookupDelegate,
   feature: prisma.feature as unknown as LookupDelegate,
   size: prisma.size as unknown as LookupDelegate,

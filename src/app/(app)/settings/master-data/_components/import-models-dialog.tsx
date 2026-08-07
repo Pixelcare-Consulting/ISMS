@@ -6,15 +6,11 @@ import { Download, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import {
-  applyBranchImportChunkAction,
-  downloadBranchImportTemplateAction,
-  previewBranchImportAction,
-} from "@/features/branches/actions/branch-import.actions";
-import type {
-  BranchImportChunkPhase,
-  BranchImportPreview,
-  BranchImportResult,
-} from "@/features/branches/schemas/branch-import.schema";
+  applyModelImportChunkAction,
+  downloadModelImportTemplateAction,
+  previewModelImportAction,
+} from "@/features/master-data/actions/model-import.actions";
+import type { ModelImportPreview } from "@/features/master-data/schemas/model-import.schema";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -35,7 +31,6 @@ import {
 
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
-/** Turn the base64 workbook from the server action into a file download. */
 function downloadWorkbook(base64: string, filename: string) {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
@@ -48,20 +43,7 @@ function downloadWorkbook(base64: string, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-function phaseLabel(phase: BranchImportChunkPhase): string {
-  return phase === "core" ? "Saving branches…" : "Updating details…";
-}
-
-function plannedFromPreview(preview: BranchImportPreview): BranchImportResult {
-  return {
-    branchesCreated: preview.branchCreateCount,
-    branchesUpdated: preview.branchUpdateCount,
-    allowedModelsAdded: preview.allowedModelAddCount,
-    unchanged: preview.unchangedCount,
-  };
-}
-
-export function ImportBranchesDialog({
+export function ImportModelsDialog({
   open,
   onOpenChange,
 }: {
@@ -71,10 +53,9 @@ export function ImportBranchesDialog({
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<BranchImportPreview | null>(null);
+  const [preview, setPreview] = useState<ModelImportPreview | null>(null);
   const [pending, startTransition] = useTransition();
   const [applyProgress, setApplyProgress] = useState<{
-    label: string;
     processed: number;
     total: number;
     elapsedMs: number;
@@ -98,8 +79,8 @@ export function ImportBranchesDialog({
 
   function handleTemplate() {
     startTransition(async () => {
-      const base64 = await downloadBranchImportTemplateAction();
-      downloadWorkbook(base64, "branches-import-template.xlsx");
+      const base64 = await downloadModelImportTemplateAction();
+      downloadWorkbook(base64, "models-import-template.xlsx");
     });
   }
 
@@ -109,7 +90,7 @@ export function ImportBranchesDialog({
     const formData = new FormData();
     formData.set("file", selected);
     startTransition(async () => {
-      const result = await previewBranchImportAction(formData);
+      const result = await previewModelImportAction(formData);
       if ("error" in result) {
         toast.error(result.error);
         reset();
@@ -122,71 +103,67 @@ export function ImportBranchesDialog({
   function handleApply() {
     if (!file || !preview || applying) return;
 
-    const planned = plannedFromPreview(preview);
     const startedAtMs = Date.now();
+    const unchangedCount = preview.unchangedCount;
 
     startTransition(async () => {
-      let phase: BranchImportChunkPhase = "core";
       let offset = 0;
       let lastProcessed = 0;
       let lastTotal = 0;
-      let lastPhase: BranchImportChunkPhase = "core";
-      let plannedResult = planned;
+      let modelsCreated = 0;
+      let modelsUpdated = 0;
+      let brandsCreated = 0;
+      let seriesCreated = 0;
 
-      setApplyProgress({
-        label: phaseLabel("core"),
-        processed: 0,
-        total: 0,
-        elapsedMs: 0,
-      });
+      setApplyProgress({ processed: 0, total: 0, elapsedMs: 0 });
 
       try {
         for (;;) {
           const formData = new FormData();
           formData.set("file", file);
-          formData.set("phase", phase);
           formData.set("offset", String(offset));
-          formData.set("plannedCreated", String(plannedResult.branchesCreated));
-          formData.set("plannedUpdated", String(plannedResult.branchesUpdated));
-          formData.set("plannedAllowed", String(plannedResult.allowedModelsAdded));
-          formData.set("plannedUnchanged", String(plannedResult.unchanged));
 
-          const progress = await applyBranchImportChunkAction(formData);
+          const progress = await applyModelImportChunkAction(formData);
           if ("error" in progress) {
             toast.error(
-              `${progress.error} Stopped after ${lastProcessed} of ${lastTotal || "?"} (${lastPhase === "core" ? "saving branches" : "updating details"}). You can try Apply again.`,
+              `${progress.error} Stopped after ${lastProcessed} of ${lastTotal || "?"}. You can try Apply again.`,
             );
             setApplyProgress(null);
             return;
           }
 
-          if (progress.plannedResult) {
-            plannedResult = progress.plannedResult;
-          }
-
+          modelsCreated += progress.modelsCreated;
+          modelsUpdated += progress.modelsUpdated;
+          brandsCreated += progress.brandsCreated;
+          seriesCreated += progress.seriesCreated;
           lastProcessed = progress.processed;
           lastTotal = progress.total;
-          lastPhase = phase;
 
           setApplyProgress({
-            label: phaseLabel(phase),
             processed: progress.processed,
             total: progress.total,
             elapsedMs: Date.now() - startedAtMs,
           });
 
           if (progress.done) {
-            const result = progress.result ?? plannedResult;
-            toast.success(
-              `${result.branchesCreated} created · ${result.branchesUpdated} updated · ${result.allowedModelsAdded} allowed model${result.allowedModelsAdded === 1 ? "" : "s"} added`,
-            );
+            const parts = [
+              `${modelsCreated} created`,
+              `${modelsUpdated} updated`,
+              `${unchangedCount} unchanged`,
+            ];
+            if (brandsCreated > 0) {
+              parts.push(`${brandsCreated} brand${brandsCreated === 1 ? "" : "s"} added`);
+            }
+            if (seriesCreated > 0) {
+              parts.push(`${seriesCreated} series added`);
+            }
+            toast.success(parts.join(" · "));
             setApplyProgress(null);
             handleClose(false);
             router.refresh();
             return;
           }
 
-          phase = progress.phase;
           offset = progress.nextOffset;
         }
       } catch (error) {
@@ -199,6 +176,8 @@ export function ImportBranchesDialog({
   }
 
   const hasErrors = (preview?.errors.length ?? 0) > 0;
+  const showChangesColumn =
+    preview?.rows.some((row) => row.action === "update" && row.changes.length > 0) ?? false;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -213,15 +192,19 @@ export function ImportBranchesDialog({
         }}
       >
         <DialogHeader>
-          <DialogTitle>Import branches</DialogTitle>
+          <DialogTitle>Import models</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="text-muted-foreground text-sm">
+          <div className="text-muted-foreground space-y-2 text-sm">
             <p>
-              The download template is a single <strong>Branches</strong> sheet with columns for
-              SAP code, name, status, dealer, warehouse, geo, alternate branches, and delivery
-              schedule — pre-filled from your active branches.
+              Download the <strong>Models</strong> template, fill in SKU, name, brand, and
+              series (optional feature, resolution, actual size, and status), then upload
+              that same file. Other spreadsheet layouts are not accepted.
+            </p>
+            <p>
+              Unknown SKUs are created; existing ones update when values differ. Blank
+              optional cells stay unchanged.
             </p>
           </div>
 
@@ -257,7 +240,7 @@ export function ImportBranchesDialog({
 
           {applyProgress ? (
             <ImportApplyProgress
-              label={applyProgress.label}
+              label="Importing…"
               processed={applyProgress.processed}
               total={applyProgress.total}
               elapsedMs={applyProgress.elapsedMs}
@@ -268,25 +251,14 @@ export function ImportBranchesDialog({
             <div className="space-y-4">
               <div className="flex flex-wrap gap-4 rounded-lg border px-4 py-3 text-sm">
                 <span>
-                  <strong>{preview.branchRowCount}</strong> branch rows
-                  {preview.allowedModelRowCount > 0 ? (
-                    <>
-                      {" "}
-                      · <strong>{preview.allowedModelRowCount}</strong> model rows
-                    </>
-                  ) : null}
+                  <strong>{preview.rowCount}</strong> rows
                 </span>
                 <span>
-                  <strong>{preview.branchCreateCount}</strong> branches to create
+                  <strong>{preview.createCount}</strong> to create
                 </span>
                 <span>
-                  <strong>{preview.branchUpdateCount}</strong> branches to update
+                  <strong>{preview.updateCount}</strong> to update
                 </span>
-                {preview.allowedModelRowCount > 0 || preview.allowedModelAddCount > 0 ? (
-                  <span>
-                    <strong>{preview.allowedModelAddCount}</strong> allowed models to add
-                  </span>
-                ) : null}
                 <span className="text-muted-foreground">
                   {preview.unchangedCount} unchanged (skipped)
                 </span>
@@ -304,6 +276,7 @@ export function ImportBranchesDialog({
                       <li key={`${error.sheet}-${error.rowNumber}-${index}`}>
                         <span className="text-muted-foreground">
                           {error.sheet} · row {error.rowNumber}
+                          {error.sku !== "—" ? ` · ${error.sku}` : ""}
                         </span>{" "}
                         {error.message}
                       </li>
@@ -317,46 +290,37 @@ export function ImportBranchesDialog({
                 </div>
               ) : null}
 
-              {preview.branches.length > 0 ? (
+              {preview.rows.length > 0 ? (
                 <div className="max-h-72 overflow-y-auto rounded-lg border">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>SAP code</TableHead>
-                        <TableHead>Branch</TableHead>
+                        <TableHead>SKU</TableHead>
+                        <TableHead>Name</TableHead>
                         <TableHead>Action</TableHead>
-                        <TableHead>Changes</TableHead>
-                        {preview.allowedModelRowCount > 0 ||
-                        preview.branches.some((b) => b.allowedModelsToAdd.length > 0) ? (
-                          <TableHead className="text-right">Allowed models</TableHead>
-                        ) : null}
+                        {showChangesColumn ? <TableHead>Changes</TableHead> : null}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {preview.branches.map((branch) => (
-                        <TableRow key={branch.branchId}>
-                          <TableCell className="font-mono text-xs">{branch.sapCode}</TableCell>
-                          <TableCell>{branch.name}</TableCell>
-                          <TableCell className="text-sm">
-                            {branch.isCreate ? "Create" : "Update"}
+                      {preview.rows.map((row) => (
+                        <TableRow key={`${row.sku}-${row.rowNumber}`}>
+                          <TableCell className="font-mono text-xs">{row.sku}</TableCell>
+                          <TableCell>{row.name}</TableCell>
+                          <TableCell className="text-sm capitalize">
+                            {row.action === "skip" ? "Unchanged" : row.action}
                           </TableCell>
-                          <TableCell className="text-sm">
-                            {branch.changes.length === 0 ? (
-                              <span className="text-muted-foreground">No field changes</span>
-                            ) : (
-                              branch.changes.map((change) => (
-                                <div key={`${change.field}-${change.to}`}>
-                                  {change.label}: {change.from} → <strong>{change.to}</strong>
-                                </div>
-                              ))
-                            )}
-                          </TableCell>
-                          {preview.allowedModelRowCount > 0 ||
-                          preview.branches.some((b) => b.allowedModelsToAdd.length > 0) ? (
-                            <TableCell className="text-right text-sm">
-                              {branch.allowedModelsToAdd.length > 0
-                                ? `+${branch.allowedModelsToAdd.length}`
-                                : "—"}
+                          {showChangesColumn ? (
+                            <TableCell className="text-sm">
+                              {row.changes.length === 0 ? (
+                                <span className="text-muted-foreground">No field changes</span>
+                              ) : (
+                                row.changes.map((change) => (
+                                  <div key={`${change.field}-${change.to}`}>
+                                    {change.label}: {change.from} →{" "}
+                                    <strong>{change.to}</strong>
+                                  </div>
+                                ))
+                              )}
                             </TableCell>
                           ) : null}
                         </TableRow>

@@ -1,11 +1,11 @@
 import type { PrismaClient } from "@/lib/database/generated/prisma/client";
 import type { PsgModelRow } from "@/features/master-data/services/psg-model-workbook";
 
-type SeedPrisma = Pick<PrismaClient, "brand" | "category" | "productModel">;
+type SeedPrisma = Pick<PrismaClient, "brand" | "series" | "productModel">;
 
 export interface UpsertPsgModelsResult {
   brandsUpserted: number;
-  categoriesUpserted: number;
+  seriesUpserted: number;
   modelsCreated: number;
   modelsUpdated: number;
   /** skuCode (as written) → ProductModel.id */
@@ -15,7 +15,7 @@ export interface UpsertPsgModelsResult {
 const CHUNK = 40;
 
 /**
- * Chunked upsert of Brand → Category → ProductModel for one tenant.
+ * Chunked upsert of Brand → Series → ProductModel for one tenant.
  * Upsert key for models: @@unique([tenantId, skuCode]). Sets status active.
  */
 export async function upsertPsgModels(
@@ -37,18 +37,18 @@ export async function upsertPsgModels(
     brandIdByName.set(brand.name, brand.id);
   }
 
-  const categoryNames = [...new Set(rows.map((row) => row.categoryName))];
-  const categoryIdByName = new Map<string, string>();
-  const categoryCodeByName = new Map<string, string | null>();
+  const seriesNames = [...new Set(rows.map((row) => row.seriesName))];
+  const seriesIdByName = new Map<string, string>();
+  const seriesCodeByName = new Map<string, string | null>();
   for (const row of rows) {
-    if (!categoryCodeByName.has(row.categoryName) && row.categoryCode) {
-      categoryCodeByName.set(row.categoryName, row.categoryCode);
+    if (!seriesCodeByName.has(row.seriesName) && row.seriesCode) {
+      seriesCodeByName.set(row.seriesName, row.seriesCode);
     }
   }
 
-  for (const name of categoryNames) {
-    const code = categoryCodeByName.get(name) ?? null;
-    const category = await prisma.category.upsert({
+  for (const name of seriesNames) {
+    const code = seriesCodeByName.get(name) ?? null;
+    const series = await prisma.series.upsert({
       where: { tenantId_name: { tenantId, name } },
       create: {
         tenantId,
@@ -62,7 +62,7 @@ export async function upsertPsgModels(
       },
       select: { id: true, name: true },
     });
-    categoryIdByName.set(category.name, category.id);
+    seriesIdByName.set(series.name, series.id);
   }
 
   let modelsCreated = 0;
@@ -74,7 +74,7 @@ export async function upsertPsgModels(
 
     for (const row of chunk) {
       const brandId = brandIdByName.get(row.brandName) ?? null;
-      const categoryId = categoryIdByName.get(row.categoryName) ?? null;
+      const seriesId = seriesIdByName.get(row.seriesName) ?? null;
 
       const existing = await prisma.productModel.findUnique({
         where: { tenantId_skuCode: { tenantId, skuCode: row.skuCode } },
@@ -88,7 +88,7 @@ export async function upsertPsgModels(
             skuCode: row.skuCode,
             name: row.name,
             brandId,
-            categoryId,
+            seriesId,
             cbm: row.cbm,
             status: "active",
           },
@@ -102,7 +102,7 @@ export async function upsertPsgModels(
           data: {
             name: row.name,
             brandId,
-            categoryId,
+            seriesId,
             cbm: row.cbm,
             status: "active",
           },
@@ -115,7 +115,7 @@ export async function upsertPsgModels(
 
   return {
     brandsUpserted: brandNames.length,
-    categoriesUpserted: categoryNames.length,
+    seriesUpserted: seriesNames.length,
     modelsCreated,
     modelsUpdated,
     modelIdBySku,
