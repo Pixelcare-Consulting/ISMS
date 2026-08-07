@@ -26,8 +26,8 @@
 *.pem
 
 # local object storage (policy attachments, audit archives)
-.data/
-.data/uploads/
+#.data`/
+#.data/uploads/
 
 # debug
 npm-debug.log*
