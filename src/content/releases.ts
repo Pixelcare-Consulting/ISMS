@@ -52,6 +52,22 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.23.5",
+    date: "2026-08-07",
+    releasedAt: "2026-08-07T18:00:00+08:00",
+    title: "Serial Number Logs keep original registration branch",
+    highlights: [
+      "Registered events in Serial Number Logs keep the original branch even after stock moves or Official Sales deletes",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Serial Number Logs Registered location no longer follows the live inventory branch after transfers or Official Sales moves",
+      },
+    ],
+  },
+  {
     version: "0.23.4",
     date: "2026-08-07",
     releasedAt: "2026-08-07T17:50:00+08:00",

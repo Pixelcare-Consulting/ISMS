@@ -118,6 +118,30 @@ function performedByLabel(
   return user ? { name: user.name, email: user.email } : null;
 }
 
+/**
+ * Registered LOCATION must stay historical. `BranchInventory.branchId` is relocated
+ * in place (Official Sales ADD/DEL, transfers), so never treat current inventory
+ * branch as the registration site when placement history exists.
+ *
+ * Prefer immutable first-placement signals, then fall back to live inventory.
+ */
+function registeredLocation(row: {
+  deliveryLines: { delivery: { branch: { name: string } } }[];
+  transferLines: { transfer: { fromBranch: { name: string } } }[];
+  salesDetails: {
+    sale: { stockSourceBranch: { name: string } | null };
+  }[];
+  branchInventories: { branch: { name: string } }[];
+}): string | null {
+  return (
+    row.deliveryLines[0]?.delivery.branch.name ??
+    row.transferLines[0]?.transfer.fromBranch.name ??
+    row.salesDetails[0]?.sale.stockSourceBranch?.name ??
+    row.branchInventories[0]?.branch.name ??
+    null
+  );
+}
+
 /** Case-insensitive `contains` fragment (or empty when no query). */
 function textContains(q?: string) {
   return q ? { contains: q, mode: "insensitive" as const } : undefined;
@@ -144,6 +168,38 @@ async function registeredSource(
         recordStatus: true,
         model: modelSelect,
         createdBy: userSelect,
+        // Earliest delivery = first branch the unit was shipped to (immutable).
+        deliveryLines: {
+          take: 1,
+          orderBy: { delivery: { createdAt: "asc" } },
+          select: {
+            delivery: { select: { branch: { select: { name: true } } } },
+          },
+        },
+        // Earliest transfer from-branch = where it sat before the first move.
+        transferLines: {
+          take: 1,
+          orderBy: { transfer: { createdAt: "asc" } },
+          select: {
+            transfer: {
+              select: { fromBranch: { select: { name: true } } },
+            },
+          },
+        },
+        // Cross-branch sale stock source (alternateBranchId) — set at encode time.
+        salesDetails: {
+          take: 1,
+          orderBy: { createdAt: "asc" },
+          where: { sale: { alternateBranchId: { not: null } } },
+          select: {
+            sale: {
+              select: {
+                stockSourceBranch: { select: { name: true } },
+              },
+            },
+          },
+        },
+        // Last resort only — branchId on this row is live and may have relocated.
         branchInventories: {
           take: 1,
           orderBy: { createdAt: "asc" },
@@ -161,7 +217,7 @@ async function registeredSource(
       timestamp: r.createdAt,
       serialNo: r.serialNo,
       modelLabel: modelLabel(r.model),
-      location: r.branchInventories[0]?.branch.name ?? null,
+      location: registeredLocation(r),
       reference: r.serialNo,
       referenceDetails: referenceDetails(`SKU ${r.model.skuCode}`),
       status: RECORD_STATUS_LABELS[r.recordStatus] ?? r.recordStatus,
