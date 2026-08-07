@@ -29,7 +29,7 @@ export function PriceListCard({ group, onOpen }: PriceListCardProps) {
       type="button"
       onClick={onOpen}
       className={cn(
-        "group flex w-full flex-col rounded-xl border border-border/70 bg-card p-4 text-left shadow-sm transition-colors",
+        "group flex w-full cursor-pointer flex-col rounded-xl border border-border/70 bg-card p-4 text-left shadow-sm transition-colors",
         "hover:border-border hover:bg-accent/20",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
       )}

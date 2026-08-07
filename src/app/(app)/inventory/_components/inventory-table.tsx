@@ -50,7 +50,6 @@ interface InventoryTableProps {
   result: PaginatedResult<InventoryListItem>;
   statusOptions: InventoryStatusOption[];
   initialOffPlanogram?: boolean;
-  initialStatusCodeId?: string;
   initialSort?: string;
   initialSortDir?: string;
   /** Hide branch search/column (PS stock units UX). */
@@ -61,7 +60,6 @@ function buildInventoryHref(opts: {
   page: number;
   limit: number;
   offPlanogram: boolean;
-  statusCodeId?: string;
   sort?: string;
   sortDir?: string;
   filters?: { branch?: string; sku?: string };
@@ -70,7 +68,6 @@ function buildInventoryHref(opts: {
   if (opts.page > 1) params.set("page", String(opts.page));
   if (opts.limit !== DEFAULT_TABLE_PAGE_SIZE) params.set("limit", String(opts.limit));
   if (opts.offPlanogram) params.set("offPlanogram", "1");
-  if (opts.statusCodeId) params.set("status", opts.statusCodeId);
   if (opts.sort) params.set("sort", opts.sort);
   if (opts.sortDir) params.set("dir", opts.sortDir);
   if (opts.filters?.branch) params.set("branch", opts.filters.branch);
@@ -90,7 +87,6 @@ export function InventoryTable({
   result,
   statusOptions,
   initialOffPlanogram = false,
-  initialStatusCodeId = "",
   initialSort = "",
   initialSortDir = "desc",
   hideBranch = false,
@@ -99,7 +95,6 @@ export function InventoryTable({
   const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
   const [offPlanogramOnly, setOffPlanogramOnly] = useState(initialOffPlanogram);
-  const [statusCodeId, setStatusCodeId] = useState(initialStatusCodeId);
   const [pending, startTransition] = useTransition();
   const pageSize = parseTablePageSize(result.limit);
 
@@ -118,7 +113,6 @@ export function InventoryTable({
     page?: number;
     limit?: number;
     offPlanogram?: boolean;
-    statusCodeId?: string;
     sort?: string;
     sortDir?: string;
   } = {}) {
@@ -127,10 +121,6 @@ export function InventoryTable({
         page: overrides.page ?? 1,
         limit: overrides.limit ?? pageSize,
         offPlanogram: overrides.offPlanogram ?? offPlanogramOnly,
-        statusCodeId:
-          overrides.statusCodeId !== undefined
-            ? overrides.statusCodeId || undefined
-            : statusCodeId || undefined,
         sort: overrides.sort !== undefined ? overrides.sort || undefined : sort || undefined,
         sortDir:
           overrides.sortDir !== undefined
@@ -185,11 +175,6 @@ export function InventoryTable({
     pushHref({ offPlanogram: checked, page: 1 });
   }
 
-  function changeStatusFilter(next: string) {
-    setStatusCodeId(next);
-    pushHref({ statusCodeId: next, page: 1 });
-  }
-
   function toggleSort(field: InventorySortField) {
     const next = nextTableSort(field, sort, sortDir);
     pushHref({ sort: next.sort, sortDir: next.dir, page: 1 });
@@ -212,16 +197,11 @@ export function InventoryTable({
   }
 
   const filterBanner =
-    branchFilter || skuFilter || statusCodeId ? (
+    branchFilter || skuFilter ? (
       <div className="border-b px-4 py-2 text-sm text-muted-foreground">
         Filtered
         {branchFilter ? " · branch" : ""}
         {skuFilter ? ` · SKU ${skuFilter}` : ""}
-        {statusCodeId
-          ? ` · status ${
-              statusOptions.find((s) => s.id === statusCodeId)?.code ?? ""
-            }`
-          : ""}
         <Button variant="link" className="ml-2 h-auto p-0" asChild>
           <Link href="/inventory">Clear</Link>
         </Button>
@@ -250,19 +230,6 @@ export function InventoryTable({
                 {selection.selectedCount} selected
               </Button>
             ) : null}
-            <div className="w-44">
-              <SearchableSelect
-                options={statusOptions.map((s) => ({
-                  id: s.id,
-                  label: `${s.name} (${s.code})`,
-                }))}
-                value={statusCodeId}
-                allowClear
-                placeholder="All statuses"
-                searchPlaceholder="Filter status…"
-                onChange={changeStatusFilter}
-              />
-            </div>
             <div className="flex items-center gap-2 text-sm">
               <input
                 id="off-planogram"
@@ -288,7 +255,6 @@ export function InventoryTable({
               page,
               limit: pageSize,
               offPlanogram: offPlanogramOnly,
-              statusCodeId: statusCodeId || undefined,
               sort: sort || undefined,
               sortDir: sort ? sortDir : undefined,
               filters: urlFilters,

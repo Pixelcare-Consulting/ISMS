@@ -52,6 +52,76 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.20.7",
+    date: "2026-08-07",
+    releasedAt: "2026-08-07T15:40:00+08:00",
+    title: "Stock units show Stock only",
+    highlights: [
+      "Stock units lists Stock (STK) units only — Sold, Official Sold, and in-transit stay in Sales or Logistics",
+      "The status filter is removed from Stock units so the list stays focused on on-hand stock",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Stock units shows Stock (STK) only; other statuses belong in Sales & ATRs or Logistics",
+      },
+      {
+        type: "improvement",
+        description:
+          "Status filter control removed from the Stock units toolbar",
+      },
+    ],
+  },
+  {
+    version: "0.20.6",
+    date: "2026-08-07",
+    releasedAt: "2026-08-07T15:35:00+08:00",
+    title: "Pickers stay inside dialogs",
+    highlights: [
+      "Model and other searchable lists stay within the dialog — long names wrap instead of spilling off the side",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Searchable pickers no longer overflow past Add Line Items and other dialogs; full names still show by wrapping",
+      },
+    ],
+  },
+  {
+    version: "0.20.4",
+    date: "2026-08-07",
+    releasedAt: "2026-08-07T15:25:00+08:00",
+    title: "Full model names in pickers",
+    highlights: [
+      "Model and other searchable pickers show the full name instead of cutting it off with …",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Searchable pickers (like Model on Add Line Items) show the full name instead of truncating with …",
+      },
+    ],
+  },
+  {
+    version: "0.20.3",
+    date: "2026-08-07",
+    releasedAt: "2026-08-07T14:45:00+08:00",
+    title: "Price lists hover cue",
+    highlights: [
+      "Price list cards show a hand cursor on hover so it’s clearer they’re clickable",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Price list cards show a hand cursor when you hover over them",
+      },
+    ],
+  },
+  {
     version: "0.20.2",
     date: "2026-08-07",
     releasedAt: "2026-08-07T14:15:00+08:00",
