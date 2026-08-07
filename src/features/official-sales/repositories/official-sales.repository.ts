@@ -268,6 +268,33 @@ export const officialSalesRepository = {
   },
 
   /**
+   * Match a TO-FOLLOW sale line (null serial) by Trans # and sold branch.
+   * Used by Official Sales DEL cleanup — no inventory restore.
+   */
+  findToFollowSaleDetailByTransBranch(
+    tenantId: string,
+    transactionNo: string,
+    branchId: string,
+    statusCodes: string[] = ["FW", "SLD", "OFS"],
+  ) {
+    const txn = transactionNo.trim();
+    return prisma.branchSalesTransactionDetail.findFirst({
+      where: {
+        serialNumberId: null,
+        statusCode: { code: { in: statusCodes } },
+        sale: { tenantId, branchId },
+        OR: [
+          { deliveryNo: txn },
+          { sale: { transactionNo: txn } },
+          { sale: { siTrans: txn } },
+        ],
+      },
+      select: OPEN_SALE_DETAIL_SELECT,
+      orderBy: { createdAt: "desc" },
+    });
+  },
+
+  /**
    * Match sale detail by serial + Trans # (sale transactionNo / siTrans, or the
    * line's own deliveryNo) and sold branch. Used by DEL and ADD matching.
    */

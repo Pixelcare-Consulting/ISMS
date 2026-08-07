@@ -459,6 +459,177 @@ async function pulledOutSource(
   };
 }
 
+const OFFICIAL_SALES_AUDIT_ACTIONS = [
+  "official_sales.add",
+  "official_sales.del",
+  "official_sales.whse_add",
+] as const;
+
+function auditMetadataRecord(
+  metadata: Prisma.JsonValue | null,
+): Record<string, unknown> | null {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return null;
+  }
+  return metadata as Record<string, unknown>;
+}
+
+function auditMetadataString(
+  metadata: Record<string, unknown> | null,
+  key: string,
+): string | null {
+  const value = metadata?.[key];
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+/**
+ * Append-only Official Sales ADD/DEL/WHSE_ADD trail from AuditLog so cycles
+ * remain visible after sale details are hard-deleted.
+ */
+async function officialSalesAuditSource(
+  tenantId: string,
+  { window, q, dateFilter, dir }: SourceOptions,
+): Promise<SourceResult> {
+  const where: Prisma.AuditLogWhereInput = {
+    tenantId,
+    action: { in: [...OFFICIAL_SALES_AUDIT_ACTIONS] },
+    ...(dateFilter ? { createdAt: dateFilter } : {}),
+    ...(q
+      ? {
+          OR: [
+            {
+              metadata: {
+                path: ["serial"],
+                string_contains: q,
+              },
+            },
+            {
+              metadata: {
+                path: ["transactionNo"],
+                string_contains: q,
+              },
+            },
+          ],
+        }
+      : {}),
+  };
+
+  const [rows, count] = await Promise.all([
+    prisma.auditLog.findMany({
+      where,
+      orderBy: { createdAt: dir },
+      take: window,
+      select: {
+        id: true,
+        action: true,
+        createdAt: true,
+        metadata: true,
+        user: userSelect,
+      },
+    }),
+    prisma.auditLog.count({ where }),
+  ]);
+
+  const serialNos = Array.from(
+    new Set(
+      rows
+        .map((row) =>
+          auditMetadataString(auditMetadataRecord(row.metadata), "serial"),
+        )
+        .filter((serial): serial is string => Boolean(serial)),
+    ),
+  );
+
+  const serialModels =
+    serialNos.length === 0
+      ? []
+      : await prisma.serialNumber.findMany({
+          where: {
+            tenantId,
+            serialNo: { in: serialNos },
+          },
+          select: {
+            serialNo: true,
+            model: modelSelect,
+          },
+        });
+  const modelBySerial = new Map(
+    serialModels.map((row) => [row.serialNo, modelLabel(row.model)]),
+  );
+
+  return {
+    count,
+    events: rows.flatMap((row) => {
+      const metadata = auditMetadataRecord(row.metadata);
+      const serialNo = auditMetadataString(metadata, "serial");
+      if (!serialNo) return [];
+
+      const transactionNo = auditMetadataString(metadata, "transactionNo");
+      const previousStatus = auditMetadataString(metadata, "previousStatus");
+      const restoredBranch = auditMetadataString(metadata, "restoredBranch");
+      const soldBranch = auditMetadataString(metadata, "soldBranch");
+      const statusFromMeta = auditMetadataString(metadata, "status");
+      const toFollowCleanup = metadata?.toFollowCleanup === true;
+
+      const action =
+        row.action as (typeof OFFICIAL_SALES_AUDIT_ACTIONS)[number];
+      let typeLabel = "Official Sales";
+      let statusLabel: string | null = statusFromMeta
+        ? `Official Sales: ${statusFromMeta}`
+        : "Official Sales";
+      switch (action) {
+        case "official_sales.del":
+          typeLabel = "Official Sales delete";
+          statusLabel = toFollowCleanup
+            ? "Official Sales: TO-FOLLOW removed"
+            : previousStatus
+              ? `Official Sales: deleted (${previousStatus} → STK)`
+              : "Official Sales: deleted";
+          break;
+        case "official_sales.add":
+          typeLabel = "Official Sales";
+          statusLabel = "Official Sales: Official Sold";
+          break;
+        case "official_sales.whse_add":
+          typeLabel = "Official Sales";
+          statusLabel = "Official Sales: warehouse ADD";
+          break;
+        default: {
+          const _exhaustive: never = action;
+          void _exhaustive;
+          break;
+        }
+      }
+
+      return [
+        {
+          id: `audit:${row.id}`,
+          type: "sold" as const,
+          typeLabel,
+          timestamp: row.createdAt,
+          serialNo,
+          modelLabel: modelBySerial.get(serialNo) ?? "—",
+          location: soldBranch ?? restoredBranch,
+          reference: transactionNo,
+          referenceDetails: referenceDetails(
+            transactionNo ? `Transaction ${transactionNo}` : null,
+            soldBranch && restoredBranch && soldBranch !== restoredBranch
+              ? route(soldBranch, restoredBranch)
+              : soldBranch
+                ? `Branch: ${soldBranch}`
+                : null,
+            toFollowCleanup ? "TO-FOLLOW cleanup" : null,
+          ),
+          status: statusLabel,
+          performedBy: performedByLabel(row.user),
+        },
+      ];
+    }),
+  };
+}
+
 async function countedSource(
   tenantId: string,
   { window, q, dateFilter, dir }: SourceOptions,
@@ -560,9 +731,14 @@ export const serialActivityRepository = {
     const dir: SerialActivitySortDir = params.sortDir === "asc" ? "asc" : "desc";
     const mul = dir === "asc" ? 1 : -1;
 
-    const active = params.type
-      ? [SOURCES[params.type]]
-      : Object.values(SOURCES);
+    // Official Sales ADD/DEL audits use type `sold` with a typeLabel override so
+    // they appear in the full feed and when filtering Sales transactions.
+    const active =
+      params.type == null
+        ? [...Object.values(SOURCES), officialSalesAuditSource]
+        : params.type === "sold"
+          ? [SOURCES.sold, officialSalesAuditSource]
+          : [SOURCES[params.type]];
 
     const results = await Promise.all(
       active.map((source) => source(tenantId, { window, q, dateFilter, dir })),

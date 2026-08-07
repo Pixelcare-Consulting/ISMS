@@ -110,8 +110,8 @@ export function SearchableSelect({
             aria-expanded={open}
             disabled={disabled}
             className={cn(
-              "h-9 w-full justify-between border-input bg-background font-normal shadow-sm",
-              "hover:border-primary/40 hover:bg-background hover:text-foreground",
+              "h-9 w-full justify-between border-input bg-card font-normal shadow-sm",
+              "hover:border-primary/40 hover:bg-card hover:text-foreground",
               "disabled:bg-muted/60 disabled:opacity-50",
             )}
           >

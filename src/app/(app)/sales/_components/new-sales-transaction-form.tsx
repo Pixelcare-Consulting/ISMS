@@ -10,6 +10,7 @@ import {
   AddTransactionDetailDialog,
   type DraftSaleDetail,
 } from "@/app/(app)/sales/_components/add-transaction-detail-dialog";
+import { useTableSelection } from "@/components/data-table/use-table-selection";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,6 +22,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
@@ -102,6 +104,9 @@ export function NewSalesTransactionForm({
   const [detailOpen, setDetailOpen] = useState(false);
   const [editingGroupKey, setEditingGroupKey] = useState<string | null>(null);
   const [deleteGroupKey, setDeleteGroupKey] = useState<string | null>(null);
+  const [deleteSelectedOpen, setDeleteSelectedOpen] = useState(false);
+  const detailKeys = useMemo(() => details.map((d) => d.key), [details]);
+  const selection = useTableSelection(detailKeys);
 
   // Pickup sales never get a delivery receipt, so the DR fields drop out.
   const showDelivery = capturesDeliveryReceipt(
@@ -210,9 +215,27 @@ export function NewSalesTransactionForm({
     );
   }
 
+  function confirmDeleteSelected() {
+    const selected = new Set(selection.selectedIds);
+    const count = details.filter((d) => selected.has(d.key)).length;
+    if (count === 0) {
+      setDeleteSelectedOpen(false);
+      return;
+    }
+    setDetails((prev) => prev.filter((d) => !selected.has(d.key)));
+    selection.clearSelection();
+    setDeleteSelectedOpen(false);
+    toast.success(
+      count === 1
+        ? "Removed 1 line item"
+        : `Removed ${count} line items`,
+    );
+  }
+
   function onBranchChange(id: string) {
     setBranchId(id);
     setDetails([]);
+    selection.clearSelection();
     setStockSources([]);
     setAlternateBranchId("");
   }
@@ -534,15 +557,28 @@ export function NewSalesTransactionForm({
       <div className="space-y-3 rounded-xl border bg-card p-4 shadow-sm sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-lg font-semibold">Transaction details</h2>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={!branchId || !alternateBranchId}
-            onClick={openAddDetail}
-          >
-            <Plus className="size-4" />
-            Add Detail
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {selection.selectedCount > 0 ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => setDeleteSelectedOpen(true)}
+              >
+                <Trash2 className="size-4" />
+                Delete selected ({selection.selectedCount})
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!branchId || !alternateBranchId}
+              onClick={openAddDetail}
+            >
+              <Plus className="size-4" />
+              Add Detail
+            </Button>
+          </div>
         </div>
 
         {details.length === 0 ? (
@@ -554,6 +590,23 @@ export function NewSalesTransactionForm({
             <table className="w-full min-w-200 text-sm">
               <thead>
                 <tr className="border-b text-left text-muted-foreground">
+                  <th className="w-10 pb-2 pr-2 font-medium">
+                    <Checkbox
+                      checked={
+                        selection.isAllSelected ||
+                        (selection.isPartiallySelected
+                          ? "indeterminate"
+                          : false)
+                      }
+                      onCheckedChange={(checked) =>
+                        selection.toggleAll(checked === true)
+                      }
+                      aria-label="Select all line items"
+                    />
+                  </th>
+                  <th className="w-10 pb-2 pr-3 text-center font-medium tabular-nums">
+                    #
+                  </th>
                   <th className="pb-2 pr-3 font-medium">Package</th>
                   <th className="pb-2 pr-3 font-medium">Brand</th>
                   <th className="pb-2 pr-3 font-medium">Promo</th>
@@ -571,8 +624,26 @@ export function NewSalesTransactionForm({
                 </tr>
               </thead>
               <tbody>
-                {details.map((d) => (
-                  <tr key={d.key} className="border-b last:border-0">
+                {details.map((d, index) => (
+                  <tr
+                    key={d.key}
+                    className="border-b last:border-0"
+                    data-state={
+                      selection.isRowSelected(d.key) ? "selected" : undefined
+                    }
+                  >
+                    <td className="py-2 pr-2">
+                      <Checkbox
+                        checked={selection.isRowSelected(d.key)}
+                        onCheckedChange={(checked) =>
+                          selection.toggleRow(d.key, checked === true)
+                        }
+                        aria-label={`Select ${d.serialNo}`}
+                      />
+                    </td>
+                    <td className="py-2 pr-3 text-center tabular-nums text-muted-foreground">
+                      {index + 1}
+                    </td>
                     <td className="py-2 pr-3">{d.packageTypeName}</td>
                     <td className="py-2 pr-3">{d.brandName}</td>
                     <td className="py-2 pr-3">{d.promoTypeName ?? "—"}</td>
@@ -624,12 +695,12 @@ export function NewSalesTransactionForm({
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <Button disabled={pending || !branchId || !alternateBranchId} onClick={submit}>
-          Save Transaction
-        </Button>
+      <div className="flex flex-wrap justify-end gap-2">
         <Button asChild variant="outline" disabled={pending}>
           <Link href="/sales">Back</Link>
+        </Button>
+        <Button disabled={pending || !branchId || !alternateBranchId} onClick={submit}>
+          Save Transaction
         </Button>
       </div>
 
@@ -670,6 +741,31 @@ export function NewSalesTransactionForm({
             <AlertDialogCancel>No</AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmDeletePackage}
+              className="bg-destructive text-white hover:bg-destructive/90"
+            >
+              Yes, delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={deleteSelectedOpen}
+        onOpenChange={setDeleteSelectedOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete selected line items?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes {selection.selectedCount} selected line
+              {selection.selectedCount === 1 ? "" : "s"} from this transaction.
+              Continue?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>No</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteSelected}
               className="bg-destructive text-white hover:bg-destructive/90"
             >
               Yes, delete

@@ -52,9 +52,43 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.20.2",
+    date: "2026-08-07",
+    releasedAt: "2026-08-07T14:10:00+08:00",
+    title: "Official Sales cleanup & activity trail",
+    highlights: [
+      "Remove TO-FOLLOW placeholder lines from Official Sales delete or Sales & ATR when the real serial is not needed",
+      "Serial Number Logs keep each Official Sales add and delete in the history, even after a correction",
+      "Rows already marked Official Sold now show as Error instead of Success when you process them again",
+      "Official Sales delete confirms which branch stock returned to after removing a sold line",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Delete TO-FOLLOW placeholder lines from Official Sales or Sales & ATR without moving stock",
+      },
+      {
+        type: "feature",
+        description:
+          "Serial Number Logs show each Official Sales add and delete so the full cycle stays visible",
+      },
+      {
+        type: "improvement",
+        description:
+          "Official Sales delete messaging shows where stock was restored after removing a sold line",
+      },
+      {
+        type: "fix",
+        description:
+          "Processing an already Official Sold row marks the staging line as Error instead of Success",
+      },
+    ],
+  },
+  {
     version: "0.20.1",
     date: "2026-08-07",
-    releasedAt: "2026-08-07T13:20:00+08:00",
+    releasedAt: "2026-08-07T14:02:00+08:00",
     title: "Clearer Sales & ATR list",
     highlights: [
       "ID and transaction number stay visible while you scroll the Sales & ATR table sideways",
@@ -63,8 +97,22 @@ export const RELEASES: ReleaseNote[] = [
       "Sales & Official Sales remember whether you prefer full or compact columns next time you visit",
       "Rows alternate shading so long lists are easier to scan",
       "Empty search results show a clear message instead of a blank table",
+      "Save Transaction and Back sit on the right when encoding a new sale",
+      "Add Line Items fields use a clear white background against the set panels",
+      "Select line items (or Select all) and delete them in one step when encoding a sale",
+      "Line items show a # index so each set is easy to count",
     ],
     changes: [
+      {
+        type: "feature",
+        description:
+          "New sale line items support Select all and Delete selected so you can remove several rows at once",
+      },
+      {
+        type: "improvement",
+        description:
+          "New sale line items show a # column for quick row numbering",
+      },
       {
         type: "improvement",
         description:
@@ -89,6 +137,16 @@ export const RELEASES: ReleaseNote[] = [
         type: "improvement",
         description:
           "Sales & ATR list is easier to scan with alternating row shading, denser spacing, and a clear empty-search message",
+      },
+      {
+        type: "improvement",
+        description:
+          "New sale form places Back and Save Transaction on the right, with Save as the primary action",
+      },
+      {
+        type: "improvement",
+        description:
+          "Text fields and dropdowns use a white background so they stay readable on shaded form panels",
       },
     ],
   },

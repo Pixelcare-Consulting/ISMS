@@ -548,7 +548,7 @@ export function AddTransactionDetailDialog({
               return (
                 <div
                   key={index}
-                  className="space-y-3 rounded-xl border bg-background p-3 sm:p-4"
+                  className="space-y-3 rounded-xl border border-border/80 bg-muted/40 p-3 sm:p-4"
                 >
                   <p className="text-sm font-medium">Set {index + 1}</p>
                   <div className="grid gap-3 sm:grid-cols-2">

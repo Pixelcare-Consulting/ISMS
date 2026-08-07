@@ -5,6 +5,7 @@ import {
 } from "@/features/inventory/services/inventory-serial-moves";
 import { OFFICIAL_SALES_TRANSACTION_PREFIX } from "@/features/official-sales/constants/official-sales-import";
 import { officialSalesRepository } from "@/features/official-sales/repositories/official-sales.repository";
+import { isToFollowSerial } from "@/features/sales/constants/to-follow-serial";
 import { prisma } from "@/lib/database/client";
 
 export type OfficialSalesProcessCodes = {
@@ -378,7 +379,7 @@ async function processAdd(
 
     const detailCode = detail.statusCode?.code?.toUpperCase() ?? "";
     if (detailCode === "OFS") {
-      return "ADD — already Official Sold";
+      throw new Error("ADD — already Official Sold");
     }
     if (detailCode !== "SLD") {
       throw new Error("Not Found with SN details");
@@ -427,7 +428,7 @@ async function processAdd(
           ["OFS"],
         );
     if (matched) {
-      return "ADD — already Official Sold";
+      throw new Error("ADD — already Official Sold");
     }
   }
 
@@ -463,7 +464,7 @@ async function processAdd(
         });
         return "ADD — Official Sold (inventory aligned)";
       }
-      return "ADD — already Official Sold";
+      throw new Error("ADD — already Official Sold");
     }
 
     await prisma.$transaction(async (tx) => {
@@ -570,18 +571,7 @@ async function processAdd(
   if (duplicate) {
     const dupCode = duplicate.statusCode?.code?.toUpperCase() ?? "";
     if (dupCode === "OFS") {
-      await prisma.$transaction(async (tx) => {
-        await markSerialSoldFromStockSource(tx, {
-          tenantId,
-          serialNumberId: inventory.serialNumberId,
-          stockBranchId: inventory.branchId,
-          soldBranchId: soldBranch.id,
-          stkCodeId: codes.stkCodeId,
-          targetStatusCodeId: codes.ofsCodeId,
-          updatedById: userId,
-        });
-      });
-      return "ADD — already Official Sold";
+      throw new Error("ADD — already Official Sold");
     }
     await prisma.$transaction(async (tx) => {
       await retagDetailToOfficialSold(tx, duplicate.id, codes.ofsCodeId);
@@ -688,6 +678,56 @@ async function processDel(
     throw new Error("Trans # / SI/TRANS NO. is required for DEL");
   }
 
+  // TO-FOLLOW CSV serial: delete placeholder sale line only (no inventory unit).
+  if (isToFollowSerial(row.serial)) {
+    const toFollowDetail =
+      await officialSalesRepository.findToFollowSaleDetailByTransBranch(
+        tenantId,
+        txn,
+        soldBranch.id,
+      );
+    const toFollowStatus = toFollowDetail?.statusCode;
+    if (!toFollowDetail || !toFollowStatus) {
+      throw new Error("No Sales transaction to be deleted");
+    }
+
+    const toFollowPreviousStatus = toFollowStatus.code.toUpperCase();
+    const toFollowTransactionNo = toFollowDetail.sale.transactionNo;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.branchSalesTransactionDetail.delete({
+        where: { id: toFollowDetail.id },
+      });
+
+      const remaining = await tx.branchSalesTransactionDetail.count({
+        where: { salesId: toFollowDetail.salesId },
+      });
+      if (remaining === 0) {
+        await tx.branchSalesTransaction.delete({
+          where: { id: toFollowDetail.salesId },
+        });
+      }
+
+      await auditService.log({
+        tenantId,
+        userId,
+        action: "official_sales.del",
+        entityType: "BranchSalesTransactionDetail",
+        entityId: toFollowDetail.id,
+        metadata: {
+          serial: row.serial,
+          transactionNo: toFollowTransactionNo,
+          previousStatus: toFollowPreviousStatus,
+          toFollowCleanup: true,
+          soldBranch: soldBranch.name,
+          notes: "Official Delete — TO-FOLLOW",
+        },
+      });
+    });
+
+    return "DEL — TO-FOLLOW line removed";
+  }
+
   const detail = await officialSalesRepository.findSaleDetailBySerialTransBranch(
     tenantId,
     row.serial,
@@ -706,6 +746,15 @@ async function processDel(
   const stockBranchId =
     detail.sale.alternateBranchId ?? detail.sale.branchId;
   const soldBranchId = detail.sale.branchId;
+  const soldBranchName = detail.sale.branch.name;
+  const stockBranch =
+    stockBranchId === soldBranchId
+      ? detail.sale.branch
+      : await prisma.branch.findFirst({
+          where: { id: stockBranchId, tenantId },
+          select: { id: true, name: true },
+        });
+  const stockBranchName = stockBranch?.name ?? soldBranchName;
 
   await prisma.$transaction(async (tx) => {
     await tx.branchSalesTransactionDetail.delete({
@@ -742,12 +791,14 @@ async function processDel(
         transactionNo: detail.sale.transactionNo,
         previousStatus: detailCode,
         restored: "STK",
+        restoredBranch: stockBranchName,
+        soldBranch: soldBranchName,
         notes: "Official Delete",
       },
     });
   });
 
-  return "DEL — restored STK";
+  return `DEL — restored STK at ${stockBranchName} (from ${soldBranchName})`;
 }
 
 /**

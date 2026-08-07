@@ -1592,6 +1592,88 @@ export async function updateSaleSerialAction(input: unknown) {
   return { success: true as const };
 }
 
+/**
+ * Accounting cleanup: remove a TO-FOLLOW sale line (null serial). No inventory move.
+ * Deletes the sale header when it has no remaining lines.
+ */
+export async function deleteToFollowSaleDetailAction(detailId: string) {
+  const session = await requirePermission(SALES_CREATE);
+  const trimmedId = detailId?.trim();
+  if (!trimmedId) return { error: "Sale line is required" as const };
+
+  const detail = await prisma.branchSalesTransactionDetail.findFirst({
+    where: {
+      id: trimmedId,
+      serialNumberId: null,
+      sale: { tenantId: session.user.tenantId },
+    },
+    select: {
+      id: true,
+      salesId: true,
+      statusCode: { select: { code: true } },
+      sale: {
+        select: {
+          id: true,
+          transactionNo: true,
+          branchId: true,
+          atrStatus: true,
+        },
+      },
+    },
+  });
+  if (!detail) {
+    return { error: "TO-FOLLOW sale line not found" as const };
+  }
+  if (detail.sale.atrStatus === "closed") {
+    return { error: "Cannot delete a line on a closed sale" as const };
+  }
+
+  try {
+    await assertBranchInAor(
+      session.user.tenantId,
+      session.user.id,
+      detail.sale.branchId,
+      session.user.permissions,
+    );
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Access denied" };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.branchSalesTransactionDetail.delete({
+      where: { id: detail.id },
+    });
+
+    const remaining = await tx.branchSalesTransactionDetail.count({
+      where: { salesId: detail.salesId },
+    });
+    if (remaining === 0) {
+      await tx.branchSalesTransaction.delete({
+        where: { id: detail.salesId },
+      });
+    }
+  });
+
+  await auditService.log({
+    tenantId: session.user.tenantId,
+    userId: session.user.id,
+    action: "sale.to_follow_deleted",
+    entityType: "BranchSalesTransactionDetail",
+    entityId: detail.id,
+    metadata: {
+      serial: TO_FOLLOW_SERIAL_ID,
+      transactionNo: detail.sale.transactionNo,
+      salesId: detail.salesId,
+      previousStatus: detail.statusCode?.code?.toUpperCase() ?? null,
+      toFollowCleanup: true,
+      notes: "Sales & ATR — TO-FOLLOW line removed",
+    },
+  });
+
+  revalidatePath("/sales");
+  return { success: true as const };
+}
+
 export async function listStkSerialsForBranchAction(branchId: string) {
   const session = await requireAnyPermission(["logistics.manage", "orders.create", "sales.create"]);
 
