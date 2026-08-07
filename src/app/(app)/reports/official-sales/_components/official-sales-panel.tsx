@@ -30,11 +30,6 @@ import {
   useTableSelection,
 } from "@/components/data-table";
 import {
-  GlobalDataTable,
-  GlobalTableHead,
-  useClientTableSort,
-} from "@/lib/data-table";
-import {
   ActionProgressDialog,
   runWithActionProgress,
   type ActionProgressState,
@@ -48,6 +43,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { usePersistedBoolean } from "@/hooks/use-persisted-boolean";
+import {
+  GlobalDataTable,
+  GlobalTableHead,
+  useClientTableSort,
+} from "@/lib/data-table";
 import {
   TableBody,
   TableCell,
@@ -367,7 +368,9 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
-  const [showAllColumns, setShowAllColumns] = useState(false);
+  const [showAllColumns, setShowAllColumns] = usePersistedBoolean(
+    "isms.official-sales.showAllColumns",
+  );
   const [detailRow, setDetailRow] = useState<OfficialSalesStagingRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   /** Download busy is independent so it never clears/blocks write actions. */

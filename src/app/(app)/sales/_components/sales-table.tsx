@@ -34,7 +34,6 @@ import {
   parseTablePageSize,
   type TablePageSize,
 } from "@/components/data-table/table-page-size";
-import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -48,6 +47,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
+import { usePersistedBoolean } from "@/hooks/use-persisted-boolean";
+import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
 import { Textarea } from "@/components/ui/textarea";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { cn } from "@/utils/cn";
@@ -268,7 +269,9 @@ export function SalesTable({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
-  const [showAllColumns, setShowAllColumns] = useState(false);
+  const [showAllColumns, setShowAllColumns] = usePersistedBoolean(
+    "isms.sales.showAllColumns",
+  );
   const [pending, startTransition] = useTransition();
   const [editingLine, setEditingLine] = useState<EditingLine | null>(null);
   const [detailsSaleId, setDetailsSaleId] = useState<string | null>(null);

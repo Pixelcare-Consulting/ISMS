@@ -60,6 +60,7 @@ export const RELEASES: ReleaseNote[] = [
       "ID and transaction number stay visible while you scroll the Sales & ATR table sideways",
       "Transaction numbers show branch, brand, and model underneath for quicker scanning",
       "Use Show all columns for package, brand, model, and model price — or Fewer columns for a compact list",
+      "Sales & Official Sales remember whether you prefer full or compact columns next time you visit",
       "Rows alternate shading so long lists are easier to scan",
       "Empty search results show a clear message instead of a blank table",
     ],
@@ -78,6 +79,11 @@ export const RELEASES: ReleaseNote[] = [
         type: "improvement",
         description:
           "Sales & ATR toolbar adds Show all columns / Fewer columns so package, brand, model, and model price stay optional",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sales & Official Sales remember your Show all columns / Fewer columns choice for the next visit",
       },
       {
         type: "improvement",
