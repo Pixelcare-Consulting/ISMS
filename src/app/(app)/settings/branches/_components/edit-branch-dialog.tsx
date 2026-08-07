@@ -105,11 +105,9 @@ function EditBranchForm({
 }: Omit<EditBranchDialogProps, "open">) {
   const [pending, startTransition] = useTransition();
   const [options, setOptions] = useState<FormOptions | null>(null);
-  const initialAlternateIds = useMemo(
+  const [alternateIds, setAlternateIds] = useState<string[]>(
     () => branch.alternateWarehouses?.map((row) => row.alternateBranchId) ?? [],
-    [branch.alternateWarehouses],
   );
-  const [alternateIds, setAlternateIds] = useState<string[]>(() => initialAlternateIds);
   const [primaryWarehouseId, setPrimaryWarehouseId] = useState(
     branch.primaryWarehouseId ?? "",
   );
@@ -165,7 +163,9 @@ function EditBranchForm({
     setAlternateFilterDealerId(nextDealerId);
     if (!nextDealerId) {
       // Clearing the filter restores the branch’s original alternate picks.
-      setAlternateIds(initialAlternateIds);
+      setAlternateIds(
+        branch.alternateWarehouses?.map((row) => row.alternateBranchId) ?? [],
+      );
       return;
     }
     if (!options) return;
