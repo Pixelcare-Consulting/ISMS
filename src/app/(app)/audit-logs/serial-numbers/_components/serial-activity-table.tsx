@@ -271,7 +271,7 @@ export function SerialActivityTable({
                   TYPE_BADGE_CLASS[row.type],
                 )}
               >
-                {formatSerialActivityType(row.type)}
+                {formatSerialActivityType(row)}
               </span>
             </TableCell>
             <TableCodeCell>

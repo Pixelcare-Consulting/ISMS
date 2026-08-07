@@ -3,6 +3,7 @@ import {
   markSerialSoldFromStockSource,
   restoreSerialToStockSource,
 } from "@/features/inventory/services/inventory-serial-moves";
+import { OFFICIAL_SALES_TRANSACTION_PREFIX } from "@/features/official-sales/constants/official-sales-import";
 import { officialSalesRepository } from "@/features/official-sales/repositories/official-sales.repository";
 import { prisma } from "@/lib/database/client";
 
@@ -18,8 +19,12 @@ export type OfficialSalesProcessAction = "WHSE_ADD" | "ADD" | "DEL" | "UPD";
 export type OfficialSalesProcessRow = {
   id: string;
   serial: string;
+  /** Delivery receipt pair — lands on the sale line, not the sale header. */
   drDate: Date | null;
   drNo: string | null;
+  /** Invoice pair — drives the sale transaction no. and date. */
+  siDate: Date | null;
+  siNo: string | null;
   branchSold: string | null;
   action: string | null;
   itemModel: string | null;
@@ -72,17 +77,32 @@ function requireModelId(modelId: string | null | undefined, itemModel: string | 
   throw new Error("Model is required");
 }
 
+/**
+ * SI/TRANS NO. identifies the sale. DR NO. is the fallback for rows staged
+ * before the two columns were split apart.
+ */
+function resolveTransMatchNo(row: OfficialSalesProcessRow): string | null {
+  return row.siNo?.trim() || row.drNo?.trim() || null;
+}
+
+/** Invoice date drives the sale; DR date is the fallback for pre-split rows. */
+function resolveTransactionDate(row: OfficialSalesProcessRow): Date | null {
+  return row.siDate ?? row.drDate;
+}
+
 function resolveTransactionNo(row: OfficialSalesProcessRow): string {
-  const fromCsv = row.drNo?.trim();
+  const fromCsv = resolveTransMatchNo(row);
   if (fromCsv) return fromCsv;
-  return `OFS-${Date.now().toString(36).toUpperCase()}-${row.id.slice(-4)}`;
+  return `${OFFICIAL_SALES_TRANSACTION_PREFIX}${Date.now().toString(36).toUpperCase()}-${row.id.slice(-4)}`;
 }
 
 function buildSaleNotes(row: OfficialSalesProcessRow, action: string): string {
   return [
     "Official sales import",
-    row.drNo ? `Trans # ${row.drNo}` : null,
-    row.drDate ? `Trans Date ${row.drDate.toISOString().slice(0, 10)}` : null,
+    row.siNo ? `SI/Trans # ${row.siNo}` : null,
+    row.siDate ? `SI Date ${row.siDate.toISOString().slice(0, 10)}` : null,
+    row.drNo ? `DR # ${row.drNo}` : null,
+    row.drDate ? `DR Date ${row.drDate.toISOString().slice(0, 10)}` : null,
     row.branchSold ? `Branch Sold ${row.branchSold}` : null,
     `Action ${action}`,
   ]
@@ -155,6 +175,7 @@ async function createOfficialSaleWithDetail(
     transactionNo: string;
     transactionDate: Date | null;
     deliveryNo: string | null;
+    deliveryDate: Date | null;
     notes: string;
     modelId: string;
     serialNumberId: string;
@@ -187,8 +208,6 @@ async function createOfficialSaleWithDetail(
         alternateBranchId: input.stockBranchId,
         transactionNo: input.transactionNo,
         transactionDate: input.transactionDate,
-        deliveryNo: input.deliveryNo,
-        deliveryDate: input.transactionDate,
         amount: 0,
         notes: input.notes,
         atrStatus: "open",
@@ -216,6 +235,8 @@ async function createOfficialSaleWithDetail(
       modelId: input.modelId,
       serialNumberId: input.serialNumberId,
       statusCodeId: input.ofsCodeId,
+      deliveryNo: input.deliveryNo,
+      deliveryDate: input.deliveryDate,
       saleAmount: 0,
       amount: 0,
     },
@@ -268,8 +289,9 @@ async function processWhseAdd(
       branchId: soldBranch.id,
       stockBranchId: soldBranch.id,
       transactionNo,
-      transactionDate: row.drDate,
+      transactionDate: resolveTransactionDate(row),
       deliveryNo: row.drNo,
+      deliveryDate: row.drDate,
       notes: buildSaleNotes(row, "WHSE_ADD"),
       modelId,
       serialNumberId: whse.serialNumberId,
@@ -336,6 +358,7 @@ async function processAdd(
     row.serial,
   );
   const transactionNo = resolveTransactionNo(row);
+  const transMatchNo = resolveTransMatchNo(row);
 
   // --- Not in branch inventory: retag existing SLD sale only ---
   if (!inventory) {
@@ -343,9 +366,9 @@ async function processAdd(
       tenantId,
       row.serial,
       {
-        transactionNo: row.drNo,
+        transactionNo: transMatchNo,
         branchId: soldBranch.id,
-        transactionDate: row.drDate,
+        transactionDate: resolveTransactionDate(row),
         statusCodes: ["SLD", "OFS"],
       },
     );
@@ -390,11 +413,11 @@ async function processAdd(
 
   // Idempotent: already OFS with matching txn
   if (statusCode === "OFS") {
-    const matched = row.drNo
+    const matched = transMatchNo
       ? await officialSalesRepository.findSaleDetailBySerialTransBranch(
           tenantId,
           row.serial,
-          row.drNo,
+          transMatchNo,
           soldBranch.id,
           ["OFS"],
         )
@@ -414,9 +437,9 @@ async function processAdd(
       tenantId,
       row.serial,
       {
-        transactionNo: row.drNo,
+        transactionNo: transMatchNo,
         branchId: soldBranch.id,
-        transactionDate: row.drDate,
+        transactionDate: resolveTransactionDate(row),
         statusCodes: ["SLD", "RSV", "OFS"],
       },
     );
@@ -484,9 +507,9 @@ async function processAdd(
       tenantId,
       row.serial,
       {
-        transactionNo: row.drNo,
+        transactionNo: transMatchNo,
         branchId: soldBranch.id,
-        transactionDate: row.drDate,
+        transactionDate: resolveTransactionDate(row),
         statusCodes: ["SLD", "RSV", "OFS"],
       },
     );
@@ -503,8 +526,9 @@ async function processAdd(
           branchId: soldBranch.id,
           stockBranchId: inventory.branchId,
           transactionNo,
-          transactionDate: row.drDate,
+          transactionDate: resolveTransactionDate(row),
           deliveryNo: row.drNo,
+          deliveryDate: row.drDate,
           notes: buildSaleNotes(row, "ADD"),
           modelId,
           serialNumberId: inventory.serialNumberId,
@@ -533,11 +557,11 @@ async function processAdd(
     throw new Error(`Unsupported inventory status ${statusCode} for ADD`);
   }
 
-  const duplicate = row.drNo
+  const duplicate = transMatchNo
     ? await officialSalesRepository.findSaleDetailBySerialTransBranch(
         tenantId,
         row.serial,
-        row.drNo,
+        transMatchNo,
         soldBranch.id,
         ["SLD", "OFS"],
       )
@@ -621,8 +645,9 @@ async function processAdd(
       branchId: soldBranch.id,
       stockBranchId: inventory.branchId,
       transactionNo,
-      transactionDate: row.drDate,
+      transactionDate: resolveTransactionDate(row),
       deliveryNo: row.drNo,
+      deliveryDate: row.drDate,
       notes: buildSaleNotes(row, "ADD"),
       modelId,
       serialNumberId: inventory.serialNumberId,
@@ -658,7 +683,7 @@ async function processDel(
 ): Promise<string> {
   const branchLabel = requireBranchSold(row.branchSold);
   const soldBranch = await resolveSoldBranch(tenantId, branchLabel);
-  const txn = row.drNo?.trim();
+  const txn = resolveTransMatchNo(row);
   if (!txn) {
     throw new Error("Trans # / SI/TRANS NO. is required for DEL");
   }

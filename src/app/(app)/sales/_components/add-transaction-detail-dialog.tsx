@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
@@ -36,6 +37,8 @@ export type DraftSaleDetail = {
   serialNo: string;
   saleAmount: number;
   modelPrice: number | null;
+  deliveryNo: string | null;
+  deliveryDate: string | null;
 };
 
 type PackageOption = {
@@ -75,6 +78,14 @@ type DetailSetDraft = {
   noPriceList: boolean;
   /** When set, price came from an older (non-current) price list period. */
   priceFallbackDate: string | null;
+  /**
+   * Delivery is captured once for the whole package and inherited by every set.
+   * A set only carries its own values when it ships separately (typically a
+   * TO-FOLLOW unit that goes out on a later delivery receipt).
+   */
+  deliveryOverride: boolean;
+  deliveryNo: string;
+  deliveryDate: string;
 };
 
 function emptySet(): DetailSetDraft {
@@ -86,6 +97,9 @@ function emptySet(): DetailSetDraft {
     modelPrice: "",
     noPriceList: false,
     priceFallbackDate: null,
+    deliveryOverride: false,
+    deliveryNo: "",
+    deliveryDate: "",
   };
 }
 
@@ -104,7 +118,21 @@ function newClientKey(): string {
   return `d-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function draftToSet(row: DraftSaleDetail): DetailSetDraft {
+/** Package-level delivery is whatever the first set carries; the rest are overrides. */
+function packageDelivery(rows: DraftSaleDetail[] | undefined) {
+  const first = rows?.[0];
+  return {
+    deliveryNo: first?.deliveryNo ?? "",
+    deliveryDate: first?.deliveryDate ?? "",
+  };
+}
+
+function draftToSet(
+  row: DraftSaleDetail,
+  base: { deliveryNo: string; deliveryDate: string },
+): DetailSetDraft {
+  const deliveryNo = row.deliveryNo ?? "";
+  const deliveryDate = row.deliveryDate ?? "";
   return {
     brandId: row.brandId,
     modelId: row.modelId,
@@ -113,7 +141,16 @@ function draftToSet(row: DraftSaleDetail): DetailSetDraft {
     modelPrice: row.modelPrice == null ? "" : String(row.modelPrice),
     noPriceList: false,
     priceFallbackDate: null,
+    deliveryOverride:
+      deliveryNo !== base.deliveryNo || deliveryDate !== base.deliveryDate,
+    deliveryNo,
+    deliveryDate,
   };
+}
+
+function rowsToSets(rows: DraftSaleDetail[]): DetailSetDraft[] {
+  const base = packageDelivery(rows);
+  return rows.map((row) => draftToSet(row, base));
 }
 
 export function AddTransactionDetailDialog({
@@ -123,6 +160,7 @@ export function AddTransactionDetailDialog({
   usedSerialIds,
   transactionDate,
   initialRows,
+  showDelivery,
   onAdd,
   onClose,
 }: {
@@ -134,6 +172,8 @@ export function AddTransactionDetailDialog({
   transactionDate?: string;
   /** When set, dialog opens in edit mode with these package sets prefilled. */
   initialRows?: DraftSaleDetail[];
+  /** False for pickup sales, which never produce a delivery receipt. */
+  showDelivery: boolean;
   onAdd: (rows: DraftSaleDetail[]) => void;
   onClose: () => void;
 }) {
@@ -152,8 +192,14 @@ export function AddTransactionDetailDialog({
   const [promoTypeId, setPromoTypeId] = useState(
     () => initialRows?.[0]?.promoTypeId ?? "",
   );
+  const [deliveryNo, setDeliveryNo] = useState(
+    () => packageDelivery(initialRows).deliveryNo,
+  );
+  const [deliveryDate, setDeliveryDate] = useState(
+    () => packageDelivery(initialRows).deliveryDate,
+  );
   const [sets, setSets] = useState<DetailSetDraft[]>(() =>
-    initialRows?.length ? initialRows.map(draftToSet) : [emptySet()],
+    initialRows?.length ? rowsToSets(initialRows) : [emptySet()],
   );
   const [hydrated, setHydrated] = useState(!isEdit);
 
@@ -181,9 +227,12 @@ export function AddTransactionDetailDialog({
         const rows = initialRowsRef.current;
         if (rows?.length) {
           const first = rows[0]!;
+          const base = packageDelivery(rows);
           setPackageTypeId(first.packageTypeId);
           setPromoTypeId(first.promoTypeId ?? "");
-          setSets(rows.map(draftToSet));
+          setDeliveryNo(base.deliveryNo);
+          setDeliveryDate(base.deliveryDate);
+          setSets(rowsToSets(rows));
           setHydrated(true);
         }
       } catch {
@@ -373,6 +422,12 @@ export function AddTransactionDetailDialog({
         serialNo: isToFollow ? TO_FOLLOW_SERIAL_LABEL : serial!.serialNo,
         saleAmount,
         modelPrice,
+        deliveryNo: showDelivery
+          ? (set.deliveryOverride ? set.deliveryNo : deliveryNo).trim() || null
+          : null,
+        deliveryDate: showDelivery
+          ? (set.deliveryOverride ? set.deliveryDate : deliveryDate) || null
+          : null,
       });
     }
 
@@ -455,6 +510,36 @@ export function AddTransactionDetailDialog({
               Applies to every serial in this package.
             </p>
           </div>
+
+          {showDelivery ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="delivery-no">Delivery number</Label>
+                <Input
+                  id="delivery-no"
+                  value={deliveryNo}
+                  onChange={(e) => setDeliveryNo(e.target.value)}
+                  placeholder="Delivery number"
+                  autoComplete="off"
+                  disabled={!hydrated}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="delivery-date">Delivery date</Label>
+                <Input
+                  id="delivery-date"
+                  type="date"
+                  value={deliveryDate}
+                  onChange={(e) => setDeliveryDate(e.target.value)}
+                  disabled={!hydrated}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground sm:col-span-2">
+                Applies to every set below. Leave blank when the delivery
+                receipt is not issued yet — it can be filled in later per line.
+              </p>
+            </div>
+          ) : null}
 
           <div className="space-y-3">
             {sets.map((set, index) => {
@@ -564,6 +649,67 @@ export function AddTransactionDetailDialog({
                       ) : null}
                     </div>
                   </div>
+
+                  {showDelivery ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id={`delivery-override-${index}`}
+                          checked={set.deliveryOverride}
+                          onCheckedChange={(checked) => {
+                            const on = checked === true;
+                            updateSet(index, {
+                              deliveryOverride: on,
+                              // Seed from the package default so the override
+                              // starts where the user left off, not empty.
+                              deliveryNo: on ? deliveryNo : "",
+                              deliveryDate: on ? deliveryDate : "",
+                            });
+                          }}
+                        />
+                        <Label
+                          htmlFor={`delivery-override-${index}`}
+                          className="text-sm font-normal"
+                        >
+                          This set ships on a different delivery
+                        </Label>
+                      </div>
+
+                      {set.deliveryOverride ? (
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label htmlFor={`delivery-no-${index}`}>
+                              Delivery number
+                            </Label>
+                            <Input
+                              id={`delivery-no-${index}`}
+                              value={set.deliveryNo}
+                              onChange={(e) =>
+                                updateSet(index, { deliveryNo: e.target.value })
+                              }
+                              placeholder="Delivery number"
+                              autoComplete="off"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor={`delivery-date-${index}`}>
+                              Delivery date
+                            </Label>
+                            <Input
+                              id={`delivery-date-${index}`}
+                              type="date"
+                              value={set.deliveryDate}
+                              onChange={(e) =>
+                                updateSet(index, {
+                                  deliveryDate: e.target.value,
+                                })
+                              }
+                            />
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               );
             })}

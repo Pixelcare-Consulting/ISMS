@@ -17,6 +17,8 @@ export async function listOfficialSalesStagingAction() {
     serial: row.serial,
     drDate: row.drDate ? row.drDate.toISOString().slice(0, 10) : null,
     drNo: row.drNo,
+    siDate: row.siDate ? row.siDate.toISOString().slice(0, 10) : null,
+    siNo: row.siNo,
     branchSold: row.branchSold,
     action: row.action,
     dealer: row.dealer,
