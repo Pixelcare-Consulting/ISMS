@@ -7,12 +7,14 @@ import { PageHeader } from "@/app/(app)/_components/page-header";
 import {
   getDashboardAnalyticsAction,
   getDashboardKpisAction,
+  getDashboardSalesAnalyticsAction,
 } from "@/features/dashboard/actions/dashboard-kpi.actions";
 import { buildDashboardViewModel } from "@/features/dashboard/lib/build-dashboard-view-model";
 import { listActiveAnnouncementsAction } from "@/features/announcements/actions/announcement.actions";
 import { ActiveAnnouncementBanner } from "@/features/announcements/components/active-announcement-banner";
 import { DashboardOpsKpis } from "@/app/(app)/dashboard/_components/dashboard-ops-kpis";
 import { DashboardAnalyticsCharts } from "@/app/(app)/dashboard/_components/dashboard-analytics-charts";
+import { DashboardSalesSection } from "@/app/(app)/dashboard/_components/dashboard-sales-section";
 import { DashboardComplianceCards } from "@/app/(app)/dashboard/_components/dashboard-compliance-cards";
 import { DashboardRecentUsers } from "@/app/(app)/dashboard/_components/dashboard-recent-users";
 
@@ -26,17 +28,20 @@ export default async function DashboardPage() {
   const permissions = session.user.permissions ?? [];
   const roleSlugs = session.user.roleSlugs ?? [];
 
-  const [opsKpis, analytics, activeAnnouncements] = await Promise.all([
-    getDashboardKpisAction(),
-    getDashboardAnalyticsAction(),
-    listActiveAnnouncementsAction(),
-  ]);
+  const [opsKpis, analytics, salesAnalytics, activeAnnouncements] =
+    await Promise.all([
+      getDashboardKpisAction(),
+      getDashboardAnalyticsAction(),
+      getDashboardSalesAnalyticsAction(),
+      listActiveAnnouncementsAction(),
+    ]);
 
   const view = buildDashboardViewModel({
     permissions,
     roleSlugs,
     kpis: opsKpis,
     analytics,
+    salesAnalytics,
   });
 
   const users = view.showRecentUsers
@@ -72,6 +77,10 @@ export default async function DashboardPage() {
           showSalesThisMonth={view.caps.showSalesThisMonth}
           showDeliveryInTransit={view.caps.showDeliveryInTransit}
         />
+      ) : null}
+
+      {view.showSalesSection && salesAnalytics ? (
+        <DashboardSalesSection analytics={salesAnalytics} />
       ) : null}
 
       {view.complianceCards.length > 0 ? (

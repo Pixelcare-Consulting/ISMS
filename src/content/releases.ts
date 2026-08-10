@@ -52,6 +52,23 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.24.0",
+    date: "2026-08-07",
+    releasedAt: "2026-08-07T18:20:00+08:00",
+    title: "Sales overview on the Dashboard",
+    highlights: [
+      "People with Sales & ATR access now see a Sales overview on the Dashboard — this month’s sales and amount, open ATR, and returns in progress",
+      "Charts show sale status mix and the ATR / return pipeline; rankings highlight top branches and models for the month",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Dashboard Sales overview shows this month’s sales KPIs, sale status mix, ATR and return pipeline, and top branches and models for people who can open Sales & ATR",
+      },
+    ],
+  },
+  {
     version: "0.23.5",
     date: "2026-08-07",
     releasedAt: "2026-08-07T18:00:00+08:00",
