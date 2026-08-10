@@ -26,6 +26,7 @@ import type { SalesActionCapabilities } from "@/features/sales/constants/sales-p
 import {
   TableAmountCell,
   TableCodeCell,
+  TableEmptyRow,
   uniqueSearchSuggestions,
 } from "@/components/data-table";
 import {
@@ -33,7 +34,6 @@ import {
   parseTablePageSize,
   type TablePageSize,
 } from "@/components/data-table/table-page-size";
-import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -47,8 +47,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
+import { usePersistedBoolean } from "@/hooks/use-persisted-boolean";
+import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
 import { Textarea } from "@/components/ui/textarea";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
+import { cn } from "@/utils/cn";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
 /** One table row = one transaction detail (serial / TO-FOLLOW line). */
@@ -166,6 +169,47 @@ function saleSerialLabel(sale: SaleRow): string {
   return sale.serialNumber?.serialNo ?? TO_FOLLOW_SERIAL_LABEL;
 }
 
+function joinDetailParts(parts: Array<string | null | undefined>): string {
+  return parts
+    .map((p) => p?.trim())
+    .filter((p): p is string => Boolean(p))
+    .join(" · ");
+}
+
+/** TRN NO. cell — bold primary + muted secondary metadata (Official Sales Serial pattern). */
+function TrnDetailCell({
+  row,
+  showAllColumns,
+  className,
+}: {
+  row: SaleRow;
+  showAllColumns: boolean;
+  className?: string;
+}) {
+  const primary = saleTransactionLabel(row);
+  const condensed = joinDetailParts([
+    row.branch.name,
+    row.brandName,
+    row.modelLabel,
+  ]);
+
+  return (
+    <TableCell className={cn("py-2 sm:py-2.5", className)}>
+      <div className="min-w-0">
+        <div className="font-mono text-sm font-semibold">{primary}</div>
+        {!showAllColumns && condensed ? (
+          <p
+            className="mt-0.5 max-w-40 truncate text-xs text-muted-foreground sm:max-w-56"
+            title={condensed}
+          >
+            {condensed}
+          </p>
+        ) : null}
+      </div>
+    </TableCell>
+  );
+}
+
 function formatSaleDate(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -201,6 +245,21 @@ function buildSaleIdMap(rows: SaleRow[]): Map<string, number> {
   return map;
 }
 
+/** Compact: ID TRN DATE BRANCH CUSTOMER SN SALE STATUS ACTIONS */
+const COMPACT_COL_COUNT = 9;
+/** Extra when "Show all columns": PACKAGE BRAND MODEL MODEL PRICE */
+const SECONDARY_COL_COUNT = 4;
+
+/** Sticky left freeze — ID → TRN NO. */
+const stickyHeadId =
+  "sticky left-0 z-40 w-12 min-w-12 border-r border-border/60 bg-muted";
+const stickyHeadTrn =
+  "sticky left-12 z-40 min-w-[9rem] border-r border-border/60 bg-muted shadow-[4px_0_8px_-4px_rgba(0,0,0,0.08)]";
+const stickyCellId =
+  "sticky left-0 z-10 w-12 min-w-12 border-r border-border/60";
+const stickyCellTrn =
+  "sticky left-12 z-10 min-w-[9rem] border-r border-border/60 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.06)]";
+
 export function SalesTable({
   result,
   capabilities,
@@ -210,6 +269,9 @@ export function SalesTable({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
+  const [showAllColumns, setShowAllColumns] = usePersistedBoolean(
+    "isms.sales.showAllColumns",
+  );
   const [pending, startTransition] = useTransition();
   const [editingLine, setEditingLine] = useState<EditingLine | null>(null);
   const [detailsSaleId, setDetailsSaleId] = useState<string | null>(null);
@@ -217,6 +279,8 @@ export function SalesTable({
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
   const [returnReason, setReturnReason] = useState("");
   const pageSize = parseTablePageSize(result.limit);
+  const colCount =
+    COMPACT_COL_COUNT + (showAllColumns ? SECONDARY_COL_COUNT : 0);
   const sort = (searchParams.get("sort") ?? initialSort) || "";
   const sortDir = (
     (searchParams.get("dir") ?? initialSortDir) === "asc" ? "asc" : "desc"
@@ -389,6 +453,18 @@ export function SalesTable({
         stickyHeader
         scrollable
         search={{ value: query, onChange: setQuery, placeholder: "Search sales…", suggestions }}
+        toolbarActions={
+          result.items.length > 0 ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => setShowAllColumns((v) => !v)}
+            >
+              {showAllColumns ? "Fewer columns" : "Show all columns"}
+            </Button>
+          ) : null
+        }
         pagination={{
           total: result.total,
           page: result.page,
@@ -400,12 +476,13 @@ export function SalesTable({
       >
         <TableHeader>
           <TableRow>
-            <GlobalTableHead className="w-12">ID</GlobalTableHead>
+            <GlobalTableHead className={stickyHeadId}>ID</GlobalTableHead>
             <GlobalTableHead
               sortKey="transactionNo"
               activeSortKey={sort}
               sortDirection={sortDir}
               onSort={(key) => toggleSort(key as SalesSortField)}
+              className={stickyHeadTrn}
             >
               TRN NO.
             </GlobalTableHead>
@@ -433,9 +510,13 @@ export function SalesTable({
             >
               CUSTOMER
             </GlobalTableHead>
-            <GlobalTableHead>PACKAGE</GlobalTableHead>
-            <GlobalTableHead>BRAND</GlobalTableHead>
-            <GlobalTableHead>MODEL</GlobalTableHead>
+            {showAllColumns ? (
+              <>
+                <GlobalTableHead>PACKAGE</GlobalTableHead>
+                <GlobalTableHead>BRAND</GlobalTableHead>
+                <GlobalTableHead>MODEL</GlobalTableHead>
+              </>
+            ) : null}
             <GlobalTableHead>SN</GlobalTableHead>
             <GlobalTableHead
               sortKey="amount"
@@ -445,56 +526,112 @@ export function SalesTable({
             >
               SALE
             </GlobalTableHead>
-            <GlobalTableHead>MODEL PRICE</GlobalTableHead>
+            {showAllColumns ? (
+              <GlobalTableHead>MODEL PRICE</GlobalTableHead>
+            ) : null}
             <GlobalTableHead>STATUS</GlobalTableHead>
-            <GlobalTableHead className="w-36">ACTIONS</GlobalTableHead>
+            <GlobalTableHead className="w-48">ACTIONS</GlobalTableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {filtered.map((s) => (
-            <TableRow key={s.id}>
-              <TableCell className="tabular-nums text-muted-foreground">
-                {saleIdMap.get(s.saleId) ?? "—"}
-              </TableCell>
-              <TableCodeCell value={saleTransactionLabel(s)} className="font-semibold" />
-              <TableCell className="whitespace-nowrap tabular-nums">
-                {formatSaleDate(s.transactionDate)}
-              </TableCell>
-              <TableCell>{s.branch.name}</TableCell>
-              <TableCell>{s.customerName?.trim() || "—"}</TableCell>
-              <TableCell>{s.packageName ?? "—"}</TableCell>
-              <TableCell>{s.brandName ?? "—"}</TableCell>
-              <TableCell className="font-mono text-sm">{s.modelLabel ?? "—"}</TableCell>
-              <TableCodeCell value={saleSerialLabel(s)} />
-              <TableAmountCell value={s.saleAmount} />
-              {s.modelPrice != null ? (
-                <TableAmountCell value={s.modelPrice} />
-              ) : (
-                <TableCell className="text-muted-foreground">—</TableCell>
-              )}
-              <TableCell>
-                {s.statusCode ? (
-                  <StatusCodeBadge
-                    code={s.statusCode.code}
-                    name={s.statusCode.name}
-                    color={s.statusCode.color}
-                  />
-                ) : (
-                  <span className="text-muted-foreground">—</span>
-                )}
-              </TableCell>
-              <TableCell className="whitespace-nowrap">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={pending}
-                  onClick={() => openSaleDetails(s.saleId)}
+          {filtered.length === 0 ? (
+            <TableEmptyRow
+              colSpan={colCount}
+              message="No results match your search."
+            />
+          ) : (
+            filtered.map((s, index) => {
+              const stripe = index % 2 === 1;
+              const stickyBg = cn(
+                stripe ? "bg-table-stripe" : "bg-card",
+                "group-hover:bg-accent/60",
+              );
+              return (
+                <TableRow
+                  key={s.id}
+                  className={cn("group", stripe && "bg-table-stripe")}
                 >
-                  View details
-                </Button>
-              </TableCell>
-            </TableRow>
-          ))}
+                  <TableCell
+                    className={cn(
+                      stickyCellId,
+                      stickyBg,
+                      "py-2 tabular-nums text-muted-foreground sm:py-2.5",
+                    )}
+                  >
+                    {saleIdMap.get(s.saleId) ?? "—"}
+                  </TableCell>
+                  <TrnDetailCell
+                    row={s}
+                    showAllColumns={showAllColumns}
+                    className={cn(stickyCellTrn, stickyBg)}
+                  />
+                  <TableCell className="whitespace-nowrap py-2 tabular-nums sm:py-2.5">
+                    {formatSaleDate(s.transactionDate)}
+                  </TableCell>
+                  <TableCell className="py-2 sm:py-2.5">{s.branch.name}</TableCell>
+                  <TableCell className="py-2 sm:py-2.5">
+                    {s.customerName?.trim() || "—"}
+                  </TableCell>
+                  {showAllColumns ? (
+                    <>
+                      <TableCell className="py-2 sm:py-2.5">
+                        {s.packageName ?? "—"}
+                      </TableCell>
+                      <TableCell className="py-2 sm:py-2.5">
+                        {s.brandName ?? "—"}
+                      </TableCell>
+                      <TableCell className="py-2 font-mono text-sm sm:py-2.5">
+                        {s.modelLabel ?? "—"}
+                      </TableCell>
+                    </>
+                  ) : null}
+                  <TableCodeCell
+                    value={saleSerialLabel(s)}
+                    className="py-2 sm:py-2.5"
+                  />
+                  <TableAmountCell
+                    value={s.saleAmount}
+                    className="py-2 sm:py-2.5"
+                  />
+                  {showAllColumns ? (
+                    s.modelPrice != null ? (
+                      <TableAmountCell
+                        value={s.modelPrice}
+                        className="py-2 sm:py-2.5"
+                      />
+                    ) : (
+                      <TableCell className="py-2 text-muted-foreground sm:py-2.5">
+                        —
+                      </TableCell>
+                    )
+                  ) : null}
+                  <TableCell className="py-2 sm:py-2.5">
+                    {s.statusCode ? (
+                      <StatusCodeBadge
+                        code={s.statusCode.code}
+                        name={s.statusCode.name}
+                        color={s.statusCode.color}
+                      />
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap py-2 sm:py-2.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={pending}
+                        onClick={() => openSaleDetails(s.saleId)}
+                      >
+                        View details
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              );
+            })
+          )}
         </TableBody>
       </GlobalDataTable>
 

@@ -5,6 +5,8 @@ import {
 } from "@/features/inventory/services/inventory-serial-moves";
 import { OFFICIAL_SALES_TRANSACTION_PREFIX } from "@/features/official-sales/constants/official-sales-import";
 import { officialSalesRepository } from "@/features/official-sales/repositories/official-sales.repository";
+import { isToFollowSerial } from "@/features/sales/constants/to-follow-serial";
+import { resolveModelPriceForSales } from "@/features/sales/services/model-price";
 import { prisma } from "@/lib/database/client";
 
 export type OfficialSalesProcessCodes = {
@@ -28,6 +30,17 @@ export type OfficialSalesProcessRow = {
   branchSold: string | null;
   action: string | null;
   itemModel: string | null;
+  brand: string | null;
+  saleAmount: unknown;
+  packageName: string | null;
+};
+
+type OfficialSalesCommercialFields = {
+  packageTypeId: string | null;
+  brandId: string | null;
+  saleAmount: number;
+  modelPrice: number;
+  amount: number;
 };
 
 function assertNever(value: never): never {
@@ -110,6 +123,52 @@ function buildSaleNotes(row: OfficialSalesProcessRow, action: string): string {
     .join(" · ");
 }
 
+type OfficialSalesTrailAction =
+  | "official_sales.add"
+  | "official_sales.del"
+  | "official_sales.whse_add";
+
+const OFFICIAL_SALES_ACTION_KEY: Record<
+  OfficialSalesTrailAction,
+  "ADD" | "DEL" | "WHSE_ADD"
+> = {
+  "official_sales.add": "ADD",
+  "official_sales.del": "DEL",
+  "official_sales.whse_add": "WHSE_ADD",
+};
+
+/** Append-only Serial Number Logs trail for every successful ADD / DEL / WHSE_ADD. */
+async function logOfficialSalesTrail(input: {
+  tenantId: string;
+  userId: string;
+  action: OfficialSalesTrailAction;
+  entityType: string;
+  entityId: string;
+  serial: string;
+  transactionNo?: string | null;
+  soldBranch?: string | null;
+  metadata?: Record<string, unknown>;
+}) {
+  await auditService.log({
+    tenantId: input.tenantId,
+    userId: input.userId,
+    action: input.action,
+    entityType: input.entityType,
+    entityId: input.entityId,
+    metadata: {
+      serial: input.serial.trim(),
+      actionKey: OFFICIAL_SALES_ACTION_KEY[input.action],
+      ...(input.transactionNo?.trim()
+        ? { transactionNo: input.transactionNo.trim() }
+        : {}),
+      ...(input.soldBranch?.trim()
+        ? { soldBranch: input.soldBranch.trim() }
+        : {}),
+      ...input.metadata,
+    },
+  });
+}
+
 async function resolveSoldBranch(tenantId: string, branchSold: string) {
   const branch = await officialSalesRepository.resolveBranch(tenantId, branchSold);
   if (!branch) {
@@ -162,6 +221,74 @@ async function retagDetailToOfficialSold(
   });
 }
 
+function parseRowSaleAmount(value: unknown): number {
+  if (value == null || value === "") return 0;
+  const n = Number(value.toString());
+  if (!Number.isFinite(n)) return 0;
+  return n;
+}
+
+/**
+ * Resolve CSV package / brand / sale amount and PriceList model price for new
+ * Official Sales detail lines. Errors when a provided name is not in master data.
+ */
+async function resolveCommercialFieldsForCreate(
+  tenantId: string,
+  row: OfficialSalesProcessRow,
+  modelId: string,
+  transactionDate: Date | null,
+): Promise<OfficialSalesCommercialFields> {
+  const packageName = row.packageName?.trim() ?? "";
+  let packageTypeId: string | null = null;
+  if (packageName) {
+    const pkg = await prisma.packageType.findFirst({
+      where: {
+        tenantId,
+        name: { equals: packageName, mode: "insensitive" },
+        recordStatus: "active",
+      },
+      select: { id: true },
+    });
+    if (!pkg) {
+      throw new Error(`Unknown package: ${packageName}`);
+    }
+    packageTypeId = pkg.id;
+  }
+
+  const brandName = row.brand?.trim() ?? "";
+  let brandId: string | null = null;
+  if (brandName) {
+    const brand = await prisma.brand.findFirst({
+      where: {
+        tenantId,
+        name: { equals: brandName, mode: "insensitive" },
+      },
+      select: { id: true },
+    });
+    if (!brand) {
+      throw new Error(`Unknown brand: ${brandName}`);
+    }
+    brandId = brand.id;
+  }
+
+  const saleAmount = parseRowSaleAmount(row.saleAmount);
+  const resolved = await resolveModelPriceForSales(
+    tenantId,
+    modelId,
+    packageTypeId ?? undefined,
+    transactionDate ?? undefined,
+  );
+  const modelPrice = resolved?.amount ?? 0;
+
+  return {
+    packageTypeId,
+    brandId,
+    saleAmount,
+    modelPrice,
+    amount: saleAmount,
+  };
+}
+
 async function createOfficialSaleWithDetail(
   tx: Pick<
     typeof prisma,
@@ -180,8 +307,17 @@ async function createOfficialSaleWithDetail(
     modelId: string;
     serialNumberId: string;
     ofsCodeId: string;
+    packageTypeId?: string | null;
+    brandId?: string | null;
+    saleAmount?: number;
+    modelPrice?: number;
+    amount?: number;
   },
 ) {
+  const lineSaleAmount = input.saleAmount ?? 0;
+  const lineAmount = input.amount ?? lineSaleAmount;
+  const lineModelPrice = input.modelPrice ?? 0;
+
   const existing = await tx.branchSalesTransaction.findUnique({
     where: {
       tenantId_transactionNo: {
@@ -193,6 +329,7 @@ async function createOfficialSaleWithDetail(
   });
 
   let saleId: string;
+  let createdHeader = false;
   if (existing) {
     if (existing.branchId !== input.branchId) {
       throw new Error(
@@ -208,13 +345,14 @@ async function createOfficialSaleWithDetail(
         alternateBranchId: input.stockBranchId,
         transactionNo: input.transactionNo,
         transactionDate: input.transactionDate,
-        amount: 0,
+        amount: lineSaleAmount,
         notes: input.notes,
         atrStatus: "open",
         createdById: input.userId,
       },
     });
     saleId = created.id;
+    createdHeader = true;
   }
 
   const openSameSerial = await tx.branchSalesTransactionDetail.findFirst({
@@ -237,10 +375,21 @@ async function createOfficialSaleWithDetail(
       statusCodeId: input.ofsCodeId,
       deliveryNo: input.deliveryNo,
       deliveryDate: input.deliveryDate,
-      saleAmount: 0,
-      amount: 0,
+      packageTypeId: input.packageTypeId ?? null,
+      brandId: input.brandId ?? null,
+      saleAmount: lineSaleAmount,
+      modelPrice: lineModelPrice,
+      amount: lineAmount,
     },
   });
+
+  if (!createdHeader) {
+    await tx.branchSalesTransaction.update({
+      where: { id: saleId },
+      data: { amount: { increment: lineSaleAmount } },
+    });
+  }
+
   return { saleId, detailId: detail.id, created: true as const };
 }
 
@@ -262,6 +411,13 @@ async function processWhseAdd(
 
   const modelId = requireModelId(whse.serialNumber.modelId, row.itemModel);
   const transactionNo = resolveTransactionNo(row);
+  const transactionDate = resolveTransactionDate(row);
+  const commercial = await resolveCommercialFieldsForCreate(
+    tenantId,
+    row,
+    modelId,
+    transactionDate,
+  );
   const whseFrom =
     whse.warehouseLocation.warehouse.name || whse.warehouseLocation.name;
 
@@ -289,13 +445,14 @@ async function processWhseAdd(
       branchId: soldBranch.id,
       stockBranchId: soldBranch.id,
       transactionNo,
-      transactionDate: resolveTransactionDate(row),
+      transactionDate,
       deliveryNo: row.drNo,
       deliveryDate: row.drDate,
       notes: buildSaleNotes(row, "WHSE_ADD"),
       modelId,
       serialNumberId: whse.serialNumberId,
       ofsCodeId: codes.ofsCodeId,
+      ...commercial,
     });
 
     const existingInv = await tx.branchInventory.findFirst({
@@ -327,16 +484,17 @@ async function processWhseAdd(
       });
     }
 
-    await auditService.log({
+    await logOfficialSalesTrail({
       tenantId,
       userId,
       action: "official_sales.whse_add",
       entityType: "BranchSalesTransaction",
       entityId: transactionNo,
+      serial: row.serial,
+      transactionNo,
+      soldBranch: soldBranch.name,
       metadata: {
-        serial: row.serial,
         branchId: soldBranch.id,
-        transactionNo,
         status: "OFS",
       },
     });
@@ -378,7 +536,7 @@ async function processAdd(
 
     const detailCode = detail.statusCode?.code?.toUpperCase() ?? "";
     if (detailCode === "OFS") {
-      return "ADD — already Official Sold";
+      throw new Error("ADD — already Official Sold");
     }
     if (detailCode !== "SLD") {
       throw new Error("Not Found with SN details");
@@ -386,16 +544,17 @@ async function processAdd(
 
     await prisma.$transaction(async (tx) => {
       await retagDetailToOfficialSold(tx, detail.id, codes.ofsCodeId);
-      await auditService.log({
+      await logOfficialSalesTrail({
         tenantId,
         userId,
         action: "official_sales.add",
         entityType: "BranchSalesTransactionDetail",
         entityId: detail.id,
+        serial: row.serial,
+        transactionNo: detail.sale.transactionNo,
+        soldBranch: soldBranch.name,
         metadata: {
-          serial: row.serial,
-          transactionNo: detail.sale.transactionNo,
-          path: "retag_no_inventory",
+          processPath: "retag_no_inventory",
           status: "OFS",
         },
       });
@@ -427,7 +586,7 @@ async function processAdd(
           ["OFS"],
         );
     if (matched) {
-      return "ADD — already Official Sold";
+      throw new Error("ADD — already Official Sold");
     }
   }
 
@@ -460,10 +619,24 @@ async function processAdd(
             ofsCodeId: codes.ofsCodeId,
             updatedById: userId,
           });
+          await logOfficialSalesTrail({
+            tenantId,
+            userId,
+            action: "official_sales.add",
+            entityType: "BranchSalesTransactionDetail",
+            entityId: detail.id,
+            serial: row.serial,
+            transactionNo: detail.sale.transactionNo,
+            soldBranch: soldBranch.name,
+            metadata: {
+              processPath: "inventory_align",
+              status: "OFS",
+            },
+          });
         });
         return "ADD — Official Sold (inventory aligned)";
       }
-      return "ADD — already Official Sold";
+      throw new Error("ADD — already Official Sold");
     }
 
     await prisma.$transaction(async (tx) => {
@@ -479,16 +652,17 @@ async function processAdd(
           updatedById: userId,
         });
       }
-      await auditService.log({
+      await logOfficialSalesTrail({
         tenantId,
         userId,
         action: "official_sales.add",
         entityType: "BranchSalesTransactionDetail",
         entityId: detail.id,
+        serial: row.serial,
+        transactionNo: detail.sale.transactionNo,
+        soldBranch: soldBranch.name,
         metadata: {
-          serial: row.serial,
-          transactionNo: detail.sale.transactionNo,
-          path: "retag",
+          processPath: "retag",
           inventoryForcedOfs: !pulloutHold,
           pulloutHold,
           status: "OFS",
@@ -514,38 +688,52 @@ async function processAdd(
       },
     );
 
+    const pulloutTxnDate = resolveTransactionDate(row);
+    const pulloutCommercial = existing
+      ? undefined
+      : await resolveCommercialFieldsForCreate(
+          tenantId,
+          row,
+          modelId,
+          pulloutTxnDate,
+        );
+
     await prisma.$transaction(async (tx) => {
       if (existing) {
         if (existing.statusCode?.code?.toUpperCase() !== "OFS") {
           await retagDetailToOfficialSold(tx, existing.id, codes.ofsCodeId);
         }
-      } else {
+      } else if (pulloutCommercial) {
         await createOfficialSaleWithDetail(tx, {
           tenantId,
           userId,
           branchId: soldBranch.id,
           stockBranchId: inventory.branchId,
           transactionNo,
-          transactionDate: resolveTransactionDate(row),
+          transactionDate: pulloutTxnDate,
           deliveryNo: row.drNo,
           deliveryDate: row.drDate,
           notes: buildSaleNotes(row, "ADD"),
           modelId,
           serialNumberId: inventory.serialNumberId,
           ofsCodeId: codes.ofsCodeId,
+          ...pulloutCommercial,
         });
       }
-      await auditService.log({
+      await logOfficialSalesTrail({
         tenantId,
         userId,
         action: "official_sales.add",
         entityType: "BranchSalesTransaction",
         entityId: transactionNo,
+        serial: row.serial,
+        transactionNo,
+        soldBranch: soldBranch.name,
         metadata: {
-          serial: row.serial,
-          path: "pullout_hold",
+          processPath: "pullout_hold",
           pulloutHold: true,
           inventoryStatus: statusCode,
+          status: "OFS",
         },
       });
     });
@@ -570,18 +758,7 @@ async function processAdd(
   if (duplicate) {
     const dupCode = duplicate.statusCode?.code?.toUpperCase() ?? "";
     if (dupCode === "OFS") {
-      await prisma.$transaction(async (tx) => {
-        await markSerialSoldFromStockSource(tx, {
-          tenantId,
-          serialNumberId: inventory.serialNumberId,
-          stockBranchId: inventory.branchId,
-          soldBranchId: soldBranch.id,
-          stkCodeId: codes.stkCodeId,
-          targetStatusCodeId: codes.ofsCodeId,
-          updatedById: userId,
-        });
-      });
-      return "ADD — already Official Sold";
+      throw new Error("ADD — already Official Sold");
     }
     await prisma.$transaction(async (tx) => {
       await retagDetailToOfficialSold(tx, duplicate.id, codes.ofsCodeId);
@@ -593,6 +770,20 @@ async function processAdd(
         stkCodeId: codes.stkCodeId,
         targetStatusCodeId: codes.ofsCodeId,
         updatedById: userId,
+      });
+      await logOfficialSalesTrail({
+        tenantId,
+        userId,
+        action: "official_sales.add",
+        entityType: "BranchSalesTransactionDetail",
+        entityId: duplicate.id,
+        serial: row.serial,
+        transactionNo: duplicate.sale.transactionNo,
+        soldBranch: soldBranch.name,
+        metadata: {
+          processPath: "duplicate_retag",
+          status: "OFS",
+        },
       });
     });
     return "ADD — Official Sold";
@@ -610,6 +801,13 @@ async function processAdd(
   }
 
   const branchConflict = inventory.branchId !== soldBranch.id;
+  const sellableTxnDate = resolveTransactionDate(row);
+  const sellableCommercial = await resolveCommercialFieldsForCreate(
+    tenantId,
+    row,
+    modelId,
+    sellableTxnDate,
+  );
 
   await prisma.$transaction(async (tx) => {
     if (branchConflict) {
@@ -645,25 +843,28 @@ async function processAdd(
       branchId: soldBranch.id,
       stockBranchId: inventory.branchId,
       transactionNo,
-      transactionDate: resolveTransactionDate(row),
+      transactionDate: sellableTxnDate,
       deliveryNo: row.drNo,
       deliveryDate: row.drDate,
       notes: buildSaleNotes(row, "ADD"),
       modelId,
       serialNumberId: inventory.serialNumberId,
       ofsCodeId: codes.ofsCodeId,
+      ...sellableCommercial,
     });
 
-    await auditService.log({
+    await logOfficialSalesTrail({
       tenantId,
       userId,
       action: "official_sales.add",
       entityType: "BranchSalesTransaction",
       entityId: transactionNo,
+      serial: row.serial,
+      transactionNo,
+      soldBranch: soldBranch.name,
       metadata: {
-        serial: row.serial,
+        processPath: "sellable_create",
         branchId: soldBranch.id,
-        transactionNo,
         branchConflict,
         status: "OFS",
       },
@@ -688,6 +889,56 @@ async function processDel(
     throw new Error("Trans # / SI/TRANS NO. is required for DEL");
   }
 
+  // TO-FOLLOW CSV serial: delete placeholder sale line only (no inventory unit).
+  if (isToFollowSerial(row.serial)) {
+    const toFollowDetail =
+      await officialSalesRepository.findToFollowSaleDetailByTransBranch(
+        tenantId,
+        txn,
+        soldBranch.id,
+      );
+    const toFollowStatus = toFollowDetail?.statusCode;
+    if (!toFollowDetail || !toFollowStatus) {
+      throw new Error("No Sales transaction to be deleted");
+    }
+
+    const toFollowPreviousStatus = toFollowStatus.code.toUpperCase();
+    const toFollowTransactionNo = toFollowDetail.sale.transactionNo;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.branchSalesTransactionDetail.delete({
+        where: { id: toFollowDetail.id },
+      });
+
+      const remaining = await tx.branchSalesTransactionDetail.count({
+        where: { salesId: toFollowDetail.salesId },
+      });
+      if (remaining === 0) {
+        await tx.branchSalesTransaction.delete({
+          where: { id: toFollowDetail.salesId },
+        });
+      }
+
+      await logOfficialSalesTrail({
+        tenantId,
+        userId,
+        action: "official_sales.del",
+        entityType: "BranchSalesTransactionDetail",
+        entityId: toFollowDetail.id,
+        serial: row.serial,
+        transactionNo: toFollowTransactionNo,
+        soldBranch: soldBranch.name,
+        metadata: {
+          previousStatus: toFollowPreviousStatus,
+          toFollowCleanup: true,
+          notes: "Official Delete — TO-FOLLOW",
+        },
+      });
+    });
+
+    return "DEL — TO-FOLLOW line removed";
+  }
+
   const detail = await officialSalesRepository.findSaleDetailBySerialTransBranch(
     tenantId,
     row.serial,
@@ -703,9 +954,11 @@ async function processDel(
     throw new Error("No Sales transaction to be deleted");
   }
 
+  // Search fallback: pre-sale stock source (alternate). Restore lands at Branch Sold.
   const stockBranchId =
     detail.sale.alternateBranchId ?? detail.sale.branchId;
   const soldBranchId = detail.sale.branchId;
+  const soldBranchName = detail.sale.branch.name;
 
   await prisma.$transaction(async (tx) => {
     await tx.branchSalesTransactionDetail.delete({
@@ -729,25 +982,28 @@ async function processDel(
       stkCodeId: codes.stkCodeId,
       soldStatusCodeIds: [codes.sldCodeId, codes.rsvCodeId, codes.ofsCodeId],
       updatedById: userId,
+      restoreToBranchId: soldBranchId,
     });
 
-    await auditService.log({
+    await logOfficialSalesTrail({
       tenantId,
       userId,
       action: "official_sales.del",
       entityType: "BranchSalesTransactionDetail",
       entityId: detail.id,
+      serial: row.serial,
+      transactionNo: detail.sale.transactionNo,
+      soldBranch: soldBranchName,
       metadata: {
-        serial: row.serial,
-        transactionNo: detail.sale.transactionNo,
         previousStatus: detailCode,
         restored: "STK",
+        restoredBranch: soldBranchName,
         notes: "Official Delete",
       },
     });
   });
 
-  return "DEL — restored STK";
+  return `DEL — restored STK at ${soldBranchName}`;
 }
 
 /**

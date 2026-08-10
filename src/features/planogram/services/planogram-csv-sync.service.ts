@@ -99,7 +99,7 @@ export async function upsertModelsFromPlanogramRows(
   tenantId: string,
   planogramRows: PlanogramCsvRow[],
   brandRecords: Map<string, { id: string }>,
-  getCategoryId: (brandName: string, series: string) => Promise<string>,
+  getSeriesId: (brandName: string, series: string) => Promise<string>,
 ) {
   const modelIdBySku = new Map<string, string>();
 
@@ -107,7 +107,7 @@ export async function upsertModelsFromPlanogramRows(
     const brandId = brandRecords.get(row.brand)?.id;
     if (!brandId) continue;
 
-    const categoryId = await getCategoryId(row.brand, row.series);
+    const seriesId = await getSeriesId(row.brand, row.series);
     const displayName = `${row.brand} ${row.modelName}`;
 
     const model = await prisma.productModel.upsert({
@@ -115,7 +115,7 @@ export async function upsertModelsFromPlanogramRows(
       create: {
         tenantId,
         brandId,
-        categoryId,
+        seriesId,
         skuCode: row.skuCode,
         name: displayName,
         status: "active",
@@ -125,7 +125,7 @@ export async function upsertModelsFromPlanogramRows(
         name: displayName,
         status: "active",
         brandId,
-        categoryId,
+        seriesId,
         ...(row.srp != null ? { srp: row.srp } : {}),
       },
     });

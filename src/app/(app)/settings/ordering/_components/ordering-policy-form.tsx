@@ -1,10 +1,13 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import type { BranchOrderType } from "@prisma/client";
 import { toast } from "sonner";
 
 import { updateOrderingPolicyAction } from "@/features/ordering/actions/ordering-policy.actions";
+import { BRANCH_ORDER_TYPE_LABELS } from "@/features/orders/constants/order-status";
 import {
+  ALL_LOCK_ORDER_TYPES,
   formatMinutesAsClock,
   formatWeekdayList,
   minutesToTimeValue,
@@ -21,7 +24,15 @@ interface OrderingPolicyFormProps {
   initialDailyLockEnabled: boolean;
   initialDailyLockStartMinutes: number | null;
   initialDailyLockEndMinutes: number | null;
+  initialLockAppliesToOrderTypes: BranchOrderType[];
   canEdit: boolean;
+}
+
+function appliesToLabel(types: BranchOrderType[]): string {
+  if (types.length === 0) return "selected modules";
+  if (types.length === ALL_LOCK_ORDER_TYPES.length) return "All order modules";
+  if (types.length === 1) return `${BRANCH_ORDER_TYPE_LABELS[types[0]]} orders`;
+  return types.map((t) => BRANCH_ORDER_TYPE_LABELS[t]).join(", ");
 }
 
 export function OrderingPolicyForm({
@@ -29,9 +40,11 @@ export function OrderingPolicyForm({
   initialDailyLockEnabled,
   initialDailyLockStartMinutes,
   initialDailyLockEndMinutes,
+  initialLockAppliesToOrderTypes,
   canEdit,
 }: OrderingPolicyFormProps) {
   const [lockedWeekdays, setLockedWeekdays] = useState<number[]>(initialLockedWeekdays);
+  const [appliesTo, setAppliesTo] = useState<BranchOrderType[]>(initialLockAppliesToOrderTypes);
   const [dailyLockEnabled, setDailyLockEnabled] = useState(initialDailyLockEnabled);
   const [startTime, setStartTime] = useState(
     initialDailyLockStartMinutes != null
@@ -45,7 +58,21 @@ export function OrderingPolicyForm({
   );
   const [pending, startTransition] = useTransition();
 
+  function toggleAppliesTo(type: BranchOrderType, checked: boolean) {
+    setAppliesTo((prev) => {
+      if (checked) {
+        return ALL_LOCK_ORDER_TYPES.filter((t) => prev.includes(t) || t === type);
+      }
+      return prev.filter((t) => t !== type);
+    });
+  }
+
   function onSave() {
+    if (appliesTo.length === 0) {
+      toast.error("Select at least one order module for company locks.");
+      return;
+    }
+
     const startMinutes = timeValueToMinutes(startTime);
     const endMinutes = timeValueToMinutes(endTime);
 
@@ -66,6 +93,7 @@ export function OrderingPolicyForm({
         dailyLockEnabled,
         dailyLockStartMinutes: startMinutes,
         dailyLockEndMinutes: endMinutes,
+        lockAppliesToOrderTypes: appliesTo,
       });
       if (result.error) {
         toast.error(result.error);
@@ -83,14 +111,40 @@ export function OrderingPolicyForm({
     startMinutesPreview < endMinutesPreview
       ? `${formatMinutesAsClock(startMinutesPreview)}–${formatMinutesAsClock(endMinutesPreview)}`
       : null;
+  const subject = appliesToLabel(appliesTo);
 
   return (
     <div className="space-y-6">
       <div className="space-y-2">
+        <p className="text-sm font-medium">Applies to</p>
+        <p className="text-sm text-muted-foreground">
+          Company locked days and the daily time lock only apply to the modules you select.
+          Branch ordering windows still apply when placing any order.
+        </p>
+        <div className="flex flex-wrap gap-4">
+          {ALL_LOCK_ORDER_TYPES.map((type) => (
+            <label key={type} className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={appliesTo.includes(type)}
+                onCheckedChange={(v) => toggleAppliesTo(type, v === true)}
+                disabled={!canEdit || pending}
+              />
+              {BRANCH_ORDER_TYPE_LABELS[type]}
+            </label>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {appliesTo.length > 0
+            ? `Locks apply to: ${subject}.`
+            : "Select at least one module."}
+        </p>
+      </div>
+
+      <div className="space-y-2 border-t pt-4">
         <p className="text-sm font-medium">Locked ordering days</p>
         <p className="text-sm text-muted-foreground">
-          On these days no order can be created, submitted for approval, or approved — for every
-          branch. Leave Sunday selected to keep the standard weekend lock.
+          On these days selected modules cannot be created, submitted for approval, or approved —
+          for every branch. Leave Sunday selected to keep the standard weekend lock.
         </p>
         <WeekdayPicker
           value={lockedWeekdays}
@@ -100,7 +154,7 @@ export function OrderingPolicyForm({
         <p className="text-xs text-muted-foreground">
           {lockedWeekdays.length > 0
             ? `Locked on: ${formatWeekdayList(lockedWeekdays)}.`
-            : "No global locks — branches follow their own ordering windows only."}
+            : "No global weekday locks — branches follow their own ordering windows only."}
         </p>
       </div>
 
@@ -108,8 +162,9 @@ export function OrderingPolicyForm({
         <div className="space-y-1">
           <p className="text-sm font-medium">Daily time lock</p>
           <p className="text-sm text-muted-foreground">
-            Block create, submit, and approve during a daily window in Manila time. At the end time,
-            ordering is allowed again. Locked weekdays still apply for the whole day.
+            Block create, submit, and approve for selected modules during a daily window in Manila
+            time. At the end time, ordering is allowed again. Locked weekdays still apply for the
+            whole day.
           </p>
         </div>
 
@@ -148,7 +203,7 @@ export function OrderingPolicyForm({
         <p className="text-xs text-muted-foreground">
           {dailyLockEnabled
             ? timeWindowLabel
-              ? `Orders cannot be created, submitted, or approved between ${timeWindowLabel} (Asia/Manila).`
+              ? `${subject} cannot be created, submitted, or approved between ${timeWindowLabel} (Asia/Manila).`
               : "Choose a same-day start earlier than end."
             : "Daily time lock is off — only weekday locks and branch schedules apply."}
         </p>

@@ -43,8 +43,10 @@ export interface SerialActivityEvent {
   /** `${skuCode} — ${name}` of the unit's model. */
   modelLabel: string;
   /**
-   * Where the unit ended up for this event — the destination for routed events
-   * (transfers, pull-outs), the holding branch otherwise.
+   * Where the unit was for this event. For Registered, this is the first known
+   * placement branch (historical) — not the live inventory branch after moves.
+   * For routed events (transfers, pull-outs) it is the destination; otherwise
+   * the holding branch at event time.
    */
   location: string | null;
   /** Reference document number (transfer no, transaction no, session no, …). */

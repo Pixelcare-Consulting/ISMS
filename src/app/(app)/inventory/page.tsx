@@ -19,7 +19,6 @@ interface InventoryPageProps {
     branch?: string;
     sku?: string;
     offPlanogram?: string;
-    status?: string;
     sort?: string;
     dir?: string;
   }>;
@@ -31,13 +30,11 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
   const page = Number(params.page) || 1;
   const limit = parseTablePageSize(params.limit);
   const offPlanogram = params.offPlanogram === "1";
-  const statusCodeId = params.status || undefined;
   const listFilters = {
     page,
     limit,
     branchId: params.branch,
     sku: params.sku,
-    statusCodeId,
     offPlanogram,
     sort: params.sort,
     sortDir: params.dir,
@@ -45,7 +42,6 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
   const summaryFilters = {
     branchId: params.branch,
     sku: params.sku,
-    statusCodeId,
     offPlanogram,
   };
 
@@ -67,7 +63,6 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
         result={result}
         statusOptions={statusOptions}
         initialOffPlanogram={offPlanogram}
-        initialStatusCodeId={statusCodeId ?? ""}
         initialSort={params.sort ?? ""}
         initialSortDir={params.dir ?? "desc"}
         hideBranch={hideBranch}

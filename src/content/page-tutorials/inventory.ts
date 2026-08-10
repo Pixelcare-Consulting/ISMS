@@ -21,7 +21,7 @@ export const INVENTORY_PAGE_TUTORIAL: PageTutorialContent = {
       bullets: [
         "On planogram — this unit’s model (SKU) is listed for that branch.",
         "Off planogram — that SKU is not on the branch’s planogram. It does not mean the unit is missing, in the backroom, or sold.",
-        "Status (Stock / Sold / etc.) is separate from the planogram badge — both Stock and Sold rows can show Off planogram.",
+        "Status (Stock / Sold / etc.) is separate from the planogram badge.",
         "If many rows are Off planogram, the branch’s authorized SKUs may be incomplete or outdated in Settings → Planogram.",
         "Turn on Off-planogram only to list just those exception units.",
       ],
@@ -36,14 +36,15 @@ export const INVENTORY_PAGE_TUTORIAL: PageTutorialContent = {
         "DR DATE — date on that delivery reference (— if none).",
         "Planogram — On planogram or Off planogram for this branch + SKU (see above).",
         "Aging in days — how long the unit has been aging (click the header to sort).",
-        "Status — current life-cycle label (for example Stock / Sold) and related status text.",
+        "Status — life-cycle label for the unit (this list shows Stock units).",
       ],
     },
     {
       title: "Series summary & filters",
       bullets: [
         "Series summary groups QTY and peso value by SKU series. It starts collapsed — click the header to expand, or use View series for a searchable list.",
-        "Search by serial, SKU, or branch. Filter by status, and use Off-planogram only for exceptions.",
+        "This page shows Stock (STK) units only. Sold and other statuses appear in Sales & ATRs or Logistics.",
+        "Search by serial, SKU, or branch. Use Off-planogram only for planogram exceptions.",
         "Click a row to open serial-level detail.",
       ],
     },

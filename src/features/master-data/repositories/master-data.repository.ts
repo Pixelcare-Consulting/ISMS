@@ -10,12 +10,12 @@ export const masterDataRepository = {
     );
   },
 
-  listCategories(tenantId: string) {
+  listSeries(tenantId: string) {
     return getOrSet(
-      cacheKey("tenant", tenantId, "master-data", "categories"),
+      cacheKey("tenant", tenantId, "master-data", "series"),
       CACHE_TTL.masterData,
       () =>
-        prisma.category.findMany({
+        prisma.series.findMany({
           where: { tenantId },
           orderBy: { name: "asc" },
         }),
@@ -32,7 +32,7 @@ export const masterDataRepository = {
           where: { tenantId, ...(brandId ? { brandId } : {}) },
           include: {
             brand: true,
-            category: true,
+            series: true,
             priceLists: {
               select: {
                 id: true,
@@ -67,8 +67,8 @@ export const masterDataRepository = {
     return prisma.brand.create({ data: { tenantId, name: data.name, code: data.code } });
   },
 
-  createCategory(tenantId: string, data: { name: string; code?: string }) {
-    return prisma.category.create({
+  createSeries(tenantId: string, data: { name: string; code?: string }) {
+    return prisma.series.create({
       data: {
         tenantId,
         name: data.name,
@@ -81,7 +81,7 @@ export const masterDataRepository = {
     tenantId: string,
     data: {
       brandId?: string | null;
-      categoryId?: string | null;
+      seriesId?: string | null;
       featureId?: string | null;
       resolutionId?: string | null;
       actualSizeId?: string | null;
@@ -94,7 +94,7 @@ export const masterDataRepository = {
       data: {
         tenantId,
         brandId: data.brandId ?? null,
-        categoryId: data.categoryId ?? null,
+        seriesId: data.seriesId ?? null,
         featureId: data.featureId ?? null,
         resolutionId: data.resolutionId ?? null,
         actualSizeId: data.actualSizeId ?? null,

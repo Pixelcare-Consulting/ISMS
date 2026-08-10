@@ -10,8 +10,8 @@ export interface PsgModelRow {
   skuCode: string;
   name: string;
   brandName: string;
-  categoryName: string;
-  categoryCode: string | null;
+  seriesName: string;
+  seriesCode: string | null;
   cbm: number | null;
   sourceRowNumber: number;
 }
@@ -173,11 +173,11 @@ function rowsToModelResult(
     const name = (row.values.itemname ?? "").trim() || skuCode;
     const groupNameRaw = (row.values.groupname ?? "").trim();
     const groupCodeRaw = (row.values.groupcode ?? "").trim();
-    const categoryName =
+    const seriesName =
       (!isBlankOrDash(groupNameRaw) ? groupNameRaw : null) ??
       (!isBlankOrDash(groupCodeRaw) ? groupCodeRaw : null) ??
       "UNKNOWN";
-    const categoryCode = isBlankOrDash(groupCodeRaw) ? null : groupCodeRaw;
+    const seriesCode = isBlankOrDash(groupCodeRaw) ? null : groupCodeRaw;
 
     const key = skuCode.toLowerCase();
     if (bySku.has(key)) duplicateSkuCount += 1;
@@ -186,8 +186,8 @@ function rowsToModelResult(
       skuCode,
       name,
       brandName: resolvePsgBrandName(name, groupNameRaw),
-      categoryName,
-      categoryCode,
+      seriesName,
+      seriesCode,
       cbm: parsePsgCbm(row.values.cbm ?? ""),
       sourceRowNumber: row.rowNumber,
     });

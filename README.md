@@ -2,7 +2,7 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.20.0`
+**Current version:** `0.23.5`
 
 ## Stack
 
@@ -16,16 +16,16 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | **Dashboard** | Role-aware activity cards (top 4); Inventory summary + Planning & alerts; This month (icons) beside Order pipeline; compliance overview when no ops access; active announcement banner |
 | **Announcements** | Tenant posts (title, body, publish/expiry); list + CRUD (`/announcements`) |
 | **Competitors** | Market observations with master Competitor + Competitor brand/model lookups, AOR-bound branch, optional promotion; KPIs + CRUD (`/competitors`) |
-| **Settings** | Company, users, departments, roles, branches, warehouses, dealers, service centers, AORs (branches / warehouses / service centers assign + sync), master data (incl. Competitors / Competitor brands), status codes (per-module tabs + badge colors); collapsible Module guides on complex settings/ops pages |
+| **Settings** | Company, users, departments, roles, branches, warehouses, dealers, service centers, AORs (branches / warehouses / service centers assign + sync), master data (incl. Series / Categories, Competitors / Competitor brands), status codes (per-module tabs + badge colors); collapsible Module guides on complex settings/ops pages |
 | **Planning** | BRS CSV forecast import, allocation, suggested auto-replenish orders (`/settings/planning`, `/planning/suggested-orders`) |
 | **Planogram** | Per-branch SKU shelf capacity, MIL, order enforcement |
 | **Policies** | Full document control (ISO track) |
-| **Inventory** | Serialized stock, AOR-scoped list, series QTY/VALUE + DR#/date/aging on Stock units, **physical stock count / P-Count** (`/inventory/stock-count`) |
+| **Inventory** | Serialized stock (STK on Stock units), AOR-scoped list, series QTY/VALUE + DR#/date/aging, **physical stock count / P-Count** (`/inventory/stock-count`) |
 | **Orders** | Nav group: Manual / Special / Auto replenish (`/orders/manual` etc.); per-type `orders.manual`, `orders.special`, `orders.auto_replenish` with view/create/approve; PS → TL → SP; SO#, processed orders, delivery-due auto-reschedule |
 | **Logistics** | Deliveries (accept/reject), transfers, pull-outs with SN movement; gated by `logistics.view` / `create` / `manage` |
 | **Sales** | Encode at `/sales/new` (CTA from `/sales`); PS auto-branch; TL `sales.create` + branch picker; package detail modal (qty → N sets), reserved (RSV) sales, **BranchReturnRequest** ATR workflow gated by `sales.return.*` (Roles UI) |
 | **Service** | Service center ops (AOR-scoped): inventory + manual stock-in, sales + ATR (`ServiceCenterReturnRequest`), orders, deliveries (backload → STK), pull-outs under `/service-centers/*` |
-| **Reports** | Processed orders, daily stock, transfers, sales CSV (`/reports/sales`), **P-Count** (`/reports/pcount`), **Official Sales** dealer-template staging — Action Key process (`ADD` / `WHSE_ADD` / `DEL` → Official Sold), progress popup, View details, and ? quick guide (`/reports/official-sales`) |
+| **Reports** | Processed orders, daily stock, transfers, sales CSV (`/reports/sales`), **P-Count** (`/reports/pcount`), **Official Sales** dealer-template staging — Action Key process (`ADD` / `WHSE_ADD` / `DEL` → Official Sold; DEL restores STK at Branch Sold; ADD maps package/brand/sale amount + PriceList model price), progress popup, View details, and ? quick guide (`/reports/official-sales`) |
 | **SAP** | Outbound job queue + mock processor; **Service Layer** settings (encrypted credentials) + in-process session client with status UI (Connect/Logout) and refresh-on-401 |
 | **RBAC** | ISO + BRS roles (PS, TL, SP/SPA, Logistics, AE); shared action vocabulary + module allowlists; Roles simple checklist + module×action matrix; Sales ATR buttons use `sales.return.*`; Logistics uses `logistics.view` / `create` / `manage`; Service uses `service_centers.*` ops perms |
 
@@ -38,7 +38,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/dashboard` | Authenticated app |
 | `/announcements` | `announcements.view` / `announcements.manage` |
 | `/competitors` | `competitors.view` / `competitors.manage` |
-| `/inventory` | `inventory.view` (Stock units: series summary, DR#/date/aging, status filter) |
+| `/inventory` | `inventory.view` (Stock units: STK only, series summary, DR#/date/aging; Sold etc. in Sales) |
 | `/inventory/stock-count` | `inventory.view` (nav alias: P-Count) |
 | `/orders` | Redirects to first accessible order type (or dashboard) |
 | `/orders/manual` | `orders.manual.view` / `create` / `approve` (or legacy `orders.*`) |
@@ -59,14 +59,14 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/settings/users`, `/roles` | `users.manage` / `roles.manage` |
 | `/settings/departments` | `departments.manage` |
 | `/audit-logs/system`, `/audit-logs/serial-numbers` | `audit_logs.view` |
-| `/settings/branches`, `/settings/branch-quotas` | `branches.manage` (Import creates missing sap_codes; accepts PSG ISMS sheet; schedule UX shows company locked days + frequency suggestions) |
-| `/settings/ordering` | `ordering_settings.manage` (company locked weekdays + optional daily time lock in Manila + frequency code catalog incl. Daily / Three times a month) |
+| `/settings/branches`, `/settings/branch-quotas` | `branches.manage` (Import template: form-aligned Branches sheet + prefills; creates missing sap_codes; accepts PSG ISMS; optional legacy Allowed Models; schedule UX shows company locked days + frequency suggestions) |
+| `/settings/ordering` | `ordering_settings.manage` (company locked weekdays + optional daily time lock in Manila, scoped to selected order modules; frequency code catalog incl. Daily / Three times a month) |
 | `/settings/warehouses` | `warehouses.manage` |
 | `/settings/dealers` | `dealers.manage` |
 | `/settings/service-centers` | `service_centers.manage` |
 | `/settings/aors` | `aors.manage` |
 | `/settings/planning`, `/planogram` | `forecast.manage` / `planogram.*` |
-| `/settings/master-data/*` | `master_data.manage` |
+| `/settings/master-data/*` | `master_data.manage` (Models: Import template + upload; creates new SKUs / updates existing; our template only) |
 | `/settings/sap-integration` | `sap.manage` (queue) |
 | `/settings/sap-integration/service-layer` | `sap.manage` (B1 Service Layer config) |
 | `/settings/permissions` | Super Admin only |

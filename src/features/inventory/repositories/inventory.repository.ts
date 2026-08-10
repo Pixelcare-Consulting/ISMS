@@ -94,6 +94,12 @@ export type InventoryListFilters = {
   offPlanogramOnly?: boolean;
 };
 
+/**
+ * Stock units lists on-hand stock only (STK). Sold / reserved / in-transit
+ * units belong in Sales, Logistics, or other modules.
+ */
+export const STOCK_UNITS_LIST_STATUS_CODES = ["STK"] as const;
+
 export type InventorySeriesSkuAgg = {
   skuCode: string;
   srp: { toString(): string } | number | null;
@@ -158,7 +164,9 @@ async function buildInventoryWhere(
     ...(filters?.skuCode
       ? { serialNumber: { model: { skuCode: filters.skuCode } } }
       : {}),
-    ...(filters?.statusCodeId ? { statusCodeId: filters.statusCodeId } : {}),
+    statusCode: {
+      code: { in: [...STOCK_UNITS_LIST_STATUS_CODES] },
+    },
   };
 
   if (filters?.offPlanogramOnly) {
@@ -433,9 +441,11 @@ export const inventoryRepository = {
     if (filters?.skuCode) {
       conditions.push(Prisma.sql`pm.sku_code = ${filters.skuCode}`);
     }
-    if (filters?.statusCodeId) {
-      conditions.push(Prisma.sql`bi.status_code_id = ${filters.statusCodeId}`);
-    }
+    conditions.push(
+      Prisma.sql`rsc.code IN (${Prisma.join([
+        ...STOCK_UNITS_LIST_STATUS_CODES,
+      ])})`,
+    );
     if (filters?.offPlanogramOnly) {
       // Set-based anti-join: stock whose model is not on that branch's planogram.
       conditions.push(Prisma.sql`NOT EXISTS (
@@ -454,6 +464,7 @@ export const inventoryRepository = {
       FROM branch_inventories bi
       INNER JOIN serial_numbers sn ON sn.id = bi.serial_number_id
       INNER JOIN product_models pm ON pm.id = sn.model_id
+      INNER JOIN reason_status_codes rsc ON rsc.id = bi.status_code_id
       WHERE ${Prisma.join(conditions, " AND ")}
       GROUP BY pm.sku_code, pm.srp
     `;

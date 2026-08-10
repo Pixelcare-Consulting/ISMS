@@ -6,11 +6,15 @@ import { Download, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import {
-  applyBranchImportAction,
+  applyBranchImportChunkAction,
   downloadBranchImportTemplateAction,
   previewBranchImportAction,
 } from "@/features/branches/actions/branch-import.actions";
-import type { BranchImportPreview } from "@/features/branches/schemas/branch-import.schema";
+import type {
+  BranchImportChunkPhase,
+  BranchImportPreview,
+  BranchImportResult,
+} from "@/features/branches/schemas/branch-import.schema";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -19,6 +23,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ImportApplyProgress } from "@/components/ui/import-apply-progress";
 import {
   Table,
   TableBody,
@@ -43,6 +48,19 @@ function downloadWorkbook(base64: string, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+function phaseLabel(phase: BranchImportChunkPhase): string {
+  return phase === "core" ? "Saving branches…" : "Updating details…";
+}
+
+function plannedFromPreview(preview: BranchImportPreview): BranchImportResult {
+  return {
+    branchesCreated: preview.branchCreateCount,
+    branchesUpdated: preview.branchUpdateCount,
+    allowedModelsAdded: preview.allowedModelAddCount,
+    unchanged: preview.unchangedCount,
+  };
+}
+
 export function ImportBranchesDialog({
   open,
   onOpenChange,
@@ -55,14 +73,25 @@ export function ImportBranchesDialog({
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<BranchImportPreview | null>(null);
   const [pending, startTransition] = useTransition();
+  const [applyProgress, setApplyProgress] = useState<{
+    label: string;
+    processed: number;
+    total: number;
+    elapsedMs: number;
+  } | null>(null);
+
+  const applying = applyProgress !== null;
+  const busy = pending || applying;
 
   function reset() {
     setFile(null);
     setPreview(null);
+    setApplyProgress(null);
     if (fileRef.current) fileRef.current.value = "";
   }
 
   function handleClose(next: boolean) {
+    if (applying) return;
     if (!next) reset();
     onOpenChange(next);
   }
@@ -91,20 +120,81 @@ export function ImportBranchesDialog({
   }
 
   function handleApply() {
-    if (!file) return;
-    const formData = new FormData();
-    formData.set("file", file);
+    if (!file || !preview || applying) return;
+
+    const planned = plannedFromPreview(preview);
+    const startedAtMs = Date.now();
+
     startTransition(async () => {
-      const result = await applyBranchImportAction(formData);
-      if ("error" in result) {
-        toast.error(result.error);
-        return;
+      let phase: BranchImportChunkPhase = "core";
+      let offset = 0;
+      let lastProcessed = 0;
+      let lastTotal = 0;
+      let lastPhase: BranchImportChunkPhase = "core";
+      let plannedResult = planned;
+
+      setApplyProgress({
+        label: phaseLabel("core"),
+        processed: 0,
+        total: 0,
+        elapsedMs: 0,
+      });
+
+      try {
+        for (;;) {
+          const formData = new FormData();
+          formData.set("file", file);
+          formData.set("phase", phase);
+          formData.set("offset", String(offset));
+          formData.set("plannedCreated", String(plannedResult.branchesCreated));
+          formData.set("plannedUpdated", String(plannedResult.branchesUpdated));
+          formData.set("plannedAllowed", String(plannedResult.allowedModelsAdded));
+          formData.set("plannedUnchanged", String(plannedResult.unchanged));
+
+          const progress = await applyBranchImportChunkAction(formData);
+          if ("error" in progress) {
+            toast.error(
+              `${progress.error} Stopped after ${lastProcessed} of ${lastTotal || "?"} (${lastPhase === "core" ? "saving branches" : "updating details"}). You can try Apply again.`,
+            );
+            setApplyProgress(null);
+            return;
+          }
+
+          if (progress.plannedResult) {
+            plannedResult = progress.plannedResult;
+          }
+
+          lastProcessed = progress.processed;
+          lastTotal = progress.total;
+          lastPhase = phase;
+
+          setApplyProgress({
+            label: phaseLabel(phase),
+            processed: progress.processed,
+            total: progress.total,
+            elapsedMs: Date.now() - startedAtMs,
+          });
+
+          if (progress.done) {
+            const result = progress.result ?? plannedResult;
+            toast.success(
+              `${result.branchesCreated} created · ${result.branchesUpdated} updated · ${result.allowedModelsAdded} allowed model${result.allowedModelsAdded === 1 ? "" : "s"} added`,
+            );
+            setApplyProgress(null);
+            handleClose(false);
+            router.refresh();
+            return;
+          }
+
+          phase = progress.phase;
+          offset = progress.nextOffset;
+        }
+      } catch (error) {
+        toast.error(
+          `${error instanceof Error ? error.message : "Import failed."} Stopped after ${lastProcessed} of ${lastTotal || "?"}. You can try Apply again.`,
+        );
+        setApplyProgress(null);
       }
-      toast.success(
-        `${result.result.branchesCreated} created · ${result.result.branchesUpdated} updated · ${result.result.allowedModelsAdded} allowed model${result.result.allowedModelsAdded === 1 ? "" : "s"} added`,
-      );
-      handleClose(false);
-      router.refresh();
     });
   }
 
@@ -112,33 +202,26 @@ export function ImportBranchesDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+      <DialogContent
+        className="max-h-[90vh] overflow-y-auto sm:max-w-3xl"
+        showCloseButton={!applying}
+        onPointerDownOutside={(event) => {
+          if (applying) event.preventDefault();
+        }}
+        onEscapeKeyDown={(event) => {
+          if (applying) event.preventDefault();
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Import branches</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="text-muted-foreground space-y-2 text-sm">
+          <div className="text-muted-foreground text-sm">
             <p>
-              The template has two sheets:{" "}
-              <strong>Branches</strong> (
-              <code className="font-mono text-xs">sap_code</code>,{" "}
-              <code className="font-mono text-xs">branch_name</code>) and{" "}
-              <strong>Allowed Models</strong> (
-              <code className="font-mono text-xs">sap_code</code>,{" "}
-              <code className="font-mono text-xs">sku_code</code>) — one row per model,
-              repeating the branch&apos;s <code className="font-mono text-xs">sap_code</code>{" "}
-              to list several.
-            </p>
-            <p>
-              Unknown <code className="font-mono text-xs">sap_code</code> values are{" "}
-              <strong>created</strong>; existing codes are updated. You can also upload a PSG
-              ISMS workbook (sheet <code className="font-mono text-xs">ISMS</code> or columns
-              like <code className="font-mono text-xs">BRANCH CODE</code>,{" "}
-              <code className="font-mono text-xs">AREA</code>,{" "}
-              <code className="font-mono text-xs">STATUS</code>, Devant / Hisense quotas).
-              Product models (SKUs) must already exist. Blank cells are left untouched, and
-              nothing is ever deleted.
+              The download template is a single <strong>Branches</strong> sheet with columns for
+              SAP code, name, status, dealer, warehouse, geo, alternate branches, and delivery
+              schedule — pre-filled from your active branches.
             </p>
           </div>
 
@@ -148,6 +231,7 @@ export function ImportBranchesDialog({
               type="file"
               accept=".xlsx,.csv"
               className="hidden"
+              disabled={busy}
               onChange={(event) => {
                 const selected = event.target.files?.[0];
                 if (selected) handleFile(selected);
@@ -156,13 +240,13 @@ export function ImportBranchesDialog({
             <Button
               variant="outline"
               size="sm"
-              disabled={pending}
+              disabled={busy}
               onClick={() => fileRef.current?.click()}
             >
               <Upload className="mr-1 size-4" />
               {file ? "Choose another file" : "Choose file"}
             </Button>
-            <Button variant="outline" size="sm" disabled={pending} onClick={handleTemplate}>
+            <Button variant="outline" size="sm" disabled={busy} onClick={handleTemplate}>
               <Download className="mr-1 size-4" />
               Download template
             </Button>
@@ -171,12 +255,26 @@ export function ImportBranchesDialog({
             ) : null}
           </div>
 
+          {applyProgress ? (
+            <ImportApplyProgress
+              label={applyProgress.label}
+              processed={applyProgress.processed}
+              total={applyProgress.total}
+              elapsedMs={applyProgress.elapsedMs}
+            />
+          ) : null}
+
           {preview ? (
             <div className="space-y-4">
               <div className="flex flex-wrap gap-4 rounded-lg border px-4 py-3 text-sm">
                 <span>
-                  <strong>{preview.branchRowCount}</strong> branch rows ·{" "}
-                  <strong>{preview.allowedModelRowCount}</strong> model rows
+                  <strong>{preview.branchRowCount}</strong> branch rows
+                  {preview.allowedModelRowCount > 0 ? (
+                    <>
+                      {" "}
+                      · <strong>{preview.allowedModelRowCount}</strong> model rows
+                    </>
+                  ) : null}
                 </span>
                 <span>
                   <strong>{preview.branchCreateCount}</strong> branches to create
@@ -184,9 +282,11 @@ export function ImportBranchesDialog({
                 <span>
                   <strong>{preview.branchUpdateCount}</strong> branches to update
                 </span>
-                <span>
-                  <strong>{preview.allowedModelAddCount}</strong> allowed models to add
-                </span>
+                {preview.allowedModelRowCount > 0 || preview.allowedModelAddCount > 0 ? (
+                  <span>
+                    <strong>{preview.allowedModelAddCount}</strong> allowed models to add
+                  </span>
+                ) : null}
                 <span className="text-muted-foreground">
                   {preview.unchangedCount} unchanged (skipped)
                 </span>
@@ -226,7 +326,10 @@ export function ImportBranchesDialog({
                         <TableHead>Branch</TableHead>
                         <TableHead>Action</TableHead>
                         <TableHead>Changes</TableHead>
-                        <TableHead className="text-right">Allowed models</TableHead>
+                        {preview.allowedModelRowCount > 0 ||
+                        preview.branches.some((b) => b.allowedModelsToAdd.length > 0) ? (
+                          <TableHead className="text-right">Allowed models</TableHead>
+                        ) : null}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -242,17 +345,20 @@ export function ImportBranchesDialog({
                               <span className="text-muted-foreground">No field changes</span>
                             ) : (
                               branch.changes.map((change) => (
-                                <div key={change.field}>
+                                <div key={`${change.field}-${change.to}`}>
                                   {change.label}: {change.from} → <strong>{change.to}</strong>
                                 </div>
                               ))
                             )}
                           </TableCell>
-                          <TableCell className="text-right text-sm">
-                            {branch.allowedModelsToAdd.length > 0
-                              ? `+${branch.allowedModelsToAdd.length}`
-                              : "—"}
-                          </TableCell>
+                          {preview.allowedModelRowCount > 0 ||
+                          preview.branches.some((b) => b.allowedModelsToAdd.length > 0) ? (
+                            <TableCell className="text-right text-sm">
+                              {branch.allowedModelsToAdd.length > 0
+                                ? `+${branch.allowedModelsToAdd.length}`
+                                : "—"}
+                            </TableCell>
+                          ) : null}
                         </TableRow>
                       ))}
                     </TableBody>
@@ -268,11 +374,11 @@ export function ImportBranchesDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => handleClose(false)} disabled={pending}>
+          <Button variant="outline" onClick={() => handleClose(false)} disabled={busy}>
             Cancel
           </Button>
-          <Button onClick={handleApply} disabled={pending || !preview?.canApply}>
-            {pending ? "Working…" : "Apply import"}
+          <Button onClick={handleApply} disabled={busy || !preview?.canApply}>
+            {applying ? "Importing…" : pending ? "Working…" : "Apply import"}
           </Button>
         </DialogFooter>
       </DialogContent>

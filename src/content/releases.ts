@@ -52,6 +52,416 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.23.5",
+    date: "2026-08-07",
+    releasedAt: "2026-08-07T18:00:00+08:00",
+    title: "Serial Number Logs keep original registration branch",
+    highlights: [
+      "Registered events in Serial Number Logs keep the original branch even after stock moves or Official Sales deletes",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Serial Number Logs Registered location no longer follows the live inventory branch after transfers or Official Sales moves",
+      },
+    ],
+  },
+  {
+    version: "0.23.4",
+    date: "2026-08-07",
+    releasedAt: "2026-08-07T17:50:00+08:00",
+    title: "Alternate branch filter clears on dealer change",
+    highlights: [
+      "Changing Filter by dealer now clears the previous alternate branch picks and selects the new dealer’s branches",
+      "Clearing Filter by dealer restores the original alternate branch picks",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Filter by dealer on add/edit branch replaces alternate branch selections instead of stacking dealers together",
+      },
+      {
+        type: "improvement",
+        description:
+          "Clearing Filter by dealer restores the branch’s original alternate picks instead of leaving the last auto-select",
+      },
+    ],
+  },
+  {
+    version: "0.23.3",
+    date: "2026-08-07",
+    releasedAt: "2026-08-07T17:45:00+08:00",
+    title: "Official Sales delete restore and sale details",
+    highlights: [
+      "Deleting an Official Sales row puts the unit back in stock at the branch where it was sold",
+      "Adding Official Sales now carries package, brand, sale amount, and model price into Sales & ATR",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Official Sales ADD and warehouse add now fill package, brand, sale amount, and model price on the sales line so Sales & ATR matches the upload",
+      },
+      {
+        type: "improvement",
+        description:
+          "Official Sales delete restores stock at the sold branch instead of the earlier delivery branch",
+      },
+      {
+        type: "fix",
+        description:
+          "Unknown package or brand names in an Official Sales upload now show a clear error instead of saving blank values",
+      },
+    ],
+  },
+  {
+    version: "0.23.2",
+    date: "2026-08-07",
+    releasedAt: "2026-08-07T17:35:00+08:00",
+    title: "Easier alternate branch picking by dealer",
+    highlights: [
+      "When adding or editing a branch, use Filter by dealer to find and select alternate branches",
+      "The main Dealer field only sets who owns the branch — it no longer drives alternate picks",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Add or edit branch now has a Filter by dealer control for alternate branches (lists and selects that dealer’s branches)",
+      },
+      {
+        type: "improvement",
+        description:
+          "Changing the main Dealer no longer changes which alternate branches are listed or selected",
+      },
+    ],
+  },
+  {
+    version: "0.23.1",
+    date: "2026-08-07",
+    releasedAt: "2026-08-07T17:30:00+08:00",
+    title: "Smoother large Branch and Models imports",
+    highlights: [
+      "Large Branch and Models imports show a progress bar while they run",
+      "Imports show time remaining and remind you to keep the page open",
+      "Finished import totals now match what the preview said would change",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Branch and Models import now show real progress while applying large files",
+      },
+      {
+        type: "improvement",
+        description:
+          "While importing, you see an estimated time left and a reminder not to refresh or close the page",
+      },
+      {
+        type: "improvement",
+        description:
+          "Import dialogs use shorter help text so the preview stays easier to scan",
+      },
+      {
+        type: "fix",
+        description:
+          "Large Branch and Models imports no longer time out or crash the page mid-apply",
+      },
+      {
+        type: "fix",
+        description:
+          "Branch import success totals now match the preview create and update counts for the whole file",
+      },
+    ],
+  },
+  {
+    version: "0.23.0",
+    date: "2026-08-07",
+    releasedAt: "2026-08-07T16:55:00+08:00",
+    title: "Bulk import for product models",
+    highlights: [
+      "Download a Models template and upload it to add or update many SKUs at once",
+      "New codes are created; existing ones are updated when details change",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Master data Models adds Import with Download template and upload preview — new SKUs are created and existing ones are updated when values differ",
+      },
+    ],
+  },
+  {
+    version: "0.22.0",
+    date: "2026-08-07",
+    releasedAt: "2026-08-07T16:40:00+08:00",
+    title: "Series and Categories in Master data",
+    highlights: [
+      "Model-linked product groups now appear as Series in Master data",
+      "Categories is available as its own empty list for your own product classification",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Master data Products adds Series (linked to models) and a separate Categories list you can manage on its own",
+      },
+      {
+        type: "improvement",
+        description:
+          "Models, planogram, and forecast imports keep using the same series values under the Series name",
+      },
+    ],
+  },
+  {
+    version: "0.21.0",
+    date: "2026-08-07",
+    releasedAt: "2026-08-07T16:15:00+08:00",
+    title: "Ordering locks by module",
+    highlights: [
+      "Choose which order modules company locked days and daily hours apply to",
+      "Defaults to Manual orders so Special and Auto replenish stay open unless you include them",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Ordering policy adds Applies to checkboxes (Manual, Special, Auto replenish) shared by weekday and daily time locks",
+      },
+      {
+        type: "improvement",
+        description:
+          "Lock messages name the order module when company policy blocks create, submit, or approve",
+      },
+    ],
+  },
+  {
+    version: "0.20.8",
+    date: "2026-08-07",
+    releasedAt: "2026-08-07T15:55:00+08:00",
+    title: "Richer branch forms and import",
+    highlights: [
+      "Add and Edit branch put SAP code beside name, with Active/Inactive as an on/off switch",
+      "Alternate branches follow the Dealer you pick at the top — no second dealer filter",
+      "Branch import download includes dealer, warehouse, geo, alternates, and schedule columns — without an Allowed Models sheet",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Choosing a dealer lists and can select that dealer’s active branches as alternates (same idea as AOR)",
+      },
+      {
+        type: "feature",
+        description:
+          "Branch import template covers the full branch form (dealer, warehouse, areas, alternates, delivery schedule) and applies those fields on upload",
+      },
+      {
+        type: "improvement",
+        description:
+          "SAP code and name sit on one row; status is an Active/Inactive switch; Add and Edit dialogs stay wider for denser forms",
+      },
+      {
+        type: "improvement",
+        description:
+          "Import download is a single Branches sheet; older files with Allowed Models still work if you upload them",
+      },
+      {
+        type: "fix",
+        description:
+          "Removed the duplicate dealer filter under alternate branches — the main Dealer field drives the list",
+      },
+    ],
+  },
+  {
+    version: "0.20.7",
+    date: "2026-08-07",
+    releasedAt: "2026-08-07T15:40:00+08:00",
+    title: "Stock units show Stock only",
+    highlights: [
+      "Stock units lists Stock (STK) units only — Sold, Official Sold, and in-transit stay in Sales or Logistics",
+      "The status filter is removed from Stock units so the list stays focused on on-hand stock",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Stock units shows Stock (STK) only; other statuses belong in Sales & ATRs or Logistics",
+      },
+      {
+        type: "improvement",
+        description:
+          "Status filter control removed from the Stock units toolbar",
+      },
+    ],
+  },
+  {
+    version: "0.20.6",
+    date: "2026-08-07",
+    releasedAt: "2026-08-07T15:35:00+08:00",
+    title: "Pickers stay inside dialogs",
+    highlights: [
+      "Model and other searchable lists stay within the dialog — long names wrap instead of spilling off the side",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Searchable pickers no longer overflow past Add Line Items and other dialogs; full names still show by wrapping",
+      },
+    ],
+  },
+  {
+    version: "0.20.4",
+    date: "2026-08-07",
+    releasedAt: "2026-08-07T15:25:00+08:00",
+    title: "Full model names in pickers",
+    highlights: [
+      "Model and other searchable pickers show the full name instead of cutting it off with …",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Searchable pickers (like Model on Add Line Items) show the full name instead of truncating with …",
+      },
+    ],
+  },
+  {
+    version: "0.20.3",
+    date: "2026-08-07",
+    releasedAt: "2026-08-07T14:45:00+08:00",
+    title: "Price lists hover cue",
+    highlights: [
+      "Price list cards show a hand cursor on hover so it’s clearer they’re clickable",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Price list cards show a hand cursor when you hover over them",
+      },
+    ],
+  },
+  {
+    version: "0.20.2",
+    date: "2026-08-07",
+    releasedAt: "2026-08-07T14:15:00+08:00",
+    title: "Official Sales cleanup & activity trail",
+    highlights: [
+      "Remove TO-FOLLOW placeholder lines from Official Sales when the real serial is not needed",
+      "Sales & ATR no longer shows Delete on TO-FOLLOW rows — clean those up from Official Sales instead",
+      "Serial Number Logs keep every Official Sales ADD, DEL, and WHSE_ADD as its own history row — including after corrections",
+      "Each Official Sales log clearly shows the Action Key (ADD, DEL, or WHSE_ADD)",
+      "Rows already marked Official Sold now show as Error instead of Success when you process them again",
+      "Official Sales delete confirms which branch stock returned to after removing a sold line",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Delete TO-FOLLOW placeholder lines from Official Sales without moving stock",
+      },
+      {
+        type: "feature",
+        description:
+          "Serial Number Logs keep every Official Sales ADD, DEL, and WHSE_ADD so ADD→DEL→ADD cycles stay visible",
+      },
+      {
+        type: "improvement",
+        description:
+          "Official Sales rows in Serial Number Logs show the Action Key (ADD, DEL, WHSE_ADD) in the event and status",
+      },
+      {
+        type: "improvement",
+        description:
+          "Official Sales delete messaging shows where stock was restored after removing a sold line",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sales & ATR list no longer shows Delete on TO-FOLLOW rows; cleanup stays in Official Sales",
+      },
+      {
+        type: "fix",
+        description:
+          "Processing an already Official Sold row marks the staging line as Error instead of Success",
+      },
+      {
+        type: "fix",
+        description:
+          "Successful Official Sales ADD paths that previously skipped history now appear in Serial Number Logs",
+      },
+    ],
+  },
+  {
+    version: "0.20.1",
+    date: "2026-08-07",
+    releasedAt: "2026-08-07T14:02:00+08:00",
+    title: "Clearer Sales & ATR list",
+    highlights: [
+      "ID and transaction number stay visible while you scroll the Sales & ATR table sideways",
+      "Transaction numbers show branch, brand, and model underneath for quicker scanning",
+      "Use Show all columns for package, brand, model, and model price — or Fewer columns for a compact list",
+      "Sales & Official Sales remember whether you prefer full or compact columns next time you visit",
+      "Rows alternate shading so long lists are easier to scan",
+      "Empty search results show a clear message instead of a blank table",
+      "Save Transaction and Back sit on the right when encoding a new sale",
+      "Add Line Items fields use a clear white background against the set panels",
+      "Select line items (or Select all) and delete them in one step when encoding a sale",
+      "Line items show a # index so each set is easy to count",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "New sale line items support Select all and Delete selected so you can remove several rows at once",
+      },
+      {
+        type: "improvement",
+        description:
+          "New sale line items show a # column for quick row numbering",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sales & ATR freezes ID and TRN NO. while scrolling sideways, matching Official Sales",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sales & ATR transaction numbers show helpful branch, brand, and model details underneath in the compact view",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sales & ATR toolbar adds Show all columns / Fewer columns so package, brand, model, and model price stay optional",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sales & Official Sales remember your Show all columns / Fewer columns choice for the next visit",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sales & ATR list is easier to scan with alternating row shading, denser spacing, and a clear empty-search message",
+      },
+      {
+        type: "improvement",
+        description:
+          "New sale form places Back and Save Transaction on the right, with Save as the primary action",
+      },
+      {
+        type: "improvement",
+        description:
+          "Text fields and dropdowns use a white background so they stay readable on shaded form panels",
+      },
+    ],
+  },
+  {
     version: "0.20.0",
     date: "2026-08-06",
     releasedAt: "2026-08-06T17:15:00+08:00",

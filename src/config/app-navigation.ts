@@ -562,7 +562,6 @@ export const appNavigation: NavEntry[] = [
         label: "Master data",
         icon: Tags,
         permission: "master_data.manage",
-        badge: "new",
       },
     ],
   },

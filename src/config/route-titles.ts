@@ -59,6 +59,7 @@ const MASTER_DATA_TITLES: Record<string, string> = {
   "branch-areas": "Branch areas",
   "branch-statuses": "Branch statuses",
   categories: "Categories",
+  series: "Series",
   "competitor-brands": "Competitor brands",
   competitors: "Competitors",
   "customer-delivery-methods": "Customer delivery methods",

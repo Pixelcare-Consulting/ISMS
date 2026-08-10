@@ -47,7 +47,7 @@ export async function seedPsgModelAndOutgoing(prisma: SeedPrisma): Promise<void>
     const result = await upsertPsgModels(prisma, tenant.id, modelParsed.rows);
     console.log(
       `  Models [${tenant.slug}]: +${result.modelsCreated} created, ${result.modelsUpdated} updated,` +
-        ` ${result.brandsUpserted} brands, ${result.categoriesUpserted} categories`,
+        ` ${result.brandsUpserted} brands, ${result.seriesUpserted} series`,
     );
   }
 

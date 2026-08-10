@@ -46,6 +46,7 @@ export const MASTER_DATA_TAB_GROUPS: SectionTabGroupDefinition[] = [
         href: "/settings/master-data/models",
         label: "Models",
         description: "SKUs for branch planograms and orders (active / hold / retired).",
+        badge: "new",
       },
       {
         href: "/settings/master-data/price-lists",
@@ -53,9 +54,16 @@ export const MASTER_DATA_TAB_GROUPS: SectionTabGroupDefinition[] = [
         description: "Period-based SRP rows by model and package type.",
       },
       {
+        href: "/settings/master-data/series",
+        label: "Series",
+        description: "Product series linked to models (from planogram / model imports).",
+        badge: "new",
+      },
+      {
         href: "/settings/master-data/categories",
         label: "Categories",
-        description: "Product categories linked to models (not brands).",
+        description: "Standalone product categories (not linked to models yet).",
+        badge: "new",
       },
       {
         href: "/settings/master-data/package-types",
@@ -136,13 +144,11 @@ export const MASTER_DATA_TAB_GROUPS: SectionTabGroupDefinition[] = [
         href: "/settings/master-data/competitors",
         label: "Competitors",
         description: "Competitor name lookup for market observations.",
-        badge: "new",
       },
       {
         href: "/settings/master-data/competitor-brands",
         label: "Competitor brands",
         description: "Competitor brand and model lookup for market observations.",
-        badge: "new",
       },
       {
         href: "/settings/master-data/dealer-types",

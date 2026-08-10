@@ -19,7 +19,7 @@ export interface ClientModelRow {
   effectivePrice: number | null;
   cbm: number | null;
   brand: { name: string } | null;
-  category: { name: string } | null;
+  series: { name: string } | null;
   priceLists: ClientModelPriceListRow[];
 }
 
@@ -30,7 +30,7 @@ type PrismaModelRow = {
   status: string;
   cbm: { toString(): string } | number | null;
   brand: { name: string } | null;
-  category: { name: string } | null;
+  series: { name: string } | null;
   priceLists?: {
     id: string;
     amount: { toString(): string } | number;
@@ -61,7 +61,7 @@ export function toClientModelRow(model: PrismaModelRow): ClientModelRow {
     effectivePrice: activeRow ? activeRow.amount : null,
     cbm: decimalToNumberOrNull(model.cbm),
     brand: model.brand ? { name: model.brand.name } : null,
-    category: model.category ? { name: model.category.name } : null,
+    series: model.series ? { name: model.series.name } : null,
     priceLists,
   };
 }

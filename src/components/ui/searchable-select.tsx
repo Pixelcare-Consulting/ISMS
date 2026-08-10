@@ -110,8 +110,8 @@ export function SearchableSelect({
             aria-expanded={open}
             disabled={disabled}
             className={cn(
-              "h-9 w-full justify-between border-input bg-background font-normal shadow-sm",
-              "hover:border-primary/40 hover:bg-background hover:text-foreground",
+              "h-9 w-full justify-between border-input bg-card font-normal shadow-sm",
+              "hover:border-primary/40 hover:bg-card hover:text-foreground",
               "disabled:bg-muted/60 disabled:opacity-50",
             )}
           >
@@ -128,10 +128,13 @@ export function SearchableSelect({
         </PopoverTrigger>
         <PopoverContent
           className={cn(
-            "w-[var(--radix-popover-trigger-width)] p-0",
+            // Match the field width so lists stay inside dialogs/modals;
+            // long labels wrap instead of expanding past the panel.
+            "w-(--radix-popover-trigger-width) max-w-[min(100%,calc(100vw-2rem))] p-0",
             popoverClassName,
           )}
           align="start"
+          collisionPadding={12}
         >
           <Command shouldFilter={false}>
             <CommandInput
@@ -166,17 +169,20 @@ export function SearchableSelect({
                       key={option.id}
                       value={option.id}
                       onSelect={() => selectOption(option.id)}
+                      className="items-start"
                     >
                       <Check
                         className={cn(
-                          "size-4 shrink-0",
+                          "mt-0.5 size-4 shrink-0",
                           isSelected ? "opacity-100" : "opacity-0",
                         )}
                       />
-                      <span className="min-w-0 flex-1 truncate">
-                        <span className="block truncate">{option.label}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block wrap-break-word whitespace-normal">
+                          {option.label}
+                        </span>
                         {option.description ? (
-                          <span className="block truncate text-xs text-muted-foreground">
+                          <span className="block wrap-break-word whitespace-normal text-xs text-muted-foreground">
                             {option.description}
                           </span>
                         ) : null}

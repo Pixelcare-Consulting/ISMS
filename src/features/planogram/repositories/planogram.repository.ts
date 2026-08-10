@@ -14,7 +14,7 @@ export const planogramRepository = {
             status: true,
             srp: true,
             brand: { select: { name: true } },
-            category: { select: { name: true } },
+            series: { select: { name: true } },
           },
         },
       },

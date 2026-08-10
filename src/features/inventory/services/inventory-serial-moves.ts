@@ -39,9 +39,10 @@ export async function markSerialSoldFromStockSource(
 }
 
 /**
- * Restore a sold/reserved/official-sold unit to STK at the stock source.
+ * Restore a sold/reserved/official-sold unit to STK.
  * Prefers the row at the sold branch (post-relocate encode); falls back to
  * stock source for legacy rows that were never moved.
+ * Lands STK at `restoreToBranchId` when set; otherwise at `stockBranchId`.
  */
 export async function restoreSerialToStockSource(
   tx: BranchInventoryTx,
@@ -53,6 +54,8 @@ export async function restoreSerialToStockSource(
     stkCodeId: string;
     soldStatusCodeIds: string[];
     updatedById: string;
+    /** When set, inventory relocates here instead of stockBranchId. */
+    restoreToBranchId?: string;
   },
 ): Promise<string | null> {
   let oldInv = await tx.branchInventory.findFirst({
@@ -77,13 +80,15 @@ export async function restoreSerialToStockSource(
   }
   if (!oldInv) return null;
 
+  const landBranchId = input.restoreToBranchId ?? input.stockBranchId;
+
   await tx.branchInventory.update({
     where: { id: oldInv.id },
     data: {
       statusCodeId: input.stkCodeId,
       updatedById: input.updatedById,
-      ...(oldInv.branchId !== input.stockBranchId
-        ? { branchId: input.stockBranchId }
+      ...(oldInv.branchId !== landBranchId
+        ? { branchId: landBranchId }
         : {}),
     },
   });

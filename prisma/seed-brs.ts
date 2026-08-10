@@ -47,19 +47,19 @@ export async function seedBrsDemoData(
     brandRecords.set(brandName, { id: brand.id, code: brand.code ?? code });
   }
 
-  const categoryRecords = new Map<string, string>();
-  async function getCategoryId(brandName: string, series: string) {
+  const seriesRecords = new Map<string, string>();
+  async function getSeriesId(brandName: string, series: string) {
     const key = `${brandName}:${series}`;
-    if (categoryRecords.has(key)) return categoryRecords.get(key)!;
+    if (seriesRecords.has(key)) return seriesRecords.get(key)!;
 
-    const categoryName = series || "General";
-    const category = await prisma.category.upsert({
-      where: { tenantId_name: { tenantId, name: categoryName } },
-      create: { tenantId, name: categoryName },
+    const seriesName = series || "General";
+    const seriesRow = await prisma.series.upsert({
+      where: { tenantId_name: { tenantId, name: seriesName } },
+      create: { tenantId, name: seriesName },
       update: {},
     });
-    categoryRecords.set(key, category.id);
-    return category.id;
+    seriesRecords.set(key, seriesRow.id);
+    return seriesRow.id;
   }
 
   const modelIdBySku = await upsertModelsFromPlanogramRows(
@@ -67,7 +67,7 @@ export async function seedBrsDemoData(
     tenantId,
     planogramRows,
     brandRecords,
-    getCategoryId,
+    getSeriesId,
   );
 
   const mainWarehouse = await prisma.warehouse.upsert({

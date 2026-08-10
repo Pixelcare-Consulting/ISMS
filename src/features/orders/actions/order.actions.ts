@@ -218,17 +218,16 @@ export async function listModelsForOrderAction(
 
 export async function checkOrderWindowAction(
   branchId: string,
-  orderType?: BranchOrderType,
+  orderType: BranchOrderType,
 ) {
-  const session = orderType
-    ? await requireOrderTypePermission(orderType, "create")
-    : await requireAnyPermission(anyOrderTypePermissions("create"));
+  const session = await requireOrderTypePermission(orderType, "create");
   const [policy, ctx] = await Promise.all([
     orderingPolicyService.getPolicy(session.user.tenantId),
     branchRepository.findScheduleContext(session.user.tenantId, branchId),
   ]);
   const reason = checkOrderingAllowed({
     action: "create",
+    orderType,
     policy,
     branchName: ctx?.name,
     schedule: ctx?.deliveryScheduleConfig

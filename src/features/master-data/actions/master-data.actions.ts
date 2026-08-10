@@ -15,13 +15,13 @@ function invalidateModelsCache(tenantId: string) {
 }
 
 const brandSchema = z.object({ name: z.string().min(1), code: z.string().optional() });
-const categorySchema = z.object({
+const seriesSchema = z.object({
   name: z.string().min(1),
   code: z.string().optional(),
 });
 const modelSchema = z.object({
   brandId: z.string().optional(),
-  categoryId: z.string().optional(),
+  seriesId: z.string().optional(),
   featureId: z.string().optional(),
   resolutionId: z.string().optional(),
   actualSizeId: z.string().optional(),
@@ -40,6 +40,8 @@ const priceListSchema = z.object({
 function revalidateMasterData() {
   revalidatePath("/settings/master-data/brands");
   revalidatePath("/settings/master-data/models");
+  revalidatePath("/settings/master-data/series");
+  revalidatePath("/settings/master-data/categories");
   revalidatePath("/settings/master-data/price-lists");
 }
 
@@ -48,9 +50,9 @@ export async function listBrandsAction() {
   return masterDataRepository.listBrands(session.user.tenantId);
 }
 
-export async function listCategoriesAction() {
+export async function listSeriesAction() {
   const session = await requirePermission("master_data.manage");
-  return masterDataRepository.listCategories(session.user.tenantId);
+  return masterDataRepository.listSeries(session.user.tenantId);
 }
 
 export async function listModelsAction() {
@@ -72,19 +74,19 @@ export async function createBrandAction(input: unknown) {
   }
 }
 
-export async function createCategoryAction(input: unknown) {
+export async function createSeriesAction(input: unknown) {
   const session = await requirePermission("master_data.manage");
-  const parsed = categorySchema.safeParse(input);
+  const parsed = seriesSchema.safeParse(input);
   if (!parsed.success) return { error: "Invalid input" };
   try {
-    const category = await masterDataRepository.createCategory(
+    const series = await masterDataRepository.createSeries(
       session.user.tenantId,
       parsed.data,
     );
     revalidateMasterData();
-    return { success: true as const, category };
+    return { success: true as const, series };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "Failed to create category" };
+    return { error: e instanceof Error ? e.message : "Failed to create series" };
   }
 }
 

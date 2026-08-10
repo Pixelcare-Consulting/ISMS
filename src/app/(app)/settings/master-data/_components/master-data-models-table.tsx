@@ -2,17 +2,18 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
-import { Pencil, Plus } from "lucide-react";
+import { Pencil, Plus, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import {
   createModelAction,
   listBrandsAction,
-  listCategoriesAction,
+  listSeriesAction,
   listModelFormLookupsAction,
   updateModelStatusAction,
 } from "@/features/master-data/actions/master-data.actions";
 import type { ClientModelRow } from "@/features/master-data/types/client-model";
+import { ImportModelsDialog } from "@/app/(app)/settings/master-data/_components/import-models-dialog";
 import { ModelPriceSheet } from "@/app/(app)/settings/master-data/_components/model-price-sheet";
 import {
   DataTableEmptyState,
@@ -65,8 +66,9 @@ export function MasterDataModelsTable({
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
   const [addOpen, setAddOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [brandId, setBrandId] = useState("");
-  const [categoryId, setCategoryId] = useState("");
+  const [seriesId, setSeriesId] = useState("");
   const [featureId, setFeatureId] = useState("");
   const [resolutionId, setResolutionId] = useState("");
   const [actualSizeId, setActualSizeId] = useState("");
@@ -74,7 +76,7 @@ export function MasterDataModelsTable({
   const [name, setName] = useState("");
   const [options, setOptions] = useState<{
     brands: { id: string; name: string }[];
-    categories: { id: string; name: string }[];
+    series: { id: string; name: string }[];
     features: { id: string; name: string }[];
     resolutions: { id: string; name: string }[];
     actualSizes: { id: string; name: string }[];
@@ -96,7 +98,7 @@ export function MasterDataModelsTable({
           row.skuCode,
           row.name,
           row.brand?.name ?? "",
-          row.category?.name ?? "",
+          row.series?.name ?? "",
           row.status,
         ]),
       ),
@@ -109,7 +111,7 @@ export function MasterDataModelsTable({
         rows.map((row) => row.skuCode),
         rows.map((row) => row.name),
         rows.map((row) => row.brand?.name),
-        rows.map((row) => row.category?.name),
+        rows.map((row) => row.series?.name),
         rows.map((row) => row.status),
       ),
     [rows],
@@ -120,7 +122,7 @@ export function MasterDataModelsTable({
     sku: (m) => m.skuCode,
     name: (m) => m.name,
     brand: (m) => m.brand?.name,
-    category: (m) => m.category?.name,
+    series: (m) => m.series?.name,
     srp: (m) => m.effectivePrice,
     status: (m) => m.status,
   });
@@ -139,21 +141,21 @@ export function MasterDataModelsTable({
 
   async function loadOptions() {
     if (options) return options;
-    const [brands, categories, lookups] = await Promise.all([
+    const [brands, series, lookups] = await Promise.all([
       listBrandsAction(),
-      listCategoriesAction(),
+      listSeriesAction(),
       listModelFormLookupsAction(),
     ]);
     const next = {
       brands,
-      categories,
+      series,
       features: lookups.features,
       resolutions: lookups.resolutions,
       actualSizes: lookups.actualSizes,
     };
     setOptions(next);
     if (brands[0]) setBrandId(brands[0].id);
-    if (categories[0]) setCategoryId(categories[0].id);
+    if (series[0]) setSeriesId(series[0].id);
     return next;
   }
 
@@ -165,8 +167,8 @@ export function MasterDataModelsTable({
     setName("");
     if (options?.brands[0]) setBrandId(options.brands[0].id);
     else setBrandId("");
-    if (options?.categories[0]) setCategoryId(options.categories[0].id);
-    else setCategoryId("");
+    if (options?.series[0]) setSeriesId(options.series[0].id);
+    else setSeriesId("");
   }
 
   function onAddOpenChange(open: boolean) {
@@ -184,7 +186,7 @@ export function MasterDataModelsTable({
       const loaded = options ?? (await loadOptions());
       const result = await createModelAction({
         brandId,
-        categoryId,
+        seriesId,
         featureId: featureId || undefined,
         resolutionId: resolutionId || undefined,
         actualSizeId: actualSizeId || undefined,
@@ -198,9 +200,7 @@ export function MasterDataModelsTable({
       toast.success("Model added");
       if (result.model) {
         const selectedBrand = loaded?.brands.find((brand) => brand.id === brandId);
-        const selectedCategory = loaded?.categories.find(
-          (category) => category.id === categoryId,
-        );
+        const selectedSeries = loaded?.series.find((row) => row.id === seriesId);
         setOptimisticRows((currentRows) => [
           {
             id: result.model.id,
@@ -210,7 +210,7 @@ export function MasterDataModelsTable({
             effectivePrice: null,
             cbm: null,
             brand: selectedBrand ? { name: selectedBrand.name } : null,
-            category: selectedCategory ? { name: selectedCategory.name } : null,
+            series: selectedSeries ? { name: selectedSeries.name } : null,
             priceLists: [],
           },
           ...currentRows,
@@ -226,6 +226,15 @@ export function MasterDataModelsTable({
       {rows.length === 0 ? (
         <div className="space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setImporting(true)}
+            >
+              <Upload className="size-3.5" />
+              Import
+            </Button>
             <Button type="button" size="sm" onClick={() => onAddOpenChange(true)}>
               <Plus className="size-3.5" />
               Add model
@@ -252,6 +261,15 @@ export function MasterDataModelsTable({
                 onClear={selection.clearSelection}
                 size="sm"
               />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setImporting(true)}
+              >
+                <Upload className="size-3.5" />
+                Import
+              </Button>
               <Button type="button" size="sm" onClick={() => onAddOpenChange(true)}>
                 <Plus className="size-3.5" />
                 Add model
@@ -279,7 +297,7 @@ export function MasterDataModelsTable({
                   <GlobalTableHead {...sort.sortProps("sku")}>SKU</GlobalTableHead>
                   <GlobalTableHead {...sort.sortProps("name")}>Name</GlobalTableHead>
                   <GlobalTableHead {...sort.sortProps("brand")}>Brand</GlobalTableHead>
-                  <GlobalTableHead {...sort.sortProps("category")}>Category</GlobalTableHead>
+                  <GlobalTableHead {...sort.sortProps("series")}>Series</GlobalTableHead>
                   <GlobalTableHead
                     className="text-right"
                     {...sort.sortProps("srp")}
@@ -311,7 +329,7 @@ export function MasterDataModelsTable({
                       <TableCell className="font-mono text-sm">{m.skuCode}</TableCell>
                       <TableCell className="font-medium">{m.name}</TableCell>
                       <TableCell>{m.brand?.name ?? "—"}</TableCell>
-                      <TableCell>{m.category?.name ?? "—"}</TableCell>
+                      <TableCell>{m.series?.name ?? "—"}</TableCell>
                       <TableCell className="text-right tabular-nums">
                         <div className="flex items-center justify-end gap-1.5">
                           {m.effectivePrice != null ? (
@@ -361,7 +379,7 @@ export function MasterDataModelsTable({
           <SheetHeader className="border-b border-border/60 px-4 py-4 text-left">
             <SheetTitle>Add model</SheetTitle>
             <SheetDescription>
-              Create a product model with brand, category, and optional lookups.
+              Create a product model with brand, series, and optional lookups.
             </SheetDescription>
           </SheetHeader>
           <form onSubmit={handleCreate} className="flex min-h-0 flex-1 flex-col">
@@ -380,16 +398,16 @@ export function MasterDataModelsTable({
                 disabled={pending}
               />
               <SearchableSelect
-                label="Category"
-                id="model-category"
-                options={(options?.categories ?? []).map((c) => ({
+                label="Series"
+                id="model-series"
+                options={(options?.series ?? []).map((c) => ({
                   id: c.id,
                   label: c.name,
                 }))}
-                value={categoryId}
-                onChange={setCategoryId}
-                placeholder="Select category…"
-                searchPlaceholder="Search categories…"
+                value={seriesId}
+                onChange={setSeriesId}
+                placeholder="Select series…"
+                searchPlaceholder="Search series…"
                 disabled={pending}
               />
               <SearchableSelect
@@ -461,7 +479,7 @@ export function MasterDataModelsTable({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={pending || !brandId || !categoryId || !skuCode || !name}>
+              <Button type="submit" disabled={pending || !brandId || !seriesId || !skuCode || !name}>
                 Add model
               </Button>
             </SheetFooter>
@@ -479,6 +497,8 @@ export function MasterDataModelsTable({
           packageTypes={packageTypes}
         />
       ) : null}
+
+      <ImportModelsDialog open={importing} onOpenChange={setImporting} />
     </div>
   );
 }
@@ -514,7 +534,7 @@ function ModelStatusSelect({
 
   return (
     <SearchableSelect
-      className="min-w-[7rem] capitalize"
+      className="min-w-28 capitalize"
       options={SKU_STATUSES.map((s) => ({
         id: s,
         label: s,

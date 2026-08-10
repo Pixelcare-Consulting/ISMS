@@ -88,7 +88,7 @@ export const planogramService = {
           status: string;
           srp: { toNumber?: () => number } | null;
           brand: { name: string } | null;
-          category: { name: string } | null;
+          series: { name: string } | null;
         };
       }) => ({
         id: entry.id,
@@ -107,7 +107,7 @@ export const planogramService = {
           name: entry.model.name,
           status: entry.model.status,
           srp: formatSrp(entry.model.srp),
-          series: entry.model.category?.name ?? null,
+          series: entry.model.series?.name ?? null,
           brand: entry.model.brand,
         },
       }),

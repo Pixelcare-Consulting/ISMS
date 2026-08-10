@@ -55,7 +55,7 @@ export default async function SerialNumberLogsPage({
     <div className="space-y-6">
       <PageHeader
         title="Serial Number Logs"
-        description="Read-only activity feed of every serialized unit — registered, transferred, sold, pulled out, counted, and status changes."
+        description="Read-only activity feed of every serialized unit — registered, transferred, sold, Official Sales (ADD / DEL / WHSE_ADD), pulled out, counted, and status changes."
         sticky={false}
       />
       <SerialActivityTable

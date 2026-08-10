@@ -2,15 +2,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { LayoutGrid, Upload } from "lucide-react";
 import { toast } from "sonner";
 
-import {
-  deleteBranchAction,
-  syncBranchesFromSapAction,
-} from "@/features/branches/actions/branch.actions";
-import { SapSyncButton } from "@/features/sap/components/sap-sync-button";
+import { deleteBranchAction } from "@/features/branches/actions/branch.actions";
 import { CreateBranchDialog } from "@/app/(app)/settings/branches/_components/create-branch-dialog";
 import { EditBranchDialog } from "@/app/(app)/settings/branches/_components/edit-branch-dialog";
 import { ImportBranchesDialog } from "@/app/(app)/settings/branches/_components/import-branches-dialog";
@@ -65,15 +61,18 @@ interface BranchRow {
 export function BranchesTable({ branches }: { branches: BranchRow[] }) {
   const router = useRouter();
   const [rows, setRows] = useState(branches);
+  const [prevBranches, setPrevBranches] = useState(branches);
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<BranchRow | null>(null);
   const [deleting, setDeleting] = useState<BranchRow | null>(null);
   const [importing, setImporting] = useState(false);
   const [pending, startTransition] = useTransition();
 
-  useEffect(() => {
+  // Sync local optimistic rows when server props change (render-time, not effect).
+  if (branches !== prevBranches) {
+    setPrevBranches(branches);
     setRows(branches);
-  }, [branches]);
+  }
 
   const filtered = useMemo(
     () =>
@@ -148,11 +147,11 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
         }
         toolbarActions={
           <>
-              <SapSyncButton
+              {/* DO NOT DELETE THIS BUTTON - IT IS USED FOR SAP SYNCING <SapSyncButton
                 syncKey="branch"
                 noun={{ one: "branch", many: "branches" }}
                 onSync={syncBranchesFromSapAction}
-              />
+              /> */}
               <Button variant="outline" size="sm" onClick={() => setImporting(true)}>
                 <Upload className="mr-1 size-4" />
                 Import

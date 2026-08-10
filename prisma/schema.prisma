@@ -150,6 +150,7 @@ model Tenant {
   policies    Policy[]
 
   brands              Brand[]
+  series              Series[]
   categories          Category[]
   models              ProductModel[]
   areas               Area[]
@@ -524,7 +525,7 @@ model Brand {
   @@map("brands")
 }
 
-model Category {
+model Series {
   id           String             @id @default(cuid())
   tenantId     String             @map("tenant_id")
   code         String?
@@ -538,6 +539,22 @@ model Category {
 
   @@unique([tenantId, name])
   @@index([tenantId])
+  @@map("series")
+}
+
+model Category {
+  id           String             @id @default(cuid())
+  tenantId     String             @map("tenant_id")
+  code         String?
+  name         String
+  recordStatus LookupRecordStatus @default(active) @map("record_status")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
   @@map("categories")
 }
 
@@ -545,7 +562,7 @@ model ProductModel {
   id           String    @id @default(cuid())
   tenantId     String    @map("tenant_id")
   brandId      String?   @map("brand_id")
-  categoryId   String?   @map("category_id")
+  seriesId     String?   @map("series_id")
   featureId    String?   @map("feature_id")
   resolutionId String?   @map("resolution_id")
   actualSizeId String?   @map("actual_size_id")
@@ -560,7 +577,7 @@ model ProductModel {
 
   tenant             Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   brand              Brand?               @relation(fields: [brandId], references: [id], onDelete: SetNull)
-  category           Category?            @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  series             Series?              @relation(fields: [seriesId], references: [id], onDelete: SetNull)
   feature            Feature?             @relation(fields: [featureId], references: [id], onDelete: SetNull)
   resolution         Resolution?          @relation(fields: [resolutionId], references: [id], onDelete: SetNull)
   actualSize         ActualSize?          @relation(fields: [actualSizeId], references: [id], onDelete: SetNull)
@@ -1170,6 +1187,8 @@ model OrderingPolicy {
   dailyLockStartMinutes  Int?     @map("daily_lock_start_minutes")
   /// Minutes from midnight (0–1439), Asia/Manila. Exclusive end of block window.
   dailyLockEndMinutes    Int?     @map("daily_lock_end_minutes")
+  /// Order modules company weekday + daily time locks apply to.
+  lockAppliesToOrderTypes BranchOrderType[] @default([manual]) @map("lock_applies_to_order_types")
   createdAt              DateTime @default(now()) @map("created_at")
   updatedAt              DateTime @updatedAt @map("updated_at")
 

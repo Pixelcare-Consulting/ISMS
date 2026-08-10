@@ -20,6 +20,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { Switch } from "@/components/ui/switch";
 import {
   BranchScheduleFields,
   EMPTY_SCHEDULE,
@@ -45,7 +46,9 @@ export function CreateBranchDialog({ onCreated }: CreateBranchDialogProps) {
   const [options, setOptions] = useState<FormOptions | null>(null);
   const [alternateIds, setAlternateIds] = useState<string[]>([]);
   const [primaryWarehouseId, setPrimaryWarehouseId] = useState("");
+  const [status, setStatus] = useState<"active" | "inactive">("active");
   const [dealerId, setDealerId] = useState("");
+  const [alternateFilterDealerId, setAlternateFilterDealerId] = useState("");
   const [branchAreaId, setBranchAreaId] = useState("");
   const [areaId, setAreaId] = useState("");
   const [regionId, setRegionId] = useState("");
@@ -54,12 +57,20 @@ export function CreateBranchDialog({ onCreated }: CreateBranchDialogProps) {
 
   const alternateBranchOptions = useMemo(() => {
     if (!options) return [];
-    return options.branches.map((b) => ({
-      id: b.id,
-      label: `${b.sapCode} — ${b.name}`,
-      description: b.name,
-    }));
-  }, [options]);
+    const selected = new Set(alternateIds);
+    return options.branches
+      .filter(
+        (b) =>
+          !alternateFilterDealerId ||
+          b.dealerId === alternateFilterDealerId ||
+          selected.has(b.id),
+      )
+      .map((b) => ({
+        id: b.id,
+        label: `${b.sapCode} — ${b.name}`,
+        description: b.name,
+      }));
+  }, [options, alternateFilterDealerId, alternateIds]);
 
   const dealerOptions = useMemo(
     () =>
@@ -69,6 +80,22 @@ export function CreateBranchDialog({ onCreated }: CreateBranchDialogProps) {
       })),
     [options],
   );
+
+  function onAlternateFilterDealerChange(nextDealerId: string) {
+    setAlternateFilterDealerId(nextDealerId);
+    if (!nextDealerId) {
+      // Clearing the filter restores the empty starting selection.
+      setAlternateIds([]);
+      return;
+    }
+    if (!options) return;
+    // Replace (do not merge) so switching dealers clears the previous auto-select.
+    setAlternateIds(
+      options.branches
+        .filter((b) => b.dealerId === nextDealerId)
+        .map((b) => b.id),
+    );
+  }
 
   const primaryWarehouseOptions = useMemo(
     () =>
@@ -124,7 +151,9 @@ export function CreateBranchDialog({ onCreated }: CreateBranchDialogProps) {
   function resetSelects() {
     setAlternateIds([]);
     setPrimaryWarehouseId("");
+    setStatus("active");
     setDealerId("");
+    setAlternateFilterDealerId("");
     setBranchAreaId("");
     setAreaId("");
     setRegionId("");
@@ -139,7 +168,7 @@ export function CreateBranchDialog({ onCreated }: CreateBranchDialogProps) {
       const result = await createBranchAction({
         sapCode: String(fd.get("sapCode") ?? ""),
         name: String(fd.get("name") ?? ""),
-        status: "active",
+        status,
         areaId: areaId || null,
         branchAreaId: branchAreaId || null,
         dealerId: dealerId || null,
@@ -186,18 +215,35 @@ export function CreateBranchDialog({ onCreated }: CreateBranchDialogProps) {
           if (!next) resetSelects();
         }}
       >
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Add branch</DialogTitle>
           </DialogHeader>
           <form onSubmit={onSubmit} className="space-y-3">
-            <div className="space-y-2">
-              <Label htmlFor="sapCode">SAP code</Label>
-              <Input id="sapCode" name="sapCode" required />
+            <div className="grid grid-cols-[minmax(0,9rem)_1fr] gap-2">
+              <div className="space-y-2">
+                <Label htmlFor="sapCode">SAP code</Label>
+                <Input id="sapCode" name="sapCode" required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="name">Name</Label>
+                <Input id="name" name="name" required />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="name">Name</Label>
-              <Input id="name" name="name" required />
+            <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
+              <div className="space-y-0.5">
+                <Label htmlFor="create-status">Status</Label>
+                <p className="text-xs text-muted-foreground">
+                  {status === "active" ? "Active" : "Inactive"}
+                </p>
+              </div>
+              <Switch
+                id="create-status"
+                checked={status === "active"}
+                onCheckedChange={(checked) => setStatus(checked ? "active" : "inactive")}
+                disabled={pending}
+                aria-label="Branch status"
+              />
             </div>
             {options ? (
               <>
@@ -263,6 +309,16 @@ export function CreateBranchDialog({ onCreated }: CreateBranchDialogProps) {
                     disabled={pending}
                   />
                 </div>
+                <SearchableSelect
+                  label="Filter by dealer"
+                  options={dealerOptions}
+                  value={alternateFilterDealerId}
+                  onChange={onAlternateFilterDealerChange}
+                  allowClear
+                  placeholder="—"
+                  searchPlaceholder="Search dealers…"
+                  disabled={pending}
+                />
                 <SearchableMultiSelect
                   label="Alternate branches"
                   options={alternateBranchOptions}
@@ -271,7 +327,7 @@ export function CreateBranchDialog({ onCreated }: CreateBranchDialogProps) {
                   placeholder="Search and select branches…"
                   searchPlaceholder="Filter by code or name…"
                   emptyMessage="No branches available."
-                  hint="Other active branches that can fulfill for this location."
+                  hint="Uses Filter by dealer to list that dealer’s branches and select them (same idea as AOR)."
                   disabled={pending}
                 />
                 <BranchScheduleFields
