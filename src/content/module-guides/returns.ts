@@ -15,7 +15,11 @@ export const RETURNS_MODULE_GUIDE: ModuleGuideContent = {
     },
     {
       label:
-        "Approvals — combined queue for returns waiting on CS, TL, or stock restore",
+        "Approvals — combined queue for returns waiting on CS, TL, or stock restore (needs evaluate, approve, or complete access)",
+    },
+    {
+      label:
+        "Roles can grant Branch Returns, Service Returns, and Approvals separately — or View all Returns tabs for full access",
     },
     {
       label:

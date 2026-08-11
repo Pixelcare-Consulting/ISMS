@@ -13,6 +13,8 @@ export interface PermissionActionDef {
 /** Ordered vocabulary — standard CRUD-ish first, then domain extras. */
 export const PERMISSION_ACTION_ORDER = [
   "view",
+  "branch.view",
+  "service.view",
   "create",
   "update",
   "delete",
@@ -40,6 +42,16 @@ export const PERMISSION_ACTIONS: Record<
     value: "view",
     label: "View",
     description: "Read / list access",
+  },
+  "branch.view": {
+    value: "branch.view",
+    label: "Branch",
+    description: "View the Branch Returns tab",
+  },
+  "service.view": {
+    value: "service.view",
+    label: "Service",
+    description: "View the Service Returns tab",
   },
   create: {
     value: "create",

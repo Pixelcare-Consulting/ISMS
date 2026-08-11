@@ -152,6 +152,8 @@ export const appNavigation: NavEntry[] = [
     icon: ArrowLeftRight,
     anyPermissions: [
       "returns.view",
+      "returns.branch.view",
+      "returns.service.view",
       "returns.request",
       "returns.evaluate",
       "returns.approve",

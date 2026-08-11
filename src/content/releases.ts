@@ -54,11 +54,11 @@ export const RELEASES: ReleaseNote[] = [
   {
     version: "0.28.0",
     date: "2026-08-11",
-    releasedAt: "2026-08-11T14:45:00+08:00",
+    releasedAt: "2026-08-11T14:55:00+08:00",
     title: "Returns / Replacement module & tenant Permissions access",
     highlights: [
       "Returns / Replacement is its own menu next to Sales, with Branch Returns, Service Returns, and Approvals",
-      "Roles can grant view, request, evaluate, approve, and complete under Returns — older Sales and Service Center return permissions still work",
+      "Roles can grant Branch Returns, Service Returns, and Approvals separately — or View all Returns tabs for full access; older Sales and Service Center return permissions still work",
       "Tenant Super Admins can open Permissions under Access & Security, browse the access catalog, and manage who can do what via Roles",
       "Super Admins can see built-in system roles on Roles and adjust what each one can access — renaming and deleting those roles stay locked",
       "Official Sales ADD fills model price from the price list for the model, package, and sale date — including when an existing sold line is marked Official Sold — and uses the latest price when no period matches that date",
@@ -73,7 +73,7 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "feature",
         description:
-          "Roles can set Returns permissions for view, request, evaluate, approve, and complete; existing Sales and Service Center return permissions continue to work",
+          "Roles can grant Branch Returns, Service Returns, and Approvals access separately (Approvals follows evaluate / approve / complete); View all Returns tabs still opens everything; existing Sales and Service Center return permissions continue to work",
       },
       {
         type: "feature",

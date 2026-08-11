@@ -32,16 +32,16 @@ import {
   SALES_RETURN_COMPLETE,
   SALES_RETURN_EVALUATE,
   SALES_RETURN_REQUEST,
-  SALES_RETURN_VIEW,
   SALES_UPDATE,
   salesReturnRejectPermissions,
 } from "@/features/sales/constants/sales-permissions";
 import {
   RETURNS_APPROVE,
+  RETURNS_APPROVALS_VIEW_PERMISSIONS,
+  RETURNS_BRANCH_VIEW_PERMISSIONS,
   RETURNS_COMPLETE,
   RETURNS_EVALUATE,
   RETURNS_REQUEST,
-  RETURNS_VIEW,
   returnsRejectPermissions,
 } from "@/features/returns/constants/returns-permissions";
 import { capturesDeliveryReceipt } from "@/features/sales/utils/delivery-method";
@@ -467,7 +467,8 @@ export async function listSalesAction(input?: {
 
 /**
  * Branch returns list: one row per BranchReturnRequest with ATR / return status badges.
- * Accepts `returns.view` or legacy `sales.return.view`.
+ * Branch tab: `returns.branch.view` / umbrella / legacy.
+ * Approvals queue (`statusIn`): evaluate / approve / complete (no separate approvals.view).
  */
 export async function listSalesReturnsAction(input?: {
   page?: number;
@@ -476,14 +477,12 @@ export async function listSalesReturnsAction(input?: {
   sortDir?: string;
   statusIn?: Array<"pending_cs" | "pending_tl" | "approved" | "rejected" | "completed">;
 }) {
-  const session = await requireAnyPermission([
-    RETURNS_VIEW,
-    SALES_RETURN_VIEW,
-    "service_centers.return.request",
-    "service_centers.return.evaluate",
-    "service_centers.return.approve",
-    "service_centers.return.complete",
-  ]);
+  const forApprovalsQueue = Boolean(input?.statusIn?.length);
+  const session = await requireAnyPermission(
+    forApprovalsQueue
+      ? [...RETURNS_APPROVALS_VIEW_PERMISSIONS]
+      : [...RETURNS_BRANCH_VIEW_PERMISSIONS],
+  );
   const [result, salesAtrCodes] = await Promise.all([
     salesRepository.listReturnRequestsForTenant(
       session.user.tenantId,

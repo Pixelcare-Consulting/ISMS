@@ -47,6 +47,8 @@ export const SALES_ACTION_CAPABILITIES = {
   canViewSalesList: [SALES_VIEW, SALES_CREATE, SALES_UPDATE],
   canViewReturns: [
     "returns.view",
+    "returns.branch.view",
+    "returns.service.view",
     SALES_RETURN_VIEW,
     "service_centers.return.request",
     "service_centers.return.evaluate",
