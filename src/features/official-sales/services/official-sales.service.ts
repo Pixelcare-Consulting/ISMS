@@ -104,6 +104,18 @@ function formatRowList(rowNumbers: number[]): string {
   return rest > 0 ? `${list} (+${rest} more)` : list;
 }
 
+/** Consolidate failed serials for process toast / result (per-row status kept separately). */
+function formatFailedSerialSummary(
+  failures: { serial: string; error: string }[],
+): string {
+  const shown = failures.slice(0, 20);
+  const rest = failures.length - shown.length;
+  const list = shown
+    .map((entry) => `${entry.serial} (${entry.error})`)
+    .join("; ");
+  return rest > 0 ? `${list}; (+${rest} more)` : list;
+}
+
 function parseUploadBuffer(buffer: ArrayBuffer | Buffer): OfficialSalesRowCreateInput[] {
   const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
   const sheetName = workbook.SheetNames[0];
@@ -300,7 +312,14 @@ export const officialSalesService = {
 
   async processRows(tenantId: string, userId: string, rowIds?: string[]) {
     const rows = await officialSalesRepository.findPendingRows(tenantId, rowIds);
-    if (rows.length === 0) return { processed: 0, successCount: 0, errorCount: 0 };
+    if (rows.length === 0) {
+      return {
+        processed: 0,
+        successCount: 0,
+        errorCount: 0,
+        message: "No pending rows to process",
+      };
+    }
 
     const [stkCodeId, sldCodeId, rsvCodeId, ofsCodeId] = await Promise.all([
       reasonStatusService.requireCodeId(tenantId, "inventory_system", "STK"),
@@ -312,6 +331,7 @@ export const officialSalesService = {
     const codes = { stkCodeId, sldCodeId, rsvCodeId, ofsCodeId };
     let success = 0;
     let error = 0;
+    const failures: { serial: string; error: string }[] = [];
 
     for (const row of rows) {
       try {
@@ -322,10 +342,13 @@ export const officialSalesService = {
         });
         success += 1;
       } catch (e) {
+        const errorMessage =
+          e instanceof Error ? e.message : "Processing failed";
         await officialSalesRepository.updateRowResult(row.id, {
           status: "error",
-          result: e instanceof Error ? e.message : "Processing failed",
+          result: errorMessage,
         });
+        failures.push({ serial: row.serial, error: errorMessage });
         error += 1;
       }
     }
@@ -336,9 +359,27 @@ export const officialSalesService = {
       action: "official_sales.processed",
       entityType: "OfficialSalesImportRow",
       entityId: tenantId,
-      metadata: { processed: rows.length, success, error },
+      metadata: {
+        processed: rows.length,
+        success,
+        error,
+        ...(failures.length > 0
+          ? { failedSerials: failures.map((f) => f.serial) }
+          : {}),
+      },
     });
 
-    return { processed: rows.length, successCount: success, errorCount: error };
+    const summary = `Processed ${rows.length}: ${success} ok, ${error} failed`;
+    const message =
+      failures.length > 0
+        ? `${summary}. Failed: ${formatFailedSerialSummary(failures)}`
+        : summary;
+
+    return {
+      processed: rows.length,
+      successCount: success,
+      errorCount: error,
+      message,
+    };
   },
 };

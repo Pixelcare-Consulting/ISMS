@@ -2,7 +2,7 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.23.5`
+**Current version:** `0.25.2`
 
 ## Stack
 
@@ -13,7 +13,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | Area | Features |
 |------|----------|
 | **Auth** | Email/password (Better Auth), tenant-scoped sessions, demo seed users |
-| **Dashboard** | Role-aware activity cards (top 4); Inventory summary + Planning & alerts; This month (icons) beside Order pipeline; compliance overview when no ops access; active announcement banner |
+| **Dashboard** | Role-aware activity cards (top 4); Inventory summary + Planning & alerts; This month (icons) beside Order pipeline; **Sales overview** (month KPIs, status mix, ATR/return pipeline, top branches/models) when you can access Sales & ATR; compliance overview when no ops access; active announcement banner |
 | **Announcements** | Tenant posts (title, body, publish/expiry); list + CRUD (`/announcements`) |
 | **Competitors** | Market observations with master Competitor + Competitor brand/model lookups, AOR-bound branch, optional promotion; KPIs + CRUD (`/competitors`) |
 | **Settings** | Company, users, departments, roles, branches, warehouses, dealers, service centers, AORs (branches / warehouses / service centers assign + sync), master data (incl. Series / Categories, Competitors / Competitor brands), status codes (per-module tabs + badge colors); collapsible Module guides on complex settings/ops pages |
@@ -23,11 +23,11 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | **Inventory** | Serialized stock (STK on Stock units), AOR-scoped list, series QTY/VALUE + DR#/date/aging, **physical stock count / P-Count** (`/inventory/stock-count`) |
 | **Orders** | Nav group: Manual / Special / Auto replenish (`/orders/manual` etc.); per-type `orders.manual`, `orders.special`, `orders.auto_replenish` with view/create/approve; PS → TL → SP; SO#, processed orders, delivery-due auto-reschedule |
 | **Logistics** | Deliveries (accept/reject), transfers, pull-outs with SN movement; gated by `logistics.view` / `create` / `manage` |
-| **Sales** | Encode at `/sales/new` (CTA from `/sales`); PS auto-branch; TL `sales.create` + branch picker; package detail modal (qty → N sets), reserved (RSV) sales, **BranchReturnRequest** ATR workflow gated by `sales.return.*` (Roles UI) |
+| **Sales** | Encode at `/sales/new` (CTA from `/sales`); PS auto-branch; TL `sales.create` + branch picker; package detail modal (qty → N sets), reserved (RSV) sales; `/sales` **Sales \| Returns** tabs — Returns needs `sales.return.view` (ATR workflow stays on `sales.return.request` / evaluate / approve / complete; request still from Sale details) |
 | **Service** | Service center ops (AOR-scoped): inventory + manual stock-in, sales + ATR (`ServiceCenterReturnRequest`), orders, deliveries (backload → STK), pull-outs under `/service-centers/*` |
-| **Reports** | Processed orders, daily stock, transfers, sales CSV (`/reports/sales`), **P-Count** (`/reports/pcount`), **Official Sales** dealer-template staging — Action Key process (`ADD` / `WHSE_ADD` / `DEL` → Official Sold; DEL restores STK at Branch Sold; ADD maps package/brand/sale amount + PriceList model price), progress popup, View details, and ? quick guide (`/reports/official-sales`) |
+| **Reports** | Processed orders, daily stock, transfers, sales CSV (`/reports/sales`), **P-Count** (`/reports/pcount`), **Official Sales** dealer-template staging — Action Key process (`ADD` / `WHSE_ADD` / `DEL` → Official Sold; already-OFS ADD is idempotent; DEL restores STK at Branch Sold; stock adjustments appear in Serial Number Logs; process summarizes failed serials), progress popup, View details, and ? quick guide (`/reports/official-sales`) |
 | **SAP** | Outbound job queue + mock processor; **Service Layer** settings (encrypted credentials) + in-process session client with status UI (Connect/Logout) and refresh-on-401 |
-| **RBAC** | ISO + BRS roles (PS, TL, SP/SPA, Logistics, AE); shared action vocabulary + module allowlists; Roles simple checklist + module×action matrix; Sales ATR buttons use `sales.return.*`; Logistics uses `logistics.view` / `create` / `manage`; Service uses `service_centers.*` ops perms |
+| **RBAC** | ISO + BRS roles (PS, TL, SP/SPA, Logistics, AE); shared action vocabulary + module allowlists; Roles simple checklist + module×action matrix; Sales Returns tab uses `sales.return.view`; ATR buttons use `sales.return.request` / evaluate / approve / complete; Logistics uses `logistics.view` / `create` / `manage`; Service uses `service_centers.*` ops perms |
 
 ### App routes
 
@@ -47,7 +47,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/planning/suggested-orders` | `forecast.manage` / `planogram.manage` |
 | `/logistics/deliveries`, `/transfers`, `/pickups` | `logistics.view` / `create` / `manage` (legacy `orders.*` aliases for list) |
 | `/operations` | `inventory.view` (combined ops view) |
-| `/sales` | `sales.view` / `sales.create` / any `sales.return.*` (list + ATR; New transaction needs `sales.create`) |
+| `/sales` | `sales.view` / `sales.create` / `sales.return.view` / any ATR `sales.return.*` (Sales tab: view/create; Returns tab: `sales.return.view`; `?tab=returns`; New transaction needs `sales.create`) |
 | `/sales/new` | `sales.create` (multi-detail encode) |
 | `/service-centers/inventory` | `service_centers.inventory.view` (+ manual stock-in via manage/logistics) |
 | `/service-centers/sales`, `/service-centers/sales/new` | `service_centers.sales.*` / `service_centers.return.*` |
@@ -154,6 +154,7 @@ Or register at `/register` for a new tenant.
 | `pnpm run db:seed:brs` | BRS data only |
 | `pnpm run db:seed:branches` | PH regions/provinces + PSG ISMS branches for all tenants |
 | `pnpm run db:seed:psg` | PSG MODEL catalog (all tenants) + Outgoing serial stock (demo); run after `db:seed:branches` |
+| `pnpm run db:seed:warehouse-inventory` | Demo warehouse serials (SN-WHSE-001…003 on PASIG-MAIN/A1) for Official Sales WHSE_ADD; requires BRS seed first |
 | `pnpm run db:studio` | Prisma Studio |
 | `pnpm run docs:modules-matrix` | Regenerate `docs/ISMS_App_Modules_vs_Workflow.xlsx` |
 

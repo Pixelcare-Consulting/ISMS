@@ -5,7 +5,7 @@ export const DASHBOARD_PAGE_TUTORIAL: PageTutorialContent = {
   triggerLabel: "Open dashboard tutorial",
   dialogTitle: "Dashboard — quick guide",
   dialogDescription:
-    "Your home screen shows activity cards for your role, inventory mix, planning alerts, a monthly snapshot, and the order pipeline.",
+    "Your home screen shows activity cards for your role, inventory mix, planning alerts, a monthly snapshot, the order pipeline, and a Sales overview when you can access Sales & ATR.",
   helpHref: "/help",
   helpLinkLabel: "Full Help & Support portal",
   sections: [
@@ -20,6 +20,7 @@ export const DASHBOARD_PAGE_TUTORIAL: PageTutorialContent = {
         "Tap an activity card to jump to Orders, Inventory, Logistics, Sales, Planogram, or Suggested orders — only tiles you can use appear (up to four).",
         "Inventory summary shows stock mix as a chart plus status counts; Planning & alerts lists extra signals that did not fit the top four (hidden when nothing is outstanding).",
         "This month (with icons) sits beside Order pipeline — orders, sales, and in-transit counts for the current month next to workflow stages.",
+        "Sales overview (when you have Sales access) shows this month’s sales and amount, open ATR, returns in progress, sale status mix, ATR/return pipeline, and top branches and models — each card links to Sales & ATR.",
         "Compliance roles see Policies, Reports, Announcements, and Competitors when those modules are available.",
         "Read the announcement banner for tenant-wide notices.",
         "If a module is missing from the menu, ask your admin for the right role permission.",
@@ -28,7 +29,7 @@ export const DASHBOARD_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "Next steps",
       description:
-        "Use Help & Support for full workflow guides. Daily execution usually continues in Orders, Operations, or Inventory.",
+        "Use Help & Support for full workflow guides. Daily execution usually continues in Orders, Operations, Inventory, or Sales.",
     },
   ],
 };

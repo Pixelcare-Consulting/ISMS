@@ -52,6 +52,128 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.25.2",
+    date: "2026-08-11",
+    releasedAt: "2026-08-11T09:15:00+08:00",
+    title: "Returns tab access control",
+    highlights: [
+      "Who can open the Returns tab is now a separate setting from who can request, evaluate, approve, or complete a return",
+      "People with only Returns access land on Returns; people without it stay on Sales",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Roles can grant View returns so the Returns tab is visible without giving return workflow actions",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sales & ATR shows only the tabs your role allows, and opens the right one by default",
+      },
+    ],
+  },
+  {
+    version: "0.25.1",
+    date: "2026-08-11",
+    releasedAt: "2026-08-11T08:50:00+08:00",
+    title: "Demo warehouse stock for Official Sales",
+    highlights: [
+      "Demo environments now include a few warehouse serials so you can try Official Sales WHSE_ADD without waiting on a live warehouse feed",
+      "Download Template’s WHSE_ADD sample uses a real demo serial and Western Makati as Branch Sold",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Demo warehouse serials are available for Official Sales WHSE_ADD testing (after a full or warehouse seed)",
+      },
+      {
+        type: "improvement",
+        description:
+          "Official Sales template WHSE_ADD sample matches the demo warehouse serial and Makati branch",
+      },
+      {
+        type: "improvement",
+        description:
+          "Returns tab ACTIONS matches Sales — only View details; return steps stay in sale details",
+      },
+      {
+        type: "improvement",
+        description:
+          "Returns tab adds Show all columns / Fewer columns like Sales — amount, ATR, and notes when you need them",
+      },
+    ],
+  },
+  {
+    version: "0.25.0",
+    date: "2026-08-11",
+    releasedAt: "2026-08-11T08:45:00+08:00",
+    title: "Sales Returns tab",
+    highlights: [
+      "Sales & ATR now has Sales and Returns tabs so return requests have their own list",
+      "Returns shows status badges for each request in the ATR pipeline",
+      "Start a return the same way as before — from a sale’s View details",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Sales & ATR adds a Returns tab with a full ledger of return requests and status badges",
+      },
+      {
+        type: "improvement",
+        description:
+          "Return workflow steps are available from sale View details when your role allows",
+      },
+    ],
+  },
+  {
+    version: "0.24.1",
+    date: "2026-08-11",
+    releasedAt: "2026-08-11T08:30:00+08:00",
+    title: "Official Sales process reliability",
+    highlights: [
+      "Stock moves from Official Sales (warehouse pull-in and branch conflicts) show up in Serial Number Logs",
+      "When some rows fail during Process, the summary lists the failed serials and their errors",
+      "Re-processing a serial that is already Official Sold now succeeds instead of failing",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Serial Number Logs now show Official Sales stock adjustments alongside ADD, DEL, and warehouse ADD",
+      },
+      {
+        type: "improvement",
+        description:
+          "Process Official Sales summarizes failed serials in the result message while keeping each row’s own status",
+      },
+      {
+        type: "fix",
+        description:
+          "ADD on a serial that is already Official Sold is treated as a successful no-op instead of an error",
+      },
+    ],
+  },
+  {
+    version: "0.24.0",
+    date: "2026-08-07",
+    releasedAt: "2026-08-07T18:20:00+08:00",
+    title: "Sales overview on the Dashboard",
+    highlights: [
+      "People with Sales & ATR access now see a Sales overview on the Dashboard — this month’s sales and amount, open ATR, and returns in progress",
+      "Charts show sale status mix and the ATR / return pipeline; rankings highlight top branches and models for the month",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Dashboard Sales overview shows this month’s sales KPIs, sale status mix, ATR and return pipeline, and top branches and models for people who can open Sales & ATR",
+      },
+    ],
+  },
+  {
     version: "0.23.5",
     date: "2026-08-07",
     releasedAt: "2026-08-07T18:00:00+08:00",

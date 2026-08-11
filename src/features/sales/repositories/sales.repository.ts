@@ -15,6 +15,17 @@ export type SalesListSort =
   | "returnStatus";
 export type SalesListSortDir = "asc" | "desc";
 
+/** Sort keys for the Returns tab (one row per BranchReturnRequest). */
+export type SalesReturnsListSort =
+  | "transactionNo"
+  | "date"
+  | "branch"
+  | "customer"
+  | "amount"
+  | "atrStatus"
+  | "returnStatus"
+  | "createdAt";
+
 function salesDetailPrismaOrderBy(
   field: SalesListSort,
   dir: SalesListSortDir,
@@ -34,6 +45,34 @@ function salesDetailPrismaOrderBy(
       return { sale: { atrStatus: dir } };
     case "returnStatus":
       return { sale: { returnRequest: { status: dir } } };
+    default: {
+      const _exhaustive: never = field;
+      return _exhaustive;
+    }
+  }
+}
+
+function salesReturnPrismaOrderBy(
+  field: SalesReturnsListSort,
+  dir: SalesListSortDir,
+): Prisma.BranchReturnRequestOrderByWithRelationInput {
+  switch (field) {
+    case "transactionNo":
+      return { sale: { transactionNo: dir } };
+    case "date":
+      return { sale: { transactionDate: dir } };
+    case "branch":
+      return { sale: { branch: { name: dir } } };
+    case "customer":
+      return { sale: { customerName: dir } };
+    case "amount":
+      return { sale: { amount: dir } };
+    case "atrStatus":
+      return { sale: { atrStatus: dir } };
+    case "returnStatus":
+      return { status: dir };
+    case "createdAt":
+      return { createdAt: dir };
     default: {
       const _exhaustive: never = field;
       return _exhaustive;
@@ -98,6 +137,54 @@ export const salesRepository = {
         take: limit,
       }),
       prisma.branchSalesTransactionDetail.count({ where }),
+    ]);
+
+    return toPaginatedResult(items, total, page, limit);
+  },
+
+  /**
+   * One list row per branch return request (sale + return pipeline grain).
+   * Includes all statuses so the Returns tab is a full ledger.
+   */
+  async listReturnRequestsForTenant(
+    tenantId: string,
+    pagination?: { page?: number; limit?: number },
+    sort?: { field?: SalesReturnsListSort; dir?: SalesListSortDir },
+  ) {
+    const { limit, page, skip } = resolvePagination(pagination);
+    const where: Prisma.BranchReturnRequestWhereInput = { tenantId };
+    const orderBy = sort?.field
+      ? [
+          salesReturnPrismaOrderBy(sort.field, sort.dir ?? "desc"),
+          { createdAt: "desc" as const },
+        ]
+      : [{ createdAt: "desc" as const }];
+
+    const [items, total] = await Promise.all([
+      prisma.branchReturnRequest.findMany({
+        where,
+        select: {
+          id: true,
+          status: true,
+          requestNotes: true,
+          createdAt: true,
+          sale: {
+            select: {
+              id: true,
+              transactionNo: true,
+              transactionDate: true,
+              customerName: true,
+              amount: true,
+              atrStatus: true,
+              branch: { select: { id: true, name: true } },
+            },
+          },
+        },
+        orderBy,
+        skip,
+        take: limit,
+      }),
+      prisma.branchReturnRequest.count({ where }),
     ]);
 
     return toPaginatedResult(items, total, page, limit);

@@ -2,6 +2,7 @@ import type {
   DashboardAnalytics,
   DashboardKpis,
 } from "@/features/dashboard/services/dashboard-kpi.service";
+import type { DashboardSalesAnalytics } from "@/features/dashboard/services/dashboard-sales.service";
 import {
   DASHBOARD_KPI_KEYS,
   kpiKeyVisible,
@@ -39,6 +40,7 @@ export interface DashboardViewModel {
   showOrderChart: boolean;
   showPeriodSnapshot: boolean;
   showCharts: boolean;
+  showSalesSection: boolean;
   complianceCards: DashboardComplianceCard[];
   showRecentUsers: boolean;
   hasOps: boolean;
@@ -113,6 +115,7 @@ export function buildDashboardViewModel(input: {
   roleSlugs: string[] | undefined;
   kpis: DashboardKpis | null;
   analytics: DashboardAnalytics | null;
+  salesAnalytics?: DashboardSalesAnalytics | null;
 }): DashboardViewModel {
   const caps = resolveDashboardCapabilities(input.permissions);
   const { persona, label } = resolveDashboardPersona(input.roleSlugs, caps);
@@ -145,6 +148,9 @@ export function buildDashboardViewModel(input: {
         caps.showSalesThisMonth ||
         caps.showDeliveryInTransit),
   );
+  const showSalesSection = Boolean(
+    caps.showSalesSection && input.salesAnalytics,
+  );
 
   return {
     persona,
@@ -161,6 +167,7 @@ export function buildDashboardViewModel(input: {
       showOrderChart ||
       showPeriodSnapshot ||
       opsAlertKeys.length > 0,
+    showSalesSection,
     complianceCards: buildComplianceCards(caps),
     showRecentUsers: caps.showRecentUsers,
     hasOps: caps.hasOps,

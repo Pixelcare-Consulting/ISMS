@@ -12,15 +12,15 @@ export const SALES_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "What this page is for",
       description:
-        "List sales one serial line at a time (shared ID and TRN NO. when a sale has multiple units) and run ATR returns. Encode new sales on /sales/new with package detail sets, reserved (RSV) sales, and BranchReturnRequest ATR workflow.",
+        "Use the Sales tab for sale lines (shared ID and TRN NO. when a sale has multiple units) and the Returns tab for the ATR return pipeline when your role includes View returns. Encode new sales on /sales/new with package detail sets and reserved (RSV) sales.",
     },
     {
       title: "How to use it",
       bullets: [
         "Click New transaction, fill the header (stock branch shows area locations with sellable serials), then Add Detail (package qty expands into N sets with model + serial; Model price comes from the price list when available).",
-        "Status on each row uses your inventory status colors (TO FOLLOW when a serial is still pending). Open View details to edit a serial line, preview proof images or PDFs without leaving the page, or use return actions at the bottom of the details window.",
+        "On Sales, status on each row uses your inventory status colors (TO FOLLOW when a serial is still pending). Open View details to edit a serial line, preview proof, or Request return.",
+        "If you can see Returns, switch to that tab to track open and closed return requests with status badges. Use Show all columns when you need amount, ATR, or notes. Open View details for CS evaluate, TL approve, Reject, Restore stock, or Request return when your role allows — return steps are separate from View returns.",
         "Verify the details total before Save; RSV moves stock to reserved instead of sold.",
-        "Use ATR return requests from View details when product must come back through the return path.",
       ],
     },
     {

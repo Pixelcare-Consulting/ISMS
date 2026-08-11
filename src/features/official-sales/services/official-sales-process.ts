@@ -432,8 +432,11 @@ async function processWhseAdd(
         serial: row.serial,
         whseFrom,
         whseTo: soldBranch.name,
+        soldBranch: soldBranch.name,
+        transactionNo,
         notes: "OS CONFLICT / WHSE_ADD",
         action: "WHSE_ADD",
+        actionKey: "WHSE_ADD",
       },
     });
 
@@ -536,7 +539,8 @@ async function processAdd(
 
     const detailCode = detail.statusCode?.code?.toUpperCase() ?? "";
     if (detailCode === "OFS") {
-      throw new Error("ADD — already Official Sold");
+      // Idempotent success — already Official Sold (no inventory row to align).
+      return "ADD — already Official Sold";
     }
     if (detailCode !== "SLD") {
       throw new Error("Not Found with SN details");
@@ -570,7 +574,7 @@ async function processAdd(
     statusCode,
   );
 
-  // Idempotent: already OFS with matching txn
+  // Idempotent success: already OFS with matching / open OFS sale
   if (statusCode === "OFS") {
     const matched = transMatchNo
       ? await officialSalesRepository.findSaleDetailBySerialTransBranch(
@@ -586,7 +590,7 @@ async function processAdd(
           ["OFS"],
         );
     if (matched) {
-      throw new Error("ADD — already Official Sold");
+      return "ADD — already Official Sold";
     }
   }
 
@@ -636,7 +640,8 @@ async function processAdd(
         });
         return "ADD — Official Sold (inventory aligned)";
       }
-      throw new Error("ADD — already Official Sold");
+      // Idempotent success — detail already OFS; no inventory change required.
+      return "ADD — already Official Sold";
     }
 
     await prisma.$transaction(async (tx) => {
@@ -758,7 +763,8 @@ async function processAdd(
   if (duplicate) {
     const dupCode = duplicate.statusCode?.code?.toUpperCase() ?? "";
     if (dupCode === "OFS") {
-      throw new Error("ADD — already Official Sold");
+      // Idempotent success — matching sale already Official Sold.
+      return "ADD — already Official Sold";
     }
     await prisma.$transaction(async (tx) => {
       await retagDetailToOfficialSold(tx, duplicate.id, codes.ofsCodeId);
@@ -821,8 +827,11 @@ async function processAdd(
           serial: row.serial,
           whseFrom: inventory.branch.name,
           whseTo: soldBranch.name,
+          soldBranch: soldBranch.name,
+          transactionNo,
           notes: "OS CONFLICT",
           action: "ADD",
+          actionKey: "ADD",
         },
       });
     }
@@ -960,6 +969,16 @@ async function processDel(
   const soldBranchId = detail.sale.branchId;
   const soldBranchName = detail.sale.branch.name;
 
+  // Conflict reversal: inventory currently at a different branch than Branch Sold.
+  const inventoryBefore = await officialSalesRepository.findInventoryBySerial(
+    tenantId,
+    row.serial,
+  );
+  const delBranchConflict =
+    inventoryBefore != null && inventoryBefore.branchId !== soldBranchId
+      ? inventoryBefore
+      : null;
+
   await prisma.$transaction(async (tx) => {
     await tx.branchSalesTransactionDetail.delete({
       where: { id: detail.id },
@@ -971,6 +990,26 @@ async function processDel(
     if (remaining === 0) {
       await tx.branchSalesTransaction.delete({
         where: { id: detail.salesId },
+      });
+    }
+
+    if (delBranchConflict) {
+      await auditService.log({
+        tenantId,
+        userId,
+        action: "official_sales.stock_adj",
+        entityType: "BranchInventory",
+        entityId: delBranchConflict.id,
+        metadata: {
+          serial: row.serial,
+          whseFrom: delBranchConflict.branch.name,
+          whseTo: soldBranchName,
+          soldBranch: soldBranchName,
+          transactionNo: detail.sale.transactionNo,
+          notes: "OS CONFLICT / DEL",
+          action: "DEL",
+          actionKey: "DEL",
+        },
       });
     }
 
@@ -998,6 +1037,7 @@ async function processDel(
         previousStatus: detailCode,
         restored: "STK",
         restoredBranch: soldBranchName,
+        branchConflict: Boolean(delBranchConflict),
         notes: "Official Delete",
       },
     });

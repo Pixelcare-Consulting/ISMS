@@ -28,6 +28,8 @@ export interface DashboardCapabilities {
   showOrdersThisMonth: boolean;
   /** Sales transactions this calendar month (period snapshot). */
   showSalesThisMonth: boolean;
+  /** Branch sales overview section (KPIs, charts, rankings). */
+  showSalesSection: boolean;
   showRecentUsers: boolean;
   showPolicies: boolean;
   showReports: boolean;
@@ -193,6 +195,7 @@ export function resolveDashboardCapabilities(
     showStockChart: hasPermission(perms, "inventory.view"),
     showOrdersThisMonth: canViewOrders,
     showSalesThisMonth: canAccessSales(perms),
+    showSalesSection: canAccessSales(perms),
     showRecentUsers: hasPermission(perms, "users.manage"),
     showPolicies,
     showReports,

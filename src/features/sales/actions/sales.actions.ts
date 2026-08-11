@@ -16,6 +16,7 @@ import { salesRepository } from "@/features/sales/repositories/sales.repository"
 import type {
   SalesListSort,
   SalesListSortDir,
+  SalesReturnsListSort,
 } from "@/features/sales/repositories/sales.repository";
 import {
   isToFollowSerial,
@@ -25,10 +26,12 @@ import {
 import {
   SALES_ACCESS_PERMISSIONS,
   SALES_CREATE,
+  SALES_LIST_PERMISSIONS,
   SALES_RETURN_APPROVE,
   SALES_RETURN_COMPLETE,
   SALES_RETURN_EVALUATE,
   SALES_RETURN_REQUEST,
+  SALES_RETURN_VIEW,
   salesReturnRejectPermissions,
 } from "@/features/sales/constants/sales-permissions";
 import { capturesDeliveryReceipt } from "@/features/sales/utils/delivery-method";
@@ -330,9 +333,27 @@ const SALES_SORT_FIELDS = new Set<SalesListSort>([
   "returnStatus",
 ]);
 
+const SALES_RETURNS_SORT_FIELDS = new Set<SalesReturnsListSort>([
+  "transactionNo",
+  "date",
+  "branch",
+  "customer",
+  "amount",
+  "atrStatus",
+  "returnStatus",
+  "createdAt",
+]);
+
 function parseSalesSort(value?: string): SalesListSort | undefined {
   if (value && SALES_SORT_FIELDS.has(value as SalesListSort)) {
     return value as SalesListSort;
+  }
+  return undefined;
+}
+
+function parseSalesReturnsSort(value?: string): SalesReturnsListSort | undefined {
+  if (value && SALES_RETURNS_SORT_FIELDS.has(value as SalesReturnsListSort)) {
+    return value as SalesReturnsListSort;
   }
   return undefined;
 }
@@ -348,7 +369,7 @@ export async function listSalesAction(input?: {
   sort?: string;
   sortDir?: string;
 }) {
-  const session = await requireAnyPermission([...SALES_ACCESS_PERMISSIONS]);
+  const session = await requireAnyPermission([...SALES_LIST_PERMISSIONS]);
   const [result, toFollowStatus, salesAtrCodes] = await Promise.all([
     salesRepository.listDetailsForTenant(
       session.user.tenantId,
@@ -403,6 +424,58 @@ export async function listSalesAction(input?: {
         returnRequest: sale.returnRequest
           ? { id: sale.returnRequest.id, status: sale.returnRequest.status }
           : null,
+      };
+    }),
+  };
+}
+
+/**
+ * Returns tab list: one row per BranchReturnRequest with ATR / return status badges.
+ * Requires dedicated `sales.return.view` (separate from ATR workflow actions).
+ */
+export async function listSalesReturnsAction(input?: {
+  page?: number;
+  limit?: number;
+  sort?: string;
+  sortDir?: string;
+}) {
+  const session = await requirePermission(SALES_RETURN_VIEW);
+  const [result, salesAtrCodes] = await Promise.all([
+    salesRepository.listReturnRequestsForTenant(
+      session.user.tenantId,
+      {
+        page: input?.page,
+        limit: parseTablePageSize(input?.limit),
+      },
+      {
+        field: parseSalesReturnsSort(input?.sort),
+        dir: parseSalesSortDir(input?.sortDir),
+      },
+    ),
+    loadSalesAtrCodesByCode(session.user.tenantId),
+  ]);
+
+  return {
+    ...result,
+    items: result.items.map((row) => {
+      const sale = row.sale;
+      return {
+        id: row.id,
+        returnRequestId: row.id,
+        saleId: sale.id,
+        transactionNo: sale.transactionNo,
+        transactionDate: sale.transactionDate
+          ? sale.transactionDate.toISOString()
+          : null,
+        customerName: sale.customerName,
+        amount: sale.amount.toString(),
+        atrStatus: sale.atrStatus,
+        atrStatusCode: resolveSalesAtrStatusCode(sale.atrStatus, salesAtrCodes),
+        returnStatus: row.status,
+        returnStatusCode: resolveSalesAtrStatusCode(row.status, salesAtrCodes),
+        requestNotes: row.requestNotes,
+        createdAt: row.createdAt.toISOString(),
+        branch: sale.branch,
       };
     }),
   };

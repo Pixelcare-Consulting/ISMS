@@ -284,6 +284,7 @@ export const appModules: AppModule[] = [
     actions: permissionActions(
       "view",
       "create",
+      "return.view",
       "return.request",
       "return.evaluate",
       "return.approve",

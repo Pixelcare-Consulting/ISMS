@@ -1,6 +1,6 @@
 {
   "name": "isms",
-  "version": "0.23.5",
+  "version": "0.25.2",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -22,6 +22,7 @@
     "db:seed:status": "dotenv -e .env.local -- node scripts/seed-profile.mjs status",
     "db:seed:branches": "dotenv -e .env.local -- node scripts/seed-profile.mjs branches",
     "db:seed:psg": "dotenv -e .env.local -- node scripts/seed-profile.mjs psg",
+    "db:seed:warehouse-inventory": "dotenv -e .env.local -- node scripts/seed-profile.mjs warehouse",
     "db:studio": "dotenv -e .env.local -- prisma studio",
     "docs:modules-matrix": "node scripts/generate-modules-workflow-excel.mjs"
   },

@@ -20,6 +20,7 @@ export const PERMISSION_ACTION_ORDER = [
   "approve",
   "export",
   "close",
+  "return.view",
   "return.request",
   "return.evaluate",
   "return.approve",
@@ -71,6 +72,11 @@ export const PERMISSION_ACTIONS: Record<
     value: "close",
     label: "Close",
     description: "Close an audit or workflow",
+  },
+  "return.view": {
+    value: "return.view",
+    label: "View returns",
+    description: "View the Sales Returns tab / ATR ledger",
   },
   "return.request": {
     value: "return.request",

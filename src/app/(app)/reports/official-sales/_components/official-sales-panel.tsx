@@ -600,9 +600,11 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
       getError: (result) =>
         "error" in result && result.error ? result.error : null,
       getSuccessSummary: (result) =>
-        "processed" in result && "successCount" in result
-          ? `${result.successCount} ok, ${result.errorCount} failed`
-          : "Processed",
+        "message" in result && typeof result.message === "string" && result.message
+          ? result.message
+          : "processed" in result && "successCount" in result
+            ? `${result.successCount} ok, ${result.errorCount} failed`
+            : "Processed",
       mapSuccessSteps: (steps, result) => {
         if (!("processed" in result) || !("successCount" in result)) {
           return steps;
@@ -637,9 +639,17 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
       return;
     }
     setDetailRow(null);
-    toast.success(
-      `Processed ${outcome.result.processed}: ${outcome.result.successCount} ok, ${outcome.result.errorCount} failed`,
-    );
+    const processMessage =
+      "message" in outcome.result &&
+      typeof outcome.result.message === "string" &&
+      outcome.result.message
+        ? outcome.result.message
+        : `Processed ${outcome.result.processed}: ${outcome.result.successCount} ok, ${outcome.result.errorCount} failed`;
+    if (outcome.result.errorCount > 0) {
+      toast.warning(processMessage);
+    } else {
+      toast.success(processMessage);
+    }
     router.refresh();
   }
 
