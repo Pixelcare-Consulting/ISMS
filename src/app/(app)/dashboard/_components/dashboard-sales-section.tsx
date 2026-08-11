@@ -18,7 +18,7 @@ export function DashboardSalesSection({
           Sales overview
         </h2>
         <p className="text-sm text-muted-foreground">
-          Branch sales, ATR, and returns in your area this month
+          Branch sales and returns in your area this month
         </p>
       </div>
 

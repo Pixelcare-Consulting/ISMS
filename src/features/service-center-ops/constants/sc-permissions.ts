@@ -19,13 +19,10 @@ export const SC_LOGISTICS_CREATE = "service_centers.logistics.create";
 export const SC_LOGISTICS_MANAGE = "service_centers.logistics.manage";
 export const SC_MANAGE = "service_centers.manage";
 
+/** SC Sales encode/list — return processing lives under Returns / Replacement. */
 export const SC_SALES_ACCESS = [
   SC_SALES_VIEW,
   SC_SALES_CREATE,
-  SC_RETURN_REQUEST,
-  SC_RETURN_EVALUATE,
-  SC_RETURN_APPROVE,
-  SC_RETURN_COMPLETE,
 ] as const;
 
 export const SC_ORDERS_ACCESS = [
@@ -42,10 +39,23 @@ export const SC_LOGISTICS_ACCESS = [
 
 export const SC_SALES_ACTION_CAPABILITIES = {
   canCreateSale: SC_SALES_CREATE,
-  canRequestReturn: [SC_RETURN_REQUEST, SC_SALES_CREATE],
-  canEvaluateReturn: SC_RETURN_EVALUATE,
-  canApproveReturn: [SC_RETURN_APPROVE, SC_ORDERS_APPROVE],
-  canCompleteReturn: [SC_RETURN_COMPLETE, SC_LOGISTICS_MANAGE, SC_SALES_CREATE],
+  canRequestReturn: [
+    "returns.request",
+    SC_RETURN_REQUEST,
+    SC_SALES_CREATE,
+  ],
+  canEvaluateReturn: ["returns.evaluate", SC_RETURN_EVALUATE],
+  canApproveReturn: [
+    "returns.approve",
+    SC_RETURN_APPROVE,
+    SC_ORDERS_APPROVE,
+  ],
+  canCompleteReturn: [
+    "returns.complete",
+    SC_RETURN_COMPLETE,
+    SC_LOGISTICS_MANAGE,
+    SC_SALES_CREATE,
+  ],
 } as const;
 
 export const SC_LOGISTICS_ACTION_CAPABILITIES = {
@@ -98,12 +108,14 @@ export function canManualStockIn(permissions: string[] | undefined): boolean {
 
 export function scReturnRejectPermissions(status: string): string[] {
   if (status === "pending_cs") {
-    return [SC_RETURN_EVALUATE, SC_SALES_CREATE];
+    return ["returns.evaluate", SC_RETURN_EVALUATE, SC_SALES_CREATE];
   }
   if (status === "pending_tl") {
-    return [SC_RETURN_APPROVE, SC_ORDERS_APPROVE];
+    return ["returns.approve", SC_RETURN_APPROVE, SC_ORDERS_APPROVE];
   }
   return [
+    "returns.evaluate",
+    "returns.approve",
     SC_RETURN_EVALUATE,
     SC_RETURN_APPROVE,
     SC_SALES_CREATE,

@@ -16,7 +16,7 @@ import { pageMetadata } from "@/lib/shared/seo";
 
 export const metadata = pageMetadata(
   "Service center sales",
-  "Encode sales and run ATR returns at service centers.",
+  "Encode sales at service centers. Request a return here; finish under Returns / Replacement.",
 );
 
 interface PageProps {
@@ -42,7 +42,7 @@ export default async function ScSalesPage({ searchParams }: PageProps) {
         title="Service center sales"
         sticky={false}
         tutorial={SC_SALES_PAGE_TUTORIAL}
-        description="Sell STK units from a service center location and process ATR returns."
+        description="Sell STK units from a service center location. Request a return from this list; track evaluate → approve → restore under Returns / Replacement."
       />
       <ModuleGuide {...SC_OPS_MODULE_GUIDE} />
       <ScSalesPanel items={result.items} capabilities={capabilities} />

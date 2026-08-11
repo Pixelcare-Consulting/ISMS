@@ -95,7 +95,7 @@ export function HelpSystemOverview() {
               <div
                 className={cn(
                   "border-b border-border bg-muted",
-                  "overflow-x-auto overscroll-x-contain scrollbar-none",
+                  "content-scrollbar overflow-x-auto overscroll-x-contain",
                 )}
               >
                 <TabsList

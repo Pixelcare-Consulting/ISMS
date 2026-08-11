@@ -1,9 +1,4 @@
-"use client";
-
-import { useSearchParams } from "next/navigation";
-
 import { SalesTabTableSkeleton } from "@/app/(app)/sales/_components/sales-tab-table-skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 
 function SalesPageHeaderSkeleton() {
@@ -16,39 +11,10 @@ function SalesPageHeaderSkeleton() {
 }
 
 /**
- * Sales & ATR route loading shell — keeps page chrome and shows a table skeleton
- * for the active Sales | Returns tab while server data loads.
+ * Sales route loading shell — page chrome + sales table skeleton while server data loads.
+ * Returns live under `/returns`; this shell must not show a Returns tab.
  */
 export function SalesPageLoading() {
-  const searchParams = useSearchParams();
-  const activeTab =
-    searchParams.get("tab") === "returns" ? "returns" : "sales";
-
-  return (
-    <div data-app-page-loading className="space-y-6">
-      <SalesPageHeaderSkeleton />
-      <Tabs value={activeTab}>
-        <TabsList className="gap-2">
-          <TabsTrigger value="sales" disabled>
-            Sales
-          </TabsTrigger>
-          <TabsTrigger value="returns" disabled>
-            Returns
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="sales">
-          <SalesTabTableSkeleton tab="sales" />
-        </TabsContent>
-        <TabsContent value="returns">
-          <SalesTabTableSkeleton tab="returns" />
-        </TabsContent>
-      </Tabs>
-    </div>
-  );
-}
-
-/** Suspense fallback before search params are available. */
-export function SalesPageLoadingFallback() {
   return (
     <div data-app-page-loading className="space-y-6">
       <SalesPageHeaderSkeleton />

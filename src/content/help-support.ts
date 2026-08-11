@@ -65,6 +65,13 @@ export const HELP_QUICK_LINKS: HelpQuickLink[] = [
     group: "daily",
   },
   {
+    id: "returns",
+    title: "Returns / Replacement",
+    description: "Track and finish customer returns.",
+    href: "/returns",
+    group: "daily",
+  },
+  {
     id: "policies",
     title: "Policies",
     description: "ISMS documents and approvals.",
@@ -130,7 +137,7 @@ export const HELP_WORKFLOW_GUIDES: HelpWorkflowGuide[] = [
       },
       {
         label:
-          "Use the top navigation: Policies, Inventory (dropdown), Orders, Logistics (dropdown), Sales, Reports (dropdown), Settings (dropdown).",
+          "Use the top navigation: Policies, Inventory (dropdown), Orders, Logistics (dropdown), Sales, Returns / Replacement, Reports (dropdown), Settings (dropdown).",
       },
       {
         label:
@@ -233,14 +240,31 @@ export const HELP_WORKFLOW_GUIDES: HelpWorkflowGuide[] = [
   {
     id: "transfers",
     title: "Inter-branch transfers",
-    summary: "Move serialized stock between locations with traceability.",
-    audience: "Logistics · Branch",
+    summary:
+      "Requesting branch creates a transfer request; Team Leader approves; releasing branch sends units; requesting branch receives them on hand.",
+    audience: "Requesting branch · Team Leader · Releasing branch",
     href: "/logistics/transfers",
     steps: [
-      { label: "Logistics initiates transfer with source, destination, and line items." },
-      { label: "Source branch releases stock when pickup or dispatch is confirmed." },
-      { label: "Destination branch receives in Operations and validates serials." },
-      { label: "Use Transfers report to reconcile in-transit and completed moves." },
+      {
+        label:
+          "Requesting branch creates a transfer request (syncs to SAP as a transfer request when connected).",
+      },
+      {
+        label:
+          "Team Leader approves the request — or cancels it if it should not proceed.",
+      },
+      {
+        label:
+          "Releasing branch marks units For Transfer and releases them (syncs the transfer document to SAP when connected).",
+      },
+      {
+        label:
+          "Requesting branch receives stock in Operations; units move to On hand. Use the Transfers report to reconcile open moves.",
+      },
+    ],
+    tips: [
+      "Who can create, approve, release, or receive depends on your role setup.",
+      "SAP sync may be queued or pending depending on your tenant integration.",
     ],
   },
   {
@@ -283,26 +307,66 @@ export const HELP_WORKFLOW_GUIDES: HelpWorkflowGuide[] = [
       { label: "Complete the sale; verify totals and proof before submit." },
       { label: "Review Sales report for period close and management reporting." },
     ],
+    tips: [
+      "Accounting marks units Official Sold later via Official Sales (Reports) — that step is separate from encoding the sale here.",
+    ],
   },
   {
     id: "sales-atr",
-    title: "ATR return after a sale",
+    title: "Customer return after a sale",
     summary:
-      "Request a return, evaluate it, get Team Leader approval, then restore units to on-hand stock.",
+      "Request a return from the sale, then evaluate, approve, and restore units under Returns / Replacement.",
     audience: "Sales · CS · TL · Inventory",
-    href: "/sales",
+    href: "/returns",
     steps: [
-      { label: "From Sales & ATRs, open the completed sale and request an ATR return." },
-      { label: "Customer service evaluates the request (accept to continue, or reject to stop)." },
-      { label: "Team Leader approves the return when evaluation is complete." },
       {
         label:
-          "Inventory restores serials so stock returns to On hand; confirm status on Sales & ATRs.",
+          "From Sales, open the completed sale’s View details and choose Request return.",
+      },
+      {
+        label:
+          "Track the return in Returns / Replacement (Branch, Service, or Approvals).",
+      },
+      {
+        label:
+          "Customer service evaluates the request (accept to continue, or reject to stop).",
+      },
+      {
+        label:
+          "Team Leader approves; then restore stock so units return to On hand.",
       },
     ],
     tips: [
       "Who can request, evaluate, approve, or restore depends on your role setup.",
-      "Reserved (RSV) sales follow the same return path when ATR is allowed.",
+      "Reserved (RSV) sales follow the same return path when returns are allowed.",
+      "Official Sold is not a customer return — Accounting uses Official Sales to mark sold; DEL there restores On hand without this return path.",
+    ],
+  },
+  {
+    id: "official-sales",
+    title: "Official Sales (Accounting)",
+    summary:
+      "Upload the dealer template, review staging, then process Action Keys to mark Official Sold or restore On hand.",
+    audience: "Accounting",
+    href: "/reports/official-sales",
+    steps: [
+      { label: "Open Reports → Official Sales and download the dealer template." },
+      {
+        label:
+          "Fill Action Keys (ADD, WHSE_ADD, DEL, or UPD as needed), then upload and review the staging rows.",
+      },
+      {
+        label:
+          "Process the batch: ADD and WHSE_ADD mark units Official Sold; DEL restores On hand.",
+      },
+      {
+        label:
+          "Check process results for any failed serials; UPD edits stay under Sales when you need header or line corrections.",
+      },
+    ],
+    tips: [
+      "Pull-out holds can block ADD until the hold is cleared.",
+      "Official Sales is separate from the customer return path in Returns / Replacement.",
     ],
   },
   {
@@ -521,7 +585,7 @@ export const HELP_FAQ_CATEGORIES: HelpFaqCategory[] = [
         id: "logistics-3",
         question: "What is the difference between Transfers and Deliveries?",
         answer:
-          "Deliveries are inbound shipments to a branch (often from approved orders). Transfers move stock between branches or warehouses.",
+          "Deliveries are inbound shipments to a branch (often from approved orders). Transfers start with a requesting branch request, Team Leader approval, releasing branch send, then the requesting branch receives stock on hand.",
       },
       {
         id: "policy-1",
@@ -545,6 +609,13 @@ export const HELP_FAQ_CATEGORIES: HelpFaqCategory[] = [
         id: "sales-1",
         question: "Where do I record a branch sale?",
         answer: "Open Sales from the top navigation and create a new transaction for your branch.",
+      },
+      {
+        id: "sales-ofs",
+        question:
+          "What’s the difference between Sales, Returns / Replacement, and Official Sales?",
+        answer:
+          "Sales is where you encode branch sales. Returns / Replacement is where you track and approve customer returns (the request still starts from the sale). Official Sales is Accounting’s dealer-template path for Official Sold / DEL — not the same as a customer return.",
       },
       {
         id: "sales-2",

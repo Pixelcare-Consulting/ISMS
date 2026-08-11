@@ -95,9 +95,20 @@ interface SalesReturnsTableProps {
     limit: number;
     totalPages: number;
   };
-  capabilities: SalesActionCapabilities;
+  /** Return workflow + optional sale edit caps (from Sales or Returns resolvers). */
+  capabilities: Pick<
+    SalesActionCapabilities,
+    | "canUpdateSaleHeader"
+    | "canCreateSale"
+    | "canRequestReturn"
+    | "canEvaluateReturn"
+    | "canApproveReturn"
+    | "canCompleteReturn"
+  >;
   initialSort?: string;
   initialSortDir?: string;
+  /** URL tab value for pagination links (default branch). */
+  listTab?: "branch" | "approvals";
 }
 
 type EditingLine = {
@@ -173,14 +184,15 @@ function buildReturnsHref(
   limit: number,
   sort?: string,
   sortDir?: string,
+  tab: "branch" | "approvals" = "branch",
 ): string {
   const params = new URLSearchParams();
-  params.set("tab", "returns");
+  params.set("tab", tab);
   if (page > 1) params.set("page", String(page));
   if (limit !== DEFAULT_TABLE_PAGE_SIZE) params.set("limit", String(limit));
   if (sort) params.set("sort", sort);
   if (sort && sortDir) params.set("dir", sortDir);
-  return `/sales?${params.toString()}`;
+  return `/returns?${params.toString()}`;
 }
 
 function formatSaleDate(iso: string | null): string {
@@ -202,6 +214,7 @@ export function SalesReturnsTable({
   capabilities,
   initialSort = "",
   initialSortDir = "desc",
+  listTab = "branch",
 }: SalesReturnsTableProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -227,12 +240,14 @@ export function SalesReturnsTable({
   ) as ReturnsSortDir;
 
   function handlePageSizeChange(limit: TablePageSize) {
-    router.push(buildReturnsHref(1, limit, sort, sort ? sortDir : undefined));
+    router.push(
+      buildReturnsHref(1, limit, sort, sort ? sortDir : undefined, listTab),
+    );
   }
 
   function toggleSort(field: ReturnsSortField) {
     const next = nextTableSort(field, sort, sortDir);
-    router.push(buildReturnsHref(1, pageSize, next.sort, next.dir));
+    router.push(buildReturnsHref(1, pageSize, next.sort, next.dir, listTab));
   }
 
   const filtered = useMemo(
@@ -415,7 +430,13 @@ export function SalesReturnsTable({
           totalPages: result.totalPages,
           itemLabel: "return",
           buildHref: (page) =>
-            buildReturnsHref(page, pageSize, sort, sort ? sortDir : undefined),
+            buildReturnsHref(
+              page,
+              pageSize,
+              sort,
+              sort ? sortDir : undefined,
+              listTab,
+            ),
         }}
         pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
       >

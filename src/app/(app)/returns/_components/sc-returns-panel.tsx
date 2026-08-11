@@ -2,15 +2,16 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import {
-  listScSalesAction,
-  requestScReturnAction,
+  approveScReturnAction,
+  completeScReturnRestoreAction,
+  evaluateScReturnAction,
+  listScReturnsAction,
+  rejectScReturnAction,
 } from "@/features/service-center-ops/actions/sc-sales.actions";
-import type { ScSalesActionCapabilities } from "@/features/service-center-ops/constants/sc-permissions";
+import type { ReturnsActionCapabilities } from "@/features/returns/constants/returns-permissions";
 import {
   TableEmptyRow,
   TableIndexCell,
@@ -20,7 +21,6 @@ import {
 import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   TableBody,
   TableCell,
@@ -29,19 +29,20 @@ import {
 } from "@/components/ui/table";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
-type SaleRow = Awaited<ReturnType<typeof listScSalesAction>>["items"][number];
+type ScReturnRow = Awaited<ReturnType<typeof listScReturnsAction>>["items"][number];
 
-export function ScSalesPanel({
+export function ScReturnsPanel({
   items,
   capabilities,
+  emptyMessage = "No service center returns yet.",
 }: {
-  items: SaleRow[];
-  capabilities: ScSalesActionCapabilities;
+  items: ScReturnRow[];
+  capabilities: ReturnsActionCapabilities;
+  emptyMessage?: string;
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
-  const [reasonBySale, setReasonBySale] = useState<Record<string, string>>({});
 
   const filtered = useMemo(
     () =>
@@ -53,6 +54,7 @@ export function ScSalesPanel({
           row.serialNumber?.serialNo ?? "",
           row.atrStatus,
           row.returnRequest?.status ?? "",
+          row.returnRequest?.requestNotes ?? "",
         ]),
       ),
     [items, query],
@@ -62,6 +64,7 @@ export function ScSalesPanel({
     txn: (row) => row.transactionNo,
     center: (row) => row.serviceCenter.name,
     atr: (row) => row.atrStatus,
+    status: (row) => row.returnRequest?.status ?? "",
   });
   const {
     page,
@@ -99,24 +102,14 @@ export function ScSalesPanel({
         onChange: setQuery,
         placeholder: "Search transaction, serial, or center…",
       }}
-      toolbarActions={
-        capabilities.canCreateSale ? (
-          <Button asChild>
-            <Link href="/service-centers/sales/new">
-              <Plus className="size-4" />
-              New sale
-            </Link>
-          </Button>
-        ) : null
-      }
       empty={items.length === 0}
-      emptyMessage="No service center sales yet."
+      emptyMessage={emptyMessage}
       pageSize={{ value: pageSize, onChange: setPageSize }}
       pagination={{
         total,
         page,
         totalPages,
-        itemLabel: "sale",
+        itemLabel: "return",
         onPageChange: setPage,
       }}
     >
@@ -127,13 +120,13 @@ export function ScSalesPanel({
           <GlobalTableHead {...sort.sortProps("center")}>Center</GlobalTableHead>
           <GlobalTableHead>Serial</GlobalTableHead>
           <GlobalTableHead {...sort.sortProps("atr")}>ATR</GlobalTableHead>
-          <GlobalTableHead>Return</GlobalTableHead>
+          <GlobalTableHead {...sort.sortProps("status")}>Return</GlobalTableHead>
           <GlobalTableHead className="w-56">Actions</GlobalTableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {pageItems.length === 0 ? (
-          <TableEmptyRow colSpan={7} message="No sales match your search." />
+          <TableEmptyRow colSpan={7} message="No returns match your search." />
         ) : (
           pageItems.map((row, index) => {
             const rr = row.returnRequest;
@@ -169,46 +162,71 @@ export function ScSalesPanel({
                 </TableCell>
                 <TableCell>
                   <div className="flex flex-col gap-2">
-                    {!rr &&
-                    row.atrStatus === "open" &&
-                    capabilities.canRequestReturn ? (
-                      <>
-                        <Input
-                          placeholder="Return reason"
-                          value={reasonBySale[row.id] ?? ""}
-                          onChange={(e) =>
-                            setReasonBySale((prev) => ({
-                              ...prev,
-                              [row.id]: e.target.value,
-                            }))
-                          }
-                          disabled={pending}
-                        />
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={pending}
-                          onClick={() =>
-                            run(
-                              () =>
-                                requestScReturnAction(
-                                  row.id,
-                                  reasonBySale[row.id],
-                                ),
-                              "Return requested — finish under Returns / Replacement",
-                            )
-                          }
-                        >
-                          Request return
-                        </Button>
-                      </>
-                    ) : rr ? (
-                      <Button asChild size="sm" variant="ghost">
-                        <Link href="/returns?tab=service">Open returns</Link>
+                    {rr?.status === "pending_cs" &&
+                    capabilities.canEvaluateReturn ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={pending}
+                        onClick={() =>
+                          run(
+                            () => evaluateScReturnAction(rr.id),
+                            "Evaluated — pending TL",
+                          )
+                        }
+                      >
+                        Evaluate
                       </Button>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    )}
+                    ) : null}
+                    {rr?.status === "pending_tl" &&
+                    capabilities.canApproveReturn ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={pending}
+                        onClick={() =>
+                          run(
+                            () => approveScReturnAction(rr.id),
+                            "Return approved",
+                          )
+                        }
+                      >
+                        Approve
+                      </Button>
+                    ) : null}
+                    {rr &&
+                    ["pending_cs", "pending_tl"].includes(rr.status) &&
+                    (capabilities.canEvaluateReturn ||
+                      capabilities.canApproveReturn) ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={pending}
+                        onClick={() =>
+                          run(
+                            () => rejectScReturnAction(rr.id),
+                            "Return rejected",
+                          )
+                        }
+                      >
+                        Reject
+                      </Button>
+                    ) : null}
+                    {rr?.status === "approved" &&
+                    capabilities.canCompleteReturn ? (
+                      <Button
+                        size="sm"
+                        disabled={pending}
+                        onClick={() =>
+                          run(
+                            () => completeScReturnRestoreAction(rr.id),
+                            "Stock restored to STK",
+                          )
+                        }
+                      >
+                        Complete / restore
+                      </Button>
+                    ) : null}
                   </div>
                 </TableCell>
               </TableRow>

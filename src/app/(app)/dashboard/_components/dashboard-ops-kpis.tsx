@@ -65,7 +65,7 @@ export function buildDashboardKpiItem(
         key,
         label: "Open ATR",
         value: kpis.openAtr,
-        href: "/sales",
+        href: "/returns",
         icon: <PackageOpen />,
         tone: alertTone(kpis.openAtr, "warning"),
         hint: kpis.openAtr > 0 ? "Returns in progress" : undefined,

@@ -36,6 +36,14 @@ import {
   SALES_UPDATE,
   salesReturnRejectPermissions,
 } from "@/features/sales/constants/sales-permissions";
+import {
+  RETURNS_APPROVE,
+  RETURNS_COMPLETE,
+  RETURNS_EVALUATE,
+  RETURNS_REQUEST,
+  RETURNS_VIEW,
+  returnsRejectPermissions,
+} from "@/features/returns/constants/returns-permissions";
 import { capturesDeliveryReceipt } from "@/features/sales/utils/delivery-method";
 import { saleHasOfficialSoldLine } from "@/features/sales/utils/sale-header-edit";
 import { isSaleTransactionNo } from "@/features/sales/utils/sale-transaction-no";
@@ -458,16 +466,24 @@ export async function listSalesAction(input?: {
 }
 
 /**
- * Returns tab list: one row per BranchReturnRequest with ATR / return status badges.
- * Requires dedicated `sales.return.view` (separate from ATR workflow actions).
+ * Branch returns list: one row per BranchReturnRequest with ATR / return status badges.
+ * Accepts `returns.view` or legacy `sales.return.view`.
  */
 export async function listSalesReturnsAction(input?: {
   page?: number;
   limit?: number;
   sort?: string;
   sortDir?: string;
+  statusIn?: Array<"pending_cs" | "pending_tl" | "approved" | "rejected" | "completed">;
 }) {
-  const session = await requirePermission(SALES_RETURN_VIEW);
+  const session = await requireAnyPermission([
+    RETURNS_VIEW,
+    SALES_RETURN_VIEW,
+    "service_centers.return.request",
+    "service_centers.return.evaluate",
+    "service_centers.return.approve",
+    "service_centers.return.complete",
+  ]);
   const [result, salesAtrCodes] = await Promise.all([
     salesRepository.listReturnRequestsForTenant(
       session.user.tenantId,
@@ -479,6 +495,7 @@ export async function listSalesReturnsAction(input?: {
         field: parseSalesReturnsSort(input?.sort),
         dir: parseSalesSortDir(input?.sortDir),
       },
+      { statusIn: input?.statusIn },
     ),
     loadSalesAtrCodesByCode(session.user.tenantId),
   ]);
@@ -1204,7 +1221,11 @@ export async function createSaleAction(input: unknown) {
 }
 
 export async function requestReturnAction(saleId: string, notes?: string) {
-  const session = await requireAnyPermission([SALES_RETURN_REQUEST, SALES_CREATE]);
+  const session = await requireAnyPermission([
+    RETURNS_REQUEST,
+    SALES_RETURN_REQUEST,
+    SALES_CREATE,
+  ]);
   const reason = notes?.trim() || "";
   if (!reason) {
     return { error: "Return reason is required" as const };
@@ -1259,11 +1280,15 @@ export async function requestReturnAction(saleId: string, notes?: string) {
   });
 
   revalidatePath("/sales");
+  revalidatePath("/returns");
   return { success: true as const };
 }
 
 export async function evaluateReturnAction(returnRequestId: string, notes?: string) {
-  const session = await requirePermission(SALES_RETURN_EVALUATE);
+  const session = await requireAnyPermission([
+    RETURNS_EVALUATE,
+    SALES_RETURN_EVALUATE,
+  ]);
   const row = await prisma.branchReturnRequest.findFirst({
     where: { id: returnRequestId, tenantId: session.user.tenantId },
   });
@@ -1290,11 +1315,16 @@ export async function evaluateReturnAction(returnRequestId: string, notes?: stri
   });
 
   revalidatePath("/sales");
+  revalidatePath("/returns");
   return { success: true as const };
 }
 
 export async function approveReturnAction(returnRequestId: string) {
-  const session = await requireAnyPermission([SALES_RETURN_APPROVE, "orders.approve"]);
+  const session = await requireAnyPermission([
+    RETURNS_APPROVE,
+    SALES_RETURN_APPROVE,
+    "orders.approve",
+  ]);
   const row = await prisma.branchReturnRequest.findFirst({
     where: { id: returnRequestId, tenantId: session.user.tenantId },
   });
@@ -1320,11 +1350,14 @@ export async function approveReturnAction(returnRequestId: string) {
   });
 
   revalidatePath("/sales");
+  revalidatePath("/returns");
   return { success: true as const };
 }
 
 export async function rejectReturnAction(returnRequestId: string, notes?: string) {
   const session = await requireAnyPermission([
+    RETURNS_EVALUATE,
+    RETURNS_APPROVE,
     SALES_RETURN_EVALUATE,
     SALES_RETURN_APPROVE,
     SALES_CREATE,
@@ -1338,7 +1371,10 @@ export async function rejectReturnAction(returnRequestId: string, notes?: string
     return { error: "Return request cannot be rejected" };
   }
 
-  const allowed = salesReturnRejectPermissions(row.status);
+  const allowed = [
+    ...salesReturnRejectPermissions(row.status),
+    ...returnsRejectPermissions(row.status),
+  ];
   if (!allowed.some((slug) => hasPermission(session.user.permissions, slug))) {
     return { error: "You do not have permission to reject this return" };
   }
@@ -1363,11 +1399,13 @@ export async function rejectReturnAction(returnRequestId: string, notes?: string
   });
 
   revalidatePath("/sales");
+  revalidatePath("/returns");
   return { success: true as const };
 }
 
 export async function completeReturnRestoreAction(returnRequestId: string) {
   const session = await requireAnyPermission([
+    RETURNS_COMPLETE,
     SALES_RETURN_COMPLETE,
     "logistics.manage",
     SALES_CREATE,
@@ -1465,6 +1503,7 @@ export async function completeReturnRestoreAction(returnRequestId: string) {
   });
 
   revalidatePath("/sales");
+  revalidatePath("/returns");
   revalidatePath("/inventory");
   return { success: true as const };
 }

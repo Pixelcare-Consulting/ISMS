@@ -89,7 +89,15 @@ interface SaleDetailsDialogProps {
   sale: SaleDetailsPayload;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  capabilities: SalesActionCapabilities;
+  capabilities: Pick<
+    SalesActionCapabilities,
+    | "canUpdateSaleHeader"
+    | "canCreateSale"
+    | "canRequestReturn"
+    | "canEvaluateReturn"
+    | "canApproveReturn"
+    | "canCompleteReturn"
+  >;
   pending?: boolean;
   onEditLine: (line: SaleDetailsLine) => void;
   onEditHeader?: () => void;

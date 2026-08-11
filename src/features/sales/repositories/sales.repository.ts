@@ -3,7 +3,7 @@ import {
   resolvePagination,
   toPaginatedResult,
 } from "@/lib/shared/pagination";
-import type { Prisma } from "@prisma/client";
+import type { Prisma, ReturnRequestStatus } from "@prisma/client";
 
 export type SalesListSort =
   | "transactionNo"
@@ -150,9 +150,15 @@ export const salesRepository = {
     tenantId: string,
     pagination?: { page?: number; limit?: number },
     sort?: { field?: SalesReturnsListSort; dir?: SalesListSortDir },
+    options?: { statusIn?: ReturnRequestStatus[] },
   ) {
     const { limit, page, skip } = resolvePagination(pagination);
-    const where: Prisma.BranchReturnRequestWhereInput = { tenantId };
+    const where: Prisma.BranchReturnRequestWhereInput = {
+      tenantId,
+      ...(options?.statusIn?.length
+        ? { status: { in: options.statusIn } }
+        : {}),
+    };
     const orderBy = sort?.field
       ? [
           salesReturnPrismaOrderBy(sort.field, sort.dir ?? "desc"),

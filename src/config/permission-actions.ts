@@ -20,6 +20,9 @@ export const PERMISSION_ACTION_ORDER = [
   "approve",
   "export",
   "close",
+  "request",
+  "evaluate",
+  "complete",
   "return.view",
   "return.request",
   "return.evaluate",
@@ -73,30 +76,45 @@ export const PERMISSION_ACTIONS: Record<
     label: "Close",
     description: "Close an audit or workflow",
   },
+  request: {
+    value: "request",
+    label: "Request",
+    description: "Start a return request",
+  },
+  evaluate: {
+    value: "evaluate",
+    label: "Evaluate",
+    description: "CS evaluation step for a return",
+  },
+  complete: {
+    value: "complete",
+    label: "Complete",
+    description: "Complete a return and restore stock",
+  },
   "return.view": {
     value: "return.view",
     label: "View returns",
-    description: "View the Sales Returns tab / ATR ledger",
+    description: "Legacy: view branch return ledger (alias for Returns / Replacement)",
   },
   "return.request": {
     value: "return.request",
     label: "Request return",
-    description: "Open a sales ATR / return request",
+    description: "Legacy: open a sales / service-center return request",
   },
   "return.evaluate": {
     value: "return.evaluate",
     label: "Evaluate return (CS)",
-    description: "CS evaluation step for ATR",
+    description: "Legacy: CS evaluation step for a return",
   },
   "return.approve": {
     value: "return.approve",
     label: "Approve return (TL)",
-    description: "TL approval step for ATR",
+    description: "Legacy: TL approval step for a return",
   },
   "return.complete": {
     value: "return.complete",
     label: "Complete return / restore",
-    description: "Complete ATR and restore stock",
+    description: "Legacy: complete return and restore stock",
   },
 };
 

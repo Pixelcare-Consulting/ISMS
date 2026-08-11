@@ -52,6 +52,63 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.28.0",
+    date: "2026-08-11",
+    releasedAt: "2026-08-11T14:25:00+08:00",
+    title: "Returns / Replacement module & Official Sales prices",
+    highlights: [
+      "Returns / Replacement is its own menu next to Sales, with Branch Returns, Service Returns, and Approvals",
+      "Roles can grant view, request, evaluate, approve, and complete under Returns — older Sales and Service Center return permissions still work",
+      "Official Sales ADD fills model price from the price list for the model, package, and sale date — including when an existing sold line is marked Official Sold — and uses the latest price when no period matches that date",
+      "Sales loading screen no longer shows a Returns tab — Returns is only under Returns / Replacement",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Returns / Replacement is now a separate module from Sales, with Branch Returns, Service Returns, and Approvals tabs so teams can finish ATRs in one place",
+      },
+      {
+        type: "feature",
+        description:
+          "Roles can set Returns permissions for view, request, evaluate, approve, and complete; existing Sales and Service Center return permissions continue to work",
+      },
+      {
+        type: "fix",
+        description:
+          "Official Sales ADD now fills model price from the price list for the model, package, and sale date — including when an existing sold line is marked Official Sold — and uses the latest price when no period matches that date",
+      },
+      {
+        type: "fix",
+        description:
+          "Sales no longer flashes a Returns tab while the page is loading — open Returns / Replacement for ATRs",
+      },
+    ],
+  },
+  {
+    version: "0.27.3",
+    date: "2026-08-11",
+    releasedAt: "2026-08-11T14:05:00+08:00",
+    title: "Clearer transfer and Official Sales guidance",
+    highlights: [
+      "Help shows the updated transfer path: requesting branch, Team Leader approval, releasing branch, then receive",
+      "Official Sales is explained in Help alongside Sales & ATR so Accounting knows when to use each path",
+      "Flow by role tabs in Help scroll sideways when they don’t all fit, so every process stays reachable",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Help & Support now walks through the finished transfer flow and how Official Sales connects to Sales & ATR for Official Sold — without mixing it up with ATR returns",
+      },
+      {
+        type: "fix",
+        description:
+          "On Help & Support, Flow by role tabs scroll horizontally with a visible scrollbar when the row is too wide — so Roles and other processes stay easy to open",
+      },
+    ],
+  },
+  {
     version: "0.27.2",
     date: "2026-08-11",
     releasedAt: "2026-08-11T13:35:00+08:00",

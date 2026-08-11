@@ -46,4 +46,9 @@ export const BRS_PERMISSIONS = [
   { slug: "sales.return.evaluate", name: "Evaluate sales return (CS)" },
   { slug: "sales.return.approve", name: "Approve sales return (TL)" },
   { slug: "sales.return.complete", name: "Complete sales return / restore stock" },
+  { slug: "returns.view", name: "View returns / replacement" },
+  { slug: "returns.request", name: "Request return" },
+  { slug: "returns.evaluate", name: "Evaluate return (CS)" },
+  { slug: "returns.approve", name: "Approve return (TL)" },
+  { slug: "returns.complete", name: "Complete return / restore stock" },
 ] as const;

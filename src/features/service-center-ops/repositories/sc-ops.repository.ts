@@ -4,6 +4,7 @@ import {
   toPaginatedResult,
   type PaginationInput,
 } from "@/lib/shared/pagination";
+import type { Prisma, ReturnRequestStatus } from "@prisma/client";
 
 export const scOpsRepository = {
   async listInventory(
@@ -92,6 +93,63 @@ export const scOpsRepository = {
               status: true,
               requestNotes: true,
               evaluationNotes: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        skip,
+        take,
+      }),
+    ]);
+
+    return toPaginatedResult(items, total, page, limit);
+  },
+
+  /** SC sales that have an open/closed return request (Service Returns ledger). */
+  async listReturnSales(
+    tenantId: string,
+    serviceCenterIds: string[] | null,
+    pagination: PaginationInput,
+    options?: { statusIn?: ReturnRequestStatus[] },
+  ) {
+    const { page, limit, skip, take } = resolvePagination(pagination);
+    const where: Prisma.ServiceCenterSalesTransactionWhereInput = {
+      tenantId,
+      ...(serviceCenterIds ? { serviceCenterId: { in: serviceCenterIds } } : {}),
+      returnRequest: {
+        is: {
+          ...(options?.statusIn?.length
+            ? { status: { in: options.statusIn } }
+            : {}),
+        },
+      },
+    };
+
+    const [total, items] = await Promise.all([
+      prisma.serviceCenterSalesTransaction.count({ where }),
+      prisma.serviceCenterSalesTransaction.findMany({
+        where,
+        include: {
+          serviceCenter: {
+            select: { id: true, name: true, sapCode: true },
+          },
+          serviceCenterLocation: {
+            select: { id: true, name: true, code: true },
+          },
+          serialNumber: {
+            select: {
+              id: true,
+              serialNo: true,
+              model: { select: { skuCode: true, name: true } },
+            },
+          },
+          returnRequest: {
+            select: {
+              id: true,
+              status: true,
+              requestNotes: true,
+              evaluationNotes: true,
+              createdAt: true,
             },
           },
         },

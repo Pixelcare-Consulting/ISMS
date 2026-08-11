@@ -5,8 +5,9 @@ import { appNavigation, isNavSubGroup, type NavLinkItem } from "@/config/app-nav
  * Longer paths win over shorter prefixes when resolving.
  */
 const EXTRA_ROUTE_TITLES: Record<string, string> = {
-  "/sales": "Sales & ATR",
+  "/sales": "Sales",
   "/sales/new": "New sales transaction",
+  "/returns": "Returns / Replacement",
   "/policies/new": "New policy",
   "/operations": "Operations",
   "/planning/suggested-orders": "Suggested orders",
