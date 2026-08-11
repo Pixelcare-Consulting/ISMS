@@ -17,7 +17,10 @@ import {
   countAssignedInGroups,
   groupPermissionsByModule,
 } from "@/features/roles/lib/group-permissions-by-module";
-import type { RolesPermissionsMatrix } from "@/features/roles/types/role.types";
+import type {
+  RolePermissionRow,
+  RolesPermissionsMatrix,
+} from "@/features/roles/types/role.types";
 import { DeleteConfirmDialog } from "@/components/data-table/delete-confirm-dialog";
 import { TableSearchToolbar, uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import { buttonVariants } from "@/components/ui/button";
@@ -26,21 +29,25 @@ import { cn } from "@/utils/cn";
 
 interface RolesSimpleViewProps {
   matrix: RolesPermissionsMatrix;
+  /** Platform console operator — may also rename system roles. */
   isPlatformOperator?: boolean;
+  /** Super Admin or platform operator — may view & grant on system roles. */
+  canManageSystemRoleAccess?: boolean;
 }
 
 export function RolesSimpleView({
   matrix,
   isPlatformOperator = false,
+  canManageSystemRoleAccess = false,
 }: RolesSimpleViewProps) {
   const router = useRouter();
   const { roles, permissions } = matrix;
   const [query, setQuery] = useState("");
   const [activeRoleId, setActiveRoleId] = useState<string | null>(null);
-  const [editingRole, setEditingRole] = useState<(typeof roles)[number] | null>(
+  const [editingRole, setEditingRole] = useState<RolePermissionRow | null>(
     null,
   );
-  const [deletingRole, setDeletingRole] = useState<(typeof roles)[number] | null>(
+  const [deletingRole, setDeletingRole] = useState<RolePermissionRow | null>(
     null,
   );
   const [deletePending, startDeleteTransition] = useTransition();
@@ -58,6 +65,19 @@ export function RolesSimpleView({
     [query, roles],
   );
 
+  const systemRoles = useMemo(
+    () => filteredRoles.filter((role) => role.isSystem),
+    [filteredRoles],
+  );
+  const customRoles = useMemo(
+    () => filteredRoles.filter((role) => !role.isSystem),
+    [filteredRoles],
+  );
+  const showSections =
+    canManageSystemRoleAccess &&
+    systemRoles.length > 0 &&
+    customRoles.length > 0;
+
   const suggestions = useMemo(
     () =>
       uniqueSearchSuggestions(
@@ -71,14 +91,21 @@ export function RolesSimpleView({
   const activeRole =
     roles.find((role) => role.id === activeRoleId) ?? null;
 
-  function isRoleProtected(role: (typeof roles)[number]) {
+  function isMetaLocked(role: RolePermissionRow) {
     return (
       isProviderOnlyRole(role.slug) ||
-      (!isPlatformOperator && role.isSystem)
+      (role.isSystem && !isPlatformOperator)
     );
   }
 
-  function permissionSummary(role: (typeof roles)[number]) {
+  function isPermissionsLocked(role: RolePermissionRow) {
+    return (
+      isProviderOnlyRole(role.slug) ||
+      (role.isSystem && !canManageSystemRoleAccess)
+    );
+  }
+
+  function permissionSummary(role: RolePermissionRow) {
     const { assigned, total } = countAssignedInGroups(
       groups,
       role.permissionSlugs,
@@ -103,6 +130,24 @@ export function RolesSimpleView({
       }
       router.refresh();
     });
+  }
+
+  function renderRoleGrid(list: RolePermissionRow[]) {
+    return (
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {list.map((role) => (
+          <RoleCard
+            key={role.id}
+            role={role}
+            permissionSummary={permissionSummary(role)}
+            metaLocked={isMetaLocked(role)}
+            onOpenPermissions={() => setActiveRoleId(role.id)}
+            onEdit={() => setEditingRole(role)}
+            onDelete={() => setDeletingRole(role)}
+          />
+        ))}
+      </div>
+    );
   }
 
   return (
@@ -130,7 +175,7 @@ export function RolesSimpleView({
         {roles.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border/80 px-6 py-14 text-center">
             <p className="text-sm text-muted-foreground">
-              {isPlatformOperator
+              {canManageSystemRoleAccess
                 ? "No roles configured yet."
                 : "No custom roles yet. Use Add role to create one, or assign built-in roles from Settings → Users."}
             </p>
@@ -139,20 +184,34 @@ export function RolesSimpleView({
           <div className="rounded-xl border border-border/60 px-6 py-12 text-center text-sm text-muted-foreground">
             No roles match your search.
           </div>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {filteredRoles.map((role) => (
-              <RoleCard
-                key={role.id}
-                role={role}
-                permissionSummary={permissionSummary(role)}
-                isProtected={isRoleProtected(role)}
-                onOpenPermissions={() => setActiveRoleId(role.id)}
-                onEdit={() => setEditingRole(role)}
-                onDelete={() => setDeletingRole(role)}
-              />
-            ))}
+        ) : showSections ? (
+          <div className="space-y-8">
+            <section className="space-y-3">
+              <div>
+                <h3 className="text-sm font-medium text-foreground">
+                  System roles
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Built-in roles. You can adjust access; renaming and deleting
+                  stay locked.
+                </p>
+              </div>
+              {renderRoleGrid(systemRoles)}
+            </section>
+            <section className="space-y-3">
+              <div>
+                <h3 className="text-sm font-medium text-foreground">
+                  Custom roles
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Roles you create for this organization.
+                </p>
+              </div>
+              {renderRoleGrid(customRoles)}
+            </section>
           </div>
+        ) : (
+          renderRoleGrid(filteredRoles)
         )}
       </div>
 
@@ -163,7 +222,7 @@ export function RolesSimpleView({
         onOpenChange={(open) => {
           if (!open) setActiveRoleId(null);
         }}
-        isProtected={activeRole ? isRoleProtected(activeRole) : false}
+        isProtected={activeRole ? isPermissionsLocked(activeRole) : false}
       />
 
       {editingRole ? (

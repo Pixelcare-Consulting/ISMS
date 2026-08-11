@@ -44,6 +44,7 @@ import { cn } from "@/utils/cn";
 interface RolesPermissionsTableProps {
   matrix: RolesPermissionsMatrix;
   isPlatformOperator?: boolean;
+  canManageSystemRoleAccess?: boolean;
   toolbarActions?: ReactNode;
 }
 
@@ -64,6 +65,7 @@ const stickyCellRoleClassName =
 export function RolesPermissionsTable({
   matrix,
   isPlatformOperator = false,
+  canManageSystemRoleAccess = false,
   toolbarActions,
 }: RolesPermissionsTableProps) {
   const addRoleAction = toolbarActions ?? <CreateRoleDialog />;
@@ -151,7 +153,7 @@ export function RolesPermissionsTable({
         </TableSearchToolbar>
         <DataTableEmpty
           message={
-            isPlatformOperator
+            canManageSystemRoleAccess
               ? "No roles configured yet."
               : "No custom roles yet. Use Add role to create one, or assign built-in roles from Settings → Users."
           }
@@ -205,7 +207,7 @@ export function RolesPermissionsTable({
                     key={permission.id}
                     className={cn(
                       stickyHeadDefaultClassName,
-                      "min-w-[120px] text-center normal-case",
+                      "min-w-30 text-center normal-case",
                     )}
                     title={permission.slug}
                   >
@@ -215,7 +217,7 @@ export function RolesPermissionsTable({
                 <TableHead
                   className={cn(
                     stickyHeadDefaultClassName,
-                    "min-w-[100px] text-right normal-case",
+                    "min-w-25 text-right normal-case",
                   )}
                 >
                   Actions
@@ -224,9 +226,12 @@ export function RolesPermissionsTable({
             </TableHeader>
             <TableBody>
               {filteredRoles.map((role, index) => {
-                const isProtected =
+                const permissionsLocked =
                   isProviderOnlyRole(role.slug) ||
-                  (!isPlatformOperator && role.isSystem);
+                  (role.isSystem && !canManageSystemRoleAccess);
+                const metaLocked =
+                  isProviderOnlyRole(role.slug) ||
+                  (role.isSystem && !isPlatformOperator);
                 const assigned = new Set(role.permissionSlugs);
                 const rowBg = index % 2 === 1 ? "bg-table-stripe" : "bg-card";
 
@@ -288,7 +293,7 @@ export function RolesPermissionsTable({
                             permissionSlug={permission.slug}
                             permissionName={permission.name}
                             checked={assigned.has(permission.slug)}
-                            disabled={isProtected}
+                            disabled={permissionsLocked}
                             pending={isPending}
                             onToggleRequest={openChangeDialog}
                           />
@@ -302,10 +307,10 @@ export function RolesPermissionsTable({
                           variant="ghost"
                           size="icon"
                           className="size-8"
-                          disabled={isProtected}
+                          disabled={metaLocked}
                           title={
-                            isProtected
-                              ? "This role cannot be edited"
+                            metaLocked
+                              ? "This role cannot be renamed"
                               : "Edit role"
                           }
                           onClick={() => setEditingRole(role)}
@@ -317,12 +322,10 @@ export function RolesPermissionsTable({
                           variant="ghost"
                           size="icon"
                           className="size-8 text-destructive hover:text-destructive"
-                          disabled={isProtected || role.userCount > 0 || role.isSystem}
+                          disabled={metaLocked || role.userCount > 0 || role.isSystem}
                           title={
-                            isProtected
-                              ? "This role cannot be deleted"
-                              : role.isSystem
-                                ? "System roles cannot be deleted"
+                            metaLocked || role.isSystem
+                              ? "System roles cannot be deleted"
                               : role.userCount > 0
                                 ? "Remove users from this role first"
                                 : "Delete role"

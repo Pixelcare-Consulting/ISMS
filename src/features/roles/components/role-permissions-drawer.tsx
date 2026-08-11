@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { Search } from "lucide-react";
 import { toast } from "sonner";
 
@@ -57,19 +57,24 @@ export function RolePermissionsDrawer({
   isProtected,
 }: RolePermissionsDrawerProps) {
   const router = useRouter();
+  const roleId = role?.id ?? null;
   const [query, setQuery] = useState("");
+  const [queryRoleId, setQueryRoleId] = useState(roleId);
   const [bulkPending, setBulkPending] = useState<BulkPending>(null);
   const [bulkBusy, startBulkTransition] = useTransition();
 
-  useEffect(() => {
-    if (!open) {
+  // Reset search when switching roles (adjust during render — no effect needed).
+  if (roleId !== queryRoleId) {
+    setQueryRoleId(roleId);
+    setQuery("");
+  }
+
+  function handleOpenChange(nextOpen: boolean) {
+    if (!nextOpen) {
       setQuery("");
     }
-  }, [open]);
-
-  useEffect(() => {
-    setQuery("");
-  }, [role?.id]);
+    onOpenChange(nextOpen);
+  }
 
   const assignedSlugs = useMemo(
     () => new Set(role?.permissionSlugs ?? []),
@@ -204,7 +209,7 @@ export function RolePermissionsDrawer({
 
   return (
     <>
-      <Sheet open={open} onOpenChange={onOpenChange}>
+      <Sheet open={open} onOpenChange={handleOpenChange}>
         <SheetContent
           side="right"
           className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-md"
@@ -218,6 +223,11 @@ export function RolePermissionsDrawer({
             {isProtected ? (
               <p className="rounded-md bg-muted/70 px-2.5 py-1.5 text-xs text-muted-foreground">
                 This built-in role cannot be changed here.
+              </p>
+            ) : role?.isSystem ? (
+              <p className="rounded-md bg-muted/70 px-2.5 py-1.5 text-xs text-muted-foreground">
+                Built-in system role — you can adjust access. Renaming and
+                deleting stay locked.
               </p>
             ) : null}
           </SheetHeader>
@@ -264,7 +274,7 @@ export function RolePermissionsDrawer({
             <Button
               type="button"
               className="w-full"
-              onClick={() => onOpenChange(false)}
+              onClick={() => handleOpenChange(false)}
             >
               Done
             </Button>

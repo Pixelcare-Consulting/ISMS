@@ -17,7 +17,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | **Dashboard** | Role-aware activity cards (top 4); Inventory summary + Planning & alerts; This month (icons) beside Order pipeline; **Sales overview** (month KPIs, status mix, return pipeline, top branches/models) when you can access Sales; compliance overview when no ops access; active announcement banner |
 | **Announcements** | Tenant posts (title, body, publish/expiry); list + CRUD (`/announcements`) |
 | **Competitors** | Market observations with master Competitor + Competitor brand/model lookups, AOR-bound branch, optional promotion; KPIs + CRUD (`/competitors`) |
-| **Settings** | Company, users, departments, roles, branches, warehouses, dealers, service centers, AORs (branches / warehouses / service centers assign + sync), master data (incl. Series / Categories, Competitors / Competitor brands), status codes (per-module tabs + badge colors); collapsible Module guides on complex settings/ops pages |
+| **Settings** | Company, users, departments, roles, permissions catalog (`roles.manage`; assign via Roles), branches, warehouses, dealers, service centers, AORs (branches / warehouses / service centers assign + sync), master data (incl. Series / Categories, Competitors / Competitor brands), status codes (per-module tabs + badge colors); collapsible Module guides on complex settings/ops pages |
 | **Planning** | BRS CSV forecast import, allocation, suggested auto-replenish orders (`/settings/planning`, `/planning/suggested-orders`) |
 | **Planogram** | Per-branch SKU shelf capacity, MIL, order enforcement |
 | **Policies** | Full document control (ISO track) |
@@ -29,7 +29,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | **Service** | Service center ops (AOR-scoped): inventory + manual stock-in, sales encode + request return, orders, deliveries (backload → STK), pull-outs under `/service-centers/*` |
 | **Reports** | Processed orders, daily stock, transfers, sales CSV (`/reports/sales`), **P-Count** (`/reports/pcount`), **Official Sales** dealer-template staging — Action Key process (`ADD` / `WHSE_ADD` / `DEL` → Official Sold; already-OFS ADD is idempotent; DEL restores STK at Branch Sold; stock adjustments appear in Serial Number Logs; process summarizes failed serials), progress popup, View details, and ? quick guide (`/reports/official-sales`) |
 | **SAP** | Outbound job queue + mock processor; **Service Layer** settings (encrypted credentials) + in-process session client with status UI (Connect/Logout) and refresh-on-401 |
-| **RBAC** | ISO + BRS roles (PS, TL, SP/SPA, Logistics, AE, Accounting); shared action vocabulary + module allowlists; Roles simple checklist + module×action matrix; Returns / Replacement uses `returns.view` / `request` / `evaluate` / `approve` / `complete` (legacy `sales.return.*` / SC return aliases still work); sale header Edit uses `sales.update`; Logistics uses `logistics.view` / `create` / `manage`; Service uses `service_centers.*` ops perms |
+| **RBAC** | ISO + BRS roles (PS, TL, SP/SPA, Logistics, AE, Accounting); shared action vocabulary + module allowlists; Roles simple checklist + module×action matrix; Super Admins see built-in system roles and can adjust grants (rename/delete stay locked); Returns / Replacement uses `returns.view` / `request` / `evaluate` / `approve` / `complete` (legacy `sales.return.*` / SC return aliases still work); sale header Edit uses `sales.update`; Logistics uses `logistics.view` / `create` / `manage`; Service uses `service_centers.*` ops perms |
 
 ### App routes
 
@@ -77,7 +77,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/settings/master-data/*` | `master_data.manage` (Models: Import template + upload; creates new SKUs / updates existing; our template only) |
 | `/settings/sap-integration` | `sap.manage` (queue) |
 | `/settings/sap-integration/service-layer` | `sap.manage` (B1 Service Layer config) |
-| `/settings/permissions` | Platform operators → `/provider/permissions`; tenant users (incl. tenant super admin) denied |
+| `/settings/permissions` | `roles.manage` — tenant catalog browse + links to Roles / matrix; platform operators → `/provider/permissions` (catalog CRUD) |
 | `/settings/profile` | All authenticated users |
 
 ## Documentation

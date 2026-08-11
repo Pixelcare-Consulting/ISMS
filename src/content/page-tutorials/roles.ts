@@ -18,7 +18,7 @@ export const ROLES_PAGE_TUTORIAL: PageTutorialContent = {
       title: "How to use it",
       bullets: [
         "Create a custom role, then toggle permissions in plain language.",
-        "Built-in system roles may be hidden for tenant admins; platform operators can see them.",
+        "Super Admins see built-in system roles and can adjust their access; renaming and deleting those roles stay locked.",
         "Prefer least privilege — only grant modules required for the job.",
       ],
     },

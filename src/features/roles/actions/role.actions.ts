@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import { canManageSystemRoleAccess } from "@/features/roles/constants/role.constants";
 import { roleService } from "@/features/roles/services/role.service";
 import {
   requirePermission,
@@ -20,12 +21,23 @@ const togglePermissionSchema = z.object({
   enabled: z.boolean(),
 });
 
+async function resolveCanManageSystemRoleAccess(user: {
+  id: string;
+  roleSlugs?: string[];
+  isPlatformOperator?: boolean;
+}) {
+  const isPlatformOperator = await resolveSessionPlatformOperator(user);
+  return canManageSystemRoleAccess(user.roleSlugs, isPlatformOperator);
+}
+
 export async function getRolesPermissionsMatrixAction() {
   const session = await requirePermission("roles.manage");
-  const isPlatformOperator = await resolveSessionPlatformOperator(session.user);
+  const includeSystemRoles = await resolveCanManageSystemRoleAccess(
+    session.user,
+  );
   return roleService.getPermissionsMatrix(
     session.user.tenantId,
-    isPlatformOperator,
+    includeSystemRoles,
   );
 }
 
@@ -42,11 +54,13 @@ export async function toggleRolePermissionAction(input: {
   }
 
   try {
-    const isPlatformOperator = await resolveSessionPlatformOperator(session.user);
+    const canManageSystemRoles = await resolveCanManageSystemRoleAccess(
+      session.user,
+    );
     await roleService.setRolePermission({
       tenantId: session.user.tenantId,
       actorUserId: session.user.id,
-      isPlatformOperator,
+      canManageSystemRoleAccess: canManageSystemRoles,
       ...parsed.data,
     });
     revalidatePath("/settings/roles");

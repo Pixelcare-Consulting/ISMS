@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 
 import { getRolesPermissionsMatrixAction } from "@/features/roles/actions/role.actions";
 import { RoleModuleActionMatrix } from "@/features/roles/components/role-module-action-matrix";
+import { canManageSystemRoleAccess } from "@/features/roles/constants/role.constants";
 import { ModuleGuide } from "@/components/module-guide";
 import {
   requirePermission,
@@ -20,15 +21,19 @@ export default async function SettingsRolesMatrixPage() {
     getRolesPermissionsMatrixAction(),
     resolveSessionPlatformOperator(session.user),
   ]);
+  const canManageSystemRoles = canManageSystemRoleAccess(
+    session.user.roleSlugs,
+    isPlatformOperator,
+  );
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Roles — Permission matrix"
         description={
-          isPlatformOperator
-            ? "Pick a role, then toggle access by module. On phones this uses cards; on desktop you get the full matrix. System roles included for platform operators."
-            : "Pick a role, then toggle access by module. On phones this uses cards; on desktop you get the full matrix. Built-in system roles are not shown here."
+          canManageSystemRoles
+            ? "Pick a role, then toggle access by module. On phones this uses cards; on desktop you get the full matrix. Built-in system roles are included."
+            : "Pick a role, then toggle access by module. On phones this uses cards; on desktop you get the full matrix. Built-in system roles are managed by Super Admins."
         }
         actions={
           <Link
@@ -46,7 +51,7 @@ export default async function SettingsRolesMatrixPage() {
       <ModuleGuide {...ROLES_MATRIX_MODULE_GUIDE} />
       <RoleModuleActionMatrix
         matrix={matrix}
-        isPlatformOperator={isPlatformOperator}
+        canManageSystemRoleAccess={canManageSystemRoles}
       />
     </div>
   );

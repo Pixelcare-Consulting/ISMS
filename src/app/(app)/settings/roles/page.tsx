@@ -1,5 +1,6 @@
 import { getRolesPermissionsMatrixAction } from "@/features/roles/actions/role.actions";
 import { RolesSimpleView } from "@/features/roles/components/roles-simple-view";
+import { canManageSystemRoleAccess } from "@/features/roles/constants/role.constants";
 import { ModuleGuide } from "@/components/module-guide";
 import {
   requirePermission,
@@ -15,6 +16,10 @@ export default async function SettingsRolesPage() {
     getRolesPermissionsMatrixAction(),
     resolveSessionPlatformOperator(session.user),
   ]);
+  const canManageSystemRoles = canManageSystemRoleAccess(
+    session.user.roleSlugs,
+    isPlatformOperator,
+  );
 
   return (
     <div className="space-y-6">
@@ -22,15 +27,16 @@ export default async function SettingsRolesPage() {
         title="Roles"
         tutorial={ROLES_PAGE_TUTORIAL}
         description={
-          isPlatformOperator
-            ? "Manage roles with plain-language access. Built-in system roles are included for platform operators."
-            : "Create custom roles and choose what people can see and do. Built-in system roles are not shown here."
+          canManageSystemRoles
+            ? "Manage roles with plain-language access. Built-in system roles are included — adjust access; rename and delete stay locked."
+            : "Create custom roles and choose what people can see and do. Built-in system roles are managed by Super Admins."
         }
       />
       <ModuleGuide {...ROLES_MODULE_GUIDE} />
       <RolesSimpleView
         matrix={matrix}
         isPlatformOperator={isPlatformOperator}
+        canManageSystemRoleAccess={canManageSystemRoles}
       />
     </div>
   );

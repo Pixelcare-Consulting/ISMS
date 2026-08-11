@@ -4,23 +4,25 @@ import { revalidatePath } from "next/cache";
 
 import { permissionService } from "@/features/permissions/services/permission.service";
 import {
+  requirePermission,
   requirePlatformOperator,
 } from "@/lib/auth/permissions";
 import { createPermissionSchema } from "@/features/permissions/schemas/create-permission.schema";
 import { updatePermissionSchema } from "@/features/permissions/schemas/update-permission.schema";
 
 const PERMISSIONS_PATH = "/provider/permissions";
-const LEGACY_PERMISSIONS_PATH = "/settings/permissions";
+const TENANT_PERMISSIONS_PATH = "/settings/permissions";
 const ROLES_PATH = "/settings/roles";
 
 function revalidatePermissionPages() {
   revalidatePath(PERMISSIONS_PATH);
-  revalidatePath(LEGACY_PERMISSIONS_PATH);
+  revalidatePath(TENANT_PERMISSIONS_PATH);
   revalidatePath(ROLES_PATH);
 }
 
+/** Catalog read — tenant Super Admin / anyone with roles.manage, plus platform ops. */
 export async function listPermissionsAction() {
-  await requirePlatformOperator();
+  await requirePermission("roles.manage");
   return permissionService.listPermissions();
 }
 
