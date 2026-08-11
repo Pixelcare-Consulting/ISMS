@@ -1,4 +1,8 @@
-import { listOfficialSalesStagingAction } from "@/features/official-sales/actions/official-sales.actions";
+import {
+  getOfficialSalesKpisAction,
+  listOfficialSalesStagingAction,
+} from "@/features/official-sales/actions/official-sales.actions";
+import { OfficialSalesKpisStrip } from "@/features/official-sales/components/official-sales-kpis";
 import { hasPermission, requireAnyPermission } from "@/lib/auth/permissions";
 import { OfficialSalesPanel } from "@/app/(app)/reports/official-sales/_components/official-sales-panel";
 
@@ -7,8 +11,16 @@ export default async function OfficialSalesPage() {
     "official_sales.view",
     "official_sales.manage",
   ]);
-  const rows = await listOfficialSalesStagingAction();
+  const [rows, kpis] = await Promise.all([
+    listOfficialSalesStagingAction(),
+    getOfficialSalesKpisAction(),
+  ]);
   const canManage = hasPermission(session.user.permissions, "official_sales.manage");
 
-  return <OfficialSalesPanel rows={rows} canManage={canManage} />;
+  return (
+    <div className="space-y-6">
+      <OfficialSalesKpisStrip kpis={kpis} />
+      <OfficialSalesPanel rows={rows} canManage={canManage} />
+    </div>
+  );
 }

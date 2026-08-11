@@ -47,6 +47,18 @@ const OPEN_SALE_DETAIL_SELECT = {
 } as const;
 
 export const officialSalesRepository = {
+  countByStatus(tenantId: string) {
+    return prisma.officialSalesImportRow.groupBy({
+      by: ["status"],
+      where: { tenantId },
+      _count: { id: true },
+    });
+  },
+
+  countAll(tenantId: string) {
+    return prisma.officialSalesImportRow.count({ where: { tenantId } });
+  },
+
   listStagingRows(tenantId: string) {
     return prisma.officialSalesImportRow.findMany({
       where: { tenantId },

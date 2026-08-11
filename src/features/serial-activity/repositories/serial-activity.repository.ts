@@ -871,4 +871,45 @@ export const serialActivityRepository = {
 
     return toPaginatedResult(merged, total, page, limit);
   },
+
+  /**
+   * All-time activity counts by event type (unfiltered — matches list KPI strips).
+   */
+  async getKpis(tenantId: string) {
+    const dir: SerialActivitySortDir = "desc";
+    const opts: SourceOptions = { window: 0, dir };
+
+    const [
+      registered,
+      status,
+      transferred,
+      sold,
+      pulledOut,
+      counted,
+      officialSales,
+    ] = await Promise.all([
+      registeredSource(tenantId, opts),
+      statusSource(tenantId, opts),
+      transferredSource(tenantId, opts),
+      soldSource(tenantId, opts),
+      pulledOutSource(tenantId, opts),
+      countedSource(tenantId, opts),
+      officialSalesAuditSource(tenantId, opts),
+    ]);
+
+    const soldCount = sold.count + officialSales.count;
+    const statuses = [
+      { code: "registered", name: "Registered", count: registered.count },
+      { code: "status", name: "Status update", count: status.count },
+      { code: "transferred", name: "Transferred", count: transferred.count },
+      { code: "sold", name: "Sales transaction", count: soldCount },
+      { code: "pulled_out", name: "Pulled out", count: pulledOut.count },
+      { code: "counted", name: "Counted", count: counted.count },
+    ];
+
+    return {
+      totalEvents: statuses.reduce((sum, row) => sum + row.count, 0),
+      statuses,
+    };
+  },
 };
