@@ -456,19 +456,19 @@ export function AddTransactionDetailDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="flex w-full max-w-2xl max-h-[calc(100svh-2rem)] flex-col rounded-xl border bg-card shadow-lg">
-        <div className="flex-1 overflow-y-auto space-y-4 p-4 sm:p-6">
-          <div>
-            <h3 className="text-lg font-semibold">
-              {isEdit ? "Edit Line Items" : "Add Line Items"}
-            </h3>
-            <p className="text-sm text-muted-foreground">
-              Choose a package. Quantity expands into one set per unit; each set
-              needs its own brand, model, and STK serial from the stock source
-              branch.
-            </p>
-          </div>
+      <div className="flex w-full max-w-2xl max-h-[calc(100svh-2rem)] min-h-0 flex-col overflow-hidden rounded-xl border bg-card shadow-xl">
+        <div className="shrink-0 rounded-t-xl border-b bg-card p-4 sm:p-6">
+          <h3 className="text-lg font-semibold">
+            {isEdit ? "Edit Line Items" : "Add Line Items"}
+          </h3>
+          <p className="text-sm text-muted-foreground">
+            Choose a package. Quantity expands into one set per unit; each set
+            needs its own brand, model, and STK serial from the stock source
+            branch.
+          </p>
+        </div>
 
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-6">
           <div className="space-y-2">
             <Label>Package *</Label>
             <SearchableSelect
@@ -716,7 +716,7 @@ export function AddTransactionDetailDialog({
           </div>
         </div>
 
-        <div className="flex flex-wrap justify-end gap-2 border-t p-4 sm:p-6">
+        <div className="flex shrink-0 flex-wrap justify-end gap-2 rounded-b-xl border-t bg-card p-4 sm:p-6">
           <Button
             type="button"
             variant="outline"

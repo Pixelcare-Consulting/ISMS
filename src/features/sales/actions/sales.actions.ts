@@ -13,6 +13,7 @@ import {
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { salesRepository } from "@/features/sales/repositories/sales.repository";
+import { salesKpiService } from "@/features/sales/services/sales-kpi.service";
 import type {
   SalesListSort,
   SalesListSortDir,
@@ -399,6 +400,11 @@ function parseSalesReturnsSort(value?: string): SalesReturnsListSort | undefined
 function parseSalesSortDir(value?: string): SalesListSortDir | undefined {
   if (value === "asc" || value === "desc") return value;
   return undefined;
+}
+
+export async function getSalesKpisAction() {
+  const session = await requireAnyPermission([...SALES_LIST_PERMISSIONS]);
+  return salesKpiService.getKpis(session.user.tenantId);
 }
 
 export async function listSalesAction(input?: {

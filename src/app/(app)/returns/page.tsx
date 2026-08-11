@@ -18,6 +18,8 @@ import {
   resolveReturnsCapabilities,
   type ReturnsPageTab,
 } from "@/features/returns/constants/returns-permissions";
+import { getReturnsKpisAction } from "@/features/returns/actions/returns.actions";
+import { ReturnsKpisStrip } from "@/features/returns/components/returns-kpis";
 import { listScReturnsAction } from "@/features/service-center-ops/actions/sc-sales.actions";
 import { requireAuth } from "@/lib/auth/permissions";
 import { pageMetadata } from "@/lib/shared/seo";
@@ -93,7 +95,7 @@ export default async function ReturnsPage({ searchParams }: ReturnsPageProps) {
     canCompleteReturn: returnsCapabilities.canCompleteReturn,
   };
 
-  const [branchResult, scResult, approvalsBranch, approvalsSc] =
+  const [branchResult, scResult, approvalsBranch, approvalsSc, returnsKpis] =
     await Promise.all([
       activeTab === "branch"
         ? listSalesReturnsAction(listInput)
@@ -114,7 +116,15 @@ export default async function ReturnsPage({ searchParams }: ReturnsPageProps) {
             statusIn: [...APPROVAL_STATUSES],
           })
         : Promise.resolve(null),
+      getReturnsKpisAction(),
     ]);
+
+  const activeKpis =
+    activeTab === "service"
+      ? returnsKpis.service
+      : activeTab === "approvals"
+        ? returnsKpis.approvals
+        : returnsKpis.branch;
 
   return (
     <div className="space-y-6">
@@ -125,6 +135,7 @@ export default async function ReturnsPage({ searchParams }: ReturnsPageProps) {
         description="Track branch and service center customer returns — evaluate, approve, and restore stock. Start a request from the sale’s View details."
       />
       <ModuleGuide {...RETURNS_MODULE_GUIDE} />
+      <ReturnsKpisStrip kpis={activeKpis} />
       <ReturnsPageTabs
         activeTab={activeTab}
         allowedTabs={allowedTabs}

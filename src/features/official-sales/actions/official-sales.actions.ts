@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { officialSalesService } from "@/features/official-sales/services/official-sales.service";
+import { officialSalesKpiService } from "@/features/official-sales/services/official-sales-kpi.service";
 import { requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
 
 export async function listOfficialSalesStagingAction() {
@@ -99,6 +100,14 @@ export async function processOfficialSalesAction(input?: { rowIds?: string[] }) 
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Process failed" };
   }
+}
+
+export async function getOfficialSalesKpisAction() {
+  const session = await requireAnyPermission([
+    "official_sales.view",
+    "official_sales.manage",
+  ]);
+  return officialSalesKpiService.getKpis(session.user.tenantId);
 }
 
 export async function deleteOfficialSalesRowsAction(input: { rowIds: string[] }) {

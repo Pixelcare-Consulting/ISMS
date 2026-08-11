@@ -1,6 +1,7 @@
 "use server";
 
 import { serialActivityRepository } from "@/features/serial-activity/repositories/serial-activity.repository";
+import { serialActivityKpiService } from "@/features/serial-activity/services/serial-activity-kpi.service";
 import type { SerialActivitySortDir } from "@/features/serial-activity/repositories/serial-activity.repository";
 import type { SerialActivityType } from "@/features/serial-activity/constants/serial-activity-display";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
@@ -8,6 +9,11 @@ import { requirePermission } from "@/lib/auth/permissions";
 
 function parseSerialActivitySortDir(value?: string): SerialActivitySortDir | undefined {
   return value === "asc" || value === "desc" ? value : undefined;
+}
+
+export async function getSerialActivityKpisAction() {
+  const session = await requirePermission("serial_logs.view");
+  return serialActivityKpiService.getKpis(session.user.tenantId);
 }
 
 export async function listSerialActivityAction(params: {

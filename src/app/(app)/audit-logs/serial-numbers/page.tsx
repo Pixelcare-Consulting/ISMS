@@ -1,4 +1,5 @@
-import { listSerialActivityAction } from "@/features/serial-activity/actions/serial-activity.actions";
+import { getSerialActivityKpisAction, listSerialActivityAction } from "@/features/serial-activity/actions/serial-activity.actions";
+import { SerialActivityKpisStrip } from "@/features/serial-activity/components/serial-activity-kpis";
 import {
   SERIAL_ACTIVITY_TYPES,
   type SerialActivityType,
@@ -33,15 +34,18 @@ export default async function SerialNumberLogsPage({
   const limit = parseTablePageSize(params.limit);
   const type = parseType(params.type);
 
-  const rawResult = await listSerialActivityAction({
-    page,
-    limit,
-    type,
-    q: params.q,
-    dateFrom: params.dateFrom,
-    dateTo: params.dateTo,
-    sortDir: params.dir,
-  });
+  const [rawResult, kpis] = await Promise.all([
+    listSerialActivityAction({
+      page,
+      limit,
+      type,
+      q: params.q,
+      dateFrom: params.dateFrom,
+      dateTo: params.dateTo,
+      sortDir: params.dir,
+    }),
+    getSerialActivityKpisAction(),
+  ]);
 
   const result = {
     items: rawResult.items,
@@ -58,6 +62,7 @@ export default async function SerialNumberLogsPage({
         description="Read-only activity feed of every serialized unit — registered, transferred, sold, Official Sales (ADD / DEL / WHSE_ADD), pulled out, counted, and status changes."
         sticky={false}
       />
+      <SerialActivityKpisStrip kpis={kpis} />
       <SerialActivityTable
         result={result}
         currentType={type}

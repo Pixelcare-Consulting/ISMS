@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { redirect } from "next/navigation";
 
-import { listSalesAction } from "@/features/sales/actions/sales.actions";
+import { listSalesAction, getSalesKpisAction } from "@/features/sales/actions/sales.actions";
 import {
   canAccessSales,
   resolveSalesCapabilities,
@@ -15,6 +15,7 @@ import { SALES_MODULE_GUIDE } from "@/content/module-guides/sales";
 import { SALES_PAGE_TUTORIAL } from "@/content/page-tutorials/sales";
 import { PageHeader } from "@/app/(app)/_components/page-header";
 import { SalesTable } from "@/app/(app)/sales/_components/sales-table";
+import { SalesKpisStrip } from "@/features/sales/components/sales-kpis";
 import { Button } from "@/components/ui/button";
 
 export const metadata = pageMetadata(
@@ -50,12 +51,15 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
 
   const page = Number(params.page) || 1;
   const limit = parseTablePageSize(params.limit);
-  const result = await listSalesAction({
-    page,
-    limit,
-    sort: params.sort,
-    sortDir: params.dir,
-  });
+  const [result, kpis] = await Promise.all([
+    listSalesAction({
+      page,
+      limit,
+      sort: params.sort,
+      sortDir: params.dir,
+    }),
+    getSalesKpisAction(),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -76,6 +80,7 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
         }
       />
       <ModuleGuide {...SALES_MODULE_GUIDE} />
+      <SalesKpisStrip kpis={kpis} />
       <SalesTable
         result={result}
         capabilities={capabilities}
