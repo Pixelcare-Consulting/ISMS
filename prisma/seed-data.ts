@@ -85,6 +85,7 @@ export const PERMISSIONS = [
   { slug: "sap.manage", name: "Manage SAP integration" },
   { slug: "sales.view", name: "View sales and ATR" },
   { slug: "sales.create", name: "Create sales transactions" },
+  { slug: "sales.return.view", name: "View sales returns (ATR ledger)" },
   { slug: "sales.return.request", name: "Request sales return (ATR)" },
   { slug: "sales.return.evaluate", name: "Evaluate sales return (CS)" },
   { slug: "sales.return.approve", name: "Approve sales return (TL)" },
@@ -205,6 +206,7 @@ export const ROLES = [
       "sap.manage",
       "sales.view",
       "sales.create",
+      "sales.return.view",
       "sales.return.request",
       "sales.return.evaluate",
       "sales.return.approve",
@@ -296,6 +298,7 @@ export const ROLES = [
       ...ORDERS_CREATE_ALL,
       "sales.view",
       "sales.create",
+      "sales.return.view",
       "sales.return.request",
       "service_centers.inventory.view",
       "service_centers.sales.view",
@@ -319,6 +322,7 @@ export const ROLES = [
       ...ORDERS_APPROVE_ALL,
       "sales.view",
       "sales.create",
+      "sales.return.view",
       "sales.return.request",
       "sales.return.evaluate",
       "sales.return.approve",
@@ -426,6 +430,7 @@ export const ROLES = [
       "sap.view",
       "sap.manage",
       "sales.view",
+      "sales.return.view",
       "sales.return.complete",
       "service_centers.inventory.view",
       "service_centers.return.complete",
@@ -487,7 +492,8 @@ export type SeedProfile =
   | "brs"
   | "schedules"
   | "branches"
-  | "psg";
+  | "psg"
+  | "warehouse";
 
 export function resolveSeedProfile(): SeedProfile {
   const raw = process.env.SEED_PROFILE?.trim().toLowerCase();
@@ -499,6 +505,7 @@ export function resolveSeedProfile(): SeedProfile {
     raw === "schedules" ||
     raw === "branches" ||
     raw === "psg" ||
+    raw === "warehouse" ||
     raw === "minimal"
   ) {
     return raw;

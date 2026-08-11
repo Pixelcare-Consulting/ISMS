@@ -13,15 +13,20 @@ import { hasPermission } from "@/lib/auth/permissions";
 
 export const SALES_VIEW = "sales.view";
 export const SALES_CREATE = "sales.create";
+export const SALES_RETURN_VIEW = "sales.return.view";
 export const SALES_RETURN_REQUEST = "sales.return.request";
 export const SALES_RETURN_EVALUATE = "sales.return.evaluate";
 export const SALES_RETURN_APPROVE = "sales.return.approve";
 export const SALES_RETURN_COMPLETE = "sales.return.complete";
 
-/** Any of these grants Sales nav + `/sales` list access. */
+/** Sales tab list access (sale lines). */
+export const SALES_LIST_PERMISSIONS = [SALES_VIEW, SALES_CREATE] as const;
+
+/** Any of these grants Sales nav + `/sales` page access. */
 export const SALES_ACCESS_PERMISSIONS = [
   SALES_VIEW,
   SALES_CREATE,
+  SALES_RETURN_VIEW,
   SALES_RETURN_REQUEST,
   SALES_RETURN_EVALUATE,
   SALES_RETURN_APPROVE,
@@ -29,10 +34,12 @@ export const SALES_ACCESS_PERMISSIONS = [
 ] as const;
 
 /**
- * Capability map for Sales page CTA + ATR row buttons.
+ * Capability map for Sales page CTA + ATR row buttons + tab visibility.
  * Short alias lists keep pre-reseed tenants working for one release.
  */
 export const SALES_ACTION_CAPABILITIES = {
+  canViewSalesList: [SALES_VIEW, SALES_CREATE],
+  canViewReturns: SALES_RETURN_VIEW,
   canCreateSale: SALES_CREATE,
   canRequestReturn: [SALES_RETURN_REQUEST, SALES_CREATE],
   canEvaluateReturn: SALES_RETURN_EVALUATE,

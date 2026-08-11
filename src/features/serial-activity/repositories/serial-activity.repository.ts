@@ -512,6 +512,7 @@ const OFFICIAL_SALES_AUDIT_ACTIONS = [
   "official_sales.add",
   "official_sales.del",
   "official_sales.whse_add",
+  "official_sales.stock_adj",
 ] as const;
 
 const OFFICIAL_SALES_ACTION_KEY_LABEL: Record<
@@ -521,6 +522,8 @@ const OFFICIAL_SALES_ACTION_KEY_LABEL: Record<
   "official_sales.add": "ADD",
   "official_sales.del": "DEL",
   "official_sales.whse_add": "WHSE_ADD",
+  // stock_adj carries Action Key in metadata.action / actionKey (ADD / DEL / WHSE_ADD)
+  "official_sales.stock_adj": "ADD",
 };
 
 function auditMetadataRecord(
@@ -550,12 +553,17 @@ function officialSalesActionKey(
   if (fromMeta === "ADD" || fromMeta === "DEL" || fromMeta === "WHSE_ADD") {
     return fromMeta;
   }
+  // stock_adj audits historically used metadata.action (ADD / DEL / WHSE_ADD)
+  const fromAction = auditMetadataString(metadata, "action")?.toUpperCase();
+  if (fromAction === "ADD" || fromAction === "DEL" || fromAction === "WHSE_ADD") {
+    return fromAction;
+  }
   return OFFICIAL_SALES_ACTION_KEY_LABEL[action];
 }
 
 /**
- * Append-only Official Sales ADD/DEL/WHSE_ADD trail from AuditLog so cycles
- * remain visible after sale details are hard-deleted.
+ * Append-only Official Sales ADD/DEL/WHSE_ADD/stock_adj trail from AuditLog so
+ * cycles remain visible after sale details are hard-deleted.
  */
 async function officialSalesAuditSource(
   tenantId: string,
@@ -659,6 +667,8 @@ async function officialSalesAuditSource(
       const previousStatus = auditMetadataString(metadata, "previousStatus");
       const restoredBranch = auditMetadataString(metadata, "restoredBranch");
       const soldBranch = auditMetadataString(metadata, "soldBranch");
+      const whseFrom = auditMetadataString(metadata, "whseFrom");
+      const whseTo = auditMetadataString(metadata, "whseTo");
       const toFollowCleanup = metadata?.toFollowCleanup === true;
 
       // Keep serial / transaction / entityId hits; drop unrelated JSON contains noise.
@@ -674,7 +684,10 @@ async function officialSalesAuditSource(
       const action =
         row.action as (typeof OFFICIAL_SALES_AUDIT_ACTIONS)[number];
       const actionKey = officialSalesActionKey(action, metadata);
-      const typeLabel = `Official Sales ${actionKey}`;
+      const isStockAdj = action === "official_sales.stock_adj";
+      const typeLabel = isStockAdj
+        ? "Official Sales Stock Adj"
+        : `Official Sales ${actionKey}`;
 
       let statusLabel: string;
       switch (action) {
@@ -690,6 +703,12 @@ async function officialSalesAuditSource(
           break;
         case "official_sales.whse_add":
           statusLabel = `Action Key: ${actionKey} · Official Sold`;
+          break;
+        case "official_sales.stock_adj":
+          statusLabel =
+            whseFrom && whseTo
+              ? `Action Key: ${actionKey} · Stock Adj ${whseFrom} → ${whseTo}`
+              : `Action Key: ${actionKey} · Stock Adj`;
           break;
         default: {
           const _exhaustive: never = action;
@@ -707,16 +726,19 @@ async function officialSalesAuditSource(
           timestamp: row.createdAt,
           serialNo,
           modelLabel: modelBySerial.get(serialNo) ?? "—",
-          location: soldBranch ?? restoredBranch,
+          location: soldBranch ?? whseTo ?? restoredBranch,
           reference: transactionNo,
           referenceDetails: referenceDetails(
+            isStockAdj ? "Stock Adj" : null,
             `Action Key: ${actionKey}`,
             transactionNo ? `Transaction ${transactionNo}` : null,
-            soldBranch && restoredBranch && soldBranch !== restoredBranch
-              ? route(soldBranch, restoredBranch)
-              : soldBranch
-                ? `Branch: ${soldBranch}`
-                : null,
+            whseFrom && whseTo
+              ? route(whseFrom, whseTo)
+              : soldBranch && restoredBranch && soldBranch !== restoredBranch
+                ? route(soldBranch, restoredBranch)
+                : soldBranch
+                  ? `Branch: ${soldBranch}`
+                  : null,
             toFollowCleanup ? "TO-FOLLOW cleanup" : null,
           ),
           status: statusLabel,
@@ -828,8 +850,8 @@ export const serialActivityRepository = {
     const dir: SerialActivitySortDir = params.sortDir === "asc" ? "asc" : "desc";
     const mul = dir === "asc" ? 1 : -1;
 
-    // Official Sales ADD/DEL audits use type `sold` with a typeLabel override so
-    // they appear in the full feed and when filtering Sales transactions.
+    // Official Sales ADD/DEL/WHSE_ADD/stock_adj audits use type `sold` with a
+    // typeLabel override so they appear in the full feed and Sales filter.
     const active =
       params.type == null
         ? [...Object.values(SOURCES), officialSalesAuditSource]

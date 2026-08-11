@@ -13,6 +13,7 @@ import {
   upsertModelsFromPlanogramRows,
 } from "@/features/planogram/services/planogram-csv-sync.service";
 import { parsePlanogramCsvFromContent } from "./seed-planogram-from-csv";
+import { seedWarehouseInventoryDemo } from "./seed-warehouse-inventory";
 
 export async function seedBrsDemoData(
   prisma: PrismaClient,
@@ -234,6 +235,8 @@ export async function seedBrsDemoData(
       }
     });
   }
+
+  await seedWarehouseInventoryDemo(prisma, tenantId, modelIdBySku);
 
   await prisma.tenant.update({
     where: { id: tenantId },
