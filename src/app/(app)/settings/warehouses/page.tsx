@@ -2,11 +2,24 @@ import { listWarehousesAction } from "@/features/warehouses/actions/warehouse.ac
 import { requirePermission } from "@/lib/auth/permissions";
 import { WAREHOUSES_PAGE_TUTORIAL } from "@/content/page-tutorials/warehouses";
 import { PageHeader } from "@/app/(app)/_components/page-header";
-import { WarehousesKpisStrip } from "@/app/(app)/settings/warehouses/_components/warehouses-kpis";
-import { WarehousesTable } from "@/app/(app)/settings/warehouses/_components/warehouses-table";
+import {
+  WarehousesSettingsTabs,
+  type WarehousesTab,
+} from "@/app/(app)/settings/warehouses/_components/warehouses-settings-tabs";
 
-export default async function SettingsWarehousesPage() {
+interface SettingsWarehousesPageProps {
+  searchParams: Promise<{ tab?: string }>;
+}
+
+function parseTab(value?: string): WarehousesTab {
+  return value === "stock" ? "stock" : "setup";
+}
+
+export default async function SettingsWarehousesPage({
+  searchParams,
+}: SettingsWarehousesPageProps) {
   await requirePermission("warehouses.manage");
+  const params = await searchParams;
   const warehouses = await listWarehousesAction();
 
   return (
@@ -14,11 +27,13 @@ export default async function SettingsWarehousesPage() {
       <PageHeader
         title="Warehouses"
         tutorial={WAREHOUSES_PAGE_TUTORIAL}
-        description="Manage warehouse locations and storage aisles (CSV step 4)."
+        description="Manage warehouse locations and storage aisles, or open warehouse stock serials (CSV step 4)."
         sticky={false}
       />
-      <WarehousesKpisStrip rows={warehouses} />
-      <WarehousesTable warehouses={warehouses} />
+      <WarehousesSettingsTabs
+        warehouses={warehouses}
+        activeTab={parseTab(params.tab)}
+      />
     </div>
   );
 }

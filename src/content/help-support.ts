@@ -79,6 +79,13 @@ export const HELP_QUICK_LINKS: HelpQuickLink[] = [
     group: "inventory",
   },
   {
+    id: "warehouse-stock",
+    title: "Warehouse stock",
+    description: "Browse serials held in warehouses.",
+    href: "/inventory/warehouse-stock",
+    group: "inventory",
+  },
+  {
     id: "stock-count",
     title: "Stock count",
     description: "Run physical count sessions.",
@@ -410,9 +417,9 @@ export const HELP_FAQ_CATEGORIES: HelpFaqCategory[] = [
       },
       {
         id: "nav-2",
-        question: "When should I use Stock units vs Stock count?",
+        question: "When should I use Stock units vs Warehouse stock vs Stock count?",
         answer:
-          "Stock units is for lookup and traceability of serials. Stock count is for scheduled physical counts and posting variances.",
+          "Stock units is branch shelf stock. Warehouse stock is serials still in warehouses. Stock count (P-Count) is for scheduled physical counts and posting variances.",
       },
       {
         id: "nav-3",

@@ -51,7 +51,7 @@ export const INVENTORY_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "Related work",
       description:
-        "Receive, transfer, and pull-out happen in Operations and Logistics. Use Stock count (P-Count) for physical counts. Keep planograms current under Settings so On / Off badges stay meaningful.",
+        "Receive, transfer, and pull-out happen in Operations and Logistics. Use Stock count (P-Count) for physical counts. Warehouse serials live under Inventory → Warehouse stock. Keep planograms current under Settings so On / Off badges stay meaningful.",
     },
   ],
 };

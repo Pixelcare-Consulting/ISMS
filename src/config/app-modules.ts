@@ -235,7 +235,7 @@ export const appModules: AppModule[] = [
     route: "/inventory",
     slugPrefix: "inventory",
     navPermission: "inventory.view",
-    description: "Serialized branch inventory (AOR-scoped)",
+    description: "Serialized branch and warehouse inventory (AOR-scoped)",
     actions: permissionActions("view", "manage"),
   },
   {
@@ -284,6 +284,7 @@ export const appModules: AppModule[] = [
     actions: permissionActions(
       "view",
       "create",
+      "update",
       "return.view",
       "return.request",
       "return.evaluate",

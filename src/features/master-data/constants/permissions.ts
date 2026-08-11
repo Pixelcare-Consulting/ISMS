@@ -40,6 +40,7 @@ export const BRS_PERMISSIONS = [
   { slug: "sap.manage", name: "Manage SAP integration" },
   { slug: "sales.view", name: "View sales and ATR" },
   { slug: "sales.create", name: "Record branch sales" },
+  { slug: "sales.update", name: "Edit sales transaction headers" },
   { slug: "sales.return.view", name: "View sales returns (ATR ledger)" },
   { slug: "sales.return.request", name: "Request sales return (ATR)" },
   { slug: "sales.return.evaluate", name: "Evaluate sales return (CS)" },

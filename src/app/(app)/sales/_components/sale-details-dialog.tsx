@@ -22,6 +22,7 @@ import {
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import type { SaleStatusCodeRef } from "@/features/sales/actions/sales.actions";
 import type { SalesActionCapabilities } from "@/features/sales/constants/sales-permissions";
+import { TO_FOLLOW_SERIAL_LABEL } from "@/features/sales/constants/to-follow-serial";
 import { capturesDeliveryReceipt } from "@/features/sales/utils/delivery-method";
 import { formatPeso } from "@/utils/format-currency";
 
@@ -45,15 +46,26 @@ export interface SaleDetailsPayload {
   id: string;
   transactionNo: string;
   transactionDate: string | null;
+  /** YYYY-MM-DD for header edit date input. */
+  transactionDateInput: string | null;
   customerName: string | null;
+  contactNo: string | null;
   siTrans: string | null;
+  infoSlipVsoRrReleased: string | null;
+  rrReceiveDeliver: string | null;
   atrStatus: string;
   atrStatusCode: SaleStatusCodeRef;
   notes: string | null;
   proofPaths: string[];
   proofCount: number;
   amount: string;
+  reserved: boolean;
   stockBranchId: string;
+  branchId: string;
+  alternateBranchId: string;
+  paymentTypeId: string | null;
+  saleTypeId: string | null;
+  customerDeliveryMethodId: string | null;
   branch: { id: string; name: string };
   stockSourceBranch: { id: string; name: string } | null;
   paymentType: { id: string; name: string } | null;
@@ -79,7 +91,13 @@ interface SaleDetailsDialogProps {
   capabilities: SalesActionCapabilities;
   pending?: boolean;
   onEditLine: (line: SaleDetailsLine) => void;
+  onEditHeader?: () => void;
   onReturnAction: (action: SaleReturnConfirmAction) => void;
+}
+
+/** Line Edit is only for exact TO-FOLLOW placeholders (pending real serial). */
+function canEditSaleLine(line: SaleDetailsLine): boolean {
+  return !line.serialNumberId && line.serialNo === TO_FOLLOW_SERIAL_LABEL;
 }
 
 function formatOptionalDate(value: string | null | undefined): string | null {
@@ -225,6 +243,7 @@ export function SaleDetailsDialog({
   capabilities,
   pending = false,
   onEditLine,
+  onEditHeader,
   onReturnAction,
 }: SaleDetailsDialogProps) {
   const [proofViewerOpen, setProofViewerOpen] = useState(false);
@@ -247,6 +266,9 @@ export function SaleDetailsDialog({
     returnStatus === "approved" && capabilities.canCompleteReturn;
   const hasAtrActions =
     showRequestReturn || showCsActions || showTlActions || showRestore;
+  const showHeaderEdit =
+    Boolean(onEditHeader) && capabilities.canUpdateSaleHeader;
+  const canEditLines = capabilities.canCreateSale;
 
   return (
     <>
@@ -254,7 +276,21 @@ export function SaleDetailsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[90svh] w-[min(calc(100vw-2rem),48rem)] max-w-3xl flex-col overflow-hidden">
         <DialogHeader className="shrink-0 pr-8 text-left">
-          <DialogTitle>Sale details {sale.transactionNo}</DialogTitle>
+          <DialogTitle className="flex flex-wrap items-center justify-between gap-2">
+            <span>Sale details {sale.transactionNo}</span>
+            {showHeaderEdit ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="shrink-0 font-normal"
+                disabled={pending}
+                onClick={onEditHeader}
+              >
+                Edit header
+              </Button>
+            ) : null}
+          </DialogTitle>
           <DialogDescription>
             Sale header, serial lines, and return actions for this transaction.
           </DialogDescription>
@@ -376,15 +412,17 @@ export function SaleDetailsDialog({
                           modelLabel={line.modelLabel}
                         />
                       </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="shrink-0"
-                        disabled={pending}
-                        onClick={() => onEditLine(line)}
-                      >
-                        Edit
-                      </Button>
+                      {canEditLines && canEditSaleLine(line) ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="shrink-0"
+                          disabled={pending}
+                          onClick={() => onEditLine(line)}
+                        >
+                          Edit
+                        </Button>
+                      ) : null}
                     </div>
                     <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
                       <div className="min-w-0">
@@ -540,14 +578,20 @@ export function SaleDetailsDialog({
                           </td>
                         ) : null}
                         <td className="sticky right-0 whitespace-nowrap bg-card px-2 py-2 text-right shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.12)]">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={pending}
-                            onClick={() => onEditLine(line)}
-                          >
-                            Edit
-                          </Button>
+                          {canEditLines && canEditSaleLine(line) ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={pending}
+                              onClick={() => onEditLine(line)}
+                            >
+                              Edit
+                            </Button>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">
+                              —
+                            </span>
+                          )}
                         </td>
                       </tr>
                     ))}

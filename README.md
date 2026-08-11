@@ -2,7 +2,7 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.25.3`
+**Current version:** `0.27.0`
 
 ## Stack
 
@@ -20,14 +20,14 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | **Planning** | BRS CSV forecast import, allocation, suggested auto-replenish orders (`/settings/planning`, `/planning/suggested-orders`) |
 | **Planogram** | Per-branch SKU shelf capacity, MIL, order enforcement |
 | **Policies** | Full document control (ISO track) |
-| **Inventory** | Serialized stock (STK on Stock units), AOR-scoped list, series QTY/VALUE + DR#/date/aging, **physical stock count / P-Count** (`/inventory/stock-count`) |
+| **Inventory** | Serialized stock (STK on Stock units), **warehouse stock** SN list (`/inventory/warehouse-stock`; also Settings → Warehouses → Stock), AOR-scoped lists, series QTY/VALUE + DR#/date/aging, **physical stock count / P-Count** (`/inventory/stock-count`) |
 | **Orders** | Nav group: Manual / Special / Auto replenish (`/orders/manual` etc.); per-type `orders.manual`, `orders.special`, `orders.auto_replenish` with view/create/approve; PS → TL → SP; SO#, processed orders, delivery-due auto-reschedule |
 | **Logistics** | Deliveries (accept/reject), transfers, pull-outs with SN movement; gated by `logistics.view` / `create` / `manage` |
-| **Sales** | Encode at `/sales/new` (CTA from `/sales`); PS auto-branch; TL `sales.create` + branch picker; package detail modal (qty → N sets), reserved (RSV) sales; `/sales` **Sales \| Returns** tabs — Returns needs `sales.return.view` (ATR workflow stays on `sales.return.request` / evaluate / approve / complete; request still from Sale details) |
+| **Sales** | Encode at `/sales/new` (CTA from `/sales`); PS auto-branch; TL `sales.create` + branch picker; package detail modal (qty → N sets), reserved (RSV) sales; line Edit only for TO-FOLLOW; Accounting `sales.update` edits transaction headers; `/sales` **Sales \| Returns** tabs — Returns needs `sales.return.view` (ATR workflow stays on `sales.return.request` / evaluate / approve / complete; request still from Sale details) |
 | **Service** | Service center ops (AOR-scoped): inventory + manual stock-in, sales + ATR (`ServiceCenterReturnRequest`), orders, deliveries (backload → STK), pull-outs under `/service-centers/*` |
 | **Reports** | Processed orders, daily stock, transfers, sales CSV (`/reports/sales`), **P-Count** (`/reports/pcount`), **Official Sales** dealer-template staging — Action Key process (`ADD` / `WHSE_ADD` / `DEL` → Official Sold; already-OFS ADD is idempotent; DEL restores STK at Branch Sold; stock adjustments appear in Serial Number Logs; process summarizes failed serials), progress popup, View details, and ? quick guide (`/reports/official-sales`) |
 | **SAP** | Outbound job queue + mock processor; **Service Layer** settings (encrypted credentials) + in-process session client with status UI (Connect/Logout) and refresh-on-401 |
-| **RBAC** | ISO + BRS roles (PS, TL, SP/SPA, Logistics, AE); shared action vocabulary + module allowlists; Roles simple checklist + module×action matrix; Sales Returns tab uses `sales.return.view`; ATR buttons use `sales.return.request` / evaluate / approve / complete; Logistics uses `logistics.view` / `create` / `manage`; Service uses `service_centers.*` ops perms |
+| **RBAC** | ISO + BRS roles (PS, TL, SP/SPA, Logistics, AE, Accounting); shared action vocabulary + module allowlists; Roles simple checklist + module×action matrix; Sales Returns tab uses `sales.return.view`; ATR buttons use `sales.return.request` / evaluate / approve / complete; sale header Edit uses `sales.update`; Logistics uses `logistics.view` / `create` / `manage`; Service uses `service_centers.*` ops perms |
 
 ### App routes
 
@@ -39,6 +39,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/announcements` | `announcements.view` / `announcements.manage` |
 | `/competitors` | `competitors.view` / `competitors.manage` |
 | `/inventory` | `inventory.view` (Stock units: STK only, series summary, DR#/date/aging; Sold etc. in Sales) |
+| `/inventory/warehouse-stock` | `inventory.view` or `warehouses.manage` (read-only warehouse SNs; AOR-scoped; `?warehouse=` / `?location=` / `?q=`) |
 | `/inventory/stock-count` | `inventory.view` (nav alias: P-Count) |
 | `/orders` | Redirects to first accessible order type (or dashboard) |
 | `/orders/manual` | `orders.manual.view` / `create` / `approve` (or legacy `orders.*`) |
@@ -47,7 +48,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/planning/suggested-orders` | `forecast.manage` / `planogram.manage` |
 | `/logistics/deliveries`, `/transfers`, `/pickups` | `logistics.view` / `create` / `manage` (legacy `orders.*` aliases for list) |
 | `/operations` | `inventory.view` (combined ops view) |
-| `/sales` | `sales.view` / `sales.create` / `sales.return.view` / any ATR `sales.return.*` (Sales tab: view/create; Returns tab: `sales.return.view`; `?tab=returns`; New transaction needs `sales.create`) |
+| `/sales` | `sales.view` / `sales.create` / `sales.update` / `sales.return.view` / any ATR `sales.return.*` (Sales tab: view/create/update; Returns tab: `sales.return.view`; `?tab=returns`; New transaction needs `sales.create`; header Edit needs `sales.update`) |
 | `/sales/new` | `sales.create` (multi-detail encode) |
 | `/service-centers/inventory` | `service_centers.inventory.view` (+ manual stock-in via manage/logistics) |
 | `/service-centers/sales`, `/service-centers/sales/new` | `service_centers.sales.*` / `service_centers.return.*` |
@@ -61,7 +62,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/audit-logs/system`, `/audit-logs/serial-numbers` | `audit_logs.view` |
 | `/settings/branches`, `/settings/branch-quotas` | `branches.manage` (Import template: form-aligned Branches sheet + prefills; creates missing sap_codes; accepts PSG ISMS; optional legacy Allowed Models; schedule UX shows company locked days + frequency suggestions) |
 | `/settings/ordering` | `ordering_settings.manage` (company locked weekdays + optional daily time lock in Manila, scoped to selected order modules; frequency code catalog incl. Daily / Three times a month) |
-| `/settings/warehouses` | `warehouses.manage` |
+| `/settings/warehouses` | `warehouses.manage` (Warehouses setup + Stock tab → `/inventory/warehouse-stock`) |
 | `/settings/dealers` | `dealers.manage` |
 | `/settings/service-centers` | `service_centers.manage` |
 | `/settings/aors` | `aors.manage` |
@@ -78,6 +79,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 |-----|---------|
 | [`docs/CLIENT_WORKFLOW.md`](docs/CLIENT_WORKFLOW.md) | Client-facing How ISMS works (Mermaid master + role swimlanes) |
 | [`docs/DEVELOPMENT_README.md`](docs/DEVELOPMENT_README.md) | Spec index, Process Flow v1.0 traceability, BRS ↔ app mapping |
+| [`docs/PROCESS_FLOW_COVERAGE.md`](docs/PROCESS_FLOW_COVERAGE.md) | Process Flow steps 1–45 coverage matrix (Implemented / Partial / Missing) |
 | [`docs/sap-integration.md`](docs/sap-integration.md) | SAP queue, Service Layer config, implemented vs stub |
 | [`docs/official-sales-gap-spec.md`](docs/official-sales-gap-spec.md) | Official Sales flowchart (WHSE_ADD / ADD / DEL) + remaining UPD / warehouse gaps |
 | [`docs/uat-feedback-sales-2026-07-28-triage.md`](docs/uat-feedback-sales-2026-07-28-triage.md) | UAT PS/TL/Inventory feedback ticket triage |

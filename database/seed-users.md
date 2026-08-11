@@ -38,6 +38,7 @@ Optional env: `SEED_BCRYPT_ROUNDS=8` (default) — lower for faster local re-see
 | SP | Sales Planner | `sp@demo.local` | Master data, order approval |
 | Logistics | Logistics Coordinator | `logistics@demo.local` | Deliveries, pull-outs |
 | AE | Account Executive | `ae@demo.local` | Multi-branch dashboard view |
+| Accounting | Accounting | `accounting@demo.local` | Official Sales + sale header edit |
 
 Demo tenant is seeded as **Western Appliance Trade Group** (BRS **Dealer 1**). Branches require `pnpm run db:seed:full` or `db:seed:brs`.
 

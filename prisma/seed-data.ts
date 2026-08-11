@@ -15,6 +15,7 @@ export const DEMO_USERS = [
   { email: "spa@demo.local", name: "Supply Planning Associate", roleSlug: "spa" },
   { email: "logistics@demo.local", name: "Logistics", roleSlug: "logistics" },
   { email: "ae@demo.local", name: "Area Executive", roleSlug: "ae" },
+  { email: "accounting@demo.local", name: "Accounting", roleSlug: "accounting" },
 ] as const;
 
 export const PERMISSIONS = [
@@ -85,6 +86,7 @@ export const PERMISSIONS = [
   { slug: "sap.manage", name: "Manage SAP integration" },
   { slug: "sales.view", name: "View sales and ATR" },
   { slug: "sales.create", name: "Create sales transactions" },
+  { slug: "sales.update", name: "Edit sales transaction headers" },
   { slug: "sales.return.view", name: "View sales returns (ATR ledger)" },
   { slug: "sales.return.request", name: "Request sales return (ATR)" },
   { slug: "sales.return.evaluate", name: "Evaluate sales return (CS)" },
@@ -206,6 +208,7 @@ export const ROLES = [
       "sap.manage",
       "sales.view",
       "sales.create",
+      "sales.update",
       "sales.return.view",
       "sales.return.request",
       "sales.return.evaluate",
@@ -466,6 +469,25 @@ export const ROLES = [
       "competitors.view",
     ],
   },
+  {
+    slug: "accounting",
+    name: "Accounting",
+    description: "Official Sales processing and sale header corrections",
+    permissions: [
+      "dashboard.manage",
+      "inventory.view",
+      "sales.view",
+      "sales.update",
+      "sales.return.view",
+      "official_sales.view",
+      "official_sales.manage",
+      "reports.view",
+      "audit_logs.view",
+      "serial_logs.view",
+      "announcements.view",
+      "competitors.view",
+    ],
+  },
 ] as const;
 
 export const DEPARTMENTS = ["Compliance", "Engineering", "Human Resources", "Operations"] as const;
@@ -482,6 +504,7 @@ export const USER_DEPARTMENTS: Record<string, (typeof DEPARTMENTS)[number]> = {
   "spa@demo.local": "Operations",
   "logistics@demo.local": "Operations",
   "ae@demo.local": "Operations",
+  "accounting@demo.local": "Operations",
 };
 
 export type SeedProfile =

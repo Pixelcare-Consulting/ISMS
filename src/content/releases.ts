@@ -52,13 +52,91 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.27.0",
+    date: "2026-08-11",
+    releasedAt: "2026-08-11T13:00:00+08:00",
+    title: "Sale header edit for Accounting",
+    highlights: [
+      "Accounting can correct sale transaction headers from Sales & ATR",
+      "Sale line Edit appears only while the serial is still TO-FOLLOW",
+      "Roles can grant Edit sales transaction headers under Sales permissions",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Accounting (and roles with the new permission) can edit sale headers — transaction number, branch, date, customer, payment, delivery, proof, reserved, and related fields",
+      },
+      {
+        type: "feature",
+        description:
+          "Sales list shows Edit next to View details for TO-FOLLOW rows when you can update headers",
+      },
+      {
+        type: "improvement",
+        description:
+          "In sale details, line Edit is limited to TO-FOLLOW serials so completed units stay locked",
+      },
+    ],
+  },
+  {
+    version: "0.26.0",
+    date: "2026-08-11",
+    releasedAt: "2026-08-11T12:00:00+08:00",
+    title: "Warehouse stock serial list",
+    highlights: [
+      "Browse warehouse serial numbers from Inventory → Warehouse stock",
+      "Open the same list from Settings → Warehouses → Stock, optionally filtered to one warehouse",
+      "Filter by warehouse, location, or search by serial / SKU — read-only for now",
+      "Sidebar menus are grouped in a clearer day-to-day order — Orders, Sales & ATRs, Logistics, then Inventory",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Inventory → Warehouse stock shows serials held in warehouses, separate from branch Stock units",
+      },
+      {
+        type: "feature",
+        description:
+          "Settings → Warehouses adds a Stock tab and per-warehouse Stock links to the same list",
+      },
+      {
+        type: "improvement",
+        description:
+          "Warehouse and location filters plus serial/SKU search make it easier to find units before branch delivery",
+      },
+      {
+        type: "improvement",
+        description:
+          "Clear empty-state guidance when warehouse stock has not been loaded yet",
+      },
+      {
+        type: "improvement",
+        description:
+          "On Settings → Warehouses → Stock, search the warehouse list by code or name to open stock faster",
+      },
+      {
+        type: "improvement",
+        description:
+          "Warehouse locations are clearer when expanded — structured list, labeled add form, and a friendly empty state",
+      },
+      {
+        type: "improvement",
+        description:
+          "The sidebar follows a clearer workflow order: Orders, Sales & ATRs, Logistics, Inventory, Reports, and Audit Logs — with AORs first under Settings → Operations & Planning",
+      },
+    ],
+  },
+  {
     version: "0.25.3",
     date: "2026-08-11",
-    releasedAt: "2026-08-11T10:00:00+08:00",
+    releasedAt: "2026-08-11T11:30:00+08:00",
     title: "Branch transaction numbers and pull-out rules",
     highlights: [
       "The same SI or Trans No. can be used on different branches — each branch keeps its own sequence",
       "Official Sales ADD is blocked when a unit is For pull-out or already in a pull-out workflow",
+      "Process owners can review which of the 45 Process Flow steps are covered, partial, or not yet in ISMS",
     ],
     changes: [
       {
@@ -70,6 +148,11 @@ export const RELEASES: ReleaseNote[] = [
         type: "improvement",
         description:
           "Official Sales ADD now stops with a clear message when inventory is on pull-out hold instead of recording a sale",
+      },
+      {
+        type: "improvement",
+        description:
+          "A Process Flow coverage guide lists steps 1–45 as covered, partial, or missing so teams can prioritize next work",
       },
       {
         type: "fix",

@@ -9,6 +9,10 @@ export const SALES_MODULE_GUIDE: ModuleGuideContent = {
     { label: "RSV reserves stock instead of marking it sold" },
     {
       label:
+        "Line Edit in details is only for TO-FOLLOW serials; Accounting can Edit header fields when granted",
+    },
+    {
+      label:
         "Returns tab (View returns): track requests; View details for request → evaluate → approve → restore by role",
     },
   ],

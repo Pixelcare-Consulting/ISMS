@@ -18,7 +18,7 @@ export const SALES_PAGE_TUTORIAL: PageTutorialContent = {
       title: "How to use it",
       bullets: [
         "Click New transaction, fill the header (stock branch shows area locations with sellable serials), then Add Detail (package qty expands into N sets with model + serial; Model price comes from the price list when available).",
-        "On Sales, status on each row uses your inventory status colors (TO FOLLOW when a serial is still pending). Open View details to edit a serial line, preview proof, or Request return.",
+        "On Sales, status on each row uses your inventory status colors (TO FOLLOW when a serial is still pending). Open View details to fill a TO-FOLLOW serial, preview proof, or Request return. Accounting can Edit the transaction header when allowed.",
         "If you can see Returns, switch to that tab to track open and closed return requests with status badges. Use Show all columns when you need amount, ATR, or notes. Open View details for CS evaluate, TL approve, Reject, Restore stock, or Request return when your role allows — return steps are separate from View returns.",
         "Verify the details total before Save; RSV moves stock to reserved instead of sold.",
       ],

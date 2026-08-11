@@ -35,6 +35,10 @@ export const aorService = {
     return aorRepository.listExistingBranchIds(tenantId, userId);
   },
 
+  async getWarehouseIdsForUser(tenantId: string, userId: string) {
+    return aorRepository.listExistingWarehouseIds(tenantId, userId);
+  },
+
   async getServiceCenterIdsForUser(tenantId: string, userId: string) {
     return aorRepository.listExistingServiceCenterIds(tenantId, userId);
   },

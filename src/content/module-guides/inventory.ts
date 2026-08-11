@@ -9,6 +9,7 @@ export const INVENTORY_MODULE_GUIDE: ModuleGuideContent = {
     { label: "Series summary groups QTY and value by SKU — click to expand" },
     { label: "Off planogram means the SKU is not on that branch’s authorized list" },
     { label: "Search by serial, SKU, or branch" },
+    { label: "Warehouse serials are under Inventory → Warehouse stock (not this list)" },
   ],
   storageKey: "module-guide.inventory",
 };

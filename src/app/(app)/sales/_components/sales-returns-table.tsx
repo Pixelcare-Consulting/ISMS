@@ -4,13 +4,14 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import { EditSaleHeaderDialog } from "@/app/(app)/sales/_components/edit-sale-header-dialog";
+import { EditSaleSerialDialog } from "@/app/(app)/sales/_components/edit-sale-serial-dialog";
 import {
   SaleDetailsDialog,
   type SaleDetailsLine,
   type SaleDetailsPayload,
   type SaleReturnConfirmAction,
 } from "@/app/(app)/sales/_components/sale-details-dialog";
-import { EditSaleSerialDialog } from "@/app/(app)/sales/_components/edit-sale-serial-dialog";
 import {
   SALE_RETURN_CONFIRM_COPY,
   type SaleReturnPendingConfirm,
@@ -25,6 +26,7 @@ import {
   type SaleStatusCodeRef,
 } from "@/features/sales/actions/sales.actions";
 import type { SalesActionCapabilities } from "@/features/sales/constants/sales-permissions";
+import { TO_FOLLOW_SERIAL_LABEL } from "@/features/sales/constants/to-follow-serial";
 import { capturesDeliveryReceipt } from "@/features/sales/utils/delivery-method";
 import {
   TableAmountCell,
@@ -210,6 +212,8 @@ export function SalesReturnsTable({
   const [pending, startTransition] = useTransition();
   const [detailsSaleId, setDetailsSaleId] = useState<string | null>(null);
   const [saleDetails, setSaleDetails] = useState<SaleDetailsPayload | null>(null);
+  const [headerEditSale, setHeaderEditSale] =
+    useState<SaleDetailsPayload | null>(null);
   const [pendingConfirm, setPendingConfirm] =
     useState<SaleReturnPendingConfirm | null>(null);
   const [returnReason, setReturnReason] = useState("");
@@ -285,6 +289,10 @@ export function SalesReturnsTable({
 
   function handleEditLine(line: SaleDetailsLine) {
     if (!saleDetails) return;
+    if (line.serialNumberId || line.serialNo !== TO_FOLLOW_SERIAL_LABEL) {
+      toast.error("Only TO-FOLLOW sale lines can be edited");
+      return;
+    }
     setEditingLine({
       saleId: saleDetails.id,
       detailId: line.detailId,
@@ -564,11 +572,31 @@ export function SalesReturnsTable({
           capabilities={capabilities}
           pending={pending}
           onEditLine={handleEditLine}
+          onEditHeader={() => setHeaderEditSale(saleDetails)}
           onReturnAction={handleDetailsReturnAction}
           onOpenChange={(open) => {
             if (!open) {
               setDetailsSaleId(null);
               setSaleDetails(null);
+            }
+          }}
+        />
+      ) : null}
+
+      {headerEditSale ? (
+        <EditSaleHeaderDialog
+          key={headerEditSale.id}
+          sale={headerEditSale}
+          open
+          onOpenChange={(open) => {
+            if (!open) setHeaderEditSale(null);
+          }}
+          onSaved={() => {
+            const saleId = headerEditSale.id;
+            setHeaderEditSale(null);
+            router.refresh();
+            if (detailsSaleId === saleId) {
+              refreshSaleDetails(saleId);
             }
           }}
         />
