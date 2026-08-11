@@ -17,6 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   listBranchesForSalesAction,
   listCustomerDeliveryMethodsForSalesAction,
@@ -37,6 +38,33 @@ function todayInputValue(): string {
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
+}
+
+function EditSaleHeaderFormSkeleton() {
+  return (
+    <div className="space-y-4" aria-busy="true" aria-label="Loading form">
+      <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
+        {Array.from({ length: 10 }, (_, index) => (
+          <div key={index} className="space-y-2">
+            <Skeleton className="h-4 w-28" />
+            <Skeleton className="h-9 w-full" />
+          </div>
+        ))}
+        <div className="space-y-2 sm:col-span-2">
+          <Skeleton className="h-4 w-44" />
+          <Skeleton className="h-9 w-full" />
+        </div>
+      </div>
+      <div className="space-y-2">
+        <Skeleton className="h-4 w-16" />
+        <Skeleton className="h-9 w-full" />
+      </div>
+      <div className="flex items-center gap-2">
+        <Skeleton className="size-4 shrink-0 rounded-sm" />
+        <Skeleton className="h-4 w-32" />
+      </div>
+    </div>
+  );
 }
 
 export function EditSaleHeaderDialog({
@@ -92,6 +120,9 @@ export function EditSaleHeaderDialog({
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
+    startTransition(() => {
+      setLoading(true);
+    });
     void (async () => {
       try {
         const [branchRows, paymentRows, saleTypeRows, deliveryRows] =
@@ -231,8 +262,8 @@ export function EditSaleHeaderDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[90svh] w-[min(calc(100vw-2rem),40rem)] max-w-2xl flex-col overflow-hidden">
-        <DialogHeader className="shrink-0 pr-8 text-left">
+      <DialogContent className="flex max-h-[90svh] w-[min(calc(100vw-2rem),40rem)] max-w-2xl flex-col gap-0 overflow-hidden p-4 sm:p-6">
+        <DialogHeader className="shrink-0 space-y-1.5 pr-8 pb-4 text-left">
           <DialogTitle>Edit transaction header</DialogTitle>
           <DialogDescription>
             Update header fields for {sale.transactionNo}. Sale lines stay
@@ -240,136 +271,143 @@ export function EditSaleHeaderDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto py-1">
+        <div className="min-h-0 flex-1 overflow-y-auto py-1">
           {loading ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
+            <EditSaleHeaderFormSkeleton />
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-sale-txn-no">Transaction number *</Label>
+                  <Input
+                    id="edit-sale-txn-no"
+                    value={transactionNo}
+                    onChange={(e) => setTransactionNo(e.target.value)}
+                    className="font-mono"
+                    maxLength={100}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Branch sold *</Label>
+                  <SearchableSelect
+                    options={branches.map((b) => ({ id: b.id, label: b.name }))}
+                    value={branchId}
+                    onChange={(id) => {
+                      setBranchId(id);
+                      setStockSources([]);
+                      setAlternateBranchId("");
+                    }}
+                    placeholder="Select branch…"
+                    searchPlaceholder="Search branches…"
+                    disabled={hasRealSerials || pending}
+                  />
+                  {hasRealSerials ? (
+                    <p className="text-xs text-muted-foreground">
+                      Branch is locked because this sale already has real
+                      serials.
+                    </p>
+                  ) : null}
+                </div>
+                <div className="space-y-2">
+                  <Label>Branch or alternate branch *</Label>
+                  <SearchableSelect
+                    options={stockSources.map((b) => ({
+                      id: b.id,
+                      label: b.name,
+                    }))}
+                    value={alternateBranchId}
+                    onChange={setAlternateBranchId}
+                    placeholder="Select stock source…"
+                    searchPlaceholder="Search stock sources…"
+                    disabled={hasRealSerials || pending || !branchId}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-sale-date">Transaction date</Label>
+                  <Input
+                    id="edit-sale-date"
+                    type="date"
+                    value={transactionDate}
+                    onChange={(e) => setTransactionDate(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-sale-customer">Customer name *</Label>
+                  <Input
+                    id="edit-sale-customer"
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-sale-contact">Contact no.</Label>
+                  <Input
+                    id="edit-sale-contact"
+                    type="tel"
+                    value={contactNo}
+                    onChange={(e) => setContactNo(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-sale-info-slip">
+                    Info slip / VSO / RR released
+                  </Label>
+                  <Input
+                    id="edit-sale-info-slip"
+                    value={infoSlipVsoRrReleased}
+                    onChange={(e) => setInfoSlipVsoRrReleased(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-sale-rr">RR receive / deliver</Label>
+                  <Input
+                    id="edit-sale-rr"
+                    value={rrReceiveDeliver}
+                    onChange={(e) => setRrReceiveDeliver(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Payment type *</Label>
+                  <SearchableSelect
+                    options={paymentTypes.map((p) => ({
+                      id: p.id,
+                      label: p.name,
+                    }))}
+                    value={paymentTypeId}
+                    onChange={setPaymentTypeId}
+                    placeholder="Select payment type…"
+                    searchPlaceholder="Search payment types…"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Sale type *</Label>
+                  <SearchableSelect
+                    options={saleTypes.map((p) => ({
+                      id: p.id,
+                      label: p.name,
+                    }))}
+                    value={saleTypeId}
+                    onChange={setSaleTypeId}
+                    placeholder="Select sale type…"
+                    searchPlaceholder="Search sale types…"
+                  />
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Label>Customer delivery method *</Label>
+                  <SearchableSelect
+                    options={deliveryMethods.map((p) => ({
+                      id: p.id,
+                      label: p.name,
+                    }))}
+                    value={customerDeliveryMethodId}
+                    onChange={setCustomerDeliveryMethodId}
+                    placeholder="Select delivery method…"
+                    searchPlaceholder="Search delivery methods…"
+                  />
+                </div>
+              </div>
+
               <div className="space-y-2">
-                <Label htmlFor="edit-sale-txn-no">Transaction number *</Label>
-                <Input
-                  id="edit-sale-txn-no"
-                  value={transactionNo}
-                  onChange={(e) => setTransactionNo(e.target.value)}
-                  className="font-mono"
-                  maxLength={100}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Branch sold *</Label>
-                <SearchableSelect
-                  options={branches.map((b) => ({ id: b.id, label: b.name }))}
-                  value={branchId}
-                  onChange={(id) => {
-                    setBranchId(id);
-                    setStockSources([]);
-                    setAlternateBranchId("");
-                  }}
-                  placeholder="Select branch…"
-                  searchPlaceholder="Search branches…"
-                  disabled={hasRealSerials || pending}
-                />
-                {hasRealSerials ? (
-                  <p className="text-xs text-muted-foreground">
-                    Branch is locked because this sale already has real serials.
-                  </p>
-                ) : null}
-              </div>
-              <div className="space-y-2">
-                <Label>Branch or alternate branch *</Label>
-                <SearchableSelect
-                  options={stockSources.map((b) => ({
-                    id: b.id,
-                    label: b.name,
-                  }))}
-                  value={alternateBranchId}
-                  onChange={setAlternateBranchId}
-                  placeholder="Select stock source…"
-                  searchPlaceholder="Search stock sources…"
-                  disabled={hasRealSerials || pending || !branchId}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-sale-date">Transaction date</Label>
-                <Input
-                  id="edit-sale-date"
-                  type="date"
-                  value={transactionDate}
-                  onChange={(e) => setTransactionDate(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-sale-customer">Customer name *</Label>
-                <Input
-                  id="edit-sale-customer"
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-sale-contact">Contact no.</Label>
-                <Input
-                  id="edit-sale-contact"
-                  type="tel"
-                  value={contactNo}
-                  onChange={(e) => setContactNo(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-sale-info-slip">
-                  Info slip / VSO / RR released
-                </Label>
-                <Input
-                  id="edit-sale-info-slip"
-                  value={infoSlipVsoRrReleased}
-                  onChange={(e) => setInfoSlipVsoRrReleased(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-sale-rr">RR receive / deliver</Label>
-                <Input
-                  id="edit-sale-rr"
-                  value={rrReceiveDeliver}
-                  onChange={(e) => setRrReceiveDeliver(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Payment type *</Label>
-                <SearchableSelect
-                  options={paymentTypes.map((p) => ({
-                    id: p.id,
-                    label: p.name,
-                  }))}
-                  value={paymentTypeId}
-                  onChange={setPaymentTypeId}
-                  placeholder="Select payment type…"
-                  searchPlaceholder="Search payment types…"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Sale type *</Label>
-                <SearchableSelect
-                  options={saleTypes.map((p) => ({ id: p.id, label: p.name }))}
-                  value={saleTypeId}
-                  onChange={setSaleTypeId}
-                  placeholder="Select sale type…"
-                  searchPlaceholder="Search sale types…"
-                />
-              </div>
-              <div className="space-y-2 sm:col-span-2">
-                <Label>Customer delivery method *</Label>
-                <SearchableSelect
-                  options={deliveryMethods.map((p) => ({
-                    id: p.id,
-                    label: p.name,
-                  }))}
-                  value={customerDeliveryMethodId}
-                  onChange={setCustomerDeliveryMethodId}
-                  placeholder="Select delivery method…"
-                  searchPlaceholder="Search delivery methods…"
-                />
-              </div>
-              <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="edit-sale-proof">Proof</Label>
                 <Input
                   id="edit-sale-proof"
@@ -415,7 +453,8 @@ export function EditSaleHeaderDialog({
                   </ul>
                 ) : null}
               </div>
-              <label className="flex items-center gap-2 text-sm sm:col-span-2">
+
+              <label className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
                   checked={reserved}
@@ -433,7 +472,7 @@ export function EditSaleHeaderDialog({
           )}
         </div>
 
-        <DialogFooter className="shrink-0 border-t pt-3">
+        <DialogFooter className="mt-4 shrink-0 border-t pt-4">
           <Button
             type="button"
             variant="outline"

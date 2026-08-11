@@ -27,6 +27,10 @@ import {
 } from "@/features/sales/actions/sales.actions";
 import { TO_FOLLOW_SERIAL_LABEL } from "@/features/sales/constants/to-follow-serial";
 import { capturesDeliveryReceipt } from "@/features/sales/utils/delivery-method";
+import {
+  canEditSaleHeaderForLines,
+  isOfficialSoldStatusCode,
+} from "@/features/sales/utils/sale-header-edit";
 import type { SalesActionCapabilities } from "@/features/sales/constants/sales-permissions";
 import {
   TableAmountCell,
@@ -339,6 +343,10 @@ export function SalesTable({
         toast.error(res.error);
         return;
       }
+      if (!canEditSaleHeaderForLines(res.lines)) {
+        toast.error("Official Sold sales cannot have their header edited");
+        return;
+      }
       setHeaderEditSale(res);
     });
   }
@@ -604,7 +612,8 @@ export function SalesTable({
                         View details
                       </Button>
                       {capabilities.canUpdateSaleHeader &&
-                      saleSerialLabel(s) === TO_FOLLOW_SERIAL_LABEL ? (
+                      saleSerialLabel(s) === TO_FOLLOW_SERIAL_LABEL &&
+                      !isOfficialSoldStatusCode(s.statusCode?.code) ? (
                         <Button
                           size="sm"
                           variant="outline"

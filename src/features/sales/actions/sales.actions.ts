@@ -37,6 +37,7 @@ import {
   salesReturnRejectPermissions,
 } from "@/features/sales/constants/sales-permissions";
 import { capturesDeliveryReceipt } from "@/features/sales/utils/delivery-method";
+import { saleHasOfficialSoldLine } from "@/features/sales/utils/sale-header-edit";
 import { isSaleTransactionNo } from "@/features/sales/utils/sale-transaction-no";
 import {
   resolveModelPriceForSales,
@@ -1496,6 +1497,12 @@ export async function updateSaleHeaderAction(input: unknown) {
     },
   });
   if (!sale) return { error: "Sale not found" as const };
+
+  if (saleHasOfficialSoldLine(sale.details)) {
+    return {
+      error: "Official Sold sales cannot have their header edited" as const,
+    };
+  }
 
   try {
     await assertBranchInAor(

@@ -52,13 +52,46 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.27.2",
+    date: "2026-08-11",
+    releasedAt: "2026-08-11T13:35:00+08:00",
+    title: "Smoother Sales and Returns tab switching",
+    highlights: [
+      "Switching between Sales and Returns on Sales & ATR shows a table placeholder while the list loads",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Clicking Sales or Returns now shows a familiar table loading placeholder instead of a blank gap or the previous list flashing",
+      },
+    ],
+  },
+  {
+    version: "0.27.1",
+    date: "2026-08-11",
+    releasedAt: "2026-08-11T13:25:00+08:00",
+    title: "Search suggestions stay above table headers",
+    highlights: [
+      "Table search suggestions no longer hide behind column headers on Sales & ATRs and Official Sales",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Typing in a table search box shows matching suggestions clearly above the sticky column headers instead of slipping underneath",
+      },
+    ],
+  },
+  {
     version: "0.27.0",
     date: "2026-08-11",
-    releasedAt: "2026-08-11T13:00:00+08:00",
+    releasedAt: "2026-08-11T13:10:00+08:00",
     title: "Sale header edit for Accounting",
     highlights: [
       "Accounting can correct sale transaction headers from Sales & ATR",
       "Sale line Edit appears only while the serial is still TO-FOLLOW",
+      "Edit header stays hidden once a sale is Official Sold",
       "Roles can grant Edit sales transaction headers under Sales permissions",
     ],
     changes: [
@@ -76,6 +109,16 @@ export const RELEASES: ReleaseNote[] = [
         type: "improvement",
         description:
           "In sale details, line Edit is limited to TO-FOLLOW serials so completed units stay locked",
+      },
+      {
+        type: "improvement",
+        description:
+          "Edit header is hidden for Official Sold sales, and those headers cannot be changed",
+      },
+      {
+        type: "improvement",
+        description:
+          "Edit transaction header dialog spacing is clearer, with a form-shaped loading placeholder while fields load",
       },
     ],
   },

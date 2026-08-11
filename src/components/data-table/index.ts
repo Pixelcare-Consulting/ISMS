@@ -7,6 +7,7 @@ export {
   DataTableShell,
   TableEmptyRow,
 } from "@/components/data-table/data-table-shell";
+export { DataTableSkeleton } from "@/components/data-table/data-table-skeleton";
 export { DeleteConfirmDialog } from "@/components/data-table/delete-confirm-dialog";
 export { TableAmountCell } from "@/components/data-table/table-amount-cell";
 export { TableCodeCell } from "@/components/data-table/table-code-cell";

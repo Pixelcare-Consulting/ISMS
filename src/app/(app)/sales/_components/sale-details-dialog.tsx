@@ -24,6 +24,7 @@ import type { SaleStatusCodeRef } from "@/features/sales/actions/sales.actions";
 import type { SalesActionCapabilities } from "@/features/sales/constants/sales-permissions";
 import { TO_FOLLOW_SERIAL_LABEL } from "@/features/sales/constants/to-follow-serial";
 import { capturesDeliveryReceipt } from "@/features/sales/utils/delivery-method";
+import { canEditSaleHeaderForLines } from "@/features/sales/utils/sale-header-edit";
 import { formatPeso } from "@/utils/format-currency";
 
 export interface SaleDetailsLine {
@@ -267,7 +268,9 @@ export function SaleDetailsDialog({
   const hasAtrActions =
     showRequestReturn || showCsActions || showTlActions || showRestore;
   const showHeaderEdit =
-    Boolean(onEditHeader) && capabilities.canUpdateSaleHeader;
+    Boolean(onEditHeader) &&
+    capabilities.canUpdateSaleHeader &&
+    canEditSaleHeaderForLines(sale.lines);
   const canEditLines = capabilities.canCreateSale;
 
   return (

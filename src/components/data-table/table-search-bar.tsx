@@ -2,8 +2,8 @@
 
 import { Search, X } from "lucide-react";
 import {
-  useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -12,6 +12,11 @@ import {
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import {
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
+} from "@/components/ui/popover";
 import { normalizeTableSearch } from "@/utils/match-table-search";
 import { cn } from "@/utils/cn";
 
@@ -56,6 +61,7 @@ export function TableSearchBar({
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(-1);
+  const [anchorWidth, setAnchorWidth] = useState<number>();
 
   const matches = useMemo(() => {
     const q = normalizeTableSearch(value);
@@ -67,15 +73,16 @@ export function TableSearchBar({
 
   const showList = open && matches.length > 0;
 
-  useEffect(() => {
+  // Keep the portaled list the same width as the search field.
+  useLayoutEffect(() => {
     if (!showList) return;
-    function onPointerDown(event: MouseEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
+    const el = rootRef.current;
+    if (!el) return;
+    const updateWidth = () => setAnchorWidth(el.getBoundingClientRect().width);
+    updateWidth();
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(el);
+    return () => observer.disconnect();
   }, [showList]);
 
   function applySuggestion(label: string) {
@@ -112,46 +119,64 @@ export function TableSearchBar({
   }
 
   return (
-    <div ref={rootRef} className={cn("relative w-full", className)}>
-      <Search className="pointer-events-none absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2 text-muted-foreground" />
-      <Input
-        value={value}
-        onChange={(event) => {
-          onChange(event.target.value);
-          setOpen(true);
+    <Popover
+      modal={false}
+      open={showList}
+      onOpenChange={(next) => {
+        if (!next) {
+          setOpen(false);
           setHighlight(-1);
-        }}
-        onFocus={() => setOpen(true)}
-        onKeyDown={onKeyDown}
-        placeholder={placeholder}
-        className="pl-9 pr-9"
-        aria-label={placeholder}
-        aria-autocomplete="list"
-        aria-controls={showList ? listId : undefined}
-        aria-expanded={showList}
-        role="combobox"
-      />
-      {value ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="absolute right-1 top-1/2 z-10 size-7 -translate-y-1/2 text-muted-foreground"
-          onClick={() => {
-            onChange("");
-            setOpen(false);
-          }}
-          aria-label="Clear search"
-        >
-          <X className="size-4" />
-        </Button>
-      ) : null}
-      {showList ? (
-        <ul
-          id={listId}
-          role="listbox"
-          className="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 overflow-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
-        >
+        }
+      }}
+    >
+      <PopoverAnchor asChild>
+        <div ref={rootRef} className={cn("relative w-full", className)}>
+          <Search className="pointer-events-none absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={value}
+            onChange={(event) => {
+              onChange(event.target.value);
+              setOpen(true);
+              setHighlight(-1);
+            }}
+            onFocus={() => setOpen(true)}
+            onKeyDown={onKeyDown}
+            placeholder={placeholder}
+            className="pl-9 pr-9"
+            aria-label={placeholder}
+            aria-autocomplete="list"
+            aria-controls={showList ? listId : undefined}
+            aria-expanded={showList}
+            role="combobox"
+          />
+          {value ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="absolute right-1 top-1/2 z-10 size-7 -translate-y-1/2 text-muted-foreground"
+              onClick={() => {
+                onChange("");
+                setOpen(false);
+              }}
+              aria-label="Clear search"
+            >
+              <X className="size-4" />
+            </Button>
+          ) : null}
+        </div>
+      </PopoverAnchor>
+      <PopoverContent
+        align="start"
+        sideOffset={4}
+        collisionPadding={12}
+        // Keep focus in the search input while suggestions are open.
+        onOpenAutoFocus={(event) => event.preventDefault()}
+        onCloseAutoFocus={(event) => event.preventDefault()}
+        style={anchorWidth ? { width: anchorWidth } : undefined}
+        className="z-50 max-h-60 w-(--radix-popover-trigger-width) overflow-auto p-1"
+      >
+        <ul id={listId} role="listbox" className="outline-none">
           {matches.map((label, index) => (
             <li
               key={`${label}-${index}`}
@@ -159,7 +184,9 @@ export function TableSearchBar({
               aria-selected={index === highlight}
               className={cn(
                 "cursor-pointer rounded-sm px-2 py-1.5 text-sm",
-                index === highlight ? "bg-accent text-accent-foreground" : "hover:bg-accent/60",
+                index === highlight
+                  ? "bg-accent text-accent-foreground"
+                  : "hover:bg-accent/60",
               )}
               onMouseDown={(event) => event.preventDefault()}
               onMouseEnter={() => setHighlight(index)}
@@ -169,8 +196,8 @@ export function TableSearchBar({
             </li>
           ))}
         </ul>
-      ) : null}
-    </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 

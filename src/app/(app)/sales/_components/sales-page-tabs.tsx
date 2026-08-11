@@ -1,8 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import type { ReactNode } from "react";
+import { useEffect, useState, useTransition, type ReactNode } from "react";
 
+import { SalesTabTableSkeleton } from "@/app/(app)/sales/_components/sales-tab-table-skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export type SalesPageTab = "sales" | "returns";
@@ -23,6 +24,7 @@ function hrefForTab(tab: SalesPageTab): string {
  * Sales | Returns in-page tabs with URL sync (?tab=sales|returns).
  * Switching tabs resets pagination/sort so each tab stays scoped.
  * Tab triggers are gated by `sales.view`/`sales.create` vs `sales.return.view`.
+ * Shows a table skeleton while the next tab's server data loads.
  */
 export function SalesPageTabs({
   activeTab,
@@ -32,17 +34,31 @@ export function SalesPageTabs({
   returnsContent,
 }: SalesPageTabsProps) {
   const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [displayTab, setDisplayTab] = useState<SalesPageTab>(activeTab);
   const showTabList = showSalesTab && showReturnsTab;
+
+  useEffect(() => {
+    setDisplayTab(activeTab);
+  }, [activeTab]);
+
+  const showSalesSkeleton =
+    displayTab === "sales" && (pending || salesContent == null);
+  const showReturnsSkeleton =
+    displayTab === "returns" && (pending || returnsContent == null);
 
   return (
     <Tabs
-      value={activeTab}
+      value={displayTab}
       onValueChange={(value) => {
         const next: SalesPageTab = value === "returns" ? "returns" : "sales";
-        if (next === activeTab) return;
+        if (next === displayTab) return;
         if (next === "sales" && !showSalesTab) return;
         if (next === "returns" && !showReturnsTab) return;
-        router.push(hrefForTab(next));
+        setDisplayTab(next);
+        startTransition(() => {
+          router.push(hrefForTab(next));
+        });
       }}
     >
       {showTabList ? (
@@ -52,10 +68,22 @@ export function SalesPageTabs({
         </TabsList>
       ) : null}
       {showSalesTab ? (
-        <TabsContent value="sales">{salesContent}</TabsContent>
+        <TabsContent value="sales">
+          {showSalesSkeleton ? (
+            <SalesTabTableSkeleton tab="sales" />
+          ) : (
+            salesContent
+          )}
+        </TabsContent>
       ) : null}
       {showReturnsTab ? (
-        <TabsContent value="returns">{returnsContent}</TabsContent>
+        <TabsContent value="returns">
+          {showReturnsSkeleton ? (
+            <SalesTabTableSkeleton tab="returns" />
+          ) : (
+            returnsContent
+          )}
+        </TabsContent>
       ) : null}
     </Tabs>
   );
