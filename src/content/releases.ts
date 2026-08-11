@@ -52,6 +52,55 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.29.0",
+    date: "2026-08-11",
+    releasedAt: "2026-08-11T15:45:00+08:00",
+    title: "Process Return & Replacement finishing",
+    highlights: [
+      "Request return now opens Process Return — document type, STK or DEF, problem descriptions, then Return or Replacement",
+      "Service Return document types show service center and related fields when needed",
+      "ATR/ODRF PDF is created when you submit and can be downloaded from Branch Returns",
+      "Approved returns put units back as Stock or Defective at the selling branch; replacements update the same invoice or open a new sale",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Process Return from Sales details captures document type, stock status, problems, and Return or Replacement before CS evaluation",
+      },
+      {
+        type: "feature",
+        description:
+          "Service Return extras appear when the document type is Service Return, including service center and related fields",
+      },
+      {
+        type: "feature",
+        description:
+          "Submitting Process Return generates an ATR/ODRF PDF you can download from the Branch Returns list",
+      },
+      {
+        type: "feature",
+        description:
+          "Approved Replacement can finish on the same invoice (swap model and serial) or create a new sale with the replacement unit, then close the original ATR",
+      },
+      {
+        type: "improvement",
+        description:
+          "Branch Returns shows report-friendly columns (status, document type, type, serials, problem, and more) plus clear Return / Replacement actions",
+      },
+      {
+        type: "improvement",
+        description:
+          "Restoring an approved Return puts units back as Stock or Defective at the selling branch, with serial number history recorded",
+      },
+      {
+        type: "fix",
+        description:
+          "Return and replacement help text, tutorials, and module guides match the new Process Return flow",
+      },
+    ],
+  },
+  {
     version: "0.28.0",
     date: "2026-08-11",
     releasedAt: "2026-08-11T14:55:00+08:00",

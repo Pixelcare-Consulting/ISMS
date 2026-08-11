@@ -6,6 +6,11 @@ import { toast } from "sonner";
 
 import { EditSaleHeaderDialog } from "@/app/(app)/sales/_components/edit-sale-header-dialog";
 import { EditSaleSerialDialog } from "@/app/(app)/sales/_components/edit-sale-serial-dialog";
+import { ProcessReturnDialog } from "@/app/(app)/sales/_components/process-return-dialog";
+import {
+  ReplacementFlowDialogs,
+  type ReplacementFlowTarget,
+} from "@/app/(app)/sales/_components/replacement-flow-dialogs";
 import {
   SaleDetailsDialog,
   type SaleDetailsLine,
@@ -22,7 +27,6 @@ import {
   evaluateReturnAction,
   getSaleDetailsAction,
   rejectReturnAction,
-  requestReturnAction,
   type SaleStatusCodeRef,
 } from "@/features/sales/actions/sales.actions";
 import { TO_FOLLOW_SERIAL_LABEL } from "@/features/sales/constants/to-follow-serial";
@@ -54,11 +58,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { usePersistedBoolean } from "@/hooks/use-persisted-boolean";
 import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
-import { Textarea } from "@/components/ui/textarea";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { cn } from "@/utils/cn";
 import { matchesTableSearch } from "@/utils/match-table-search";
@@ -241,7 +243,10 @@ export function SalesTable({
     useState<SaleDetailsPayload | null>(null);
   const [pendingConfirm, setPendingConfirm] =
     useState<SaleReturnPendingConfirm | null>(null);
-  const [returnReason, setReturnReason] = useState("");
+  const [processReturnSale, setProcessReturnSale] =
+    useState<SaleDetailsPayload | null>(null);
+  const [replacementTarget, setReplacementTarget] =
+    useState<ReplacementFlowTarget | null>(null);
   const pageSize = parseTablePageSize(result.limit);
   const colCount =
     COMPACT_COL_COUNT + (showAllColumns ? SECONDARY_COL_COUNT : 0);
@@ -353,7 +358,21 @@ export function SalesTable({
 
   function handleReturnAction(action: SaleReturnConfirmAction) {
     if (!saleDetails) return;
-    setReturnReason("");
+    if (action === "request") {
+      setProcessReturnSale(saleDetails);
+      return;
+    }
+    if (action === "complete_replacement") {
+      if (!saleDetails.returnRequest?.id) return;
+      setReplacementTarget({
+        returnRequestId: saleDetails.returnRequest.id,
+        saleId: saleDetails.id,
+        transactionNo: saleDetails.transactionNo,
+        branchId: saleDetails.branchId,
+        branchName: saleDetails.branch.name,
+      });
+      return;
+    }
     setPendingConfirm({
       saleId: saleDetails.id,
       returnRequestId: saleDetails.returnRequest?.id,
@@ -365,26 +384,18 @@ export function SalesTable({
 
   function confirmPendingAction() {
     if (!pendingConfirm) return;
-    const { action, saleId, returnRequestId, successMessage } = {
+    const { action, returnRequestId, successMessage } = {
       ...pendingConfirm,
       successMessage: SALE_RETURN_CONFIRM_COPY[pendingConfirm.action].successMessage,
     };
-
-    if (action === "request") {
-      const reason = returnReason.trim();
-      if (!reason) {
-        toast.error("Enter a return reason");
-        return;
-      }
-    }
 
     startTransition(async () => {
       let res: { error?: string; success?: boolean };
 
       switch (action) {
         case "request":
-          res = await requestReturnAction(saleId, returnReason.trim());
-          break;
+        case "complete_replacement":
+          return;
         case "evaluate":
           if (!returnRequestId) return;
           res = await evaluateReturnAction(returnRequestId);
@@ -414,7 +425,6 @@ export function SalesTable({
       }
       toast.success(successMessage);
       setPendingConfirm(null);
-      setReturnReason("");
       router.refresh();
       if (detailsSaleId) {
         const refreshed = await getSaleDetailsAction(detailsSaleId);
@@ -693,12 +703,42 @@ export function SalesTable({
         />
       ) : null}
 
+      {processReturnSale ? (
+        <ProcessReturnDialog
+          sale={processReturnSale}
+          open
+          onOpenChange={(open) => {
+            if (!open) setProcessReturnSale(null);
+          }}
+          onSubmitted={() => {
+            const saleId = processReturnSale.id;
+            setProcessReturnSale(null);
+            router.refresh();
+            if (detailsSaleId === saleId) {
+              refreshSaleDetails(saleId);
+            }
+          }}
+        />
+      ) : null}
+
+      <ReplacementFlowDialogs
+        target={replacementTarget}
+        onClose={() => setReplacementTarget(null)}
+        onCompleted={() => {
+          const saleId = replacementTarget?.saleId;
+          setReplacementTarget(null);
+          router.refresh();
+          if (saleId && detailsSaleId === saleId) {
+            refreshSaleDetails(saleId);
+          }
+        }}
+      />
+
       <AlertDialog
         open={pendingConfirm !== null}
         onOpenChange={(open) => {
           if (!open && !pending) {
             setPendingConfirm(null);
-            setReturnReason("");
           }
         }}
       >
@@ -721,27 +761,10 @@ export function SalesTable({
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          {pendingConfirm?.action === "request" ? (
-            <div className="space-y-2 px-1">
-              <Label htmlFor="return-reason">Return reason</Label>
-              <Textarea
-                id="return-reason"
-                value={returnReason}
-                onChange={(event) => setReturnReason(event.target.value)}
-                placeholder="Why is this sale being returned?"
-                rows={3}
-                disabled={pending}
-                className="resize-y"
-              />
-            </div>
-          ) : null}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              disabled={
-                pending ||
-                (pendingConfirm?.action === "request" && !returnReason.trim())
-              }
+              disabled={pending}
               className={
                 pendingConfirm?.action === "approve"
                   ? "bg-amber-600 text-white hover:bg-amber-700"

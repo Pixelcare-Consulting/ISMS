@@ -2,7 +2,7 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.28.0`
+**Current version:** `0.29.0`
 
 ## Stack
 
@@ -24,8 +24,8 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | **Inventory** | Serialized stock (STK on Stock units), **warehouse stock** SN list (`/inventory/warehouse-stock`; also Settings → Warehouses →image.png Stock), AOR-scoped lists, series QTY/VALUE + DR#/date/aging, **physical stock count / P-Count** (`/inventory/stock-count`) |
 | **Orders** | Nav group: Manual / Special / Auto replenish (`/orders/manual` etc.); per-type `orders.manual`, `orders.special`, `orders.auto_replenish` with view/create/approve; PS → TL → SP; SO#, processed orders, delivery-due auto-reschedule |
 | **Logistics** | Deliveries (accept/reject), transfers, pull-outs with SN movement; gated by `logistics.view` / `create` / `manage` |
-| **Sales** | Encode at `/sales/new` (CTA from `/sales`); PS auto-branch; TL `sales.create` + branch picker; package detail modal (qty → N sets), reserved (RSV) sales; line Edit only for TO-FOLLOW; Accounting `sales.update` edits transaction headers; request return from Sale details |
-| **Returns / Replacement** | `/returns` with Branch \| Service \| Approvals tabs gated by `returns.branch.view` / `returns.service.view` / evaluate·approve·complete (umbrella `returns.view` sees all); ATR workflow via `returns.*` (legacy `sales.return.*` / `service_centers.return.*` still work); request still starts from Sale / SC Sale details |
+| **Sales** | Encode at `/sales/new` (CTA from `/sales`); PS auto-branch; TL `sales.create` + branch picker; package detail modal (qty → N sets), reserved (RSV) sales; line Edit only for TO-FOLLOW; Accounting `sales.update` edits transaction headers; Process Return from Sale details (document type, STK/DEF, problems, Return or Replacement) |
+| **Returns / Replacement** | `/returns` with Branch \| Service \| Approvals tabs gated by `returns.branch.view` / `returns.service.view` / evaluate·approve·complete (umbrella `returns.view` sees all); ATR workflow via `returns.*` (legacy `sales.return.*` / `service_centers.return.*` still work); Branch table includes report columns + ATR/ODRF download; approved Return restores STK/DEF at the selling branch (serial history); approved Replacement Same Invoice updates the sale line or New Invoice creates a new sale |
 | **Service** | Service center ops (AOR-scoped): inventory + manual stock-in, sales encode + request return, orders, deliveries (backload → STK), pull-outs under `/service-centers/*` |
 | **Reports** | Processed orders, daily stock, transfers, sales CSV (`/reports/sales`), **P-Count** (`/reports/pcount`), **Official Sales** dealer-template staging — Action Key process (`ADD` / `WHSE_ADD` / `DEL` → Official Sold; already-OFS ADD is idempotent; DEL restores STK at Branch Sold; stock adjustments appear in Serial Number Logs; process summarizes failed serials), progress popup, View details, and ? quick guide (`/reports/official-sales`) |
 | **SAP** | Outbound job queue + mock processor; **Service Layer** settings (encrypted credentials) + in-process session client with status UI (Connect/Logout) and refresh-on-401 |

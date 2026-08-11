@@ -72,7 +72,13 @@ export interface SaleDetailsPayload {
   paymentType: { id: string; name: string } | null;
   saleType: { id: string; name: string } | null;
   customerDeliveryMethod: { id: string; name: string } | null;
-  returnRequest: { id: string; status: string } | null;
+  returnRequest: {
+    id: string;
+    status: string;
+    actionType: "return" | "replacement";
+    stockStatusCode: "STK" | "DEF";
+    hasAtrOdrfPdf: boolean;
+  } | null;
   returnStatusCode: SaleStatusCodeRef | null;
   createdByName: string | null;
   lines: SaleDetailsLine[];
@@ -83,7 +89,8 @@ export type SaleReturnConfirmAction =
   | "evaluate"
   | "approve"
   | "reject"
-  | "restore";
+  | "restore"
+  | "complete_replacement";
 
 interface SaleDetailsDialogProps {
   sale: SaleDetailsPayload;
@@ -272,9 +279,19 @@ export function SaleDetailsDialog({
   const showTlActions =
     returnStatus === "pending_tl" && capabilities.canApproveReturn;
   const showRestore =
-    returnStatus === "approved" && capabilities.canCompleteReturn;
+    returnStatus === "approved" &&
+    capabilities.canCompleteReturn &&
+    (sale.returnRequest?.actionType ?? "return") !== "replacement";
+  const showCompleteReplacement =
+    returnStatus === "approved" &&
+    capabilities.canCompleteReturn &&
+    (sale.returnRequest?.actionType ?? "return") === "replacement";
   const hasAtrActions =
-    showRequestReturn || showCsActions || showTlActions || showRestore;
+    showRequestReturn ||
+    showCsActions ||
+    showTlActions ||
+    showRestore ||
+    showCompleteReplacement;
   const showHeaderEdit =
     Boolean(onEditHeader) &&
     capabilities.canUpdateSaleHeader &&
@@ -681,6 +698,16 @@ export function SaleDetailsDialog({
                 onClick={() => onReturnAction("restore")}
               >
                 Restore stock
+              </Button>
+            ) : null}
+            {showCompleteReplacement ? (
+              <Button
+                size="sm"
+                className="bg-emerald-600 text-white hover:bg-emerald-700"
+                disabled={pending}
+                onClick={() => onReturnAction("complete_replacement")}
+              >
+                Complete replacement
               </Button>
             ) : null}
           </DialogFooter>

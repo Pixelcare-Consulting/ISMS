@@ -111,6 +111,18 @@ enum ReturnRequestStatus {
   completed
 }
 
+/// Captured at Sales Process Return submit: restore path vs replacement path.
+enum ReturnActionType {
+  return
+  replacement
+}
+
+/// Inventory status applied on return restore (STK stock / DEF defective).
+enum ReturnStockStatusCode {
+  STK
+  DEF
+}
+
 enum SkuStatus {
   active
   hold
@@ -594,6 +606,7 @@ model ProductModel {
   priceLists         PriceList[]
   salesTransactionDetails BranchSalesTransactionDetail[]
   serviceCenterOrderDetails ServiceCenterOrderDetail[]
+  branchReturnRequestsAsServiceModel BranchReturnRequest[] @relation("BranchReturnServiceModel")
 
   @@unique([tenantId, skuCode])
   @@index([tenantId])
@@ -1064,6 +1077,7 @@ model ServiceCenter {
   backloads     ServiceBackload[]
   sales         ServiceCenterSalesTransaction[]
   pullouts      ServiceCenterPullout[]
+  branchReturnRequests BranchReturnRequest[]
 
   @@unique([tenantId, sapCode])
   @@index([tenantId])
@@ -1278,6 +1292,7 @@ model WarehouseLocation {
   aors                 Aor[]
   branchPullouts       BranchPullout[]
   deliveryLinesFrom    BranchDeliveryLine[] @relation("DeliveryLineWarehouseFrom")
+  branchReturnRequests BranchReturnRequest[]
 
   @@unique([warehouseId, code])
   @@map("warehouse_locations")
@@ -2023,29 +2038,45 @@ model SapServiceLayerConfig {
 }
 
 model BranchReturnRequest {
-  id                      String              @id @default(cuid())
-  tenantId                String              @map("tenant_id")
-  saleId                  String              @unique @map("sale_id")
-  status                  ReturnRequestStatus @default(pending_cs)
-  requestNotes            String?             @map("request_notes")
-  evaluationNotes         String?             @map("evaluation_notes")
-  problemDescriptionId    String?             @map("problem_description_id")
-  documentTypeId          String?             @map("document_type_id")
-  returnTypeId            String?             @map("return_type_id")
-  serviceCenterLocationId String?             @map("service_center_location_id")
-  dealerRsNo              String?             @map("dealer_rs_no")
-  serviceApprovalCode     String?             @map("service_approval_code")
-  actualDateReturned      DateTime?           @map("actual_date_returned")
-  acceptedAt              DateTime?           @map("accepted_at")
-  acceptedById            String?             @map("accepted_by_id")
-  requestedById           String              @map("requested_by_id")
-  evaluatedById           String?             @map("evaluated_by_id")
-  approvedById            String?             @map("approved_by_id")
-  evaluatedAt             DateTime?           @map("evaluated_at")
-  approvedAt              DateTime?           @map("approved_at")
-  completedAt             DateTime?           @map("completed_at")
-  createdAt               DateTime            @default(now()) @map("created_at")
-  updatedAt               DateTime            @updatedAt @map("updated_at")
+  id                      String                 @id @default(cuid())
+  tenantId                String                 @map("tenant_id")
+  saleId                  String                 @unique @map("sale_id")
+  status                  ReturnRequestStatus    @default(pending_cs)
+  /// Return vs Replacement path (set at Sales Process Return submit).
+  actionType              ReturnActionType?      @map("action_type")
+  /// STK or DEF applied when restoring inventory on complete.
+  stockStatusCode         ReturnStockStatusCode? @map("stock_status_code")
+  requestNotes            String?                @map("request_notes")
+  evaluationNotes         String?                @map("evaluation_notes")
+  problemDescriptionId    String?                @map("problem_description_id")
+  /// Joined multi-select Problem Description names for reports / PROBLEM column.
+  problemDescriptionText  String?                @map("problem_description_text")
+  documentTypeId          String?                @map("document_type_id")
+  returnTypeId            String?                @map("return_type_id")
+  serviceCenterLocationId String?                @map("service_center_location_id")
+  /// Service Return extras (when Document Type is Service Return).
+  serviceCenterId         String?                @map("service_center_id")
+  classification          String?
+  serviceModelId          String?                @map("service_model_id")
+  customerDealerBranch    String?                @map("customer_dealer_branch")
+  natureOfTransaction     String?                @map("nature_of_transaction")
+  refContactPo            String?                @map("ref_contact_po")
+  warehouseLocationId     String?                @map("warehouse_location_id")
+  dealerRsNo              String?                @map("dealer_rs_no")
+  serviceApprovalCode     String?                @map("service_approval_code")
+  actualDateReturned      DateTime?              @map("actual_date_returned")
+  /// Stored ATR/ODRF PDF path (object storage) generated on Process Return submit.
+  atrOdrfPdfPath          String?                @map("atr_odrf_pdf_path")
+  acceptedAt              DateTime?              @map("accepted_at")
+  acceptedById            String?                @map("accepted_by_id")
+  requestedById           String                 @map("requested_by_id")
+  evaluatedById           String?                @map("evaluated_by_id")
+  approvedById            String?                @map("approved_by_id")
+  evaluatedAt             DateTime?              @map("evaluated_at")
+  approvedAt              DateTime?              @map("approved_at")
+  completedAt             DateTime?              @map("completed_at")
+  createdAt               DateTime               @default(now()) @map("created_at")
+  updatedAt               DateTime               @updatedAt @map("updated_at")
 
   tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   sale                  BranchSalesTransaction @relation(fields: [saleId], references: [id], onDelete: Cascade)
@@ -2053,12 +2084,20 @@ model BranchReturnRequest {
   documentType          DocumentType?          @relation(fields: [documentTypeId], references: [id], onDelete: SetNull)
   returnType            ReturnType?            @relation(fields: [returnTypeId], references: [id], onDelete: SetNull)
   serviceCenterLocation ServiceCenterLocation? @relation(fields: [serviceCenterLocationId], references: [id], onDelete: SetNull)
+  serviceCenter         ServiceCenter?         @relation(fields: [serviceCenterId], references: [id], onDelete: SetNull)
+  serviceModel          ProductModel?          @relation("BranchReturnServiceModel", fields: [serviceModelId], references: [id], onDelete: SetNull)
+  warehouseLocation     WarehouseLocation?     @relation(fields: [warehouseLocationId], references: [id], onDelete: SetNull)
   requestedBy           User                   @relation("ReturnRequestedBy", fields: [requestedById], references: [id])
   evaluatedBy           User?                  @relation("ReturnEvaluatedBy", fields: [evaluatedById], references: [id], onDelete: SetNull)
   approvedBy            User?                  @relation("ReturnApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
   acceptedBy            User?                  @relation("ReturnAcceptedBy", fields: [acceptedById], references: [id], onDelete: SetNull)
 
   @@index([tenantId, status])
+  @@index([tenantId, actionType])
+  @@index([documentTypeId])
+  @@index([serviceCenterId])
+  @@index([serviceModelId])
+  @@index([warehouseLocationId])
   @@map("branch_return_requests")
 }
 

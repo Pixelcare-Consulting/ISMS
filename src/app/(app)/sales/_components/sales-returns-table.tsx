@@ -6,6 +6,11 @@ import { toast } from "sonner";
 
 import { EditSaleHeaderDialog } from "@/app/(app)/sales/_components/edit-sale-header-dialog";
 import { EditSaleSerialDialog } from "@/app/(app)/sales/_components/edit-sale-serial-dialog";
+import { ProcessReturnDialog } from "@/app/(app)/sales/_components/process-return-dialog";
+import {
+  ReplacementFlowDialogs,
+  type ReplacementFlowTarget,
+} from "@/app/(app)/sales/_components/replacement-flow-dialogs";
 import {
   SaleDetailsDialog,
   type SaleDetailsLine,
@@ -22,10 +27,10 @@ import {
   evaluateReturnAction,
   getSaleDetailsAction,
   rejectReturnAction,
-  requestReturnAction,
   type SaleStatusCodeRef,
 } from "@/features/sales/actions/sales.actions";
 import type { SalesActionCapabilities } from "@/features/sales/constants/sales-permissions";
+import { atrOdrfDownloadUrl } from "@/features/sales/constants/process-return";
 import { TO_FOLLOW_SERIAL_LABEL } from "@/features/sales/constants/to-follow-serial";
 import { capturesDeliveryReceipt } from "@/features/sales/utils/delivery-method";
 import {
@@ -49,10 +54,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { usePersistedBoolean } from "@/hooks/use-persisted-boolean";
-import { Textarea } from "@/components/ui/textarea";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
 import { cn } from "@/utils/cn";
@@ -71,7 +74,21 @@ interface ReturnRow {
   atrStatusCode: SaleStatusCodeRef;
   returnStatus: string;
   returnStatusCode: SaleStatusCodeRef;
+  actionType: "return" | "replacement";
+  stockStatusCode: "STK" | "DEF";
+  documentTypeName: string | null;
   requestNotes: string | null;
+  problemDescriptionText: string | null;
+  dealerRsNo: string | null;
+  actualDateReturned: string | null;
+  hasAtrOdrfPdf: boolean;
+  origModelLabel: string | null;
+  origSerialNo: string | null;
+  origPrice: string;
+  replSerialNo: string | null;
+  replBranchName: string | null;
+  replAmount: string | null;
+  replInvoiceNo: string | null;
   createdAt: string;
   branch: { id: string; name: string };
 }
@@ -95,7 +112,6 @@ interface SalesReturnsTableProps {
     limit: number;
     totalPages: number;
   };
-  /** Return workflow + optional sale edit caps (from Sales or Returns resolvers). */
   capabilities: Pick<
     SalesActionCapabilities,
     | "canUpdateSaleHeader"
@@ -107,7 +123,6 @@ interface SalesReturnsTableProps {
   >;
   initialSort?: string;
   initialSortDir?: string;
-  /** URL tab value for pagination links (default branch). */
   listTab?: "branch" | "approvals";
 }
 
@@ -124,60 +139,10 @@ type EditingLine = {
   showDelivery: boolean;
 };
 
-/** Compact: TRN NO. DATE BRANCH CUSTOMER RETURN STATUS ACTIONS */
-const COMPACT_COL_COUNT = 6;
-/** Extra when "Show all columns": AMOUNT ATR NOTES */
-const SECONDARY_COL_COUNT = 3;
-
-function joinDetailParts(parts: Array<string | null | undefined>): string {
-  return parts
-    .map((p) => p?.trim())
-    .filter((p): p is string => Boolean(p))
-    .join(" · ");
-}
-
-function returnTransactionLabel(row: ReturnRow): string {
-  return row.transactionNo || row.saleId.slice(-8);
-}
-
-function parseReturnAmount(value: string): number | null {
-  const cleaned = value.replace(/[^0-9.-]/g, "");
-  if (!cleaned) return null;
-  const n = Number(cleaned);
-  return Number.isFinite(n) ? n : null;
-}
-
-function TrnDetailCell({
-  row,
-  showAllColumns,
-  className,
-}: {
-  row: ReturnRow;
-  showAllColumns: boolean;
-  className?: string;
-}) {
-  const primary = returnTransactionLabel(row);
-  const condensed = joinDetailParts([
-    formatPeso(parseReturnAmount(row.amount)),
-    row.atrStatusCode.name,
-  ]);
-
-  return (
-    <TableCell className={cn("py-2 sm:py-2.5", className)}>
-      <div className="min-w-0">
-        <div className="font-mono text-sm font-semibold">{primary}</div>
-        {!showAllColumns && condensed ? (
-          <p
-            className="mt-0.5 max-w-40 truncate text-xs text-muted-foreground sm:max-w-56"
-            title={condensed}
-          >
-            {condensed}
-          </p>
-        ) : null}
-      </div>
-    </TableCell>
-  );
-}
+/** Compact report columns + ACTIONS */
+const COMPACT_COL_COUNT = 10;
+/** Extra when "Show all columns" */
+const SECONDARY_COL_COUNT = 8;
 
 function buildReturnsHref(
   page: number,
@@ -202,11 +167,15 @@ function formatSaleDate(iso: string | null): string {
   return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
 }
 
-function truncateNotes(value: string | null, max = 48): string {
+function truncateText(value: string | null, max = 48): string {
   const text = value?.trim() ?? "";
   if (!text) return "—";
   if (text.length <= max) return text;
   return `${text.slice(0, max - 1)}…`;
+}
+
+function actionTypeLabel(actionType: "return" | "replacement"): string {
+  return actionType === "replacement" ? "Replacement" : "Return";
 }
 
 export function SalesReturnsTable({
@@ -229,7 +198,10 @@ export function SalesReturnsTable({
     useState<SaleDetailsPayload | null>(null);
   const [pendingConfirm, setPendingConfirm] =
     useState<SaleReturnPendingConfirm | null>(null);
-  const [returnReason, setReturnReason] = useState("");
+  const [processReturnSale, setProcessReturnSale] =
+    useState<SaleDetailsPayload | null>(null);
+  const [replacementTarget, setReplacementTarget] =
+    useState<ReplacementFlowTarget | null>(null);
   const [editingLine, setEditingLine] = useState<EditingLine | null>(null);
   const pageSize = parseTablePageSize(result.limit);
   const colCount =
@@ -260,11 +232,12 @@ export function SalesReturnsTable({
           row.branch.name,
           row.amount,
           row.atrStatus,
-          row.atrStatusCode.name,
-          row.atrStatusCode.code,
           row.returnStatus,
-          row.returnStatusCode.name,
-          row.returnStatusCode.code,
+          row.actionType,
+          row.documentTypeName,
+          row.problemDescriptionText,
+          row.origSerialNo,
+          row.replSerialNo,
           row.requestNotes,
         ]),
       ),
@@ -278,7 +251,8 @@ export function SalesReturnsTable({
         result.items.map((row) => row.branch.name),
         result.items.map((row) => row.customerName ?? ""),
         result.items.map((row) => row.returnStatusCode.name),
-        result.items.map((row) => row.atrStatusCode.name),
+        result.items.map((row) => row.documentTypeName ?? ""),
+        result.items.map((row) => row.origSerialNo ?? ""),
       ),
     [result.items],
   );
@@ -326,7 +300,21 @@ export function SalesReturnsTable({
 
   function handleDetailsReturnAction(action: SaleReturnConfirmAction) {
     if (!saleDetails) return;
-    setReturnReason("");
+    if (action === "request") {
+      setProcessReturnSale(saleDetails);
+      return;
+    }
+    if (action === "complete_replacement") {
+      if (!saleDetails.returnRequest?.id) return;
+      setReplacementTarget({
+        returnRequestId: saleDetails.returnRequest.id,
+        saleId: saleDetails.id,
+        transactionNo: saleDetails.transactionNo,
+        branchId: saleDetails.branchId,
+        branchName: saleDetails.branch.name,
+      });
+      return;
+    }
     setPendingConfirm({
       saleId: saleDetails.id,
       returnRequestId: saleDetails.returnRequest?.id,
@@ -336,26 +324,41 @@ export function SalesReturnsTable({
     });
   }
 
+  function startRowComplete(row: ReturnRow) {
+    if (row.returnStatus !== "approved" || !capabilities.canCompleteReturn) {
+      return;
+    }
+    if (row.actionType === "replacement") {
+      setReplacementTarget({
+        returnRequestId: row.returnRequestId,
+        saleId: row.saleId,
+        transactionNo: row.transactionNo,
+        branchId: row.branch.id,
+        branchName: row.branch.name,
+      });
+      return;
+    }
+    setPendingConfirm({
+      saleId: row.saleId,
+      returnRequestId: row.returnRequestId,
+      transactionNo: row.transactionNo,
+      branchName: row.branch.name,
+      action: "restore",
+    });
+  }
+
   function confirmPendingAction() {
     if (!pendingConfirm) return;
-    const { action, saleId, returnRequestId } = pendingConfirm;
+    const { action, returnRequestId } = pendingConfirm;
     const successMessage = SALE_RETURN_CONFIRM_COPY[action].successMessage;
-
-    if (action === "request") {
-      const reason = returnReason.trim();
-      if (!reason) {
-        toast.error("Enter a return reason");
-        return;
-      }
-    }
 
     startTransition(async () => {
       let res: { error?: string; success?: boolean };
 
       switch (action) {
         case "request":
-          res = await requestReturnAction(saleId, returnReason.trim());
-          break;
+        case "complete_replacement":
+          return;
         case "evaluate":
           if (!returnRequestId) return;
           res = await evaluateReturnAction(returnRequestId);
@@ -385,7 +388,6 @@ export function SalesReturnsTable({
       }
       toast.success(successMessage);
       setPendingConfirm(null);
-      setReturnReason("");
       router.refresh();
       if (detailsSaleId) {
         const refreshed = await getSaleDetailsAction(detailsSaleId);
@@ -443,12 +445,31 @@ export function SalesReturnsTable({
         <TableHeader>
           <TableRow>
             <GlobalTableHead
+              sortKey="returnStatus"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as ReturnsSortField)}
+            >
+              STATUS
+            </GlobalTableHead>
+            <GlobalTableHead>DOC TYPE</GlobalTableHead>
+            <GlobalTableHead>TYPE</GlobalTableHead>
+            <GlobalTableHead
+              sortKey="branch"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as ReturnsSortField)}
+            >
+              BRANCH SOLD
+            </GlobalTableHead>
+            <GlobalTableHead>ORIG SN</GlobalTableHead>
+            <GlobalTableHead
               sortKey="transactionNo"
               activeSortKey={sort}
               sortDirection={sortDir}
               onSort={(key) => toggleSort(key as ReturnsSortField)}
             >
-              TRN NO.
+              ORIG TRN
             </GlobalTableHead>
             <GlobalTableHead
               sortKey="date"
@@ -456,54 +477,30 @@ export function SalesReturnsTable({
               sortDirection={sortDir}
               onSort={(key) => toggleSort(key as ReturnsSortField)}
             >
-              DATE
-            </GlobalTableHead>
-            <GlobalTableHead
-              sortKey="branch"
-              activeSortKey={sort}
-              sortDirection={sortDir}
-              onSort={(key) => toggleSort(key as ReturnsSortField)}
-            >
-              BRANCH
-            </GlobalTableHead>
-            <GlobalTableHead
-              sortKey="customer"
-              activeSortKey={sort}
-              sortDirection={sortDir}
-              onSort={(key) => toggleSort(key as ReturnsSortField)}
-            >
-              CUSTOMER
+              ORIG DATE
             </GlobalTableHead>
             {showAllColumns ? (
+              <>
+                <GlobalTableHead>ORIG PRICE</GlobalTableHead>
+                <GlobalTableHead>RS NO</GlobalTableHead>
+                <GlobalTableHead>DATE RETURNED</GlobalTableHead>
+                <GlobalTableHead>REPL SN</GlobalTableHead>
+                <GlobalTableHead>REPL BRANCH</GlobalTableHead>
+                <GlobalTableHead>REPL AMOUNT</GlobalTableHead>
+                <GlobalTableHead>REPL INVOICE</GlobalTableHead>
+              </>
+            ) : null}
+            <GlobalTableHead>PROBLEM</GlobalTableHead>
+            <GlobalTableHead>ATR/ODRF</GlobalTableHead>
+            {showAllColumns ? (
               <GlobalTableHead
-                sortKey="amount"
+                sortKey="createdAt"
                 activeSortKey={sort}
                 sortDirection={sortDir}
                 onSort={(key) => toggleSort(key as ReturnsSortField)}
               >
-                AMOUNT
+                CREATED
               </GlobalTableHead>
-            ) : null}
-            <GlobalTableHead
-              sortKey="returnStatus"
-              activeSortKey={sort}
-              sortDirection={sortDir}
-              onSort={(key) => toggleSort(key as ReturnsSortField)}
-            >
-              RETURN STATUS
-            </GlobalTableHead>
-            {showAllColumns ? (
-              <>
-                <GlobalTableHead
-                  sortKey="atrStatus"
-                  activeSortKey={sort}
-                  sortDirection={sortDir}
-                  onSort={(key) => toggleSort(key as ReturnsSortField)}
-                >
-                  ATR
-                </GlobalTableHead>
-                <GlobalTableHead>NOTES</GlobalTableHead>
-              </>
             ) : null}
             <GlobalTableHead className="w-48">ACTIONS</GlobalTableHead>
           </TableRow>
@@ -521,26 +518,15 @@ export function SalesReturnsTable({
           ) : (
             filtered.map((row, index) => {
               const stripe = index % 2 === 1;
+              const canCompleteRow =
+                row.returnStatus === "approved" &&
+                capabilities.canCompleteReturn;
 
               return (
                 <TableRow
                   key={row.id}
                   className={cn("group", stripe && "bg-table-stripe")}
                 >
-                  <TrnDetailCell row={row} showAllColumns={showAllColumns} />
-                  <TableCell className="whitespace-nowrap py-2 tabular-nums sm:py-2.5">
-                    {formatSaleDate(row.transactionDate)}
-                  </TableCell>
-                  <TableCell className="py-2 sm:py-2.5">{row.branch.name}</TableCell>
-                  <TableCell className="py-2 sm:py-2.5">
-                    {row.customerName?.trim() || "—"}
-                  </TableCell>
-                  {showAllColumns ? (
-                    <TableAmountCell
-                      value={row.amount}
-                      className="py-2 sm:py-2.5"
-                    />
-                  ) : null}
                   <TableCell className="py-2 sm:py-2.5">
                     <StatusCodeBadge
                       code={row.returnStatusCode.code}
@@ -548,24 +534,82 @@ export function SalesReturnsTable({
                       color={row.returnStatusCode.color}
                     />
                   </TableCell>
+                  <TableCell className="py-2 sm:py-2.5">
+                    {row.documentTypeName?.trim() || "—"}
+                  </TableCell>
+                  <TableCell className="py-2 sm:py-2.5">
+                    {actionTypeLabel(row.actionType)}
+                  </TableCell>
+                  <TableCell className="py-2 sm:py-2.5">
+                    {row.branch.name}
+                  </TableCell>
+                  <TableCell className="py-2 font-mono text-sm sm:py-2.5">
+                    {row.origSerialNo ?? "—"}
+                  </TableCell>
+                  <TableCell className="py-2 font-mono text-sm font-semibold sm:py-2.5">
+                    {row.transactionNo || row.saleId.slice(-8)}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap py-2 tabular-nums sm:py-2.5">
+                    {formatSaleDate(row.transactionDate)}
+                  </TableCell>
                   {showAllColumns ? (
                     <>
+                      <TableAmountCell
+                        value={row.origPrice}
+                        className="py-2 sm:py-2.5"
+                      />
                       <TableCell className="py-2 sm:py-2.5">
-                        <StatusCodeBadge
-                          code={row.atrStatusCode.code}
-                          name={row.atrStatusCode.name}
-                          color={row.atrStatusCode.color}
-                        />
+                        {row.dealerRsNo?.trim() || "—"}
                       </TableCell>
-                      <TableCell className="max-w-40 py-2 sm:py-2.5">
-                        <span
-                          className="block truncate text-sm text-muted-foreground"
-                          title={row.requestNotes?.trim() || undefined}
-                        >
-                          {truncateNotes(row.requestNotes)}
-                        </span>
+                      <TableCell className="whitespace-nowrap py-2 tabular-nums sm:py-2.5">
+                        {formatSaleDate(row.actualDateReturned)}
+                      </TableCell>
+                      <TableCell className="py-2 font-mono text-sm sm:py-2.5">
+                        {row.replSerialNo ?? "—"}
+                      </TableCell>
+                      <TableCell className="py-2 sm:py-2.5">
+                        {row.replBranchName ?? "—"}
+                      </TableCell>
+                      <TableCell className="py-2 sm:py-2.5">
+                        {row.replAmount != null
+                          ? formatPeso(Number(row.replAmount))
+                          : "—"}
+                      </TableCell>
+                      <TableCell className="py-2 font-mono text-sm sm:py-2.5">
+                        {row.replInvoiceNo ?? "—"}
                       </TableCell>
                     </>
+                  ) : null}
+                  <TableCell className="max-w-44 py-2 sm:py-2.5">
+                    <span
+                      className="block truncate text-sm text-muted-foreground"
+                      title={
+                        row.problemDescriptionText?.trim() ||
+                        row.requestNotes?.trim() ||
+                        undefined
+                      }
+                    >
+                      {truncateText(
+                        row.problemDescriptionText ?? row.requestNotes,
+                      )}
+                    </span>
+                  </TableCell>
+                  <TableCell className="py-2 sm:py-2.5">
+                    {row.hasAtrOdrfPdf ? (
+                      <a
+                        href={atrOdrfDownloadUrl(row.returnRequestId)}
+                        className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+                      >
+                        Download
+                      </a>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  {showAllColumns ? (
+                    <TableCell className="whitespace-nowrap py-2 tabular-nums sm:py-2.5">
+                      {formatSaleDate(row.createdAt)}
+                    </TableCell>
                   ) : null}
                   <TableCell className="whitespace-nowrap py-2 sm:py-2.5">
                     <div className="flex flex-wrap items-center gap-1.5">
@@ -577,6 +621,18 @@ export function SalesReturnsTable({
                       >
                         View details
                       </Button>
+                      {canCompleteRow ? (
+                        <Button
+                          size="sm"
+                          className="bg-emerald-600 text-white hover:bg-emerald-700"
+                          disabled={pending}
+                          onClick={() => startRowComplete(row)}
+                        >
+                          {row.actionType === "replacement"
+                            ? "Replacement"
+                            : "Return"}
+                        </Button>
+                      ) : null}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -647,12 +703,42 @@ export function SalesReturnsTable({
         />
       ) : null}
 
+      {processReturnSale ? (
+        <ProcessReturnDialog
+          sale={processReturnSale}
+          open
+          onOpenChange={(open) => {
+            if (!open) setProcessReturnSale(null);
+          }}
+          onSubmitted={() => {
+            const saleId = processReturnSale.id;
+            setProcessReturnSale(null);
+            router.refresh();
+            if (detailsSaleId === saleId) {
+              refreshSaleDetails(saleId);
+            }
+          }}
+        />
+      ) : null}
+
+      <ReplacementFlowDialogs
+        target={replacementTarget}
+        onClose={() => setReplacementTarget(null)}
+        onCompleted={() => {
+          const saleId = replacementTarget?.saleId;
+          setReplacementTarget(null);
+          router.refresh();
+          if (saleId && detailsSaleId === saleId) {
+            refreshSaleDetails(saleId);
+          }
+        }}
+      />
+
       <AlertDialog
         open={pendingConfirm !== null}
         onOpenChange={(open) => {
           if (!open && !pending) {
             setPendingConfirm(null);
-            setReturnReason("");
           }
         }}
       >
@@ -675,27 +761,10 @@ export function SalesReturnsTable({
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          {pendingConfirm?.action === "request" ? (
-            <div className="space-y-2 px-1">
-              <Label htmlFor="returns-return-reason">Return reason</Label>
-              <Textarea
-                id="returns-return-reason"
-                value={returnReason}
-                onChange={(event) => setReturnReason(event.target.value)}
-                placeholder="Why is this sale being returned?"
-                rows={3}
-                disabled={pending}
-                className="resize-y"
-              />
-            </div>
-          ) : null}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              disabled={
-                pending ||
-                (pendingConfirm?.action === "request" && !returnReason.trim())
-              }
+              disabled={pending}
               className={
                 pendingConfirm?.action === "approve"
                   ? "bg-amber-600 text-white hover:bg-amber-700"
