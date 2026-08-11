@@ -42,6 +42,15 @@ async function loadUserRoleSlugs(userId: string): Promise<string[]> {
   return userRoles.map((userRole) => userRole.role.slug);
 }
 
+async function loadTenantIsPlatform(tenantId: string): Promise<boolean> {
+  if (!tenantId) return false;
+  const tenant = await prisma.tenant.findFirst({
+    where: { id: tenantId, deletedAt: null },
+    select: { isPlatform: true },
+  });
+  return tenant?.isPlatform ?? false;
+}
+
 const authSecret =
   process.env.BETTER_AUTH_SECRET ?? process.env.AUTH_SECRET ?? "";
 
@@ -81,18 +90,20 @@ export const auth = betterAuth({
   },
   plugins: [
     customSession(async ({ user, session }) => {
-      const [permissions, roleSlugs] = await Promise.all([
+      const tenantId = (user as { tenantId?: string }).tenantId ?? "";
+      const [permissions, roleSlugs, tenantIsPlatform] = await Promise.all([
         loadUserPermissions(user.id),
         loadUserRoleSlugs(user.id),
+        loadTenantIsPlatform(tenantId),
       ]);
 
       return {
         user: {
           ...user,
-          tenantId: (user as { tenantId?: string }).tenantId ?? "",
+          tenantId,
           permissions,
           roleSlugs,
-          isPlatformOperator: checkPlatformOperator(roleSlugs),
+          isPlatformOperator: checkPlatformOperator(roleSlugs, tenantIsPlatform),
         },
         session,
       };

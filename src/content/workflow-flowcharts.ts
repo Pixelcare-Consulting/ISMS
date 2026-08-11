@@ -54,7 +54,7 @@ export const WORKFLOW_MASTER_OVERVIEW: WorkflowChart = {
     { id: "deliver", label: "Deliver & accept", hint: "Logistics → branch" },
     { id: "stock", label: "On-hand stock", hint: "Serialized units" },
     { id: "sell", label: "Sell", hint: "Branch sales" },
-    { id: "return", label: "Return (ATR)", hint: "Back to on hand" },
+    { id: "return", label: "Returns / Replacement", hint: "Approve & restore stock" },
     { id: "move", label: "Transfer / pull-out", hint: "Move or retrieve" },
     { id: "count", label: "P-Count", hint: "Physical count" },
     { id: "report", label: "Reports & audit", hint: "Read-only views" },
@@ -235,33 +235,48 @@ export const WORKFLOW_SWIMLANE_CHARTS: WorkflowChart[] = [
     id: "transfers",
     title: "Transfers",
     tabLabel: "Transfers",
-    summary: "Move serialized stock between branches or warehouses with a clear trail.",
+    summary:
+      "Requesting branch asks for stock; Team Leader approves; releasing branch sends units; requesting branch receives them on hand.",
     kind: "swimlane",
     lanes: [
       {
-        id: "logistics",
-        role: "Logistics",
-        nodeIds: ["init"],
+        id: "requesting",
+        role: "Requesting branch",
+        nodeIds: ["create_req", "receive_xfer"],
       },
       {
-        id: "source",
-        role: "Source branch",
-        nodeIds: ["release"],
+        id: "tl",
+        role: "Team Leader",
+        nodeIds: ["approve_xfer"],
       },
       {
-        id: "dest",
-        role: "Destination branch",
-        nodeIds: ["receive_xfer"],
+        id: "releasing",
+        role: "Releasing branch",
+        nodeIds: ["release_xfer"],
       },
     ],
     nodes: [
-      { id: "init", label: "Create transfer" },
-      { id: "release", label: "Release / dispatch" },
-      { id: "receive_xfer", label: "Receive & check serials" },
+      {
+        id: "create_req",
+        label: "Create transfer request",
+        hint: "Syncs transfer request to SAP when connected",
+      },
+      { id: "approve_xfer", label: "Approve or cancel request" },
+      {
+        id: "release_xfer",
+        label: "Mark For Transfer / release",
+        hint: "Syncs transfer document to SAP when connected",
+      },
+      { id: "receive_xfer", label: "Receive stock → On hand" },
     ],
     edges: [
-      { from: "init", to: "release" },
-      { from: "release", to: "receive_xfer" },
+      { from: "create_req", to: "approve_xfer" },
+      { from: "approve_xfer", to: "release_xfer" },
+      { from: "release_xfer", to: "receive_xfer" },
+    ],
+    callouts: [
+      "Who can create, approve, release, or receive depends on your role setup.",
+      "SAP sync may be queued or pending depending on your tenant integration.",
     ],
   },
   {
@@ -314,10 +329,10 @@ export const WORKFLOW_SWIMLANE_CHARTS: WorkflowChart[] = [
   },
   {
     id: "sales-atr",
-    title: "Sales & ATR returns",
-    tabLabel: "Sales & ATR",
+    title: "Sales and returns",
+    tabLabel: "Sales & returns",
     summary:
-      "Record branch sales, then use ATR when a return needs evaluation, approval, and stock restore.",
+      "Encode the sale under Sales. Request a return from the sale details, then track evaluate → approve → restore under Returns / Replacement. Accounting can mark units Official Sold via Official Sales.",
     kind: "swimlane",
     lanes: [
       {
@@ -340,23 +355,69 @@ export const WORKFLOW_SWIMLANE_CHARTS: WorkflowChart[] = [
         role: "Inventory",
         nodeIds: ["restore"],
       },
+      {
+        id: "accounting",
+        role: "Accounting",
+        nodeIds: ["make_ofs"],
+      },
     ],
     nodes: [
       { id: "encode", label: "Encode sale" },
-      { id: "request_atr", label: "Request ATR return" },
+      { id: "request_atr", label: "Request return" },
       { id: "evaluate", label: "Evaluate request" },
       { id: "tl_approve", label: "Approve return" },
       { id: "restore", label: "Restore to on hand" },
+      {
+        id: "make_ofs",
+        label: "Make Official Sold",
+        hint: "Via Official Sales (Reports)",
+      },
     ],
     edges: [
       { from: "encode", to: "request_atr" },
       { from: "request_atr", to: "evaluate" },
       { from: "evaluate", to: "tl_approve" },
       { from: "tl_approve", to: "restore" },
+      { from: "encode", to: "make_ofs" },
     ],
     callouts: [
       "Sold (or reserved) units return to On hand after a successful restore.",
       "Who can request, evaluate, approve, or restore depends on your role setup.",
+      "Official Sold is not a customer return — use Official Sales to mark sold; DEL there restores On hand without Returns / Replacement.",
+      "After a sale, customer returns go through Returns / Replacement (Branch, Service, or Approvals).",
+    ],
+  },
+  {
+    id: "official-sales",
+    title: "Official Sales",
+    tabLabel: "Official Sales",
+    summary:
+      "Accounting uploads the dealer template, reviews staging rows, then processes Action Keys to mark Official Sold or restore On hand.",
+    kind: "swimlane",
+    lanes: [
+      {
+        id: "accounting",
+        role: "Accounting",
+        nodeIds: ["dl_template", "upload_stage", "process_keys"],
+      },
+    ],
+    nodes: [
+      { id: "dl_template", label: "Download template" },
+      { id: "upload_stage", label: "Upload & review staging" },
+      {
+        id: "process_keys",
+        label: "Process by Action Key",
+        hint: "ADD · WHSE_ADD · DEL",
+      },
+    ],
+    edges: [
+      { from: "dl_template", to: "upload_stage" },
+      { from: "upload_stage", to: "process_keys" },
+    ],
+    callouts: [
+      "ADD and WHSE_ADD mark units Official Sold.",
+      "DEL restores units to On hand (no return approval needed).",
+      "UPD edits stay under Sales; pull-out holds block ADD until cleared.",
     ],
   },
   {
@@ -460,6 +521,11 @@ export const WORKFLOW_SWIMLANE_CHARTS: WorkflowChart[] = [
         nodeIds: ["br_work"],
       },
       {
+        id: "accounting",
+        role: "Accounting",
+        nodeIds: ["acct_work"],
+      },
+      {
         id: "admin",
         role: "Tenant admin",
         nodeIds: ["ad_work"],
@@ -472,7 +538,7 @@ export const WORKFLOW_SWIMLANE_CHARTS: WorkflowChart[] = [
       },
       {
         id: "tl_work",
-        label: "Endorse orders, specials, ATR approve",
+        label: "Endorse orders, specials, approve returns",
       },
       {
         id: "sp_work",
@@ -484,7 +550,11 @@ export const WORKFLOW_SWIMLANE_CHARTS: WorkflowChart[] = [
       },
       {
         id: "br_work",
-        label: "Accept stock, sell, count, ATR request",
+        label: "Accept stock, sell, count, request returns",
+      },
+      {
+        id: "acct_work",
+        label: "Official Sales, sale header edits",
       },
       {
         id: "ad_work",

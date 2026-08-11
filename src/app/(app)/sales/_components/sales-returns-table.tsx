@@ -4,13 +4,14 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import { EditSaleHeaderDialog } from "@/app/(app)/sales/_components/edit-sale-header-dialog";
+import { EditSaleSerialDialog } from "@/app/(app)/sales/_components/edit-sale-serial-dialog";
 import {
   SaleDetailsDialog,
   type SaleDetailsLine,
   type SaleDetailsPayload,
   type SaleReturnConfirmAction,
 } from "@/app/(app)/sales/_components/sale-details-dialog";
-import { EditSaleSerialDialog } from "@/app/(app)/sales/_components/edit-sale-serial-dialog";
 import {
   SALE_RETURN_CONFIRM_COPY,
   type SaleReturnPendingConfirm,
@@ -25,6 +26,7 @@ import {
   type SaleStatusCodeRef,
 } from "@/features/sales/actions/sales.actions";
 import type { SalesActionCapabilities } from "@/features/sales/constants/sales-permissions";
+import { TO_FOLLOW_SERIAL_LABEL } from "@/features/sales/constants/to-follow-serial";
 import { capturesDeliveryReceipt } from "@/features/sales/utils/delivery-method";
 import {
   TableAmountCell,
@@ -93,9 +95,20 @@ interface SalesReturnsTableProps {
     limit: number;
     totalPages: number;
   };
-  capabilities: SalesActionCapabilities;
+  /** Return workflow + optional sale edit caps (from Sales or Returns resolvers). */
+  capabilities: Pick<
+    SalesActionCapabilities,
+    | "canUpdateSaleHeader"
+    | "canCreateSale"
+    | "canRequestReturn"
+    | "canEvaluateReturn"
+    | "canApproveReturn"
+    | "canCompleteReturn"
+  >;
   initialSort?: string;
   initialSortDir?: string;
+  /** URL tab value for pagination links (default branch). */
+  listTab?: "branch" | "approvals";
 }
 
 type EditingLine = {
@@ -171,14 +184,15 @@ function buildReturnsHref(
   limit: number,
   sort?: string,
   sortDir?: string,
+  tab: "branch" | "approvals" = "branch",
 ): string {
   const params = new URLSearchParams();
-  params.set("tab", "returns");
+  params.set("tab", tab);
   if (page > 1) params.set("page", String(page));
   if (limit !== DEFAULT_TABLE_PAGE_SIZE) params.set("limit", String(limit));
   if (sort) params.set("sort", sort);
   if (sort && sortDir) params.set("dir", sortDir);
-  return `/sales?${params.toString()}`;
+  return `/returns?${params.toString()}`;
 }
 
 function formatSaleDate(iso: string | null): string {
@@ -200,6 +214,7 @@ export function SalesReturnsTable({
   capabilities,
   initialSort = "",
   initialSortDir = "desc",
+  listTab = "branch",
 }: SalesReturnsTableProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -210,6 +225,8 @@ export function SalesReturnsTable({
   const [pending, startTransition] = useTransition();
   const [detailsSaleId, setDetailsSaleId] = useState<string | null>(null);
   const [saleDetails, setSaleDetails] = useState<SaleDetailsPayload | null>(null);
+  const [headerEditSale, setHeaderEditSale] =
+    useState<SaleDetailsPayload | null>(null);
   const [pendingConfirm, setPendingConfirm] =
     useState<SaleReturnPendingConfirm | null>(null);
   const [returnReason, setReturnReason] = useState("");
@@ -223,12 +240,14 @@ export function SalesReturnsTable({
   ) as ReturnsSortDir;
 
   function handlePageSizeChange(limit: TablePageSize) {
-    router.push(buildReturnsHref(1, limit, sort, sort ? sortDir : undefined));
+    router.push(
+      buildReturnsHref(1, limit, sort, sort ? sortDir : undefined, listTab),
+    );
   }
 
   function toggleSort(field: ReturnsSortField) {
     const next = nextTableSort(field, sort, sortDir);
-    router.push(buildReturnsHref(1, pageSize, next.sort, next.dir));
+    router.push(buildReturnsHref(1, pageSize, next.sort, next.dir, listTab));
   }
 
   const filtered = useMemo(
@@ -285,6 +304,10 @@ export function SalesReturnsTable({
 
   function handleEditLine(line: SaleDetailsLine) {
     if (!saleDetails) return;
+    if (line.serialNumberId || line.serialNo !== TO_FOLLOW_SERIAL_LABEL) {
+      toast.error("Only TO-FOLLOW sale lines can be edited");
+      return;
+    }
     setEditingLine({
       saleId: saleDetails.id,
       detailId: line.detailId,
@@ -407,7 +430,13 @@ export function SalesReturnsTable({
           totalPages: result.totalPages,
           itemLabel: "return",
           buildHref: (page) =>
-            buildReturnsHref(page, pageSize, sort, sort ? sortDir : undefined),
+            buildReturnsHref(
+              page,
+              pageSize,
+              sort,
+              sort ? sortDir : undefined,
+              listTab,
+            ),
         }}
         pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
       >
@@ -564,11 +593,31 @@ export function SalesReturnsTable({
           capabilities={capabilities}
           pending={pending}
           onEditLine={handleEditLine}
+          onEditHeader={() => setHeaderEditSale(saleDetails)}
           onReturnAction={handleDetailsReturnAction}
           onOpenChange={(open) => {
             if (!open) {
               setDetailsSaleId(null);
               setSaleDetails(null);
+            }
+          }}
+        />
+      ) : null}
+
+      {headerEditSale ? (
+        <EditSaleHeaderDialog
+          key={headerEditSale.id}
+          sale={headerEditSale}
+          open
+          onOpenChange={(open) => {
+            if (!open) setHeaderEditSale(null);
+          }}
+          onSaved={() => {
+            const saleId = headerEditSale.id;
+            setHeaderEditSale(null);
+            router.refresh();
+            if (detailsSaleId === saleId) {
+              refreshSaleDetails(saleId);
             }
           }}
         />

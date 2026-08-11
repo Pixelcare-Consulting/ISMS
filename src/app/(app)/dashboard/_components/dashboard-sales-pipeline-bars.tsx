@@ -32,16 +32,16 @@ export function DashboardSalesPipelineBars({
     <div className="flex h-full min-h-64 w-full flex-col rounded-xl border bg-card p-4 shadow-sm">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <h3 className="font-semibold">ATR / return pipeline</h3>
+          <h3 className="font-semibold">Return pipeline</h3>
           <p className="text-sm text-muted-foreground">
-            Sales ATR and return request stages
+            Return request stages (evaluate → approve → restore)
           </p>
         </div>
         <Link
-          href="/sales"
+          href="/returns"
           className="shrink-0 text-sm font-medium text-primary hover:underline"
         >
-          View sales
+          View returns
         </Link>
       </div>
 

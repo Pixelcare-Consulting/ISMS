@@ -7,6 +7,7 @@ import {
 } from "@/features/dashboard/services/dashboard-kpi.service";
 import { getDashboardSalesAnalytics } from "@/features/dashboard/services/dashboard-sales.service";
 import { canAccessSales } from "@/features/sales/constants/sales-permissions";
+import { canAccessReturns } from "@/features/returns/constants/returns-permissions";
 import { hasAnyOrderPermission } from "@/features/orders/constants/order-permissions";
 import { hasPermission, requireAuth } from "@/lib/auth/permissions";
 
@@ -52,7 +53,7 @@ export async function getDashboardSalesAnalyticsAction() {
   const session = await requireAuth();
   const permissions = session.user.permissions;
 
-  if (!canAccessSales(permissions)) {
+  if (!canAccessSales(permissions) && !canAccessReturns(permissions)) {
     return null;
   }
 

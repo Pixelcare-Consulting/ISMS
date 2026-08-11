@@ -27,14 +27,25 @@ import {
   SALES_ACCESS_PERMISSIONS,
   SALES_CREATE,
   SALES_LIST_PERMISSIONS,
+  SALES_LOOKUP_PERMISSIONS,
   SALES_RETURN_APPROVE,
   SALES_RETURN_COMPLETE,
   SALES_RETURN_EVALUATE,
   SALES_RETURN_REQUEST,
   SALES_RETURN_VIEW,
+  SALES_UPDATE,
   salesReturnRejectPermissions,
 } from "@/features/sales/constants/sales-permissions";
+import {
+  RETURNS_APPROVE,
+  RETURNS_COMPLETE,
+  RETURNS_EVALUATE,
+  RETURNS_REQUEST,
+  RETURNS_VIEW,
+  returnsRejectPermissions,
+} from "@/features/returns/constants/returns-permissions";
 import { capturesDeliveryReceipt } from "@/features/sales/utils/delivery-method";
+import { saleHasOfficialSoldLine } from "@/features/sales/utils/sale-header-edit";
 import { isSaleTransactionNo } from "@/features/sales/utils/sale-transaction-no";
 import {
   resolveModelPriceForSales,
@@ -216,6 +227,31 @@ const updateSaleSerialSchema = z.object({
   serialNumberId: z.string().min(1),
   deliveryNo: deliveryNoSchema.transform((value) => value || null).optional(),
   deliveryDate: deliveryDateSchema.optional(),
+});
+
+/** Header-only edit (Accounting). Does not create/remove sale lines. */
+const updateSaleHeaderSchema = z.object({
+  saleId: z.string().min(1),
+  transactionNo: z
+    .string()
+    .trim()
+    .min(1)
+    .refine(isSaleTransactionNo, "Invalid transaction number"),
+  branchId: z.string().min(1),
+  alternateBranchId: z.string().min(1),
+  customerName: z.string().trim().min(1),
+  contactNo: z.string().trim().max(50).optional(),
+  siTrans: z.string().trim().optional(),
+  paymentTypeId: z.string().min(1),
+  saleTypeId: z.string().min(1),
+  customerDeliveryMethodId: z.string().min(1),
+  infoSlipVsoRrReleased: z.string().trim().optional(),
+  rrReceiveDeliver: z.string().trim().optional(),
+  proof: z
+    .union([z.string().trim().min(1), z.array(z.string().trim().min(1))])
+    .optional(),
+  transactionDate: z.string().optional(),
+  reserved: z.boolean().optional(),
 });
 
 const saleSchema = z.object({
@@ -430,16 +466,24 @@ export async function listSalesAction(input?: {
 }
 
 /**
- * Returns tab list: one row per BranchReturnRequest with ATR / return status badges.
- * Requires dedicated `sales.return.view` (separate from ATR workflow actions).
+ * Branch returns list: one row per BranchReturnRequest with ATR / return status badges.
+ * Accepts `returns.view` or legacy `sales.return.view`.
  */
 export async function listSalesReturnsAction(input?: {
   page?: number;
   limit?: number;
   sort?: string;
   sortDir?: string;
+  statusIn?: Array<"pending_cs" | "pending_tl" | "approved" | "rejected" | "completed">;
 }) {
-  const session = await requirePermission(SALES_RETURN_VIEW);
+  const session = await requireAnyPermission([
+    RETURNS_VIEW,
+    SALES_RETURN_VIEW,
+    "service_centers.return.request",
+    "service_centers.return.evaluate",
+    "service_centers.return.approve",
+    "service_centers.return.complete",
+  ]);
   const [result, salesAtrCodes] = await Promise.all([
     salesRepository.listReturnRequestsForTenant(
       session.user.tenantId,
@@ -451,6 +495,7 @@ export async function listSalesReturnsAction(input?: {
         field: parseSalesReturnsSort(input?.sort),
         dir: parseSalesSortDir(input?.sortDir),
       },
+      { statusIn: input?.statusIn },
     ),
     loadSalesAtrCodesByCode(session.user.tenantId),
   ]);
@@ -499,22 +544,38 @@ export async function getSaleDetailsAction(saleId: string) {
     ? resolveSalesAtrStatusCode(sale.returnRequest.status, salesAtrCodes)
     : null;
 
+  const realSerialDetails = sale.details.filter((d) => d.serialNumberId);
+  const reserved =
+    realSerialDetails.length > 0 &&
+    realSerialDetails.every((d) => d.statusCode?.code === "RSV");
+
   return {
     id: sale.id,
     transactionNo: sale.transactionNo,
     transactionDate: sale.transactionDate
       ? sale.transactionDate.toISOString()
       : null,
+    /** YYYY-MM-DD for header edit date input. */
+    transactionDateInput: toDateInputValue(sale.transactionDate),
     customerName: sale.customerName,
+    contactNo: sale.contactNo,
     siTrans: sale.siTrans,
+    infoSlipVsoRrReleased: sale.infoSlipVsoRrReleased,
+    rrReceiveDeliver: sale.rrReceiveDeliver,
     atrStatus: sale.atrStatus,
     atrStatusCode,
     notes: sale.notes,
     proofPaths,
     proofCount: proofPaths.length,
     amount: sale.amount.toString(),
+    reserved,
     /** Stock-source branch used when editing serials (matches list row branchId). */
     stockBranchId: sale.stockSourceBranch?.id ?? sale.branch.id,
+    branchId: sale.branchId,
+    alternateBranchId: sale.alternateBranchId ?? sale.branchId,
+    paymentTypeId: sale.paymentTypeId,
+    saleTypeId: sale.saleTypeId,
+    customerDeliveryMethodId: sale.customerDeliveryMethodId,
     branch: sale.branch,
     stockSourceBranch: sale.stockSourceBranch,
     paymentType: sale.paymentType,
@@ -558,7 +619,7 @@ export async function getSaleDetailsAction(saleId: string) {
 }
 
 export async function listPackageTypesForSalesAction() {
-  const session = await requirePermission("sales.create");
+  const session = await requireAnyPermission([...SALES_LOOKUP_PERMISSIONS]);
   const rows = await prisma.packageType.findMany({
     where: { tenantId: session.user.tenantId, recordStatus: "active" },
     select: { id: true, name: true, quantity: true },
@@ -568,7 +629,7 @@ export async function listPackageTypesForSalesAction() {
 }
 
 export async function listPaymentTypesForSalesAction() {
-  const session = await requirePermission("sales.create");
+  const session = await requireAnyPermission([...SALES_LOOKUP_PERMISSIONS]);
   return prisma.paymentType.findMany({
     where: { tenantId: session.user.tenantId, recordStatus: "active" },
     select: { id: true, name: true },
@@ -577,7 +638,7 @@ export async function listPaymentTypesForSalesAction() {
 }
 
 export async function listSaleTypesForSalesAction() {
-  const session = await requirePermission("sales.create");
+  const session = await requireAnyPermission([...SALES_LOOKUP_PERMISSIONS]);
   return prisma.saleType.findMany({
     where: { tenantId: session.user.tenantId, recordStatus: "active" },
     select: { id: true, name: true },
@@ -586,7 +647,7 @@ export async function listSaleTypesForSalesAction() {
 }
 
 export async function listCustomerDeliveryMethodsForSalesAction() {
-  const session = await requirePermission("sales.create");
+  const session = await requireAnyPermission([...SALES_LOOKUP_PERMISSIONS]);
   return prisma.customerDeliveryMethod.findMany({
     where: { tenantId: session.user.tenantId, recordStatus: "active" },
     select: { id: true, name: true },
@@ -595,7 +656,7 @@ export async function listCustomerDeliveryMethodsForSalesAction() {
 }
 
 export async function listPromoTypesForSalesAction() {
-  const session = await requirePermission("sales.create");
+  const session = await requireAnyPermission([...SALES_LOOKUP_PERMISSIONS]);
   return prisma.promoType.findMany({
     where: { tenantId: session.user.tenantId, recordStatus: "active" },
     select: { id: true, name: true },
@@ -604,7 +665,7 @@ export async function listPromoTypesForSalesAction() {
 }
 
 export async function listBrandsForSalesAction() {
-  const session = await requirePermission("sales.create");
+  const session = await requireAnyPermission([...SALES_LOOKUP_PERMISSIONS]);
   return prisma.brand.findMany({
     where: { tenantId: session.user.tenantId },
     select: { id: true, name: true },
@@ -612,8 +673,42 @@ export async function listBrandsForSalesAction() {
   });
 }
 
+/** AOR-scoped sold branches for encode / header edit. */
+export async function listBranchesForSalesAction() {
+  const session = await requireAnyPermission([...SALES_LOOKUP_PERMISSIONS]);
+  const unrestricted =
+    hasPermission(session.user.permissions, "branches.manage") ||
+    hasPermission(session.user.permissions, "master_data.manage");
+
+  if (unrestricted) {
+    return prisma.branch.findMany({
+      where: {
+        tenantId: session.user.tenantId,
+        deletedAt: null,
+        status: "active",
+      },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    });
+  }
+
+  const aors = await aorService.listAorsForUser(
+    session.user.tenantId,
+    session.user.id,
+  );
+  const byId = new Map<string, string>();
+  for (const aor of aors) {
+    if (aor.branch?.id) {
+      byId.set(aor.branch.id, aor.branch.name);
+    }
+  }
+  return [...byId.entries()]
+    .map(([id, name]) => ({ id, name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export async function listStockSourceBranchesForSalesAction(branchId: string) {
-  const session = await requirePermission("sales.create");
+  const session = await requireAnyPermission([...SALES_LOOKUP_PERMISSIONS]);
   await assertBranchInAor(
     session.user.tenantId,
     session.user.id,
@@ -703,7 +798,7 @@ export async function listStockSourceBranchesForSalesAction(branchId: string) {
 }
 
 export async function listModelsForSalesAction(brandId?: string) {
-  const session = await requirePermission("sales.create");
+  const session = await requireAnyPermission([...SALES_LOOKUP_PERMISSIONS]);
   const rows = await prisma.productModel.findMany({
     where: {
       tenantId: session.user.tenantId,
@@ -796,7 +891,7 @@ export async function listSaleableSerialsAction(
 }
 
 export async function uploadSaleProofAction(formData: FormData) {
-  const session = await requirePermission("sales.create");
+  const session = await requireAnyPermission([...SALES_LOOKUP_PERMISSIONS]);
   try {
     const files = formData
       .getAll("proof")
@@ -890,12 +985,16 @@ export async function createSaleAction(input: unknown) {
   const taken = await prisma.branchSalesTransaction.findFirst({
     where: {
       tenantId: session.user.tenantId,
+      branchId: parsed.data.branchId,
       transactionNo: parsed.data.transactionNo,
     },
     select: { id: true },
   });
   if (taken) {
-    return { error: "Transaction number already used. Enter a different number." };
+    return {
+      error:
+        "Transaction number already used on this branch. Enter a different number.",
+    };
   }
 
   const transactionNo = parsed.data.transactionNo;
@@ -1122,7 +1221,11 @@ export async function createSaleAction(input: unknown) {
 }
 
 export async function requestReturnAction(saleId: string, notes?: string) {
-  const session = await requireAnyPermission([SALES_RETURN_REQUEST, SALES_CREATE]);
+  const session = await requireAnyPermission([
+    RETURNS_REQUEST,
+    SALES_RETURN_REQUEST,
+    SALES_CREATE,
+  ]);
   const reason = notes?.trim() || "";
   if (!reason) {
     return { error: "Return reason is required" as const };
@@ -1177,11 +1280,15 @@ export async function requestReturnAction(saleId: string, notes?: string) {
   });
 
   revalidatePath("/sales");
+  revalidatePath("/returns");
   return { success: true as const };
 }
 
 export async function evaluateReturnAction(returnRequestId: string, notes?: string) {
-  const session = await requirePermission(SALES_RETURN_EVALUATE);
+  const session = await requireAnyPermission([
+    RETURNS_EVALUATE,
+    SALES_RETURN_EVALUATE,
+  ]);
   const row = await prisma.branchReturnRequest.findFirst({
     where: { id: returnRequestId, tenantId: session.user.tenantId },
   });
@@ -1208,11 +1315,16 @@ export async function evaluateReturnAction(returnRequestId: string, notes?: stri
   });
 
   revalidatePath("/sales");
+  revalidatePath("/returns");
   return { success: true as const };
 }
 
 export async function approveReturnAction(returnRequestId: string) {
-  const session = await requireAnyPermission([SALES_RETURN_APPROVE, "orders.approve"]);
+  const session = await requireAnyPermission([
+    RETURNS_APPROVE,
+    SALES_RETURN_APPROVE,
+    "orders.approve",
+  ]);
   const row = await prisma.branchReturnRequest.findFirst({
     where: { id: returnRequestId, tenantId: session.user.tenantId },
   });
@@ -1238,11 +1350,14 @@ export async function approveReturnAction(returnRequestId: string) {
   });
 
   revalidatePath("/sales");
+  revalidatePath("/returns");
   return { success: true as const };
 }
 
 export async function rejectReturnAction(returnRequestId: string, notes?: string) {
   const session = await requireAnyPermission([
+    RETURNS_EVALUATE,
+    RETURNS_APPROVE,
     SALES_RETURN_EVALUATE,
     SALES_RETURN_APPROVE,
     SALES_CREATE,
@@ -1256,7 +1371,10 @@ export async function rejectReturnAction(returnRequestId: string, notes?: string
     return { error: "Return request cannot be rejected" };
   }
 
-  const allowed = salesReturnRejectPermissions(row.status);
+  const allowed = [
+    ...salesReturnRejectPermissions(row.status),
+    ...returnsRejectPermissions(row.status),
+  ];
   if (!allowed.some((slug) => hasPermission(session.user.permissions, slug))) {
     return { error: "You do not have permission to reject this return" };
   }
@@ -1281,11 +1399,13 @@ export async function rejectReturnAction(returnRequestId: string, notes?: string
   });
 
   revalidatePath("/sales");
+  revalidatePath("/returns");
   return { success: true as const };
 }
 
 export async function completeReturnRestoreAction(returnRequestId: string) {
   const session = await requireAnyPermission([
+    RETURNS_COMPLETE,
     SALES_RETURN_COMPLETE,
     "logistics.manage",
     SALES_CREATE,
@@ -1383,6 +1503,230 @@ export async function completeReturnRestoreAction(returnRequestId: string) {
   });
 
   revalidatePath("/sales");
+  revalidatePath("/returns");
+  revalidatePath("/inventory");
+  return { success: true as const };
+}
+
+/**
+ * Accounting header edit — updates BranchSalesTransaction fields only.
+ * Branch / stock-source changes are blocked when any line has a real serial.
+ * Reserved toggles SLD ↔ RSV on eligible detail + inventory rows.
+ */
+export async function updateSaleHeaderAction(input: unknown) {
+  const session = await requirePermission(SALES_UPDATE);
+  const parsed = updateSaleHeaderSchema.safeParse(input);
+  if (!parsed.success) return { error: "Invalid sale header update" as const };
+
+  const data = parsed.data;
+  const sale = await prisma.branchSalesTransaction.findFirst({
+    where: { id: data.saleId, tenantId: session.user.tenantId },
+    select: {
+      id: true,
+      branchId: true,
+      alternateBranchId: true,
+      transactionNo: true,
+      details: {
+        select: {
+          id: true,
+          serialNumberId: true,
+          statusCode: { select: { id: true, code: true } },
+        },
+      },
+    },
+  });
+  if (!sale) return { error: "Sale not found" as const };
+
+  if (saleHasOfficialSoldLine(sale.details)) {
+    return {
+      error: "Official Sold sales cannot have their header edited" as const,
+    };
+  }
+
+  try {
+    await assertBranchInAor(
+      session.user.tenantId,
+      session.user.id,
+      data.branchId,
+      session.user.permissions,
+    );
+    await assertValidStockSource(
+      session.user.tenantId,
+      session.user.id,
+      data.branchId,
+      data.alternateBranchId,
+      session.user.permissions,
+    );
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Access denied" };
+  }
+
+  const hasRealSerials = sale.details.some((d) => d.serialNumberId);
+  if (
+    hasRealSerials &&
+    (data.branchId !== sale.branchId ||
+      data.alternateBranchId !== (sale.alternateBranchId ?? sale.branchId))
+  ) {
+    return {
+      error:
+        "Branch and stock source can only change when every line is still TO-FOLLOW",
+    };
+  }
+
+  let transactionDate: Date | null = null;
+  if (data.transactionDate) {
+    const d = new Date(data.transactionDate);
+    if (Number.isNaN(d.getTime())) {
+      return { error: "Invalid transaction date" as const };
+    }
+    transactionDate = d;
+  }
+
+  if (data.transactionNo !== sale.transactionNo) {
+    const taken = await prisma.branchSalesTransaction.findFirst({
+      where: {
+        tenantId: session.user.tenantId,
+        branchId: data.branchId,
+        transactionNo: data.transactionNo,
+        NOT: { id: sale.id },
+      },
+      select: { id: true },
+    });
+    if (taken) {
+      return {
+        error:
+          "Transaction number already used on this branch. Enter a different number.",
+      };
+    }
+  }
+
+  const [payment, saleType, delivery] = await Promise.all([
+    prisma.paymentType.findFirst({
+      where: {
+        id: data.paymentTypeId,
+        tenantId: session.user.tenantId,
+        recordStatus: "active",
+      },
+      select: { id: true },
+    }),
+    prisma.saleType.findFirst({
+      where: {
+        id: data.saleTypeId,
+        tenantId: session.user.tenantId,
+        recordStatus: "active",
+      },
+      select: { id: true },
+    }),
+    prisma.customerDeliveryMethod.findFirst({
+      where: {
+        id: data.customerDeliveryMethodId,
+        tenantId: session.user.tenantId,
+        recordStatus: "active",
+      },
+      select: { id: true },
+    }),
+  ]);
+  if (!payment) return { error: "Payment type not found" as const };
+  if (!saleType) return { error: "Sale type not found" as const };
+  if (!delivery) return { error: "Customer delivery method not found" as const };
+
+  const proofPaths =
+    data.proof === undefined
+      ? undefined
+      : serializeSaleProofPaths(
+          Array.isArray(data.proof) ? data.proof : [data.proof],
+        );
+
+  const realSerialDetails = sale.details.filter((d) => d.serialNumberId);
+  const currentlyReserved =
+    realSerialDetails.length > 0 &&
+    realSerialDetails.every((d) => d.statusCode?.code === "RSV");
+  const nextReserved = data.reserved;
+  const reservedChanging =
+    typeof nextReserved === "boolean" &&
+    nextReserved !== currentlyReserved &&
+    realSerialDetails.length > 0;
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.branchSalesTransaction.update({
+        where: { id: sale.id },
+        data: {
+          branchId: data.branchId,
+          alternateBranchId: data.alternateBranchId,
+          paymentTypeId: data.paymentTypeId,
+          saleTypeId: data.saleTypeId,
+          customerDeliveryMethodId: data.customerDeliveryMethodId,
+          transactionNo: data.transactionNo,
+          transactionDate,
+          customerName: data.customerName,
+          contactNo: data.contactNo?.trim() || null,
+          siTrans: data.siTrans?.trim() || data.transactionNo,
+          infoSlipVsoRrReleased: data.infoSlipVsoRrReleased?.trim() || null,
+          rrReceiveDeliver: data.rrReceiveDeliver?.trim() || null,
+          ...(proofPaths !== undefined ? { proof: proofPaths } : {}),
+        },
+      });
+
+      if (reservedChanging && typeof nextReserved === "boolean") {
+        const sldCodeId = await reasonStatusService.requireCodeId(
+          session.user.tenantId,
+          "inventory_system",
+          "SLD",
+        );
+        const rsvCodeId = await reasonStatusService.requireCodeId(
+          session.user.tenantId,
+          "inventory_system",
+          "RSV",
+        );
+        const fromCodeId = nextReserved ? sldCodeId : rsvCodeId;
+        const toCodeId = nextReserved ? rsvCodeId : sldCodeId;
+        const eligible = realSerialDetails.filter(
+          (d) =>
+            d.statusCode?.code === (nextReserved ? "SLD" : "RSV") ||
+            d.statusCode?.id === fromCodeId,
+        );
+
+        for (const detail of eligible) {
+          if (!detail.serialNumberId) continue;
+          await tx.branchSalesTransactionDetail.update({
+            where: { id: detail.id },
+            data: { statusCodeId: toCodeId },
+          });
+          await tx.branchInventory.updateMany({
+            where: {
+              tenantId: session.user.tenantId,
+              serialNumberId: detail.serialNumberId,
+              statusCodeId: fromCodeId,
+            },
+            data: {
+              statusCodeId: toCodeId,
+              updatedById: session.user.id,
+            },
+          });
+        }
+      }
+    });
+  } catch (e) {
+    return {
+      error: e instanceof Error ? e.message : "Failed to update sale header",
+    };
+  }
+
+  await auditService.log({
+    tenantId: session.user.tenantId,
+    userId: session.user.id,
+    action: "sale.header_updated",
+    entityType: "BranchSalesTransaction",
+    entityId: sale.id,
+    metadata: {
+      transactionNo: data.transactionNo,
+      previousTransactionNo: sale.transactionNo,
+      reserved: nextReserved ?? currentlyReserved,
+    },
+  });
+
+  revalidatePath("/sales");
   revalidatePath("/inventory");
   return { success: true as const };
 }
@@ -1395,6 +1739,7 @@ export async function completeReturnRestoreAction(returnRequestId: string) {
  *
  * Also carries the line's delivery receipt: a TO-FOLLOW unit usually learns its
  * DR at the same moment it learns its serial, so both settle in one write.
+ * Only TO-FOLLOW lines (null serial) may be edited.
  */
 export async function updateSaleSerialAction(input: unknown) {
   const session = await requirePermission("sales.create");
@@ -1444,6 +1789,13 @@ export async function updateSaleSerialAction(input: unknown) {
     ? sale.details.find((d) => d.id === detailId)
     : sale.details[0];
   if (!targetDetail) return { error: "Sale detail line not found" };
+
+  // Line Edit is only for pending TO-FOLLOW placeholders — not real serials.
+  if (targetDetail.serialNumberId) {
+    return {
+      error: "Only TO-FOLLOW sale lines can be edited",
+    };
+  }
 
   // A pickup sale has no delivery receipt, so ignore whatever was submitted.
   const keepsDeliveryReceipt = capturesDeliveryReceipt(

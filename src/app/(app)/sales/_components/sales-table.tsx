@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import { EditSaleHeaderDialog } from "@/app/(app)/sales/_components/edit-sale-header-dialog";
 import { EditSaleSerialDialog } from "@/app/(app)/sales/_components/edit-sale-serial-dialog";
 import {
   SaleDetailsDialog,
@@ -26,6 +27,10 @@ import {
 } from "@/features/sales/actions/sales.actions";
 import { TO_FOLLOW_SERIAL_LABEL } from "@/features/sales/constants/to-follow-serial";
 import { capturesDeliveryReceipt } from "@/features/sales/utils/delivery-method";
+import {
+  canEditSaleHeaderForLines,
+  isOfficialSoldStatusCode,
+} from "@/features/sales/utils/sale-header-edit";
 import type { SalesActionCapabilities } from "@/features/sales/constants/sales-permissions";
 import {
   TableAmountCell,
@@ -232,6 +237,8 @@ export function SalesTable({
   const [editingLine, setEditingLine] = useState<EditingLine | null>(null);
   const [detailsSaleId, setDetailsSaleId] = useState<string | null>(null);
   const [saleDetails, setSaleDetails] = useState<SaleDetailsPayload | null>(null);
+  const [headerEditSale, setHeaderEditSale] =
+    useState<SaleDetailsPayload | null>(null);
   const [pendingConfirm, setPendingConfirm] =
     useState<SaleReturnPendingConfirm | null>(null);
   const [returnReason, setReturnReason] = useState("");
@@ -309,6 +316,10 @@ export function SalesTable({
 
   function handleEditLine(line: SaleDetailsLine) {
     if (!saleDetails) return;
+    if (line.serialNumberId || line.serialNo !== TO_FOLLOW_SERIAL_LABEL) {
+      toast.error("Only TO-FOLLOW sale lines can be edited");
+      return;
+    }
     setEditingLine({
       saleId: saleDetails.id,
       detailId: line.detailId,
@@ -322,6 +333,21 @@ export function SalesTable({
       showDelivery: capturesDeliveryReceipt(
         saleDetails.customerDeliveryMethod?.name,
       ),
+    });
+  }
+
+  function openHeaderEdit(saleId: string) {
+    startTransition(async () => {
+      const res = await getSaleDetailsAction(saleId);
+      if ("error" in res) {
+        toast.error(res.error);
+        return;
+      }
+      if (!canEditSaleHeaderForLines(res.lines)) {
+        toast.error("Official Sold sales cannot have their header edited");
+        return;
+      }
+      setHeaderEditSale(res);
     });
   }
 
@@ -585,6 +611,18 @@ export function SalesTable({
                       >
                         View details
                       </Button>
+                      {capabilities.canUpdateSaleHeader &&
+                      saleSerialLabel(s) === TO_FOLLOW_SERIAL_LABEL &&
+                      !isOfficialSoldStatusCode(s.statusCode?.code) ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={pending}
+                          onClick={() => openHeaderEdit(s.saleId)}
+                        >
+                          Edit
+                        </Button>
+                      ) : null}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -601,11 +639,31 @@ export function SalesTable({
           capabilities={capabilities}
           pending={pending}
           onEditLine={handleEditLine}
+          onEditHeader={() => setHeaderEditSale(saleDetails)}
           onReturnAction={handleReturnAction}
           onOpenChange={(open) => {
             if (!open) {
               setDetailsSaleId(null);
               setSaleDetails(null);
+            }
+          }}
+        />
+      ) : null}
+
+      {headerEditSale ? (
+        <EditSaleHeaderDialog
+          key={headerEditSale.id}
+          sale={headerEditSale}
+          open
+          onOpenChange={(open) => {
+            if (!open) setHeaderEditSale(null);
+          }}
+          onSaved={() => {
+            const saleId = headerEditSale.id;
+            setHeaderEditSale(null);
+            router.refresh();
+            if (detailsSaleId === saleId) {
+              refreshSaleDetails(saleId);
             }
           }}
         />

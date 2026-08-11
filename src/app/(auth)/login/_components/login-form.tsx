@@ -2,10 +2,11 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 
+import { getPostLoginRedirectAction } from "@/features/auth/actions/post-login-redirect.action";
 import { loginSchema, type LoginInput } from "@/features/auth/schemas/auth.schema";
 import { AppVersion } from "@/app/(auth)/_components/app-version";
 import { Button } from "@/components/ui/button";
@@ -29,8 +30,16 @@ const inputClassName = cn(
   "focus-visible:bg-background focus-visible:ring-primary/30",
 );
 
+/**
+ * Full document navigation after sign-in.
+ * Soft App Router transitions (router.push + refresh) can hang when leaving
+ * `(auth)` for `(provider)` / `(app)`, leaving the signing-in modal stuck.
+ */
+function navigateAfterLogin(destination: string) {
+  window.location.assign(destination);
+}
+
 export function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const sessionExpired = searchParams.get("error") === "session-expired";
   const [error, setError] = useState<string | null>(
@@ -71,8 +80,14 @@ export function LoginForm() {
       return;
     }
 
-    router.push(callbackUrl);
-    router.refresh();
+    try {
+      const destination = await getPostLoginRedirectAction(callbackUrl);
+      // Keep modal open until the document unloads; hard nav clears this page.
+      navigateAfterLogin(destination);
+    } catch {
+      setIsRedirecting(false);
+      setError("Signed in, but we could not open your workspace. Try again.");
+    }
   }
 
   return (

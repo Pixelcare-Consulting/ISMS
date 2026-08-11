@@ -210,14 +210,26 @@ async function setInventoryOfficialSold(
   }
 }
 
+type OfficialSalesRetagCommercial = {
+  modelPrice: number;
+  packageTypeId?: string;
+};
+
 async function retagDetailToOfficialSold(
   tx: Pick<typeof prisma, "branchSalesTransactionDetail">,
   detailId: string,
   ofsCodeId: string,
+  commercial: OfficialSalesRetagCommercial,
 ) {
   await tx.branchSalesTransactionDetail.update({
     where: { id: detailId },
-    data: { statusCodeId: ofsCodeId },
+    data: {
+      statusCodeId: ofsCodeId,
+      modelPrice: commercial.modelPrice,
+      ...(commercial.packageTypeId !== undefined
+        ? { packageTypeId: commercial.packageTypeId }
+        : {}),
+    },
   });
 }
 
@@ -226,6 +238,85 @@ function parseRowSaleAmount(value: unknown): number {
   const n = Number(value.toString());
   if (!Number.isFinite(n)) return 0;
   return n;
+}
+
+async function resolvePackageTypeIdByName(
+  tenantId: string,
+  packageName: string,
+): Promise<string> {
+  const pkg = await prisma.packageType.findFirst({
+    where: {
+      tenantId,
+      name: { equals: packageName, mode: "insensitive" },
+      recordStatus: "active",
+    },
+    select: { id: true },
+  });
+  if (!pkg) {
+    throw new Error(`Unknown package: ${packageName}`);
+  }
+  return pkg.id;
+}
+
+/**
+ * Model price for ADD / WHSE_ADD: Model + Package + Transaction Date via
+ * resolveModelPriceForSales (active period, then latest periodStart fallback).
+ */
+async function resolveOfficialSalesModelPrice(
+  tenantId: string,
+  modelId: string,
+  packageTypeId: string | null | undefined,
+  transactionDate: Date | null | undefined,
+): Promise<number> {
+  const resolved = await resolveModelPriceForSales(
+    tenantId,
+    modelId,
+    packageTypeId ?? undefined,
+    transactionDate ?? undefined,
+  );
+  return resolved?.amount ?? 0;
+}
+
+/**
+ * On retag-to-OFS: refresh modelPrice from Model + Package + txn date.
+ * Staging package wins when provided; otherwise keep the detail's package.
+ */
+async function resolveRetagCommercialFields(
+  tenantId: string,
+  row: OfficialSalesProcessRow,
+  detail: {
+    modelId: string | null;
+    packageTypeId: string | null;
+    sale: { transactionDate: Date | null };
+    serialNumber: { modelId: string | null } | null;
+  },
+): Promise<OfficialSalesRetagCommercial> {
+  const modelId = detail.modelId ?? detail.serialNumber?.modelId ?? null;
+  if (!modelId) {
+    throw new Error("Model is required");
+  }
+
+  const packageName = row.packageName?.trim() ?? "";
+  let packageTypeId = detail.packageTypeId;
+  let updatePackage = false;
+  if (packageName) {
+    packageTypeId = await resolvePackageTypeIdByName(tenantId, packageName);
+    updatePackage = true;
+  }
+
+  const transactionDate =
+    resolveTransactionDate(row) ?? detail.sale.transactionDate;
+  const modelPrice = await resolveOfficialSalesModelPrice(
+    tenantId,
+    modelId,
+    packageTypeId,
+    transactionDate,
+  );
+
+  return {
+    modelPrice,
+    ...(updatePackage && packageTypeId ? { packageTypeId } : {}),
+  };
 }
 
 /**
@@ -239,21 +330,9 @@ async function resolveCommercialFieldsForCreate(
   transactionDate: Date | null,
 ): Promise<OfficialSalesCommercialFields> {
   const packageName = row.packageName?.trim() ?? "";
-  let packageTypeId: string | null = null;
-  if (packageName) {
-    const pkg = await prisma.packageType.findFirst({
-      where: {
-        tenantId,
-        name: { equals: packageName, mode: "insensitive" },
-        recordStatus: "active",
-      },
-      select: { id: true },
-    });
-    if (!pkg) {
-      throw new Error(`Unknown package: ${packageName}`);
-    }
-    packageTypeId = pkg.id;
-  }
+  const packageTypeId = packageName
+    ? await resolvePackageTypeIdByName(tenantId, packageName)
+    : null;
 
   const brandName = row.brand?.trim() ?? "";
   let brandId: string | null = null;
@@ -272,13 +351,12 @@ async function resolveCommercialFieldsForCreate(
   }
 
   const saleAmount = parseRowSaleAmount(row.saleAmount);
-  const resolved = await resolveModelPriceForSales(
+  const modelPrice = await resolveOfficialSalesModelPrice(
     tenantId,
     modelId,
-    packageTypeId ?? undefined,
-    transactionDate ?? undefined,
+    packageTypeId,
+    transactionDate,
   );
-  const modelPrice = resolved?.amount ?? 0;
 
   return {
     packageTypeId,
@@ -320,22 +398,18 @@ async function createOfficialSaleWithDetail(
 
   const existing = await tx.branchSalesTransaction.findUnique({
     where: {
-      tenantId_transactionNo: {
+      tenantId_branchId_transactionNo: {
         tenantId: input.tenantId,
+        branchId: input.branchId,
         transactionNo: input.transactionNo,
       },
     },
-    select: { id: true, branchId: true },
+    select: { id: true },
   });
 
   let saleId: string;
   let createdHeader = false;
   if (existing) {
-    if (existing.branchId !== input.branchId) {
-      throw new Error(
-        `Transaction ${input.transactionNo} already exists on another branch`,
-      );
-    }
     saleId = existing.id;
   } else {
     const created = await tx.branchSalesTransaction.create({
@@ -546,8 +620,19 @@ async function processAdd(
       throw new Error("Not Found with SN details");
     }
 
+    const retagCommercial = await resolveRetagCommercialFields(
+      tenantId,
+      row,
+      detail,
+    );
+
     await prisma.$transaction(async (tx) => {
-      await retagDetailToOfficialSold(tx, detail.id, codes.ofsCodeId);
+      await retagDetailToOfficialSold(
+        tx,
+        detail.id,
+        codes.ofsCodeId,
+        retagCommercial,
+      );
       await logOfficialSalesTrail({
         tenantId,
         userId,
@@ -560,6 +645,7 @@ async function processAdd(
         metadata: {
           processPath: "retag_no_inventory",
           status: "OFS",
+          modelPrice: retagCommercial.modelPrice,
         },
       });
     });
@@ -573,6 +659,11 @@ async function processAdd(
     inventory.serialNumberId,
     statusCode,
   );
+  if (pulloutHold) {
+    throw new Error(
+      "Cannot process Official Sales ADD while inventory is For pull-out",
+    );
+  }
 
   // Idempotent success: already OFS with matching / open OFS sale
   if (statusCode === "OFS") {
@@ -612,7 +703,7 @@ async function processAdd(
 
     const detailCode = detail.statusCode?.code?.toUpperCase() ?? "";
     if (detailCode === "OFS") {
-      if (!pulloutHold && statusCode !== "OFS") {
+      if (statusCode !== "OFS") {
         await prisma.$transaction(async (tx) => {
           await setInventoryOfficialSold(tx, {
             tenantId,
@@ -644,19 +735,28 @@ async function processAdd(
       return "ADD — already Official Sold";
     }
 
+    const retagCommercial = await resolveRetagCommercialFields(
+      tenantId,
+      row,
+      detail,
+    );
+
     await prisma.$transaction(async (tx) => {
-      await retagDetailToOfficialSold(tx, detail.id, codes.ofsCodeId);
-      if (!pulloutHold) {
-        await setInventoryOfficialSold(tx, {
-          tenantId,
-          inventoryId: inventory.id,
-          expectedStatusCodeId: inventory.statusCodeId,
-          soldBranchId: soldBranch.id,
-          currentBranchId: inventory.branchId,
-          ofsCodeId: codes.ofsCodeId,
-          updatedById: userId,
-        });
-      }
+      await retagDetailToOfficialSold(
+        tx,
+        detail.id,
+        codes.ofsCodeId,
+        retagCommercial,
+      );
+      await setInventoryOfficialSold(tx, {
+        tenantId,
+        inventoryId: inventory.id,
+        expectedStatusCodeId: inventory.statusCodeId,
+        soldBranchId: soldBranch.id,
+        currentBranchId: inventory.branchId,
+        ofsCodeId: codes.ofsCodeId,
+        updatedById: userId,
+      });
       await logOfficialSalesTrail({
         tenantId,
         userId,
@@ -668,81 +768,13 @@ async function processAdd(
         soldBranch: soldBranch.name,
         metadata: {
           processPath: "retag",
-          inventoryForcedOfs: !pulloutHold,
-          pulloutHold,
           status: "OFS",
+          modelPrice: retagCommercial.modelPrice,
         },
       });
     });
 
-    return pulloutHold
-      ? "ADD — Official Sold (pullout hold kept)"
-      : "ADD — Official Sold";
-  }
-
-  // Pullout / FPO hold on non-sold statuses: create/retag sale, leave inventory hold
-  if (pulloutHold) {
-    const existing = await officialSalesRepository.findSaleDetailForRetag(
-      tenantId,
-      row.serial,
-      {
-        transactionNo: transMatchNo,
-        branchId: soldBranch.id,
-        transactionDate: resolveTransactionDate(row),
-        statusCodes: ["SLD", "RSV", "OFS"],
-      },
-    );
-
-    const pulloutTxnDate = resolveTransactionDate(row);
-    const pulloutCommercial = existing
-      ? undefined
-      : await resolveCommercialFieldsForCreate(
-          tenantId,
-          row,
-          modelId,
-          pulloutTxnDate,
-        );
-
-    await prisma.$transaction(async (tx) => {
-      if (existing) {
-        if (existing.statusCode?.code?.toUpperCase() !== "OFS") {
-          await retagDetailToOfficialSold(tx, existing.id, codes.ofsCodeId);
-        }
-      } else if (pulloutCommercial) {
-        await createOfficialSaleWithDetail(tx, {
-          tenantId,
-          userId,
-          branchId: soldBranch.id,
-          stockBranchId: inventory.branchId,
-          transactionNo,
-          transactionDate: pulloutTxnDate,
-          deliveryNo: row.drNo,
-          deliveryDate: row.drDate,
-          notes: buildSaleNotes(row, "ADD"),
-          modelId,
-          serialNumberId: inventory.serialNumberId,
-          ofsCodeId: codes.ofsCodeId,
-          ...pulloutCommercial,
-        });
-      }
-      await logOfficialSalesTrail({
-        tenantId,
-        userId,
-        action: "official_sales.add",
-        entityType: "BranchSalesTransaction",
-        entityId: transactionNo,
-        serial: row.serial,
-        transactionNo,
-        soldBranch: soldBranch.name,
-        metadata: {
-          processPath: "pullout_hold",
-          pulloutHold: true,
-          inventoryStatus: statusCode,
-          status: "OFS",
-        },
-      });
-    });
-    return "ADD — Official Sold (pullout hold kept)";
+    return "ADD — Official Sold";
   }
 
   // Sellable path (typically STK): relocate on branch conflict, create or retag, set OFS
@@ -766,8 +798,18 @@ async function processAdd(
       // Idempotent success — matching sale already Official Sold.
       return "ADD — already Official Sold";
     }
+    const retagCommercial = await resolveRetagCommercialFields(
+      tenantId,
+      row,
+      duplicate,
+    );
     await prisma.$transaction(async (tx) => {
-      await retagDetailToOfficialSold(tx, duplicate.id, codes.ofsCodeId);
+      await retagDetailToOfficialSold(
+        tx,
+        duplicate.id,
+        codes.ofsCodeId,
+        retagCommercial,
+      );
       await markSerialSoldFromStockSource(tx, {
         tenantId,
         serialNumberId: inventory.serialNumberId,
@@ -789,6 +831,7 @@ async function processAdd(
         metadata: {
           processPath: "duplicate_retag",
           status: "OFS",
+          modelPrice: retagCommercial.modelPrice,
         },
       });
     });

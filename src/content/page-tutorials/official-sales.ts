@@ -27,9 +27,11 @@ export const OFFICIAL_SALES_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "Tip",
       description:
-        "Action Key drives the outcome — not stock status alone. UPD is not supported here; edit that sale under Sales instead. Day-to-day branch encode stays on Sales & ATR; this page is for bulk dealer-template official sales.",
+        "Action Key drives the outcome — not stock status alone. UPD is not supported here; edit that sale under Sales instead. Day-to-day branch encode stays on Sales; this page is for bulk dealer-template official sales.",
       bullets: [
+        "Units marked For pull-out or in an open pull-out cannot be ADD'd — finish or cancel the pull-out first.",
         "Demo warehouse serials SN-WHSE-001…003 (Pasig Main) are available for WHSE_ADD after warehouse seed — use Branch Sold Western Makati with the template sample.",
+        "ADD and WHSE_ADD fill model price from the price list for that model, package, and transaction date (or the latest price if no period covers the date).",
       ],
     },
   ],

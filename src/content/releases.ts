@@ -52,6 +52,216 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.28.0",
+    date: "2026-08-11",
+    releasedAt: "2026-08-11T14:25:00+08:00",
+    title: "Returns / Replacement module & Official Sales prices",
+    highlights: [
+      "Returns / Replacement is its own menu next to Sales, with Branch Returns, Service Returns, and Approvals",
+      "Roles can grant view, request, evaluate, approve, and complete under Returns — older Sales and Service Center return permissions still work",
+      "Official Sales ADD fills model price from the price list for the model, package, and sale date — including when an existing sold line is marked Official Sold — and uses the latest price when no period matches that date",
+      "Sales loading screen no longer shows a Returns tab — Returns is only under Returns / Replacement",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Returns / Replacement is now a separate module from Sales, with Branch Returns, Service Returns, and Approvals tabs so teams can finish ATRs in one place",
+      },
+      {
+        type: "feature",
+        description:
+          "Roles can set Returns permissions for view, request, evaluate, approve, and complete; existing Sales and Service Center return permissions continue to work",
+      },
+      {
+        type: "fix",
+        description:
+          "Official Sales ADD now fills model price from the price list for the model, package, and sale date — including when an existing sold line is marked Official Sold — and uses the latest price when no period matches that date",
+      },
+      {
+        type: "fix",
+        description:
+          "Sales no longer flashes a Returns tab while the page is loading — open Returns / Replacement for ATRs",
+      },
+    ],
+  },
+  {
+    version: "0.27.3",
+    date: "2026-08-11",
+    releasedAt: "2026-08-11T14:05:00+08:00",
+    title: "Clearer transfer and Official Sales guidance",
+    highlights: [
+      "Help shows the updated transfer path: requesting branch, Team Leader approval, releasing branch, then receive",
+      "Official Sales is explained in Help alongside Sales & ATR so Accounting knows when to use each path",
+      "Flow by role tabs in Help scroll sideways when they don’t all fit, so every process stays reachable",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Help & Support now walks through the finished transfer flow and how Official Sales connects to Sales & ATR for Official Sold — without mixing it up with ATR returns",
+      },
+      {
+        type: "fix",
+        description:
+          "On Help & Support, Flow by role tabs scroll horizontally with a visible scrollbar when the row is too wide — so Roles and other processes stay easy to open",
+      },
+    ],
+  },
+  {
+    version: "0.27.2",
+    date: "2026-08-11",
+    releasedAt: "2026-08-11T13:35:00+08:00",
+    title: "Smoother Sales and Returns tab switching",
+    highlights: [
+      "Switching between Sales and Returns on Sales & ATR shows a table placeholder while the list loads",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Clicking Sales or Returns now shows a familiar table loading placeholder instead of a blank gap or the previous list flashing",
+      },
+    ],
+  },
+  {
+    version: "0.27.1",
+    date: "2026-08-11",
+    releasedAt: "2026-08-11T13:25:00+08:00",
+    title: "Search suggestions stay above table headers",
+    highlights: [
+      "Table search suggestions no longer hide behind column headers on Sales & ATRs and Official Sales",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Typing in a table search box shows matching suggestions clearly above the sticky column headers instead of slipping underneath",
+      },
+    ],
+  },
+  {
+    version: "0.27.0",
+    date: "2026-08-11",
+    releasedAt: "2026-08-11T13:10:00+08:00",
+    title: "Sale header edit for Accounting",
+    highlights: [
+      "Accounting can correct sale transaction headers from Sales & ATR",
+      "Sale line Edit appears only while the serial is still TO-FOLLOW",
+      "Edit header stays hidden once a sale is Official Sold",
+      "Roles can grant Edit sales transaction headers under Sales permissions",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Accounting (and roles with the new permission) can edit sale headers — transaction number, branch, date, customer, payment, delivery, proof, reserved, and related fields",
+      },
+      {
+        type: "feature",
+        description:
+          "Sales list shows Edit next to View details for TO-FOLLOW rows when you can update headers",
+      },
+      {
+        type: "improvement",
+        description:
+          "In sale details, line Edit is limited to TO-FOLLOW serials so completed units stay locked",
+      },
+      {
+        type: "improvement",
+        description:
+          "Edit header is hidden for Official Sold sales, and those headers cannot be changed",
+      },
+      {
+        type: "improvement",
+        description:
+          "Edit transaction header dialog spacing is clearer, with a form-shaped loading placeholder while fields load",
+      },
+    ],
+  },
+  {
+    version: "0.26.0",
+    date: "2026-08-11",
+    releasedAt: "2026-08-11T12:00:00+08:00",
+    title: "Warehouse stock serial list",
+    highlights: [
+      "Browse warehouse serial numbers from Inventory → Warehouse stock",
+      "Open the same list from Settings → Warehouses → Stock, optionally filtered to one warehouse",
+      "Filter by warehouse, location, or search by serial / SKU — read-only for now",
+      "Sidebar menus are grouped in a clearer day-to-day order — Orders, Sales & ATRs, Logistics, then Inventory",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Inventory → Warehouse stock shows serials held in warehouses, separate from branch Stock units",
+      },
+      {
+        type: "feature",
+        description:
+          "Settings → Warehouses adds a Stock tab and per-warehouse Stock links to the same list",
+      },
+      {
+        type: "improvement",
+        description:
+          "Warehouse and location filters plus serial/SKU search make it easier to find units before branch delivery",
+      },
+      {
+        type: "improvement",
+        description:
+          "Clear empty-state guidance when warehouse stock has not been loaded yet",
+      },
+      {
+        type: "improvement",
+        description:
+          "On Settings → Warehouses → Stock, search the warehouse list by code or name to open stock faster",
+      },
+      {
+        type: "improvement",
+        description:
+          "Warehouse locations are clearer when expanded — structured list, labeled add form, and a friendly empty state",
+      },
+      {
+        type: "improvement",
+        description:
+          "The sidebar follows a clearer workflow order: Orders, Sales & ATRs, Logistics, Inventory, Reports, and Audit Logs — with AORs first under Settings → Operations & Planning",
+      },
+    ],
+  },
+  {
+    version: "0.25.3",
+    date: "2026-08-11",
+    releasedAt: "2026-08-11T11:30:00+08:00",
+    title: "Branch transaction numbers and pull-out rules",
+    highlights: [
+      "The same SI or Trans No. can be used on different branches — each branch keeps its own sequence",
+      "Official Sales ADD is blocked when a unit is For pull-out or already in a pull-out workflow",
+      "Process owners can review which of the 45 Process Flow steps are covered, partial, or not yet in ISMS",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Sales and Official Sales allow the same transaction number on different branches within your company",
+      },
+      {
+        type: "improvement",
+        description:
+          "Official Sales ADD now stops with a clear message when inventory is on pull-out hold instead of recording a sale",
+      },
+      {
+        type: "improvement",
+        description:
+          "A Process Flow coverage guide lists steps 1–45 as covered, partial, or missing so teams can prioritize next work",
+      },
+      {
+        type: "fix",
+        description:
+          "Transaction number checks in Sales & ATR are scoped to the selected branch so duplicates on other branches no longer block encode",
+      },
+    ],
+  },
+  {
     version: "0.25.2",
     date: "2026-08-11",
     releasedAt: "2026-08-11T09:15:00+08:00",

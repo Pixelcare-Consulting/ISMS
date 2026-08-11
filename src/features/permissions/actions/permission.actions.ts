@@ -9,11 +9,13 @@ import {
 import { createPermissionSchema } from "@/features/permissions/schemas/create-permission.schema";
 import { updatePermissionSchema } from "@/features/permissions/schemas/update-permission.schema";
 
-const PERMISSIONS_PATH = "/settings/permissions";
+const PERMISSIONS_PATH = "/provider/permissions";
+const LEGACY_PERMISSIONS_PATH = "/settings/permissions";
 const ROLES_PATH = "/settings/roles";
 
 function revalidatePermissionPages() {
   revalidatePath(PERMISSIONS_PATH);
+  revalidatePath(LEGACY_PERMISSIONS_PATH);
   revalidatePath(ROLES_PATH);
 }
 

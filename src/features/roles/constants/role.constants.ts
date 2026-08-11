@@ -1,12 +1,24 @@
-/** Platform-operator roles — hidden from tenant RBAC UI and user assignment. */
+/** Elevated role slugs reserved for platform operators — not assignable in tenant RBAC UI. */
 export const PROVIDER_ONLY_ROLE_SLUGS = new Set(["super_admin"]);
 
 export function isProviderOnlyRole(slug: string) {
   return PROVIDER_ONLY_ROLE_SLUGS.has(slug);
 }
 
-export function isPlatformOperator(roleSlugs: string[] | undefined): boolean {
+/** True when the user holds a provider-only role slug (e.g. `super_admin`). */
+export function hasProviderRole(roleSlugs: string[] | undefined): boolean {
   return roleSlugs?.some((slug) => isProviderOnlyRole(slug)) ?? false;
+}
+
+/**
+ * Platform console access (`/provider/*`): provider role AND home tenant is the
+ * platform tenant (`isPlatform`). Tenant-only super admins (e.g. demo) are excluded.
+ */
+export function isPlatformOperator(
+  roleSlugs: string[] | undefined,
+  tenantIsPlatform: boolean,
+): boolean {
+  return tenantIsPlatform && hasProviderRole(roleSlugs);
 }
 
 export function filterTenantVisibleRoles<T extends { slug: string }>(roles: T[]) {

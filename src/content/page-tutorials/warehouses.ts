@@ -20,12 +20,13 @@ export const WAREHOUSES_PAGE_TUTORIAL: PageTutorialContent = {
         "Sync from SAP pulls warehouse master data over the Service Layer and matches on code — it adds and renames warehouses, but never deletes them or changes which one is main.",
         "Define aisles when your process tracks storage slots.",
         "Link warehouses in Areas of responsibility when users need warehouse-scoped access.",
+        "Open the Stock tab (or Stock on a row) to browse warehouse serials — same list as Inventory → Warehouse stock.",
       ],
     },
     {
       title: "Next steps",
       description:
-        "After warehouses exist, finish Branches/Dealers and AORs, then use Logistics for movement between warehouse and branch.",
+        "After warehouses exist, finish Branches/Dealers and AORs, then use Logistics for movement between warehouse and branch. Browse warehouse serials from the Stock tab when data has been loaded.",
     },
   ],
 };

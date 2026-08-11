@@ -22,6 +22,8 @@ const OPEN_SALE_DETAIL_SELECT = {
   serialNumberId: true,
   statusCodeId: true,
   modelId: true,
+  packageTypeId: true,
+  modelPrice: true,
   sale: {
     select: {
       id: true,

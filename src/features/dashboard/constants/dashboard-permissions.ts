@@ -1,6 +1,7 @@
 import { hasAnyOrderPermission } from "@/features/orders/constants/order-permissions";
 import { canAccessLogistics } from "@/features/logistics/constants/logistics-permissions";
 import { canAccessSales } from "@/features/sales/constants/sales-permissions";
+import { canAccessReturns } from "@/features/returns/constants/returns-permissions";
 import { hasPermission } from "@/lib/auth/permissions";
 
 export type DashboardPersona =
@@ -187,7 +188,7 @@ export function resolveDashboardCapabilities(
     showDeliveryInTransit:
       canAccessLogistics(perms) || hasPermission(perms, "inventory.view"),
     showStock: hasPermission(perms, "inventory.view"),
-    showOpenAtr: canAccessSales(perms),
+    showOpenAtr: canAccessSales(perms) || canAccessReturns(perms),
     showPlanogramAlerts: hasPlanogram,
     showAllocationGaps: hasForecast,
     showDraftSuggested: hasForecast,
@@ -195,7 +196,7 @@ export function resolveDashboardCapabilities(
     showStockChart: hasPermission(perms, "inventory.view"),
     showOrdersThisMonth: canViewOrders,
     showSalesThisMonth: canAccessSales(perms),
-    showSalesSection: canAccessSales(perms),
+    showSalesSection: canAccessSales(perms) || canAccessReturns(perms),
     showRecentUsers: hasPermission(perms, "users.manage"),
     showPolicies,
     showReports,

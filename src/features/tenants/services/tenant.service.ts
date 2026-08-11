@@ -14,21 +14,92 @@ function slugify(value: string) {
 }
 
 export const tenantService = {
-  async createOrganization(name: string) {
+  async createOrganization(
+    name: string,
+    options?: { isPlatform?: boolean },
+  ) {
     const baseSlug = slugify(name) || "org";
     let slug = baseSlug;
     let attempt = 0;
 
-    while (await tenantRepository.findBySlug(slug)) {
+    while (await tenantRepository.findBySlugAny(slug)) {
       attempt += 1;
       slug = `${baseSlug}-${attempt}`;
     }
 
-    return tenantRepository.create({ name, slug });
+    return tenantRepository.create({
+      name,
+      slug,
+      isPlatform: options?.isPlatform ?? false,
+    });
   },
 
   getById(tenantId: string) {
     return tenantRepository.findById(tenantId);
+  },
+
+  getByIdIncludingDisabled(tenantId: string) {
+    return tenantRepository.findByIdIncludingDisabled(tenantId);
+  },
+
+  listCustomers() {
+    return tenantRepository.listCustomers();
+  },
+
+  getSummaryCounts() {
+    return tenantRepository.getSummaryCounts();
+  },
+
+  async softDeleteCustomer(tenantId: string, actorUserId: string) {
+    const tenant = await tenantRepository.findByIdIncludingDisabled(tenantId);
+    if (!tenant) {
+      throw new Error("Tenant not found");
+    }
+    if (tenant.isPlatform) {
+      throw new Error("The platform tenant cannot be disabled");
+    }
+    if (tenant.deletedAt) {
+      throw new Error("Tenant is already disabled");
+    }
+
+    const updated = await tenantRepository.softDelete(tenantId);
+
+    await auditService.log({
+      tenantId,
+      userId: actorUserId,
+      action: "tenant.disabled",
+      entityType: "Tenant",
+      entityId: tenantId,
+      metadata: { slug: tenant.slug, name: tenant.name },
+    });
+
+    return updated;
+  },
+
+  async restoreCustomer(tenantId: string, actorUserId: string) {
+    const tenant = await tenantRepository.findByIdIncludingDisabled(tenantId);
+    if (!tenant) {
+      throw new Error("Tenant not found");
+    }
+    if (tenant.isPlatform) {
+      throw new Error("The platform tenant cannot be restored this way");
+    }
+    if (!tenant.deletedAt) {
+      throw new Error("Tenant is not disabled");
+    }
+
+    const updated = await tenantRepository.restore(tenantId);
+
+    await auditService.log({
+      tenantId,
+      userId: actorUserId,
+      action: "tenant.restored",
+      entityType: "Tenant",
+      entityId: tenantId,
+      metadata: { slug: tenant.slug, name: tenant.name },
+    });
+
+    return updated;
   },
 
   async getBranding(tenantId: string): Promise<TenantBranding | null> {

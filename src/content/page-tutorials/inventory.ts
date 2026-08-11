@@ -43,7 +43,7 @@ export const INVENTORY_PAGE_TUTORIAL: PageTutorialContent = {
       title: "Series summary & filters",
       bullets: [
         "Series summary groups QTY and peso value by SKU series. It starts collapsed — click the header to expand, or use View series for a searchable list.",
-        "This page shows Stock (STK) units only. Sold and other statuses appear in Sales & ATRs or Logistics.",
+        "This page shows Stock (STK) units only. Sold and other statuses appear in Sales, Returns / Replacement, or Logistics.",
         "Search by serial, SKU, or branch. Use Off-planogram only for planogram exceptions.",
         "Click a row to open serial-level detail.",
       ],
@@ -51,7 +51,7 @@ export const INVENTORY_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "Related work",
       description:
-        "Receive, transfer, and pull-out happen in Operations and Logistics. Use Stock count (P-Count) for physical counts. Keep planograms current under Settings so On / Off badges stay meaningful.",
+        "Receive, transfer, and pull-out happen in Operations and Logistics. Use Stock count (P-Count) for physical counts. Warehouse serials live under Inventory → Warehouse stock. Keep planograms current under Settings so On / Off badges stay meaningful.",
     },
   ],
 };

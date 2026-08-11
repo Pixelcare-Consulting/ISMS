@@ -7,11 +7,7 @@ import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import {
-  approveScReturnAction,
-  completeScReturnRestoreAction,
-  evaluateScReturnAction,
   listScSalesAction,
-  rejectScReturnAction,
   requestScReturnAction,
 } from "@/features/service-center-ops/actions/sc-sales.actions";
 import type { ScSalesActionCapabilities } from "@/features/service-center-ops/constants/sc-permissions";
@@ -26,7 +22,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Table,
   TableBody,
   TableCell,
   TableHeader,
@@ -200,79 +195,20 @@ export function ScSalesPanel({
                                   row.id,
                                   reasonBySale[row.id],
                                 ),
-                              "Return requested",
+                              "Return requested — finish under Returns / Replacement",
                             )
                           }
                         >
                           Request return
                         </Button>
                       </>
-                    ) : null}
-                    {rr?.status === "pending_cs" &&
-                    capabilities.canEvaluateReturn ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={pending}
-                        onClick={() =>
-                          run(
-                            () => evaluateScReturnAction(rr.id),
-                            "Evaluated — pending TL",
-                          )
-                        }
-                      >
-                        Evaluate
+                    ) : rr ? (
+                      <Button asChild size="sm" variant="ghost">
+                        <Link href="/returns?tab=service">Open returns</Link>
                       </Button>
-                    ) : null}
-                    {rr?.status === "pending_tl" &&
-                    capabilities.canApproveReturn ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={pending}
-                        onClick={() =>
-                          run(
-                            () => approveScReturnAction(rr.id),
-                            "Return approved",
-                          )
-                        }
-                      >
-                        Approve
-                      </Button>
-                    ) : null}
-                    {rr &&
-                    ["pending_cs", "pending_tl"].includes(rr.status) &&
-                    (capabilities.canEvaluateReturn ||
-                      capabilities.canApproveReturn) ? (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        disabled={pending}
-                        onClick={() =>
-                          run(
-                            () => rejectScReturnAction(rr.id),
-                            "Return rejected",
-                          )
-                        }
-                      >
-                        Reject
-                      </Button>
-                    ) : null}
-                    {rr?.status === "approved" &&
-                    capabilities.canCompleteReturn ? (
-                      <Button
-                        size="sm"
-                        disabled={pending}
-                        onClick={() =>
-                          run(
-                            () => completeScReturnRestoreAction(rr.id),
-                            "Stock restored to STK",
-                          )
-                        }
-                      >
-                        Complete / restore
-                      </Button>
-                    ) : null}
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
                   </div>
                 </TableCell>
               </TableRow>

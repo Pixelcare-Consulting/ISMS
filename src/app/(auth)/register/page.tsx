@@ -4,6 +4,7 @@ import {
   AuthPageLink,
 } from "@/app/(auth)/_components/auth-page-shell";
 import { RegisterForm } from "@/app/(auth)/register/_components/register-form";
+import { isPublicRegisterEnabled } from "@/features/auth/lib/public-register";
 import { pageMetadata } from "@/lib/shared/seo";
 
 export const metadata = pageMetadata(
@@ -12,6 +13,21 @@ export const metadata = pageMetadata(
 );
 
 export default function RegisterPage() {
+  if (!isPublicRegisterEnabled()) {
+    return (
+      <div className="space-y-8">
+        <AuthPageHeader
+          title="Registration closed"
+          description="New organizations are created by the platform provider. Sign in if you already have an account."
+        />
+        <AuthPageFooter>
+          Already have an account?{" "}
+          <AuthPageLink href="/login">Sign in</AuthPageLink>
+        </AuthPageFooter>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
       <AuthPageHeader

@@ -2,6 +2,19 @@
 
 export const DEMO_PASSWORD = "DemoPass123";
 
+/** Reserved platform home tenant for Provider Dashboard operators. */
+export const PLATFORM_TENANT = {
+  slug: "pixelcare",
+  name: "Pixelcare Consulting",
+  tagline: "ISMS platform operator",
+} as const;
+
+export const PLATFORM_PROVIDER_USER = {
+  email: "provider@pixelcareconsulting.com",
+  name: "Pixelcare Provider",
+  roleSlug: "super_admin",
+} as const;
+
 export const DEMO_USERS = [
   { email: "superadmin@demo.local", name: "Super Admin", roleSlug: "super_admin" },
   { email: "admin@demo.local", name: "Tenant Admin", roleSlug: "tenant_admin" },
@@ -15,6 +28,7 @@ export const DEMO_USERS = [
   { email: "spa@demo.local", name: "Supply Planning Associate", roleSlug: "spa" },
   { email: "logistics@demo.local", name: "Logistics", roleSlug: "logistics" },
   { email: "ae@demo.local", name: "Area Executive", roleSlug: "ae" },
+  { email: "accounting@demo.local", name: "Accounting", roleSlug: "accounting" },
 ] as const;
 
 export const PERMISSIONS = [
@@ -85,11 +99,17 @@ export const PERMISSIONS = [
   { slug: "sap.manage", name: "Manage SAP integration" },
   { slug: "sales.view", name: "View sales and ATR" },
   { slug: "sales.create", name: "Create sales transactions" },
+  { slug: "sales.update", name: "Edit sales transaction headers" },
   { slug: "sales.return.view", name: "View sales returns (ATR ledger)" },
   { slug: "sales.return.request", name: "Request sales return (ATR)" },
   { slug: "sales.return.evaluate", name: "Evaluate sales return (CS)" },
   { slug: "sales.return.approve", name: "Approve sales return (TL)" },
   { slug: "sales.return.complete", name: "Complete sales return / restore stock" },
+  { slug: "returns.view", name: "View returns / replacement" },
+  { slug: "returns.request", name: "Request return" },
+  { slug: "returns.evaluate", name: "Evaluate return (CS)" },
+  { slug: "returns.approve", name: "Approve return (TL)" },
+  { slug: "returns.complete", name: "Complete return / restore stock" },
   { slug: "official_sales.view", name: "View official sales staging" },
   { slug: "official_sales.manage", name: "Manage official sales imports" },
   { slug: "planogram.view", name: "View branch planogram" },
@@ -206,11 +226,17 @@ export const ROLES = [
       "sap.manage",
       "sales.view",
       "sales.create",
+      "sales.update",
       "sales.return.view",
       "sales.return.request",
       "sales.return.evaluate",
       "sales.return.approve",
       "sales.return.complete",
+      "returns.view",
+      "returns.request",
+      "returns.evaluate",
+      "returns.approve",
+      "returns.complete",
       "official_sales.view",
       "official_sales.manage",
       "planogram.manage",
@@ -300,6 +326,8 @@ export const ROLES = [
       "sales.create",
       "sales.return.view",
       "sales.return.request",
+      "returns.view",
+      "returns.request",
       "service_centers.inventory.view",
       "service_centers.sales.view",
       "service_centers.sales.create",
@@ -326,6 +354,10 @@ export const ROLES = [
       "sales.return.request",
       "sales.return.evaluate",
       "sales.return.approve",
+      "returns.view",
+      "returns.request",
+      "returns.evaluate",
+      "returns.approve",
       "service_centers.inventory.view",
       "service_centers.sales.view",
       "service_centers.sales.create",
@@ -432,6 +464,8 @@ export const ROLES = [
       "sales.view",
       "sales.return.view",
       "sales.return.complete",
+      "returns.view",
+      "returns.complete",
       "service_centers.inventory.view",
       "service_centers.return.complete",
       "service_centers.logistics.view",
@@ -466,6 +500,26 @@ export const ROLES = [
       "competitors.view",
     ],
   },
+  {
+    slug: "accounting",
+    name: "Accounting",
+    description: "Official Sales processing and sale header corrections",
+    permissions: [
+      "dashboard.manage",
+      "inventory.view",
+      "sales.view",
+      "sales.update",
+      "sales.return.view",
+      "returns.view",
+      "official_sales.view",
+      "official_sales.manage",
+      "reports.view",
+      "audit_logs.view",
+      "serial_logs.view",
+      "announcements.view",
+      "competitors.view",
+    ],
+  },
 ] as const;
 
 export const DEPARTMENTS = ["Compliance", "Engineering", "Human Resources", "Operations"] as const;
@@ -482,6 +536,7 @@ export const USER_DEPARTMENTS: Record<string, (typeof DEPARTMENTS)[number]> = {
   "spa@demo.local": "Operations",
   "logistics@demo.local": "Operations",
   "ae@demo.local": "Operations",
+  "accounting@demo.local": "Operations",
 };
 
 export type SeedProfile =

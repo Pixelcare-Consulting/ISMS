@@ -16,6 +16,13 @@ import {
   SC_LOGISTICS_MANAGE,
   scReturnRejectPermissions,
 } from "@/features/service-center-ops/constants/sc-permissions";
+import {
+  RETURNS_APPROVE,
+  RETURNS_COMPLETE,
+  RETURNS_EVALUATE,
+  RETURNS_REQUEST,
+  RETURNS_VIEW,
+} from "@/features/returns/constants/returns-permissions";
 import { scOpsRepository } from "@/features/service-center-ops/repositories/sc-ops.repository";
 import {
   assertScInScope,
@@ -33,6 +40,7 @@ function revalidateScSales() {
   revalidatePath("/service-centers/sales");
   revalidatePath("/service-centers/sales/new");
   revalidatePath("/service-centers/inventory");
+  revalidatePath("/returns");
 }
 
 function nextTxnNo() {
@@ -47,10 +55,6 @@ export async function listScSalesAction(input?: {
   const session = await requireAnyPermission([
     SC_SALES_VIEW,
     SC_SALES_CREATE,
-    SC_RETURN_REQUEST,
-    SC_RETURN_EVALUATE,
-    SC_RETURN_APPROVE,
-    SC_RETURN_COMPLETE,
   ]);
   const scopedIds = await resolveScIdsForUser(
     session.user.tenantId,
@@ -61,6 +65,40 @@ export async function listScSalesAction(input?: {
     page: input?.page,
     limit: parseTablePageSize(input?.limit),
   });
+}
+
+/** Service Returns ledger — sales that already have a return request. */
+export async function listScReturnsAction(input?: {
+  page?: number;
+  limit?: number;
+  statusIn?: Array<"pending_cs" | "pending_tl" | "approved" | "rejected" | "completed">;
+}) {
+  const session = await requireAnyPermission([
+    RETURNS_VIEW,
+    RETURNS_REQUEST,
+    RETURNS_EVALUATE,
+    RETURNS_APPROVE,
+    RETURNS_COMPLETE,
+    SC_RETURN_REQUEST,
+    SC_RETURN_EVALUATE,
+    SC_RETURN_APPROVE,
+    SC_RETURN_COMPLETE,
+    "sales.return.view",
+  ]);
+  const scopedIds = await resolveScIdsForUser(
+    session.user.tenantId,
+    session.user.id,
+    session.user.permissions,
+  );
+  return scOpsRepository.listReturnSales(
+    session.user.tenantId,
+    scopedIds,
+    {
+      page: input?.page,
+      limit: parseTablePageSize(input?.limit),
+    },
+    { statusIn: input?.statusIn },
+  );
 }
 
 export async function listScStkSerialsAction(
@@ -210,7 +248,11 @@ export async function createScSaleAction(input: unknown) {
 }
 
 export async function requestScReturnAction(saleId: string, notes?: string) {
-  const session = await requireAnyPermission([SC_RETURN_REQUEST, SC_SALES_CREATE]);
+  const session = await requireAnyPermission([
+    RETURNS_REQUEST,
+    SC_RETURN_REQUEST,
+    SC_SALES_CREATE,
+  ]);
   const reason = notes?.trim() || "";
   if (!reason) return { error: "Return reason is required" as const };
 
@@ -267,7 +309,10 @@ export async function evaluateScReturnAction(
   returnRequestId: string,
   notes?: string,
 ) {
-  const session = await requirePermission(SC_RETURN_EVALUATE);
+  const session = await requireAnyPermission([
+    RETURNS_EVALUATE,
+    SC_RETURN_EVALUATE,
+  ]);
   const row = await prisma.serviceCenterReturnRequest.findFirst({
     where: { id: returnRequestId, tenantId: session.user.tenantId },
   });
@@ -298,7 +343,11 @@ export async function evaluateScReturnAction(
 }
 
 export async function approveScReturnAction(returnRequestId: string) {
-  const session = await requireAnyPermission([SC_RETURN_APPROVE, SC_ORDERS_APPROVE]);
+  const session = await requireAnyPermission([
+    RETURNS_APPROVE,
+    SC_RETURN_APPROVE,
+    SC_ORDERS_APPROVE,
+  ]);
   const row = await prisma.serviceCenterReturnRequest.findFirst({
     where: { id: returnRequestId, tenantId: session.user.tenantId },
   });
@@ -332,6 +381,8 @@ export async function rejectScReturnAction(
   notes?: string,
 ) {
   const session = await requireAnyPermission([
+    RETURNS_EVALUATE,
+    RETURNS_APPROVE,
     SC_RETURN_EVALUATE,
     SC_RETURN_APPROVE,
     SC_SALES_CREATE,
@@ -375,6 +426,7 @@ export async function rejectScReturnAction(
 
 export async function completeScReturnRestoreAction(returnRequestId: string) {
   const session = await requireAnyPermission([
+    RETURNS_COMPLETE,
     SC_RETURN_COMPLETE,
     SC_LOGISTICS_MANAGE,
     SC_SALES_CREATE,

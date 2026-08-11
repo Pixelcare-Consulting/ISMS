@@ -7,10 +7,14 @@ import { SectionLayout } from "@/components/navigation/section-layout";
 import { resolveRouteTitle } from "@/config/route-titles";
 import { INVENTORY_PAGE_TUTORIAL } from "@/content/page-tutorials/inventory";
 import { STOCK_COUNT_PAGE_TUTORIAL } from "@/content/page-tutorials/stock-count";
+import { WAREHOUSE_STOCK_PAGE_TUTORIAL } from "@/content/page-tutorials/warehouse-stock";
 
 function resolveInventoryTutorial(pathname: string): PageTutorialContent {
   if (pathname.startsWith("/inventory/stock-count")) {
     return STOCK_COUNT_PAGE_TUTORIAL;
+  }
+  if (pathname.startsWith("/inventory/warehouse-stock")) {
+    return WAREHOUSE_STOCK_PAGE_TUTORIAL;
   }
   return INVENTORY_PAGE_TUTORIAL;
 }
@@ -18,6 +22,9 @@ function resolveInventoryTutorial(pathname: string): PageTutorialContent {
 function resolveInventoryDescription(pathname: string): string {
   if (pathname.startsWith("/inventory/stock-count")) {
     return "Physical count sessions (P-Count) to align shelf and system stock.";
+  }
+  if (pathname.startsWith("/inventory/warehouse-stock")) {
+    return "Serial numbers held in warehouses. Branch shelf stock stays under Stock units.";
   }
   if (pathname.startsWith("/inventory/serial-numbers")) {
     return "Serial master records and activity for your area of responsibility.";

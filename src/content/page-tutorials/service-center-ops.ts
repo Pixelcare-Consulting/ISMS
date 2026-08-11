@@ -28,23 +28,23 @@ export const SC_INVENTORY_PAGE_TUTORIAL: PageTutorialContent = {
 export const SC_SALES_PAGE_TUTORIAL: PageTutorialContent = {
   id: "service-centers-sales",
   triggerLabel: "Open service sales tutorial",
-  dialogTitle: "Service center sales & ATR — quick guide",
+  dialogTitle: "Service center sales — quick guide",
   dialogDescription:
-    "Encode sales from service center stock and run the return (ATR) workflow.",
+    "Encode sales from service center stock. Request a return here; finish under Returns / Replacement.",
   helpHref: "/help",
   helpLinkLabel: "Full Help & Support portal",
   sections: [
     {
       title: "What this page is for",
       description:
-        "Record a sale from STK stock at a service center location, then request, evaluate, approve, and complete returns to restore stock.",
+        "Record a sale from STK stock at a service center location. Start a return from this list; evaluate, approve, and restore under Returns / Replacement → Service (or Approvals).",
     },
     {
       title: "How to use it",
       bullets: [
         "New sale picks a center, location, and available serial.",
-        "ATR steps mirror branch returns: request → CS evaluate → TL approve → restore to STK.",
-        "Rejected returns can be requested again once the sale is open.",
+        "Request return with a reason when the sale is still open.",
+        "Open Returns / Replacement to finish evaluate → approve → restore to STK.",
       ],
     },
   ],

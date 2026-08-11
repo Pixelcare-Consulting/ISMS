@@ -1,8 +1,9 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState, useTransition } from "react";
+import { Fragment, useMemo, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
+import { Package, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -39,6 +40,8 @@ import {
 import { cn } from "@/utils/cn";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
+import { WarehouseLocationsPanel } from "./warehouse-locations-panel";
+
 interface LocationRow {
   id: string;
   code: string;
@@ -59,6 +62,11 @@ const COL_COUNT = 7;
 export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) {
   const router = useRouter();
   const [rows, setRows] = useState(warehouses);
+  const [rowsSource, setRowsSource] = useState(warehouses);
+  if (warehouses !== rowsSource) {
+    setRowsSource(warehouses);
+    setRows(warehouses);
+  }
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
   const [deleting, setDeleting] = useState<WarehouseRow | null>(null);
@@ -71,10 +79,6 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [locCode, setLocCode] = useState("");
   const [locName, setLocName] = useState("");
-
-  useEffect(() => {
-    setRows(warehouses);
-  }, [warehouses]);
 
   const filtered = useMemo(
     () =>
@@ -283,7 +287,7 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
                 <GlobalTableHead {...sort.sortProps("name")}>Name</GlobalTableHead>
                 <GlobalTableHead {...sort.sortProps("locations")}>Locations</GlobalTableHead>
                 <GlobalTableHead {...sort.sortProps("links")}>Links</GlobalTableHead>
-                <GlobalTableHead className="w-28 text-right">Actions</GlobalTableHead>
+                <GlobalTableHead className="w-36 text-right">Actions</GlobalTableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -326,55 +330,39 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
                       <TableRowActions
                         onDelete={() => setDeleting(w)}
                         deleteDisabled={pending}
-                      />
+                      >
+                        <Button
+                          asChild
+                          size="sm"
+                          variant="ghost"
+                          title="View warehouse stock"
+                        >
+                          <Link
+                            href={`/inventory/warehouse-stock?warehouse=${w.id}`}
+                          >
+                            <Package className="mr-1 h-3.5 w-3.5" />
+                            Stock
+                          </Link>
+                        </Button>
+                      </TableRowActions>
                     </TableRow>
                     {expandedId === w.id ? (
-                      <TableRow key={`${w.id}-locations`}>
-                        <TableCell colSpan={COL_COUNT} className="bg-muted/30">
-                          <div className="space-y-2 py-2">
-                            {w.locations.map((loc) => (
-                              <div
-                                key={loc.id}
-                                className="flex items-center justify-between text-sm"
-                              >
-                                <span>
-                                  <span className="font-mono">{loc.code}</span> — {loc.name}
-                                </span>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  disabled={pending}
-                                  onClick={() =>
-                                    setDeletingLocation({ warehouseId: w.id, location: loc })
-                                  }
-                                >
-                                  Remove
-                                </Button>
-                              </div>
-                            ))}
-                            <div className="flex flex-wrap items-center gap-2 pt-2">
-                              <Input
-                                placeholder="Loc code"
-                                value={locCode}
-                                onChange={(e) => setLocCode(e.target.value)}
-                                className="h-8 w-24"
-                              />
-                              <Input
-                                placeholder="Loc name"
-                                value={locName}
-                                onChange={(e) => setLocName(e.target.value)}
-                                className="h-8 w-36"
-                              />
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                disabled={pending || !locCode || !locName}
-                                onClick={() => addLocation(w.id)}
-                              >
-                                Add location
-                              </Button>
-                            </div>
-                          </div>
+                      <TableRow key={`${w.id}-locations`} className="hover:bg-transparent">
+                        <TableCell colSpan={COL_COUNT} className="p-2 sm:p-3">
+                          <WarehouseLocationsPanel
+                            warehouseId={w.id}
+                            warehouseName={w.name}
+                            locations={w.locations}
+                            locCode={locCode}
+                            locName={locName}
+                            pending={pending}
+                            onLocCodeChange={setLocCode}
+                            onLocNameChange={setLocName}
+                            onAdd={addLocation}
+                            onRemove={(warehouseId, location) =>
+                              setDeletingLocation({ warehouseId, location })
+                            }
+                          />
                         </TableCell>
                       </TableRow>
                     ) : null}

@@ -1,14 +1,15 @@
 import { cache } from "react";
 import { redirect } from "next/navigation";
 
-import {
-  isPlatformOperator as hasPlatformOperatorRole,
-  PROVIDER_ONLY_ROLE_SLUGS,
-} from "@/features/roles/constants/role.constants";
+import { PROVIDER_ONLY_ROLE_SLUGS } from "@/features/roles/constants/role.constants";
 import { auth, signOutServer } from "@/lib/auth";
 import { prisma } from "@/lib/database/client";
 import { toAppSession, type AppSession } from "@/lib/auth/session";
 
+/**
+ * DB check: provider-only role on a platform (`isPlatform`) home tenant.
+ * Tenant-only `super_admin` accounts (e.g. demo) return false.
+ */
 export async function resolveIsPlatformOperator(userId: string): Promise<boolean> {
   const match = await prisma.userRole.findFirst({
     where: {
@@ -16,6 +17,13 @@ export async function resolveIsPlatformOperator(userId: string): Promise<boolean
       role: {
         slug: { in: Array.from(PROVIDER_ONLY_ROLE_SLUGS) },
         deletedAt: null,
+      },
+      user: {
+        deletedAt: null,
+        tenant: {
+          isPlatform: true,
+          deletedAt: null,
+        },
       },
     },
     select: { id: true },
@@ -29,12 +37,10 @@ export async function resolveSessionPlatformOperator(user: {
   roleSlugs?: string[];
   isPlatformOperator?: boolean;
 }): Promise<boolean> {
-  if (user.isPlatformOperator) {
-    return true;
-  }
-
-  if (user.roleSlugs?.length) {
-    return hasPlatformOperatorRole(user.roleSlugs);
+  // Session enrichment already applies role + tenant.isPlatform — do not
+  // re-derive from roleSlugs alone (tenant super_admin would wrongly pass).
+  if (typeof user.isPlatformOperator === "boolean") {
+    return user.isPlatformOperator;
   }
 
   return resolveIsPlatformOperator(user.id);
@@ -51,9 +57,15 @@ async function sessionUserExists(session: AppSession): Promise<boolean> {
       tenantId: session.user.tenantId,
       deletedAt: null,
     },
-    select: { id: true },
+    select: {
+      id: true,
+      tenant: { select: { deletedAt: true } },
+    },
   });
-  return user !== null;
+  if (!user) return false;
+  // Soft-disabled customer tenants cannot keep an active session
+  if (user.tenant.deletedAt != null) return false;
+  return true;
 }
 
 /** Deduped per RSC request — layout, page, and server actions share one auth check. */
