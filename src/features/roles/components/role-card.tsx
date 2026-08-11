@@ -11,7 +11,8 @@ import { cn } from "@/utils/cn";
 interface RoleCardProps {
   role: RolePermissionRow;
   permissionSummary: string;
-  isProtected: boolean;
+  /** Rename / meta edit locked (system & provider-only roles). */
+  metaLocked: boolean;
   onOpenPermissions: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -20,12 +21,12 @@ interface RoleCardProps {
 export function RoleCard({
   role,
   permissionSummary,
-  isProtected,
+  metaLocked,
   onOpenPermissions,
   onEdit,
   onDelete,
 }: RoleCardProps) {
-  const canDelete = !isProtected && !role.isSystem && role.userCount === 0;
+  const canDelete = !metaLocked && !role.isSystem && role.userCount === 0;
 
   return (
     <article
@@ -82,8 +83,8 @@ export function RoleCard({
           variant="ghost"
           size="icon"
           className="size-8"
-          disabled={isProtected}
-          title={isProtected ? "This role cannot be edited" : "Edit role"}
+          disabled={metaLocked}
+          title={metaLocked ? "This role cannot be renamed" : "Edit role"}
           onClick={onEdit}
         >
           <Pencil className="size-4" />
@@ -95,13 +96,11 @@ export function RoleCard({
           className="size-8 text-destructive hover:text-destructive"
           disabled={!canDelete}
           title={
-            isProtected
-              ? "This role cannot be deleted"
-              : role.isSystem
-                ? "System roles cannot be deleted"
-                : role.userCount > 0
-                  ? "Remove users from this role first"
-                  : "Delete role"
+            metaLocked || role.isSystem
+              ? "System roles cannot be deleted"
+              : role.userCount > 0
+                ? "Remove users from this role first"
+                : "Delete role"
           }
           onClick={onDelete}
         >

@@ -5,11 +5,11 @@ import { useEffect, useState, useTransition, type ReactNode } from "react";
 
 import { SalesTabTableSkeleton } from "@/app/(app)/sales/_components/sales-tab-table-skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-
-export type ReturnsPageTab = "branch" | "service" | "approvals";
+import type { ReturnsPageTab } from "@/features/returns/constants/returns-permissions";
 
 interface ReturnsPageTabsProps {
   activeTab: ReturnsPageTab;
+  allowedTabs: ReturnsPageTab[];
   branchContent: ReactNode;
   serviceContent: ReactNode;
   approvalsContent: ReactNode;
@@ -19,12 +19,28 @@ function hrefForTab(tab: ReturnsPageTab): string {
   return `/returns?tab=${tab}`;
 }
 
+function tabLabel(tab: ReturnsPageTab): string {
+  switch (tab) {
+    case "branch":
+      return "Branch Returns";
+    case "service":
+      return "Service Returns";
+    case "approvals":
+      return "Approvals";
+    default: {
+      const _exhaustive: never = tab;
+      return _exhaustive;
+    }
+  }
+}
+
 /**
  * Branch | Service | Approvals tabs with URL sync.
- * Switching tabs resets pagination/sort so each tab stays scoped.
+ * Only permitted tabs are shown; switching resets pagination/sort scope.
  */
 export function ReturnsPageTabs({
   activeTab,
+  allowedTabs,
   branchContent,
   serviceContent,
   approvalsContent,
@@ -43,6 +59,15 @@ export function ReturnsPageTabs({
     (displayTab === "service" && serviceContent == null) ||
     (displayTab === "approvals" && approvalsContent == null);
 
+  if (allowedTabs.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        You do not have permission to view any Returns tabs. Ask an admin to
+        grant Branch Returns, Service Returns, or Approvals access.
+      </p>
+    );
+  }
+
   return (
     <Tabs
       value={displayTab}
@@ -53,7 +78,7 @@ export function ReturnsPageTabs({
             : value === "approvals"
               ? "approvals"
               : "branch";
-        if (next === displayTab) return;
+        if (!allowedTabs.includes(next) || next === displayTab) return;
         setDisplayTab(next);
         startTransition(() => {
           router.push(hrefForTab(next));
@@ -61,31 +86,39 @@ export function ReturnsPageTabs({
       }}
     >
       <TabsList className="gap-2">
-        <TabsTrigger value="branch">Branch Returns</TabsTrigger>
-        <TabsTrigger value="service">Service Returns</TabsTrigger>
-        <TabsTrigger value="approvals">Approvals</TabsTrigger>
+        {allowedTabs.map((tab) => (
+          <TabsTrigger key={tab} value={tab}>
+            {tabLabel(tab)}
+          </TabsTrigger>
+        ))}
       </TabsList>
-      <TabsContent value="branch">
-        {displayTab === "branch" && showSkeleton ? (
-          <SalesTabTableSkeleton tab="returns" />
-        ) : (
-          branchContent
-        )}
-      </TabsContent>
-      <TabsContent value="service">
-        {displayTab === "service" && showSkeleton ? (
-          <SalesTabTableSkeleton tab="returns" />
-        ) : (
-          serviceContent
-        )}
-      </TabsContent>
-      <TabsContent value="approvals">
-        {displayTab === "approvals" && showSkeleton ? (
-          <SalesTabTableSkeleton tab="returns" />
-        ) : (
-          approvalsContent
-        )}
-      </TabsContent>
+      {allowedTabs.includes("branch") ? (
+        <TabsContent value="branch">
+          {displayTab === "branch" && showSkeleton ? (
+            <SalesTabTableSkeleton tab="returns" />
+          ) : (
+            branchContent
+          )}
+        </TabsContent>
+      ) : null}
+      {allowedTabs.includes("service") ? (
+        <TabsContent value="service">
+          {displayTab === "service" && showSkeleton ? (
+            <SalesTabTableSkeleton tab="returns" />
+          ) : (
+            serviceContent
+          )}
+        </TabsContent>
+      ) : null}
+      {allowedTabs.includes("approvals") ? (
+        <TabsContent value="approvals">
+          {displayTab === "approvals" && showSkeleton ? (
+            <SalesTabTableSkeleton tab="returns" />
+          ) : (
+            approvalsContent
+          )}
+        </TabsContent>
+      ) : null}
     </Tabs>
   );
 }

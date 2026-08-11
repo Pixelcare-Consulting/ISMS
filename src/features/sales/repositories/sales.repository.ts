@@ -172,8 +172,15 @@ export const salesRepository = {
         select: {
           id: true,
           status: true,
+          actionType: true,
+          stockStatusCode: true,
           requestNotes: true,
+          problemDescriptionText: true,
+          dealerRsNo: true,
+          actualDateReturned: true,
+          atrOdrfPdfPath: true,
           createdAt: true,
+          documentType: { select: { id: true, name: true } },
           sale: {
             select: {
               id: true,
@@ -183,6 +190,29 @@ export const salesRepository = {
               amount: true,
               atrStatus: true,
               branch: { select: { id: true, name: true } },
+              details: {
+                orderBy: { createdAt: "asc" as const },
+                select: {
+                  saleAmount: true,
+                  modelPrice: true,
+                  model: { select: { skuCode: true, name: true } },
+                  serialNumber: { select: { id: true, serialNo: true } },
+                },
+              },
+              replacements: {
+                orderBy: { createdAt: "desc" as const },
+                take: 1,
+                select: {
+                  replacementNo: true,
+                  replacementAmount: true,
+                  replacementInvoiceNo: true,
+                  replacementInvoiceDate: true,
+                  replacementBranch: { select: { id: true, name: true } },
+                  replacementSerialNumber: {
+                    select: { id: true, serialNo: true },
+                  },
+                },
+              },
             },
           },
         },
@@ -225,7 +255,15 @@ export const salesRepository = {
         paymentType: { select: { id: true, name: true } },
         saleType: { select: { id: true, name: true } },
         customerDeliveryMethod: { select: { id: true, name: true } },
-        returnRequest: { select: { id: true, status: true } },
+        returnRequest: {
+          select: {
+            id: true,
+            status: true,
+            actionType: true,
+            stockStatusCode: true,
+            atrOdrfPdfPath: true,
+          },
+        },
         createdBy: { select: { name: true, email: true } },
         details: {
           orderBy: { createdAt: "asc" as const },

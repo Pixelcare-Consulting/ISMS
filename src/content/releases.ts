@@ -52,13 +52,64 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.29.0",
+    date: "2026-08-11",
+    releasedAt: "2026-08-11T15:45:00+08:00",
+    title: "Process Return & Replacement finishing",
+    highlights: [
+      "Request return now opens Process Return — document type, STK or DEF, problem descriptions, then Return or Replacement",
+      "Service Return document types show service center and related fields when needed",
+      "ATR/ODRF PDF is created when you submit and can be downloaded from Branch Returns",
+      "Approved returns put units back as Stock or Defective at the selling branch; replacements update the same invoice or open a new sale",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Process Return from Sales details captures document type, stock status, problems, and Return or Replacement before CS evaluation",
+      },
+      {
+        type: "feature",
+        description:
+          "Service Return extras appear when the document type is Service Return, including service center and related fields",
+      },
+      {
+        type: "feature",
+        description:
+          "Submitting Process Return generates an ATR/ODRF PDF you can download from the Branch Returns list",
+      },
+      {
+        type: "feature",
+        description:
+          "Approved Replacement can finish on the same invoice (swap model and serial) or create a new sale with the replacement unit, then close the original ATR",
+      },
+      {
+        type: "improvement",
+        description:
+          "Branch Returns shows report-friendly columns (status, document type, type, serials, problem, and more) plus clear Return / Replacement actions",
+      },
+      {
+        type: "improvement",
+        description:
+          "Restoring an approved Return puts units back as Stock or Defective at the selling branch, with serial number history recorded",
+      },
+      {
+        type: "fix",
+        description:
+          "Return and replacement help text, tutorials, and module guides match the new Process Return flow",
+      },
+    ],
+  },
+  {
     version: "0.28.0",
     date: "2026-08-11",
-    releasedAt: "2026-08-11T14:25:00+08:00",
-    title: "Returns / Replacement module & Official Sales prices",
+    releasedAt: "2026-08-11T14:55:00+08:00",
+    title: "Returns / Replacement module & tenant Permissions access",
     highlights: [
       "Returns / Replacement is its own menu next to Sales, with Branch Returns, Service Returns, and Approvals",
-      "Roles can grant view, request, evaluate, approve, and complete under Returns — older Sales and Service Center return permissions still work",
+      "Roles can grant Branch Returns, Service Returns, and Approvals separately — or View all Returns tabs for full access; older Sales and Service Center return permissions still work",
+      "Tenant Super Admins can open Permissions under Access & Security, browse the access catalog, and manage who can do what via Roles",
+      "Super Admins can see built-in system roles on Roles and adjust what each one can access — renaming and deleting those roles stay locked",
       "Official Sales ADD fills model price from the price list for the model, package, and sale date — including when an existing sold line is marked Official Sold — and uses the latest price when no period matches that date",
       "Sales loading screen no longer shows a Returns tab — Returns is only under Returns / Replacement",
     ],
@@ -71,7 +122,17 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "feature",
         description:
-          "Roles can set Returns permissions for view, request, evaluate, approve, and complete; existing Sales and Service Center return permissions continue to work",
+          "Roles can grant Branch Returns, Service Returns, and Approvals access separately (Approvals follows evaluate / approve / complete); View all Returns tabs still opens everything; existing Sales and Service Center return permissions continue to work",
+      },
+      {
+        type: "feature",
+        description:
+          "Tenant Super Admins can open Permissions and manage access — browse the catalog, then assign what people can do under Roles or the Permission matrix",
+      },
+      {
+        type: "feature",
+        description:
+          "Super Admins can see built-in system roles on Settings → Roles (and the Permission matrix) and adjust their access; renaming and deleting those roles stay locked",
       },
       {
         type: "fix",

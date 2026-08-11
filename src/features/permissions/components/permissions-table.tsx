@@ -36,13 +36,17 @@ import { cn } from "@/utils/cn";
 interface PermissionsTableProps {
   permissions: PermissionRow[];
   toolbarActions?: ReactNode;
+  /** Platform catalog CRUD. Tenant Super Admins browse read-only and assign via Roles. */
+  canManageCatalog?: boolean;
 }
 
 export function PermissionsTable({
   permissions,
   toolbarActions,
+  canManageCatalog = true,
 }: PermissionsTableProps) {
-  const addPermissionAction = toolbarActions ?? <CreatePermissionDialog />;
+  const addPermissionAction =
+    toolbarActions ?? (canManageCatalog ? <CreatePermissionDialog /> : null);
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [editingPermission, setEditingPermission] = useState<PermissionRow | null>(
@@ -114,7 +118,7 @@ export function PermissionsTable({
           placeholder="Search by name, slug, or description…"
           suggestions={suggestions}
         >
-          {selection.selectedCount > 0 ? (
+          {canManageCatalog && selection.selectedCount > 0 ? (
             <Badge variant="secondary">{selection.selectedCount} selected</Badge>
           ) : null}
           {addPermissionAction}
@@ -132,13 +136,15 @@ export function PermissionsTable({
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/30 hover:bg-muted/30">
-                  <TableHead className="w-10">
-                    <Checkbox
-                      checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
-                      onCheckedChange={(checked) => selection.toggleAll(checked === true)}
-                      aria-label="Select all permissions"
-                    />
-                  </TableHead>
+                  {canManageCatalog ? (
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
+                        onCheckedChange={(checked) => selection.toggleAll(checked === true)}
+                        aria-label="Select all permissions"
+                      />
+                    </TableHead>
+                  ) : null}
                   <TableHead className="w-12 text-center text-muted-foreground">
                     #
                   </TableHead>
@@ -149,7 +155,9 @@ export function PermissionsTable({
                   <GlobalTableHead className="text-center" {...sort.sortProps("roles")}>
                     Roles
                   </GlobalTableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  {canManageCatalog ? (
+                    <TableHead className="text-right">Actions</TableHead>
+                  ) : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -160,16 +168,22 @@ export function PermissionsTable({
                   return (
                     <TableRow
                       key={permission.id}
-                      data-state={selection.isRowSelected(permission.id) ? "selected" : undefined}
+                      data-state={
+                        canManageCatalog && selection.isRowSelected(permission.id)
+                          ? "selected"
+                          : undefined
+                      }
                       className={cn(index % 2 === 1 && "bg-table-stripe")}
                     >
-                      <TableCell>
-                        <Checkbox
-                          checked={selection.isRowSelected(permission.id)}
-                          onCheckedChange={(checked) => selection.toggleRow(permission.id, checked === true)}
-                          aria-label={`Select permission ${permission.name}`}
-                        />
-                      </TableCell>
+                      {canManageCatalog ? (
+                        <TableCell>
+                          <Checkbox
+                            checked={selection.isRowSelected(permission.id)}
+                            onCheckedChange={(checked) => selection.toggleRow(permission.id, checked === true)}
+                            aria-label={`Select permission ${permission.name}`}
+                          />
+                        </TableCell>
+                      ) : null}
                       <TableCell className="text-center tabular-nums text-muted-foreground">
                         {index + 1}
                       </TableCell>
@@ -214,37 +228,39 @@ export function PermissionsTable({
                       <TableCell className="text-center tabular-nums">
                         {permission.roleCount}
                       </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="size-8"
-                            title="Edit permission"
-                            onClick={() => setEditingPermission(permission)}
-                          >
-                            <Pencil className="size-4" />
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="size-8 text-destructive hover:text-destructive"
-                            disabled={!canDelete}
-                            title={
-                              permission.isProtected
-                                ? "Protected permissions cannot be deleted"
-                                : permission.roleCount > 0
-                                  ? "Remove from all roles before deleting"
-                                  : "Delete permission"
-                            }
-                            onClick={() => setDeletingPermission(permission)}
-                          >
-                            <Trash2 className="size-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
+                      {canManageCatalog ? (
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="size-8"
+                              title="Edit permission"
+                              onClick={() => setEditingPermission(permission)}
+                            >
+                              <Pencil className="size-4" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="size-8 text-destructive hover:text-destructive"
+                              disabled={!canDelete}
+                              title={
+                                permission.isProtected
+                                  ? "Protected permissions cannot be deleted"
+                                  : permission.roleCount > 0
+                                    ? "Remove from all roles before deleting"
+                                    : "Delete permission"
+                              }
+                              onClick={() => setDeletingPermission(permission)}
+                            >
+                              <Trash2 className="size-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      ) : null}
                     </TableRow>
                   );
                 })}
@@ -254,7 +270,7 @@ export function PermissionsTable({
         )}
       </DataTableShell>
 
-      {editingPermission ? (
+      {canManageCatalog && editingPermission ? (
         <EditPermissionDialog
           key={editingPermission.id}
           open
@@ -267,7 +283,7 @@ export function PermissionsTable({
         />
       ) : null}
 
-      {deletingPermission ? (
+      {canManageCatalog && deletingPermission ? (
         <DeleteConfirmDialog
           open
           onOpenChange={(open) => {

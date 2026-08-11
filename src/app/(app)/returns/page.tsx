@@ -2,10 +2,7 @@ import { redirect } from "next/navigation";
 
 import { SalesReturnsTable } from "@/app/(app)/sales/_components/sales-returns-table";
 import { ReturnsApprovalsPanel } from "@/app/(app)/returns/_components/returns-approvals-panel";
-import {
-  ReturnsPageTabs,
-  type ReturnsPageTab,
-} from "@/app/(app)/returns/_components/returns-page-tabs";
+import { ReturnsPageTabs } from "@/app/(app)/returns/_components/returns-page-tabs";
 import { ScReturnsPanel } from "@/app/(app)/returns/_components/sc-returns-panel";
 import { PageHeader } from "@/app/(app)/_components/page-header";
 import { ModuleGuide } from "@/components/module-guide";
@@ -16,7 +13,10 @@ import { listSalesReturnsAction } from "@/features/sales/actions/sales.actions";
 import { resolveSalesCapabilities } from "@/features/sales/constants/sales-permissions";
 import {
   canAccessReturns,
+  resolveAllowedReturnsTabs,
+  resolveReturnsActiveTab,
   resolveReturnsCapabilities,
+  type ReturnsPageTab,
 } from "@/features/returns/constants/returns-permissions";
 import { getReturnsKpisAction } from "@/features/returns/actions/returns.actions";
 import { ReturnsKpisStrip } from "@/features/returns/components/returns-kpis";
@@ -62,7 +62,21 @@ export default async function ReturnsPage({ searchParams }: ReturnsPageProps) {
   );
   const salesCapabilities = resolveSalesCapabilities(session.user.permissions);
   const params = await searchParams;
-  const activeTab = parseReturnsTab(params.tab);
+  const requestedTab = parseReturnsTab(params.tab);
+  const allowedTabs = resolveAllowedReturnsTabs(session.user.permissions);
+  const activeTab = resolveReturnsActiveTab(
+    session.user.permissions,
+    requestedTab,
+  );
+
+  if (!activeTab) {
+    redirect("/dashboard?error=forbidden");
+  }
+
+  if (activeTab !== requestedTab) {
+    redirect(`/returns?tab=${activeTab}`);
+  }
+
   const page = Number(params.page) || 1;
   const limit = parseTablePageSize(params.limit);
   const listInput = {
@@ -124,6 +138,7 @@ export default async function ReturnsPage({ searchParams }: ReturnsPageProps) {
       <ReturnsKpisStrip kpis={activeKpis} />
       <ReturnsPageTabs
         activeTab={activeTab}
+        allowedTabs={allowedTabs}
         branchContent={
           branchResult ? (
             <SalesReturnsTable

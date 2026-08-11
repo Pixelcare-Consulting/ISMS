@@ -24,6 +24,8 @@ import {
   TO_FOLLOW_SERIAL_ID,
   TO_FOLLOW_SERIAL_LABEL,
 } from "@/features/sales/constants/to-follow-serial";
+import { isServiceReturnDocumentTypeName } from "@/features/sales/constants/process-return";
+import { generateAndStoreAtrOdrfPdf } from "@/features/sales/services/atr-odrf-pdf";
 import {
   SALES_ACCESS_PERMISSIONS,
   SALES_CREATE,
@@ -33,16 +35,16 @@ import {
   SALES_RETURN_COMPLETE,
   SALES_RETURN_EVALUATE,
   SALES_RETURN_REQUEST,
-  SALES_RETURN_VIEW,
   SALES_UPDATE,
   salesReturnRejectPermissions,
 } from "@/features/sales/constants/sales-permissions";
 import {
   RETURNS_APPROVE,
+  RETURNS_APPROVALS_VIEW_PERMISSIONS,
+  RETURNS_BRANCH_VIEW_PERMISSIONS,
   RETURNS_COMPLETE,
   RETURNS_EVALUATE,
   RETURNS_REQUEST,
-  RETURNS_VIEW,
   returnsRejectPermissions,
 } from "@/features/returns/constants/returns-permissions";
 import { capturesDeliveryReceipt } from "@/features/sales/utils/delivery-method";
@@ -473,7 +475,8 @@ export async function listSalesAction(input?: {
 
 /**
  * Branch returns list: one row per BranchReturnRequest with ATR / return status badges.
- * Accepts `returns.view` or legacy `sales.return.view`.
+ * Branch tab: `returns.branch.view` / umbrella / legacy.
+ * Approvals queue (`statusIn`): evaluate / approve / complete (no separate approvals.view).
  */
 export async function listSalesReturnsAction(input?: {
   page?: number;
@@ -482,14 +485,12 @@ export async function listSalesReturnsAction(input?: {
   sortDir?: string;
   statusIn?: Array<"pending_cs" | "pending_tl" | "approved" | "rejected" | "completed">;
 }) {
-  const session = await requireAnyPermission([
-    RETURNS_VIEW,
-    SALES_RETURN_VIEW,
-    "service_centers.return.request",
-    "service_centers.return.evaluate",
-    "service_centers.return.approve",
-    "service_centers.return.complete",
-  ]);
+  const forApprovalsQueue = Boolean(input?.statusIn?.length);
+  const session = await requireAnyPermission(
+    forApprovalsQueue
+      ? [...RETURNS_APPROVALS_VIEW_PERMISSIONS]
+      : [...RETURNS_BRANCH_VIEW_PERMISSIONS],
+  );
   const [result, salesAtrCodes] = await Promise.all([
     salesRepository.listReturnRequestsForTenant(
       session.user.tenantId,
@@ -510,6 +511,21 @@ export async function listSalesReturnsAction(input?: {
     ...result,
     items: result.items.map((row) => {
       const sale = row.sale;
+      const firstDetail = sale.details[0];
+      const replacement = sale.replacements[0] ?? null;
+      const origModelLabel = firstDetail?.model
+        ? [firstDetail.model.skuCode, firstDetail.model.name]
+            .filter(Boolean)
+            .join(" · ")
+        : null;
+      const origSerialNos = sale.details
+        .map((d) => d.serialNumber?.serialNo)
+        .filter((v): v is string => Boolean(v));
+      const origPrice =
+        firstDetail?.modelPrice?.toString() ??
+        firstDetail?.saleAmount?.toString() ??
+        sale.amount.toString();
+
       return {
         id: row.id,
         returnRequestId: row.id,
@@ -524,7 +540,25 @@ export async function listSalesReturnsAction(input?: {
         atrStatusCode: resolveSalesAtrStatusCode(sale.atrStatus, salesAtrCodes),
         returnStatus: row.status,
         returnStatusCode: resolveSalesAtrStatusCode(row.status, salesAtrCodes),
+        actionType: row.actionType ?? "return",
+        stockStatusCode: row.stockStatusCode ?? "STK",
+        documentTypeName: row.documentType?.name ?? null,
         requestNotes: row.requestNotes,
+        problemDescriptionText: row.problemDescriptionText,
+        dealerRsNo: row.dealerRsNo,
+        actualDateReturned: row.actualDateReturned
+          ? row.actualDateReturned.toISOString()
+          : null,
+        atrOdrfPdfPath: row.atrOdrfPdfPath,
+        hasAtrOdrfPdf: Boolean(row.atrOdrfPdfPath),
+        origModelLabel,
+        origSerialNo: origSerialNos[0] ?? null,
+        origSerialNos,
+        origPrice,
+        replSerialNo: replacement?.replacementSerialNumber?.serialNo ?? null,
+        replBranchName: replacement?.replacementBranch?.name ?? null,
+        replAmount: replacement?.replacementAmount?.toString() ?? null,
+        replInvoiceNo: replacement?.replacementInvoiceNo ?? null,
         createdAt: row.createdAt.toISOString(),
         branch: sale.branch,
       };
@@ -588,7 +622,13 @@ export async function getSaleDetailsAction(saleId: string) {
     saleType: sale.saleType,
     customerDeliveryMethod: sale.customerDeliveryMethod,
     returnRequest: sale.returnRequest
-      ? { id: sale.returnRequest.id, status: sale.returnRequest.status }
+      ? {
+          id: sale.returnRequest.id,
+          status: sale.returnRequest.status,
+          actionType: sale.returnRequest.actionType ?? "return",
+          stockStatusCode: sale.returnRequest.stockStatusCode ?? "STK",
+          hasAtrOdrfPdf: Boolean(sale.returnRequest.atrOdrfPdfPath),
+        }
       : null,
     returnStatusCode,
     createdByName: sale.createdBy?.name ?? sale.createdBy?.email ?? null,
@@ -1226,51 +1266,349 @@ export async function createSaleAction(input: unknown) {
   return { success: true as const };
 }
 
-export async function requestReturnAction(saleId: string, notes?: string) {
+export async function listProcessReturnLookupsAction() {
   const session = await requireAnyPermission([
     RETURNS_REQUEST,
     SALES_RETURN_REQUEST,
     SALES_CREATE,
   ]);
-  const reason = notes?.trim() || "";
-  if (!reason) {
-    return { error: "Return reason is required" as const };
+  const tenantId = session.user.tenantId;
+
+  const [documentTypes, problemDescriptions, serviceCenters, models, warehouseLocations] =
+    await Promise.all([
+      prisma.documentType.findMany({
+        where: { tenantId, recordStatus: "active" },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      }),
+      prisma.problemDescription.findMany({
+        where: { tenantId, recordStatus: "active" },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      }),
+      prisma.serviceCenter.findMany({
+        where: { tenantId, deletedAt: null, status: "active" },
+        select: { id: true, name: true, sapCode: true },
+        orderBy: { name: "asc" },
+      }),
+      prisma.productModel.findMany({
+        where: { tenantId, status: "active" },
+        select: { id: true, skuCode: true, name: true },
+        orderBy: { skuCode: "asc" },
+        take: 1000,
+      }),
+      prisma.warehouseLocation.findMany({
+        where: {
+          warehouse: { tenantId },
+        },
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          warehouse: { select: { name: true, code: true } },
+        },
+        orderBy: [{ warehouse: { name: "asc" } }, { name: "asc" }],
+        take: 1000,
+      }),
+    ]);
+
+  return {
+    documentTypes,
+    problemDescriptions,
+    serviceCenters: serviceCenters.map((sc) => ({
+      id: sc.id,
+      name: sc.sapCode ? `${sc.sapCode} · ${sc.name}` : sc.name,
+    })),
+    models: models.map((m) => ({
+      id: m.id,
+      name: m.skuCode ? `${m.skuCode} · ${m.name}` : m.name,
+    })),
+    warehouseLocations: warehouseLocations.map((loc) => ({
+      id: loc.id,
+      name: [
+        loc.warehouse.code || loc.warehouse.name,
+        loc.code || loc.name,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    })),
+  };
+}
+
+const processReturnPayloadSchema = z.object({
+  documentTypeId: z.string().min(1),
+  stockStatusCode: z.enum(["STK", "DEF"]),
+  actionType: z.enum(["return", "replacement"]),
+  problemDescriptionIds: z.array(z.string().min(1)).min(1),
+  serviceCenterId: z.string().optional().nullable(),
+  classification: z.string().trim().optional().nullable(),
+  serviceModelId: z.string().optional().nullable(),
+  customerDealerBranch: z.string().trim().optional().nullable(),
+  natureOfTransaction: z.string().trim().optional().nullable(),
+  refContactPo: z.string().trim().optional().nullable(),
+  warehouseLocationId: z.string().optional().nullable(),
+});
+
+export type ProcessReturnPayload = z.infer<typeof processReturnPayloadSchema>;
+
+export async function requestReturnAction(
+  saleId: string,
+  payload: ProcessReturnPayload | string,
+) {
+  const session = await requireAnyPermission([
+    RETURNS_REQUEST,
+    SALES_RETURN_REQUEST,
+    SALES_CREATE,
+  ]);
+
+  // Legacy callers may still pass a free-text reason string — reject with guidance.
+  if (typeof payload === "string") {
+    return {
+      error:
+        "Process Return requires document type, stock status, and problem description" as const,
+    };
   }
 
-  // Select only fields needed for ATR — avoid loading `proof` (text[]) on full-row reads.
+  const parsed = processReturnPayloadSchema.safeParse(payload);
+  if (!parsed.success) {
+    return { error: "Invalid process return details" as const };
+  }
+  const data = parsed.data;
+
+  const documentType = await prisma.documentType.findFirst({
+    where: {
+      id: data.documentTypeId,
+      tenantId: session.user.tenantId,
+      recordStatus: "active",
+    },
+    select: { id: true, name: true },
+  });
+  if (!documentType) {
+    return { error: "Document type not found or inactive" as const };
+  }
+
+  const problems = await prisma.problemDescription.findMany({
+    where: {
+      tenantId: session.user.tenantId,
+      recordStatus: "active",
+      id: { in: data.problemDescriptionIds },
+    },
+    select: { id: true, name: true },
+  });
+  if (problems.length === 0) {
+    return { error: "Select at least one problem description" as const };
+  }
+  // Preserve UI selection order for joined text + primary FK.
+  const problemById = new Map(problems.map((p) => [p.id, p]));
+  const orderedProblems = data.problemDescriptionIds
+    .map((id) => problemById.get(id))
+    .filter((p): p is { id: string; name: string } => Boolean(p));
+  if (orderedProblems.length === 0) {
+    return { error: "Select at least one problem description" as const };
+  }
+  const problemDescriptionText = orderedProblems.map((p) => p.name).join("; ");
+  const problemDescriptionId = orderedProblems[0]!.id;
+
+  const serviceReturn = isServiceReturnDocumentTypeName(documentType.name);
+  if (serviceReturn && !data.serviceCenterId?.trim()) {
+    return { error: "Service center is required for Service Return" as const };
+  }
+
+  if (data.serviceCenterId) {
+    const sc = await prisma.serviceCenter.findFirst({
+      where: {
+        id: data.serviceCenterId,
+        tenantId: session.user.tenantId,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    if (!sc) return { error: "Service center not found" as const };
+  }
+  if (data.serviceModelId) {
+    const model = await prisma.productModel.findFirst({
+      where: {
+        id: data.serviceModelId,
+        tenantId: session.user.tenantId,
+        status: "active",
+      },
+      select: { id: true },
+    });
+    if (!model) return { error: "Service model not found" as const };
+  }
+  if (data.warehouseLocationId) {
+    const loc = await prisma.warehouseLocation.findFirst({
+      where: {
+        id: data.warehouseLocationId,
+        warehouse: { tenantId: session.user.tenantId },
+      },
+      select: { id: true },
+    });
+    if (!loc) return { error: "Warehouse location not found" as const };
+  }
+
   const sale = await prisma.branchSalesTransaction.findFirst({
     where: { id: saleId, tenantId: session.user.tenantId },
     select: {
       id: true,
       transactionNo: true,
+      transactionDate: true,
+      customerName: true,
       atrStatus: true,
       notes: true,
+      branch: { select: { name: true } },
       returnRequest: { select: { id: true } },
+      details: {
+        orderBy: { createdAt: "asc" },
+        select: {
+          saleAmount: true,
+          amount: true,
+          model: { select: { skuCode: true, name: true } },
+          serialNumber: { select: { serialNo: true } },
+        },
+      },
     },
   });
   if (!sale) return { error: "Sale not found" as const };
   if (sale.returnRequest) return { error: "Return already requested" as const };
-  if (sale.atrStatus !== "open") return { error: "Sale is not eligible for return" as const };
+  if (sale.atrStatus !== "open") {
+    return { error: "Sale is not eligible for return" as const };
+  }
 
-  await prisma.$transaction([
-    prisma.branchReturnRequest.create({
+  const summaryNote = `[${data.actionType === "replacement" ? "Replacement" : "Return"} requested] ${documentType.name} · ${data.stockStatusCode} · ${problemDescriptionText}`;
+
+  const created = await prisma.$transaction(async (tx) => {
+    const returnRequest = await tx.branchReturnRequest.create({
       data: {
         tenantId: session.user.tenantId,
         saleId,
         requestedById: session.user.id,
-        requestNotes: reason,
+        actionType: data.actionType,
+        stockStatusCode: data.stockStatusCode,
+        documentTypeId: documentType.id,
+        problemDescriptionId,
+        problemDescriptionText,
+        requestNotes: problemDescriptionText,
+        serviceCenterId: serviceReturn ? data.serviceCenterId || null : null,
+        classification: serviceReturn
+          ? data.classification?.trim() || null
+          : null,
+        serviceModelId: serviceReturn ? data.serviceModelId || null : null,
+        customerDealerBranch: serviceReturn
+          ? data.customerDealerBranch?.trim() || null
+          : null,
+        natureOfTransaction: serviceReturn
+          ? data.natureOfTransaction?.trim() || null
+          : null,
+        refContactPo: serviceReturn ? data.refContactPo?.trim() || null : null,
+        warehouseLocationId: serviceReturn
+          ? data.warehouseLocationId || null
+          : null,
       },
-    }),
-    prisma.branchSalesTransaction.update({
+      select: { id: true, createdAt: true },
+    });
+
+    await tx.branchSalesTransaction.update({
       where: { id: saleId },
       data: {
         atrStatus: "reserve",
-        notes: [sale.notes, `[Return requested] ${reason}`]
-          .filter(Boolean)
-          .join("\n"),
+        notes: [sale.notes, summaryNote].filter(Boolean).join("\n"),
       },
-    }),
-  ]);
+    });
+
+    return returnRequest;
+  });
+
+  // Best-effort ATR/ODRF PDF — return still succeeds if PDF generation fails.
+  let atrOdrfPdfPath: string | null = null;
+  try {
+    const [serviceCenter, serviceModel, warehouseLocation, requester] =
+      await Promise.all([
+        data.serviceCenterId
+          ? prisma.serviceCenter.findFirst({
+              where: { id: data.serviceCenterId },
+              select: { name: true, sapCode: true },
+            })
+          : Promise.resolve(null),
+        data.serviceModelId
+          ? prisma.productModel.findFirst({
+              where: { id: data.serviceModelId },
+              select: { skuCode: true, name: true },
+            })
+          : Promise.resolve(null),
+        data.warehouseLocationId
+          ? prisma.warehouseLocation.findFirst({
+              where: { id: data.warehouseLocationId },
+              select: {
+                code: true,
+                name: true,
+                warehouse: { select: { name: true, code: true } },
+              },
+            })
+          : Promise.resolve(null),
+        prisma.user.findFirst({
+          where: { id: session.user.id },
+          select: { name: true, email: true },
+        }),
+      ]);
+
+    atrOdrfPdfPath = await generateAndStoreAtrOdrfPdf({
+      tenantId: session.user.tenantId,
+      returnRequestId: created.id,
+      data: {
+        documentTitle: "ATR / ODRF",
+        actionTypeLabel:
+          data.actionType === "replacement" ? "Replacement" : "Return",
+        transactionNo: sale.transactionNo,
+        transactionDate: sale.transactionDate
+          ? sale.transactionDate.toLocaleDateString()
+          : null,
+        branchName: sale.branch.name,
+        customerName: sale.customerName,
+        documentTypeName: documentType.name,
+        stockStatusCode: data.stockStatusCode,
+        problemDescriptionText,
+        requestedByName: requester?.name ?? requester?.email ?? session.user.id,
+        requestedAt: created.createdAt.toLocaleString(),
+        serviceCenterName: serviceCenter
+          ? serviceCenter.sapCode
+            ? `${serviceCenter.sapCode} · ${serviceCenter.name}`
+            : serviceCenter.name
+          : null,
+        classification: data.classification,
+        serviceModelLabel: serviceModel
+          ? serviceModel.skuCode
+            ? `${serviceModel.skuCode} · ${serviceModel.name}`
+            : serviceModel.name
+          : null,
+        customerDealerBranch: data.customerDealerBranch,
+        natureOfTransaction: data.natureOfTransaction,
+        refContactPo: data.refContactPo,
+        warehouseLocationLabel: warehouseLocation
+          ? [
+              warehouseLocation.warehouse.code || warehouseLocation.warehouse.name,
+              warehouseLocation.code || warehouseLocation.name,
+            ]
+              .filter(Boolean)
+              .join(" · ")
+          : null,
+        lines: sale.details.map((d) => ({
+          modelLabel: d.model
+            ? d.model.skuCode || d.model.name || "—"
+            : "—",
+          serialNo: d.serialNumber?.serialNo ?? TO_FOLLOW_SERIAL_LABEL,
+          saleAmount: (d.saleAmount ?? d.amount ?? 0).toString(),
+        })),
+      },
+    });
+
+    await prisma.branchReturnRequest.update({
+      where: { id: created.id },
+      data: { atrOdrfPdfPath },
+    });
+  } catch {
+    // Keep the return request even when PDF storage fails.
+  }
 
   await auditService.log({
     tenantId: session.user.tenantId,
@@ -1281,13 +1619,191 @@ export async function requestReturnAction(saleId: string, notes?: string) {
     metadata: {
       transactionNo: sale.transactionNo,
       atrStatus: "reserve",
-      hasReason: true,
+      actionType: data.actionType,
+      stockStatusCode: data.stockStatusCode,
+      documentTypeId: documentType.id,
+      returnRequestId: created.id,
+      hasAtrOdrfPdf: Boolean(atrOdrfPdfPath),
     },
   });
 
   revalidatePath("/sales");
   revalidatePath("/returns");
-  return { success: true as const };
+  return { success: true as const, returnRequestId: created.id };
+}
+
+type RestoreInventoryTx = {
+  branchInventory: typeof prisma.branchInventory;
+  serialNumberHistory: typeof prisma.serialNumberHistory;
+};
+
+/**
+ * Restore original sold serials to STK/DEF at the **branch sold** (`sale.branchId`).
+ * Never lands inventory on alternateBranchId. Writes SerialNumberHistory rows.
+ */
+async function restoreOriginalSerialsAtBranchSold(
+  tx: RestoreInventoryTx,
+  input: {
+    tenantId: string;
+    userId: string;
+    soldBranchId: string;
+    /** Used only to locate legacy inventory rows that never relocated. */
+    stockBranchId: string;
+    serialNumberIds: string[];
+    restoreStatusCodeId: string;
+    restoreStatusCode: "STK" | "DEF";
+    soldStatusCodeIds: string[];
+    historyTxnType: "return" | "replacement";
+    historyDetails: string;
+  },
+): Promise<number> {
+  const now = new Date();
+  const historyRows: Array<{
+    tenantId: string;
+    serialNumberId: string;
+    txnType: "return" | "replacement";
+    details: string;
+    status: string;
+    createdById: string;
+    createdAt: Date;
+  }> = [];
+
+  for (const serialNumberId of input.serialNumberIds) {
+    const restored = await restoreSerialToStockSource(tx, {
+      tenantId: input.tenantId,
+      serialNumberId,
+      stockBranchId: input.stockBranchId,
+      soldBranchId: input.soldBranchId,
+      stkCodeId: input.restoreStatusCodeId,
+      soldStatusCodeIds: input.soldStatusCodeIds,
+      updatedById: input.userId,
+      restoreToBranchId: input.soldBranchId,
+    });
+
+    if (restored == null) {
+      const existing = await tx.branchInventory.findFirst({
+        where: {
+          tenantId: input.tenantId,
+          serialNumberId,
+        },
+        select: { id: true },
+      });
+      if (existing) {
+        await tx.branchInventory.update({
+          where: { id: existing.id },
+          data: {
+            branchId: input.soldBranchId,
+            statusCodeId: input.restoreStatusCodeId,
+            updatedById: input.userId,
+          },
+        });
+      } else {
+        await tx.branchInventory.create({
+          data: {
+            tenantId: input.tenantId,
+            branchId: input.soldBranchId,
+            serialNumberId,
+            statusCodeId: input.restoreStatusCodeId,
+            updatedById: input.userId,
+          },
+        });
+      }
+    }
+
+    historyRows.push({
+      tenantId: input.tenantId,
+      serialNumberId,
+      txnType: input.historyTxnType,
+      details: input.historyDetails,
+      status: input.restoreStatusCode,
+      createdById: input.userId,
+      createdAt: now,
+    });
+  }
+
+  if (historyRows.length > 0) {
+    await tx.serialNumberHistory.createMany({ data: historyRows });
+  }
+
+  return historyRows.length;
+}
+
+async function restoreReturnInventory(input: {
+  tenantId: string;
+  userId: string;
+  returnRequestId: string;
+  stockStatusCode: "STK" | "DEF";
+  sale: {
+    id: string;
+    transactionNo: string;
+    branchId: string;
+    alternateBranchId: string | null;
+    details: { serialNumberId: string | null }[];
+  };
+}) {
+  const statusCode = input.stockStatusCode === "DEF" ? "DEF" : "STK";
+  const statusCodeId = await reasonStatusService.requireCodeId(
+    input.tenantId,
+    "inventory_system",
+    statusCode,
+  );
+  const sldCodeId = await reasonStatusService.requireCodeId(
+    input.tenantId,
+    "inventory_system",
+    "SLD",
+  );
+  const rsvCodeId = await reasonStatusService.requireCodeId(
+    input.tenantId,
+    "inventory_system",
+    "RSV",
+  );
+  const ofsCodeId = await reasonStatusService.requireCodeId(
+    input.tenantId,
+    "inventory_system",
+    "OFS",
+  );
+
+  const soldBranchId = input.sale.branchId;
+  const stockBranchId = input.sale.alternateBranchId ?? input.sale.branchId;
+  const serialIds = [
+    ...new Set(
+      input.sale.details
+        .map((d) => d.serialNumberId)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+    ),
+  ];
+
+  if (serialIds.length === 0) {
+    return {
+      error:
+        "Cannot restore stock — this sale has no linked serial numbers. Check the sale details or contact support.",
+    } as const;
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await restoreOriginalSerialsAtBranchSold(tx, {
+      tenantId: input.tenantId,
+      userId: input.userId,
+      soldBranchId,
+      stockBranchId,
+      serialNumberIds: serialIds,
+      restoreStatusCodeId: statusCodeId,
+      restoreStatusCode: statusCode,
+      soldStatusCodeIds: [sldCodeId, rsvCodeId, ofsCodeId],
+      historyTxnType: "return",
+      historyDetails: `Return ${input.sale.transactionNo} → ${statusCode} at branch sold (request ${input.returnRequestId})`,
+    });
+    await tx.branchReturnRequest.update({
+      where: { id: input.returnRequestId },
+      data: { status: "completed", completedAt: new Date() },
+    });
+    await tx.branchSalesTransaction.update({
+      where: { id: input.sale.id },
+      data: { atrStatus: "closed" },
+    });
+  });
+
+  return { success: true as const, restoredSerialCount: serialIds.length, statusCode };
 }
 
 export async function evaluateReturnAction(returnRequestId: string, notes?: string) {
@@ -1418,9 +1934,17 @@ export async function completeReturnRestoreAction(returnRequestId: string) {
   ]);
   const row = await prisma.branchReturnRequest.findFirst({
     where: { id: returnRequestId, tenantId: session.user.tenantId },
-    include: {
+    select: {
+      id: true,
+      status: true,
+      actionType: true,
+      stockStatusCode: true,
       sale: {
-        include: {
+        select: {
+          id: true,
+          transactionNo: true,
+          branchId: true,
+          alternateBranchId: true,
           details: { select: { serialNumberId: true } },
         },
       },
@@ -1429,72 +1953,25 @@ export async function completeReturnRestoreAction(returnRequestId: string) {
   if (!row || row.status !== "approved") {
     return { error: "Return must be TL-approved before inventory restore" };
   }
-
-  const stkCodeId = await reasonStatusService.requireCodeId(
-    session.user.tenantId,
-    "inventory_system",
-    "STK",
-  );
-
-  const stockBranchId = row.sale.alternateBranchId ?? row.sale.branchId;
-  // Detail.serialNumberId is required in Prisma, but the live DB previously allowed
-  // ON DELETE SET NULL — filter so restore never upserts a null serial key.
-  const serialIds = [
-    ...new Set(
-      row.sale.details
-        .map((d) => d.serialNumberId)
-        .filter((id): id is string => typeof id === "string" && id.length > 0),
-    ),
-  ];
-
-  if (serialIds.length === 0) {
+  // Replacement path finishes via Same/New Invoice — not plain restore.
+  if (row.actionType === "replacement") {
     return {
       error:
-        "Cannot restore stock — this sale has no linked serial numbers. Check the sale details or contact support.",
+        "This request is a Replacement — complete it with Same Invoice or New Invoice from Returns",
     };
   }
 
-  await prisma.$transaction(async (tx) => {
-    for (const serialNumberId of serialIds) {
-      // Prefer updating the existing row (often SLD at the sold branch after
-      // alternate-stock encode) so we never leave an orphan SLD at branch B.
-      const existing = await tx.branchInventory.findFirst({
-        where: {
-          tenantId: session.user.tenantId,
-          serialNumberId,
-        },
-        select: { id: true },
-      });
-      if (existing) {
-        await tx.branchInventory.update({
-          where: { id: existing.id },
-          data: {
-            branchId: stockBranchId,
-            statusCodeId: stkCodeId,
-            updatedById: session.user.id,
-          },
-        });
-      } else {
-        await tx.branchInventory.create({
-          data: {
-            tenantId: session.user.tenantId,
-            branchId: stockBranchId,
-            serialNumberId,
-            statusCodeId: stkCodeId,
-            updatedById: session.user.id,
-          },
-        });
-      }
-    }
-    await tx.branchReturnRequest.update({
-      where: { id: returnRequestId },
-      data: { status: "completed", completedAt: new Date() },
-    });
-    await tx.branchSalesTransaction.update({
-      where: { id: row.saleId },
-      data: { atrStatus: "closed" },
-    });
+  const stockStatusCode =
+    row.stockStatusCode === "DEF" ? ("DEF" as const) : ("STK" as const);
+
+  const restored = await restoreReturnInventory({
+    tenantId: session.user.tenantId,
+    userId: session.user.id,
+    returnRequestId,
+    stockStatusCode,
+    sale: row.sale,
   });
+  if ("error" in restored) return restored;
 
   await auditService.log({
     tenantId: session.user.tenantId,
@@ -1504,7 +1981,8 @@ export async function completeReturnRestoreAction(returnRequestId: string) {
     entityId: returnRequestId,
     metadata: {
       transactionNo: row.sale.transactionNo,
-      restoredSerialCount: serialIds.length,
+      restoredSerialCount: restored.restoredSerialCount,
+      stockStatusCode: restored.statusCode,
     },
   });
 
@@ -1512,6 +1990,515 @@ export async function completeReturnRestoreAction(returnRequestId: string) {
   revalidatePath("/returns");
   revalidatePath("/inventory");
   return { success: true as const };
+}
+
+async function nextReplacementNo(
+  tenantId: string,
+  tx: Pick<typeof prisma, "salesReplacement">,
+): Promise<string> {
+  const count = await tx.salesReplacement.count({ where: { tenantId } });
+  return `REPL-${String(count + 1).padStart(6, "0")}`;
+}
+
+const replacementSameInvoiceSchema = z.object({
+  returnRequestId: z.string().min(1),
+  modelId: z.string().min(1),
+  replacementSerialNumberId: z.string().min(1),
+});
+
+const replacementNewInvoiceSchema = z.object({
+  returnRequestId: z.string().min(1),
+  transactionNo: z.string().trim().min(1),
+  transactionDate: z.string().min(1),
+  modelId: z.string().min(1),
+  replacementSerialNumberId: z.string().min(1),
+});
+
+async function completeReplacementCore(input: {
+  session: {
+    user: { id: string; tenantId: string };
+  };
+  returnRequestId: string;
+  modelId: string;
+  replacementSerialNumberId: string;
+  invoiceNo: string | null;
+  invoiceDate: Date | null;
+  mode: "same_invoice" | "new_invoice";
+}) {
+  const tenantId = input.session.user.tenantId;
+  const userId = input.session.user.id;
+
+  const row = await prisma.branchReturnRequest.findFirst({
+    where: {
+      id: input.returnRequestId,
+      tenantId,
+    },
+    select: {
+      id: true,
+      status: true,
+      actionType: true,
+      stockStatusCode: true,
+      sale: {
+        select: {
+          id: true,
+          transactionNo: true,
+          transactionDate: true,
+          branchId: true,
+          alternateBranchId: true,
+          paymentTypeId: true,
+          saleTypeId: true,
+          customerDeliveryMethodId: true,
+          customerName: true,
+          contactNo: true,
+          siTrans: true,
+          infoSlipVsoRrReleased: true,
+          rrReceiveDeliver: true,
+          proof: true,
+          amount: true,
+          modelPrice: true,
+          branch: { select: { dealerId: true } },
+          details: {
+            select: {
+              id: true,
+              serialNumberId: true,
+              modelId: true,
+              packageTypeId: true,
+              brandId: true,
+              promoTypeId: true,
+              modelPrice: true,
+              saleAmount: true,
+              amount: true,
+              deliveryNo: true,
+              deliveryDate: true,
+              statusCodeId: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!row || row.status !== "approved") {
+    return { error: "Replacement must be TL-approved before completing" as const };
+  }
+  if ((row.actionType ?? "return") !== "replacement") {
+    return {
+      error: "This request is a Return — use Restore stock instead" as const,
+    };
+  }
+
+  const soldBranchId = row.sale.branchId;
+  const stockBranchId = row.sale.alternateBranchId ?? row.sale.branchId;
+  const stockStatusCode =
+    row.stockStatusCode === "DEF" ? ("DEF" as const) : ("STK" as const);
+
+  const stkCodeId = await reasonStatusService.requireCodeId(
+    tenantId,
+    "inventory_system",
+    "STK",
+  );
+  const sldCodeId = await reasonStatusService.requireCodeId(
+    tenantId,
+    "inventory_system",
+    "SLD",
+  );
+  const rsvCodeId = await reasonStatusService.requireCodeId(
+    tenantId,
+    "inventory_system",
+    "RSV",
+  );
+  const ofsCodeId = await reasonStatusService.requireCodeId(
+    tenantId,
+    "inventory_system",
+    "OFS",
+  );
+  const restoreCodeId = await reasonStatusService.requireCodeId(
+    tenantId,
+    "inventory_system",
+    stockStatusCode,
+  );
+
+  const replacementInv = await prisma.branchInventory.findFirst({
+    where: {
+      tenantId,
+      branchId: soldBranchId,
+      statusCodeId: stkCodeId,
+      serialNumberId: input.replacementSerialNumberId,
+      serialNumber: { modelId: input.modelId },
+    },
+    select: {
+      id: true,
+      serialNumberId: true,
+      serialNumber: {
+        select: {
+          id: true,
+          serialNo: true,
+          modelId: true,
+          model: { select: { id: true, brandId: true, skuCode: true, name: true } },
+        },
+      },
+    },
+  });
+  if (!replacementInv) {
+    return {
+      error:
+        "Replacement serial must be active STK stock for the selected model at the sold branch" as const,
+    };
+  }
+
+  const targetDetail =
+    row.sale.details.find((d) => d.serialNumberId) ?? row.sale.details[0] ?? null;
+  const originalSerialId = targetDetail?.serialNumberId ?? null;
+  const originalPriceRaw =
+    targetDetail?.modelPrice ??
+    targetDetail?.saleAmount ??
+    targetDetail?.amount ??
+    row.sale.amount;
+  const originalPrice =
+    originalPriceRaw != null ? Number(originalPriceRaw.toString()) : 0;
+
+  const originalSerialIds = [
+    ...new Set(
+      row.sale.details
+        .map((d) => d.serialNumberId)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+    ),
+  ];
+  if (originalSerialIds.length === 0) {
+    return {
+      error:
+        "Cannot complete replacement — this sale has no linked serial numbers" as const,
+    };
+  }
+
+  const priceAsOf =
+    input.mode === "new_invoice"
+      ? (input.invoiceDate ?? undefined)
+      : (row.sale.transactionDate ?? undefined);
+  const resolvedPrice = await resolveModelPriceForSales(
+    tenantId,
+    input.modelId,
+    targetDetail?.packageTypeId ?? undefined,
+    priceAsOf,
+  );
+  const replacementModelPrice = resolvedPrice?.amount ?? originalPrice;
+
+  if (input.mode === "new_invoice") {
+    const newTrnNo = input.invoiceNo?.trim();
+    if (!newTrnNo || !input.invoiceDate) {
+      return { error: "New invoice requires transaction number and date" as const };
+    }
+    const taken = await prisma.branchSalesTransaction.findFirst({
+      where: {
+        tenantId,
+        branchId: soldBranchId,
+        transactionNo: newTrnNo,
+      },
+      select: { id: true },
+    });
+    if (taken) {
+      return {
+        error:
+          "Transaction number already used on this branch. Enter a different number." as const,
+      };
+    }
+  }
+
+  let newSaleId: string | null = null;
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      // 1) Restore original SN(s) → STK/DEF at branch sold + history.
+      await restoreOriginalSerialsAtBranchSold(tx, {
+        tenantId,
+        userId,
+        soldBranchId,
+        stockBranchId,
+        serialNumberIds: originalSerialIds,
+        restoreStatusCodeId: restoreCodeId,
+        restoreStatusCode: stockStatusCode,
+        soldStatusCodeIds: [sldCodeId, rsvCodeId, ofsCodeId],
+        historyTxnType: "replacement",
+        historyDetails: `Replacement ${row.sale.transactionNo} → ${stockStatusCode} at branch sold (request ${input.returnRequestId})`,
+      });
+
+      const replacementInvoiceNo =
+        input.mode === "new_invoice"
+          ? (input.invoiceNo?.trim() ?? row.sale.transactionNo)
+          : row.sale.transactionNo;
+      const replacementInvoiceDate =
+        input.mode === "new_invoice"
+          ? (input.invoiceDate ?? new Date())
+          : (row.sale.transactionDate ?? new Date());
+
+      if (input.mode === "same_invoice") {
+        if (!targetDetail) {
+          throw new Error("Sale has no detail line to update for same-invoice replacement");
+        }
+        await tx.branchSalesTransactionDetail.update({
+          where: { id: targetDetail.id },
+          data: {
+            modelId: input.modelId,
+            brandId:
+              replacementInv.serialNumber.model.brandId ?? targetDetail.brandId,
+            serialNumberId: replacementInv.serialNumberId,
+            statusCodeId: sldCodeId,
+            modelPrice: replacementModelPrice,
+            saleAmount: replacementModelPrice,
+            amount: replacementModelPrice,
+          },
+        });
+
+        // Roll up header amounts from details when this was the priced line.
+        const remainingDetails = row.sale.details.filter((d) => d.id !== targetDetail.id);
+        const headerAmount =
+          remainingDetails.reduce((sum, d) => {
+            const line =
+              d.saleAmount ?? d.amount ?? d.modelPrice ?? 0;
+            return sum + Number(line.toString());
+          }, 0) + replacementModelPrice;
+        await tx.branchSalesTransaction.update({
+          where: { id: row.sale.id },
+          data: {
+            modelPrice: replacementModelPrice,
+            amount: headerAmount,
+            atrStatus: "closed",
+          },
+        });
+      } else {
+        // New Invoice: create a fresh sale copying header context.
+        const created = await tx.branchSalesTransaction.create({
+          data: {
+            tenantId,
+            branchId: soldBranchId,
+            alternateBranchId: stockBranchId,
+            paymentTypeId: row.sale.paymentTypeId,
+            saleTypeId: row.sale.saleTypeId,
+            customerDeliveryMethodId: row.sale.customerDeliveryMethodId,
+            transactionNo: replacementInvoiceNo,
+            transactionDate: replacementInvoiceDate,
+            customerName: row.sale.customerName,
+            contactNo: row.sale.contactNo,
+            siTrans: replacementInvoiceNo,
+            infoSlipVsoRrReleased: row.sale.infoSlipVsoRrReleased,
+            rrReceiveDeliver: row.sale.rrReceiveDeliver,
+            proof: row.sale.proof ?? [],
+            amount: replacementModelPrice,
+            modelPrice: replacementModelPrice,
+            atrStatus: "open",
+            createdById: userId,
+          },
+        });
+        newSaleId = created.id;
+
+        await tx.branchSalesTransactionDetail.create({
+          data: {
+            salesId: created.id,
+            packageTypeId: targetDetail?.packageTypeId ?? null,
+            brandId:
+              replacementInv.serialNumber.model.brandId ??
+              targetDetail?.brandId ??
+              null,
+            promoTypeId: targetDetail?.promoTypeId ?? null,
+            modelId: input.modelId,
+            serialNumberId: replacementInv.serialNumberId,
+            statusCodeId: sldCodeId,
+            saleAmount: replacementModelPrice,
+            modelPrice: replacementModelPrice,
+            amount: replacementModelPrice,
+            deliveryNo: targetDetail?.deliveryNo ?? null,
+            deliveryDate: targetDetail?.deliveryDate ?? null,
+          },
+        });
+
+        await tx.branchSalesTransaction.update({
+          where: { id: row.sale.id },
+          data: { atrStatus: "closed" },
+        });
+      }
+
+      // 2) Consume replacement SN: STK → SLD at sold branch.
+      await markSerialSoldFromStockSource(tx, {
+        tenantId,
+        serialNumberId: replacementInv.serialNumberId,
+        stockBranchId: soldBranchId,
+        soldBranchId,
+        stkCodeId,
+        targetStatusCodeId: sldCodeId,
+        updatedById: userId,
+      });
+
+      await tx.serialNumberHistory.create({
+        data: {
+          tenantId,
+          serialNumberId: replacementInv.serialNumberId,
+          txnType: "replacement",
+          details:
+            input.mode === "same_invoice"
+              ? `Replacement sold on same invoice ${row.sale.transactionNo}`
+              : `Replacement sold on new invoice ${replacementInvoiceNo}`,
+          status: "SLD",
+          createdById: userId,
+        },
+      });
+
+      const replacementNo = await nextReplacementNo(tenantId, tx);
+      await tx.salesReplacement.create({
+        data: {
+          tenantId,
+          saleId: row.sale.id,
+          replacementNo,
+          originalSerialNumberId: originalSerialId,
+          originalModelPrice: originalPrice,
+          originalInvoiceDate: row.sale.transactionDate,
+          originalInvoiceNo: row.sale.transactionNo,
+          replacementSerialNumberId: replacementInv.serialNumberId,
+          replacementDealerId: row.sale.branch.dealerId ?? null,
+          replacementBranchId: soldBranchId,
+          replacementAmount: replacementModelPrice,
+          replacementModelPrice,
+          replacementInvoiceDate,
+          replacementInvoiceNo,
+          transactedById: userId,
+          transactedAt: new Date(),
+        },
+      });
+
+      await tx.branchReturnRequest.update({
+        where: { id: input.returnRequestId },
+        data: { status: "completed", completedAt: new Date() },
+      });
+    });
+  } catch (e) {
+    return {
+      error: e instanceof Error ? e.message : "Failed to complete replacement",
+    } as const;
+  }
+
+  await auditService.log({
+    tenantId,
+    userId,
+    action: "return.replacement_completed",
+    entityType: "BranchReturnRequest",
+    entityId: input.returnRequestId,
+    metadata: {
+      mode: input.mode,
+      transactionNo: row.sale.transactionNo,
+      replacementSerialNumberId: replacementInv.serialNumberId,
+      replacementModelPrice,
+      stockStatusCode,
+      newSaleId,
+    },
+  });
+
+  revalidatePath("/sales");
+  revalidatePath("/returns");
+  revalidatePath("/inventory");
+  return { success: true as const };
+}
+
+export async function listReplacementLookupsAction(branchId: string, modelId?: string) {
+  const session = await requireAnyPermission([
+    RETURNS_COMPLETE,
+    SALES_RETURN_COMPLETE,
+    "logistics.manage",
+    SALES_CREATE,
+  ]);
+
+  const stkCodeId = await reasonStatusService.requireCodeId(
+    session.user.tenantId,
+    "inventory_system",
+    "STK",
+  );
+
+  const [models, serialRows] = await Promise.all([
+    prisma.productModel.findMany({
+      where: { tenantId: session.user.tenantId, status: "active" },
+      select: { id: true, skuCode: true, name: true },
+      orderBy: { skuCode: "asc" },
+      take: 1000,
+    }),
+    modelId
+      ? prisma.branchInventory.findMany({
+          where: {
+            tenantId: session.user.tenantId,
+            branchId,
+            statusCodeId: stkCodeId,
+            serialNumber: { modelId },
+          },
+          include: {
+            serialNumber: {
+              select: {
+                id: true,
+                serialNo: true,
+                modelId: true,
+              },
+            },
+          },
+          orderBy: { serialNumber: { serialNo: "asc" } },
+          take: 500,
+        })
+      : Promise.resolve([]),
+  ]);
+
+  return {
+    models: models.map((m) => ({
+      id: m.id,
+      name: m.skuCode ? `${m.skuCode} · ${m.name}` : m.name,
+    })),
+    serials: serialRows.map((r) => ({
+      id: r.serialNumber.id,
+      serialNo: r.serialNumber.serialNo,
+      modelId: r.serialNumber.modelId,
+    })),
+  };
+}
+
+export async function completeReplacementSameInvoiceAction(input: unknown) {
+  const session = await requireAnyPermission([
+    RETURNS_COMPLETE,
+    SALES_RETURN_COMPLETE,
+    "logistics.manage",
+    SALES_CREATE,
+  ]);
+  const parsed = replacementSameInvoiceSchema.safeParse(input);
+  if (!parsed.success) return { error: "Invalid same-invoice replacement" as const };
+
+  return completeReplacementCore({
+    session,
+    returnRequestId: parsed.data.returnRequestId,
+    modelId: parsed.data.modelId,
+    replacementSerialNumberId: parsed.data.replacementSerialNumberId,
+    invoiceNo: null,
+    invoiceDate: null,
+    mode: "same_invoice",
+  });
+}
+
+export async function completeReplacementNewInvoiceAction(input: unknown) {
+  const session = await requireAnyPermission([
+    RETURNS_COMPLETE,
+    SALES_RETURN_COMPLETE,
+    "logistics.manage",
+    SALES_CREATE,
+  ]);
+  const parsed = replacementNewInvoiceSchema.safeParse(input);
+  if (!parsed.success) return { error: "Invalid new-invoice replacement" as const };
+
+  const invoiceDate = new Date(parsed.data.transactionDate);
+  if (Number.isNaN(invoiceDate.getTime())) {
+    return { error: "Invalid transaction date" as const };
+  }
+
+  return completeReplacementCore({
+    session,
+    returnRequestId: parsed.data.returnRequestId,
+    modelId: parsed.data.modelId,
+    replacementSerialNumberId: parsed.data.replacementSerialNumberId,
+    invoiceNo: parsed.data.transactionNo.trim(),
+    invoiceDate,
+    mode: "new_invoice",
+  });
 }
 
 /**

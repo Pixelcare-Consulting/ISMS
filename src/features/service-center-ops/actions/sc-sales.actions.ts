@@ -18,10 +18,11 @@ import {
 } from "@/features/service-center-ops/constants/sc-permissions";
 import {
   RETURNS_APPROVE,
+  RETURNS_APPROVALS_VIEW_PERMISSIONS,
   RETURNS_COMPLETE,
   RETURNS_EVALUATE,
   RETURNS_REQUEST,
-  RETURNS_VIEW,
+  RETURNS_SERVICE_VIEW_PERMISSIONS,
 } from "@/features/returns/constants/returns-permissions";
 import { scOpsRepository } from "@/features/service-center-ops/repositories/sc-ops.repository";
 import {
@@ -73,18 +74,12 @@ export async function listScReturnsAction(input?: {
   limit?: number;
   statusIn?: Array<"pending_cs" | "pending_tl" | "approved" | "rejected" | "completed">;
 }) {
-  const session = await requireAnyPermission([
-    RETURNS_VIEW,
-    RETURNS_REQUEST,
-    RETURNS_EVALUATE,
-    RETURNS_APPROVE,
-    RETURNS_COMPLETE,
-    SC_RETURN_REQUEST,
-    SC_RETURN_EVALUATE,
-    SC_RETURN_APPROVE,
-    SC_RETURN_COMPLETE,
-    "sales.return.view",
-  ]);
+  const forApprovalsQueue = Boolean(input?.statusIn?.length);
+  const session = await requireAnyPermission(
+    forApprovalsQueue
+      ? [...RETURNS_APPROVALS_VIEW_PERMISSIONS]
+      : [...RETURNS_SERVICE_VIEW_PERMISSIONS],
+  );
   const scopedIds = await resolveScIdsForUser(
     session.user.tenantId,
     session.user.id,

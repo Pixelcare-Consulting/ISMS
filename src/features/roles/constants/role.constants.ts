@@ -34,6 +34,26 @@ export function filterTenantManageableRoles<
   );
 }
 
+/**
+ * Platform operators and tenant Super Admins may see built-in system roles
+ * and adjust their permission grants (not rename/delete protected roles).
+ */
+export function canManageSystemRoleAccess(
+  roleSlugs: string[] | undefined,
+  isPlatformOperator: boolean,
+): boolean {
+  return isPlatformOperator || hasProviderRole(roleSlugs);
+}
+
+/** Roles shown in the tenant Roles / matrix UI. */
+export function filterRolesForPermissionsUi<
+  T extends { slug: string; isSystem?: boolean },
+>(roles: T[], includeSystemRoles: boolean) {
+  return includeSystemRoles
+    ? filterTenantVisibleRoles(roles)
+    : filterTenantManageableRoles(roles);
+}
+
 export function userHasProviderOnlyRole(
   userRoles: { role: { slug: string } }[],
 ): boolean {

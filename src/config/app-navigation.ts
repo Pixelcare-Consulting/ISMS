@@ -152,6 +152,8 @@ export const appNavigation: NavEntry[] = [
     icon: ArrowLeftRight,
     anyPermissions: [
       "returns.view",
+      "returns.branch.view",
+      "returns.service.view",
       "returns.request",
       "returns.evaluate",
       "returns.approve",
@@ -527,11 +529,10 @@ export const appNavigation: NavEntry[] = [
             permission: "roles.manage",
           },
           {
-            href: "/provider/permissions",
+            href: "/settings/permissions",
             label: "Permissions",
             icon: KeyRound,
             permission: "roles.manage",
-            platformOperatorOnly: true,
           },
         ],
       },

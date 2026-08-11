@@ -1,8 +1,7 @@
 import { roleRepository } from "@/features/users/repositories/role.repository";
 import { auditService } from "@/features/audit/services/audit.service";
 import {
-  filterTenantManageableRoles,
-  filterTenantVisibleRoles,
+  filterRolesForPermissionsUi,
   isProviderOnlyRole,
 } from "@/features/roles/constants/role.constants";
 import {
@@ -15,16 +14,14 @@ import type { RolesPermissionsMatrix } from "@/features/roles/types/role.types";
 export const roleService = {
   async getPermissionsMatrix(
     tenantId: string,
-    isPlatformOperator = false,
+    includeSystemRoles = false,
   ): Promise<RolesPermissionsMatrix> {
     const [roles, permissions] = await Promise.all([
       roleRepository.listByTenant(tenantId),
       roleRepository.listPermissions(),
     ]);
 
-    const tenantRoles = isPlatformOperator
-      ? filterTenantVisibleRoles(roles)
-      : filterTenantManageableRoles(roles);
+    const tenantRoles = filterRolesForPermissionsUi(roles, includeSystemRoles);
 
     return {
       roles: tenantRoles.map((role) => ({
@@ -88,7 +85,7 @@ export const roleService = {
     roleId: string;
     permissionSlug: string;
     enabled: boolean;
-    isPlatformOperator?: boolean;
+    canManageSystemRoleAccess?: boolean;
   }) {
     const role = await roleRepository.findById(input.tenantId, input.roleId);
     if (!role) {
@@ -96,6 +93,10 @@ export const roleService = {
     }
 
     if (isProviderOnlyRole(role.slug)) {
+      throw new Error("This role cannot be modified");
+    }
+
+    if (role.isSystem && !input.canManageSystemRoleAccess) {
       throw new Error("This role cannot be modified");
     }
 

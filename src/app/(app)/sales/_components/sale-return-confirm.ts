@@ -46,4 +46,11 @@ export const SALE_RETURN_CONFIRM_COPY: Record<
     confirmLabel: "Restore stock",
     successMessage: "Inventory restored — ATR closed",
   },
+  complete_replacement: {
+    title: "Complete replacement?",
+    description:
+      "This opens Same Invoice or New Invoice so you can finish the replacement and close the ATR.",
+    confirmLabel: "Continue",
+    successMessage: "Replacement completed",
+  },
 };

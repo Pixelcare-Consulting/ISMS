@@ -44,7 +44,8 @@ import { cn } from "@/utils/cn";
 
 interface RoleModuleActionMatrixProps {
   matrix: RolesPermissionsMatrix;
-  isPlatformOperator?: boolean;
+  /** Super Admin or platform operator — may toggle grants on system roles. */
+  canManageSystemRoleAccess?: boolean;
 }
 
 interface ModuleActionCell {
@@ -222,7 +223,7 @@ function ModuleBulkActions({
 
 export function RoleModuleActionMatrix({
   matrix,
-  isPlatformOperator = false,
+  canManageSystemRoleAccess = false,
 }: RoleModuleActionMatrixProps) {
   const router = useRouter();
   const { roles, permissions } = matrix;
@@ -262,7 +263,7 @@ export function RoleModuleActionMatrix({
   const isProtected =
     !selectedRole ||
     isProviderOnlyRole(selectedRole.slug) ||
-    (!isPlatformOperator && selectedRole.isSystem);
+    (selectedRole.isSystem && !canManageSystemRoleAccess);
 
   const {
     pendingChange,
@@ -338,7 +339,7 @@ export function RoleModuleActionMatrix({
     return (
       <DataTableShell>
         <p className="py-12 text-center text-muted-foreground">
-          {isPlatformOperator
+          {canManageSystemRoleAccess
             ? "No roles configured yet."
             : "No custom roles yet. Use Add role on the simple view, or assign built-in roles from Settings → Users."}
         </p>

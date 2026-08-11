@@ -292,6 +292,8 @@ export const appModules: AppModule[] = [
     description: "Branch and service-center return processing",
     actions: permissionActions(
       "view",
+      "branch.view",
+      "service.view",
       "request",
       "evaluate",
       "approve",
