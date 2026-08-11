@@ -320,22 +320,18 @@ async function createOfficialSaleWithDetail(
 
   const existing = await tx.branchSalesTransaction.findUnique({
     where: {
-      tenantId_transactionNo: {
+      tenantId_branchId_transactionNo: {
         tenantId: input.tenantId,
+        branchId: input.branchId,
         transactionNo: input.transactionNo,
       },
     },
-    select: { id: true, branchId: true },
+    select: { id: true },
   });
 
   let saleId: string;
   let createdHeader = false;
   if (existing) {
-    if (existing.branchId !== input.branchId) {
-      throw new Error(
-        `Transaction ${input.transactionNo} already exists on another branch`,
-      );
-    }
     saleId = existing.id;
   } else {
     const created = await tx.branchSalesTransaction.create({
@@ -573,6 +569,11 @@ async function processAdd(
     inventory.serialNumberId,
     statusCode,
   );
+  if (pulloutHold) {
+    throw new Error(
+      "Cannot process Official Sales ADD while inventory is For pull-out",
+    );
+  }
 
   // Idempotent success: already OFS with matching / open OFS sale
   if (statusCode === "OFS") {
@@ -612,7 +613,7 @@ async function processAdd(
 
     const detailCode = detail.statusCode?.code?.toUpperCase() ?? "";
     if (detailCode === "OFS") {
-      if (!pulloutHold && statusCode !== "OFS") {
+      if (statusCode !== "OFS") {
         await prisma.$transaction(async (tx) => {
           await setInventoryOfficialSold(tx, {
             tenantId,
@@ -646,17 +647,15 @@ async function processAdd(
 
     await prisma.$transaction(async (tx) => {
       await retagDetailToOfficialSold(tx, detail.id, codes.ofsCodeId);
-      if (!pulloutHold) {
-        await setInventoryOfficialSold(tx, {
-          tenantId,
-          inventoryId: inventory.id,
-          expectedStatusCodeId: inventory.statusCodeId,
-          soldBranchId: soldBranch.id,
-          currentBranchId: inventory.branchId,
-          ofsCodeId: codes.ofsCodeId,
-          updatedById: userId,
-        });
-      }
+      await setInventoryOfficialSold(tx, {
+        tenantId,
+        inventoryId: inventory.id,
+        expectedStatusCodeId: inventory.statusCodeId,
+        soldBranchId: soldBranch.id,
+        currentBranchId: inventory.branchId,
+        ofsCodeId: codes.ofsCodeId,
+        updatedById: userId,
+      });
       await logOfficialSalesTrail({
         tenantId,
         userId,
@@ -668,81 +667,12 @@ async function processAdd(
         soldBranch: soldBranch.name,
         metadata: {
           processPath: "retag",
-          inventoryForcedOfs: !pulloutHold,
-          pulloutHold,
           status: "OFS",
         },
       });
     });
 
-    return pulloutHold
-      ? "ADD — Official Sold (pullout hold kept)"
-      : "ADD — Official Sold";
-  }
-
-  // Pullout / FPO hold on non-sold statuses: create/retag sale, leave inventory hold
-  if (pulloutHold) {
-    const existing = await officialSalesRepository.findSaleDetailForRetag(
-      tenantId,
-      row.serial,
-      {
-        transactionNo: transMatchNo,
-        branchId: soldBranch.id,
-        transactionDate: resolveTransactionDate(row),
-        statusCodes: ["SLD", "RSV", "OFS"],
-      },
-    );
-
-    const pulloutTxnDate = resolveTransactionDate(row);
-    const pulloutCommercial = existing
-      ? undefined
-      : await resolveCommercialFieldsForCreate(
-          tenantId,
-          row,
-          modelId,
-          pulloutTxnDate,
-        );
-
-    await prisma.$transaction(async (tx) => {
-      if (existing) {
-        if (existing.statusCode?.code?.toUpperCase() !== "OFS") {
-          await retagDetailToOfficialSold(tx, existing.id, codes.ofsCodeId);
-        }
-      } else if (pulloutCommercial) {
-        await createOfficialSaleWithDetail(tx, {
-          tenantId,
-          userId,
-          branchId: soldBranch.id,
-          stockBranchId: inventory.branchId,
-          transactionNo,
-          transactionDate: pulloutTxnDate,
-          deliveryNo: row.drNo,
-          deliveryDate: row.drDate,
-          notes: buildSaleNotes(row, "ADD"),
-          modelId,
-          serialNumberId: inventory.serialNumberId,
-          ofsCodeId: codes.ofsCodeId,
-          ...pulloutCommercial,
-        });
-      }
-      await logOfficialSalesTrail({
-        tenantId,
-        userId,
-        action: "official_sales.add",
-        entityType: "BranchSalesTransaction",
-        entityId: transactionNo,
-        serial: row.serial,
-        transactionNo,
-        soldBranch: soldBranch.name,
-        metadata: {
-          processPath: "pullout_hold",
-          pulloutHold: true,
-          inventoryStatus: statusCode,
-          status: "OFS",
-        },
-      });
-    });
-    return "ADD — Official Sold (pullout hold kept)";
+    return "ADD — Official Sold";
   }
 
   // Sellable path (typically STK): relocate on branch conflict, create or retag, set OFS

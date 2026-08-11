@@ -1835,7 +1835,7 @@ model BranchSalesTransaction {
   details                  BranchSalesTransactionDetail[]
   replacements             SalesReplacement[]
 
-  @@unique([tenantId, transactionNo])
+  @@unique([tenantId, branchId, transactionNo])
   @@index([tenantId, branchId])
   @@index([tenantId, atrStatus])
   @@index([alternateBranchId])

@@ -52,6 +52,33 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.25.3",
+    date: "2026-08-11",
+    releasedAt: "2026-08-11T10:00:00+08:00",
+    title: "Branch transaction numbers and pull-out rules",
+    highlights: [
+      "The same SI or Trans No. can be used on different branches — each branch keeps its own sequence",
+      "Official Sales ADD is blocked when a unit is For pull-out or already in a pull-out workflow",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Sales and Official Sales allow the same transaction number on different branches within your company",
+      },
+      {
+        type: "improvement",
+        description:
+          "Official Sales ADD now stops with a clear message when inventory is on pull-out hold instead of recording a sale",
+      },
+      {
+        type: "fix",
+        description:
+          "Transaction number checks in Sales & ATR are scoped to the selected branch so duplicates on other branches no longer block encode",
+      },
+    ],
+  },
+  {
     version: "0.25.2",
     date: "2026-08-11",
     releasedAt: "2026-08-11T09:15:00+08:00",

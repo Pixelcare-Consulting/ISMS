@@ -890,12 +890,16 @@ export async function createSaleAction(input: unknown) {
   const taken = await prisma.branchSalesTransaction.findFirst({
     where: {
       tenantId: session.user.tenantId,
+      branchId: parsed.data.branchId,
       transactionNo: parsed.data.transactionNo,
     },
     select: { id: true },
   });
   if (taken) {
-    return { error: "Transaction number already used. Enter a different number." };
+    return {
+      error:
+        "Transaction number already used on this branch. Enter a different number.",
+    };
   }
 
   const transactionNo = parsed.data.transactionNo;
