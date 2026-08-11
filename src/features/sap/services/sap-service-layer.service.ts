@@ -29,11 +29,11 @@ function maskSessionId(sessionId: string): string {
   return `…${last4}`;
 }
 
-function toPublicSessionStatus(
+async function toPublicSessionStatus(
   configId: string,
   companyDb: string,
-): SapSessionPublicStatus {
-  const cached = sapSessionManager.getCached(configId);
+): Promise<SapSessionPublicStatus> {
+  const cached = await sapSessionManager.getCached(configId);
   const now = Date.now();
   if (!cached || cached.expiresAt <= now + SESSION_SKEW_MS) {
     return { state: "idle", configId, companyDb };
@@ -174,7 +174,7 @@ export const sapServiceLayerService = {
       await sapServiceLayerRepository.setActiveStatus(configId, tenantId, true);
     }
 
-    sapSessionManager.invalidate(configId);
+    await sapSessionManager.invalidate(configId);
 
     const updated = await sapServiceLayerRepository.findByIdForTenant(configId, tenantId);
     if (!updated) throw new Error("Service Layer configuration not found after update");
@@ -234,7 +234,7 @@ export const sapServiceLayerService = {
     await sapServiceLayerRepository.setActiveStatus(configId, tenantId, isEnabled);
 
     if (!isEnabled) {
-      sapSessionManager.invalidate(configId);
+      await sapSessionManager.invalidate(configId);
     }
 
     await auditService.log({
@@ -256,7 +256,7 @@ export const sapServiceLayerService = {
     const deleted = await sapServiceLayerRepository.delete(configId, tenantId);
     if (deleted.count === 0) throw new Error("Failed to delete Service Layer configuration");
 
-    sapSessionManager.invalidate(configId);
+    await sapSessionManager.invalidate(configId);
 
     await auditService.log({
       tenantId,

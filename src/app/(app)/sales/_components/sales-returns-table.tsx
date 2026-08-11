@@ -123,7 +123,7 @@ interface SalesReturnsTableProps {
   >;
   initialSort?: string;
   initialSortDir?: string;
-  listTab?: "branch" | "approvals";
+  listTab?: "branch" | "service" | "approvals";
 }
 
 type EditingLine = {
@@ -149,7 +149,7 @@ function buildReturnsHref(
   limit: number,
   sort?: string,
   sortDir?: string,
-  tab: "branch" | "approvals" = "branch",
+  tab: "branch" | "service" | "approvals" = "branch",
 ): string {
   const params = new URLSearchParams();
   params.set("tab", tab);

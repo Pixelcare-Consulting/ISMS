@@ -113,6 +113,32 @@ export async function deleteWarehouseAction(warehouseId: string) {
   }
 }
 
+const deleteWarehousesSchema = z.object({
+  warehouseIds: z.array(z.string().min(1)).min(1),
+});
+
+export async function deleteWarehousesAction(input: unknown) {
+  const session = await requirePermission("warehouses.manage");
+  const parsed = deleteWarehousesSchema.safeParse(input);
+  if (!parsed.success) return { error: "Invalid input" };
+
+  try {
+    const result = await warehouseService.deleteWarehouses({
+      tenantId: session.user.tenantId,
+      actorUserId: session.user.id,
+      warehouseIds: parsed.data.warehouseIds,
+    });
+    if (result.deletedIds.length > 0) {
+      revalidatePath("/settings/warehouses");
+    }
+    return { success: true as const, ...result };
+  } catch (e) {
+    return {
+      error: e instanceof Error ? e.message : "Failed to delete warehouses",
+    };
+  }
+}
+
 export async function deleteWarehouseLocationAction(warehouseId: string, locationId: string) {
   const session = await requirePermission("warehouses.manage");
   try {

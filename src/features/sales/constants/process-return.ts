@@ -1,7 +1,26 @@
+/** Document Type names that route to Service Returns + unlock Process Return service extras. */
+export const SERVICE_DOCUMENT_TYPE_NAMES = [
+  "service return",
+  "service returns",
+  "service replacement",
+  "service replacements",
+] as const;
+
 /** Document Type names that unlock Service Return extras (case-insensitive). */
-export function isServiceReturnDocumentTypeName(name: string | null | undefined): boolean {
+export function isServiceDocumentTypeName(
+  name: string | null | undefined,
+): boolean {
   const normalized = name?.trim().toLowerCase() ?? "";
-  return normalized === "service return" || normalized === "service returns";
+  return (SERVICE_DOCUMENT_TYPE_NAMES as readonly string[]).includes(
+    normalized,
+  );
+}
+
+/** @deprecated Prefer {@link isServiceDocumentTypeName}. */
+export function isServiceReturnDocumentTypeName(
+  name: string | null | undefined,
+): boolean {
+  return isServiceDocumentTypeName(name);
 }
 
 export const RETURN_STOCK_STATUS_OPTIONS = [
@@ -9,7 +28,8 @@ export const RETURN_STOCK_STATUS_OPTIONS = [
   { value: "DEF", label: "DEF — Defective" },
 ] as const;
 
-export type ReturnStockStatusValue = (typeof RETURN_STOCK_STATUS_OPTIONS)[number]["value"];
+export type ReturnStockStatusValue =
+  (typeof RETURN_STOCK_STATUS_OPTIONS)[number]["value"];
 
 /** Free-select options until dedicated classification lookup exists. */
 export const RETURN_CLASSIFICATION_OPTIONS = [

@@ -13,18 +13,37 @@ interface UseTableSelectionResult {
   isRowSelected: (id: string) => boolean;
 }
 
+/**
+ * Row selection for client tables. Pass the selectable scope as `rowIds`
+ * (typically all filtered/matching ids, not only the current page).
+ * IDs are deduped so select-all / partial state stay accurate.
+ */
 export function useTableSelection(rowIds: string[]): UseTableSelectionResult {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  const rowIdSet = useMemo(() => new Set(rowIds), [rowIds]);
+  const rowIdsKey = rowIds.join("\0");
+  const uniqueRowIds = useMemo(() => {
+    const seen = new Set<string>();
+    const next: string[] = [];
+    for (const id of rowIdsKey.length === 0 ? [] : rowIdsKey.split("\0")) {
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      next.push(id);
+    }
+    return next;
+  }, [rowIdsKey]);
+
+  const rowIdSet = useMemo(() => new Set(uniqueRowIds), [uniqueRowIds]);
   const selectedInView = useMemo(
     () => selectedIds.filter((id) => rowIdSet.has(id)),
     [rowIdSet, selectedIds],
   );
   const selectedInViewSet = useMemo(() => new Set(selectedInView), [selectedInView]);
 
-  const isAllSelected = rowIds.length > 0 && selectedInView.length === rowIds.length;
-  const isPartiallySelected = selectedInView.length > 0 && selectedInView.length < rowIds.length;
+  const isAllSelected =
+    uniqueRowIds.length > 0 && selectedInView.length === uniqueRowIds.length;
+  const isPartiallySelected =
+    selectedInView.length > 0 && selectedInView.length < uniqueRowIds.length;
 
   function clearSelection() {
     setSelectedIds([]);
@@ -43,8 +62,7 @@ export function useTableSelection(rowIds: string[]): UseTableSelectionResult {
   function toggleAll(checked: boolean) {
     setSelectedIds((prev) => {
       if (checked) {
-        const merged = new Set([...prev, ...rowIds]);
-        return Array.from(merged);
+        return Array.from(new Set([...prev, ...uniqueRowIds]));
       }
       return prev.filter((id) => !rowIdSet.has(id));
     });

@@ -95,10 +95,19 @@ export default async function ReturnsPage({ searchParams }: ReturnsPageProps) {
     canCompleteReturn: returnsCapabilities.canCompleteReturn,
   };
 
-  const [branchResult, scResult, approvalsBranch, approvalsSc, returnsKpis] =
+  const [branchResult, serviceBranchResult, scResult, approvalsBranch, approvalsSc, returnsKpis] =
     await Promise.all([
       activeTab === "branch"
-        ? listSalesReturnsAction(listInput)
+        ? listSalesReturnsAction({
+            ...listInput,
+            documentTypeScope: "branch",
+          })
+        : Promise.resolve(null),
+      activeTab === "service"
+        ? listSalesReturnsAction({
+            ...listInput,
+            documentTypeScope: "service",
+          })
         : Promise.resolve(null),
       activeTab === "service"
         ? listScReturnsAction({ page, limit })
@@ -151,11 +160,24 @@ export default async function ReturnsPage({ searchParams }: ReturnsPageProps) {
           ) : null
         }
         serviceContent={
-          scResult ? (
-            <ScReturnsPanel
-              items={scResult.items}
-              capabilities={returnsCapabilities}
-            />
+          activeTab === "service" ? (
+            <div className="space-y-8">
+              {serviceBranchResult ? (
+                <SalesReturnsTable
+                  result={serviceBranchResult}
+                  capabilities={tableCaps}
+                  initialSort={params.sort ?? ""}
+                  initialSortDir={params.dir ?? "desc"}
+                  listTab="service"
+                />
+              ) : null}
+              {scResult ? (
+                <ScReturnsPanel
+                  items={scResult.items}
+                  capabilities={returnsCapabilities}
+                />
+              ) : null}
+            </div>
           ) : null
         }
         approvalsContent={

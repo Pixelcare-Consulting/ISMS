@@ -20,12 +20,24 @@ export const warehouseRepository = {
   },
 
   countLinks(tenantId: string, id: string) {
-    return prisma.warehouse.findFirstOrThrow({
-      where: { id, tenantId },
-      select: {
-        _count: { select: { aors: true, pulloutsDestination: true } },
-      },
-    }).then((row) => row._count);
+    return prisma.warehouse
+      .findFirstOrThrow({
+        where: { id, tenantId },
+        select: {
+          _count: { select: { aors: true, pulloutsDestination: true } },
+          locations: {
+            select: { _count: { select: { inventories: true } } },
+          },
+        },
+      })
+      .then((row) => ({
+        aors: row._count.aors,
+        pulloutsDestination: row._count.pulloutsDestination,
+        inventory: row.locations.reduce(
+          (sum, location) => sum + location._count.inventories,
+          0,
+        ),
+      }));
   },
 
   create(

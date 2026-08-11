@@ -1,9 +1,49 @@
+import { SERVICE_DOCUMENT_TYPE_NAMES } from "@/features/sales/constants/process-return";
+import { salesListDetailWhere } from "@/features/sales/constants/sales-list-status";
 import { prisma } from "@/lib/database/client";
 import {
   resolvePagination,
   toPaginatedResult,
 } from "@/lib/shared/pagination";
 import type { Prisma, ReturnRequestStatus } from "@prisma/client";
+
+export type BranchReturnDocumentTypeScope = "branch" | "service";
+
+export function branchReturnDocumentTypeScopeWhere(
+  scope: BranchReturnDocumentTypeScope | undefined,
+): Prisma.BranchReturnRequestWhereInput {
+  if (!scope) return {};
+
+  const serviceNameFilter: Prisma.StringFilter = {
+    in: [...SERVICE_DOCUMENT_TYPE_NAMES],
+    mode: "insensitive",
+  };
+
+  if (scope === "service") {
+    return {
+      documentType: {
+        is: {
+          name: serviceNameFilter,
+        },
+      },
+    };
+  }
+
+  return {
+    OR: [
+      { documentTypeId: null },
+      {
+        NOT: {
+          documentType: {
+            is: {
+              name: serviceNameFilter,
+            },
+          },
+        },
+      },
+    ],
+  };
+}
 
 export type SalesListSort =
   | "transactionNo"
@@ -87,6 +127,7 @@ const detailStatusCodeSelect = {
 export const salesRepository = {
   /**
    * One list row per transaction detail (serial line), newest sales first by default.
+   * Only Sold / Official Sold / TO FOLLOW — return workflow rows live on Returns.
    */
   async listDetailsForTenant(
     tenantId: string,
@@ -94,9 +135,7 @@ export const salesRepository = {
     sort?: { field?: SalesListSort; dir?: SalesListSortDir },
   ) {
     const { limit, page, skip } = resolvePagination(pagination);
-    const where: Prisma.BranchSalesTransactionDetailWhereInput = {
-      sale: { tenantId },
-    };
+    const where = salesListDetailWhere(tenantId);
     const orderBy = sort?.field
       ? [
           salesDetailPrismaOrderBy(sort.field, sort.dir ?? "desc"),
@@ -150,7 +189,10 @@ export const salesRepository = {
     tenantId: string,
     pagination?: { page?: number; limit?: number },
     sort?: { field?: SalesReturnsListSort; dir?: SalesListSortDir },
-    options?: { statusIn?: ReturnRequestStatus[] },
+    options?: {
+      statusIn?: ReturnRequestStatus[];
+      documentTypeScope?: BranchReturnDocumentTypeScope;
+    },
   ) {
     const { limit, page, skip } = resolvePagination(pagination);
     const where: Prisma.BranchReturnRequestWhereInput = {
@@ -158,6 +200,7 @@ export const salesRepository = {
       ...(options?.statusIn?.length
         ? { status: { in: options.statusIn } }
         : {}),
+      ...branchReturnDocumentTypeScopeWhere(options?.documentTypeScope),
     };
     const orderBy = sort?.field
       ? [

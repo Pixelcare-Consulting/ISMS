@@ -1,12 +1,13 @@
 import { prisma } from "@/lib/database/client";
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
 import type { KpiStatusCount } from "@/lib/kpi-cards";
-
-const SALE_STATUS_CODES = ["SLD", "RSV", "OFS", "FW"] as const;
+import {
+  SALES_LIST_STATUS_CODES,
+  salesListDetailWhere,
+} from "@/features/sales/constants/sales-list-status";
 
 const SALE_STATUS_FALLBACK: Record<string, string> = {
   SLD: "Sold",
-  RSV: "Reserved",
   OFS: "Official Sold",
   FW: "TO FOLLOW",
 };
@@ -26,7 +27,7 @@ export const salesKpiService = {
 
     const saleStatusCodeIds = inventoryCodes
       .filter((row) =>
-        SALE_STATUS_CODES.some(
+        SALES_LIST_STATUS_CODES.some(
           (code) => row.code.toUpperCase() === code.toUpperCase(),
         ),
       )
@@ -36,19 +37,21 @@ export const salesKpiService = {
       inventoryCodes.map((row) => [row.id, row] as const),
     );
 
+    const listWhere = salesListDetailWhere(tenantId);
+
     const [statusGroups, totalLines] = await Promise.all([
       saleStatusCodeIds.length > 0
         ? prisma.branchSalesTransactionDetail.groupBy({
             by: ["statusCodeId"],
             where: {
-              sale: { tenantId },
+              ...listWhere,
               statusCodeId: { in: saleStatusCodeIds },
             },
             _count: { id: true },
           })
         : Promise.resolve([]),
       prisma.branchSalesTransactionDetail.count({
-        where: { sale: { tenantId } },
+        where: listWhere,
       }),
     ]);
 
@@ -65,7 +68,7 @@ export const salesKpiService = {
 
     return {
       totalLines,
-      statuses: SALE_STATUS_CODES.map((code) => {
+      statuses: SALES_LIST_STATUS_CODES.map((code) => {
         const meta = inventoryCodes.find(
           (row) => row.code.toUpperCase() === code,
         );

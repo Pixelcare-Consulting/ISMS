@@ -52,6 +52,108 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.31.2",
+    date: "2026-08-11",
+    releasedAt: "2026-08-11T18:05:00+08:00",
+    title: "Sales list stays on sold lines",
+    highlights: [
+      "Sales shows Sold, Official Sold, and TO FOLLOW only",
+      "Pending CS/TL, Approved, Rejected, Closed, and similar return statuses stay under Returns / Replacement",
+      "Sales totals match the filtered list",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Sales list and summary cards focus on Sold, Official Sold, and TO FOLLOW so the page stays a sales ledger",
+      },
+      {
+        type: "fix",
+        description:
+          "Return and replacement workflow statuses no longer appear mixed into the Sales table",
+      },
+    ],
+  },
+  {
+    version: "0.31.1",
+    date: "2026-08-11",
+    releasedAt: "2026-08-11T17:57:00+08:00",
+    title: "Service Return and Replacement on Service Returns",
+    highlights: [
+      "Service Return and Service Replacement requests now show under the Service Returns tab",
+      "Process Return asks for service details when you pick Service Replacement",
+      "Branch Returns stays focused on regular branch return types",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Service Return and Service Replacement requests appear under Service Returns alongside service center sales returns",
+      },
+      {
+        type: "improvement",
+        description:
+          "Process Return shows service fields when you choose Service Replacement, same as Service Return",
+      },
+      {
+        type: "fix",
+        description:
+          "Branch Returns no longer lists Service Return or Service Replacement requests",
+      },
+    ],
+  },
+  {
+    version: "0.31.0",
+    date: "2026-08-11",
+    releasedAt: "2026-08-11T17:15:00+08:00",
+    title: "SAP stays connected for your company",
+    highlights: [
+      "After you Connect to SAP, the link stays Connected when you refresh the page — until it expires or you Logout",
+      "Everyone in your company shares one live SAP connection for the active setup, so the team is not logged in separately",
+      "Test connection still only checks the link and does not keep a session",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "SAP stays connected for your company after refresh so the whole team shares one live link",
+      },
+      {
+        type: "improvement",
+        description:
+          "Session status explains the shared company connection and that Test connection does not keep a session",
+      },
+    ],
+  },
+  {
+    version: "0.30.0",
+    date: "2026-08-11",
+    releasedAt: "2026-08-11T16:45:00+08:00",
+    title: "Warehouses select all & bulk delete",
+    highlights: [
+      "On Warehouses setup, the header checkbox selects or clears all warehouses that match your search — not just the current page",
+      "When warehouses are selected, Delete selected removes them in one step after you confirm",
+      "Warehouses that still have AORs, pull-outs, or stock are left alone, with a clear message for what could not be removed",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Warehouses setup supports Select all for matching rows and Delete selected to remove several warehouses at once",
+      },
+      {
+        type: "improvement",
+        description:
+          "Bulk delete asks for confirmation and skips warehouses that still have links or stock, so you can clean up safely",
+      },
+      {
+        type: "fix",
+        description:
+          "Select all on Warehouses now stays in sync with the full filtered list so the header checkbox no longer stops short of every matching row",
+      },
+    ],
+  },
+  {
     version: "0.29.0",
     date: "2026-08-11",
     releasedAt: "2026-08-11T15:45:00+08:00",

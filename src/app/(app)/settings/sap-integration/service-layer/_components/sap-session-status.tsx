@@ -186,7 +186,9 @@ export function SapSessionStatus({ refreshKey = 0 }: SapSessionStatusProps) {
         </div>
       </div>
       <p className="text-xs text-muted-foreground">
-        Session is process-local. Test connection logs in then out and does not keep a session.
+        Shared company session for everyone using this connection — stays Connected after refresh
+        while the live link is still valid. Test connection logs in then out and does not keep a
+        session.
       </p>
     </div>
   );

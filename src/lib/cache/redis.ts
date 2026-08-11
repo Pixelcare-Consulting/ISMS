@@ -56,6 +56,78 @@ export async function getOrSet<T>(
   return value;
 }
 
+/**
+ * Read a cached value. Returns null when Upstash is not configured, the key is
+ * missing, or Redis errors (fail-open).
+ */
+export async function getCache<T>(key: string): Promise<T | null> {
+  const client = getRedisClient();
+  if (!client) {
+    return null;
+  }
+
+  try {
+    const cached = (await client.get(key)) as T | null;
+    if (cached === null || cached === undefined) {
+      return null;
+    }
+    return cached;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Write a cached value with TTL. No-op when Upstash is not configured or Redis errors.
+ */
+export async function setCache(
+  key: string,
+  value: unknown,
+  ttlSeconds: number,
+): Promise<void> {
+  const client = getRedisClient();
+  if (!client) {
+    return;
+  }
+
+  if (ttlSeconds <= 0) {
+    return;
+  }
+
+  try {
+    await client.set(key, value, { ex: ttlSeconds });
+  } catch {
+    // Redis write failure — ignore
+  }
+}
+
+/**
+ * SET key value NX EX ttl. Returns true when this caller acquired the key.
+ * Fail-open: returns true when Upstash is not configured or Redis errors so
+ * callers still proceed (process-local locks remain the safety net).
+ */
+export async function setIfNotExists(
+  key: string,
+  value: unknown,
+  ttlSeconds: number,
+): Promise<boolean> {
+  const client = getRedisClient();
+  if (!client) {
+    return true;
+  }
+
+  if (ttlSeconds <= 0) {
+    return true;
+  }
+
+  try {
+    const result = await client.set(key, value, { nx: true, ex: ttlSeconds });
+    return result === "OK";
+  } catch {
+    return true;
+  }
+}
+
 export async function deleteCache(key: string): Promise<void> {
   const client = getRedisClient();
   if (!client) {

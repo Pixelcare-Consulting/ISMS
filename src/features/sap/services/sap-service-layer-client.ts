@@ -70,13 +70,13 @@ async function executeWithCookies(
  */
 export const sapServiceLayerClient = {
   /**
-   * Login to Service Layer. When `creds.id` is set, caches the session in-process.
+   * Login to Service Layer. When `creds.id` is set, caches the session (L1 + Redis).
    */
   async login(creds: SapLoginInput): Promise<SapSessionRecord> {
     const session = await performLogin(creds);
     if (creds.id) {
       const stored: SapSessionRecord = { ...session, configId: creds.id };
-      sapSessionManager.setSession(stored);
+      await sapSessionManager.setSession(stored);
       return stored;
     }
     return session;
@@ -87,7 +87,7 @@ export const sapServiceLayerClient = {
    * Pass `cookieHeader` for ad-hoc logins that were never cached.
    */
   async logout(creds: SapLoginInput, cookieHeader?: string | null): Promise<void> {
-    const cached = creds.id ? sapSessionManager.getCached(creds.id) : undefined;
+    const cached = creds.id ? await sapSessionManager.getCached(creds.id) : undefined;
     const cookies =
       cookieHeader !== undefined ? cookieHeader : (cached?.cookies ?? null);
     try {
@@ -95,7 +95,7 @@ export const sapServiceLayerClient = {
     } catch {
       // Best-effort logout — session may already be expired.
     } finally {
-      if (creds.id) sapSessionManager.invalidate(creds.id);
+      if (creds.id) await sapSessionManager.invalidate(creds.id);
     }
   },
 
@@ -109,7 +109,7 @@ export const sapServiceLayerClient = {
     let response = await executeWithCookies(options, session.cookies);
 
     if (isInvalidSessionResponse(response)) {
-      sapSessionManager.invalidate(options.creds.id);
+      await sapSessionManager.invalidate(options.creds.id);
       const refreshed = await sapSessionManager.getSession(options.creds);
       response = await executeWithCookies(options, refreshed.cookies);
     }

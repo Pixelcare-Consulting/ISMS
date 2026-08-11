@@ -24,7 +24,7 @@ import {
   type ProcessReturnPayload,
 } from "@/features/sales/actions/sales.actions";
 import {
-  isServiceReturnDocumentTypeName,
+  isServiceDocumentTypeName,
   RETURN_CLASSIFICATION_OPTIONS,
   RETURN_NATURE_OF_TRANSACTION_OPTIONS,
   RETURN_STOCK_STATUS_OPTIONS,
@@ -91,9 +91,7 @@ export function ProcessReturnDialog({
   const headerSn = primaryLine?.serialNo ?? TO_FOLLOW_SERIAL_LABEL;
 
   const selectedDocType = documentTypes.find((d) => d.id === documentTypeId);
-  const showServiceExtras = isServiceReturnDocumentTypeName(
-    selectedDocType?.name,
-  );
+  const showServiceExtras = isServiceDocumentTypeName(selectedDocType?.name);
 
   const filteredProblems = useMemo(() => {
     const q = problemQuery.trim().toLowerCase();

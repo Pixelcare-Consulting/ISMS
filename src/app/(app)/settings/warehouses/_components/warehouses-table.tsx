@@ -3,13 +3,14 @@
 import { Fragment, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Package, Plus } from "lucide-react";
+import { Package, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
   createWarehouseAction,
   addWarehouseLocationAction,
   deleteWarehouseAction,
+  deleteWarehousesAction,
   deleteWarehouseLocationAction,
   syncWarehousesFromSapAction,
 } from "@/features/warehouses/actions/warehouse.actions";
@@ -70,6 +71,7 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
   const [deleting, setDeleting] = useState<WarehouseRow | null>(null);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [deletingLocation, setDeletingLocation] = useState<{
     warehouseId: string;
     location: LocationRow;
@@ -98,7 +100,8 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
     [rows],
   );
 
-  const selection = useTableSelection(filtered.map((warehouse) => warehouse.id));
+  const filteredIds = useMemo(() => filtered.map((warehouse) => warehouse.id), [filtered]);
+  const selection = useTableSelection(filteredIds);
   const sort = useClientTableSort(filtered, {
     code: (w) => w.code,
     name: (w) => w.name,
@@ -154,7 +157,62 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
       setRows((currentRows) =>
         currentRows.filter((warehouse) => warehouse.id !== deleting.id),
       );
+      selection.clearSelection();
       setDeleting(null);
+      router.refresh();
+    });
+  }
+
+  function handleBulkDelete() {
+    const ids = selection.selectedIds.filter((id) =>
+      filteredIds.includes(id),
+    );
+    if (ids.length === 0) return;
+
+    startTransition(async () => {
+      const result = await deleteWarehousesAction({ warehouseIds: ids });
+      if ("error" in result && result.error && !("deletedIds" in result)) {
+        toast.error(String(result.error));
+        return;
+      }
+
+      const deletedIds =
+        "deletedIds" in result && Array.isArray(result.deletedIds)
+          ? result.deletedIds
+          : [];
+      const failed =
+        "failed" in result && Array.isArray(result.failed) ? result.failed : [];
+
+      if (deletedIds.length > 0) {
+        const deletedSet = new Set(deletedIds);
+        setRows((currentRows) =>
+          currentRows.filter((warehouse) => !deletedSet.has(warehouse.id)),
+        );
+      }
+
+      selection.clearSelection();
+      setBulkDeleteOpen(false);
+
+      if (deletedIds.length > 0 && failed.length === 0) {
+        toast.success(
+          `Deleted ${deletedIds.length} warehouse${deletedIds.length === 1 ? "" : "s"}`,
+        );
+      } else if (deletedIds.length > 0 && failed.length > 0) {
+        toast.success(
+          `Deleted ${deletedIds.length} warehouse${deletedIds.length === 1 ? "" : "s"}`,
+        );
+        toast.error(
+          `${failed.length} could not be deleted (linked AORs, pull-outs, or stock)`,
+        );
+      } else if (failed.length > 0) {
+        toast.error(
+          failed.length === 1
+            ? failed[0]?.error ??
+                "Could not delete warehouse (linked AORs, pull-outs, or stock)"
+            : `None deleted — ${failed.length} warehouses still have links or stock`,
+        );
+      }
+
       router.refresh();
     });
   }
@@ -220,6 +278,8 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
       ? "No warehouses yet."
       : "No warehouses match your search.";
 
+  const selectedCount = selection.selectedCount;
+
   return (
     <>
       <GlobalDataTable
@@ -232,8 +292,23 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
         }}
         toolbarLeading={
           <TableSelectionBadge
-            count={selection.selectedCount}
+            count={selectedCount}
             onClear={selection.clearSelection}
+            actions={
+              selectedCount > 0 ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  disabled={pending}
+                  onClick={() => setBulkDeleteOpen(true)}
+                >
+                  <Trash2 className="size-4" />
+                  Delete selected
+                </Button>
+              ) : null
+            }
           />
         }
         toolbarActions={
@@ -280,7 +355,7 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
                   isAllSelected={selection.isAllSelected}
                   isPartiallySelected={selection.isPartiallySelected}
                   onToggleAll={selection.toggleAll}
-                  aria-label="Select all warehouses"
+                  aria-label="Select all matching warehouses"
                 />
                 <TableIndexHead />
                 <GlobalTableHead {...sort.sortProps("code")}>Code</GlobalTableHead>
@@ -380,10 +455,28 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
         title="Delete warehouse?"
         description={
           deleting
-            ? `Remove ${deleting.name} (${deleting.code}) and all locations.`
+            ? `Remove ${deleting.name} (${deleting.code}) and all locations. Warehouses with linked AORs, pull-outs, or stock cannot be deleted.`
             : ""
         }
         onConfirm={handleDelete}
+        pending={pending}
+      />
+
+      <DeleteConfirmDialog
+        open={bulkDeleteOpen}
+        onOpenChange={(open) => {
+          if (!open && !pending) setBulkDeleteOpen(false);
+        }}
+        title="Delete selected warehouses?"
+        description={
+          selectedCount === 1
+            ? "Remove the selected warehouse and its locations. Warehouses with linked AORs, pull-outs, or stock will be skipped."
+            : `Remove ${selectedCount} selected warehouses and their locations. Warehouses with linked AORs, pull-outs, or stock will be skipped.`
+        }
+        confirmLabel={
+          selectedCount === 1 ? "Delete warehouse" : `Delete ${selectedCount} warehouses`
+        }
+        onConfirm={handleBulkDelete}
         pending={pending}
       />
 

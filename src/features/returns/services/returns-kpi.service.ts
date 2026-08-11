@@ -1,5 +1,6 @@
 import type { ReturnRequestStatus } from "@prisma/client";
 
+import { branchReturnDocumentTypeScopeWhere } from "@/features/sales/repositories/sales.repository";
 import { prisma } from "@/lib/database/client";
 import type { KpiStatusCount } from "@/lib/kpi-cards";
 
@@ -55,15 +56,35 @@ function buildKpisFromGroups(
   };
 }
 
+function mergeStatusGroups(
+  groups: Array<{ status: ReturnRequestStatus; _count: { id: number } }>[],
+): Map<ReturnRequestStatus, number> {
+  const merged = new Map<ReturnRequestStatus, number>();
+  for (const groupList of groups) {
+    for (const group of groupList) {
+      merged.set(
+        group.status,
+        (merged.get(group.status) ?? 0) + group._count.id,
+      );
+    }
+  }
+  return merged;
+}
+
 export const returnsKpiService = {
   async getBranchKpis(tenantId: string): Promise<ReturnsKpis> {
+    const where = {
+      tenantId,
+      ...branchReturnDocumentTypeScopeWhere("branch"),
+    };
+
     const [groups, totalReturns] = await Promise.all([
       prisma.branchReturnRequest.groupBy({
         by: ["status"],
-        where: { tenantId },
+        where,
         _count: { id: true },
       }),
-      prisma.branchReturnRequest.count({ where: { tenantId } }),
+      prisma.branchReturnRequest.count({ where }),
     ]);
 
     return buildKpisFromGroups(groups, totalReturns, RETURN_STATUS_ORDER);
@@ -73,23 +94,43 @@ export const returnsKpiService = {
     tenantId: string,
     serviceCenterIds: string[] | null,
   ): Promise<ReturnsKpis> {
-    const where = {
+    const scWhere = {
       tenantId,
       sale: {
         ...(serviceCenterIds ? { serviceCenterId: { in: serviceCenterIds } } : {}),
       },
     };
+    const branchServiceWhere = {
+      tenantId,
+      ...branchReturnDocumentTypeScopeWhere("service"),
+    };
 
-    const [groups, totalReturns] = await Promise.all([
+    const [scGroups, branchGroups, scTotal, branchTotal] = await Promise.all([
       prisma.serviceCenterReturnRequest.groupBy({
         by: ["status"],
-        where,
+        where: scWhere,
         _count: { id: true },
       }),
-      prisma.serviceCenterReturnRequest.count({ where }),
+      prisma.branchReturnRequest.groupBy({
+        by: ["status"],
+        where: branchServiceWhere,
+        _count: { id: true },
+      }),
+      prisma.serviceCenterReturnRequest.count({ where: scWhere }),
+      prisma.branchReturnRequest.count({ where: branchServiceWhere }),
     ]);
 
-    return buildKpisFromGroups(groups, totalReturns, RETURN_STATUS_ORDER);
+    const merged = mergeStatusGroups([scGroups, branchGroups]);
+    const totalReturns = scTotal + branchTotal;
+
+    return {
+      totalReturns,
+      statuses: RETURN_STATUS_ORDER.map((status) => ({
+        code: status,
+        name: RETURN_STATUS_LABELS[status],
+        count: merged.get(status) ?? 0,
+      })),
+    };
   },
 
   async getApprovalsKpis(
@@ -125,14 +166,7 @@ export const returnsKpiService = {
       prisma.serviceCenterReturnRequest.count({ where: serviceWhere }),
     ]);
 
-    const merged = new Map<ReturnRequestStatus, number>();
-    for (const group of [...branchGroups, ...scGroups]) {
-      merged.set(
-        group.status,
-        (merged.get(group.status) ?? 0) + group._count.id,
-      );
-    }
-
+    const merged = mergeStatusGroups([branchGroups, scGroups]);
     const totalReturns = branchTotal + scTotal;
 
     return {

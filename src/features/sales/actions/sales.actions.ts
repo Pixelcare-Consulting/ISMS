@@ -24,7 +24,7 @@ import {
   TO_FOLLOW_SERIAL_ID,
   TO_FOLLOW_SERIAL_LABEL,
 } from "@/features/sales/constants/to-follow-serial";
-import { isServiceReturnDocumentTypeName } from "@/features/sales/constants/process-return";
+import { isServiceDocumentTypeName } from "@/features/sales/constants/process-return";
 import { generateAndStoreAtrOdrfPdf } from "@/features/sales/services/atr-odrf-pdf";
 import {
   SALES_ACCESS_PERMISSIONS,
@@ -45,6 +45,7 @@ import {
   RETURNS_COMPLETE,
   RETURNS_EVALUATE,
   RETURNS_REQUEST,
+  RETURNS_SERVICE_VIEW_PERMISSIONS,
   returnsRejectPermissions,
 } from "@/features/returns/constants/returns-permissions";
 import { capturesDeliveryReceipt } from "@/features/sales/utils/delivery-method";
@@ -135,10 +136,13 @@ function resolveSalesAtrStatusCode(
 
 /**
  * List/details STATUS preference (never live inventory):
- * 1) Active ATR return workflow (pending CS/TL/approved/rejected)
+ * 1) Active ATR return workflow (pending CS/TL/approved/rejected) — details / returns only
  * 2) Closed ATR header
- * 3) Frozen detail.statusCode (FW / SLD / RSV)
+ * 3) Frozen detail.statusCode (FW / SLD / RSV / OFS)
  * 4) Legacy derive from serial + atrStatus
+ *
+ * Sales list passes returnStatus=null and filters to SLD/OFS/FW so return badges
+ * never appear there (see salesListDetailWhere).
  */
 function resolveLineStatusCode(
   detail: {
@@ -458,12 +462,13 @@ export async function listSalesAction(input?: {
         serialNumber: detail.serialNumber
           ? { id: detail.serialNumber.id, serialNo: detail.serialNumber.serialNo }
           : null,
+        // Sales list never overlays return workflow badges (those live on Returns).
         statusCode: resolveLineStatusCode(
           detail,
           sale.atrStatus,
           toFollowStatus,
           salesAtrCodes,
-          sale.returnRequest?.status,
+          null,
         ),
         returnRequest: sale.returnRequest
           ? { id: sale.returnRequest.id, status: sale.returnRequest.status }
@@ -475,7 +480,8 @@ export async function listSalesAction(input?: {
 
 /**
  * Branch returns list: one row per BranchReturnRequest with ATR / return status badges.
- * Branch tab: `returns.branch.view` / umbrella / legacy.
+ * Branch tab: `returns.branch.view` / umbrella / legacy (non-service Document Types).
+ * Service tab: `returns.service.view` / umbrella (Service Return / Replacement Document Types).
  * Approvals queue (`statusIn`): evaluate / approve / complete (no separate approvals.view).
  */
 export async function listSalesReturnsAction(input?: {
@@ -484,13 +490,18 @@ export async function listSalesReturnsAction(input?: {
   sort?: string;
   sortDir?: string;
   statusIn?: Array<"pending_cs" | "pending_tl" | "approved" | "rejected" | "completed">;
+  documentTypeScope?: "branch" | "service";
 }) {
   const forApprovalsQueue = Boolean(input?.statusIn?.length);
-  const session = await requireAnyPermission(
-    forApprovalsQueue
-      ? [...RETURNS_APPROVALS_VIEW_PERMISSIONS]
-      : [...RETURNS_BRANCH_VIEW_PERMISSIONS],
-  );
+  const documentTypeScope = forApprovalsQueue
+    ? undefined
+    : (input?.documentTypeScope ?? "branch");
+  const listPermissions = forApprovalsQueue
+    ? [...RETURNS_APPROVALS_VIEW_PERMISSIONS]
+    : documentTypeScope === "service"
+      ? [...RETURNS_SERVICE_VIEW_PERMISSIONS]
+      : [...RETURNS_BRANCH_VIEW_PERMISSIONS];
+  const session = await requireAnyPermission(listPermissions);
   const [result, salesAtrCodes] = await Promise.all([
     salesRepository.listReturnRequestsForTenant(
       session.user.tenantId,
@@ -502,7 +513,10 @@ export async function listSalesReturnsAction(input?: {
         field: parseSalesReturnsSort(input?.sort),
         dir: parseSalesSortDir(input?.sortDir),
       },
-      { statusIn: input?.statusIn },
+      {
+        statusIn: input?.statusIn,
+        documentTypeScope,
+      },
     ),
     loadSalesAtrCodesByCode(session.user.tenantId),
   ]);
@@ -1409,9 +1423,11 @@ export async function requestReturnAction(
   const problemDescriptionText = orderedProblems.map((p) => p.name).join("; ");
   const problemDescriptionId = orderedProblems[0]!.id;
 
-  const serviceReturn = isServiceReturnDocumentTypeName(documentType.name);
+  const serviceReturn = isServiceDocumentTypeName(documentType.name);
   if (serviceReturn && !data.serviceCenterId?.trim()) {
-    return { error: "Service center is required for Service Return" as const };
+    return {
+      error: "Service center is required for Service Return / Replacement" as const,
+    };
   }
 
   if (data.serviceCenterId) {
