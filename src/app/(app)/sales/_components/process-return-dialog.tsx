@@ -37,6 +37,8 @@ type LookupOption = { id: string; name: string };
 
 type ProcessReturnDialogProps = {
   sale: SaleDetailsPayload;
+  /** Sale line targeted for this return / replacement. */
+  saleDetailId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmitted: () => void;
@@ -57,6 +59,7 @@ function ProcessReturnFormSkeleton() {
 
 export function ProcessReturnDialog({
   sale,
+  saleDetailId,
   open,
   onOpenChange,
   onSubmitted,
@@ -86,9 +89,10 @@ export function ProcessReturnDialog({
   const [refContactPo, setRefContactPo] = useState("");
   const [warehouseLocationId, setWarehouseLocationId] = useState("");
 
-  const primaryLine = sale.lines[0];
-  const headerModel = primaryLine?.modelLabel ?? "—";
-  const headerSn = primaryLine?.serialNo ?? TO_FOLLOW_SERIAL_LABEL;
+  const selectedLine =
+    sale.lines.find((l) => l.detailId === saleDetailId) ?? sale.lines[0];
+  const headerModel = selectedLine?.modelLabel ?? "—";
+  const headerSn = selectedLine?.serialNo ?? TO_FOLLOW_SERIAL_LABEL;
 
   const selectedDocType = documentTypes.find((d) => d.id === documentTypeId);
   const showServiceExtras = isServiceDocumentTypeName(selectedDocType?.name);
@@ -132,6 +136,7 @@ export function ProcessReturnDialog({
   }
 
   function validate(): string | null {
+    if (!saleDetailId) return "Select a sale line to return";
     if (!documentTypeId) return "Document type is required";
     if (!stockStatusCode) return "Stock status is required";
     if (problemIds.length === 0) return "Select at least one problem description";
@@ -149,6 +154,7 @@ export function ProcessReturnDialog({
     }
 
     const payload: ProcessReturnPayload = {
+      saleDetailId,
       documentTypeId,
       stockStatusCode,
       actionType,

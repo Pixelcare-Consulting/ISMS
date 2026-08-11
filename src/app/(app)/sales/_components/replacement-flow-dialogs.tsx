@@ -27,6 +27,8 @@ export type ReplacementFlowTarget = {
   returnRequestId: string;
   saleId: string;
   transactionNo: string;
+  /** ISO datetime from the original sale (for Same Invoice verification). */
+  transactionDate: string | null;
   branchId: string;
   branchName: string;
 };
@@ -42,6 +44,19 @@ function todayInputValue(): string {
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+/** YYYY-MM-DD for date inputs without timezone drift. */
+function toDateInputValue(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const dayPrefix = /^(\d{4}-\d{2}-\d{2})/.exec(iso);
+  if (dayPrefix) return dayPrefix[1]!;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const yyyy = date.getUTCFullYear();
+  const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(date.getUTCDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
 }
 
@@ -224,10 +239,30 @@ export function ReplacementFlowDialogs({
           <DialogHeader>
             <DialogTitle>Same Invoice</DialogTitle>
             <DialogDescription>
-              Pick the replacement model and STK serial at the sold branch.
+              Confirm the original TRN, then pick the replacement model and STK
+              serial at the sold branch.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="same-trn-no">TRN number</Label>
+              <Input
+                id="same-trn-no"
+                value={target?.transactionNo ?? ""}
+                readOnly
+                disabled
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="same-trn-date">TRN date</Label>
+              <Input
+                id="same-trn-date"
+                type="date"
+                value={toDateInputValue(target?.transactionDate)}
+                readOnly
+                disabled
+              />
+            </div>
             <SearchableSelect
               label="Model *"
               options={models}

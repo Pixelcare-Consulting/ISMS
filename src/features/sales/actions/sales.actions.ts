@@ -24,7 +24,10 @@ import {
   TO_FOLLOW_SERIAL_ID,
   TO_FOLLOW_SERIAL_LABEL,
 } from "@/features/sales/constants/to-follow-serial";
-import { isServiceDocumentTypeName } from "@/features/sales/constants/process-return";
+import {
+  isDealerInitiatedDocumentTypeName,
+  isServiceDocumentTypeName,
+} from "@/features/sales/constants/process-return";
 import { generateAndStoreAtrOdrfPdf } from "@/features/sales/services/atr-odrf-pdf";
 import {
   SALES_ACCESS_PERMISSIONS,
@@ -525,19 +528,27 @@ export async function listSalesReturnsAction(input?: {
     ...result,
     items: result.items.map((row) => {
       const sale = row.sale;
-      const firstDetail = sale.details[0];
+      const linkedDetail = row.saleDetailId
+        ? sale.details.find((d) => d.id === row.saleDetailId)
+        : null;
+      const displayDetail = linkedDetail ?? sale.details[0];
       const replacement = sale.replacements[0] ?? null;
-      const origModelLabel = firstDetail?.model
-        ? [firstDetail.model.skuCode, firstDetail.model.name]
+      const origModelLabel = displayDetail?.model
+        ? [displayDetail.model.skuCode, displayDetail.model.name]
             .filter(Boolean)
             .join(" · ")
         : null;
-      const origSerialNos = sale.details
-        .map((d) => d.serialNumber?.serialNo)
-        .filter((v): v is string => Boolean(v));
+      const origSerialNo = displayDetail?.serialNumber?.serialNo ?? null;
+      const origSerialNos = linkedDetail
+        ? origSerialNo
+          ? [origSerialNo]
+          : []
+        : sale.details
+            .map((d) => d.serialNumber?.serialNo)
+            .filter((v): v is string => Boolean(v));
       const origPrice =
-        firstDetail?.modelPrice?.toString() ??
-        firstDetail?.saleAmount?.toString() ??
+        displayDetail?.modelPrice?.toString() ??
+        displayDetail?.saleAmount?.toString() ??
         sale.amount.toString();
 
       return {
@@ -566,7 +577,7 @@ export async function listSalesReturnsAction(input?: {
         atrOdrfPdfPath: row.atrOdrfPdfPath,
         hasAtrOdrfPdf: Boolean(row.atrOdrfPdfPath),
         origModelLabel,
-        origSerialNo: origSerialNos[0] ?? null,
+        origSerialNo: origSerialNo ?? origSerialNos[0] ?? null,
         origSerialNos,
         origPrice,
         replSerialNo: replacement?.replacementSerialNumber?.serialNo ?? null,
@@ -642,6 +653,7 @@ export async function getSaleDetailsAction(saleId: string) {
           actionType: sale.returnRequest.actionType ?? "return",
           stockStatusCode: sale.returnRequest.stockStatusCode ?? "STK",
           hasAtrOdrfPdf: Boolean(sale.returnRequest.atrOdrfPdfPath),
+          documentTypeName: sale.returnRequest.documentType?.name ?? null,
         }
       : null,
     returnStatusCode,
@@ -1350,6 +1362,7 @@ export async function listProcessReturnLookupsAction() {
 }
 
 const processReturnPayloadSchema = z.object({
+  saleDetailId: z.string().min(1),
   documentTypeId: z.string().min(1),
   stockStatusCode: z.enum(["STK", "DEF"]),
   actionType: z.enum(["return", "replacement"]),
@@ -1477,6 +1490,7 @@ export async function requestReturnAction(
       details: {
         orderBy: { createdAt: "asc" },
         select: {
+          id: true,
           saleAmount: true,
           amount: true,
           model: { select: { skuCode: true, name: true } },
@@ -1491,6 +1505,11 @@ export async function requestReturnAction(
     return { error: "Sale is not eligible for return" as const };
   }
 
+  const targetDetail = sale.details.find((d) => d.id === data.saleDetailId);
+  if (!targetDetail) {
+    return { error: "Selected sale line does not belong to this transaction" as const };
+  }
+
   const summaryNote = `[${data.actionType === "replacement" ? "Replacement" : "Return"} requested] ${documentType.name} · ${data.stockStatusCode} · ${problemDescriptionText}`;
 
   const created = await prisma.$transaction(async (tx) => {
@@ -1498,6 +1517,7 @@ export async function requestReturnAction(
       data: {
         tenantId: session.user.tenantId,
         saleId,
+        saleDetailId: targetDetail.id,
         requestedById: session.user.id,
         actionType: data.actionType,
         stockStatusCode: data.stockStatusCode,
@@ -1608,7 +1628,7 @@ export async function requestReturnAction(
               .filter(Boolean)
               .join(" · ")
           : null,
-        lines: sale.details.map((d) => ({
+        lines: [targetDetail].map((d) => ({
           modelLabel: d.model
             ? d.model.skuCode || d.model.name || "—"
             : "—",
@@ -1638,6 +1658,7 @@ export async function requestReturnAction(
       actionType: data.actionType,
       stockStatusCode: data.stockStatusCode,
       documentTypeId: documentType.id,
+      saleDetailId: targetDetail.id,
       returnRequestId: created.id,
       hasAtrOdrfPdf: Boolean(atrOdrfPdfPath),
     },
@@ -1754,8 +1775,10 @@ async function restoreReturnInventory(input: {
     transactionNo: string;
     branchId: string;
     alternateBranchId: string | null;
-    details: { serialNumberId: string | null }[];
+    details: { id: string; serialNumberId: string | null }[];
   };
+  /** When set, restore only this sale line's serial (legacy null → first serial). */
+  saleDetailId?: string | null;
 }) {
   const statusCode = input.stockStatusCode === "DEF" ? "DEF" : "STK";
   const statusCodeId = await reasonStatusService.requireCodeId(
@@ -1781,13 +1804,17 @@ async function restoreReturnInventory(input: {
 
   const soldBranchId = input.sale.branchId;
   const stockBranchId = input.sale.alternateBranchId ?? input.sale.branchId;
-  const serialIds = [
-    ...new Set(
-      input.sale.details
-        .map((d) => d.serialNumberId)
-        .filter((id): id is string => typeof id === "string" && id.length > 0),
-    ),
-  ];
+
+  const scopedDetails = input.saleDetailId
+    ? input.sale.details.filter((d) => d.id === input.saleDetailId)
+    : input.sale.details;
+  const targetDetail =
+    scopedDetails.find((d) => d.serialNumberId) ?? scopedDetails[0] ?? null;
+  // Legacy requests without saleDetailId: restore the first linked serial only —
+  // never rewrite sibling package lines.
+  const serialIds = targetDetail?.serialNumberId
+    ? [targetDetail.serialNumberId]
+    : [];
 
   if (serialIds.length === 0) {
     return {
@@ -1829,19 +1856,37 @@ export async function evaluateReturnAction(returnRequestId: string, notes?: stri
   ]);
   const row = await prisma.branchReturnRequest.findFirst({
     where: { id: returnRequestId, tenantId: session.user.tenantId },
+    select: {
+      id: true,
+      status: true,
+      documentType: { select: { name: true } },
+    },
   });
   if (!row || row.status !== "pending_cs") {
     return { error: "Return request not found or not pending CS evaluation" };
   }
 
+  const needsTl = isDealerInitiatedDocumentTypeName(row.documentType?.name);
+  const now = new Date();
+
   await prisma.branchReturnRequest.update({
     where: { id: returnRequestId },
-    data: {
-      status: "pending_tl",
-      evaluatedById: session.user.id,
-      evaluatedAt: new Date(),
-      evaluationNotes: notes,
-    },
+    data: needsTl
+      ? {
+          status: "pending_tl",
+          evaluatedById: session.user.id,
+          evaluatedAt: now,
+          evaluationNotes: notes,
+        }
+      : {
+          // Non-dealer types skip TL — CS evaluate lands directly on approved.
+          status: "approved",
+          evaluatedById: session.user.id,
+          evaluatedAt: now,
+          evaluationNotes: notes,
+          approvedById: session.user.id,
+          approvedAt: now,
+        },
   });
 
   await auditService.log({
@@ -1850,6 +1895,10 @@ export async function evaluateReturnAction(returnRequestId: string, notes?: stri
     action: "return.evaluated",
     entityType: "BranchReturnRequest",
     entityId: returnRequestId,
+    metadata: {
+      nextStatus: needsTl ? "pending_tl" : "approved",
+      documentTypeName: row.documentType?.name ?? null,
+    },
   });
 
   revalidatePath("/sales");
@@ -1955,19 +2004,20 @@ export async function completeReturnRestoreAction(returnRequestId: string) {
       status: true,
       actionType: true,
       stockStatusCode: true,
+      saleDetailId: true,
       sale: {
         select: {
           id: true,
           transactionNo: true,
           branchId: true,
           alternateBranchId: true,
-          details: { select: { serialNumberId: true } },
+          details: { select: { id: true, serialNumberId: true } },
         },
       },
     },
   });
   if (!row || row.status !== "approved") {
-    return { error: "Return must be TL-approved before inventory restore" };
+    return { error: "Return must be approved before inventory restore" };
   }
   // Replacement path finishes via Same/New Invoice — not plain restore.
   if (row.actionType === "replacement") {
@@ -1986,6 +2036,7 @@ export async function completeReturnRestoreAction(returnRequestId: string) {
     returnRequestId,
     stockStatusCode,
     sale: row.sale,
+    saleDetailId: row.saleDetailId,
   });
   if ("error" in restored) return restored;
 
@@ -2054,6 +2105,7 @@ async function completeReplacementCore(input: {
       status: true,
       actionType: true,
       stockStatusCode: true,
+      saleDetailId: true,
       sale: {
         select: {
           id: true,
@@ -2095,7 +2147,7 @@ async function completeReplacementCore(input: {
   });
 
   if (!row || row.status !== "approved") {
-    return { error: "Replacement must be TL-approved before completing" as const };
+    return { error: "Replacement must be approved before completing" as const };
   }
   if ((row.actionType ?? "return") !== "replacement") {
     return {
@@ -2162,8 +2214,17 @@ async function completeReplacementCore(input: {
     };
   }
 
+  const scopedDetails = row.saleDetailId
+    ? row.sale.details.filter((d) => d.id === row.saleDetailId)
+    : row.sale.details;
   const targetDetail =
-    row.sale.details.find((d) => d.serialNumberId) ?? row.sale.details[0] ?? null;
+    scopedDetails.find((d) => d.serialNumberId) ??
+    scopedDetails[0] ??
+    (row.saleDetailId
+      ? null
+      : row.sale.details.find((d) => d.serialNumberId) ??
+        row.sale.details[0] ??
+        null);
   const originalSerialId = targetDetail?.serialNumberId ?? null;
   const originalPriceRaw =
     targetDetail?.modelPrice ??
@@ -2173,13 +2234,8 @@ async function completeReplacementCore(input: {
   const originalPrice =
     originalPriceRaw != null ? Number(originalPriceRaw.toString()) : 0;
 
-  const originalSerialIds = [
-    ...new Set(
-      row.sale.details
-        .map((d) => d.serialNumberId)
-        .filter((id): id is string => typeof id === "string" && id.length > 0),
-    ),
-  ];
+  // Only restore / rewrite the targeted line's serial — never sibling package SNs.
+  const originalSerialIds = originalSerialId ? [originalSerialId] : [];
   if (originalSerialIds.length === 0) {
     return {
       error:

@@ -222,6 +222,7 @@ export const salesRepository = {
           dealerRsNo: true,
           actualDateReturned: true,
           atrOdrfPdfPath: true,
+          saleDetailId: true,
           createdAt: true,
           documentType: { select: { id: true, name: true } },
           sale: {
@@ -236,6 +237,7 @@ export const salesRepository = {
               details: {
                 orderBy: { createdAt: "asc" as const },
                 select: {
+                  id: true,
                   saleAmount: true,
                   modelPrice: true,
                   model: { select: { skuCode: true, name: true } },
@@ -305,6 +307,7 @@ export const salesRepository = {
             actionType: true,
             stockStatusCode: true,
             atrOdrfPdfPath: true,
+            documentType: { select: { name: true } },
           },
         },
         createdBy: { select: { name: true, email: true } },

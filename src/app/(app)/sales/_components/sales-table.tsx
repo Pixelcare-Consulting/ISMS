@@ -243,8 +243,10 @@ export function SalesTable({
     useState<SaleDetailsPayload | null>(null);
   const [pendingConfirm, setPendingConfirm] =
     useState<SaleReturnPendingConfirm | null>(null);
-  const [processReturnSale, setProcessReturnSale] =
-    useState<SaleDetailsPayload | null>(null);
+  const [processReturnSale, setProcessReturnSale] = useState<{
+    sale: SaleDetailsPayload;
+    saleDetailId: string;
+  } | null>(null);
   const [replacementTarget, setReplacementTarget] =
     useState<ReplacementFlowTarget | null>(null);
   const pageSize = parseTablePageSize(result.limit);
@@ -356,10 +358,17 @@ export function SalesTable({
     });
   }
 
-  function handleReturnAction(action: SaleReturnConfirmAction) {
+  function handleReturnAction(
+    action: SaleReturnConfirmAction,
+    detailId?: string,
+  ) {
     if (!saleDetails) return;
     if (action === "request") {
-      setProcessReturnSale(saleDetails);
+      if (!detailId) {
+        toast.error("Select a serial line to request return");
+        return;
+      }
+      setProcessReturnSale({ sale: saleDetails, saleDetailId: detailId });
       return;
     }
     if (action === "complete_replacement") {
@@ -368,6 +377,7 @@ export function SalesTable({
         returnRequestId: saleDetails.returnRequest.id,
         saleId: saleDetails.id,
         transactionNo: saleDetails.transactionNo,
+        transactionDate: saleDetails.transactionDate,
         branchId: saleDetails.branchId,
         branchName: saleDetails.branch.name,
       });
@@ -705,13 +715,14 @@ export function SalesTable({
 
       {processReturnSale ? (
         <ProcessReturnDialog
-          sale={processReturnSale}
+          sale={processReturnSale.sale}
+          saleDetailId={processReturnSale.saleDetailId}
           open
           onOpenChange={(open) => {
             if (!open) setProcessReturnSale(null);
           }}
           onSubmitted={() => {
-            const saleId = processReturnSale.id;
+            const saleId = processReturnSale.sale.id;
             setProcessReturnSale(null);
             router.refresh();
             if (detailsSaleId === saleId) {

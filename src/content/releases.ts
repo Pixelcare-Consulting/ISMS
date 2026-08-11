@@ -52,6 +52,46 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.31.3",
+    date: "2026-08-11",
+    releasedAt: "2026-08-11T19:35:00+08:00",
+    title: "Return the right serial on a package",
+    highlights: [
+      "Request return from each serial line — Process Return shows that model and SN",
+      "Full serial numbers stay readable in sale details",
+      "Same Invoice shows the original TRN number and date to double-check",
+      "Dealer Initiated returns still need Team Leader after CS; other types go Approved after CS",
+      "Completing a return or replacement only changes the selected serial — other units on the package stay put",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Request return per serial line so multi-unit packages target the right SN from Process Return through complete",
+      },
+      {
+        type: "feature",
+        description:
+          "Same Invoice shows the original transaction number and date as read-only checks before you pick the replacement unit",
+      },
+      {
+        type: "improvement",
+        description:
+          "Dealer Initiated Return / Replacement still needs Team Leader approve after CS; other document types move straight to Approved after CS evaluate",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sale details show the full serial number without cutting it off in a narrow column",
+      },
+      {
+        type: "fix",
+        description:
+          "Finishing a return or replacement no longer rewrites other serials on the same package",
+      },
+    ],
+  },
+  {
     version: "0.31.2",
     date: "2026-08-11",
     releasedAt: "2026-08-11T18:05:00+08:00",

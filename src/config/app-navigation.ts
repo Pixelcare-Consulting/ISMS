@@ -139,7 +139,7 @@ export const appNavigation: NavEntry[] = [
   },
   {
     type: "group",
-    label: "Sales",
+    label: "Sales & ATRs",
     icon: History,
     items: [
       {

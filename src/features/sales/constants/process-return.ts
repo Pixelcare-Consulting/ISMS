@@ -6,12 +6,30 @@ export const SERVICE_DOCUMENT_TYPE_NAMES = [
   "service replacements",
 ] as const;
 
+/** Document Type names that require Team Leader approve after CS evaluate. */
+export const DEALER_INITIATED_DOCUMENT_TYPE_NAMES = [
+  "dealer initiated return",
+  "dealer initiated returns",
+  "dealer initiated replacement",
+  "dealer initiated replacements",
+] as const;
+
 /** Document Type names that unlock Service Return extras (case-insensitive). */
 export function isServiceDocumentTypeName(
   name: string | null | undefined,
 ): boolean {
   const normalized = name?.trim().toLowerCase() ?? "";
   return (SERVICE_DOCUMENT_TYPE_NAMES as readonly string[]).includes(
+    normalized,
+  );
+}
+
+/** Dealer Initiated Return / Replacement — CS evaluate goes to pending_tl. */
+export function isDealerInitiatedDocumentTypeName(
+  name: string | null | undefined,
+): boolean {
+  const normalized = name?.trim().toLowerCase() ?? "";
+  return (DEALER_INITIATED_DOCUMENT_TYPE_NAMES as readonly string[]).includes(
     normalized,
   );
 }

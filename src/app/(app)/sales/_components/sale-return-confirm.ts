@@ -22,13 +22,14 @@ export const SALE_RETURN_CONFIRM_COPY: Record<
   evaluate: {
     title: "Are you sure you want to complete CS evaluation?",
     description:
-      "This marks CS evaluation complete and moves the return to Team Lead approval.",
+      "This marks CS evaluation complete. Dealer Initiated types still need Team Leader approve; other document types move straight to Approved.",
     confirmLabel: "CS evaluate",
     successMessage: "CS evaluation complete",
   },
   approve: {
     title: "Are you sure you want to approve this return?",
-    description: "This TL-approves the return so inventory can be restored.",
+    description:
+      "This TL-approves the Dealer Initiated return so inventory can be restored or replaced.",
     confirmLabel: "TL approve",
     successMessage: "TL approved return",
   },
@@ -42,7 +43,7 @@ export const SALE_RETURN_CONFIRM_COPY: Record<
   restore: {
     title: "Are you sure you want to restore stock?",
     description:
-      "This restores inventory for the returned units and closes the ATR. This cannot be undone from this screen.",
+      "This restores inventory for the selected serial on this return and closes the ATR. Other serials on the package stay unchanged.",
     confirmLabel: "Restore stock",
     successMessage: "Inventory restored — ATR closed",
   },

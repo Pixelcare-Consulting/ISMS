@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/tooltip";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import type { SaleStatusCodeRef } from "@/features/sales/actions/sales.actions";
+import { isDealerInitiatedDocumentTypeName } from "@/features/sales/constants/process-return";
 import type { SalesActionCapabilities } from "@/features/sales/constants/sales-permissions";
 import { TO_FOLLOW_SERIAL_LABEL } from "@/features/sales/constants/to-follow-serial";
 import { capturesDeliveryReceipt } from "@/features/sales/utils/delivery-method";
@@ -78,6 +79,7 @@ export interface SaleDetailsPayload {
     actionType: "return" | "replacement";
     stockStatusCode: "STK" | "DEF";
     hasAtrOdrfPdf: boolean;
+    documentTypeName: string | null;
   } | null;
   returnStatusCode: SaleStatusCodeRef | null;
   createdByName: string | null;
@@ -108,12 +110,23 @@ interface SaleDetailsDialogProps {
   pending?: boolean;
   onEditLine: (line: SaleDetailsLine) => void;
   onEditHeader?: () => void;
-  onReturnAction: (action: SaleReturnConfirmAction) => void;
+  onReturnAction: (
+    action: SaleReturnConfirmAction,
+    detailId?: string,
+  ) => void;
 }
 
 /** Line Edit is only for exact TO-FOLLOW placeholders (pending real serial). */
 function canEditSaleLine(line: SaleDetailsLine): boolean {
   return !line.serialNumberId && line.serialNo === TO_FOLLOW_SERIAL_LABEL;
+}
+
+/** Request return is per serial line while the package ATR is still open. */
+function canRequestReturnOnLine(
+  line: SaleDetailsLine,
+  showRequestReturn: boolean,
+): boolean {
+  return showRequestReturn && Boolean(line.serialNumberId);
 }
 
 function formatOptionalDate(value: string | null | undefined): string | null {
@@ -209,7 +222,8 @@ function SerialNumberCell({
       <TooltipTrigger asChild>
         <span
           className={
-            className ?? "block max-w-full truncate font-mono text-xs"
+            className ??
+            "block max-w-full break-all font-mono text-xs leading-snug"
           }
         >
           {serialNo}
@@ -277,7 +291,9 @@ export function SaleDetailsDialog({
   const showCsActions =
     returnStatus === "pending_cs" && capabilities.canEvaluateReturn;
   const showTlActions =
-    returnStatus === "pending_tl" && capabilities.canApproveReturn;
+    returnStatus === "pending_tl" &&
+    capabilities.canApproveReturn &&
+    isDealerInitiatedDocumentTypeName(sale.returnRequest?.documentTypeName);
   const showRestore =
     returnStatus === "approved" &&
     capabilities.canCompleteReturn &&
@@ -287,7 +303,6 @@ export function SaleDetailsDialog({
     capabilities.canCompleteReturn &&
     (sale.returnRequest?.actionType ?? "return") === "replacement";
   const hasAtrActions =
-    showRequestReturn ||
     showCsActions ||
     showTlActions ||
     showRestore ||
@@ -440,17 +455,32 @@ export function SaleDetailsDialog({
                           modelLabel={line.modelLabel}
                         />
                       </div>
-                      {canEditLines && canEditSaleLine(line) ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="shrink-0"
-                          disabled={pending}
-                          onClick={() => onEditLine(line)}
-                        >
-                          Edit
-                        </Button>
-                      ) : null}
+                      <div className="flex shrink-0 flex-col items-end gap-1">
+                        {canEditLines && canEditSaleLine(line) ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="shrink-0"
+                            disabled={pending}
+                            onClick={() => onEditLine(line)}
+                          >
+                            Edit
+                          </Button>
+                        ) : null}
+                        {canRequestReturnOnLine(line, showRequestReturn) ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="shrink-0"
+                            disabled={pending}
+                            onClick={() =>
+                              onReturnAction("request", line.detailId)
+                            }
+                          >
+                            Request return
+                          </Button>
+                        ) : null}
+                      </div>
                     </div>
                     <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
                       <div className="min-w-0">
@@ -458,7 +488,7 @@ export function SaleDetailsDialog({
                         <dd className="min-w-0">
                           <SerialNumberCell
                             serialNo={line.serialNo}
-                            className="block max-w-full truncate font-mono"
+                            className="block max-w-full break-all font-mono"
                           />
                         </dd>
                       </div>
@@ -515,12 +545,12 @@ export function SaleDetailsDialog({
                     <col className="w-8" />
                     <col className="w-32" />
                     <col />
-                    <col className="w-28" />
+                    <col className="w-40" />
                     <col className="w-28" />
                     <col className="w-16" />
                     <col className="w-24" />
                     {showDelivery ? <col className="w-28" /> : null}
-                    <col className="w-16" />
+                    <col className="w-28" />
                   </colgroup>
                   <thead className="sticky top-0 z-10 bg-muted/95 text-xs text-muted-foreground backdrop-blur-sm">
                     <tr>
@@ -551,7 +581,7 @@ export function SaleDetailsDialog({
                         </th>
                       ) : null}
                       <th className="sticky right-0 whitespace-nowrap bg-muted/95 px-2 py-2 text-right font-medium shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.12)]">
-                        Edit
+                        Actions
                       </th>
                     </tr>
                   </thead>
@@ -606,20 +636,38 @@ export function SaleDetailsDialog({
                           </td>
                         ) : null}
                         <td className="sticky right-0 whitespace-nowrap bg-card px-2 py-2 text-right shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.12)]">
-                          {canEditLines && canEditSaleLine(line) ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={pending}
-                              onClick={() => onEditLine(line)}
-                            >
-                              Edit
-                            </Button>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">
-                              —
-                            </span>
-                          )}
+                          <div className="flex flex-col items-end gap-1">
+                            {canEditLines && canEditSaleLine(line) ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={pending}
+                                onClick={() => onEditLine(line)}
+                              >
+                                Edit
+                              </Button>
+                            ) : null}
+                            {canRequestReturnOnLine(line, showRequestReturn) ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={pending}
+                                onClick={() =>
+                                  onReturnAction("request", line.detailId)
+                                }
+                              >
+                                Request return
+                              </Button>
+                            ) : null}
+                            {!(
+                              (canEditLines && canEditSaleLine(line)) ||
+                              canRequestReturnOnLine(line, showRequestReturn)
+                            ) ? (
+                              <span className="text-xs text-muted-foreground">
+                                —
+                              </span>
+                            ) : null}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -641,16 +689,6 @@ export function SaleDetailsDialog({
 
         {hasAtrActions ? (
           <DialogFooter className="mt-1 shrink-0 border-t pt-3 sm:justify-end">
-            {showRequestReturn ? (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={pending}
-                onClick={() => onReturnAction("request")}
-              >
-                Request return
-              </Button>
-            ) : null}
             {showCsActions ? (
               <>
                 <Button

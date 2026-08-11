@@ -2,7 +2,7 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.31.2`
+**Current version:** `0.31.3`
 
 ## Stack
 
@@ -24,8 +24,8 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | **Inventory** | Serialized stock (STK on Stock units), **warehouse stock** SN list (`/inventory/warehouse-stock`; also Settings → Warehouses →image.png Stock), AOR-scoped lists, series QTY/VALUE + DR#/date/aging, **physical stock count / P-Count** (`/inventory/stock-count`) |
 | **Orders** | Nav group: Manual / Special / Auto replenish (`/orders/manual` etc.); per-type `orders.manual`, `orders.special`, `orders.auto_replenish` with view/create/approve; PS → TL → SP; SO#, processed orders, delivery-due auto-reschedule |
 | **Logistics** | Deliveries (accept/reject), transfers, pull-outs with SN movement; gated by `logistics.view` / `create` / `manage` |
-| **Sales** | Encode at `/sales/new` (CTA from `/sales`); PS auto-branch; TL `sales.create` + branch picker; package detail modal (qty → N sets), reserved (RSV) sales; list + KPIs show Sold / Official Sold / TO FOLLOW only (return workflow on Returns); line Edit only for TO-FOLLOW; Accounting `sales.update` edits transaction headers; Process Return from Sale details (document type, STK/DEF, problems, Return or Replacement) |
-| **Returns / Replacement** | `/returns` with Branch \| Service \| Approvals tabs gated by `returns.branch.view` / `returns.service.view` / evaluate·approve·complete (umbrella `returns.view` sees all); ATR workflow via `returns.*` (legacy `sales.return.*` / `service_centers.return.*` still work); Branch table includes report columns + ATR/ODRF download; **Service Return / Replacement** Document Types appear under Service Returns (with SC-sale returns); approved Return restores STK/DEF at the selling branch (serial history); approved Replacement Same Invoice updates the sale line or New Invoice creates a new sale |
+| **Sales** | Encode at `/sales/new` (CTA from `/sales`); PS auto-branch; TL `sales.create` + branch picker; package detail modal (qty → N sets), reserved (RSV) sales; list + KPIs show Sold / Official Sold / TO FOLLOW only (return workflow on Returns); line Edit only for TO-FOLLOW; Accounting `sales.update` edits transaction headers; Process Return per serial line from Sale details (document type, STK/DEF, problems, Return or Replacement) |
+| **Returns / Replacement** | `/returns` with Branch \| Service \| Approvals tabs gated by `returns.branch.view` / `returns.service.view` / evaluate·approve·complete (umbrella `returns.view` sees all); ATR workflow via `returns.*` (legacy `sales.return.*` / `service_centers.return.*` still work); Branch table includes report columns + ATR/ODRF download; **Service Return / Replacement** Document Types appear under Service Returns (with SC-sale returns); Dealer Initiated types need TL after CS; other types go Approved after CS; approved Return restores STK/DEF for the selected serial only; approved Replacement Same Invoice shows original TRN (read-only) and updates that sale line, or New Invoice creates a new sale |
 | **Service** | Service center ops (AOR-scoped): inventory + manual stock-in, sales encode + request return, orders, deliveries (backload → STK), pull-outs under `/service-centers/*` |
 | **Reports** | Processed orders, daily stock, transfers, sales CSV (`/reports/sales`), **P-Count** (`/reports/pcount`), **Official Sales** dealer-template staging — Action Key process (`ADD` / `WHSE_ADD` / `DEL` → Official Sold; already-OFS ADD is idempotent; DEL restores STK at Branch Sold; stock adjustments appear in Serial Number Logs; process summarizes failed serials), progress popup, View details, and ? quick guide (`/reports/official-sales`) |
 | **SAP** | Outbound job queue + mock processor; **Service Layer** settings (encrypted credentials) + shared Redis-backed B1 session (L1 in-memory fallback) with status UI (Connect/Logout) and refresh-on-401 |
@@ -85,6 +85,10 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | Doc | Purpose |
 |-----|---------|
 | [`docs/CLIENT_WORKFLOW.md`](docs/CLIENT_WORKFLOW.md) | Client-facing How ISMS works (Mermaid master + role swimlanes) |
+| [`docs/FINDEN_ISMS_End_User_Process_Flow.docx`](docs/FINDEN_ISMS_End_User_Process_Flow.docx) | Shareable end-user Process Flow (Word) — plain-language narrative + sales/returns steps |
+| [`docs/FINDEN_ISMS_End_User_Process_Flow.xlsx`](docs/FINDEN_ISMS_End_User_Process_Flow.xlsx) | Shareable end-user Process Flow (Excel) — multi-sheet matrices & menu map |
+| [`docs/FINDEN_ISMS_SAP_B1_Automation_Proposal.docx`](docs/FINDEN_ISMS_SAP_B1_Automation_Proposal.docx) | Stakeholder proposal — SAP B1 automation phases, keep vs retire guidance |
+| [`docs/FINDEN_ISMS_SAP_B1_Module_Matrix.xlsx`](docs/FINDEN_ISMS_SAP_B1_Module_Matrix.xlsx) | Full portal module inventory — SAP status, post-integration outlook, workshop decision column |
 | [`docs/DEVELOPMENT_README.md`](docs/DEVELOPMENT_README.md) | Spec index, Process Flow v1.0 traceability, BRS ↔ app mapping |
 | [`docs/PROCESS_FLOW_COVERAGE.md`](docs/PROCESS_FLOW_COVERAGE.md) | Process Flow steps 1–45 coverage matrix (Implemented / Partial / Missing) |
 | [`docs/sap-integration.md`](docs/sap-integration.md) | SAP queue, Service Layer config, implemented vs stub |
@@ -168,6 +172,8 @@ Public `/register` is closed by default. Set `ALLOW_PUBLIC_REGISTER=true` in `.e
 | `pnpm run db:seed:warehouse-inventory` | Demo warehouse serials (SN-WHSE-001…003 on PASIG-MAIN/A1) for Official Sales WHSE_ADD; requires BRS seed first |
 | `pnpm run db:studio` | Prisma Studio |
 | `pnpm run docs:modules-matrix` | Regenerate `docs/ISMS_App_Modules_vs_Workflow.xlsx` |
+| `pnpm run docs:end-user-process-flow` | Regenerate end-user Process Flow Word + Excel under `docs/` |
+| `pnpm run docs:sap-b1-proposal` | Regenerate SAP B1 automation proposal Word + module matrix Excel under `docs/` |
 
 ## Optional env
 

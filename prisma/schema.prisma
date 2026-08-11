@@ -2041,6 +2041,8 @@ model BranchReturnRequest {
   id                      String                 @id @default(cuid())
   tenantId                String                 @map("tenant_id")
   saleId                  String                 @unique @map("sale_id")
+  /// Targeted sale line for multi-SN packages (legacy rows may be null).
+  saleDetailId            String?                @map("sale_detail_id")
   status                  ReturnRequestStatus    @default(pending_cs)
   /// Return vs Replacement path (set at Sales Process Return submit).
   actionType              ReturnActionType?      @map("action_type")
@@ -2078,19 +2080,20 @@ model BranchReturnRequest {
   createdAt               DateTime               @default(now()) @map("created_at")
   updatedAt               DateTime               @updatedAt @map("updated_at")
 
-  tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  sale                  BranchSalesTransaction @relation(fields: [saleId], references: [id], onDelete: Cascade)
-  problemDescription    ProblemDescription?    @relation(fields: [problemDescriptionId], references: [id], onDelete: SetNull)
-  documentType          DocumentType?          @relation(fields: [documentTypeId], references: [id], onDelete: SetNull)
-  returnType            ReturnType?            @relation(fields: [returnTypeId], references: [id], onDelete: SetNull)
-  serviceCenterLocation ServiceCenterLocation? @relation(fields: [serviceCenterLocationId], references: [id], onDelete: SetNull)
-  serviceCenter         ServiceCenter?         @relation(fields: [serviceCenterId], references: [id], onDelete: SetNull)
-  serviceModel          ProductModel?          @relation("BranchReturnServiceModel", fields: [serviceModelId], references: [id], onDelete: SetNull)
-  warehouseLocation     WarehouseLocation?     @relation(fields: [warehouseLocationId], references: [id], onDelete: SetNull)
-  requestedBy           User                   @relation("ReturnRequestedBy", fields: [requestedById], references: [id])
-  evaluatedBy           User?                  @relation("ReturnEvaluatedBy", fields: [evaluatedById], references: [id], onDelete: SetNull)
-  approvedBy            User?                  @relation("ReturnApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
-  acceptedBy            User?                  @relation("ReturnAcceptedBy", fields: [acceptedById], references: [id], onDelete: SetNull)
+  tenant                Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sale                  BranchSalesTransaction         @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  saleDetail            BranchSalesTransactionDetail?  @relation(fields: [saleDetailId], references: [id], onDelete: SetNull)
+  problemDescription    ProblemDescription?            @relation(fields: [problemDescriptionId], references: [id], onDelete: SetNull)
+  documentType          DocumentType?                  @relation(fields: [documentTypeId], references: [id], onDelete: SetNull)
+  returnType            ReturnType?                    @relation(fields: [returnTypeId], references: [id], onDelete: SetNull)
+  serviceCenterLocation ServiceCenterLocation?         @relation(fields: [serviceCenterLocationId], references: [id], onDelete: SetNull)
+  serviceCenter         ServiceCenter?                 @relation(fields: [serviceCenterId], references: [id], onDelete: SetNull)
+  serviceModel          ProductModel?                  @relation("BranchReturnServiceModel", fields: [serviceModelId], references: [id], onDelete: SetNull)
+  warehouseLocation     WarehouseLocation?             @relation(fields: [warehouseLocationId], references: [id], onDelete: SetNull)
+  requestedBy           User                           @relation("ReturnRequestedBy", fields: [requestedById], references: [id])
+  evaluatedBy           User?                          @relation("ReturnEvaluatedBy", fields: [evaluatedById], references: [id], onDelete: SetNull)
+  approvedBy            User?                          @relation("ReturnApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  acceptedBy            User?                          @relation("ReturnAcceptedBy", fields: [acceptedById], references: [id], onDelete: SetNull)
 
   @@index([tenantId, status])
   @@index([tenantId, actionType])
@@ -2098,6 +2101,7 @@ model BranchReturnRequest {
   @@index([serviceCenterId])
   @@index([serviceModelId])
   @@index([warehouseLocationId])
+  @@index([saleDetailId])
   @@map("branch_return_requests")
 }
 
@@ -2129,6 +2133,7 @@ model BranchSalesTransactionDetail {
   model        ProductModel?          @relation(fields: [modelId], references: [id], onDelete: SetNull)
   serialNumber SerialNumber?          @relation(fields: [serialNumberId], references: [id], onDelete: SetNull)
   statusCode   ReasonStatusCode?      @relation(fields: [statusCodeId], references: [id], onDelete: SetNull)
+  returnRequests BranchReturnRequest[]
 
   @@index([salesId])
   @@index([serialNumberId])
