@@ -2,17 +2,30 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Building2, KeyRound, LayoutDashboard, LogOut } from "lucide-react";
+import {
+  Building2,
+  KeyRound,
+  LayoutDashboard,
+  LogOut,
+  type LucideIcon,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { authClient } from "@/lib/auth/client";
 import { cn } from "@/utils/cn";
 
-const NAV = [
+type NavItem = {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  exact?: boolean;
+};
+
+const NAV: NavItem[] = [
   { href: "/provider", label: "Overview", icon: LayoutDashboard, exact: true },
   { href: "/provider/tenants", label: "Tenants", icon: Building2 },
   { href: "/provider/permissions", label: "Permissions", icon: KeyRound },
-] as const;
+];
 
 interface ProviderShellProps {
   user: {
