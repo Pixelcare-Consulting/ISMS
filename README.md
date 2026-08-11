@@ -12,7 +12,8 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 
 | Area | Features |
 |------|----------|
-| **Auth** | Email/password (Better Auth), tenant-scoped sessions, demo seed users |
+| **Auth** | Email/password (Better Auth), tenant-scoped sessions, demo seed users; public `/register` off unless `ALLOW_PUBLIC_REGISTER=true` |
+| **Provider** | Platform console at `/provider/*` for platform operators only (provider role on the `isPlatform` Pixelcare tenant): customer summaries, create org + first Tenant Admin, org branding edit, full user/admin management, soft-disable/restore, global permissions |
 | **Dashboard** | Role-aware activity cards (top 4); Inventory summary + Planning & alerts; This month (icons) beside Order pipeline; **Sales overview** (month KPIs, status mix, ATR/return pipeline, top branches/models) when you can access Sales & ATR; compliance overview when no ops access; active announcement banner |
 | **Announcements** | Tenant posts (title, body, publish/expiry); list + CRUD (`/announcements`) |
 | **Competitors** | Market observations with master Competitor + Competitor brand/model lookups, AOR-bound branch, optional promotion; KPIs + CRUD (`/competitors`) |
@@ -34,8 +35,12 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | Route | Access |
 |-------|--------|
 | `/` | Marketing landing |
-| `/login`, `/register` | Auth |
-| `/dashboard` | Authenticated app |
+| `/login` | Auth |
+| `/register` | Auth — closed unless `ALLOW_PUBLIC_REGISTER=true` |
+| `/provider` | Platform operator (Pixelcare provider) — overview KPIs |
+| `/provider/tenants` | Platform operator — customer list (status filters) / create / detail (org branding + users) / disable / restore |
+| `/provider/permissions` | Platform operator — global permissions catalog |
+| `/dashboard` | Authenticated tenant app (platform operators redirect to `/provider`) |
 | `/announcements` | `announcements.view` / `announcements.manage` |
 | `/competitors` | `competitors.view` / `competitors.manage` |
 | `/inventory` | `inventory.view` (Stock units: STK only, series summary, DR#/date/aging; Sold etc. in Sales) |
@@ -70,7 +75,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/settings/master-data/*` | `master_data.manage` (Models: Import template + upload; creates new SKUs / updates existing; our template only) |
 | `/settings/sap-integration` | `sap.manage` (queue) |
 | `/settings/sap-integration/service-layer` | `sap.manage` (B1 Service Layer config) |
-| `/settings/permissions` | Super Admin only |
+| `/settings/permissions` | Platform operators → `/provider/permissions`; tenant users (incl. tenant super admin) denied |
 | `/settings/profile` | All authenticated users |
 
 ## Documentation
@@ -99,6 +104,7 @@ src/
 │   ├── (marketing)/     # Public landing
 │   ├── (auth)/          # Login, register
 │   ├── (app)/           # Tenant app (dashboard, inventory, orders, logistics, settings, reports)
+│   ├── (provider)/      # Platform Provider console (customer tenants, permissions)
 │   └── api/             # Auth, exports, policy attachments
 ├── components/          # Shared UI (ShadCN, data-table)
 ├── config/              # app-navigation, app-modules
@@ -132,13 +138,14 @@ After seeding, use [`database/seed-users.md`](database/seed-users.md) (password:
 
 | User | Role | Typical use |
 |------|------|-------------|
-| `ps@demo.local` | Product Specialist | Manual order step 1, deliveries |
+| `provider@pixelcareconsulting.com` | Super Admin on Pixelcare (`isPlatform`) | Provider console `/provider` |
+| `ps@demo.local` | Product Specialist | Manual order step 1, competitors |
 | `tl@demo.local` | Team Leader | Order endorse, transfers |
 | `sp@demo.local` | Supply Planning | Final order approval |
 | `admin@demo.local` | Tenant Admin | Full settings |
-| `superadmin@demo.local` | Super Admin | Permissions, policies |
+| `superadmin@demo.local` | Super Admin (demo tenant only) | Tenant dashboard / policies — not Provider console |
 
-Or register at `/register` for a new tenant.
+Public `/register` is closed by default. Set `ALLOW_PUBLIC_REGISTER=true` in `.env.local` for local self-serve tenants.
 
 ## Scripts
 
@@ -169,6 +176,7 @@ Or register at `/register` for a new tenant.
 | `STORAGE_ROOT` | Local uploads directory (default `.data/uploads`) |
 | `RESEND_API_KEY` | Workflow email |
 | `EMAIL_FROM` | Verified sender for Resend |
+| `ALLOW_PUBLIC_REGISTER` | Set to `true` to enable `/register` self-serve tenants (local/demo only) |
 | `PRISMA_LOG_QUERIES=1` | SQL query logging in dev |
 | `LOG_LEVEL` | Pino level (`debug` in dev, `info` in prod) |
 
@@ -193,4 +201,5 @@ Details: [`docs/release-notes.md`](docs/release-notes.md).
 |-------------|----------|
 | `web` | `(marketing)` |
 | `admin` | `(app)` |
+| `provider` | `(provider)` |
 | `api` | `app/api/` |

@@ -4,6 +4,18 @@ Dev-only accounts created by `pnpm run db:seed`. Use on `/login`.
 
 **Password (all users):** `DemoPass123`
 
+## Platform provider (Pixelcare)
+
+Seeded home tenant slug: **`pixelcare`** (`isPlatform`).
+
+| Role | Name | Email | Lands on |
+|------|------|-------|----------|
+| Super Admin | Pixelcare Provider | `provider@pixelcareconsulting.com` | `/provider` |
+
+Use this account for the Provider console (customer summaries, create org + admin, disable/restore, global permissions). Only users with the provider role on an `isPlatform` tenant get Provider access. The platform tenant never appears in the customer list.
+
+Local demo still includes `superadmin@demo.local` on the **demo** tenant — a **tenant-only** super admin (lands on `/dashboard`, can manage that tenant including Tenant Admins). It is **not** a platform operator.
+
 ## Seed profiles
 
 | Command | What it loads | When to use |
@@ -18,16 +30,16 @@ Dev-only accounts created by `pnpm run db:seed`. Use on `/login`.
 
 Optional env: `SEED_BCRYPT_ROUNDS=8` (default) — lower for faster local re-seed.
 
-## ISO / admin roles
+## ISO / admin roles (demo tenant)
 
-| Role | Name | Email |
-|------|------|-------|
-| Super Admin | Super Admin | `superadmin@demo.local` |
-| Tenant Admin | Tenant Admin | `admin@demo.local` |
-| ISMS Manager | ISMS Manager | `isms@demo.local` |
-| Auditor | Auditor | `auditor@demo.local` |
-| Department Head | Department Head | `depthead@demo.local` |
-| Employee | Employee | `employee@demo.local` |
+| Role | Name | Email | Notes |
+|------|------|-------|-------|
+| Super Admin | Super Admin | `superadmin@demo.local` | Tenant elevated admin → `/dashboard` (not Provider) |
+| Tenant Admin | Tenant Admin | `admin@demo.local` | |
+| ISMS Manager | ISMS Manager | `isms@demo.local` | |
+| Auditor | Auditor | `auditor@demo.local` | |
+| Department Head | Department Head | `depthead@demo.local` | |
+| Employee | Employee | `employee@demo.local` | |
 
 ## BRS ops roles (Western Appliance demo)
 

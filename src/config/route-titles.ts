@@ -19,6 +19,9 @@ const EXTRA_ROUTE_TITLES: Record<string, string> = {
   "/reports": "Reports",
   "/login": "Sign in",
   "/register": "Register",
+  "/provider": "Provider overview",
+  "/provider/tenants": "Provider tenants",
+  "/provider/permissions": "Provider permissions",
 };
 
 function collectNavLinks(items: NavLinkItem[]): NavLinkItem[] {

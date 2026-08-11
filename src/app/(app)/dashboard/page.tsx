@@ -1,5 +1,11 @@
+import { redirect } from "next/navigation";
+
 import { getModuleNavPermission } from "@/config/app-modules";
-import { requireAuth, requirePermission } from "@/lib/auth/permissions";
+import {
+  requireAuth,
+  requirePermission,
+  resolveSessionPlatformOperator,
+} from "@/lib/auth/permissions";
 import { pageMetadata } from "@/lib/shared/seo";
 import { listUsersAction } from "@/features/users/actions/user.actions";
 import { DASHBOARD_PAGE_TUTORIAL } from "@/content/page-tutorials/dashboard";
@@ -25,6 +31,11 @@ export default async function DashboardPage() {
   const session = dashboardPermission
     ? await requirePermission(dashboardPermission)
     : await requireAuth();
+
+  if (await resolveSessionPlatformOperator(session.user)) {
+    redirect("/provider");
+  }
+
   const permissions = session.user.permissions ?? [];
   const roleSlugs = session.user.roleSlugs ?? [];
 

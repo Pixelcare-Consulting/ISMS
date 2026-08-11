@@ -35,6 +35,7 @@ docker compose exec -T postgres psql -U isms -d isms < database/extensions.sql
 | `AUTH_SECRET` / `BETTER_AUTH_SECRET` | Session signing + SAP credential encryption |
 | `BETTER_AUTH_URL` / `AUTH_URL` | App origin for Better Auth callbacks |
 | `STORAGE_ROOT` | Local uploads root (default `.data/uploads`) |
+| `ALLOW_PUBLIC_REGISTER` | Set `true` to enable public `/register` (local/demo only; off by default) |
 
 Without a connection pooler, `DATABASE_URL` and `DIRECT_URL` can be identical.
 

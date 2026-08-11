@@ -517,7 +517,7 @@ export const appNavigation: NavEntry[] = [
             permission: "roles.manage",
           },
           {
-            href: "/settings/permissions",
+            href: "/provider/permissions",
             label: "Permissions",
             icon: KeyRound,
             permission: "roles.manage",

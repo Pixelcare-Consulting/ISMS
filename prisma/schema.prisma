@@ -134,14 +134,16 @@ enum SerialHistoryTxnType {
 }
 
 model Tenant {
-  id        String    @id @default(cuid())
-  name      String
-  slug      String    @unique
-  tagline   String?
-  logo      String?
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-  deletedAt DateTime? @map("deleted_at")
+  id         String    @id @default(cuid())
+  name       String
+  slug       String    @unique
+  tagline    String?
+  logo       String?
+  /// Reserved home tenant for platform operators (Pixelcare). Never listed as a customer.
+  isPlatform Boolean   @default(false) @map("is_platform")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at")
 
   users       User[]
   roles       Role[]
@@ -221,6 +223,7 @@ model Tenant {
   competitorObservations CompetitorObservation[]
   officialSalesImportBatches OfficialSalesImportBatch[]
 
+  @@index([isPlatform])
   @@map("tenants")
 }
 

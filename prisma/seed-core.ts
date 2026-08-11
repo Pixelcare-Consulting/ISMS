@@ -6,6 +6,8 @@ import {
   DEMO_USERS,
   DEPARTMENTS,
   PERMISSIONS,
+  PLATFORM_PROVIDER_USER,
+  PLATFORM_TENANT,
   ROLES,
   USER_DEPARTMENTS,
 } from "./seed-data";
@@ -15,6 +17,7 @@ const BCRYPT_ROUNDS = Number(process.env.SEED_BCRYPT_ROUNDS ?? 8);
 
 export interface CoreSeedResult {
   demoTenant: { id: string; slug: string };
+  platformTenant: { id: string; slug: string };
   usersByEmail: Record<string, { id: string }>;
 }
 
@@ -45,10 +48,57 @@ export async function seedCore(prisma: PrismaClient): Promise<CoreSeedResult> {
       name: "Finden Technology",
       slug: "demo",
       tagline: "BRS inventory ops + ISMS compliance",
+      isPlatform: false,
     },
     // Preserve any local renames / tagline edits
     update: {},
   });
+
+  const platformTenant = await prisma.tenant.upsert({
+    where: { slug: PLATFORM_TENANT.slug },
+    create: {
+      name: PLATFORM_TENANT.name,
+      slug: PLATFORM_TENANT.slug,
+      tagline: PLATFORM_TENANT.tagline,
+      isPlatform: true,
+    },
+    update: {
+      isPlatform: true,
+      name: PLATFORM_TENANT.name,
+      tagline: PLATFORM_TENANT.tagline,
+    },
+  });
+
+  const platformSuperAdminRole = await prisma.role.upsert({
+    where: {
+      tenantId_slug: { tenantId: platformTenant.id, slug: "super_admin" },
+    },
+    create: {
+      tenantId: platformTenant.id,
+      slug: "super_admin",
+      name: "Super Admin",
+      description: "Platform operator",
+      isSystem: true,
+    },
+    update: {
+      name: "Super Admin",
+      description: "Platform operator",
+      isSystem: true,
+    },
+  });
+
+  const allPermissionIds = permissionRecords
+    .map((p) => p.id)
+    .filter((id): id is string => Boolean(id));
+  if (allPermissionIds.length > 0) {
+    await prisma.rolePermission.createMany({
+      data: allPermissionIds.map((permissionId) => ({
+        roleId: platformSuperAdminRole.id,
+        permissionId,
+      })),
+      skipDuplicates: true,
+    });
+  }
 
   const departmentsByName: Record<string, { id: string }> = {};
   await Promise.all(
@@ -141,5 +191,51 @@ export async function seedCore(prisma: PrismaClient): Promise<CoreSeedResult> {
     }),
   );
 
-  return { demoTenant, usersByEmail };
+  const providerUser = await prisma.user.upsert({
+    where: {
+      tenantId_email: {
+        tenantId: platformTenant.id,
+        email: PLATFORM_PROVIDER_USER.email,
+      },
+    },
+    create: {
+      tenantId: platformTenant.id,
+      email: PLATFORM_PROVIDER_USER.email,
+      name: PLATFORM_PROVIDER_USER.name,
+      passwordHash,
+      emailVerified: true,
+    },
+    update: {},
+  });
+  usersByEmail[PLATFORM_PROVIDER_USER.email] = providerUser;
+
+  const providerCredential = await prisma.account.findFirst({
+    where: { userId: providerUser.id, providerId: "credential" },
+  });
+  if (!providerCredential) {
+    await prisma.account.create({
+      data: {
+        userId: providerUser.id,
+        accountId: providerUser.id,
+        providerId: "credential",
+        password: providerUser.passwordHash || passwordHash,
+      },
+    });
+  }
+
+  await prisma.userRole.upsert({
+    where: {
+      userId_roleId: {
+        userId: providerUser.id,
+        roleId: platformSuperAdminRole.id,
+      },
+    },
+    create: {
+      userId: providerUser.id,
+      roleId: platformSuperAdminRole.id,
+    },
+    update: {},
+  });
+
+  return { demoTenant, platformTenant, usersByEmail };
 }

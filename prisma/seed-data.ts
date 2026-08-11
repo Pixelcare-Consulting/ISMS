@@ -2,6 +2,19 @@
 
 export const DEMO_PASSWORD = "DemoPass123";
 
+/** Reserved platform home tenant for Provider Dashboard operators. */
+export const PLATFORM_TENANT = {
+  slug: "pixelcare",
+  name: "Pixelcare Consulting",
+  tagline: "ISMS platform operator",
+} as const;
+
+export const PLATFORM_PROVIDER_USER = {
+  email: "provider@pixelcareconsulting.com",
+  name: "Pixelcare Provider",
+  roleSlug: "super_admin",
+} as const;
+
 export const DEMO_USERS = [
   { email: "superadmin@demo.local", name: "Super Admin", roleSlug: "super_admin" },
   { email: "admin@demo.local", name: "Tenant Admin", roleSlug: "tenant_admin" },
