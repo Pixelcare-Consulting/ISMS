@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { dealerRepository } from "@/features/dealers/repositories/dealer.repository";
+import { dealerSapSyncService } from "@/features/dealers/services/dealer-sap-sync.service";
 import { requirePermission } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/database/client";
 
@@ -76,5 +77,19 @@ export async function deleteDealerAction(dealerId: string) {
     return { success: true as const };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to delete dealer" };
+  }
+}
+
+export async function syncDealersFromSapAction() {
+  const session = await requirePermission("dealers.manage");
+  try {
+    const result = await dealerSapSyncService.syncFromSap(
+      session.user.tenantId,
+      session.user.id,
+    );
+    revalidateDealers();
+    return { success: true as const, result };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to sync customers from SAP" };
   }
 }

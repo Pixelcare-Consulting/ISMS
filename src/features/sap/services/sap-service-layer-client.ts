@@ -21,6 +21,8 @@ export interface SapServiceLayerRequestOptions {
   /** Path relative to Service Layer base URL, e.g. `/Orders` or `Orders`. */
   path: string;
   body?: unknown;
+  /** Extra request headers, e.g. `Prefer` for OData page size. `Cookie` is always overridden. */
+  headers?: Record<string, string>;
 }
 
 export interface SapServiceLayerRequestResult<T = unknown> {
@@ -60,7 +62,7 @@ async function executeWithCookies(
     url: joinPath(options.creds.baseUrl, options.path),
     body: options.body,
     verifySsl: options.creds.verifySsl,
-    headers: { Cookie: cookies },
+    headers: { ...options.headers, Cookie: cookies },
   });
 }
 

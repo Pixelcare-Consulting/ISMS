@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { masterDataRepository } from "@/features/master-data/repositories/master-data.repository";
+import { modelSapSyncService } from "@/features/master-data/services/model-sap-sync.service";
 import { toClientModelRow } from "@/features/master-data/types/client-model";
 import { toClientPriceListRow } from "@/features/master-data/types/client-price-list";
 import { requirePermission } from "@/lib/auth/permissions";
@@ -179,5 +180,28 @@ export async function deletePriceListAction(id: string) {
     return { success: true as const };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to delete price list" };
+  }
+}
+
+export async function syncModelsFromSapAction() {
+  const session = await requirePermission("master_data.manage");
+  const tenantId = session.user.tenantId;
+  try {
+    const result = await modelSapSyncService.syncFromSap(tenantId, session.user.id);
+
+    // The models list is cached per brand scope, and a sync can change a model in any
+    // of them, so clearing the "all" key alone would leave brand-filtered views stale.
+    const brands = await prisma.brand.findMany({ where: { tenantId }, select: { id: true } });
+    await Promise.all([
+      invalidateModelsCache(tenantId),
+      ...brands.map((brand) =>
+        deleteCache(cacheKey("tenant", tenantId, "master-data", "models", brand.id)),
+      ),
+    ]);
+
+    revalidatePath("/settings/master-data/models");
+    return { success: true as const, result };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to sync models from SAP" };
   }
 }

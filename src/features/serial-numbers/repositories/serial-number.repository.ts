@@ -1,6 +1,7 @@
 import type { LookupRecordStatus, Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/database/client";
+import { describeWriteError, SAP_SYNC_CHUNK } from "@/features/sap/services/sap-master-data";
 import {
   resolvePagination,
   toPaginatedResult,
@@ -218,6 +219,69 @@ export const serialNumberRepository = {
       where: { id, tenantId },
       data: { recordStatus },
     });
+  },
+
+  /** Every serial for the tenant, keyed for SAP matching on `serialNo`. */
+  listSapSyncSnapshot(tenantId: string) {
+    return prisma.serialNumber.findMany({
+      where: { tenantId },
+      select: { id: true, serialNo: true, modelId: true },
+    });
+  },
+
+  /**
+   * Apply a SAP serial sync. Chunked, with a per-row fallback so one rejected row is
+   * reported by itself rather than failing the whole batch.
+   *
+   * Creates carry no inventory: no BranchInventory or WarehouseInventory row is made,
+   * so a synced serial exists in the registry with no location until something in ISMS
+   * puts it somewhere.
+   */
+  async applySapSync(
+    tenantId: string,
+    input: {
+      create: { serialNo: string; modelId: string }[];
+      update: { id: string; serialNo: string; modelId: string }[];
+    },
+  ) {
+    const failures: { sapCode: string; name: string | null; reason: string }[] = [];
+    let created = 0;
+    let updated = 0;
+
+    for (let i = 0; i < input.create.length; i += SAP_SYNC_CHUNK) {
+      const chunk = input.create.slice(i, i + SAP_SYNC_CHUNK);
+      try {
+        const result = await prisma.serialNumber.createMany({
+          data: chunk.map((row) => ({ tenantId, ...row, recordStatus: "active" as const })),
+        });
+        created += result.count;
+      } catch {
+        for (const row of chunk) {
+          try {
+            await prisma.serialNumber.create({
+              data: { tenantId, ...row, recordStatus: "active" },
+            });
+            created += 1;
+          } catch (e) {
+            failures.push({ sapCode: row.serialNo, name: null, reason: describeWriteError(e) });
+          }
+        }
+      }
+    }
+
+    for (const row of input.update) {
+      try {
+        await prisma.serialNumber.update({
+          where: { id: row.id, tenantId },
+          data: { modelId: row.modelId },
+        });
+        updated += 1;
+      } catch (e) {
+        failures.push({ sapCode: row.serialNo, name: null, reason: describeWriteError(e) });
+      }
+    }
+
+    return { created, updated, failures };
   },
 
   countAll(tenantId: string) {

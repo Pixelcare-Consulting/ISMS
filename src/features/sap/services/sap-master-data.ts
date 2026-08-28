@@ -9,9 +9,18 @@ import type { SapServiceLayerCredentials } from "@/features/sap/types/sap-servic
 
 /**
  * Service Layer caps page size server-side (default 20), so `$top` is unreliable —
- * we page with `$skip` until a request comes back empty. The cap is a runaway guard.
+ * we page with `$skip` until a request comes back empty. `Prefer: odata.maxpagesize`
+ * raises that server-side cap so a full item/serial read doesn't take thousands of
+ * round trips.
  */
-const MAX_PAGES = 200;
+const PAGE_SIZE = 500;
+
+/**
+ * Runaway guard, not an expected limit: PAGE_SIZE * MAX_PAGES rows. Hitting it throws
+ * rather than returning what we have — a short read would otherwise look like a
+ * successful sync whose missing rows all report as "not in SAP".
+ */
+const MAX_PAGES = 2000;
 
 interface SapCollectionResponse<T> {
   value?: T[];
@@ -46,20 +55,51 @@ export function parseSapFlag(value: boolean | string | null | undefined): boolea
   return normalized === "tyes" || normalized === "y" || normalized === "true";
 }
 
+/** Rows per write batch when applying a sync. Keeps single statements bounded. */
+export const SAP_SYNC_CHUNK = 500;
+
+/**
+ * Turn a failed sync write into a reason a user can act on. The case worth naming is
+ * P2002 — an ISMS unique constraint refusing a row SAP considers legitimate.
+ */
+export function describeWriteError(error: unknown): string {
+  if (typeof error === "object" && error !== null && "code" in error) {
+    const { code, meta } = error as { code: string; meta?: { target?: unknown } };
+    if (code === "P2002") {
+      const target = Array.isArray(meta?.target)
+        ? meta.target.filter((f): f is string => typeof f === "string")
+        : [];
+      const field = target.filter((f) => f !== "tenant_id").join(", ");
+      return field
+        ? `Another ISMS record already uses this ${field}`
+        : "Conflicts with an existing ISMS record";
+    }
+  }
+  return error instanceof Error ? error.message : "Could not be saved";
+}
+
 /** Fetch every row of a Service Layer entity set, paging until it runs dry. */
 export async function fetchSapCollection<T>(
   creds: SapServiceLayerCredentials,
   /** `orderBy` should be the entity's key — paging by `$skip` needs a stable sort. */
-  query: { entity: string; select: string; orderBy: string },
+  query: { entity: string; select: string; orderBy: string; filter?: string },
 ): Promise<T[]> {
   const records: T[] = [];
   let skip = 0;
 
   for (let page = 0; page < MAX_PAGES; page += 1) {
+    const params = [
+      `$select=${query.select}`,
+      `$orderby=${query.orderBy}`,
+      `$skip=${skip}`,
+    ];
+    if (query.filter) params.splice(1, 0, `$filter=${encodeURIComponent(query.filter)}`);
+
     const response = await sapServiceLayerClient.request<SapCollectionResponse<T>>({
       creds,
       method: "GET",
-      path: `/${query.entity}?$select=${query.select}&$orderby=${query.orderBy}&$skip=${skip}`,
+      path: `/${query.entity}?${params.join("&")}`,
+      headers: { Prefer: `odata.maxpagesize=${PAGE_SIZE}` },
     });
 
     if (response.statusCode >= 400) {
@@ -67,11 +107,16 @@ export async function fetchSapCollection<T>(
     }
 
     const batch = response.data?.value ?? [];
-    if (batch.length === 0) break;
+    if (batch.length === 0) return records;
 
     records.push(...batch);
     skip += batch.length;
   }
 
-  return records;
+  // Fell out of the loop with SAP still returning rows — refuse to report a partial
+  // read as a complete one.
+  throw new Error(
+    `Reading ${query.entity} from SAP exceeded ${MAX_PAGES * PAGE_SIZE} rows. ` +
+      `The sync was stopped so it does not apply a partial result.`,
+  );
 }

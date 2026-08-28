@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
-import { Pencil, Plus, Upload } from "lucide-react";
+import { Pencil, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -10,8 +10,10 @@ import {
   listBrandsAction,
   listSeriesAction,
   listModelFormLookupsAction,
+  syncModelsFromSapAction,
   updateModelStatusAction,
 } from "@/features/master-data/actions/master-data.actions";
+import { SapSyncButton } from "@/features/sap/components/sap-sync-button";
 import type { ClientModelRow } from "@/features/master-data/types/client-model";
 import { ImportModelsDialog } from "@/app/(app)/settings/master-data/_components/import-models-dialog";
 import { ModelPriceSheet } from "@/app/(app)/settings/master-data/_components/model-price-sheet";
@@ -226,6 +228,11 @@ export function MasterDataModelsTable({
       {rows.length === 0 ? (
         <div className="space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+            <SapSyncButton
+              syncKey="product-model"
+              noun={{ one: "model", many: "models" }}
+              onSync={syncModelsFromSapAction}
+            />
             <Button
               type="button"
               variant="outline"
@@ -235,10 +242,13 @@ export function MasterDataModelsTable({
               <Upload className="size-3.5" />
               Import
             </Button>
+            {/* DO NOT DELETE - SAP is the source of truth for models, so they are
+                created only by the sync above. Restoring this also needs the `Plus`
+                icon back in the lucide-react import.
             <Button type="button" size="sm" onClick={() => onAddOpenChange(true)}>
               <Plus className="size-3.5" />
               Add model
-            </Button>
+            </Button> */}
           </div>
           <DataTableEmptyState message="No product models yet." />
         </div>
@@ -261,6 +271,11 @@ export function MasterDataModelsTable({
                 onClear={selection.clearSelection}
                 size="sm"
               />
+              <SapSyncButton
+                syncKey="product-model"
+                noun={{ one: "model", many: "models" }}
+                onSync={syncModelsFromSapAction}
+              />
               <Button
                 type="button"
                 variant="outline"
@@ -270,10 +285,13 @@ export function MasterDataModelsTable({
                 <Upload className="size-3.5" />
                 Import
               </Button>
+              {/* DO NOT DELETE - SAP is the source of truth for models, so they are
+                  created only by the sync above. Restoring this also needs the `Plus`
+                  icon back in the lucide-react import.
               <Button type="button" size="sm" onClick={() => onAddOpenChange(true)}>
                 <Plus className="size-3.5" />
                 Add model
-              </Button>
+              </Button> */}
             </>
           }
           pagination={{
