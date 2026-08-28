@@ -258,6 +258,17 @@ export const branchRepository = {
   },
 
   /**
+   * Id-only variant of `findManyBySapCodes` for the import's write phase, which has
+   * already diffed the rows and just needs to map sap codes back to branch ids.
+   */
+  findIdsBySapCodes(tenantId: string, sapCodes: string[]) {
+    return prisma.branch.findMany({
+      where: { tenantId, deletedAt: null, sapCode: { in: sapCodes } },
+      select: { id: true, sapCode: true },
+    });
+  },
+
+  /**
    * Identity + status snapshot used to diff ISMS branches against SAP master data.
    * Soft-deleted rows are included because they still occupy their sapCode slot.
    */

@@ -53,14 +53,23 @@ function parsePlannedResult(formData: FormData): BranchImportResult | undefined 
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 
 async function readUpload(formData: FormData): Promise<Buffer> {
+  const buffer = await readOptionalUpload(formData);
+  if (!buffer) throw new Error("Choose an .xlsx or .csv file to upload.");
+  return buffer;
+}
+
+/** Apply chunks normally send only a plan key; the file rides along on a cache miss. */
+async function readOptionalUpload(formData: FormData): Promise<Buffer | null> {
   const file = formData.get("file");
-  if (!(file instanceof File) || file.size === 0) {
-    throw new Error("Choose an .xlsx or .csv file to upload.");
-  }
+  if (!(file instanceof File) || file.size === 0) return null;
   if (file.size > MAX_FILE_BYTES) {
     throw new Error("The file is larger than 5 MB.");
   }
   return Buffer.from(await file.arrayBuffer());
+}
+
+function parsePlanKey(raw: FormDataEntryValue | null): string | undefined {
+  return typeof raw === "string" && raw.trim() !== "" ? raw : undefined;
 }
 
 function toMessage(error: unknown, fallback: string): string {
@@ -81,30 +90,44 @@ export async function previewBranchImportAction(
   const session = await requirePermission("branches.manage");
   try {
     const file = await readUpload(formData);
-    const { preview } = await branchImportService.buildPlan(session.user.tenantId, file);
-    return { preview };
+    const resolved = await branchImportService.resolvePlan({
+      tenantId: session.user.tenantId,
+      file,
+    });
+    if (!resolved) return { error: "Could not read the file." };
+    return { preview: { ...resolved.plan.preview, planKey: resolved.planKey } };
   } catch (error) {
     return { error: toMessage(error, "Could not read the file.") };
   }
 }
 
 /**
- * Re-parses the same file server-side and applies one chunk (core or enrich).
- * The plan the browser saw is never trusted as the source of the writes.
+ * Applies one chunk (core or enrich) against the server-built plan.
+ *
+ * The browser passes a `planKey` — a digest of the file it uploaded to `preview` —
+ * so the plan is fetched from the server-side cache instead of the workbook being
+ * re-uploaded and re-diffed per chunk. The plan the browser saw is still never the
+ * source of the writes. On a cache miss the response sets `planExpired` and the
+ * client retries the same offset with the file attached.
  */
 export async function applyBranchImportChunkAction(
   formData: FormData,
 ): Promise<BranchImportChunkProgress | { error: string }> {
   const session = await requirePermission("branches.manage");
   try {
-    const file = await readUpload(formData);
+    const file = await readOptionalUpload(formData);
+    const planKey = parsePlanKey(formData.get("planKey"));
+    if (!file && !planKey) {
+      throw new Error("Choose an .xlsx or .csv file to upload.");
+    }
     const phase = parseChunkPhase(formData.get("phase"));
     const offset = parseOffset(formData.get("offset"));
     const plannedResult = parsePlannedResult(formData);
     const progress = await branchImportService.applyChunk({
       tenantId: session.user.tenantId,
       actorUserId: session.user.id,
-      file,
+      file: file ?? undefined,
+      planKey,
       phase,
       offset,
       plannedResult,

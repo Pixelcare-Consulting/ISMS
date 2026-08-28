@@ -19,6 +19,11 @@ import {
   readImportWorkbook,
   type SheetRows,
 } from "@/features/branches/services/branch-import.workbook";
+import {
+  getCachedPlan,
+  planKeyFor,
+  setCachedPlan,
+} from "@/features/branches/services/branch-import.plan-cache";
 import { upsertPsgBranches } from "@/features/branches/services/psg-branch-upsert";
 import type { PsgBranchRow } from "@/features/branches/services/psg-branch-workbook";
 import {
@@ -26,6 +31,7 @@ import {
   WEEKDAY_SHORT,
 } from "@/features/orders/utils/order-window";
 import { prisma } from "@/lib/database/client";
+import { mapWithConcurrency } from "@/lib/shared/concurrency";
 
 /**
  * Bulk branch import from the Branches workbook (or a PSG ISMS single sheet).
@@ -35,9 +41,15 @@ import { prisma } from "@/lib/database/client";
  */
 
 const MAX_ROWS = 20_000;
-/** Matches `psg-branch-upsert` internal batch size. */
-const CORE_CHUNK_SIZE = 40;
-const ENRICH_CHUNK_SIZE = 25;
+/**
+ * Chunk sizes are per HTTP round trip, not per query. Both phases now issue a fixed
+ * handful of set-based queries per chunk regardless of size, so these are tuned for
+ * responsive progress reporting and a safe request duration — not to limit fan-out.
+ */
+const CORE_CHUNK_SIZE = 250;
+const ENRICH_CHUNK_SIZE = 150;
+/** Independent per-row updates run in parallel; keep it modest so the pool holds up. */
+const WRITE_CONCURRENCY = 8;
 
 type BranchRecord = Awaited<ReturnType<typeof branchRepository.findManyBySapCodes>>[number];
 
@@ -68,6 +80,8 @@ interface ImportPlan {
   /** Stable enrich order: PSG sheet SAPs first, then models-only SAPs. */
   enrichKeys: string[];
   psgRows: PsgBranchRow[];
+  /** Lowercased BranchArea name → id, resolved during the plan so enrich can reuse it. */
+  branchAreaIdByName: Map<string, string>;
 }
 
 function lookupKey(value: string): string {
@@ -177,18 +191,232 @@ function pushChange(
   });
 }
 
-function resolveByCodeOrName<
-  T extends { id: string; name: string; code?: string | null; sapCode?: string | null },
->(items: T[], raw: string): T | null {
-  const key = lookupKey(raw);
+type Lookupable = { id: string; name: string; code?: string | null; sapCode?: string | null };
+
+/**
+ * Index a master-data table by every key a sheet cell may spell it with (name, code,
+ * sap code). Built once per plan instead of scanning the array per row per column —
+ * the linear scan made resolution O(rows x columns x table size).
+ *
+ * First writer wins so the behaviour matches the old `Array.find` (earliest match).
+ */
+function indexByCodeOrName<T extends Lookupable>(items: T[]): Map<string, T> {
+  const index = new Map<string, T>();
+  const put = (raw: string | null | undefined, item: T) => {
+    if (raw == null) return;
+    const key = lookupKey(raw);
+    if (!key || index.has(key)) return;
+    index.set(key, item);
+  };
+  for (const item of items) {
+    put(item.name, item);
+    put(item.code, item);
+    put(item.sapCode, item);
+  }
+  return index;
+}
+
+function resolveByCodeOrName<T extends Lookupable>(
+  index: Map<string, T>,
+  raw: string,
+): T | null {
+  return index.get(lookupKey(raw)) ?? null;
+}
+
+function plannedResultFor(
+  preview: BranchImportPreview,
+  echoed: BranchImportResult | undefined,
+): BranchImportResult {
   return (
-    items.find(
-      (item) =>
-        lookupKey(item.name) === key ||
-        (item.code != null && lookupKey(item.code) === key) ||
-        (item.sapCode != null && lookupKey(item.sapCode) === key),
-    ) ?? null
+    echoed ?? {
+      branchesCreated: preview.branchCreateCount,
+      branchesUpdated: preview.branchUpdateCount,
+      allowedModelsAdded: preview.allowedModelAddCount,
+      unchanged: preview.unchangedCount,
+    }
   );
+}
+
+/**
+ * The cached plan is gone (cold instance, or the apply outran the TTL). Ask the
+ * browser to re-send the workbook for this same chunk instead of failing the import.
+ */
+function planExpiredProgress(
+  phase: BranchImportChunkPhase,
+  offset: number,
+): BranchImportChunkProgress {
+  return {
+    processed: offset,
+    total: 0,
+    nextOffset: offset,
+    phase,
+    done: false,
+    planExpired: true,
+  };
+}
+
+async function logImportSummary(
+  input: { tenantId: string; actorUserId: string },
+  preview: BranchImportPreview,
+  plannedResult: BranchImportResult,
+): Promise<void> {
+  await auditService.log({
+    tenantId: input.tenantId,
+    userId: input.actorUserId,
+    action: "branch.imported",
+    entityType: "Branch",
+    entityId: "bulk",
+    metadata: {
+      branchRows: preview.branchRowCount,
+      allowedModelRows: preview.allowedModelRowCount,
+      branchesCreated: plannedResult.branchesCreated,
+      branchesUpdated: plannedResult.branchesUpdated,
+      allowedModelsAdded: plannedResult.allowedModelsAdded,
+    },
+  });
+}
+
+/**
+ * Write one enrich chunk as a handful of set-based statements.
+ *
+ * The row-at-a-time version issued up to five sequential statements per branch inside
+ * a single transaction, so a chunk cost hundreds of round trips and could not be made
+ * larger without blowing the transaction timeout. Here each kind of write is collected
+ * across the whole chunk first, then flushed once.
+ *
+ * The FK updates are the only per-row statements left (each row sets a different set
+ * of columns); they run concurrently and are idempotent, so a retry of a failed chunk
+ * re-applies the same values.
+ */
+async function applyEnrichWrites(input: {
+  tenantId: string;
+  chunk: BranchPlanInternal[];
+  idBySap: Map<string, string>;
+  branchAreaIdByName: Map<string, string>;
+}): Promise<void> {
+  const { tenantId, chunk, idBySap, branchAreaIdByName } = input;
+
+  interface BranchUpdate {
+    branchId: string;
+    data: {
+      dealerId?: string | null;
+      primaryWarehouseId?: string | null;
+      areaId?: string | null;
+      branchAreaId?: string | null;
+      regionId?: string | null;
+      provinceId?: string | null;
+    };
+  }
+
+  const fkUpdates: BranchUpdate[] = [];
+  const alternateOwnerIds: string[] = [];
+  const alternateLinks: { branchId: string; alternateBranchId: string }[] = [];
+  const scheduleWrites: { branchId: string; schedule: BranchScheduleInput }[] = [];
+  const allowedModelLinks: { tenantId: string; branchId: string; modelId: string }[] = [];
+
+  for (const entry of chunk) {
+    const branchId = entry.branchId || idBySap.get(lookupKey(entry.sapCode));
+    if (!branchId) continue;
+
+    const data: BranchUpdate["data"] = {};
+    if (entry.fields.dealerId !== undefined) data.dealerId = entry.fields.dealerId;
+    if (entry.fields.primaryWarehouseId !== undefined) {
+      data.primaryWarehouseId = entry.fields.primaryWarehouseId;
+    }
+    if (entry.fields.areaId !== undefined) data.areaId = entry.fields.areaId;
+    if (entry.fields.regionId !== undefined) data.regionId = entry.fields.regionId;
+    if (entry.fields.provinceId !== undefined) data.provinceId = entry.fields.provinceId;
+    if (entry.fields.branchAreaName) {
+      const areaId = branchAreaIdByName.get(lookupKey(entry.fields.branchAreaName));
+      if (areaId) data.branchAreaId = areaId;
+    }
+    if (Object.keys(data).length > 0) fkUpdates.push({ branchId, data });
+
+    if (entry.fields.alternateSapCodes !== undefined) {
+      alternateOwnerIds.push(branchId);
+      for (const code of entry.fields.alternateSapCodes) {
+        const alternateBranchId = idBySap.get(lookupKey(code));
+        if (alternateBranchId && alternateBranchId !== branchId) {
+          alternateLinks.push({ branchId, alternateBranchId });
+        }
+      }
+    }
+
+    if (entry.fields.schedule) {
+      scheduleWrites.push({ branchId, schedule: entry.fields.schedule });
+    }
+
+    for (const model of entry.allowedModelsToAdd) {
+      allowedModelLinks.push({ tenantId, branchId, modelId: model.modelId });
+    }
+  }
+
+  await mapWithConcurrency(fkUpdates, WRITE_CONCURRENCY, async (update) => {
+    await prisma.branch.update({
+      where: { id: update.branchId, tenantId },
+      data: update.data,
+    });
+  });
+
+  // Alternates are declarative: clear every owner in the chunk, then insert once.
+  // The pair stays in a transaction — it is the only replace-in-place write here, so
+  // a crash between the two halves would silently drop a branch's alternates.
+  if (alternateOwnerIds.length > 0) {
+    await prisma.$transaction(async (tx) => {
+      await tx.alternateWarehouse.deleteMany({
+        where: { branchId: { in: alternateOwnerIds } },
+      });
+      if (alternateLinks.length > 0) {
+        await tx.alternateWarehouse.createMany({
+          data: alternateLinks,
+          skipDuplicates: true,
+        });
+      }
+    });
+  }
+
+  if (scheduleWrites.length > 0) {
+    const existing = await prisma.branchDeliverySchedule.findMany({
+      where: { branchId: { in: scheduleWrites.map((write) => write.branchId) } },
+      select: { branchId: true },
+    });
+    const hasSchedule = new Set(existing.map((row) => row.branchId));
+
+    const toCreate = scheduleWrites.filter((write) => !hasSchedule.has(write.branchId));
+    if (toCreate.length > 0) {
+      await prisma.branchDeliverySchedule.createMany({
+        data: toCreate.map((write) => ({
+          tenantId,
+          branchId: write.branchId,
+          frequencyCodeId: write.schedule.frequencyCodeId,
+          deliveryDays: write.schedule.deliveryDays,
+          orderDays: write.schedule.orderDays,
+          notes: write.schedule.notes ?? null,
+        })),
+        skipDuplicates: true,
+      });
+    }
+
+    const toUpdate = scheduleWrites.filter((write) => hasSchedule.has(write.branchId));
+    await mapWithConcurrency(toUpdate, WRITE_CONCURRENCY, async (write) => {
+      await prisma.branchDeliverySchedule.update({
+        where: { branchId: write.branchId },
+        data: {
+          frequencyCodeId: write.schedule.frequencyCodeId,
+          deliveryDays: write.schedule.deliveryDays,
+          orderDays: write.schedule.orderDays,
+          notes: write.schedule.notes ?? null,
+        },
+      });
+    });
+  }
+
+  if (allowedModelLinks.length > 0) {
+    await prisma.branchAllowedModel.createMany({
+      data: allowedModelLinks,
+      skipDuplicates: true,
+    });
+  }
 }
 
 export const branchImportService = {
@@ -258,13 +486,10 @@ export const branchImportService = {
       string,
       { rowNumber: number; values: Record<string, string> }
     >();
-    let skippedEmpty = 0;
     for (const row of branchSheet.rows) {
       const sapCode = row.values.sapcode?.trim() ?? "";
-      if (isBlankOrDash(sapCode)) {
-        skippedEmpty += 1;
-        continue;
-      }
+      // Blank sap_code rows are trailing padding in most exports — silently skipped.
+      if (isBlankOrDash(sapCode)) continue;
       lastBranchRowBySap.set(lookupKey(sapCode), { rowNumber: row.rowNumber, values: row.values });
     }
 
@@ -336,6 +561,12 @@ export const branchImportService = {
     const branchBySapCode = new Map(branches.map((b) => [lookupKey(b.sapCode), b]));
     const modelBySku = new Map(models.map((m) => [lookupKey(m.skuCode), m]));
     const frequencyByCode = new Map(frequencyCodes.map((f) => [lookupKey(f.code), f]));
+    const dealerIndex = indexByCodeOrName(dealers);
+    const warehouseIndex = indexByCodeOrName(warehouses);
+    const areaIndex = indexByCodeOrName(areas);
+    const regionIndex = indexByCodeOrName(regions);
+    const provinceIndex = indexByCodeOrName(provinces);
+    const branchAreaByName = new Map(branchAreas.map((a) => [lookupKey(a.name), a]));
 
     const createSapKeys = new Set<string>();
     for (const [key] of lastBranchRowBySap) {
@@ -449,7 +680,7 @@ export const branchImportService = {
       if (cellPresent("dealer")) {
         const raw = row.values.dealer?.trim() ?? "";
         if (!isBlankOrDash(raw)) {
-          const dealer = resolveByCodeOrName(dealers, raw);
+          const dealer = resolveByCodeOrName(dealerIndex, raw);
           if (!dealer) {
             errors.push({
               sheet: sheetLabel,
@@ -470,7 +701,7 @@ export const branchImportService = {
       if (cellPresent("primarywarehouse")) {
         const raw = row.values.primarywarehouse?.trim() ?? "";
         if (!isBlankOrDash(raw)) {
-          const warehouse = resolveByCodeOrName(warehouses, raw);
+          const warehouse = resolveByCodeOrName(warehouseIndex, raw);
           if (!warehouse) {
             errors.push({
               sheet: sheetLabel,
@@ -497,7 +728,7 @@ export const branchImportService = {
       if (cellPresent("area") && (cellPresent("brancharea") || !psgStyle)) {
         const raw = row.values.area?.trim() ?? "";
         if (!isBlankOrDash(raw)) {
-          const area = resolveByCodeOrName(areas, raw);
+          const area = resolveByCodeOrName(areaIndex, raw);
           if (!area) {
             errors.push({
               sheet: sheetLabel,
@@ -518,7 +749,7 @@ export const branchImportService = {
       if (cellPresent("region")) {
         const raw = row.values.region?.trim() ?? "";
         if (!isBlankOrDash(raw)) {
-          const region = resolveByCodeOrName(regions, raw);
+          const region = resolveByCodeOrName(regionIndex, raw);
           if (!region) {
             errors.push({
               sheet: sheetLabel,
@@ -538,7 +769,7 @@ export const branchImportService = {
       if (cellPresent("province")) {
         const raw = row.values.province?.trim() ?? "";
         if (!isBlankOrDash(raw)) {
-          const province = resolveByCodeOrName(provinces, raw);
+          const province = resolveByCodeOrName(provinceIndex, raw);
           if (!province) {
             errors.push({
               sheet: sheetLabel,
@@ -556,8 +787,7 @@ export const branchImportService = {
 
       // New-template branch_area against existing BranchArea master (PSG still auto-creates via upsert).
       if (branchAreaName && cellPresent("brancharea") && !psgStyle) {
-        const match = branchAreas.find((a) => lookupKey(a.name) === lookupKey(branchAreaName));
-        if (!match) {
+        if (!branchAreaByName.has(lookupKey(branchAreaName))) {
           errors.push({
             sheet: sheetLabel,
             rowNumber: row.rowNumber,
@@ -754,7 +984,7 @@ export const branchImportService = {
       const resolved = resolveBranchForModels(ALLOWED_MODEL_SHEET_NAME, row);
       if (!resolved) continue;
 
-      const sapCode = "pendingCreate" in resolved ? resolved.sapCode : resolved.sapCode;
+      const sapCode = resolved.sapCode;
       const skuCode = row.values.skucode?.trim() ?? "";
       if (!skuCode) {
         errors.push({
@@ -848,8 +1078,6 @@ export const branchImportService = {
       [...modelsBySap.keys()].filter((k) => !lastBranchRowBySap.has(k)).length -
       touchedSaps.size;
 
-    void skippedEmpty;
-
     // Stable enrich walk order: branch-sheet PSG rows first, then models-only SAPs.
     const enrichKeys: string[] = [];
     const enrichSeen = new Set<string>();
@@ -870,6 +1098,9 @@ export const branchImportService = {
       entryBySap: planBySap,
       enrichKeys,
       psgRows,
+      branchAreaIdByName: new Map(
+        branchAreas.map((area) => [lookupKey(area.name), area.id]),
+      ),
       preview: {
         branchRowCount: branchSheet.rows.length,
         allowedModelRowCount: allowedSheet.rows.length,
@@ -893,30 +1124,58 @@ export const branchImportService = {
   },
 
   /**
+   * Memoised `buildPlan`. Every chunk of an apply needs the same plan, and rebuilding
+   * it means re-parsing the workbook and re-running the master-data queries — by far
+   * the dominant cost of a large import.
+   *
+   * `planKey` is a server-derived digest handed to the client by `preview`. A cache
+   * miss falls back to rebuilding from the uploaded file, so a cold or scaled-out
+   * instance is slower but never wrong; callers that have no file to fall back to
+   * get `null` and are expected to ask the browser to re-send it.
+   */
+  async resolvePlan(input: {
+    tenantId: string;
+    file?: Buffer;
+    planKey?: string;
+  }): Promise<{ plan: ImportPlan; planKey: string } | null> {
+    if (input.planKey) {
+      const cached = getCachedPlan<ImportPlan>(input.planKey);
+      if (cached) return { plan: cached, planKey: input.planKey };
+    }
+    if (!input.file) return null;
+
+    const planKey = planKeyFor(input.tenantId, input.file);
+    const cached = getCachedPlan<ImportPlan>(planKey);
+    if (cached) return { plan: cached, planKey };
+
+    const plan = await this.buildPlan(input.tenantId, input.file);
+    setCachedPlan(planKey, plan);
+    return { plan, planKey };
+  },
+
+  /**
    * Core phase: upsert name/status/area/quotas for a slice of PSG rows.
    * When core finishes, response advances to `enrich` at offset 0 (not done yet).
    */
   async applyCoreChunk(input: {
     tenantId: string;
-    file: Buffer;
+    file?: Buffer;
+    planKey?: string;
     offset: number;
     plannedResult?: BranchImportResult;
   }): Promise<BranchImportChunkProgress> {
-    const { preview, psgRows } = await this.buildPlan(input.tenantId, input.file);
+    const resolved = await this.resolvePlan(input);
+    if (!resolved) return planExpiredProgress("core", input.offset);
+
+    const { plan, planKey } = resolved;
+    const { preview, psgRows } = plan;
     if (preview.errors.length > 0) {
       throw new Error("Fix the reported rows before importing.");
     }
 
-    // Freeze planned totals from the first build (before any writes). Later chunks
-    // must echo these — rebuilds after core upserts under-count creates/updates.
-    const plannedResult: BranchImportResult =
-      input.plannedResult ??
-      ({
-        branchesCreated: preview.branchCreateCount,
-        branchesUpdated: preview.branchUpdateCount,
-        allowedModelsAdded: preview.allowedModelAddCount,
-        unchanged: preview.unchangedCount,
-      } satisfies BranchImportResult);
+    // Totals come from the cached pre-write plan, so they stay accurate for the whole
+    // apply. `input.plannedResult` is still honoured for clients that echo it.
+    const plannedResult = plannedResultFor(preview, input.plannedResult);
 
     const total = psgRows.length;
     if (total === 0 || input.offset >= total) {
@@ -926,6 +1185,7 @@ export const branchImportService = {
         nextOffset: 0,
         phase: "enrich",
         done: false,
+        planKey,
         plannedResult,
       };
     }
@@ -933,15 +1193,15 @@ export const branchImportService = {
     const chunk = psgRows.slice(input.offset, input.offset + CORE_CHUNK_SIZE);
     await upsertPsgBranches(prisma, input.tenantId, chunk);
     const nextOffset = input.offset + chunk.length;
-    const coreDone = nextOffset >= total;
 
-    if (coreDone) {
+    if (nextOffset >= total) {
       return {
         processed: total,
         total,
         nextOffset: 0,
         phase: "enrich",
         done: false,
+        planKey,
         plannedResult,
       };
     }
@@ -952,6 +1212,7 @@ export const branchImportService = {
       nextOffset,
       phase: "core",
       done: false,
+      planKey,
       plannedResult,
     };
   },
@@ -964,62 +1225,32 @@ export const branchImportService = {
   async applyEnrichChunk(input: {
     tenantId: string;
     actorUserId: string;
-    file: Buffer;
+    file?: Buffer;
+    planKey?: string;
     offset: number;
     plannedResult?: BranchImportResult;
   }): Promise<BranchImportChunkProgress> {
-    const { preview, entryBySap, enrichKeys } = await this.buildPlan(
-      input.tenantId,
-      input.file,
-    );
+    const resolved = await this.resolvePlan(input);
+    if (!resolved) return planExpiredProgress("enrich", input.offset);
+
+    const { plan, planKey } = resolved;
+    const { preview, entryBySap, enrichKeys, branchAreaIdByName } = plan;
     if (preview.errors.length > 0) {
       throw new Error("Fix the reported rows before importing.");
     }
 
-    // Prefer client-echoed pre-apply totals; never trust a plan rebuilt after core.
-    const plannedResult: BranchImportResult =
-      input.plannedResult ??
-      ({
-        branchesCreated: preview.branchCreateCount,
-        branchesUpdated: preview.branchUpdateCount,
-        allowedModelsAdded: preview.allowedModelAddCount,
-        unchanged: preview.unchangedCount,
-      } satisfies BranchImportResult);
+    const plannedResult = plannedResultFor(preview, input.plannedResult);
 
     const total = enrichKeys.length;
-    if (total === 0) {
-      await auditService.log({
-        tenantId: input.tenantId,
-        userId: input.actorUserId,
-        action: "branch.imported",
-        entityType: "Branch",
-        entityId: "bulk",
-        metadata: {
-          branchRows: preview.branchRowCount,
-          allowedModelRows: preview.allowedModelRowCount,
-          branchesCreated: plannedResult.branchesCreated,
-          branchesUpdated: plannedResult.branchesUpdated,
-          allowedModelsAdded: plannedResult.allowedModelsAdded,
-        },
-      });
-      return {
-        processed: 0,
-        total: 0,
-        nextOffset: 0,
-        phase: "enrich",
-        done: true,
-        plannedResult,
-        result: plannedResult,
-      };
-    }
-
-    if (input.offset >= total) {
+    if (total === 0 || input.offset >= total) {
+      if (total === 0) await logImportSummary(input, preview, plannedResult);
       return {
         processed: total,
         total,
         nextOffset: total,
         phase: "enrich",
         done: true,
+        planKey,
         plannedResult,
         result: plannedResult,
       };
@@ -1038,116 +1269,19 @@ export const branchImportService = {
       ]),
     ];
     const resolvedBranches = sapCodesNeedingResolve.length
-      ? await branchRepository.findManyBySapCodes(input.tenantId, sapCodesNeedingResolve)
+      ? await branchRepository.findIdsBySapCodes(input.tenantId, sapCodesNeedingResolve)
       : [];
     const idBySap = new Map(resolvedBranches.map((b) => [lookupKey(b.sapCode), b.id]));
 
-    const branchAreaNames = [
-      ...new Set(
-        chunk
-          .map((entry) => entry.fields.branchAreaName)
-          .filter((name): name is string => Boolean(name)),
-      ),
-    ];
-    const branchAreaRows = branchAreaNames.length
-      ? await prisma.branchArea.findMany({
-          where: { tenantId: input.tenantId, name: { in: branchAreaNames } },
-          select: { id: true, name: true },
-        })
-      : [];
-    const branchAreaIdByName = new Map(
-      branchAreaRows.map((row) => [lookupKey(row.name), row.id]),
-    );
+    await applyEnrichWrites({
+      tenantId: input.tenantId,
+      chunk,
+      idBySap,
+      branchAreaIdByName,
+    });
 
-    await prisma.$transaction(
-      async (tx) => {
-        for (const entry of chunk) {
-          const branchId = entry.branchId || idBySap.get(lookupKey(entry.sapCode));
-          if (!branchId) continue;
-
-          const data: {
-            dealerId?: string | null;
-            primaryWarehouseId?: string | null;
-            areaId?: string | null;
-            branchAreaId?: string | null;
-            regionId?: string | null;
-            provinceId?: string | null;
-          } = {};
-
-          if (entry.fields.dealerId !== undefined) data.dealerId = entry.fields.dealerId;
-          if (entry.fields.primaryWarehouseId !== undefined) {
-            data.primaryWarehouseId = entry.fields.primaryWarehouseId;
-          }
-          if (entry.fields.areaId !== undefined) data.areaId = entry.fields.areaId;
-          if (entry.fields.regionId !== undefined) data.regionId = entry.fields.regionId;
-          if (entry.fields.provinceId !== undefined) data.provinceId = entry.fields.provinceId;
-          if (entry.fields.branchAreaName) {
-            const areaId = branchAreaIdByName.get(lookupKey(entry.fields.branchAreaName));
-            if (areaId) data.branchAreaId = areaId;
-          }
-
-          if (Object.keys(data).length > 0) {
-            await tx.branch.update({
-              where: { id: branchId, tenantId: input.tenantId },
-              data,
-            });
-          }
-
-          if (entry.fields.alternateSapCodes !== undefined) {
-            const alternateIds = entry.fields.alternateSapCodes
-              .map((code) => idBySap.get(lookupKey(code)))
-              .filter((id): id is string => Boolean(id) && id !== branchId);
-            await tx.alternateWarehouse.deleteMany({ where: { branchId } });
-            if (alternateIds.length > 0) {
-              await tx.alternateWarehouse.createMany({
-                data: alternateIds.map((alternateBranchId) => ({
-                  branchId,
-                  alternateBranchId,
-                })),
-                skipDuplicates: true,
-              });
-            }
-          }
-
-          if (entry.fields.schedule) {
-            await tx.branchDeliverySchedule.upsert({
-              where: { branchId },
-              create: {
-                tenantId: input.tenantId,
-                branchId,
-                frequencyCodeId: entry.fields.schedule.frequencyCodeId,
-                deliveryDays: entry.fields.schedule.deliveryDays,
-                orderDays: entry.fields.schedule.orderDays,
-                notes: entry.fields.schedule.notes ?? null,
-              },
-              update: {
-                frequencyCodeId: entry.fields.schedule.frequencyCodeId,
-                deliveryDays: entry.fields.schedule.deliveryDays,
-                orderDays: entry.fields.schedule.orderDays,
-                notes: entry.fields.schedule.notes ?? null,
-              },
-            });
-          }
-
-          if (entry.allowedModelsToAdd.length > 0) {
-            await tx.branchAllowedModel.createMany({
-              data: entry.allowedModelsToAdd.map((model) => ({
-                tenantId: input.tenantId,
-                branchId,
-                modelId: model.modelId,
-              })),
-              skipDuplicates: true,
-            });
-          }
-        }
-      },
-      { timeout: 30_000 },
-    );
-
-    for (const entry of chunk) {
-      const branchId =
-        entry.branchId || idBySap.get(lookupKey(entry.sapCode)) || entry.sapCode;
-      await auditService.log({
+    await auditService.logMany(
+      chunk.map((entry) => ({
         tenantId: input.tenantId,
         userId: input.actorUserId,
         action: entry.isCreate
@@ -1156,7 +1290,7 @@ export const branchImportService = {
             ? "branch.updated"
             : "branch.allowed_models.added",
         entityType: "Branch",
-        entityId: branchId,
+        entityId: entry.branchId || idBySap.get(lookupKey(entry.sapCode)) || entry.sapCode,
         metadata: {
           source: "excel-import",
           sapCode: entry.sapCode,
@@ -1164,28 +1298,12 @@ export const branchImportService = {
           changedFields: entry.changes.map((change) => change.field),
           allowedModelsAdded: entry.allowedModelsToAdd.map((model) => model.skuCode),
         },
-      });
-    }
+      })),
+    );
 
     const nextOffset = input.offset + chunk.length;
     const done = nextOffset >= total;
-
-    if (done) {
-      await auditService.log({
-        tenantId: input.tenantId,
-        userId: input.actorUserId,
-        action: "branch.imported",
-        entityType: "Branch",
-        entityId: "bulk",
-        metadata: {
-          branchRows: preview.branchRowCount,
-          allowedModelRows: preview.allowedModelRowCount,
-          branchesCreated: plannedResult.branchesCreated,
-          branchesUpdated: plannedResult.branchesUpdated,
-          allowedModelsAdded: plannedResult.allowedModelsAdded,
-        },
-      });
-    }
+    if (done) await logImportSummary(input, preview, plannedResult);
 
     return {
       processed: nextOffset,
@@ -1193,6 +1311,7 @@ export const branchImportService = {
       nextOffset,
       phase: "enrich",
       done,
+      planKey,
       plannedResult,
       result: done ? plannedResult : undefined,
     };
@@ -1201,7 +1320,8 @@ export const branchImportService = {
   async applyChunk(input: {
     tenantId: string;
     actorUserId: string;
-    file: Buffer;
+    file?: Buffer;
+    planKey?: string;
     phase: BranchImportChunkPhase;
     offset: number;
     plannedResult?: BranchImportResult;
@@ -1210,6 +1330,7 @@ export const branchImportService = {
       return this.applyCoreChunk({
         tenantId: input.tenantId,
         file: input.file,
+        planKey: input.planKey,
         offset: input.offset,
         plannedResult: input.plannedResult,
       });
@@ -1218,12 +1339,16 @@ export const branchImportService = {
       tenantId: input.tenantId,
       actorUserId: input.actorUserId,
       file: input.file,
+      planKey: input.planKey,
       offset: input.offset,
       plannedResult: input.plannedResult,
     });
   },
 
-  /** Full apply via core then enrich chunks (non-UI / backwards-compatible callers). */
+  /**
+   * Full apply via core then enrich chunks. Used by non-UI callers, and the loop a
+   * background worker will run once the import moves onto a queue (step 2).
+   */
   async apply(input: {
     tenantId: string;
     actorUserId: string;
@@ -1231,6 +1356,7 @@ export const branchImportService = {
   }): Promise<BranchImportResult> {
     let phase: BranchImportChunkPhase = "core";
     let offset = 0;
+    let planKey: string | undefined;
     let plannedResult: BranchImportResult | undefined;
 
     for (;;) {
@@ -1238,13 +1364,13 @@ export const branchImportService = {
         tenantId: input.tenantId,
         actorUserId: input.actorUserId,
         file: input.file,
+        planKey,
         phase,
         offset,
         plannedResult,
       });
-      if (progress.plannedResult) {
-        plannedResult = progress.plannedResult;
-      }
+      if (progress.planKey) planKey = progress.planKey;
+      if (progress.plannedResult) plannedResult = progress.plannedResult;
       if (progress.done) {
         if (!progress.result) {
           throw new Error("Import finished without a result.");
