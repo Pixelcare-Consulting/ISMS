@@ -1,5 +1,10 @@
 import { prisma } from "@/lib/database/client";
-import { describeWriteError, SAP_SYNC_CHUNK } from "@/features/sap/services/sap-master-data";
+import {
+  describeWriteError,
+  SAP_SYNC_CHUNK,
+  SAP_SYNC_WRITE_CONCURRENCY,
+} from "@/features/sap/services/sap-master-data";
+import { mapWithConcurrency } from "@/lib/shared/concurrency";
 import type { BranchStatus } from "@/lib/database/generated/prisma/client";
 
 export const dealerRepository = {
@@ -134,16 +139,28 @@ export const dealerRepository = {
       }
     }
 
-    for (const row of input.update) {
-      try {
-        await prisma.dealer.update({
-          where: { id: row.id, tenantId },
-          data: { name: row.name, status: row.status },
-        });
-        updated += 1;
-      } catch (e) {
-        failures.push({ sapCode: row.sapCode, name: row.name, reason: describeWriteError(e) });
-      }
+    // Updates carry per-row values so they cannot be batched, but they are
+    // independent of each other — run them `SAP_SYNC_WRITE_CONCURRENCY` wide instead
+    // of one round trip at a time. Results come back in input order, so the failure
+    // report stays deterministic.
+    const outcomes = await mapWithConcurrency(
+      input.update,
+      SAP_SYNC_WRITE_CONCURRENCY,
+      async (row) => {
+        try {
+          await prisma.dealer.update({
+            where: { id: row.id, tenantId },
+            data: { name: row.name, status: row.status },
+          });
+          return null;
+        } catch (e) {
+          return { sapCode: row.sapCode, name: row.name, reason: describeWriteError(e) };
+        }
+      },
+    );
+    for (const outcome of outcomes) {
+      if (outcome) failures.push(outcome);
+      else updated += 1;
     }
 
     return { created, updated, failures };

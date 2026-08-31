@@ -1,7 +1,12 @@
 import type { LookupRecordStatus, Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/database/client";
-import { describeWriteError, SAP_SYNC_CHUNK } from "@/features/sap/services/sap-master-data";
+import {
+  describeWriteError,
+  SAP_SYNC_CHUNK,
+  SAP_SYNC_WRITE_CONCURRENCY,
+} from "@/features/sap/services/sap-master-data";
+import { mapWithConcurrency } from "@/lib/shared/concurrency";
 import {
   resolvePagination,
   toPaginatedResult,
@@ -269,16 +274,30 @@ export const serialNumberRepository = {
       }
     }
 
-    for (const row of input.update) {
-      try {
-        await prisma.serialNumber.update({
-          where: { id: row.id, tenantId },
-          data: { modelId: row.modelId },
-        });
-        updated += 1;
-      } catch (e) {
-        failures.push({ sapCode: row.serialNo, name: null, reason: describeWriteError(e) });
-      }
+    // See dealer.repository.ts — independent per-row updates, run concurrently.
+    // This is the highest-volume sync, so it benefits most.
+    const outcomes = await mapWithConcurrency(
+      input.update,
+      SAP_SYNC_WRITE_CONCURRENCY,
+      async (row) => {
+        try {
+          await prisma.serialNumber.update({
+            where: { id: row.id, tenantId },
+            data: { modelId: row.modelId },
+          });
+          return null;
+        } catch (e) {
+          return {
+            sapCode: row.serialNo,
+            name: null as string | null,
+            reason: describeWriteError(e),
+          };
+        }
+      },
+    );
+    for (const outcome of outcomes) {
+      if (outcome) failures.push(outcome);
+      else updated += 1;
     }
 
     return { created, updated, failures };

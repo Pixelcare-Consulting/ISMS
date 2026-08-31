@@ -12,6 +12,24 @@ export interface SapHttpRequestOptions {
   verifySsl: boolean;
 }
 
+/**
+ * Socket inactivity timeout for a single Service Layer request.
+ *
+ * Without this a hung SAP connection blocks until the platform kills the whole
+ * function — and `withSapSyncLock` is left holding a promise that never settles, so
+ * the in-memory lock wedges until the server restarts. Inactivity (not total
+ * duration) is the right primitive: a legitimately slow large page keeps sending
+ * data and must not be cut off.
+ */
+const DEFAULT_TIMEOUT_MS = 60_000;
+
+function requestTimeoutMs(): number {
+  const raw = process.env.SAP_REQUEST_TIMEOUT_MS;
+  if (!raw) return DEFAULT_TIMEOUT_MS;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_TIMEOUT_MS;
+}
+
 export interface SapHttpResponse {
   statusCode: number;
   body: string;
@@ -55,6 +73,8 @@ function requestOnce(options: SapHttpRequestOptions): Promise<SapHttpResponse> {
       headers["Content-Length"] = String(Buffer.byteLength(bodyStr));
     }
 
+    const timeoutMs = requestTimeoutMs();
+
     const req = requestFn(
       {
         protocol: url.protocol,
@@ -64,6 +84,7 @@ function requestOnce(options: SapHttpRequestOptions): Promise<SapHttpResponse> {
         method: options.method,
         rejectUnauthorized: isHttps ? options.verifySsl : undefined,
         headers,
+        timeout: timeoutMs,
       },
       (res) => {
         let responseBody = "";
@@ -81,6 +102,16 @@ function requestOnce(options: SapHttpRequestOptions): Promise<SapHttpResponse> {
         });
       },
     );
+
+    // `timeout` only fires the event — the socket stays open until we destroy it.
+    // Destroying with an explicit error routes through the `error` handler below.
+    req.on("timeout", () => {
+      req.destroy(
+        new Error(
+          `SAP did not respond for ${timeoutMs}ms (${options.method} ${url.pathname}).`,
+        ),
+      );
+    });
 
     req.on("error", reject);
     if (bodyStr !== undefined) {

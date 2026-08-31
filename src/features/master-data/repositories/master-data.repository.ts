@@ -1,5 +1,10 @@
 import { prisma } from "@/lib/database/client";
-import { describeWriteError, SAP_SYNC_CHUNK } from "@/features/sap/services/sap-master-data";
+import {
+  describeWriteError,
+  SAP_SYNC_CHUNK,
+  SAP_SYNC_WRITE_CONCURRENCY,
+} from "@/features/sap/services/sap-master-data";
+import { mapWithConcurrency } from "@/lib/shared/concurrency";
 import { CACHE_TTL, cacheKey, getOrSet } from "@/lib/cache/redis";
 import type { SkuStatus } from "@/lib/database/generated/prisma/client";
 
@@ -149,19 +154,28 @@ export const masterDataRepository = {
       }
     }
 
-    for (const row of input.update) {
-      try {
-        await prisma.productModel.update({
-          where: { id: row.id, tenantId },
-          // Both track ItemName. `description` is the mapped target; `name` carries it
-          // too because the column is NOT NULL and, with manual creation disabled, SAP
-          // is the only thing that ever names a model.
-          data: { name: row.name, description: row.description, status: row.status },
-        });
-        updated += 1;
-      } catch (e) {
-        failures.push({ sapCode: row.skuCode, name: row.name, reason: describeWriteError(e) });
-      }
+    // See dealer.repository.ts — independent per-row updates, run concurrently.
+    const outcomes = await mapWithConcurrency(
+      input.update,
+      SAP_SYNC_WRITE_CONCURRENCY,
+      async (row) => {
+        try {
+          await prisma.productModel.update({
+            where: { id: row.id, tenantId },
+            // Both track ItemName. `description` is the mapped target; `name` carries it
+            // too because the column is NOT NULL and, with manual creation disabled, SAP
+            // is the only thing that ever names a model.
+            data: { name: row.name, description: row.description, status: row.status },
+          });
+          return null;
+        } catch (e) {
+          return { sapCode: row.skuCode, name: row.name, reason: describeWriteError(e) };
+        }
+      },
+    );
+    for (const outcome of outcomes) {
+      if (outcome) failures.push(outcome);
+      else updated += 1;
     }
 
     return { created, updated, failures };

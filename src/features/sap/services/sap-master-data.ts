@@ -1,5 +1,6 @@
 import { sapServiceLayerClient } from "@/features/sap/services/sap-service-layer-client";
 import type { SapServiceLayerCredentials } from "@/features/sap/types/sap-service-layer";
+import { logger } from "@/lib/shared/logger";
 
 /**
  * Read helpers shared by the SAP → ISMS master-data syncs.
@@ -12,11 +13,25 @@ import type { SapServiceLayerCredentials } from "@/features/sap/types/sap-servic
  * we page with `$skip` until a request comes back empty. `Prefer: odata.maxpagesize`
  * raises that server-side cap so a full item/serial read doesn't take thousands of
  * round trips.
+ *
+ * Paging is sequential (each `$skip` waits for the previous response), so this
+ * constant is the single biggest lever on fetch time: 50k serials at 500/page is 100
+ * serial round trips to SAP, at 2000/page it is 25. Raising it is safe — SAP is free
+ * to return fewer rows than asked and the loop advances by the batch it actually got
+ * — so tune it against your Service Layer rather than guessing. Overridable with
+ * `SAP_PAGE_SIZE` so it can be tuned without a code change.
  */
-const PAGE_SIZE = 500;
+const DEFAULT_PAGE_SIZE = 2000;
+
+function pageSize(): number {
+  const raw = process.env.SAP_PAGE_SIZE;
+  if (!raw) return DEFAULT_PAGE_SIZE;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_PAGE_SIZE;
+}
 
 /**
- * Runaway guard, not an expected limit: PAGE_SIZE * MAX_PAGES rows. Hitting it throws
+ * Runaway guard, not an expected limit: pageSize() * MAX_PAGES rows. Hitting it throws
  * rather than returning what we have — a short read would otherwise look like a
  * successful sync whose missing rows all report as "not in SAP".
  */
@@ -59,6 +74,17 @@ export function parseSapFlag(value: boolean | string | null | undefined): boolea
 export const SAP_SYNC_CHUNK = 500;
 
 /**
+ * Lanes for the per-row updates a sync cannot batch.
+ *
+ * Creates go through `createMany`, but updates carry per-row values, so they stay one
+ * statement each. Running them serially made a few thousand changed rows a few
+ * thousand sequential round trips. Only safe outside a `$transaction` — an interactive
+ * transaction is pinned to one connection, so the branch and warehouse syncs (which
+ * wrap their writes in one) deliberately still run serially.
+ */
+export const SAP_SYNC_WRITE_CONCURRENCY = 8;
+
+/**
  * Turn a failed sync write into a reason a user can act on. The case worth naming is
  * P2002 — an ISMS unique constraint refusing a row SAP considers legitimate.
  */
@@ -85,6 +111,8 @@ export async function fetchSapCollection<T>(
   query: { entity: string; select: string; orderBy: string; filter?: string },
 ): Promise<T[]> {
   const records: T[] = [];
+  const requestedPageSize = pageSize();
+  const startedAt = Date.now();
   let skip = 0;
 
   for (let page = 0; page < MAX_PAGES; page += 1) {
@@ -99,7 +127,7 @@ export async function fetchSapCollection<T>(
       creds,
       method: "GET",
       path: `/${query.entity}?${params.join("&")}`,
-      headers: { Prefer: `odata.maxpagesize=${PAGE_SIZE}` },
+      headers: { Prefer: `odata.maxpagesize=${requestedPageSize}` },
     });
 
     if (response.statusCode >= 400) {
@@ -107,7 +135,24 @@ export async function fetchSapCollection<T>(
     }
 
     const batch = response.data?.value ?? [];
-    if (batch.length === 0) return records;
+    if (batch.length === 0) {
+      // Logged so the SAP half of a sync can be told apart from the Postgres half
+      // without guessing. `effectivePageSize` is what SAP actually granted — if it is
+      // well below `requestedPageSize`, the Service Layer is capping it server-side
+      // and raising SAP_PAGE_SIZE further will not help.
+      logger.info(
+        {
+          entity: query.entity,
+          rows: records.length,
+          pages: page,
+          requestedPageSize,
+          effectivePageSize: page > 0 ? Math.ceil(records.length / page) : 0,
+          elapsedMs: Date.now() - startedAt,
+        },
+        "sap collection fetched",
+      );
+      return records;
+    }
 
     records.push(...batch);
     skip += batch.length;
@@ -116,7 +161,7 @@ export async function fetchSapCollection<T>(
   // Fell out of the loop with SAP still returning rows — refuse to report a partial
   // read as a complete one.
   throw new Error(
-    `Reading ${query.entity} from SAP exceeded ${MAX_PAGES * PAGE_SIZE} rows. ` +
+    `Reading ${query.entity} from SAP exceeded ${MAX_PAGES * requestedPageSize} rows. ` +
       `The sync was stopped so it does not apply a partial result.`,
   );
 }
