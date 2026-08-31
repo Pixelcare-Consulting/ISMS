@@ -667,12 +667,6 @@ export const branchImportService = {
                   ? (row.values.schedulenotes ?? "").trim()
                   : (existing?.deliveryScheduleConfig?.notes ?? "");
                 const notes = notesRaw || null;
-                fields.schedule = {
-                  frequencyCodeId: frequency.id,
-                  deliveryDays,
-                  orderDays,
-                  notes,
-                };
                 const existingSchedule = existing?.deliveryScheduleConfig;
                 if (
                   isCreate ||
@@ -682,6 +676,18 @@ export const branchImportService = {
                   !sameDayList(existingSchedule.orderDays, orderDays) ||
                   (existingSchedule.notes ?? "") !== (notes ?? "")
                 ) {
+                  // Only stage the schedule when it actually differs. Assigning this
+                  // unconditionally made every row whose frequency_code already matched
+                  // the database survive the plan filter below, so it showed in the
+                  // preview as "Update / No field changes", inflated the update count,
+                  // and re-upserted an identical schedule during enrich. Every other
+                  // field here sets `fields.X` inside its own difference check.
+                  fields.schedule = {
+                    frequencyCodeId: frequency.id,
+                    deliveryDays,
+                    orderDays,
+                    notes,
+                  };
                   pushChange(
                     changes,
                     "frequencyCode",
