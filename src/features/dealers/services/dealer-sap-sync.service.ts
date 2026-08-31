@@ -22,6 +22,13 @@ const SAP_BP_SELECT = "CardCode,CardName,Valid,Frozen";
 const SAP_BP_FILTER = "CardType eq 'cCustomer'";
 const SAP_BP_ORDER_BY = "CardCode";
 
+/**
+ * Exact wording `describeWriteError` produces for a P2002 on (tenant_id, name), so a
+ * row rejected by the pre-flight check below reads identically in the skip report to
+ * one the write-time fallback used to catch.
+ */
+const DUPLICATE_NAME_REASON = "Another ISMS record already uses this name";
+
 interface SapBusinessPartnerRecord {
   CardCode?: string | null;
   CardName?: string | null;
@@ -65,6 +72,35 @@ async function runSync(tenantId: string, actorUserId: string): Promise<SapMaster
     existing.filter((dealer) => dealer.sapCode).map((dealer) => [dealer.sapCode as string, dealer]),
   );
 
+  /**
+   * Which SAP code currently holds each dealer name.
+   *
+   * `Dealer` still carries `@@unique([tenantId, name])` while `sapCode` — the field
+   * this sync actually matches on — has no unique index, so two SAP customers sharing
+   * a `CardName` under different `CardCode`s cannot both land. That used to be
+   * discovered at write time, where a single duplicate rejected its whole 500-row
+   * `createMany` and forced the batch to retry row by row: 500 round trips and a wall
+   * of `prisma:error` output to surface a handful of bad rows. Reserving names here
+   * produces the same skip report with no failed writes at all.
+   *
+   * Case-sensitive, matching the Postgres index — "ACME" and "acme" genuinely are
+   * two different rows. Soft-deleted dealers are included because they still occupy
+   * their name; `listSapSyncSnapshot` returns them.
+   *
+   * A name is never released. `applySapSync` writes every create before any update,
+   * so a name freed by a rename is still taken while the creates run — pessimistic on
+   * purpose, and the skipped row lands on the next sync once the rename has committed.
+   */
+  const nameOwner = new Map<string, string | null>();
+  for (const dealer of existing) {
+    if (!nameOwner.has(dealer.name)) nameOwner.set(dealer.name, dealer.sapCode);
+  }
+  /** True when `name` is spoken for by anyone other than this SAP code. */
+  const nameTakenByOther = (name: string, sapCode: string) => {
+    const owner = nameOwner.get(name);
+    return owner !== undefined && owner !== sapCode;
+  };
+
   const skipped: SapMasterSyncSkip[] = [];
   const toCreate: { sapCode: string; name: string; status: BranchStatus }[] = [];
   const toUpdate: { id: string; sapCode: string; name: string; status: BranchStatus }[] = [];
@@ -91,12 +127,25 @@ async function runSync(tenantId: string, actorUserId: string): Promise<SapMaster
 
     const match = bySapCode.get(sapCode);
     if (!match) {
+      if (nameTakenByOther(name, sapCode)) {
+        skipped.push({ sapCode, name, reason: DUPLICATE_NAME_REASON });
+        continue;
+      }
+      nameOwner.set(name, sapCode);
       toCreate.push({ sapCode, name, status });
       continue;
     }
     if (match.name === name && match.status === status) {
       unchanged += 1;
       continue;
+    }
+    // A rename has to clear the same constraint a create does.
+    if (match.name !== name) {
+      if (nameTakenByOther(name, sapCode)) {
+        skipped.push({ sapCode, name, reason: DUPLICATE_NAME_REASON });
+        continue;
+      }
+      nameOwner.set(name, sapCode);
     }
     toUpdate.push({ id: match.id, sapCode, name, status });
   }

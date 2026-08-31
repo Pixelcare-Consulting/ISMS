@@ -104,10 +104,16 @@ export const dealerRepository = {
    * per-row inserts if the batch is rejected, so one bad row is reported by itself
    * instead of taking the whole sync down with it.
    *
-   * The rejection this is built for: `@@unique([tenantId, name])` still stands, so two
-   * SAP customers sharing a `CardName` under different `CardCode`s cannot both land.
-   * Those surface as failures here and get reported to the user. Dropping that
-   * constraint is what lets them through — this code needs no change when it goes.
+   * The rejection this was built for — `@@unique([tenantId, name])` blocking two SAP
+   * customers that share a `CardName` — is now caught before the write, in
+   * `dealer-sap-sync.service.ts`, because reaching it here costs a rejected 500-row
+   * `createMany` plus 500 single-row retries to find a handful of offenders. This
+   * fallback stays as a safety net for write errors the caller could not predict; if
+   * it fires often, something is getting past the pre-flight check and that is the
+   * thing to fix.
+   *
+   * Dropping the name constraint is what lets duplicates through — neither this code
+   * nor the pre-flight check needs changing when it goes, the skips simply stop.
    */
   async applySapSync(
     tenantId: string,
