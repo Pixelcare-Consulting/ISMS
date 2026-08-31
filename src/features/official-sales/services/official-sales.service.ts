@@ -4,6 +4,7 @@ import {
   type OfficialSalesRowCreateInput,
 } from "@/features/official-sales/repositories/official-sales.repository";
 import {
+  createOfficialSalesLookupCache,
   normalizeProcessAction,
   processOfficialSalesRow,
 } from "@/features/official-sales/services/official-sales-process";
@@ -310,13 +311,32 @@ export const officialSalesService = {
     return buildOfficialSalesTemplateWorkbook();
   },
 
-  async processRows(tenantId: string, userId: string, rowIds?: string[]) {
-    const rows = await officialSalesRepository.findPendingRows(tenantId, rowIds);
+  /**
+   * Process one bounded batch of pending rows.
+   *
+   * Rows are processed in order because two rows in the same file can touch the
+   * same serial (ADD then DEL). `limit` caps a single call so a large dealer file
+   * cannot outrun the function timeout — processed rows leave the pending set, so
+   * the caller just calls again while `remaining` is true.
+   */
+  async processRows(
+    tenantId: string,
+    userId: string,
+    rowIds?: string[],
+    options?: { limit?: number },
+  ) {
+    const limit = options?.limit;
+    const rows = await officialSalesRepository.findPendingRows(
+      tenantId,
+      rowIds,
+      limit,
+    );
     if (rows.length === 0) {
       return {
         processed: 0,
         successCount: 0,
         errorCount: 0,
+        remaining: false,
         message: "No pending rows to process",
       };
     }
@@ -329,13 +349,22 @@ export const officialSalesService = {
     ]);
 
     const codes = { stkCodeId, sldCodeId, rsvCodeId, ofsCodeId };
+    // One memo for the whole batch: a dealer file repeats the same branches,
+    // packages, brands and price lookups on nearly every row.
+    const lookupCache = createOfficialSalesLookupCache();
     let success = 0;
     let error = 0;
     const failures: { serial: string; error: string }[] = [];
 
     for (const row of rows) {
       try {
-        const result = await processOfficialSalesRow(tenantId, userId, row, codes);
+        const result = await processOfficialSalesRow(
+          tenantId,
+          userId,
+          row,
+          codes,
+          lookupCache,
+        );
         await officialSalesRepository.updateRowResult(row.id, {
           status: "success",
           result,
@@ -379,6 +408,8 @@ export const officialSalesService = {
       processed: rows.length,
       successCount: success,
       errorCount: error,
+      // A full batch may have left more behind; the caller loops until this is false.
+      remaining: limit != null && rows.length === limit,
       message,
     };
   },

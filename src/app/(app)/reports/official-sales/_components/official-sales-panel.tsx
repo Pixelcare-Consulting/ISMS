@@ -595,8 +595,48 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
         },
         { id: "done", label: "Done" },
       ],
-      run: () =>
-        processOfficialSalesAction(rowIds?.length ? { rowIds } : undefined),
+      // The action processes a bounded batch and reports whether more is pending;
+      // processed rows leave the pending queue, so repeating the call walks it.
+      run: async () => {
+        const input = rowIds?.length ? { rowIds } : undefined;
+        let processed = 0;
+        let successCount = 0;
+        let errorCount = 0;
+        const messages: string[] = [];
+
+        for (;;) {
+          const batch = await processOfficialSalesAction(input);
+          if ("error" in batch) {
+            // Earlier batches are already committed — surface what got through.
+            if (processed === 0) return batch;
+            return {
+              ...batch,
+              error: `${batch.error} Stopped after ${processed} row${processed === 1 ? "" : "s"}.`,
+            };
+          }
+
+          processed += batch.processed;
+          successCount += batch.successCount;
+          errorCount += batch.errorCount;
+          // Keep only the batch messages that name failed serials — the counts are
+          // re-derived from the running totals below.
+          if (batch.message?.includes("Failed:")) {
+            messages.push(batch.message.slice(batch.message.indexOf("Failed:")));
+          }
+
+          if (!batch.remaining) {
+            const summary = `Processed ${processed}: ${successCount} ok, ${errorCount} failed`;
+            return {
+              ...batch,
+              processed,
+              successCount,
+              errorCount,
+              message:
+                messages.length > 0 ? `${summary}. ${messages.join(" ")}` : summary,
+            };
+          }
+        }
+      },
       getError: (result) =>
         "error" in result && result.error ? result.error : null,
       getSuccessSummary: (result) =>

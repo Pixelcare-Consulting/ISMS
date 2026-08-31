@@ -21,6 +21,7 @@ import {
 } from "@/features/branches/services/branch-import.workbook";
 import {
   getCachedPlan,
+  invalidatePlan,
   planKeyFor,
   setCachedPlan,
 } from "@/features/branches/services/branch-import.plan-cache";
@@ -1244,6 +1245,7 @@ export const branchImportService = {
     const total = enrichKeys.length;
     if (total === 0 || input.offset >= total) {
       if (total === 0) await logImportSummary(input, preview, plannedResult);
+      invalidatePlan(planKey);
       return {
         processed: total,
         total,
@@ -1304,6 +1306,9 @@ export const branchImportService = {
     const nextOffset = input.offset + chunk.length;
     const done = nextOffset >= total;
     if (done) await logImportSummary(input, preview, plannedResult);
+    // A finished import makes the cached diff stale — drop it so re-uploading the
+    // same workbook re-diffs against what was just written.
+    if (done) invalidatePlan(planKey);
 
     return {
       processed: nextOffset,

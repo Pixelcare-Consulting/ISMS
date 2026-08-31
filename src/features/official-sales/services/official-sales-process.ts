@@ -16,6 +16,50 @@ export type OfficialSalesProcessCodes = {
   ofsCodeId: string;
 };
 
+/**
+ * Per-run memo for the master-data reads every staging row repeats.
+ *
+ * A dealer file is hundreds of rows spanning a handful of branches, packages,
+ * brands and price lookups, and the old path re-queried each one per row. Only
+ * tenant-scoped reads live here and the cache is created per `processRows` call,
+ * so it never spans tenants or outlives a run.
+ *
+ * Promises are memoized rather than values: a rejection ("Unknown branch: X") is
+ * deterministic for the run, so every row that hits it gets the same error without
+ * a second round trip.
+ */
+type ResolvedBranch = NonNullable<
+  Awaited<ReturnType<typeof officialSalesRepository.resolveBranch>>
+>;
+
+export type OfficialSalesLookupCache = {
+  branches: Map<string, Promise<ResolvedBranch>>;
+  packages: Map<string, Promise<string>>;
+  brands: Map<string, Promise<string>>;
+  modelPrices: Map<string, Promise<number>>;
+};
+
+export function createOfficialSalesLookupCache(): OfficialSalesLookupCache {
+  return {
+    branches: new Map(),
+    packages: new Map(),
+    brands: new Map(),
+    modelPrices: new Map(),
+  };
+}
+
+function memoize<T>(
+  store: Map<string, Promise<T>>,
+  key: string,
+  load: () => Promise<T>,
+): Promise<T> {
+  const cached = store.get(key);
+  if (cached) return cached;
+  const pending = load();
+  store.set(key, pending);
+  return pending;
+}
+
 export type OfficialSalesProcessAction = "WHSE_ADD" | "ADD" | "DEL" | "UPD";
 
 export type OfficialSalesProcessRow = {
@@ -169,12 +213,18 @@ async function logOfficialSalesTrail(input: {
   });
 }
 
-async function resolveSoldBranch(tenantId: string, branchSold: string) {
-  const branch = await officialSalesRepository.resolveBranch(tenantId, branchSold);
-  if (!branch) {
-    throw new Error(`Unknown branch: ${branchSold}`);
-  }
-  return branch;
+async function resolveSoldBranch(
+  tenantId: string,
+  branchSold: string,
+  cache: OfficialSalesLookupCache,
+) {
+  return memoize(cache.branches, branchSold.trim().toLowerCase(), async () => {
+    const branch = await officialSalesRepository.resolveBranch(tenantId, branchSold);
+    if (!branch) {
+      throw new Error(`Unknown branch: ${branchSold}`);
+    }
+    return branch;
+  });
 }
 
 async function setInventoryOfficialSold(
@@ -243,19 +293,42 @@ function parseRowSaleAmount(value: unknown): number {
 async function resolvePackageTypeIdByName(
   tenantId: string,
   packageName: string,
+  cache: OfficialSalesLookupCache,
 ): Promise<string> {
-  const pkg = await prisma.packageType.findFirst({
-    where: {
-      tenantId,
-      name: { equals: packageName, mode: "insensitive" },
-      recordStatus: "active",
-    },
-    select: { id: true },
+  return memoize(cache.packages, packageName.trim().toLowerCase(), async () => {
+    const pkg = await prisma.packageType.findFirst({
+      where: {
+        tenantId,
+        name: { equals: packageName, mode: "insensitive" },
+        recordStatus: "active",
+      },
+      select: { id: true },
+    });
+    if (!pkg) {
+      throw new Error(`Unknown package: ${packageName}`);
+    }
+    return pkg.id;
   });
-  if (!pkg) {
-    throw new Error(`Unknown package: ${packageName}`);
-  }
-  return pkg.id;
+}
+
+async function resolveBrandIdByName(
+  tenantId: string,
+  brandName: string,
+  cache: OfficialSalesLookupCache,
+): Promise<string> {
+  return memoize(cache.brands, brandName.trim().toLowerCase(), async () => {
+    const brand = await prisma.brand.findFirst({
+      where: {
+        tenantId,
+        name: { equals: brandName, mode: "insensitive" },
+      },
+      select: { id: true },
+    });
+    if (!brand) {
+      throw new Error(`Unknown brand: ${brandName}`);
+    }
+    return brand.id;
+  });
 }
 
 /**
@@ -267,14 +340,20 @@ async function resolveOfficialSalesModelPrice(
   modelId: string,
   packageTypeId: string | null | undefined,
   transactionDate: Date | null | undefined,
+  cache: OfficialSalesLookupCache,
 ): Promise<number> {
-  const resolved = await resolveModelPriceForSales(
-    tenantId,
-    modelId,
-    packageTypeId ?? undefined,
-    transactionDate ?? undefined,
-  );
-  return resolved?.amount ?? 0;
+  // Price windows are per calendar day, so the day is the whole date component of the key.
+  const day = transactionDate ? transactionDate.toISOString().slice(0, 10) : "";
+  const key = `${modelId}|${packageTypeId ?? ""}|${day}`;
+  return memoize(cache.modelPrices, key, async () => {
+    const resolved = await resolveModelPriceForSales(
+      tenantId,
+      modelId,
+      packageTypeId ?? undefined,
+      transactionDate ?? undefined,
+    );
+    return resolved?.amount ?? 0;
+  });
 }
 
 /**
@@ -290,6 +369,7 @@ async function resolveRetagCommercialFields(
     sale: { transactionDate: Date | null };
     serialNumber: { modelId: string | null } | null;
   },
+  cache: OfficialSalesLookupCache,
 ): Promise<OfficialSalesRetagCommercial> {
   const modelId = detail.modelId ?? detail.serialNumber?.modelId ?? null;
   if (!modelId) {
@@ -300,7 +380,7 @@ async function resolveRetagCommercialFields(
   let packageTypeId = detail.packageTypeId;
   let updatePackage = false;
   if (packageName) {
-    packageTypeId = await resolvePackageTypeIdByName(tenantId, packageName);
+    packageTypeId = await resolvePackageTypeIdByName(tenantId, packageName, cache);
     updatePackage = true;
   }
 
@@ -311,6 +391,7 @@ async function resolveRetagCommercialFields(
     modelId,
     packageTypeId,
     transactionDate,
+    cache,
   );
 
   return {
@@ -328,27 +409,17 @@ async function resolveCommercialFieldsForCreate(
   row: OfficialSalesProcessRow,
   modelId: string,
   transactionDate: Date | null,
+  cache: OfficialSalesLookupCache,
 ): Promise<OfficialSalesCommercialFields> {
   const packageName = row.packageName?.trim() ?? "";
   const packageTypeId = packageName
-    ? await resolvePackageTypeIdByName(tenantId, packageName)
+    ? await resolvePackageTypeIdByName(tenantId, packageName, cache)
     : null;
 
   const brandName = row.brand?.trim() ?? "";
-  let brandId: string | null = null;
-  if (brandName) {
-    const brand = await prisma.brand.findFirst({
-      where: {
-        tenantId,
-        name: { equals: brandName, mode: "insensitive" },
-      },
-      select: { id: true },
-    });
-    if (!brand) {
-      throw new Error(`Unknown brand: ${brandName}`);
-    }
-    brandId = brand.id;
-  }
+  const brandId = brandName
+    ? await resolveBrandIdByName(tenantId, brandName, cache)
+    : null;
 
   const saleAmount = parseRowSaleAmount(row.saleAmount);
   const modelPrice = await resolveOfficialSalesModelPrice(
@@ -356,6 +427,7 @@ async function resolveCommercialFieldsForCreate(
     modelId,
     packageTypeId,
     transactionDate,
+    cache,
   );
 
   return {
@@ -472,9 +544,10 @@ async function processWhseAdd(
   userId: string,
   row: OfficialSalesProcessRow,
   codes: OfficialSalesProcessCodes,
+  cache: OfficialSalesLookupCache,
 ): Promise<string> {
   const branchLabel = requireBranchSold(row.branchSold);
-  const soldBranch = await resolveSoldBranch(tenantId, branchLabel);
+  const soldBranch = await resolveSoldBranch(tenantId, branchLabel, cache);
   const whse = await officialSalesRepository.findWarehouseInventoryBySerial(
     tenantId,
     row.serial,
@@ -491,6 +564,7 @@ async function processWhseAdd(
     row,
     modelId,
     transactionDate,
+    cache,
   );
   const whseFrom =
     whse.warehouseLocation.warehouse.name || whse.warehouseLocation.name;
@@ -585,9 +659,10 @@ async function processAdd(
   userId: string,
   row: OfficialSalesProcessRow,
   codes: OfficialSalesProcessCodes,
+  cache: OfficialSalesLookupCache,
 ): Promise<string> {
   const branchLabel = requireBranchSold(row.branchSold);
-  const soldBranch = await resolveSoldBranch(tenantId, branchLabel);
+  const soldBranch = await resolveSoldBranch(tenantId, branchLabel, cache);
   const inventory = await officialSalesRepository.findInventoryBySerial(
     tenantId,
     row.serial,
@@ -624,6 +699,7 @@ async function processAdd(
       tenantId,
       row,
       detail,
+      cache,
     );
 
     await prisma.$transaction(async (tx) => {
@@ -739,6 +815,7 @@ async function processAdd(
       tenantId,
       row,
       detail,
+      cache,
     );
 
     await prisma.$transaction(async (tx) => {
@@ -802,6 +879,7 @@ async function processAdd(
       tenantId,
       row,
       duplicate,
+      cache,
     );
     await prisma.$transaction(async (tx) => {
       await retagDetailToOfficialSold(
@@ -856,6 +934,7 @@ async function processAdd(
     row,
     modelId,
     sellableTxnDate,
+    cache,
   );
 
   await prisma.$transaction(async (tx) => {
@@ -933,9 +1012,10 @@ async function processDel(
   userId: string,
   row: OfficialSalesProcessRow,
   codes: OfficialSalesProcessCodes,
+  cache: OfficialSalesLookupCache,
 ): Promise<string> {
   const branchLabel = requireBranchSold(row.branchSold);
-  const soldBranch = await resolveSoldBranch(tenantId, branchLabel);
+  const soldBranch = await resolveSoldBranch(tenantId, branchLabel, cache);
   const txn = resolveTransMatchNo(row);
   if (!txn) {
     throw new Error("Trans # / SI/TRANS NO. is required for DEL");
@@ -1098,6 +1178,7 @@ export async function processOfficialSalesRow(
   userId: string,
   row: OfficialSalesProcessRow,
   codes: OfficialSalesProcessCodes,
+  cache: OfficialSalesLookupCache = createOfficialSalesLookupCache(),
 ): Promise<string> {
   const action = normalizeProcessAction(row.action);
   if (!action) {
@@ -1110,11 +1191,11 @@ export async function processOfficialSalesRow(
 
   switch (action) {
     case "WHSE_ADD":
-      return processWhseAdd(tenantId, userId, row, codes);
+      return processWhseAdd(tenantId, userId, row, codes, cache);
     case "ADD":
-      return processAdd(tenantId, userId, row, codes);
+      return processAdd(tenantId, userId, row, codes, cache);
     case "DEL":
-      return processDel(tenantId, userId, row, codes);
+      return processDel(tenantId, userId, row, codes, cache);
     case "UPD":
       throw new Error("UPD not supported — edit the sale in Sales");
     default:

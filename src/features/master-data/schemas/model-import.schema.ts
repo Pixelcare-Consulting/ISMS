@@ -81,6 +81,12 @@ export interface ModelImportRowPlan {
 }
 
 export interface ModelImportPreview {
+  /**
+   * Opaque server-derived handle for the plan built from this upload. The apply
+   * sends it back instead of re-uploading the workbook for every chunk; it is a
+   * digest of the file, never a plan the browser could tamper with.
+   */
+  planKey?: string;
   rowCount: number;
   createCount: number;
   updateCount: number;
@@ -113,4 +119,11 @@ export interface ModelImportChunkProgress {
   modelsUnchanged?: number;
   /** Present only when the final chunk succeeds. */
   result?: ModelImportResult;
+  /** Echoed back so the client keeps addressing the same cached plan. */
+  planKey?: string;
+  /**
+   * The cached plan is gone (cold instance or expired TTL). Nothing was written for
+   * this chunk — retry the same offset with the workbook attached.
+   */
+  planExpired?: boolean;
 }
