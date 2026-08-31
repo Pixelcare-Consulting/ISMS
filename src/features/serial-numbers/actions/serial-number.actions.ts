@@ -10,7 +10,6 @@ import type {
   SerialNumberListSort,
   SerialNumberListSortDir,
 } from "@/features/serial-numbers/repositories/serial-number.repository";
-import { serialNumberSapSyncService } from "@/features/serial-numbers/services/serial-number-sap-sync.service";
 import { requirePermission } from "@/lib/auth/permissions";
 
 const SERIAL_NUMBERS_ROUTE = "/inventory/serial-numbers";
@@ -106,19 +105,5 @@ export async function setSerialNumberStatusAction(id: string, input: unknown) {
     return { success: true as const, row };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to update status" };
-  }
-}
-
-export async function syncSerialNumbersFromSapAction() {
-  const session = await requirePermission("inventory.manage");
-  try {
-    const result = await serialNumberSapSyncService.syncFromSap(
-      session.user.tenantId,
-      session.user.id,
-    );
-    revalidatePath(SERIAL_NUMBERS_ROUTE);
-    return { success: true as const, result };
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : "Failed to sync serial numbers from SAP" };
   }
 }

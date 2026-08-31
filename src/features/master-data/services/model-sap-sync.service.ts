@@ -3,6 +3,7 @@ import { masterDataRepository } from "@/features/master-data/repositories/master
 import type {
   SapMasterSyncResult,
   SapMasterSyncSkip,
+  SapMasterSyncStage,
 } from "@/features/sap/schemas/sap-master-sync.schema";
 import {
   fetchSapCollection,
@@ -10,6 +11,7 @@ import {
 } from "@/features/sap/services/sap-master-data";
 import { sapServiceLayerService } from "@/features/sap/services/sap-service-layer.service";
 import { withSapSyncLock } from "@/features/sap/services/sap-sync-lock";
+import { serialNumberSapSyncService } from "@/features/serial-numbers/services/serial-number-sap-sync.service";
 import type { SkuStatus } from "@/lib/database/generated/prisma/client";
 
 /** SAP B1 Service Layer entity holding item master data (OITM). */
@@ -137,6 +139,32 @@ async function runSync(tenantId: string, actorUserId: string): Promise<SapMaster
   return result;
 }
 
+/**
+ * Serial numbers are children of the model they belong to — `SerialNumber.modelId` is a
+ * required FK — so they are synced here, after the item write lands, rather than from a
+ * button of their own. Running it in this order is what makes the link resolvable: a
+ * serial whose `ItemCode` arrived in the same run finds its model already in ISMS.
+ *
+ * A failure here is reported but never rethrown: the models this run already wrote are
+ * correct and must not be reported as a failed sync because SAP's serial entity was
+ * unreachable.
+ */
+async function syncSerialsStage(
+  tenantId: string,
+  actorUserId: string,
+): Promise<SapMasterSyncStage> {
+  try {
+    const result = await serialNumberSapSyncService.syncFromSap(tenantId, actorUserId);
+    return { label: "serial numbers", result };
+  } catch (e) {
+    return {
+      label: "serial numbers",
+      result: null,
+      error: e instanceof Error ? e.message : "Could not sync serial numbers from SAP",
+    };
+  }
+}
+
 export const modelSapSyncService = {
   /**
    * Pull item master data from SAP and upsert ISMS product models matched on `skuCode`.
@@ -146,9 +174,17 @@ export const modelSapSyncService = {
    * are ISMS-only classifications with no SAP counterpart and are never touched — models
    * created by sync land with them unset.
    *
+   * Serial numbers ride along: once the items are written, the serial sync runs against
+   * them in the same action, so the two never drift and there is no order for a user to
+   * get wrong. That makes this the slower of the two reads — the serial entity is by far
+   * the larger one — which is the price of the guarantee.
+   *
    * Locked per tenant so concurrent triggers join one run instead of hitting SAP twice.
    */
-  syncFromSap(tenantId: string, actorUserId: string): Promise<SapMasterSyncResult> {
-    return withSapSyncLock(`product-model:${tenantId}`, () => runSync(tenantId, actorUserId));
+  async syncFromSap(tenantId: string, actorUserId: string): Promise<SapMasterSyncResult> {
+    const result = await withSapSyncLock(`product-model:${tenantId}`, () =>
+      runSync(tenantId, actorUserId),
+    );
+    return { ...result, stages: [await syncSerialsStage(tenantId, actorUserId)] };
   },
 };

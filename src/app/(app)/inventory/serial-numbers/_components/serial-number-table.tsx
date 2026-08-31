@@ -11,10 +11,8 @@ import type { LookupRecordStatus } from "@prisma/client";
 import {
   createSerialNumberAction,
   setSerialNumberStatusAction,
-  syncSerialNumbersFromSapAction,
   updateSerialNumberAction,
 } from "@/features/serial-numbers/actions/serial-number.actions";
-import { SapSyncButton } from "@/features/sap/components/sap-sync-button";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import {
   TableIndexCell,
@@ -240,11 +238,14 @@ export function SerialNumberTable({
         }}
         toolbarActions={
           <>
-            <SapSyncButton
-              syncKey="serial-number"
-              noun={{ one: "serial number", many: "serial numbers" }}
-              onSync={syncSerialNumbersFromSapAction}
-            />
+            {/*
+              No sync control here on purpose: serials are children of a model, so they
+              are pulled by the model sync in the same run that guarantees their model
+              exists. The note points to where that runs.
+            */}
+            <p className="text-muted-foreground hidden text-xs sm:block">
+              Synced from SAP with Models
+            </p>
             <SearchableSelect
               id="serial-status"
               className="sm:w-40"

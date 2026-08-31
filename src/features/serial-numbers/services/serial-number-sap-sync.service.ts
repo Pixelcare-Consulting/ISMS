@@ -122,10 +122,21 @@ async function runSync(tenantId: string, actorUserId: string): Promise<SapMaster
   const { source, records } = await fetchSerials(creds);
 
   // `SerialNumber.modelId` is a required FK, so a serial cannot be stored until its
-  // item exists in ISMS. Anything unmatched is reported, telling the user to run the
-  // model sync first — re-running this sync afterwards picks those serials up.
+  // item exists in ISMS. The model sync runs immediately before this one, so an unmatched
+  // item code now means SAP's item read did not carry it — not that the user skipped a
+  // step. Those serials are reported and land on a later run once the item appears.
   const models = await serialNumberRepository.listModelOptions(tenantId);
   const modelIdBySku = new Map(models.map((model) => [model.skuCode, model.id]));
+
+  // SAP is not always consistent about ItemCode casing between OITM and OSRN, and an
+  // exact-only match reports those serials as "model not in ISMS" when the model is
+  // plainly there. A case-folded fallback catches them; a fold that two SKUs share is
+  // stored as null so the fallback can never guess the wrong parent.
+  const modelIdByFoldedSku = new Map<string, string | null>();
+  for (const model of models) {
+    const folded = model.skuCode.toUpperCase();
+    modelIdByFoldedSku.set(folded, modelIdByFoldedSku.has(folded) ? null : model.id);
+  }
 
   const existing = await serialNumberRepository.listSapSyncSnapshot(tenantId);
   const bySerialNo = new Map(existing.map((serial) => [serial.serialNo, serial]));
@@ -158,14 +169,16 @@ async function runSync(tenantId: string, actorUserId: string): Promise<SapMaster
     }
     seen.add(serialNo);
 
-    const modelId = itemCode ? modelIdBySku.get(itemCode) : undefined;
+    const modelId = itemCode
+      ? (modelIdBySku.get(itemCode) ?? modelIdByFoldedSku.get(itemCode.toUpperCase()) ?? undefined)
+      : undefined;
     if (!modelId) {
       missingModels += 1;
       skipped.push({
         sapCode: serialNo,
         name: itemCode || null,
         reason: itemCode
-          ? `Model ${itemCode} is not in ISMS — sync Models from SAP first`
+          ? `Model ${itemCode} was not returned by the SAP item sync`
           : "Serial has no item code in SAP",
       });
       continue;
@@ -231,8 +244,10 @@ export const serialNumberSapSyncService = {
    * warehouse location until something in ISMS places it, which is what keeps this
    * sync independent of SAP's stock position.
    *
-   * Depends on the model sync: serials whose item is not yet in ISMS are skipped with
-   * that reason and land on the next run once models are synced.
+   * Invoked by the model sync rather than on its own: serials are children of a model,
+   * so the parent's run is what guarantees the item exists before its serials are read.
+   * Serials whose item is still missing are skipped with that reason and land on a later
+   * run once SAP returns the item.
    */
   syncFromSap(tenantId: string, actorUserId: string): Promise<SapMasterSyncResult> {
     return withSapSyncLock(`serial-number:${tenantId}`, () => runSync(tenantId, actorUserId));
