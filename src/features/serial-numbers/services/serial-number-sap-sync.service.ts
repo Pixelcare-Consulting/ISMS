@@ -3,26 +3,112 @@ import type {
   SapMasterSyncResult,
   SapMasterSyncSkip,
 } from "@/features/sap/schemas/sap-master-sync.schema";
-import { fetchSapCollection } from "@/features/sap/services/sap-master-data";
+import { fetchSapCollection, sapErrorMessage } from "@/features/sap/services/sap-master-data";
+import { sapServiceLayerClient } from "@/features/sap/services/sap-service-layer-client";
 import { sapServiceLayerService } from "@/features/sap/services/sap-service-layer.service";
 import { withSapSyncLock } from "@/features/sap/services/sap-sync-lock";
 import { serialNumberRepository } from "@/features/serial-numbers/repositories/serial-number.repository";
+import type { SapServiceLayerCredentials } from "@/features/sap/types/sap-service-layer";
+import { logger } from "@/lib/shared/logger";
 
-/** SAP B1 Service Layer entity holding serial number master data (OSRN). */
-const SAP_SERIAL_ENTITY = "SerialNumbers";
-const SAP_SERIAL_SELECT = "DistNumber,ItemCode";
-const SAP_SERIAL_ORDER_BY = "DistNumber";
-
+/**
+ * A serial row as any of the candidate entity sets returns it. Every field is optional
+ * because which ones exist depends on which entity answered.
+ */
 interface SapSerialRecord {
+  InternalSerialNumber?: string | null;
   DistNumber?: string | null;
   ItemCode?: string | null;
 }
 
-function readSapRecord(record: SapSerialRecord) {
-  return {
-    serialNo: (record.DistNumber ?? "").trim(),
-    itemCode: (record.ItemCode ?? "").trim(),
-  };
+interface SapSerialSource {
+  entity: string;
+  select: string;
+  /** Paging by `$skip` needs a stable sort, so this is the entity's key. */
+  orderBy: string;
+  read: (record: SapSerialRecord) => { serialNo: string; itemCode: string };
+}
+
+/**
+ * Where serial master data lives depends on the B1 version: `SerialNumberDetails` is
+ * OSRN's entity set on current Service Layer (the counterpart of `BatchNumberDetails`
+ * for batches), while some builds expose the older `SerialNumbers`. Asking for the
+ * wrong one fails the whole sync with "Unrecognized resource path", so we probe in
+ * order and use the first that answers instead of hard-coding one name.
+ *
+ * Field names differ with the entity, hence a per-source `read`.
+ */
+const SAP_SERIAL_SOURCES: SapSerialSource[] = [
+  {
+    entity: "SerialNumberDetails",
+    select: "InternalSerialNumber,ItemCode",
+    orderBy: "DocEntry",
+    read: (record) => ({
+      // Per the integration mapping the serial is OSRN.DistNumber, which the Service
+      // Layer exposes on this entity as `InternalSerialNumber` (B1's "Serial Number").
+      // The manufacturer serial (OSRN.MnfSerial) is deliberately not used as a
+      // fallback — it is a different value and would not match the PSG import.
+      serialNo: (record.InternalSerialNumber ?? "").trim(),
+      itemCode: (record.ItemCode ?? "").trim(),
+    }),
+  },
+  {
+    // Older builds expose OSRN under its column names directly.
+    entity: "SerialNumbers",
+    select: "DistNumber,ItemCode",
+    orderBy: "DistNumber",
+    read: (record) => ({
+      serialNo: (record.DistNumber ?? "").trim(),
+      itemCode: (record.ItemCode ?? "").trim(),
+    }),
+  },
+];
+
+/**
+ * One cheap row against a candidate: a wrong entity name or a wrong `$select` field
+ * both come back 400, so this settles both before committing to a full read.
+ */
+async function probeSource(
+  creds: SapServiceLayerCredentials,
+  source: SapSerialSource,
+): Promise<string | null> {
+  const response = await sapServiceLayerClient.request({
+    creds,
+    method: "GET",
+    path: `/${source.entity}?$select=${source.select}&$orderby=${source.orderBy}&$skip=0`,
+    headers: { Prefer: "odata.maxpagesize=1" },
+  });
+  if (response.statusCode >= 400) {
+    return sapErrorMessage(response.statusCode, response.rawBody, source.entity);
+  }
+  return null;
+}
+
+/** Resolve which entity set this SAP exposes, then read every serial from it. */
+async function fetchSerials(creds: SapServiceLayerCredentials) {
+  const attempts: string[] = [];
+
+  for (const source of SAP_SERIAL_SOURCES) {
+    const failure = await probeSource(creds, source);
+    if (failure) {
+      attempts.push(`${source.entity}: ${failure}`);
+      continue;
+    }
+
+    logger.info({ entity: source.entity }, "sap serial entity resolved");
+    const records = await fetchSapCollection<SapSerialRecord>(creds, {
+      entity: source.entity,
+      select: source.select,
+      orderBy: source.orderBy,
+    });
+    return { source, records };
+  }
+
+  throw new Error(
+    "SAP did not accept any known serial number entity. Tried " +
+      `${attempts.join("; ")}. Check the Service Layer version and its $metadata for the ` +
+      "serial master entity set.",
+  );
 }
 
 async function runSync(tenantId: string, actorUserId: string): Promise<SapMasterSyncResult> {
@@ -33,11 +119,7 @@ async function runSync(tenantId: string, actorUserId: string): Promise<SapMaster
     );
   }
 
-  const records = await fetchSapCollection<SapSerialRecord>(creds, {
-    entity: SAP_SERIAL_ENTITY,
-    select: SAP_SERIAL_SELECT,
-    orderBy: SAP_SERIAL_ORDER_BY,
-  });
+  const { source, records } = await fetchSerials(creds);
 
   // `SerialNumber.modelId` is a required FK, so a serial cannot be stored until its
   // item exists in ISMS. Anything unmatched is reported, telling the user to run the
@@ -56,7 +138,7 @@ async function runSync(tenantId: string, actorUserId: string): Promise<SapMaster
   let missingModels = 0;
 
   for (const record of records) {
-    const { serialNo, itemCode } = readSapRecord(record);
+    const { serialNo, itemCode } = source.read(record);
 
     if (!serialNo) {
       skipped.push({ sapCode: itemCode || null, name: null, reason: "Missing serial number" });
@@ -65,7 +147,7 @@ async function runSync(tenantId: string, actorUserId: string): Promise<SapMaster
     // `seen` drives both dedupe and `notInSap`, so a serial SAP actually returned has
     // to register here even if the row is skipped below.
     if (seen.has(serialNo)) {
-      // SAP keys serials per item, so the same DistNumber can legitimately exist under
+      // SAP keys serials per item, so the same serial can legitimately exist under
       // two ItemCodes. ISMS is unique on serialNo alone, so only the first can land.
       skipped.push({
         sapCode: serialNo,
@@ -126,7 +208,7 @@ async function runSync(tenantId: string, actorUserId: string): Promise<SapMaster
     action: "serial_number.sap_sync",
     entityType: "SerialNumber",
     metadata: {
-      entity: SAP_SERIAL_ENTITY,
+      entity: source.entity,
       fetched: result.fetched,
       created: result.created,
       updated: result.updated,
