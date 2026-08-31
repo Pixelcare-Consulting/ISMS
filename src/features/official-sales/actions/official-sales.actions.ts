@@ -82,6 +82,13 @@ export async function downloadOfficialSalesTemplateAction(): Promise<string> {
   return workbook.toString("base64");
 }
 
+/**
+ * Rows are heavy (each moves inventory and writes a sale), so one call processes at
+ * most `PROCESS_BATCH_SIZE` of them and reports `remaining`. The client repeats the
+ * call while that is true, which keeps any single request well inside the timeout.
+ */
+const PROCESS_BATCH_SIZE = 100;
+
 export async function processOfficialSalesAction(input?: { rowIds?: string[] }) {
   const session = await requirePermission("official_sales.manage");
   const parsed = z
@@ -94,6 +101,7 @@ export async function processOfficialSalesAction(input?: { rowIds?: string[] }) 
       session.user.tenantId,
       session.user.id,
       parsed.data.rowIds,
+      { limit: PROCESS_BATCH_SIZE },
     );
     revalidatePath("/reports/official-sales");
     return { success: true as const, ...result };

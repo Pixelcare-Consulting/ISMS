@@ -117,10 +117,16 @@ export function ImportModelsDialog({
 
       setApplyProgress({ processed: 0, total: 0, elapsedMs: 0 });
 
+      // Normally only the plan key travels; the workbook is re-sent solely when the
+      // server reports its cached plan is gone, so a 5 MB file is not uploaded per chunk.
+      let planKey = preview.planKey;
+      let resendFile = !planKey;
+
       try {
         for (;;) {
           const formData = new FormData();
-          formData.set("file", file);
+          if (resendFile || !planKey) formData.set("file", file);
+          if (planKey) formData.set("planKey", planKey);
           formData.set("offset", String(offset));
 
           const progress = await applyModelImportChunkAction(formData);
@@ -131,6 +137,23 @@ export function ImportModelsDialog({
             setApplyProgress(null);
             return;
           }
+
+          if (progress.planExpired) {
+            // Nothing was written for this offset. Retry it once with the workbook
+            // attached; a second miss means the server could not rebuild the plan.
+            if (resendFile) {
+              toast.error(
+                `Import failed. Stopped after ${lastProcessed} of ${lastTotal || "?"}. You can try Apply again.`,
+              );
+              setApplyProgress(null);
+              return;
+            }
+            resendFile = true;
+            continue;
+          }
+
+          resendFile = false;
+          if (progress.planKey) planKey = progress.planKey;
 
           modelsCreated += progress.modelsCreated;
           modelsUpdated += progress.modelsUpdated;

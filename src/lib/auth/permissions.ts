@@ -50,22 +50,24 @@ export async function getSession() {
   return toAppSession(await auth());
 }
 
+/**
+ * Live check that the session's user and tenant are still active.
+ *
+ * The tenant condition is a relation *filter* rather than a nested `select`, so this
+ * is one statement instead of two round trips — it runs on every request and every
+ * server action. Soft-disabled customer tenants cannot keep an active session.
+ */
 async function sessionUserExists(session: AppSession): Promise<boolean> {
   const user = await prisma.user.findFirst({
     where: {
       id: session.user.id,
       tenantId: session.user.tenantId,
       deletedAt: null,
+      tenant: { deletedAt: null },
     },
-    select: {
-      id: true,
-      tenant: { select: { deletedAt: true } },
-    },
+    select: { id: true },
   });
-  if (!user) return false;
-  // Soft-disabled customer tenants cannot keep an active session
-  if (user.tenant.deletedAt != null) return false;
-  return true;
+  return user !== null;
 }
 
 /** Deduped per RSC request — layout, page, and server actions share one auth check. */

@@ -1,3 +1,4 @@
+import type { CreateAuditLogInput } from "@/features/audit/repositories/audit-log.repository";
 import { auditService } from "@/features/audit/services/audit.service";
 import type {
   ModelImportChunkProgress,
@@ -18,9 +19,23 @@ import {
   type SheetRows,
 } from "@/features/master-data/services/model-import.workbook";
 import { prisma } from "@/lib/database/client";
+import { mapWithConcurrency } from "@/lib/shared/concurrency";
+import {
+  getCachedPlan,
+  invalidatePlan,
+  planKeyFor,
+  setCachedPlan,
+} from "@/lib/shared/import-plan-cache";
 
 const MAX_ROWS = 20_000;
-const APPLY_CHUNK_SIZE = 40;
+/**
+ * Chunk size governs progress granularity and request duration, not query fan-out —
+ * a chunk costs a fixed handful of statements regardless of how many rows it holds.
+ */
+const APPLY_CHUNK_SIZE = 250;
+/** Lanes for the genuinely per-row updates. Lower this if the pool is small. */
+const WRITE_CONCURRENCY = 8;
+const PLAN_NAMESPACE = "model-import";
 
 type ExistingModel = {
   id: string;
@@ -125,60 +140,106 @@ async function loadTemplateRows(tenantId: string): Promise<ModelTemplateRow[]> {
   }));
 }
 
-async function resolveBrandSeriesIds(
+/**
+ * Resolve every brand/series a chunk needs in a fixed handful of statements.
+ *
+ * The old path did `findUnique` + `create` per row per column — up to 4 round trips
+ * a row. Both tables are tenant-scoped lookup tables of tens of rows, so reading
+ * them whole and matching in memory is cheaper than a query per name, and it keeps
+ * the case-insensitive matching the plan already uses.
+ */
+async function resolveBrandSeriesIdsForChunk(
   tenantId: string,
-  row: RowPlanInternal,
-  brandIdByName: Map<string, string>,
-  seriesIdByName: Map<string, string>,
-  counters: { brandsCreated: number; seriesCreated: number },
-): Promise<{ brandId: string; seriesId: string }> {
-  let brandId = row.brandId ?? brandIdByName.get(lookupKey(row.brandName)) ?? null;
-  if (!brandId) {
-    const existingBrand = await prisma.brand.findUnique({
-      where: { tenantId_name: { tenantId, name: row.brandName } },
-      select: { id: true },
-    });
-    if (existingBrand) {
-      brandId = existingBrand.id;
-    } else {
-      const brand = await prisma.brand.create({
-        data: {
-          tenantId,
-          name: row.brandName,
-          code: row.brandName.slice(0, 4).toUpperCase(),
-        },
-        select: { id: true },
-      });
-      brandId = brand.id;
-      counters.brandsCreated += 1;
+  writes: RowPlanInternal[],
+): Promise<{
+  brandIdByKey: Map<string, string>;
+  seriesIdByKey: Map<string, string>;
+  brandsCreated: number;
+  seriesCreated: number;
+}> {
+  // Keep the first spelling seen for each name so a new row creates it as written.
+  const wantedBrands = new Map<string, string>();
+  const wantedSeries = new Map<string, string>();
+  for (const row of writes) {
+    if (!row.brandId) {
+      const key = lookupKey(row.brandName);
+      if (key && !wantedBrands.has(key)) wantedBrands.set(key, row.brandName.trim());
     }
-    brandIdByName.set(lookupKey(row.brandName), brandId);
+    if (!row.seriesId) {
+      const key = lookupKey(row.seriesName);
+      if (key && !wantedSeries.has(key)) wantedSeries.set(key, row.seriesName.trim());
+    }
   }
 
-  let seriesId = row.seriesId ?? seriesIdByName.get(lookupKey(row.seriesName)) ?? null;
-  if (!seriesId) {
-    const existingSeries = await prisma.series.findUnique({
-      where: { tenantId_name: { tenantId, name: row.seriesName } },
-      select: { id: true },
-    });
-    if (existingSeries) {
-      seriesId = existingSeries.id;
-    } else {
-      const series = await prisma.series.create({
-        data: {
-          tenantId,
-          name: row.seriesName,
-          recordStatus: "active",
-        },
-        select: { id: true },
-      });
-      seriesId = series.id;
-      counters.seriesCreated += 1;
-    }
-    seriesIdByName.set(lookupKey(row.seriesName), seriesId);
+  const brandIdByKey = new Map<string, string>();
+  const seriesIdByKey = new Map<string, string>();
+  if (wantedBrands.size === 0 && wantedSeries.size === 0) {
+    return { brandIdByKey, seriesIdByKey, brandsCreated: 0, seriesCreated: 0 };
   }
 
-  return { brandId, seriesId };
+  const [brands, seriesRows] = await Promise.all([
+    wantedBrands.size > 0
+      ? prisma.brand.findMany({ where: { tenantId }, select: { id: true, name: true } })
+      : Promise.resolve([]),
+    wantedSeries.size > 0
+      ? prisma.series.findMany({ where: { tenantId }, select: { id: true, name: true } })
+      : Promise.resolve([]),
+  ]);
+  for (const brand of brands) brandIdByKey.set(lookupKey(brand.name), brand.id);
+  for (const series of seriesRows) seriesIdByKey.set(lookupKey(series.name), series.id);
+
+  const missingBrands = [...wantedBrands].filter(([key]) => !brandIdByKey.has(key));
+  const missingSeries = [...wantedSeries].filter(([key]) => !seriesIdByKey.has(key));
+
+  let brandsCreated = 0;
+  let seriesCreated = 0;
+
+  if (missingBrands.length > 0) {
+    const created = await prisma.brand.createManyAndReturn({
+      data: missingBrands.map(([, name]) => ({
+        tenantId,
+        name,
+        code: name.slice(0, 4).toUpperCase(),
+      })),
+      skipDuplicates: true,
+      select: { id: true, name: true },
+    });
+    for (const brand of created) brandIdByKey.set(lookupKey(brand.name), brand.id);
+    brandsCreated = created.length;
+  }
+
+  if (missingSeries.length > 0) {
+    const created = await prisma.series.createManyAndReturn({
+      data: missingSeries.map(([, name]) => ({
+        tenantId,
+        name,
+        recordStatus: "active" as const,
+      })),
+      skipDuplicates: true,
+      select: { id: true, name: true },
+    });
+    for (const series of created) seriesIdByKey.set(lookupKey(series.name), series.id);
+    seriesCreated = created.length;
+  }
+
+  // `skipDuplicates` swallows rows a concurrent import already inserted, so they
+  // come back unresolved. Re-read only when that actually happened.
+  const stillMissingBrand = missingBrands.some(([key]) => !brandIdByKey.has(key));
+  const stillMissingSeries = missingSeries.some(([key]) => !seriesIdByKey.has(key));
+  if (stillMissingBrand || stillMissingSeries) {
+    const [brandsAfter, seriesAfter] = await Promise.all([
+      stillMissingBrand
+        ? prisma.brand.findMany({ where: { tenantId }, select: { id: true, name: true } })
+        : Promise.resolve([]),
+      stillMissingSeries
+        ? prisma.series.findMany({ where: { tenantId }, select: { id: true, name: true } })
+        : Promise.resolve([]),
+    ]);
+    for (const brand of brandsAfter) brandIdByKey.set(lookupKey(brand.name), brand.id);
+    for (const series of seriesAfter) seriesIdByKey.set(lookupKey(series.name), series.id);
+  }
+
+  return { brandIdByKey, seriesIdByKey, brandsCreated, seriesCreated };
 }
 
 async function buildPlan(tenantId: string, sheet: SheetRows): Promise<ImportPlan> {
@@ -457,35 +518,57 @@ async function buildPlan(tenantId: string, sheet: SheetRows): Promise<ImportPlan
   };
 }
 
+/**
+ * Flush one chunk of planned writes in a fixed handful of statements.
+ *
+ * The old path cost up to 6 round trips per row (brand lookup/create, series
+ * lookup/create, existence check, the write itself, plus one audit insert) and ran
+ * them strictly one row at a time. Now: one lookup pass, one `createManyAndReturn`,
+ * a bounded-concurrency pass for the per-row updates, and one batched audit insert.
+ */
 async function applyWriteSlice(
   tenantId: string,
   actorUserId: string,
   writes: RowPlanInternal[],
 ): Promise<Omit<ModelImportResult, "modelsUnchanged">> {
+  if (writes.length === 0) {
+    return { modelsCreated: 0, modelsUpdated: 0, brandsCreated: 0, seriesCreated: 0 };
+  }
+
+  const { brandIdByKey, seriesIdByKey, brandsCreated, seriesCreated } =
+    await resolveBrandSeriesIdsForChunk(tenantId, writes);
+
+  const resolveIds = (row: RowPlanInternal) => ({
+    brandId: row.brandId ?? brandIdByKey.get(lookupKey(row.brandName)) ?? null,
+    seriesId: row.seriesId ?? seriesIdByKey.get(lookupKey(row.seriesName)) ?? null,
+  });
+
+  // One existence check for the whole chunk. Re-running Apply after a failure must
+  // converge, so a planned create whose SKU now exists is skipped, not duplicated.
+  const plannedCreates = writes.filter((row) => row.action === "create");
+  const alreadyPresent = new Set<string>();
+  if (plannedCreates.length > 0) {
+    const existing = await prisma.productModel.findMany({
+      where: { tenantId, skuCode: { in: plannedCreates.map((row) => row.sku) } },
+      select: { skuCode: true },
+    });
+    for (const model of existing) alreadyPresent.add(lookupKey(model.skuCode));
+  }
+
+  const toCreate = plannedCreates.filter((row) => !alreadyPresent.has(lookupKey(row.sku)));
+  const toUpdate = writes.filter(
+    (row): row is RowPlanInternal & { modelId: string } =>
+      row.action === "update" && row.modelId != null,
+  );
+
+  const auditRows: CreateAuditLogInput[] = [];
+
   let modelsCreated = 0;
-  let modelsUpdated = 0;
-  const counters = { brandsCreated: 0, seriesCreated: 0 };
-  const brandIdByName = new Map<string, string>();
-  const seriesIdByName = new Map<string, string>();
-
-  for (const row of writes) {
-    const { brandId, seriesId } = await resolveBrandSeriesIds(
-      tenantId,
-      row,
-      brandIdByName,
-      seriesIdByName,
-      counters,
-    );
-
-    if (row.action === "create") {
-      const existing = await prisma.productModel.findUnique({
-        where: { tenantId_skuCode: { tenantId, skuCode: row.sku } },
-        select: { id: true },
-      });
-      if (existing) continue;
-
-      const model = await prisma.productModel.create({
-        data: {
+  if (toCreate.length > 0) {
+    const created = await prisma.productModel.createManyAndReturn({
+      data: toCreate.map((row) => {
+        const { brandId, seriesId } = resolveIds(row);
+        return {
           tenantId,
           skuCode: row.sku,
           name: row.name,
@@ -495,12 +578,14 @@ async function applyWriteSlice(
           resolutionId: row.resolutionId,
           actualSizeId: row.actualSizeId,
           status: row.status,
-        },
-        select: { id: true, skuCode: true },
-      });
-      modelsCreated += 1;
-
-      await auditService.log({
+        };
+      }),
+      skipDuplicates: true,
+      select: { id: true, skuCode: true },
+    });
+    modelsCreated = created.length;
+    for (const model of created) {
+      auditRows.push({
         tenantId,
         userId: actorUserId,
         action: "model.created",
@@ -508,10 +593,13 @@ async function applyWriteSlice(
         entityId: model.id,
         metadata: { skuCode: model.skuCode, source: "model-import" },
       });
-      continue;
     }
+  }
 
-    if (row.action === "update" && row.modelId) {
+  let modelsUpdated = 0;
+  if (toUpdate.length > 0) {
+    await mapWithConcurrency(toUpdate, WRITE_CONCURRENCY, async (row) => {
+      const { brandId, seriesId } = resolveIds(row);
       await prisma.productModel.update({
         where: { id: row.modelId },
         data: {
@@ -524,9 +612,10 @@ async function applyWriteSlice(
           status: row.status,
         },
       });
-      modelsUpdated += 1;
-
-      await auditService.log({
+    });
+    modelsUpdated = toUpdate.length;
+    for (const row of toUpdate) {
+      auditRows.push({
         tenantId,
         userId: actorUserId,
         action: "model.updated",
@@ -541,11 +630,51 @@ async function applyWriteSlice(
     }
   }
 
+  if (auditRows.length > 0) {
+    await auditService.logMany(auditRows);
+  }
+
+  return { modelsCreated, modelsUpdated, brandsCreated, seriesCreated };
+}
+
+function emptyChunkProgress(
+  total: number,
+  planKey: string | undefined,
+  unchangedCount: number,
+): ModelImportChunkProgress {
   return {
-    modelsCreated,
-    modelsUpdated,
-    brandsCreated: counters.brandsCreated,
-    seriesCreated: counters.seriesCreated,
+    processed: total,
+    total,
+    nextOffset: total,
+    done: true,
+    modelsCreated: 0,
+    modelsUpdated: 0,
+    brandsCreated: 0,
+    seriesCreated: 0,
+    modelsUnchanged: unchangedCount,
+    planKey,
+    result: {
+      modelsCreated: 0,
+      modelsUpdated: 0,
+      modelsUnchanged: unchangedCount,
+      brandsCreated: 0,
+      seriesCreated: 0,
+    },
+  };
+}
+
+/** Nothing was written — the client retries this offset with the workbook attached. */
+function planExpiredProgress(offset: number): ModelImportChunkProgress {
+  return {
+    processed: offset,
+    total: 0,
+    nextOffset: offset,
+    done: false,
+    modelsCreated: 0,
+    modelsUpdated: 0,
+    brandsCreated: 0,
+    seriesCreated: 0,
+    planExpired: true,
   };
 }
 
@@ -555,85 +684,94 @@ export const modelImportService = {
     return buildModelTemplateWorkbook(rows);
   },
 
+  /**
+   * Fetch the plan for this upload, building (and caching) it only on a miss.
+   *
+   * `planKey` is a server-derived digest handed to the client by `preview`. A cache
+   * miss falls back to rebuilding from the uploaded file, so a cold or scaled-out
+   * instance is slower but never wrong; callers with no file to fall back to get
+   * `null` and are expected to ask the browser to re-send it.
+   */
+  async resolvePlan(input: {
+    tenantId: string;
+    file?: Buffer;
+    planKey?: string;
+  }): Promise<{ plan: ImportPlan; planKey: string } | null> {
+    if (input.planKey) {
+      const cached = getCachedPlan<ImportPlan>(input.planKey);
+      if (cached) return { plan: cached, planKey: input.planKey };
+    }
+    if (!input.file) return null;
+
+    const planKey = planKeyFor(PLAN_NAMESPACE, input.tenantId, input.file);
+    const cached = getCachedPlan<ImportPlan>(planKey);
+    if (cached) return { plan: cached, planKey };
+
+    const sheet = await readModelImportWorkbook(input.file);
+    const plan = await buildPlan(input.tenantId, sheet);
+    setCachedPlan(planKey, plan);
+    return { plan, planKey };
+  },
+
   async buildPlan(
     tenantId: string,
     file: Buffer,
-  ): Promise<{ preview: ModelImportPreview }> {
-    const sheet = await readModelImportWorkbook(file);
-    const plan = await buildPlan(tenantId, sheet);
-    return { preview: plan.preview };
+  ): Promise<{ preview: ModelImportPreview; planKey: string }> {
+    const resolved = await this.resolvePlan({ tenantId, file });
+    if (!resolved) throw new Error("Could not read the file.");
+    return { preview: resolved.plan.preview, planKey: resolved.planKey };
   },
 
+  /**
+   * Applies one chunk against the server-built plan.
+   *
+   * The browser passes the `planKey` `preview` handed it, so the plan is fetched
+   * from the server-side cache instead of the workbook being re-uploaded and
+   * re-diffed per chunk. The plan the browser saw is still never the source of the
+   * writes. On a cache miss the response sets `planExpired` and the client retries
+   * the same offset with the file attached.
+   */
   async applyChunk(input: {
     tenantId: string;
     actorUserId: string;
-    file: Buffer;
+    file?: Buffer;
+    planKey?: string;
     offset: number;
   }): Promise<ModelImportChunkProgress> {
-    const sheet = await readModelImportWorkbook(input.file);
-    // Validate the full workbook once so mid-import rebuilds cannot hide row errors.
-    const fullPlan = await buildPlan(input.tenantId, sheet);
-    if (fullPlan.preview.errors.length > 0) {
+    const resolved = await this.resolvePlan(input);
+    if (!resolved) return planExpiredProgress(input.offset);
+
+    const { plan, planKey } = resolved;
+    if (plan.preview.errors.length > 0) {
+      const count = plan.preview.errors.length;
       throw new Error(
-        `Fix ${fullPlan.preview.errors.length} problem${fullPlan.preview.errors.length === 1 ? "" : "s"} in the spreadsheet and upload again.`,
+        `Fix ${count} problem${count === 1 ? "" : "s"} in the spreadsheet and upload again.`,
       );
     }
 
-    const total = sheet.rows.length;
-    // Pre-write unchanged is only trustworthy on offset 0 (before any chunk writes).
-    const plannedUnchanged =
-      input.offset === 0 ? fullPlan.preview.unchangedCount : undefined;
+    // The stable list is the planned writes — unchanged rows are not work, and the
+    // plan was built before any chunk wrote, so the totals stay honest throughout.
+    const writes = plan.writes;
+    const total = writes.length;
+    const unchangedCount = plan.preview.unchangedCount;
 
-    if (total === 0 || fullPlan.writes.length === 0) {
-      const result: ModelImportResult = {
-        modelsCreated: 0,
-        modelsUpdated: 0,
-        modelsUnchanged: fullPlan.preview.unchangedCount,
-        brandsCreated: 0,
-        seriesCreated: 0,
-      };
-      return {
-        processed: total,
-        total,
-        nextOffset: total,
-        done: true,
-        modelsCreated: 0,
-        modelsUpdated: 0,
-        brandsCreated: 0,
-        seriesCreated: 0,
-        modelsUnchanged: result.modelsUnchanged,
-        result,
-      };
+    if (total === 0) {
+      invalidatePlan(planKey);
+      return emptyChunkProgress(total, planKey, unchangedCount);
     }
-
     if (input.offset >= total) {
-      return {
-        processed: total,
-        total,
-        nextOffset: total,
-        done: true,
-        modelsCreated: 0,
-        modelsUpdated: 0,
-        brandsCreated: 0,
-        seriesCreated: 0,
-      };
+      invalidatePlan(planKey);
+      return emptyChunkProgress(total, planKey, unchangedCount);
     }
 
-    // Slice the stable sheet row list (not the shrinking writes array). Re-plan
-    // only this slice against the current DB so already-applied rows become skips.
-    const sliceSheet: SheetRows = {
-      present: sheet.present,
-      columns: sheet.columns,
-      rows: sheet.rows.slice(input.offset, input.offset + APPLY_CHUNK_SIZE),
-    };
-    const slicePlan = await buildPlan(input.tenantId, sliceSheet);
-    const written = await applyWriteSlice(
-      input.tenantId,
-      input.actorUserId,
-      slicePlan.writes,
-    );
-    const nextOffset = input.offset + sliceSheet.rows.length;
+    const chunk = writes.slice(input.offset, input.offset + APPLY_CHUNK_SIZE);
+    const written = await applyWriteSlice(input.tenantId, input.actorUserId, chunk);
+    const nextOffset = input.offset + chunk.length;
     const done = nextOffset >= total;
+
+    // A finished import makes the cached diff stale — drop it so re-uploading the
+    // same workbook re-diffs against what was just written.
+    if (done) invalidatePlan(planKey);
 
     return {
       processed: nextOffset,
@@ -644,14 +782,16 @@ export const modelImportService = {
       modelsUpdated: written.modelsUpdated,
       brandsCreated: written.brandsCreated,
       seriesCreated: written.seriesCreated,
-      modelsUnchanged: plannedUnchanged,
+      // Unchanged comes from the pre-write plan, so it is correct on every chunk.
+      modelsUnchanged: unchangedCount,
+      planKey,
       // Chunk counts are authoritative; client (and apply()) accumulate them.
       // Final result here is last-chunk only — callers must sum chunk deltas.
       result: done
         ? {
             modelsCreated: written.modelsCreated,
             modelsUpdated: written.modelsUpdated,
-            modelsUnchanged: plannedUnchanged ?? 0,
+            modelsUnchanged: unchangedCount,
             brandsCreated: written.brandsCreated,
             seriesCreated: written.seriesCreated,
           }
@@ -659,13 +799,17 @@ export const modelImportService = {
     };
   },
 
-  /** Full apply via offset chunks (non-UI / backwards-compatible callers). */
+  /**
+   * Full apply via offset chunks (non-UI / backwards-compatible callers), and the
+   * loop a background worker would run once the import moves onto a queue.
+   */
   async apply(input: {
     tenantId: string;
     actorUserId: string;
     file: Buffer;
   }): Promise<ModelImportResult> {
     let offset = 0;
+    let planKey: string | undefined;
     let modelsCreated = 0;
     let modelsUpdated = 0;
     let brandsCreated = 0;
@@ -677,9 +821,11 @@ export const modelImportService = {
         tenantId: input.tenantId,
         actorUserId: input.actorUserId,
         file: input.file,
+        planKey,
         offset,
       });
-      if (offset === 0 && progress.modelsUnchanged != null) {
+      if (progress.planKey) planKey = progress.planKey;
+      if (progress.modelsUnchanged != null) {
         modelsUnchanged = progress.modelsUnchanged;
       }
       modelsCreated += progress.modelsCreated;

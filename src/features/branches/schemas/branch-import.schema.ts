@@ -118,6 +118,12 @@ export interface BranchImportBranchPlan {
 }
 
 export interface BranchImportPreview {
+  /**
+   * Opaque server-derived handle for the plan built from this upload. The apply
+   * sends it back instead of re-uploading the workbook for every chunk; it is a
+   * digest of the file, never a plan the browser could tamper with.
+   */
+  planKey?: string;
   branchRowCount: number;
   allowedModelRowCount: number;
   /** Only branches with something to do. */
@@ -153,4 +159,11 @@ export interface BranchImportChunkProgress {
   plannedResult?: BranchImportResult;
   /** Present only when the final enrich chunk succeeds. */
   result?: BranchImportResult;
+  /** Echoed back so the client keeps addressing the same cached plan. */
+  planKey?: string;
+  /**
+   * The cached plan is gone (cold instance or expired TTL). Nothing was written for
+   * this chunk — retry the same phase/offset with the workbook attached.
+   */
+  planExpired?: boolean;
 }

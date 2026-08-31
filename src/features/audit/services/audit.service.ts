@@ -9,6 +9,11 @@ export const auditService = {
     return auditLogRepository.create(input);
   },
 
+  /** Bulk path for importers — one insert instead of one round trip per row. */
+  async logMany(inputs: CreateAuditLogInput[]) {
+    return auditLogRepository.createMany(inputs);
+  },
+
   listForTenant(input: ListAuditLogsInput) {
     return auditLogRepository.listForTenant(input);
   },

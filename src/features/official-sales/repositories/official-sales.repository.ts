@@ -116,7 +116,12 @@ export const officialSalesRepository = {
     });
   },
 
-  findPendingRows(tenantId: string, ids?: string[]) {
+  /**
+   * Oldest-first pending rows. `limit` lets the caller process a bounded batch:
+   * processed rows leave the pending set, so repeating the call walks the queue
+   * without an offset to track.
+   */
+  findPendingRows(tenantId: string, ids?: string[], limit?: number) {
     return prisma.officialSalesImportRow.findMany({
       where: {
         tenantId,
@@ -124,6 +129,7 @@ export const officialSalesRepository = {
         ...(ids?.length ? { id: { in: ids } } : {}),
       },
       orderBy: { createdAt: "asc" },
+      ...(limit != null ? { take: limit } : {}),
     });
   },
 

@@ -66,6 +66,21 @@ export const auditLogRepository = {
     });
   },
 
+  /** Bulk path for importers — one insert instead of one round trip per row. */
+  async createMany(inputs: CreateAuditLogInput[]) {
+    if (inputs.length === 0) return { count: 0 };
+    return prisma.auditLog.createMany({
+      data: inputs.map((input) => ({
+        tenantId: input.tenantId,
+        userId: input.userId,
+        action: input.action,
+        entityType: input.entityType,
+        entityId: input.entityId,
+        metadata: input.metadata,
+      })),
+    });
+  },
+
   async listByTenant(tenantId: string, limit = 50) {
     return prisma.auditLog.findMany({
       where: { tenantId },

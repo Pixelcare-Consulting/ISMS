@@ -10,36 +10,43 @@ import { prisma } from "@/lib/database/client";
 import { logger } from "@/lib/shared/logger";
 import { rateLimit } from "@/lib/cache/redis";
 
+/**
+ * Permission slugs granted to a user by any of their roles.
+ *
+ * Selects straight from `Permission` and expresses the user link as a relation
+ * *filter*, not a nested `include`. Prisma compiles a filter into one statement with
+ * EXISTS subqueries; a three-level `include` (userRole → role → rolePermission →
+ * permission) fans out into four sequential queries instead. This runs on every
+ * request and every server action, so those round trips were the app's single
+ * largest fixed cost — see `docs/request-latency.md`.
+ *
+ * Role soft-deletion is deliberately not filtered here: the previous nested-include
+ * version did not filter it either, and narrowing it is a permissions change, not a
+ * performance one.
+ */
 async function loadUserPermissions(userId: string): Promise<string[]> {
-  const userRoles = await prisma.userRole.findMany({
-    where: { userId },
-    include: {
-      role: {
-        include: {
-          rolePermissions: {
-            include: { permission: true },
-          },
-        },
+  const permissions = await prisma.permission.findMany({
+    where: {
+      rolePermissions: {
+        some: { role: { userRoles: { some: { userId } } } },
       },
     },
+    select: { slug: true },
   });
 
-  const slugs = new Set<string>();
-  for (const ur of userRoles) {
-    for (const rp of ur.role.rolePermissions) {
-      slugs.add(rp.permission.slug);
-    }
-  }
-  return Array.from(slugs);
+  // The query already returns each permission once, but roles may overlap in
+  // principle — keep the de-duplication the Set gave us before.
+  return Array.from(new Set(permissions.map((permission) => permission.slug)));
 }
 
+/** Role slugs held by a user. One flat query, same reasoning as above. */
 async function loadUserRoleSlugs(userId: string): Promise<string[]> {
-  const userRoles = await prisma.userRole.findMany({
-    where: { userId },
-    include: { role: { select: { slug: true } } },
+  const roles = await prisma.role.findMany({
+    where: { userRoles: { some: { userId } } },
+    select: { slug: true },
   });
 
-  return userRoles.map((userRole) => userRole.role.slug);
+  return roles.map((role) => role.slug);
 }
 
 async function loadTenantIsPlatform(tenantId: string): Promise<boolean> {
@@ -65,6 +72,23 @@ export const auth = betterAuth({
     password: {
       hash: async (password) => bcrypt.hash(password, 12),
       verify: async ({ hash, password }) => bcrypt.compare(password, hash),
+    },
+  },
+  session: {
+    /**
+     * Serve the base session from a signed cookie instead of re-reading `sessions`
+     * and `users` on every request. Only the base lookup is cached — the
+     * `customSession` plugin below still runs per request by design, so permissions
+     * are never stale.
+     *
+     * Trade-off: a session revoked elsewhere stays usable for up to `maxAge`.
+     * `requireAuth` still checks the user and tenant live on every call
+     * (`lib/auth/permissions.ts`), so a disabled user or tenant is caught at once;
+     * only remote sign-out lags, and only by a minute.
+     */
+    cookieCache: {
+      enabled: true,
+      maxAge: 60,
     },
   },
   user: {

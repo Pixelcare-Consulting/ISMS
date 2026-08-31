@@ -24,6 +24,59 @@ export function cacheKey(...parts: string[]): string {
 }
 
 /**
+ * In-process tier in front of Upstash.
+ *
+ * Two reasons it exists. First, Upstash is optional — when the env vars are absent
+ * every helper below falls straight through, so call sites that look cached
+ * (reason-status codes, master-data models, dashboard KPIs) were re-querying the
+ * database every time. Second, even with Upstash configured a REST round trip is
+ * not free, and hot keys like the inventory status codes are read several times
+ * within a single server action.
+ *
+ * Deliberately short-lived and deliberately capped: the tier is per-instance, so
+ * `deleteCache` on one instance cannot clear another's copy. `LOCAL_MAX_TTL_MS`
+ * bounds how long any stale value can survive that, independent of the (much
+ * longer) TTL the caller asked Redis for.
+ */
+const LOCAL_MAX_TTL_MS = 30_000;
+const LOCAL_MAX_ENTRIES = 500;
+
+const globalForLocalCache = globalThis as unknown as {
+  appLocalCache: Map<string, { value: unknown; expiresAt: number }> | undefined;
+};
+
+const localCache =
+  globalForLocalCache.appLocalCache ??
+  new Map<string, { value: unknown; expiresAt: number }>();
+globalForLocalCache.appLocalCache = localCache;
+
+function localGet<T>(key: string): { hit: true; value: T } | { hit: false } {
+  const entry = localCache.get(key);
+  if (!entry) return { hit: false };
+  if (entry.expiresAt <= Date.now()) {
+    localCache.delete(key);
+    return { hit: false };
+  }
+  return { hit: true, value: entry.value as T };
+}
+
+function localSet(key: string, value: unknown, ttlSeconds: number): void {
+  const ttlMs = Math.min(ttlSeconds * 1000, LOCAL_MAX_TTL_MS);
+  if (ttlMs <= 0) return;
+  localCache.delete(key);
+  localCache.set(key, { value, expiresAt: Date.now() + ttlMs });
+  while (localCache.size > LOCAL_MAX_ENTRIES) {
+    const oldest = localCache.keys().next();
+    if (oldest.done) break;
+    localCache.delete(oldest.value);
+  }
+}
+
+function localDelete(key: string): void {
+  localCache.delete(key);
+}
+
+/**
  * Read-through cache with graceful fallback when Upstash is not configured.
  */
 export async function getOrSet<T>(
@@ -31,14 +84,20 @@ export async function getOrSet<T>(
   ttlSeconds: number,
   fetchFn: () => Promise<T>,
 ): Promise<T> {
+  const local = localGet<T>(key);
+  if (local.hit) return local.value;
+
   const client = getRedisClient();
   if (!client) {
-    return fetchFn();
+    const value = await fetchFn();
+    localSet(key, value, ttlSeconds);
+    return value;
   }
 
   try {
     const cached = (await client.get(key)) as T | null;
     if (cached !== null && cached !== undefined) {
+      localSet(key, cached, ttlSeconds);
       return cached;
     }
   } catch {
@@ -46,6 +105,7 @@ export async function getOrSet<T>(
   }
 
   const value = await fetchFn();
+  localSet(key, value, ttlSeconds);
 
   try {
     await client.set(key, value, { ex: ttlSeconds });
@@ -61,6 +121,9 @@ export async function getOrSet<T>(
  * missing, or Redis errors (fail-open).
  */
 export async function getCache<T>(key: string): Promise<T | null> {
+  const local = localGet<T>(key);
+  if (local.hit) return local.value;
+
   const client = getRedisClient();
   if (!client) {
     return null;
@@ -85,12 +148,14 @@ export async function setCache(
   value: unknown,
   ttlSeconds: number,
 ): Promise<void> {
-  const client = getRedisClient();
-  if (!client) {
+  if (ttlSeconds <= 0) {
     return;
   }
 
-  if (ttlSeconds <= 0) {
+  localSet(key, value, ttlSeconds);
+
+  const client = getRedisClient();
+  if (!client) {
     return;
   }
 
@@ -129,6 +194,8 @@ export async function setIfNotExists(
 }
 
 export async function deleteCache(key: string): Promise<void> {
+  localDelete(key);
+
   const client = getRedisClient();
   if (!client) {
     return;
