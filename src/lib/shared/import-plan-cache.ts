@@ -13,7 +13,7 @@ import { createHash } from "node:crypto";
  *
  * A miss is always safe — callers fall back to rebuilding from the file — so this
  * stays correct on a cold or scaled-out instance. Step 2 (Redis + BullMQ) replaces
- * the `Map` below with a shared store; see `docs/branches-import-optimization.md`.
+ * the `Map` below with a shared store; see `docs/bulk-import-optimization.md`.
  * Every importer shares this module, so that swap is still a one-file change.
  */
 

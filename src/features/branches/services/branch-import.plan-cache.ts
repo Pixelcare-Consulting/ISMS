@@ -3,7 +3,7 @@
  *
  * The cache itself lives in `@/lib/shared/import-plan-cache` so every chunked
  * importer shares one store (and one place to swap for Redis in step 2 — see
- * `docs/branches-import-optimization.md`). This file only pins the namespace.
+ * `docs/bulk-import-optimization.md`). This file only pins the namespace.
  */
 
 import {
