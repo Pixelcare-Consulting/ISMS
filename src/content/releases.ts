@@ -52,6 +52,97 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.32.1",
+    date: "2026-08-31",
+    releasedAt: "2026-08-31T14:00:00+08:00",
+    title: "Faster imports and quicker sign-in",
+    highlights: [
+      "Branch, model, and Official Sales imports finish much faster on big files",
+      "Your file is read once — later steps reuse it instead of uploading it again for every batch",
+      "Process Official Sales keeps going through the whole queue on its own and reports one final summary",
+      "Signing in and moving between pages feels quicker",
+      "Sync from SAP no longer hangs forever when SAP stops responding",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Branch, model, and Official Sales imports apply in batches with far fewer repeated steps, so large workbooks finish in a fraction of the time",
+      },
+      {
+        type: "improvement",
+        description:
+          "Imports remember the checked file between batches instead of re-uploading it each round, and quietly re-read it if that memory is lost",
+      },
+      {
+        type: "improvement",
+        description:
+          "Process Official Sales continues through every pending row automatically and shows a single combined result at the end",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sign-in and page loads are faster thanks to lighter permission checks and closer-to-home hosting",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sync from SAP pulls larger pages and updates records side by side, so syncs finish sooner",
+      },
+      {
+        type: "fix",
+        description:
+          "A stalled SAP connection now stops on its own instead of blocking the next sync until the system restarts",
+      },
+      {
+        type: "fix",
+        description:
+          "Branch import preview no longer counts a branch as an update when its delivery schedule is unchanged",
+      },
+    ],
+  },
+  {
+    version: "0.32.0",
+    date: "2026-08-28",
+    releasedAt: "2026-08-28T17:45:00+08:00",
+    title: "Pull customers, models, and serial numbers from SAP",
+    highlights: [
+      "Sync from SAP on Customers, Product Models, and Serial Numbers brings the records straight in — no more manual adding",
+      "SAP is the source of truth for these, so new customers and models are created by the sync",
+      "Each sync reports what was created, updated, already up to date, skipped (with the reason), and what exists here but not in SAP",
+      "Records missing from SAP are only reported, never deleted or switched off for you",
+      "Customers blocked or frozen in SAP come in as inactive",
+      "The sync keeps running if you leave the page, and it tells you when it is done",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Sync from SAP on the Customers, Product Models, and Serial Numbers pages pulls master data in one click",
+      },
+      {
+        type: "feature",
+        description:
+          "Every sync ends with a report of created, updated, unchanged, skipped, and not-in-SAP records so you can see exactly what changed",
+      },
+      {
+        type: "improvement",
+        description:
+          "Manual Add for customers and product models is retired — SAP owns those records now, while imports stay available",
+      },
+      {
+        type: "improvement",
+        description:
+          "Only real SAP customers are pulled in; suppliers and leads are left out, and blocked or frozen customers arrive as inactive",
+      },
+      {
+        type: "fix",
+        description:
+          "A customer whose SAP name is already used by another record is skipped with a clear reason instead of failing the sync",
+      },
+    ],
+  },
+  {
     version: "0.31.3",
     date: "2026-08-11",
     releasedAt: "2026-08-11T19:35:00+08:00",
