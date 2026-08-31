@@ -16,20 +16,6 @@ export interface SapMasterSyncSkip {
   reason: string;
 }
 
-/**
- * A dependent entity synced as part of another entity's run — serial numbers under
- * models. Reported next to the parent's own numbers rather than as a separate sync,
- * because the user triggered one action and should get one answer.
- */
-export interface SapMasterSyncStage {
-  /** Plural noun for the records this stage synced, e.g. `"serial numbers"`. */
-  label: string;
-  /** Absent when the stage failed outright — `error` says why. */
-  result: SapMasterSyncResult | null;
-  /** Set when the stage threw. The parent's own writes still stand. */
-  error?: string;
-}
-
 export interface SapMasterSyncResult {
   /** Rows returned by SAP, before validation. */
   fetched: number;
@@ -40,6 +26,4 @@ export interface SapMasterSyncResult {
   skipped: SapMasterSyncSkip[];
   /** ISMS records with no matching SAP record — reported, never modified. */
   notInSap: number;
-  /** Dependent entities pulled in by the same run. Only the parent sync sets this. */
-  stages?: SapMasterSyncStage[];
 }

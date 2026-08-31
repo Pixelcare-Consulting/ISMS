@@ -12,34 +12,14 @@ function summarize(result: SapMasterSyncResult): string {
   return `${result.created} added · ${result.updated} updated · ${result.unchanged} unchanged`;
 }
 
-/** One line per dependent entity, e.g. serial numbers pulled in by the model sync. */
-function summarizeStages(result: SapMasterSyncResult): string {
-  return (result.stages ?? [])
-    .map((stage) =>
-      stage.result
-        ? `${stage.label}: ${stage.result.created} added · ${stage.result.updated} updated`
-        : `${stage.label}: failed — ${stage.error ?? "unknown error"}`,
-    )
-    .join("\n");
-}
-
-/** A stage that failed, or skipped rows anywhere in the run, needs the full report. */
-function needsReport(result: SapMasterSyncResult): boolean {
-  if (result.skipped.length > 0) return true;
-  return (result.stages ?? []).some(
-    (stage) => !stage.result || stage.result.skipped.length > 0,
-  );
-}
-
 function reportSuccess(key: string, noun: SapSyncNoun, result: SapMasterSyncResult) {
   const label = result.fetched === 1 ? noun.one : noun.many;
-  const stages = summarizeStages(result);
   toast.success(`Synced ${result.fetched} ${label} from SAP`, {
     id: key,
-    description: stages ? `${summarize(result)}\n${stages}` : summarize(result),
+    description: summarize(result),
   });
   // Skipped rows need the reason spelled out — a toast line cannot carry them.
-  useSapSyncStore.getState().setReport(key, needsReport(result) ? { noun, result } : null);
+  useSapSyncStore.getState().setReport(key, result.skipped.length > 0 ? { noun, result } : null);
 }
 
 function reportError(key: string, noun: SapSyncNoun, description?: string | null) {

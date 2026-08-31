@@ -135,6 +135,25 @@ export async function fetchSapCollection<T>(
     }
 
     const batch = response.data?.value ?? [];
+
+    // Per-page trace. Without it a slow read and a hung one look identical from the
+    // outside, and the summary below only prints once the read is already over. The
+    // first page is the one that matters: it shows what page size SAP actually granted,
+    // which is what decides whether this read takes seconds or an hour.
+    if (page === 0 || page % 10 === 0) {
+      logger.info(
+        {
+          entity: query.entity,
+          page,
+          batch: batch.length,
+          rows: records.length + batch.length,
+          requestedPageSize,
+          elapsedMs: Date.now() - startedAt,
+        },
+        "sap collection page",
+      );
+    }
+
     if (batch.length === 0) {
       // Logged so the SAP half of a sync can be told apart from the Postgres half
       // without guessing. `effectivePageSize` is what SAP actually granted — if it is

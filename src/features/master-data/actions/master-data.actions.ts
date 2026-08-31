@@ -200,8 +200,6 @@ export async function syncModelsFromSapAction() {
     ]);
 
     revalidatePath("/settings/master-data/models");
-    // The same run writes serials, so the serial registry page is stale too.
-    revalidatePath("/inventory/serial-numbers");
     return { success: true as const, result };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to sync models from SAP" };
