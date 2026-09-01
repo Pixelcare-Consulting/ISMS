@@ -1046,8 +1046,21 @@ model Dealer {
   aors          Aor[]
   salesReplacements SalesReplacement[]
 
-  @@unique([tenantId, name])
+  /**
+   * `sapCode` is the identity, not the name. SAP legitimately carries several customers
+   * under one `CardName` — a renumbering that kept both records, two branches of one
+   * company — so a unique name would reject rows SAP considers perfectly valid, and did:
+   * 78 of 1,138 customers, 11 of them the *active* record losing to a dead one that
+   * happened to sort first. Names are therefore free to repeat, and anything resolving a
+   * dealer by name (the branch import accepts either) may find more than one.
+   *
+   * Nullable and unique: legacy dealers predating the sync have no code, and Postgres
+   * allows many NULLs in a unique index.
+   */
+  @@unique([tenantId, sapCode])
   @@index([tenantId])
+  /** Replaces the index the dropped name constraint provided, for lookup and ordering. */
+  @@index([tenantId, name])
   @@map("dealers")
 }
 

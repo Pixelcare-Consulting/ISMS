@@ -10,11 +10,36 @@ export type SapSyncResponse = { error: string } | { success: true; result: SapSy
 
 const formatCount = (value: number) => value.toLocaleString();
 
+/** Rows this run actually placed in ISMS, however it placed them. */
+function appliedCount(result: SapSyncResult): number {
+  return result.created + result.updated + result.unchanged;
+}
+
+function skippedCount(result: SapSyncResult): number {
+  return result.skipped.reduce((sum, skip) => sum + skip.count, 0);
+}
+
+/**
+ * Skipped rows belong in the summary, not only in the report dialog. Without them a run
+ * that applied nothing reads as "0 added · 0 updated · 0 unchanged" — which looks like
+ * SAP had nothing to say, when in fact every row was rejected for a reason worth acting
+ * on.
+ */
 function summarize(result: SapSyncResult): string {
-  return (
-    `${formatCount(result.created)} added · ${formatCount(result.updated)} updated · ` +
-    `${formatCount(result.unchanged)} unchanged`
-  );
+  const parts = [
+    `${formatCount(result.created)} added`,
+    `${formatCount(result.updated)} updated`,
+    `${formatCount(result.unchanged)} unchanged`,
+  ];
+  const skipped = skippedCount(result);
+  if (skipped > 0) parts.push(`${formatCount(skipped)} skipped`);
+  return parts.join(" · ");
+}
+
+/** The reason behind the most rows, to lead with when nothing could be applied. */
+function dominantSkipReason(result: SapSyncResult): string | null {
+  const worst = [...result.skipped].sort((a, b) => b.count - a.count)[0];
+  return worst?.reason ?? null;
 }
 
 /**
@@ -66,18 +91,37 @@ export function runSapSync(
       }
 
       const result = response.result;
+      const nothingApplied = appliedCount(result) === 0 && skippedCount(result) > 0;
+      const reason = dominantSkipReason(result);
 
       if (result.caughtUp) {
-        toast.success(`${noun.many} are up to date with SAP`, {
-          id: key,
-          description: summarize(result),
-        });
+        // A pass that rejected everything is not an up-to-date pass, however cleanly it
+        // finished — say what stopped it rather than reporting a hollow success.
+        if (nothingApplied) {
+          toast.warning(`No ${noun.many} could be applied`, {
+            id: key,
+            duration: 15000,
+            description: `${summarize(result)}. ${reason ?? ""}`.trim(),
+          });
+        } else {
+          toast.success(`${noun.many} are up to date with SAP`, {
+            id: key,
+            description: summarize(result),
+          });
+        }
       } else {
-        toast.info(`Batch done — ${progressLine(result)}`, {
+        const title = nothingApplied
+          ? `Nothing applied yet — ${progressLine(result)}`
+          : `Batch done — ${progressLine(result)}`;
+        const detail = nothingApplied
+          ? `${summarize(result)}. ${reason ?? ""}`.trim()
+          : `${summarize(result)}. There are more ${noun.many} in SAP.`;
+
+        toast[nothingApplied ? "warning" : "info"](title, {
           id: key,
           // Stays until answered: this is a question, not a notification.
           duration: Infinity,
-          description: `${summarize(result)}. There are more ${noun.many} in SAP.`,
+          description: detail,
           action: { label: "Continue", onClick: () => runSapSync(key, noun, action) },
           cancel: { label: "Stop", onClick: () => toast.dismiss(key) },
         });

@@ -1,9 +1,5 @@
 import { prisma } from "@/lib/database/client";
-import {
-  createInChunks,
-  updateEach,
-  type SapWriteFailure,
-} from "@/features/sap/services/sap-sync-writer";
+import { createInChunks, updateEach } from "@/features/sap/services/sap-sync-writer";
 import type { SapSyncApplyResult } from "@/features/sap/types/sap-sync-entity";
 import type { BranchStatus } from "@/lib/database/generated/prisma/client";
 
@@ -90,20 +86,12 @@ export const dealerRepository = {
   /**
    * Apply one page of a SAP customer sync, matched on `sapCode`.
    *
-   * Two indexed lookups, both scoped to this page: the dealers these codes already map
-   * to, and who currently holds these names.
+   * One indexed lookup, scoped to this page: the dealers these codes already map to.
+   * Soft-deleted dealers are included — they still hold their `sapCode`.
    *
-   * The name lookup exists because `Dealer` still carries `@@unique([tenantId, name])`
-   * on top of the code it is matched by, so two SAP customers sharing a `CardName` under
-   * different `CardCode`s cannot both land.
-   * Discovering that at write time costs a rejected 500-row `createMany` plus 500
-   * single-row retries to find a handful of offenders; checking first turns it into a
-   * skip line with no failed writes at all. Soft-deleted dealers are included — they
-   * still occupy their name, and their `sapCode` too.
-   *
-   * Case-sensitive, matching the Postgres index: "ACME" and "acme" genuinely are two
-   * different rows. When the name constraint is dropped, this check simply stops
-   * producing skips; nothing here needs changing.
+   * Names are deliberately not checked. SAP carries several customers under one
+   * `CardName` and ISMS no longer requires them to be unique; see the `Dealer` model for
+   * why the constraint was dropped.
    */
   async applySapSyncPage(
     tenantId: string,
@@ -113,56 +101,21 @@ export const dealerRepository = {
     // first occurrence wins rather than letting the two fight over the same row.
     const rows = [...new Map(records.map((row) => [row.sapCode, row])).values()];
 
-    const [existing, nameHolders] = await Promise.all([
-      prisma.dealer.findMany({
-        where: { tenantId, sapCode: { in: rows.map((row) => row.sapCode) } },
-        select: { id: true, sapCode: true, name: true, status: true },
-      }),
-      prisma.dealer.findMany({
-        where: { tenantId, name: { in: rows.map((row) => row.name) } },
-        select: { name: true, sapCode: true },
-      }),
-    ]);
-
+    const existing = await prisma.dealer.findMany({
+      where: { tenantId, sapCode: { in: rows.map((row) => row.sapCode) } },
+      select: { id: true, sapCode: true, name: true, status: true },
+    });
     const bySapCode = new Map(existing.map((dealer) => [dealer.sapCode, dealer]));
-    /** Which SAP code currently holds each name; null means an uncoded legacy dealer. */
-    const nameOwner = new Map<string, string | null>();
-    for (const holder of nameHolders) {
-      if (!nameOwner.has(holder.name)) nameOwner.set(holder.name, holder.sapCode);
-    }
-    /** True when `name` is spoken for by anyone other than this SAP code. */
-    const nameTakenByOther = (name: string, sapCode: string) => {
-      const owner = nameOwner.get(name);
-      return owner !== undefined && owner !== sapCode;
-    };
 
-    const failures: SapWriteFailure[] = [];
     const toCreate: { sapCode: string; name: string; status: BranchStatus }[] = [];
     const toUpdate: { id: string; sapCode: string; name: string; status: BranchStatus }[] = [];
     let unchanged = 0;
 
     for (const row of rows) {
       const match = bySapCode.get(row.sapCode);
-
-      if (match && match.name === row.name && match.status === row.status) {
-        unchanged += 1;
-        continue;
-      }
-      // A rename has to clear the same constraint a create does. A name is never
-      // released within a page: creates are written before updates, so a name freed by
-      // a rename is still taken while the creates run. Pessimistic on purpose — the
-      // skipped row lands on the next pass, once the rename has committed.
-      if (nameTakenByOther(row.name, row.sapCode)) {
-        failures.push({
-          reason: "Another ISMS dealer already uses this name",
-          example: row.sapCode,
-        });
-        continue;
-      }
-      nameOwner.set(row.name, row.sapCode);
-
-      if (match) toUpdate.push({ id: match.id, ...row });
-      else toCreate.push(row);
+      if (!match) toCreate.push(row);
+      else if (match.name === row.name && match.status === row.status) unchanged += 1;
+      else toUpdate.push({ id: match.id, ...row });
     }
 
     const inserted = await createInChunks(toCreate, {
@@ -192,7 +145,7 @@ export const dealerRepository = {
       created: inserted.created,
       updated: changed.updated,
       unchanged,
-      failures: [...failures, ...inserted.failures, ...changed.failures],
+      failures: [...inserted.failures, ...changed.failures],
     };
   },
 

@@ -43,9 +43,20 @@ export const serialNumberSyncEntity: SapSyncEntity<SerialRecord, ModelIndex> = {
    * `SerialNumber.modelId` is a required FK, so a serial cannot be stored until its item
    * exists in ISMS. Models number in the thousands, so this index is cheap to hold for a
    * whole run — unlike the serials themselves.
+   *
+   * With no models at all, every row SAP returns is unusable and the only thing reading
+   * four million of them can establish is that fact. Stopping here says so in one step,
+   * with the action that fixes it, instead of burning a pass to arrive at an empty result
+   * that reads like SAP had nothing to send.
    */
   async prepare(tenantId) {
     const models = await serialNumberRepository.listModelOptions(tenantId);
+    if (models.length === 0) {
+      throw new Error(
+        "No product models in ISMS yet. Serial numbers link to a model, so sync Models " +
+          "from SAP first (Settings → Master Data → Models), then run this again.",
+      );
+    }
     return new Map(models.map((model) => [model.skuCode, model.id]));
   },
 
