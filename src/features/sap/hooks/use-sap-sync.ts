@@ -10,6 +10,19 @@ export type SapSyncResponse = { error: string } | { success: true; result: SapSy
 
 const formatCount = (value: number) => value.toLocaleString();
 
+/**
+ * How long a toast carrying a decision stays up.
+ *
+ * Long enough to read a progress line and reach for "Continue", short enough that it
+ * clears itself when nobody does. It deliberately does not wait forever: an unanswered
+ * prompt is an answer — the scheduled job picks the entity up regardless, so nothing is
+ * lost by letting it go, and a toast that never leaves has to be dismissed by hand.
+ */
+const DECISION_TOAST_MS = 30_000;
+
+/** Long enough to read a multi-line reason, without lingering. */
+const WARNING_TOAST_MS = 15_000;
+
 /** Rows this run actually placed in ISMS, however it placed them. */
 function appliedCount(result: SapSyncResult): number {
   return result.created + result.updated + result.unchanged;
@@ -100,7 +113,7 @@ export function runSapSync(
         if (nothingApplied) {
           toast.warning(`No ${noun.many} could be applied`, {
             id: key,
-            duration: 15000,
+            duration: WARNING_TOAST_MS,
             description: `${summarize(result)}. ${reason ?? ""}`.trim(),
           });
         } else {
@@ -119,8 +132,7 @@ export function runSapSync(
 
         toast[nothingApplied ? "warning" : "info"](title, {
           id: key,
-          // Stays until answered: this is a question, not a notification.
-          duration: Infinity,
+          duration: DECISION_TOAST_MS,
           description: detail,
           action: { label: "Continue", onClick: () => runSapSync(key, noun, action) },
           cancel: { label: "Stop", onClick: () => toast.dismiss(key) },
