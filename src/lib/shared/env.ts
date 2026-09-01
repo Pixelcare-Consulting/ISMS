@@ -13,6 +13,8 @@ const envSchema = z.object({
   AUDIT_LOG_HOT_DAYS: z.coerce.number().int().positive().optional(),
   SLOW_QUERY_MS: z.coerce.number().int().positive().optional(),
   SENTRY_DSN: z.string().url().optional(),
+  /** Bearer token Vercel Cron presents to the scheduled sync route. */
+  CRON_SECRET: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -28,6 +30,7 @@ function parseEnv(): Env {
     UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
     AUDIT_LOG_HOT_DAYS: process.env.AUDIT_LOG_HOT_DAYS,
     SLOW_QUERY_MS: process.env.SLOW_QUERY_MS,
+    CRON_SECRET: process.env.CRON_SECRET,
     SENTRY_DSN: process.env.SENTRY_DSN,
   });
   if (result.success) return result.data;

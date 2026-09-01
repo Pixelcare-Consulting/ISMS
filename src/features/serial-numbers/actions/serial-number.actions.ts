@@ -109,12 +109,18 @@ export async function setSerialNumberStatusAction(id: string, input: unknown) {
   }
 }
 
+/**
+ * Runs one slice of the serial sync. The entity is far larger than any request can read,
+ * so this returns after its budget with the watermark saved; the cron finishes the rest.
+ * A shorter budget than the cron's keeps the button responsive.
+ */
 export async function syncSerialNumbersFromSapAction() {
   const session = await requirePermission("inventory.manage");
   try {
     const result = await serialNumberSapSyncService.syncFromSap(
       session.user.tenantId,
       session.user.id,
+      { budgetMs: 45_000 },
     );
     revalidatePath(SERIAL_NUMBERS_ROUTE);
     return { success: true as const, result };

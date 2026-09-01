@@ -231,6 +231,7 @@ model Tenant {
   stockVariances      StockVariance[]
   sapIntegrationJobs  SapIntegrationJob[]
   sapServiceLayerConfigs SapServiceLayerConfig[]
+  sapSyncCursors      SapSyncCursor[]
   announcements       Announcement[]
   competitorObservations CompetitorObservation[]
   officialSalesImportBatches OfficialSalesImportBatch[]
@@ -2015,6 +2016,55 @@ model SapIntegrationJob {
   @@index([tenantId, status, nextRetryAt])
   @@index([tenantId, referenceType, referenceId])
   @@map("sap_integration_jobs")
+}
+
+/**
+ * How far a SAP master-data sync has read, per tenant and entity.
+ *
+ * Exists because `SerialNumberDetails` is millions of rows: reading it whole on every
+ * run cannot finish inside a request, and reading it whole even once has to survive
+ * being interrupted. `lastKey` is the highest entity key already applied (OSRN.DocEntry
+ * for serials), so the next run resumes with `$filter=DocEntry gt lastKey` instead of
+ * starting over. That makes the first full backfill and every later incremental run the
+ * same code path — the backfill is just the case where there is a lot left to do.
+ *
+ * Only safe for an append-only, monotonic key. Serial master data qualifies: SAP assigns
+ * DocEntry in order and does not renumber. A row edited below the watermark is not
+ * picked up again, which is the deliberate trade for not rescanning millions of rows.
+ */
+model SapSyncCursor {
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
+  /** Service Layer entity set, e.g. `SerialNumberDetails`. */
+  entity   String
+
+  /** Highest entity key applied so far. 0 means nothing has been read yet. */
+  lastKey       Int       @default(0) @map("last_key")
+  /** SAP's total row count at the last run, so progress can be reported. */
+  totalAtSource Int?      @map("total_at_source")
+  /** Set once the cursor reaches the end of the entity, cleared when it falls behind. */
+  caughtUpAt    DateTime? @map("caught_up_at")
+
+  /**
+   * Lowest key a run had to skip because its parent record was missing — a serial whose
+   * item is not in ISMS. Without this the watermark would move past those rows and they
+   * could never be picked up, since later runs only read keys above it.
+   *
+   * On catching up the cursor rewinds here for one more pass, but only once ISMS has
+   * gained parent records since (`pendingParentCount`) — otherwise a permanently
+   * unmatched row would make the sync loop forever.
+   */
+  pendingFromKey     Int? @map("pending_from_key")
+  pendingParentCount Int? @map("pending_parent_count")
+  lastRunAt     DateTime? @map("last_run_at")
+  lastError     String?   @map("last_error")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, entity])
+  @@map("sap_sync_cursors")
 }
 
 model SapServiceLayerConfig {

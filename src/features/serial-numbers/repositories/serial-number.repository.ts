@@ -235,29 +235,55 @@ export const serialNumberRepository = {
   },
 
   /**
-   * Apply a SAP serial sync. Chunked, with a per-row fallback so one rejected row is
-   * reported by itself rather than failing the whole batch.
+   * Apply one page of a SAP serial sync.
    *
-   * Creates carry no inventory: no BranchInventory or WarehouseInventory row is made,
-   * so a synced serial exists in the registry with no location until something in ISMS
-   * puts it somewhere.
+   * Page-scoped on purpose: the old whole-entity diff loaded every ISMS serial into a Map
+   * to compare against, which is not survivable once the entity is millions of rows. Here
+   * the existence check is an indexed lookup over just this page's serial numbers, so
+   * memory stays flat no matter how large the entity gets.
+   *
+   * Creates carry no inventory: no BranchInventory or WarehouseInventory row is made, so
+   * a synced serial exists in the registry with no location until something in ISMS puts
+   * it somewhere.
    */
-  async applySapSync(
+  async applySapSyncPage(
     tenantId: string,
-    input: {
-      create: { serialNo: string; modelId: string }[];
-      update: { id: string; serialNo: string; modelId: string }[];
-    },
+    rows: { serialNo: string; modelId: string }[],
   ) {
-    const failures: { sapCode: string; name: string | null; reason: string }[] = [];
+    const failures: { sapCode: string; reason: string }[] = [];
     let created = 0;
     let updated = 0;
+    let unchanged = 0;
 
-    for (let i = 0; i < input.create.length; i += SAP_SYNC_CHUNK) {
-      const chunk = input.create.slice(i, i + SAP_SYNC_CHUNK);
+    const existing = await prisma.serialNumber.findMany({
+      where: { tenantId, serialNo: { in: rows.map((row) => row.serialNo) } },
+      select: { id: true, serialNo: true, modelId: true },
+    });
+    const bySerialNo = new Map(existing.map((serial) => [serial.serialNo, serial]));
+
+    const toCreate: { serialNo: string; modelId: string }[] = [];
+    const toUpdate: { id: string; serialNo: string; modelId: string }[] = [];
+
+    for (const row of rows) {
+      const match = bySerialNo.get(row.serialNo);
+      if (!match) {
+        toCreate.push(row);
+        continue;
+      }
+      // A serial already here from the PSG import gets its model linked (or corrected)
+      // rather than being ignored — that link is the point of the sync.
+      if (match.modelId === row.modelId) unchanged += 1;
+      else toUpdate.push({ id: match.id, serialNo: row.serialNo, modelId: row.modelId });
+    }
+
+    for (let i = 0; i < toCreate.length; i += SAP_SYNC_CHUNK) {
+      const chunk = toCreate.slice(i, i + SAP_SYNC_CHUNK);
       try {
         const result = await prisma.serialNumber.createMany({
           data: chunk.map((row) => ({ tenantId, ...row, recordStatus: "active" as const })),
+          // A concurrent writer (PSG import, another slice) may have inserted the same
+          // serial between the lookup above and this write.
+          skipDuplicates: true,
         });
         created += result.count;
       } catch {
@@ -268,16 +294,15 @@ export const serialNumberRepository = {
             });
             created += 1;
           } catch (e) {
-            failures.push({ sapCode: row.serialNo, name: null, reason: describeWriteError(e) });
+            failures.push({ sapCode: row.serialNo, reason: describeWriteError(e) });
           }
         }
       }
     }
 
     // See dealer.repository.ts — independent per-row updates, run concurrently.
-    // This is the highest-volume sync, so it benefits most.
     const outcomes = await mapWithConcurrency(
-      input.update,
+      toUpdate,
       SAP_SYNC_WRITE_CONCURRENCY,
       async (row) => {
         try {
@@ -287,11 +312,7 @@ export const serialNumberRepository = {
           });
           return null;
         } catch (e) {
-          return {
-            sapCode: row.serialNo,
-            name: null as string | null,
-            reason: describeWriteError(e),
-          };
+          return { sapCode: row.serialNo, reason: describeWriteError(e) };
         }
       },
     );
@@ -300,7 +321,7 @@ export const serialNumberRepository = {
       else updated += 1;
     }
 
-    return { created, updated, failures };
+    return { created, updated, unchanged, failures };
   },
 
   countAll(tenantId: string) {

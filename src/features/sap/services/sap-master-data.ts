@@ -184,3 +184,95 @@ export async function fetchSapCollection<T>(
       `The sync was stopped so it does not apply a partial result.`,
   );
 }
+
+/** Page handed to `streamSapCollection`, with the cursor value it advances to. */
+export interface SapPage<T> {
+  rows: T[];
+  /** 1-based page number within this run, for logging. */
+  page: number;
+}
+
+export interface SapStreamQuery {
+  entity: string;
+  select: string;
+  /** Must be the key `filter` compares against — resuming depends on a stable sort. */
+  orderBy: string;
+  /** Read only rows after the watermark, e.g. `DocEntry gt 1500000`. */
+  filter?: string;
+}
+
+export interface SapStreamOutcome {
+  pages: number;
+  rows: number;
+  /** False when the read stopped on its time budget with rows still unread. */
+  completed: boolean;
+}
+
+/**
+ * Page through a Service Layer entity, handing each page to `onPage` instead of
+ * collecting the whole set.
+ *
+ * `fetchSapCollection` returns an array, which is fine for entities in the thousands and
+ * impossible for `SerialNumberDetails` at four million rows — the array alone would
+ * exhaust the function's memory before any of it was written. Streaming keeps only one
+ * page live at a time, so peak memory is the page size rather than the entity size.
+ *
+ * Stops early when `budgetMs` elapses. A caller that persists its watermark inside
+ * `onPage` can then resume exactly where this left off, which is what lets a read far
+ * larger than any single request complete across several runs.
+ */
+export async function streamSapCollection<T>(
+  creds: SapServiceLayerCredentials,
+  query: SapStreamQuery,
+  onPage: (page: SapPage<T>) => Promise<void>,
+  options: { budgetMs: number },
+): Promise<SapStreamOutcome> {
+  const requestedPageSize = pageSize();
+  const startedAt = Date.now();
+  let skip = 0;
+  let rows = 0;
+  let page = 0;
+
+  for (;;) {
+    const params = [`$select=${query.select}`, `$orderby=${query.orderBy}`, `$skip=${skip}`];
+    if (query.filter) params.splice(1, 0, `$filter=${encodeURIComponent(query.filter)}`);
+
+    const response = await sapServiceLayerClient.request<SapCollectionResponse<T>>({
+      creds,
+      method: "GET",
+      path: `/${query.entity}?${params.join("&")}`,
+      headers: { Prefer: `odata.maxpagesize=${requestedPageSize}` },
+    });
+
+    if (response.statusCode >= 400) {
+      throw new Error(sapErrorMessage(response.statusCode, response.rawBody, query.entity));
+    }
+
+    const batch = response.data?.value ?? [];
+    if (batch.length === 0) {
+      logger.info(
+        { entity: query.entity, pages: page, rows, elapsedMs: Date.now() - startedAt },
+        "sap stream completed",
+      );
+      return { pages: page, rows, completed: true };
+    }
+
+    page += 1;
+    rows += batch.length;
+    await onPage({ rows: batch, page });
+
+    // Advancing by `$skip` only works while the filter stays put. Callers that move the
+    // watermark forward each page reset `$skip` by passing a new filter on the next run,
+    // so this stays correct for both styles.
+    skip += batch.length;
+
+    const elapsed = Date.now() - startedAt;
+    if (elapsed >= options.budgetMs) {
+      logger.info(
+        { entity: query.entity, pages: page, rows, elapsedMs: elapsed },
+        "sap stream paused on budget",
+      );
+      return { pages: page, rows, completed: false };
+    }
+  }
+}
