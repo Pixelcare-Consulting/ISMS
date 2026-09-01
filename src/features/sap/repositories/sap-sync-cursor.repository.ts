@@ -89,9 +89,14 @@ export const sapSyncCursorRepository = {
     return { rewound: false };
   },
 
+  /**
+   * Record why a run failed. `updateMany` so a failure that happened before the cursor
+   * was created is a no-op — a bookkeeping write must never replace the real error with
+   * one of its own.
+   */
   async recordError(tenantId: string, entity: string, message: string) {
-    await prisma.sapSyncCursor.update({
-      where: { tenantId_entity: { tenantId, entity } },
+    await prisma.sapSyncCursor.updateMany({
+      where: { tenantId, entity },
       // Truncated: this is shown in a UI, and SAP errors can carry a whole stack.
       data: { lastError: message.slice(0, 500), lastRunAt: new Date() },
     });

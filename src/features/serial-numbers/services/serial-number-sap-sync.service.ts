@@ -106,14 +106,24 @@ async function runSync(
     );
   }
 
-  const cursor = await sapSyncCursorRepository.get(tenantId, SAP_SERIAL_ENTITY);
-  const totalAtSource = await ensureTotal(tenantId, creds, cursor.totalAtSource);
-
   // `SerialNumber.modelId` is a required FK, so a serial cannot be stored until its item
   // exists in ISMS. Models number in the thousands, so this map is cheap to hold for the
   // whole run — unlike the serials themselves.
+  //
+  // Checked before anything expensive: with no models at all, every row SAP returns is
+  // unusable, and reading them would burn the row count and a full budget of paging to
+  // arrive at a conclusion already known here.
   const models = await serialNumberRepository.listModelOptions(tenantId);
+  if (models.length === 0) {
+    throw new Error(
+      "No product models in ISMS yet. Serial numbers link to a model, so sync Models " +
+        "from SAP first (Settings → Master Data → Models), then run this again.",
+    );
+  }
   const modelIdBySku = new Map(models.map((model) => [model.skuCode, model.id]));
+
+  const cursor = await sapSyncCursorRepository.get(tenantId, SAP_SERIAL_ENTITY);
+  const totalAtSource = await ensureTotal(tenantId, creds, cursor.totalAtSource);
 
   let created = 0;
   let updated = 0;
