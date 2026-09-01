@@ -324,6 +324,19 @@ export const serialNumberRepository = {
     return { created, updated, unchanged, failures };
   },
 
+  /**
+   * Whether the tenant has any serial at all. Deliberately not a `count`: this runs on
+   * every sync, and on a table of millions a count is a scan while an indexed lookup for
+   * one row is not.
+   */
+  async hasAny(tenantId: string) {
+    const row = await prisma.serialNumber.findFirst({
+      where: { tenantId },
+      select: { id: true },
+    });
+    return row !== null;
+  },
+
   countAll(tenantId: string) {
     return prisma.serialNumber.count({ where: { tenantId } });
   },

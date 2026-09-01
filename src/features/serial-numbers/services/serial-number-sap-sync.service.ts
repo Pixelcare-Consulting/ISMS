@@ -122,7 +122,25 @@ async function runSync(
   }
   const modelIdBySku = new Map(models.map((model) => [model.skuCode, model.id]));
 
-  const cursor = await sapSyncCursorRepository.get(tenantId, SAP_SERIAL_ENTITY);
+  let cursor = await sapSyncCursorRepository.get(tenantId, SAP_SERIAL_ENTITY);
+
+  // The watermark only ever reads forward, so it is worthless if the rows it claims to
+  // have applied are gone — every later run would report "nothing new" while the table
+  // stayed permanently short. Deleting a model cascades to its serials, so this is a
+  // real way to end up here, not a hypothetical one.
+  //
+  // Only the unambiguous case is acted on: a cursor claiming progress with no serials at
+  // all. A partial shortfall is indistinguishable from rows legitimately skipped for a
+  // missing model, so it is left alone rather than guessed at.
+  if (cursor.lastKey > 0 && !(await serialNumberRepository.hasAny(tenantId))) {
+    logger.warn(
+      { tenantId, entity: SAP_SERIAL_ENTITY, lastKey: cursor.lastKey },
+      "sap serial cursor is ahead of an empty table — resetting to re-read from the start",
+    );
+    await sapSyncCursorRepository.reset(tenantId, SAP_SERIAL_ENTITY);
+    cursor = await sapSyncCursorRepository.get(tenantId, SAP_SERIAL_ENTITY);
+  }
+
   const totalAtSource = await ensureTotal(tenantId, creds, cursor.totalAtSource);
 
   let created = 0;
