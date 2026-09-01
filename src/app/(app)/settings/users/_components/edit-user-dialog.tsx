@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 
 import { toast } from "sonner";
 
@@ -84,12 +84,22 @@ export function EditUserDialog({
     [departments],
   );
 
-  useEffect(() => {
-    if (!open || !user) return;
-    setRoleSlug(user.userRoles[0]?.role.slug ?? roles[0]?.slug ?? "");
-    setDepartmentId(user.department?.id ?? "none");
-    setError(null);
-  }, [open, user, roles]);
+  /**
+   * Re-seed the fields each time the dialog opens on a user, so a previous edit never
+   * shows up under someone else's name. Done during render rather than in an effect:
+   * an effect fills the form a frame after it is on screen, which is visible as a flash
+   * of the last user's values.
+   */
+  const editing = open && user ? user.id : null;
+  const [seededFor, setSeededFor] = useState<string | null>(editing);
+  if (editing !== seededFor) {
+    setSeededFor(editing);
+    if (editing && user) {
+      setRoleSlug(user.userRoles[0]?.role.slug ?? roles[0]?.slug ?? "");
+      setDepartmentId(user.department?.id ?? "none");
+      setError(null);
+    }
+  }
 
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();

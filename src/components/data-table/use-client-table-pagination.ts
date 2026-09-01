@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import {
   DEFAULT_TABLE_PAGE_SIZE,
@@ -22,9 +22,17 @@ export function useClientTablePagination<T>(
   const resetKey = options?.resetKey ?? "";
   const [page, setPage] = useState(1);
 
-  useEffect(() => {
+  /**
+   * Go back to the first page whenever the filter or page size changes — page 4 of the
+   * old list means nothing in the new one. Adjusted during render rather than in an
+   * effect, which would render one frame of the wrong slice before correcting itself.
+   */
+  const pageResetSeed = `${resetKey}:${pageSize}`;
+  const [seededReset, setSeededReset] = useState(pageResetSeed);
+  if (seededReset !== pageResetSeed) {
+    setSeededReset(pageResetSeed);
     setPage(1);
-  }, [resetKey, pageSize]);
+  }
 
   function setPageSize(next: TablePageSize) {
     setPageSizeState(parseTablePageSize(next));

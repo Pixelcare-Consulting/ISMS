@@ -118,11 +118,20 @@ export function GlobalDataTable({
     return () => observer.disconnect();
   }, [stickyHeader, empty]);
 
+  /**
+   * Drop the reserved toolbar space as soon as there is no toolbar to measure. Done
+   * during render rather than in the effect below, so the sticky header never holds a
+   * gap for a frame after the toolbar has gone.
+   */
+  const measuringToolbar = stickyHeader && hasToolbar;
+  const [wasMeasuringToolbar, setWasMeasuringToolbar] = useState(measuringToolbar);
+  if (measuringToolbar !== wasMeasuringToolbar) {
+    setWasMeasuringToolbar(measuringToolbar);
+    if (!measuringToolbar) setToolbarHeight(0);
+  }
+
   useEffect(() => {
-    if (!stickyHeader || !hasToolbar) {
-      setToolbarHeight(0);
-      return;
-    }
+    if (!measuringToolbar) return;
     const el = toolbarRef.current;
     if (!el) return;
 
@@ -131,7 +140,7 @@ export function GlobalDataTable({
     const observer = new ResizeObserver(updateHeight);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [stickyHeader, hasToolbar]);
+  }, [measuringToolbar]);
 
   const toolbarLeadingContent =
     pageSize || toolbarLeading ? (

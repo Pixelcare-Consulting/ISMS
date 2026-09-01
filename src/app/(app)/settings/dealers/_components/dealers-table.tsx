@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -64,7 +64,9 @@ const COL_COUNT = 7;
 
 export function DealersTable({ dealers }: { dealers: DealerRow[] }) {
   const router = useRouter();
-  const [rows, setRows] = useState(dealers);
+  // Server data, rendered straight from props: this table never edits the list
+  // locally, so copying it into state only risked showing a stale copy.
+  const rows = dealers;
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
   const [deleting, setDeleting] = useState<DealerRow | null>(null);
@@ -76,10 +78,6 @@ export function DealersTable({ dealers }: { dealers: DealerRow[] }) {
   const [dealerTypeId, setDealerTypeId] = useState("");
   const [dealerAreaId, setDealerAreaId] = useState("");
   const [modeOfPaymentId, setModeOfPaymentId] = useState("");
-
-  useEffect(() => {
-    setRows(dealers);
-  }, [dealers]);
 
   const filtered = useMemo(
     () =>

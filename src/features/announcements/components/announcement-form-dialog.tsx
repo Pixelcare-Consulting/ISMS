@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -64,8 +64,15 @@ export function AnnouncementFormDialog({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  useEffect(() => {
-    if (!open) return;
+  /**
+   * Seed the fields each time the dialog opens — with the announcement being edited, or
+   * blank for a new one — so a previous edit never bleeds into the next. Done during
+   * render rather than in an effect, which would show the old values for a frame first.
+   */
+  const editing = open ? (announcement?.id ?? "new") : null;
+  const [seededFor, setSeededFor] = useState<string | null>(editing);
+  if (editing !== seededFor) {
+    setSeededFor(editing);
     if (announcement) {
       setTitle(announcement.title);
       setBody(announcement.body);
@@ -80,7 +87,7 @@ export function AnnouncementFormDialog({
       setIsActive(true);
     }
     setError(null);
-  }, [open, announcement]);
+  }
 
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();

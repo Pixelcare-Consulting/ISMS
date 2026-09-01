@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition, type ReactNode } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 
 import { SalesTabTableSkeleton } from "@/app/(app)/sales/_components/sales-tab-table-skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -47,11 +47,17 @@ export function ReturnsPageTabs({
 }: ReturnsPageTabsProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  /**
+   * The tab shown right now, which leads the URL: clicking sets it immediately while
+   * the router catches up. Re-synced during render whenever the route settles on a
+   * different tab, so a back/forward navigation is reflected without a stale frame.
+   */
   const [displayTab, setDisplayTab] = useState<ReturnsPageTab>(activeTab);
-
-  useEffect(() => {
+  const [seededTab, setSeededTab] = useState<ReturnsPageTab>(activeTab);
+  if (seededTab !== activeTab) {
+    setSeededTab(activeTab);
     setDisplayTab(activeTab);
-  }, [activeTab]);
+  }
 
   const showSkeleton =
     pending ||

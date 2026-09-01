@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState, useTransition } from "react";
+import { Fragment, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -60,7 +60,18 @@ const COL_COUNT = 5;
 
 export function ServiceCentersTable({ centers }: { centers: CenterRow[] }) {
   const router = useRouter();
+  /**
+   * Local copy of the server rows so edits can show immediately, re-seeded whenever the
+   * server sends a new list. Adjusted during render rather than in an effect: an effect
+   * would paint the stale list for a frame first, and React re-runs this render before
+   * committing anything to the DOM.
+   */
   const [rows, setRows] = useState(centers);
+  const [seeded, setSeeded] = useState(centers);
+  if (seeded !== centers) {
+    setSeeded(centers);
+    setRows(centers);
+  }
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
   const [deleting, setDeleting] = useState<CenterRow | null>(null);
@@ -76,10 +87,6 @@ export function ServiceCentersTable({ centers }: { centers: CenterRow[] }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [locCode, setLocCode] = useState("");
   const [locName, setLocName] = useState("");
-
-  useEffect(() => {
-    setRows(centers);
-  }, [centers]);
 
   const filtered = useMemo(
     () =>

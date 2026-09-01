@@ -23,11 +23,16 @@ export function PageTutorialTrigger({ content, className }: PageTutorialTriggerP
   // Start closed to avoid SSR/hydration flash; auto-open after mount if not dismissed.
   const [open, setOpen] = useState(false);
 
+  // Deliberately an effect: whether this tutorial was dismissed lives in localStorage,
+  // which does not exist while rendering on the server and cannot be read during render
+  // without risking a hydration mismatch. Opening after mount is the point, not an
+  // oversight, so the lint rule against setting state from an effect does not apply.
   useEffect(() => {
     try {
       if (typeof window === "undefined") return;
       const key = dismissStorageKey(content.id);
       if (window.localStorage.getItem(key)) return;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setOpen(true);
     } catch {
       // localStorage may be unavailable (private mode / blocked) — skip auto-open.

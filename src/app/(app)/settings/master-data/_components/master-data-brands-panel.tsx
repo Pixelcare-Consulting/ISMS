@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
@@ -35,7 +35,17 @@ interface MasterDataBrandsPanelProps {
 
 export function MasterDataBrandsPanel({ brands }: MasterDataBrandsPanelProps) {
   const router = useRouter();
+  /**
+   * Local copy so a newly created brand appears at once, re-seeded whenever the server
+   * sends a new list. Adjusted during render rather than in an effect, which would
+   * paint the stale list for a frame first.
+   */
   const [brandRows, setBrandRows] = useState(brands);
+  const [seededBrands, setSeededBrands] = useState(brands);
+  if (seededBrands !== brands) {
+    setSeededBrands(brands);
+    setBrandRows(brands);
+  }
   const [pending, startTransition] = useTransition();
   const [brandOpen, setBrandOpen] = useState(false);
   const [brandCode, setBrandCode] = useState("");
@@ -57,10 +67,6 @@ export function MasterDataBrandsPanel({ brands }: MasterDataBrandsPanelProps) {
   } = useClientTablePagination(brandSort.sorted, {
     resetKey: `${brandSort.sortKey}:${brandSort.sortDir}`,
   });
-
-  useEffect(() => {
-    setBrandRows(brands);
-  }, [brands]);
 
   function resetBrandForm() {
     setBrandCode("");

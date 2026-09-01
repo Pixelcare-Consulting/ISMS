@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 
 import { toast } from "sonner";
 
@@ -44,15 +44,22 @@ interface DepartmentsTableProps {
 
 export function DepartmentsTable({ departments }: DepartmentsTableProps) {
   const router = useRouter();
+  /**
+   * Local copy of the server rows so edits can show immediately, re-seeded whenever the
+   * server sends a new list. Adjusted during render rather than in an effect: an effect
+   * would paint the stale list for a frame first, and React re-runs this render before
+   * committing anything to the DOM.
+   */
   const [rows, setRows] = useState(departments);
+  const [seeded, setSeeded] = useState(departments);
+  if (seeded !== departments) {
+    setSeeded(departments);
+    setRows(departments);
+  }
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<DepartmentRow | null>(null);
   const [deleting, setDeleting] = useState<DepartmentRow | null>(null);
   const [pending, startTransition] = useTransition();
-
-  useEffect(() => {
-    setRows(departments);
-  }, [departments]);
 
   const filtered = useMemo(
     () =>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Megaphone, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -59,17 +59,14 @@ export function AnnouncementsPanel({
   canManage,
 }: AnnouncementsPanelProps) {
   const router = useRouter();
-  const [rows, setRows] = useState(announcements);
+  // Server data, rendered straight from props: nothing here edits the list locally.
+  const rows = announcements;
   const [query, setQuery] = useState("");
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<AnnouncementCard | null>(null);
   const [deleting, setDeleting] = useState<AnnouncementCard | null>(null);
   const [pending, startTransition] = useTransition();
   const now = useMemo(() => new Date(), []);
-
-  useEffect(() => {
-    setRows(announcements);
-  }, [announcements]);
 
   const filtered = useMemo(
     () =>

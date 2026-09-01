@@ -41,21 +41,28 @@ export function LoadingModal({
 
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
+  /**
+   * Restart the count as the modal opens. Done during render rather than in the effect
+   * below, which would show the previous run's total for a frame before zeroing it.
+   */
+  const timing = open && resolvedVariant === "feed";
+  const [wasTiming, setWasTiming] = useState(timing);
+  if (timing !== wasTiming) {
+    setWasTiming(timing);
+    setElapsedSeconds(0);
+  }
+
+  // The clock is read inside the effect and its interval, never during render.
   useEffect(() => {
-    if (!open || resolvedVariant !== "feed") {
-      setElapsedSeconds(0);
-      return;
-    }
+    if (!timing) return;
 
     const startedAt = Date.now();
-    setElapsedSeconds(0);
     const interval = setInterval(() => {
-      const nextElapsed = Math.floor((Date.now() - startedAt) / 1000);
-      setElapsedSeconds(nextElapsed);
+      setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [open, resolvedVariant]);
+  }, [timing]);
 
   const currentFeedIndex = useMemo(() => {
     if (feedItems.length === 0) return -1;

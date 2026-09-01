@@ -25,56 +25,56 @@ type RegisterState = {
 
 export function RegisterForm() {
   const router = useRouter();
-  const [isRedirecting, setIsRedirecting] = useState(false);
   const [state, formAction, pending] = useActionState(
     registerAction,
     {} as RegisterState,
   );
 
-  const isBusy = pending || isRedirecting;
+  /**
+   * The registration result whose automatic sign-in failed, held by identity rather than
+   * as a boolean: `useActionState` hands back a fresh object per submission, so a retry
+   * is a different result and clears this on its own — no effect needed to reset it.
+   */
+  const [signInFailedFor, setSignInFailedFor] = useState<RegisterState | null>(null);
 
-  useEffect(() => {
-    if (pending) {
-      setIsRedirecting(true);
-    }
-  }, [pending]);
+  /**
+   * Busy from the moment the form is submitted until the user is either signed in or
+   * told what went wrong. Derived rather than mirrored into state by an effect: an
+   * effect updates it a frame late, which shows as the modal flickering between the
+   * action finishing and the sign-in starting.
+   */
+  const isRedirecting =
+    pending || (state?.success === true && signInFailedFor !== state);
+  const isBusy = isRedirecting;
 
-  useEffect(() => {
-    if (state?.error) {
-      setIsRedirecting(false);
-    }
-  }, [state?.error]);
-
+  // Registration succeeded — sign the new user in with the credentials still in the form
+  // and send them on. Every failure path records *which* result failed, so the modal
+  // closes and the form becomes usable again instead of spinning forever.
   useEffect(() => {
     if (!state?.success) return;
 
-    setIsRedirecting(true);
+    void (async () => {
+      const form = document.getElementById("register-form") as HTMLFormElement | null;
+      if (!form) {
+        setSignInFailedFor(state);
+        return;
+      }
 
-    const form = document.getElementById("register-form") as HTMLFormElement | null;
-    if (!form) {
-      setIsRedirecting(false);
-      return;
-    }
+      const email = (form.elements.namedItem("email") as HTMLInputElement).value;
+      const password = (form.elements.namedItem("password") as HTMLInputElement).value;
 
-    const email = (form.elements.namedItem("email") as HTMLInputElement).value;
-    const password = (form.elements.namedItem("password") as HTMLInputElement).value;
+      const result = await authClient.signIn
+        .email({ email, password })
+        .catch(() => null);
 
-    void authClient.signIn
-      .email({
-        email,
-        password,
-      })
-      .then((result) => {
-        if (result.error) {
-          setIsRedirecting(false);
-          return;
-        }
-        router.push("/dashboard");
-        router.refresh();
-      })
-      .catch(() => {
-        setIsRedirecting(false);
-      });
+      if (!result || result.error) {
+        setSignInFailedFor(state);
+        return;
+      }
+
+      router.push("/dashboard");
+      router.refresh();
+    })();
   }, [state, router]);
 
   return (

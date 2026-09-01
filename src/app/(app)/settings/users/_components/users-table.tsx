@@ -2,7 +2,6 @@
 
 import { useRouter } from "next/navigation";
 import {
-  useEffect,
   useMemo,
   useState,
   useTransition,
@@ -80,7 +79,18 @@ export function UsersTable({
   toolbarActions,
 }: UsersTableProps) {
   const router = useRouter();
+  /**
+   * Local copy of the server rows so edits can show immediately, re-seeded whenever the
+   * server sends a new list. Adjusted during render rather than in an effect: an effect
+   * would paint the stale list for a frame first, and React re-runs this render before
+   * committing anything to the DOM.
+   */
   const [rows, setRows] = useState(users);
+  const [seeded, setSeeded] = useState(users);
+  if (seeded !== users) {
+    setSeeded(users);
+    setRows(users);
+  }
   const [query, setQuery] = useState("");
   const [editingUser, setEditingUser] = useState<UserRow | null>(null);
   const [deletingUser, setDeletingUser] = useState<UserRow | null>(null);
@@ -97,10 +107,6 @@ export function UsersTable({
         }}
       />
     );
-
-  useEffect(() => {
-    setRows(users);
-  }, [users]);
 
   const filteredUsers = useMemo(
     () =>
