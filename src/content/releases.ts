@@ -52,6 +52,88 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.33.0",
+    date: "2026-09-01",
+    releasedAt: "2026-09-01T15:30:00+08:00",
+    title: "SAP master data keeps itself up to date",
+    highlights: [
+      "Branches, warehouses, customers, product models, and serial numbers now sync from SAP on their own, all day — nobody has to remember to press the button",
+      "Big syncs pick up where they left off instead of starting over, so serial numbers finish on their own over several rounds",
+      "Every sync now goes back over its records regularly, so a change made in SAP is picked up even on records that came in long ago",
+      "Sync messages show how far along you are, how many rows were skipped, and why",
+      "Skipped rows are grouped by reason with a few examples instead of one long list",
+      "Two SAP customers sharing the same name both come in now, instead of one being turned away",
+      '"Sync from SAP" refreshes the page as results land, and no longer gets stuck spinning if you navigate away',
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "SAP master data syncs automatically in the background, so branches, warehouses, customers, product models, and serial numbers stay current without anyone starting a sync",
+      },
+      {
+        type: "feature",
+        description:
+          "Long syncs remember their place and continue from there on the next round, so even very large serial number lists complete without being babysat",
+      },
+      {
+        type: "feature",
+        description:
+          "Sync messages now show progress through the current pass — how many rows have been read out of the total in SAP",
+      },
+      {
+        type: "improvement",
+        description:
+          "Every sync repeats its pass once it reaches the end, so edits made in SAP to older records are picked up instead of being missed forever",
+      },
+      {
+        type: "improvement",
+        description:
+          'Skipped rows now appear in the sync summary, not only in the report, so a run that applied nothing explains itself instead of reading as "nothing to do"',
+      },
+      {
+        type: "improvement",
+        description:
+          "The sync report groups skipped rows by reason with a sample of the records affected, rather than listing thousands of rows saying the same thing",
+      },
+      {
+        type: "improvement",
+        description:
+          "Customers are matched on their SAP code instead of their name, so several SAP records sharing one company name all come through",
+      },
+      {
+        type: "improvement",
+        description:
+          "The page refreshes as each part of a sync lands, so new records show up without a manual reload",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sync prompts and warnings clear themselves after a short while instead of sitting on screen until dismissed — the scheduled sync picks the work up either way",
+      },
+      {
+        type: "fix",
+        description:
+          "A sync that never gets an answer back now stops on its own instead of spinning forever and blocking every later attempt until the page is reloaded",
+      },
+      {
+        type: "fix",
+        description:
+          "Sync messages no longer carry over text or buttons from the previous run",
+      },
+      {
+        type: "fix",
+        description:
+          "Serial number sync stops immediately with a clear message when no product models exist yet, instead of skipping every row one by one",
+      },
+      {
+        type: "fix",
+        description:
+          "Forms, dialogs, and tables no longer flash the previous values for a moment when reopened or switched — the register form, edit user dialog, table filters, and page tabs all show the right state right away",
+      },
+    ],
+  },
+  {
     version: "0.32.1",
     date: "2026-08-31",
     releasedAt: "2026-08-31T14:00:00+08:00",
