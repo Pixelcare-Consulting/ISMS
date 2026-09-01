@@ -112,9 +112,44 @@ function progressLine(result: SapSyncResult): string {
   return `${done} of ${formatCount(result.totalAtSource)} (${percent}%)`;
 }
 
-function reportError(key: string, noun: SapSyncNoun, description?: string | null) {
-  toast.error(`Could not sync ${noun.many} from SAP`, {
+interface SyncToastButton {
+  label: string;
+  onClick: () => void;
+}
+
+interface SyncToastOptions {
+  description?: string;
+  duration?: number;
+  action?: SyncToastButton;
+  cancel?: SyncToastButton;
+}
+
+/**
+ * Show this sync key's one toast, replacing whatever it said before.
+ *
+ * Every field is passed on every call, including the ones being cleared. Reusing a toast
+ * id updates that toast in place and merges only the fields handed over, so anything
+ * omitted silently keeps its previous value: a fresh spinner would otherwise appear over
+ * the last run's error text, still carrying its "Continue" button, and — because a
+ * loading toast does not expire — sit there saying it forever.
+ */
+function showSyncToast(
+  kind: "loading" | "success" | "info" | "warning" | "error",
+  key: string,
+  title: string,
+  options: SyncToastOptions = {},
+) {
+  toast[kind](title, {
     id: key,
+    description: options.description,
+    duration: options.duration,
+    action: options.action,
+    cancel: options.cancel,
+  });
+}
+
+function reportError(key: string, noun: SapSyncNoun, description?: string | null) {
+  showSyncToast("error", key, `Could not sync ${noun.many} from SAP`, {
     description: description ?? undefined,
   });
 }
@@ -153,7 +188,7 @@ export function runSapSync(
 
   store.start(key);
   store.setReport(key, null);
-  toast.loading(`Syncing ${noun.many} from SAP…`, { id: key });
+  showSyncToast("loading", key, `Syncing ${noun.many} from SAP…`);
 
   withTimeout(action(), SLICE_TIMEOUT_MS)
     .then((response) => {
@@ -170,14 +205,12 @@ export function runSapSync(
         // A pass that rejected everything is not an up-to-date pass, however cleanly it
         // finished — say what stopped it rather than reporting a hollow success.
         if (nothingApplied) {
-          toast.warning(`No ${noun.many} could be applied`, {
-            id: key,
+          showSyncToast("warning", key, `No ${noun.many} could be applied`, {
             duration: WARNING_TOAST_MS,
             description: `${summarize(result)}. ${reason ?? ""}`.trim(),
           });
         } else {
-          toast.success(`${noun.many} are up to date with SAP`, {
-            id: key,
+          showSyncToast("success", key, `${noun.many} are up to date with SAP`, {
             description: summarize(result),
           });
         }
@@ -189,8 +222,7 @@ export function runSapSync(
           ? `${summarize(result)}. ${reason ?? ""}`.trim()
           : `${summarize(result)}. There are more ${noun.many} in SAP.`;
 
-        toast[nothingApplied ? "warning" : "info"](title, {
-          id: key,
+        showSyncToast(nothingApplied ? "warning" : "info", key, title, {
           duration: DECISION_TOAST_MS,
           description: detail,
           action: {
