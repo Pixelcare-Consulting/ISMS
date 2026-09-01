@@ -1,12 +1,8 @@
 import type { LookupRecordStatus, Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/database/client";
-import {
-  describeWriteError,
-  SAP_SYNC_CHUNK,
-  SAP_SYNC_WRITE_CONCURRENCY,
-} from "@/features/sap/services/sap-master-data";
-import { mapWithConcurrency } from "@/lib/shared/concurrency";
+import { createInChunks, updateEach } from "@/features/sap/services/sap-sync-writer";
+import type { SapSyncApplyResult } from "@/features/sap/types/sap-sync-entity";
 import {
   resolvePagination,
   toPaginatedResult,
@@ -226,21 +222,12 @@ export const serialNumberRepository = {
     });
   },
 
-  /** Every serial for the tenant, keyed for SAP matching on `serialNo`. */
-  listSapSyncSnapshot(tenantId: string) {
-    return prisma.serialNumber.findMany({
-      where: { tenantId },
-      select: { id: true, serialNo: true, modelId: true },
-    });
-  },
-
   /**
    * Apply one page of a SAP serial sync.
    *
-   * Page-scoped on purpose: the old whole-entity diff loaded every ISMS serial into a Map
-   * to compare against, which is not survivable once the entity is millions of rows. Here
-   * the existence check is an indexed lookup over just this page's serial numbers, so
-   * memory stays flat no matter how large the entity gets.
+   * The existence check is an indexed lookup over just this page's serial numbers, so
+   * memory stays flat however large the entity is — the reason nothing here ever loads a
+   * snapshot of the table.
    *
    * Creates carry no inventory: no BranchInventory or WarehouseInventory row is made, so
    * a synced serial exists in the registry with no location until something in ISMS puts
@@ -248,12 +235,11 @@ export const serialNumberRepository = {
    */
   async applySapSyncPage(
     tenantId: string,
-    rows: { serialNo: string; modelId: string }[],
-  ) {
-    const failures: { sapCode: string; reason: string }[] = [];
-    let created = 0;
-    let updated = 0;
-    let unchanged = 0;
+    records: { serialNo: string; modelId: string }[],
+  ): Promise<SapSyncApplyResult> {
+    // SAP keys serials per item, so one serial number can arrive under two items within a
+    // page. ISMS is unique on serialNo alone, so the first occurrence wins.
+    const rows = [...new Map(records.map((row) => [row.serialNo, row])).values()];
 
     const existing = await prisma.serialNumber.findMany({
       where: { tenantId, serialNo: { in: rows.map((row) => row.serialNo) } },
@@ -263,6 +249,7 @@ export const serialNumberRepository = {
 
     const toCreate: { serialNo: string; modelId: string }[] = [];
     const toUpdate: { id: string; serialNo: string; modelId: string }[] = [];
+    let unchanged = 0;
 
     for (const row of rows) {
       const match = bySerialNo.get(row.serialNo);
@@ -276,65 +263,40 @@ export const serialNumberRepository = {
       else toUpdate.push({ id: match.id, serialNo: row.serialNo, modelId: row.modelId });
     }
 
-    for (let i = 0; i < toCreate.length; i += SAP_SYNC_CHUNK) {
-      const chunk = toCreate.slice(i, i + SAP_SYNC_CHUNK);
-      try {
+    const inserted = await createInChunks(toCreate, {
+      createMany: async (chunk) => {
         const result = await prisma.serialNumber.createMany({
           data: chunk.map((row) => ({ tenantId, ...row, recordStatus: "active" as const })),
-          // A concurrent writer (PSG import, another slice) may have inserted the same
-          // serial between the lookup above and this write.
+          // A concurrent writer (PSG import, an overlapping slice) may have inserted the
+          // same serial between the lookup above and this write.
           skipDuplicates: true,
         });
-        created += result.count;
-      } catch {
-        for (const row of chunk) {
-          try {
-            await prisma.serialNumber.create({
-              data: { tenantId, ...row, recordStatus: "active" },
-            });
-            created += 1;
-          } catch (e) {
-            failures.push({ sapCode: row.serialNo, reason: describeWriteError(e) });
-          }
-        }
-      }
-    }
-
-    // See dealer.repository.ts — independent per-row updates, run concurrently.
-    const outcomes = await mapWithConcurrency(
-      toUpdate,
-      SAP_SYNC_WRITE_CONCURRENCY,
-      async (row) => {
-        try {
-          await prisma.serialNumber.update({
-            where: { id: row.id, tenantId },
-            data: { modelId: row.modelId },
-          });
-          return null;
-        } catch (e) {
-          return { sapCode: row.serialNo, reason: describeWriteError(e) };
-        }
+        return result.count;
       },
-    );
-    for (const outcome of outcomes) {
-      if (outcome) failures.push(outcome);
-      else updated += 1;
-    }
-
-    return { created, updated, unchanged, failures };
-  },
-
-  /**
-   * Whether the tenant has any serial at all. Deliberately not a `count`: this runs on
-   * every sync, and on a table of millions a count is a scan while an indexed lookup for
-   * one row is not.
-   */
-  async hasAny(tenantId: string) {
-    const row = await prisma.serialNumber.findFirst({
-      where: { tenantId },
-      select: { id: true },
+      createOne: async (row) => {
+        await prisma.serialNumber.create({
+          data: { tenantId, ...row, recordStatus: "active" },
+        });
+      },
+      describe: (row) => row.serialNo,
     });
-    return row !== null;
+
+    const changed = await updateEach(toUpdate, {
+      updateOne: async (row) => {
+        await prisma.serialNumber.update({
+          where: { id: row.id, tenantId },
+          data: { modelId: row.modelId },
+        });
+      },
+      describe: (row) => row.serialNo,
+    });
+
+    return {
+      created: inserted.created,
+      updated: changed.updated,
+      unchanged,
+      failures: [...inserted.failures, ...changed.failures],
+    };
   },
 
   countAll(tenantId: string) {

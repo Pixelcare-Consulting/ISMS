@@ -14,7 +14,7 @@ import {
   syncSerialNumbersFromSapAction,
   updateSerialNumberAction,
 } from "@/features/serial-numbers/actions/serial-number.actions";
-import { SerialSyncButton } from "@/features/serial-numbers/components/serial-sync-button";
+import { SapSyncButton } from "@/features/sap/components/sap-sync-button";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import {
   TableIndexCell,
@@ -240,7 +240,11 @@ export function SerialNumberTable({
         }}
         toolbarActions={
           <>
-            <SerialSyncButton onSync={syncSerialNumbersFromSapAction} />
+            <SapSyncButton
+              syncKey="serial-number"
+              noun={{ one: "serial number", many: "serial numbers" }}
+              onSync={syncSerialNumbersFromSapAction}
+            />
             <SearchableSelect
               id="serial-status"
               className="sm:w-40"

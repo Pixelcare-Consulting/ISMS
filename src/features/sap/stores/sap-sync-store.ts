@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 
-import type { SapMasterSyncResult } from "@/features/sap/schemas/sap-master-sync.schema";
+import type { SapSyncResult } from "@/features/sap/schemas/sap-master-sync.schema";
 
 export interface SapSyncNoun {
   one: string;
@@ -11,7 +11,7 @@ export interface SapSyncNoun {
 
 export interface SapSyncReport {
   noun: SapSyncNoun;
-  result: SapMasterSyncResult;
+  result: SapSyncResult;
 }
 
 interface SapSyncState {

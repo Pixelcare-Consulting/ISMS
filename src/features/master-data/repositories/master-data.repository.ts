@@ -1,10 +1,6 @@
 import { prisma } from "@/lib/database/client";
-import {
-  describeWriteError,
-  SAP_SYNC_CHUNK,
-  SAP_SYNC_WRITE_CONCURRENCY,
-} from "@/features/sap/services/sap-master-data";
-import { mapWithConcurrency } from "@/lib/shared/concurrency";
+import { createInChunks, updateEach } from "@/features/sap/services/sap-sync-writer";
+import type { SapSyncApplyResult } from "@/features/sap/types/sap-sync-entity";
 import { CACHE_TTL, cacheKey, getOrSet } from "@/lib/cache/redis";
 import type { SkuStatus } from "@/lib/database/generated/prisma/client";
 
@@ -112,73 +108,82 @@ export const masterDataRepository = {
     });
   },
 
-  /** Every model for the tenant, keyed for SAP matching on `skuCode`. */
-  listSapSyncSnapshot(tenantId: string) {
-    return prisma.productModel.findMany({
-      where: { tenantId },
+  /** Apply one page of a SAP item sync, matched on `skuCode`. */
+  async applySapSyncPage(
+    tenantId: string,
+    records: { skuCode: string; name: string; status: SkuStatus }[],
+  ): Promise<SapSyncApplyResult> {
+    // Paged by ItemCode, so a repeat within a page would be a SAP anomaly; first wins.
+    const rows = [...new Map(records.map((row) => [row.skuCode, row])).values()];
+
+    const existing = await prisma.productModel.findMany({
+      where: { tenantId, skuCode: { in: rows.map((row) => row.skuCode) } },
       select: { id: true, skuCode: true, name: true, description: true, status: true },
     });
-  },
+    const bySkuCode = new Map(existing.map((model) => [model.skuCode, model]));
 
-  /**
-   * Apply a SAP item sync. Chunked, with a per-row fallback so one rejected row is
-   * reported by itself rather than failing the whole batch.
-   */
-  async applySapSync(
-    tenantId: string,
-    input: {
-      create: { skuCode: string; name: string; description: string; status: SkuStatus }[];
-      update: { id: string; skuCode: string; name: string; description: string; status: SkuStatus }[];
-    },
-  ) {
-    const failures: { sapCode: string; name: string; reason: string }[] = [];
-    let created = 0;
-    let updated = 0;
+    const toCreate: { skuCode: string; name: string; description: string; status: SkuStatus }[] =
+      [];
+    const toUpdate: {
+      id: string;
+      skuCode: string;
+      name: string;
+      description: string;
+      status: SkuStatus;
+    }[] = [];
+    let unchanged = 0;
 
-    for (let i = 0; i < input.create.length; i += SAP_SYNC_CHUNK) {
-      const chunk = input.create.slice(i, i + SAP_SYNC_CHUNK);
-      try {
+    for (const row of rows) {
+      // Both columns track ItemName. `description` is the mapped target; `name` carries
+      // it too because the column is NOT NULL and, with manual creation disabled, SAP is
+      // the only thing that ever names a model.
+      const fields = { skuCode: row.skuCode, name: row.name, description: row.name, status: row.status };
+      const match = bySkuCode.get(row.skuCode);
+
+      if (!match) {
+        toCreate.push(fields);
+        continue;
+      }
+      if (
+        match.name === fields.name &&
+        match.description === fields.description &&
+        match.status === fields.status
+      ) {
+        unchanged += 1;
+        continue;
+      }
+      toUpdate.push({ id: match.id, ...fields });
+    }
+
+    const inserted = await createInChunks(toCreate, {
+      createMany: async (chunk) => {
         const result = await prisma.productModel.createMany({
           data: chunk.map((row) => ({ tenantId, ...row })),
         });
-        created += result.count;
-      } catch {
-        for (const row of chunk) {
-          try {
-            await prisma.productModel.create({ data: { tenantId, ...row } });
-            created += 1;
-          } catch (e) {
-            failures.push({ sapCode: row.skuCode, name: row.name, reason: describeWriteError(e) });
-          }
-        }
-      }
-    }
-
-    // See dealer.repository.ts — independent per-row updates, run concurrently.
-    const outcomes = await mapWithConcurrency(
-      input.update,
-      SAP_SYNC_WRITE_CONCURRENCY,
-      async (row) => {
-        try {
-          await prisma.productModel.update({
-            where: { id: row.id, tenantId },
-            // Both track ItemName. `description` is the mapped target; `name` carries it
-            // too because the column is NOT NULL and, with manual creation disabled, SAP
-            // is the only thing that ever names a model.
-            data: { name: row.name, description: row.description, status: row.status },
-          });
-          return null;
-        } catch (e) {
-          return { sapCode: row.skuCode, name: row.name, reason: describeWriteError(e) };
-        }
+        return result.count;
       },
-    );
-    for (const outcome of outcomes) {
-      if (outcome) failures.push(outcome);
-      else updated += 1;
-    }
+      createOne: async (row) => {
+        await prisma.productModel.create({ data: { tenantId, ...row } });
+      },
+      describe: (row) => row.skuCode,
+    });
 
-    return { created, updated, failures };
+    const changed = await updateEach(toUpdate, {
+      updateOne: async (row) => {
+        await prisma.productModel.update({
+          where: { id: row.id, tenantId },
+          data: { name: row.name, description: row.description, status: row.status },
+        });
+      },
+      describe: (row) => row.skuCode,
+    });
+
+    return {
+      created: inserted.created,
+      updated: changed.updated,
+      unchanged,
+      failures: [...inserted.failures, ...changed.failures],
+    };
   },
 
   listPriceLists(tenantId: string, modelId?: string) {

@@ -1,11 +1,11 @@
 import { prisma } from "@/lib/database/client";
 
 /**
- * Read/write the watermark a resumable SAP sync reads from. See `SapSyncCursor` in the
- * schema for why the watermark exists and what it is safe for.
+ * Read/write where each SAP sync has got to. See `SapSyncCursor` in the schema for what a
+ * pass is and why every entity — two rows or four million — uses one.
  */
 export const sapSyncCursorRepository = {
-  /** The cursor for this entity, created at key 0 the first time it is asked for. */
+  /** The cursor for this entity, created idle the first time it is asked for. */
   async get(tenantId: string, entity: string) {
     return prisma.sapSyncCursor.upsert({
       where: { tenantId_entity: { tenantId, entity } },
@@ -15,84 +15,66 @@ export const sapSyncCursorRepository = {
   },
 
   /**
-   * Move the watermark forward. Guarded so a slow run that finishes after a newer one
-   * cannot rewind the cursor and re-read rows already applied.
-   */
-  async advance(tenantId: string, entity: string, lastKey: number) {
-    await prisma.sapSyncCursor.updateMany({
-      where: { tenantId, entity, lastKey: { lt: lastKey } },
-      data: { lastKey, lastRunAt: new Date(), caughtUpAt: null, lastError: null },
-    });
-  },
-
-  /**
-   * Note that a row was skipped for want of its parent, keeping the lowest such key.
-   * `parentCount` is how many parents ISMS held at the time, which is what later decides
-   * whether re-reading could produce a different answer.
-   */
-  async recordPending(
-    tenantId: string,
-    entity: string,
-    fromKey: number,
-    parentCount: number,
-  ) {
-    await prisma.sapSyncCursor.updateMany({
-      where: {
-        tenantId,
-        entity,
-        OR: [{ pendingFromKey: null }, { pendingFromKey: { gt: fromKey } }],
-      },
-      data: { pendingFromKey: fromKey, pendingParentCount: parentCount },
-    });
-  },
-
-  /**
-   * Record that the read reached the end of the entity.
+   * Start a pass at the beginning of the entity.
    *
-   * If rows were skipped for missing parents and ISMS has gained parents since, the
-   * cursor rewinds to the lowest of them for one more pass instead of settling — that
-   * second pass is what links serials whose model only arrived later. When the parent
-   * count has not moved, re-reading could only produce the same skips, so it settles.
-   *
-   * Returns whether it rewound, so the caller can report "more to do".
+   * `totalAtSource` is measured by the caller as part of starting, so the denominator
+   * always describes the pass being reported on rather than a previous one.
    */
-  async markCaughtUp(tenantId: string, entity: string, parentCount: number) {
-    const cursor = await prisma.sapSyncCursor.findUnique({
+  async beginPass(tenantId: string, entity: string, totalAtSource: number | null) {
+    return prisma.sapSyncCursor.update({
       where: { tenantId_entity: { tenantId, entity } },
-      select: { pendingFromKey: true, pendingParentCount: true },
+      data: {
+        lastKey: null,
+        passRows: 0,
+        passStartedAt: new Date(),
+        totalAtSource,
+        lastRunAt: new Date(),
+        lastError: null,
+      },
     });
+  },
 
-    const shouldRewind =
-      cursor?.pendingFromKey != null &&
-      parentCount > (cursor.pendingParentCount ?? 0);
-
-    if (shouldRewind) {
-      await prisma.sapSyncCursor.update({
-        where: { tenantId_entity: { tenantId, entity } },
-        data: {
-          // `- 1` so the pending row itself is included by the `gt` filter next run.
-          lastKey: Math.max(cursor.pendingFromKey! - 1, 0),
-          pendingFromKey: null,
-          pendingParentCount: null,
-          caughtUpAt: null,
-          lastRunAt: new Date(),
-          lastError: null,
-        },
-      });
-      return { rewound: true };
-    }
-
+  /**
+   * Record a page as applied, so the next run resumes after it.
+   *
+   * Unguarded: `withSapSyncLock` keeps runs from overlapping within a process, but two
+   * instances (a cron slice and a button press on different servers) still could. The
+   * worst that costs is re-reading pages, never wrong data — every write here is an
+   * upsert keyed on the record's SAP code, and a pass re-reads the whole entity anyway.
+   * A comparison guard is not available regardless: the key is text, so "100" would sort
+   * below "99".
+   */
+  async advance(tenantId: string, entity: string, lastKey: string, passRows: number) {
     await prisma.sapSyncCursor.update({
       where: { tenantId_entity: { tenantId, entity } },
-      data: { caughtUpAt: new Date(), lastRunAt: new Date(), lastError: null },
+      data: { lastKey, passRows, lastRunAt: new Date(), lastError: null },
     });
-    return { rewound: false };
   },
 
   /**
-   * Record why a run failed. `updateMany` so a failure that happened before the cursor
-   * was created is a no-op — a bookkeeping write must never replace the real error with
-   * one of its own.
+   * Record that a pass reached the end of the entity.
+   *
+   * Clearing `passStartedAt` is what arms the next pass: the following run finds no pass
+   * in progress and begins a fresh one from the start of the entity. That is how edits
+   * made in SAP are picked up — `passRows` and `lastKey` are kept only so the run that
+   * just finished can report what it did.
+   */
+  async completePass(tenantId: string, entity: string) {
+    await prisma.sapSyncCursor.update({
+      where: { tenantId_entity: { tenantId, entity } },
+      data: {
+        passStartedAt: null,
+        lastCompletedAt: new Date(),
+        lastRunAt: new Date(),
+        lastError: null,
+      },
+    });
+  },
+
+  /**
+   * Record why a run failed, leaving its position intact so the pass resumes rather than
+   * restarting. `updateMany` so a failure that happened before the cursor existed is a
+   * no-op — a bookkeeping write must never replace the real error with one of its own.
    */
   async recordError(tenantId: string, entity: string, message: string) {
     await prisma.sapSyncCursor.updateMany({
@@ -102,24 +84,16 @@ export const sapSyncCursorRepository = {
     });
   },
 
-  async setTotalAtSource(tenantId: string, entity: string, totalAtSource: number) {
-    await prisma.sapSyncCursor.update({
-      where: { tenantId_entity: { tenantId, entity } },
-      data: { totalAtSource },
-    });
-  },
-
-  /** Restart the entity from scratch — used when the company database changes. */
+  /** Abandon any pass in progress and read the entity from the start next run. */
   async reset(tenantId: string, entity: string) {
     await prisma.sapSyncCursor.updateMany({
       where: { tenantId, entity },
       data: {
-        lastKey: 0,
-        caughtUpAt: null,
+        lastKey: null,
+        passRows: 0,
+        passStartedAt: null,
         totalAtSource: null,
         lastError: null,
-        pendingFromKey: null,
-        pendingParentCount: null,
       },
     });
   },

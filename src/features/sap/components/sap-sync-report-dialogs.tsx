@@ -16,17 +16,29 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { SapMasterSyncResult } from "@/features/sap/schemas/sap-master-sync.schema";
+import type { SapSyncResult } from "@/features/sap/schemas/sap-master-sync.schema";
 import { useSapSyncStore, type SapSyncReport } from "@/features/sap/stores/sap-sync-store";
 
-function summarize(result: SapMasterSyncResult): string {
-  return `${result.created} added · ${result.updated} updated · ${result.unchanged} unchanged`;
+const formatCount = (value: number) => value.toLocaleString();
+
+function summarize(result: SapSyncResult): string {
+  return (
+    `${formatCount(result.created)} added · ${formatCount(result.updated)} updated · ` +
+    `${formatCount(result.unchanged)} unchanged`
+  );
 }
 
+/**
+ * Grouped by reason rather than listed per row: these syncs run over entities of any
+ * size, and the useful answer to "4,812 serials were skipped" is one line naming the
+ * cause, not 4,812 rows saying the same thing. A sample of the codes is enough to go
+ * looking with.
+ */
 function ReportDialog({ syncKey, report }: { syncKey: string; report: SapSyncReport }) {
   const setReport = useSapSyncStore((s) => s.setReport);
   const { noun, result } = report;
   const close = () => setReport(syncKey, null);
+  const total = result.skipped.reduce((sum, skip) => sum + skip.count, 0);
 
   return (
     <Dialog open onOpenChange={close}>
@@ -37,27 +49,29 @@ function ReportDialog({ syncKey, report }: { syncKey: string; report: SapSyncRep
 
         <div className="space-y-4">
           <p className="text-muted-foreground text-sm">
-            {summarize(result)}. The rows below were left untouched.
-            {result.notInSap > 0
-              ? ` ${result.notInSap} ISMS ${result.notInSap === 1 ? `${noun.one} has` : `${noun.many} have`} no matching SAP record — nothing was deleted or deactivated.`
-              : ""}
+            {summarize(result)}. {formatCount(total)}{" "}
+            {total === 1 ? "row was" : "rows were"} left untouched — nothing was deleted or
+            deactivated.
           </p>
 
           <div className="max-h-72 overflow-y-auto rounded-lg border">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>SAP code</TableHead>
-                  <TableHead>Name</TableHead>
+                  <TableHead className="w-20">Rows</TableHead>
                   <TableHead>Reason</TableHead>
+                  <TableHead>Examples</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {result.skipped.map((skip, index) => (
-                  <TableRow key={`${skip.sapCode ?? "unknown"}-${index}`}>
-                    <TableCell className="font-mono text-xs">{skip.sapCode ?? "—"}</TableCell>
-                    <TableCell>{skip.name ?? "—"}</TableCell>
+                {result.skipped.map((skip) => (
+                  <TableRow key={skip.reason}>
+                    <TableCell className="tabular-nums">{formatCount(skip.count)}</TableCell>
                     <TableCell className="text-sm">{skip.reason}</TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {skip.examples.length > 0 ? skip.examples.join(", ") : "—"}
+                      {skip.count > skip.examples.length && skip.examples.length > 0 ? "…" : ""}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

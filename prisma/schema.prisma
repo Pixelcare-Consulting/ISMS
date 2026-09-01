@@ -2019,18 +2019,24 @@ model SapIntegrationJob {
 }
 
 /**
- * How far a SAP master-data sync has read, per tenant and entity.
+ * Where a SAP master-data sync has got to in its current pass, per tenant and entity.
  *
- * Exists because `SerialNumberDetails` is millions of rows: reading it whole on every
- * run cannot finish inside a request, and reading it whole even once has to survive
- * being interrupted. `lastKey` is the highest entity key already applied (OSRN.DocEntry
- * for serials), so the next run resumes with `$filter=DocEntry gt lastKey` instead of
- * starting over. That makes the first full backfill and every later incremental run the
- * same code path — the backfill is just the case where there is a lot left to do.
+ * Every SAP → ISMS sync reads its entity in full, repeatedly: one *pass* walks the whole
+ * entity in key order, and when it ends another begins. That is what keeps ISMS in step
+ * with edits made in SAP — `SerialNumberDetails` exposes no change timestamp, so there is
+ * no way to ask SAP only for what moved.
  *
- * Only safe for an append-only, monotonic key. Serial master data qualifies: SAP assigns
- * DocEntry in order and does not renumber. A row edited below the watermark is not
- * picked up again, which is the deliberate trade for not rescanning millions of rows.
+ * A pass does not have to fit in one run. `lastKey` is the key of the last row applied,
+ * so the next run resumes with `$filter=<key> gt lastKey` and a small entity finishing in
+ * one request is simply the case where a pass needs no resuming. Small and large entities
+ * therefore share one code path, differing only in how many runs a pass takes:
+ * `Warehouses` (~1.3k rows) finishes instantly, `SerialNumberDetails` (~4M) takes several
+ * scheduled slices.
+ *
+ * Keyset, not `$skip`: paging by offset makes SAP re-scan from the start of the entity for
+ * every page, which measurably degrades with depth on a multi-million-row read, and an
+ * offset cannot be resumed in a later run anyway. Verified against the Service Layer that
+ * keyset and offset paging return identical sequences with no gaps or repeats.
  */
 model SapSyncCursor {
   id       String @id @default(cuid())
@@ -2038,24 +2044,24 @@ model SapSyncCursor {
   /** Service Layer entity set, e.g. `SerialNumberDetails`. */
   entity   String
 
-  /** Highest entity key applied so far. 0 means nothing has been read yet. */
-  lastKey       Int       @default(0) @map("last_key")
-  /** SAP's total row count at the last run, so progress can be reported. */
-  totalAtSource Int?      @map("total_at_source")
-  /** Set once the cursor reaches the end of the entity, cleared when it falls behind. */
-  caughtUpAt    DateTime? @map("caught_up_at")
-
   /**
-   * Lowest key a run had to skip because its parent record was missing — a serial whose
-   * item is not in ISMS. Without this the watermark would move past those rows and they
-   * could never be picked up, since later runs only read keys above it.
+   * Key of the last row applied in the current pass, as text so one column serves both
+   * numeric keys (OSRN.DocEntry) and string keys (ItemCode, CardCode, WarehouseCode).
+   * Null means the pass starts at the beginning of the entity.
    *
-   * On catching up the cursor rewinds here for one more pass, but only once ISMS has
-   * gained parent records since (`pendingParentCount`) — otherwise a permanently
-   * unmatched row would make the sync loop forever.
+   * Compared by SAP, never here: the Service Layer orders and filters strings under the
+   * company database's collation, which is not byte order. Handing back exactly what SAP
+   * returned keeps `gt` consistent with the `$orderby` that produced it.
    */
-  pendingFromKey     Int? @map("pending_from_key")
-  pendingParentCount Int? @map("pending_parent_count")
+  lastKey       String?   @map("last_key")
+  /** Rows read so far in the current pass — the numerator for progress. */
+  passRows      Int       @default(0) @map("pass_rows")
+  passStartedAt DateTime? @map("pass_started_at")
+  /** SAP's row count for the entity, measured once per pass as the progress denominator. */
+  totalAtSource Int?      @map("total_at_source")
+  /** When a pass last reached the end of the entity. */
+  lastCompletedAt DateTime? @map("last_completed_at")
+
   lastRunAt     DateTime? @map("last_run_at")
   lastError     String?   @map("last_error")
   createdAt     DateTime  @default(now()) @map("created_at")

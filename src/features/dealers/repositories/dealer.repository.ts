@@ -1,10 +1,10 @@
 import { prisma } from "@/lib/database/client";
 import {
-  describeWriteError,
-  SAP_SYNC_CHUNK,
-  SAP_SYNC_WRITE_CONCURRENCY,
-} from "@/features/sap/services/sap-master-data";
-import { mapWithConcurrency } from "@/lib/shared/concurrency";
+  createInChunks,
+  updateEach,
+  type SapWriteFailure,
+} from "@/features/sap/services/sap-sync-writer";
+import type { SapSyncApplyResult } from "@/features/sap/types/sap-sync-entity";
 import type { BranchStatus } from "@/lib/database/generated/prisma/client";
 
 export const dealerRepository = {
@@ -88,88 +88,112 @@ export const dealerRepository = {
   },
 
   /**
-   * Every dealer for the tenant, soft-deleted rows included. The SAP sync matches on
-   * `sapCode`, so a soft-deleted dealer still has to be visible here — otherwise the
-   * sync would try to re-create it and collide on the unique name.
-   */
-  listSapSyncSnapshot(tenantId: string) {
-    return prisma.dealer.findMany({
-      where: { tenantId },
-      select: { id: true, sapCode: true, name: true, status: true },
-    });
-  },
-
-  /**
-   * Apply a SAP customer sync. Writes are chunked, and each chunk falls back to
-   * per-row inserts if the batch is rejected, so one bad row is reported by itself
-   * instead of taking the whole sync down with it.
+   * Apply one page of a SAP customer sync, matched on `sapCode`.
    *
-   * The rejection this was built for — `@@unique([tenantId, name])` blocking two SAP
-   * customers that share a `CardName` — is now caught before the write, in
-   * `dealer-sap-sync.service.ts`, because reaching it here costs a rejected 500-row
-   * `createMany` plus 500 single-row retries to find a handful of offenders. This
-   * fallback stays as a safety net for write errors the caller could not predict; if
-   * it fires often, something is getting past the pre-flight check and that is the
-   * thing to fix.
+   * Two indexed lookups, both scoped to this page: the dealers these codes already map
+   * to, and who currently holds these names.
    *
-   * Dropping the name constraint is what lets duplicates through — neither this code
-   * nor the pre-flight check needs changing when it goes, the skips simply stop.
+   * The name lookup exists because `Dealer` still carries `@@unique([tenantId, name])`
+   * on top of the code it is matched by, so two SAP customers sharing a `CardName` under
+   * different `CardCode`s cannot both land.
+   * Discovering that at write time costs a rejected 500-row `createMany` plus 500
+   * single-row retries to find a handful of offenders; checking first turns it into a
+   * skip line with no failed writes at all. Soft-deleted dealers are included — they
+   * still occupy their name, and their `sapCode` too.
+   *
+   * Case-sensitive, matching the Postgres index: "ACME" and "acme" genuinely are two
+   * different rows. When the name constraint is dropped, this check simply stops
+   * producing skips; nothing here needs changing.
    */
-  async applySapSync(
+  async applySapSyncPage(
     tenantId: string,
-    input: {
-      create: { sapCode: string; name: string; status: BranchStatus }[];
-      update: { id: string; sapCode: string; name: string; status: BranchStatus }[];
-    },
-  ) {
-    const failures: { sapCode: string; name: string; reason: string }[] = [];
-    let created = 0;
-    let updated = 0;
+    records: { sapCode: string; name: string; status: BranchStatus }[],
+  ): Promise<SapSyncApplyResult> {
+    // The entity is paged by CardCode, so a repeat within a page would be a SAP anomaly;
+    // first occurrence wins rather than letting the two fight over the same row.
+    const rows = [...new Map(records.map((row) => [row.sapCode, row])).values()];
 
-    for (let i = 0; i < input.create.length; i += SAP_SYNC_CHUNK) {
-      const chunk = input.create.slice(i, i + SAP_SYNC_CHUNK);
-      try {
+    const [existing, nameHolders] = await Promise.all([
+      prisma.dealer.findMany({
+        where: { tenantId, sapCode: { in: rows.map((row) => row.sapCode) } },
+        select: { id: true, sapCode: true, name: true, status: true },
+      }),
+      prisma.dealer.findMany({
+        where: { tenantId, name: { in: rows.map((row) => row.name) } },
+        select: { name: true, sapCode: true },
+      }),
+    ]);
+
+    const bySapCode = new Map(existing.map((dealer) => [dealer.sapCode, dealer]));
+    /** Which SAP code currently holds each name; null means an uncoded legacy dealer. */
+    const nameOwner = new Map<string, string | null>();
+    for (const holder of nameHolders) {
+      if (!nameOwner.has(holder.name)) nameOwner.set(holder.name, holder.sapCode);
+    }
+    /** True when `name` is spoken for by anyone other than this SAP code. */
+    const nameTakenByOther = (name: string, sapCode: string) => {
+      const owner = nameOwner.get(name);
+      return owner !== undefined && owner !== sapCode;
+    };
+
+    const failures: SapWriteFailure[] = [];
+    const toCreate: { sapCode: string; name: string; status: BranchStatus }[] = [];
+    const toUpdate: { id: string; sapCode: string; name: string; status: BranchStatus }[] = [];
+    let unchanged = 0;
+
+    for (const row of rows) {
+      const match = bySapCode.get(row.sapCode);
+
+      if (match && match.name === row.name && match.status === row.status) {
+        unchanged += 1;
+        continue;
+      }
+      // A rename has to clear the same constraint a create does. A name is never
+      // released within a page: creates are written before updates, so a name freed by
+      // a rename is still taken while the creates run. Pessimistic on purpose — the
+      // skipped row lands on the next pass, once the rename has committed.
+      if (nameTakenByOther(row.name, row.sapCode)) {
+        failures.push({
+          reason: "Another ISMS dealer already uses this name",
+          example: row.sapCode,
+        });
+        continue;
+      }
+      nameOwner.set(row.name, row.sapCode);
+
+      if (match) toUpdate.push({ id: match.id, ...row });
+      else toCreate.push(row);
+    }
+
+    const inserted = await createInChunks(toCreate, {
+      createMany: async (chunk) => {
         const result = await prisma.dealer.createMany({
           data: chunk.map((row) => ({ tenantId, ...row })),
         });
-        created += result.count;
-      } catch {
-        for (const row of chunk) {
-          try {
-            await prisma.dealer.create({ data: { tenantId, ...row } });
-            created += 1;
-          } catch (e) {
-            failures.push({ sapCode: row.sapCode, name: row.name, reason: describeWriteError(e) });
-          }
-        }
-      }
-    }
-
-    // Updates carry per-row values so they cannot be batched, but they are
-    // independent of each other — run them `SAP_SYNC_WRITE_CONCURRENCY` wide instead
-    // of one round trip at a time. Results come back in input order, so the failure
-    // report stays deterministic.
-    const outcomes = await mapWithConcurrency(
-      input.update,
-      SAP_SYNC_WRITE_CONCURRENCY,
-      async (row) => {
-        try {
-          await prisma.dealer.update({
-            where: { id: row.id, tenantId },
-            data: { name: row.name, status: row.status },
-          });
-          return null;
-        } catch (e) {
-          return { sapCode: row.sapCode, name: row.name, reason: describeWriteError(e) };
-        }
+        return result.count;
       },
-    );
-    for (const outcome of outcomes) {
-      if (outcome) failures.push(outcome);
-      else updated += 1;
-    }
+      createOne: async (row) => {
+        await prisma.dealer.create({ data: { tenantId, ...row } });
+      },
+      describe: (row) => row.sapCode,
+    });
 
-    return { created, updated, failures };
+    const changed = await updateEach(toUpdate, {
+      updateOne: async (row) => {
+        await prisma.dealer.update({
+          where: { id: row.id, tenantId },
+          data: { name: row.name, status: row.status },
+        });
+      },
+      describe: (row) => row.sapCode,
+    });
+
+    return {
+      created: inserted.created,
+      updated: changed.updated,
+      unchanged,
+      failures: [...failures, ...inserted.failures, ...changed.failures],
+    };
   },
 
   softDelete(tenantId: string, id: string) {

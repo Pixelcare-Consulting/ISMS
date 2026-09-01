@@ -1,4 +1,10 @@
 import { prisma } from "@/lib/database/client";
+import {
+  createInChunks,
+  updateEach,
+  type SapWriteFailure,
+} from "@/features/sap/services/sap-sync-writer";
+import type { SapSyncApplyResult } from "@/features/sap/types/sap-sync-entity";
 import type { BranchStatus } from "@/lib/database/generated/prisma/client";
 
 export interface BranchScheduleInput {
@@ -269,37 +275,83 @@ export const branchRepository = {
   },
 
   /**
-   * Identity + status snapshot used to diff ISMS branches against SAP master data.
-   * Soft-deleted rows are included because they still occupy their sapCode slot.
+   * Apply one page of a SAP branch sync, matched on `sapCode`.
+   *
+   * Soft-deleted branches are looked up too, because they still occupy their sapCode
+   * slot: re-creating over one would collide, so it is reported instead of silently
+   * reviving a branch someone chose to remove.
+   *
+   * Not wrapped in a transaction. Each page is independently valid — the cursor only
+   * advances once its page is written — and an interactive transaction pins a single
+   * connection, which is what forced these writes to run one at a time before.
    */
-  listSapSyncSnapshot(tenantId: string) {
-    return prisma.branch.findMany({
-      where: { tenantId },
-      select: { id: true, sapCode: true, name: true, status: true, deletedAt: true },
-    });
-  },
-
-  /** Apply a SAP branch sync in one transaction — insert new codes, patch changed ones. */
-  applySapSync(
+  async applySapSyncPage(
     tenantId: string,
-    input: {
-      create: { sapCode: string; name: string }[];
-      update: { id: string; name: string }[];
-    },
-  ) {
-    return prisma.$transaction(async (tx) => {
-      if (input.create.length > 0) {
-        await tx.branch.createMany({
-          data: input.create.map((row) => ({ tenantId, ...row })),
-        });
+    records: { sapCode: string; name: string }[],
+  ): Promise<SapSyncApplyResult> {
+    // Paged by Code, so a repeat within a page would be a SAP anomaly; first wins.
+    const rows = [...new Map(records.map((row) => [row.sapCode, row])).values()];
+
+    const existing = await prisma.branch.findMany({
+      where: { tenantId, sapCode: { in: rows.map((row) => row.sapCode) } },
+      select: { id: true, sapCode: true, name: true, deletedAt: true },
+    });
+    const bySapCode = new Map(existing.map((branch) => [branch.sapCode, branch]));
+
+    const failures: SapWriteFailure[] = [];
+    const toCreate: { sapCode: string; name: string }[] = [];
+    const toUpdate: { id: string; sapCode: string; name: string }[] = [];
+    let unchanged = 0;
+
+    for (const row of rows) {
+      const match = bySapCode.get(row.sapCode);
+      if (!match) {
+        toCreate.push(row);
+        continue;
       }
-      for (const row of input.update) {
-        await tx.branch.update({
+      if (match.deletedAt) {
+        failures.push({
+          reason: "Matches a deleted ISMS branch — restore it before syncing",
+          example: row.sapCode,
+        });
+        continue;
+      }
+      if (match.name === row.name) {
+        unchanged += 1;
+        continue;
+      }
+      toUpdate.push({ id: match.id, ...row });
+    }
+
+    const inserted = await createInChunks(toCreate, {
+      createMany: async (chunk) => {
+        const result = await prisma.branch.createMany({
+          data: chunk.map((row) => ({ tenantId, ...row })),
+        });
+        return result.count;
+      },
+      createOne: async (row) => {
+        await prisma.branch.create({ data: { tenantId, ...row } });
+      },
+      describe: (row) => row.sapCode,
+    });
+
+    const changed = await updateEach(toUpdate, {
+      updateOne: async (row) => {
+        await prisma.branch.update({
           where: { id: row.id, tenantId },
           data: { name: row.name },
         });
-      }
+      },
+      describe: (row) => row.sapCode,
     });
+
+    return {
+      created: inserted.created,
+      updated: changed.updated,
+      unchanged,
+      failures: [...failures, ...inserted.failures, ...changed.failures],
+    };
   },
 
   findModelsBySkuCodes(tenantId: string, skuCodes: string[]) {
