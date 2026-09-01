@@ -15,10 +15,15 @@ export interface SapSyncReport {
 }
 
 interface SapSyncState {
-  /** Sync keys currently in flight — any button/badge for that key shows a spinner. */
-  pending: Record<string, boolean>;
-  /** Bumped each time a key's sync finishes, so a still-mounted button knows to refresh. */
-  completedAt: Record<string, number>;
+  /**
+   * When each in-flight sync started, keyed by sync key; absent means not running, and
+   * any button or badge for that key shows a spinner while it is present.
+   *
+   * A timestamp rather than a boolean so a run that never reports back can be recognised
+   * as abandoned. This store outlives every page — that is the point of it — so a flag
+   * with no way to expire would keep a button disabled until a full page load.
+   */
+  pending: Record<string, number | undefined>;
   /** Skipped-row reports awaiting review, keyed by sync key. */
   reports: Record<string, SapSyncReport>;
   start: (key: string) => void;
@@ -33,14 +38,14 @@ interface SapSyncState {
  */
 export const useSapSyncStore = create<SapSyncState>((set) => ({
   pending: {},
-  completedAt: {},
   reports: {},
-  start: (key) => set((s) => ({ pending: { ...s.pending, [key]: true } })),
+  start: (key) => set((s) => ({ pending: { ...s.pending, [key]: Date.now() } })),
   finish: (key) =>
-    set((s) => ({
-      pending: { ...s.pending, [key]: false },
-      completedAt: { ...s.completedAt, [key]: Date.now() },
-    })),
+    set((s) => {
+      const pending = { ...s.pending };
+      delete pending[key];
+      return { pending };
+    }),
   setReport: (key, report) =>
     set((s) => {
       const reports = { ...s.reports };

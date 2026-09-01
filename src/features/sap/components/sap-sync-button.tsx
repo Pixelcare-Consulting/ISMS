@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { RefreshCw } from "lucide-react";
 
@@ -11,7 +10,6 @@ import {
   type SapSyncNoun,
   type SapSyncResponse,
 } from "@/features/sap/hooks/use-sap-sync";
-import { useSapSyncStore } from "@/features/sap/stores/sap-sync-store";
 
 export type { SapSyncNoun, SapSyncResponse };
 
@@ -31,28 +29,21 @@ interface SapSyncButtonProps {
  * Shared "Sync from SAP" control for the one-way SAP → ISMS master-data syncs.
  * The sync itself runs via `runSapSync`, outside this component's lifecycle, so leaving
  * the page (or starting another module's sync at the same time) doesn't interrupt it —
- * this button only reflects state for its own `syncKey` and refreshes this page's data
- * once that key's sync completes, if still mounted.
+ * this button only reflects state for its own `syncKey`, and hands the sync a way to
+ * refresh the page's data the moment each slice lands.
  */
 export function SapSyncButton({ syncKey, noun, onSync }: SapSyncButtonProps) {
   const router = useRouter();
   const pending = useSapSyncPending(syncKey);
-  const completedAt = useSapSyncStore((s) => s.completedAt[syncKey]);
-  const seenCompletedAt = useRef(completedAt);
-
-  useEffect(() => {
-    if (completedAt !== undefined && completedAt !== seenCompletedAt.current) {
-      seenCompletedAt.current = completedAt;
-      router.refresh();
-    }
-  }, [completedAt, router]);
 
   return (
     <Button
       variant="outline"
       size="sm"
       disabled={pending}
-      onClick={() => runSapSync(syncKey, noun, onSync)}
+      // `router` outlives this component, so a sync that finishes after the user has
+      // navigated away still refreshes — it just refreshes wherever they now are.
+      onClick={() => runSapSync(syncKey, noun, onSync, () => router.refresh())}
     >
       <RefreshCw className={`mr-1 size-4 ${pending ? "animate-spin" : ""}`} />
       {pending ? "Syncing…" : "Sync from SAP"}
