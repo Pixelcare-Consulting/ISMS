@@ -15,7 +15,6 @@ const EXTRA_ROUTE_TITLES: Record<string, string> = {
   "/settings/profile": "Profile",
   "/settings/roles/matrix": "Role matrix",
   "/settings/permissions": "Permissions",
-  "/settings/sap-integration/service-layer": "SAP Service Layer",
   "/logistics": "Logistics",
   "/orders": "Orders",
   "/reports": "Reports",

@@ -4,10 +4,10 @@ import { useEffect, useEffectEvent, useState } from "react";
 import { toast } from "sonner";
 
 import {
-  establishSapSessionAction,
-  getSapSessionStatusAction,
-  logoutSapSessionAction,
-} from "@/features/sap/actions/sap.actions";
+  establishProviderSapSessionAction,
+  getProviderSapSessionStatusAction,
+  logoutProviderSapSessionAction,
+} from "@/features/provider/actions/provider-sap.actions";
 import type { SapSessionPublicStatus } from "@/features/sap/types/sap-service-layer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -57,12 +57,17 @@ function statusBadgeVariant(
   }
 }
 
-interface SapSessionStatusProps {
+interface TenantSapSessionStatusProps {
+  /** Target customer tenant — a platform operator's own tenant is not it. */
+  tenantId: string;
   /** Bump after config save/activate/delete so status reloads. */
   refreshKey?: number;
 }
 
-export function SapSessionStatus({ refreshKey = 0 }: SapSessionStatusProps) {
+export function TenantSapSessionStatus({
+  tenantId,
+  refreshKey = 0,
+}: TenantSapSessionStatusProps) {
   const [status, setStatus] = useState<SapSessionPublicStatus | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [isLoading, setIsLoading] = useState(true);
@@ -70,7 +75,7 @@ export function SapSessionStatus({ refreshKey = 0 }: SapSessionStatusProps) {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const loadStatus = useEffectEvent(async () => {
-    const result = await getSapSessionStatusAction();
+    const result = await getProviderSapSessionStatusAction(tenantId);
     if ("error" in result) {
       toast.error(result.error);
       setIsLoading(false);
@@ -85,7 +90,8 @@ export function SapSessionStatus({ refreshKey = 0 }: SapSessionStatusProps) {
       void loadStatus();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [refreshKey]);
+    // tenantId: navigating between tenant detail pages can reuse this instance.
+  }, [refreshKey, tenantId]);
 
   useEffect(() => {
     const poll = window.setInterval(() => {
@@ -103,7 +109,9 @@ export function SapSessionStatus({ refreshKey = 0 }: SapSessionStatusProps) {
   async function connect() {
     if (!status || status.state === "no_config") return;
     setIsConnecting(true);
-    const result = await establishSapSessionAction({ configId: status.configId });
+    const result = await establishProviderSapSessionAction(tenantId, {
+      configId: status.configId,
+    });
     setIsConnecting(false);
     if ("error" in result) {
       toast.error(result.error);
@@ -117,7 +125,9 @@ export function SapSessionStatus({ refreshKey = 0 }: SapSessionStatusProps) {
   async function logout() {
     if (!status || status.state !== "connected") return;
     setIsLoggingOut(true);
-    const result = await logoutSapSessionAction({ configId: status.configId });
+    const result = await logoutProviderSapSessionAction(tenantId, {
+      configId: status.configId,
+    });
     setIsLoggingOut(false);
     if ("error" in result) {
       toast.error(result.error);

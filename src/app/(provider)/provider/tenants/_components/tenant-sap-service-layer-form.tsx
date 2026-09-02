@@ -5,12 +5,12 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import {
-  deleteSapServiceLayerSettingsAction,
-  saveSapServiceLayerSettingsAction,
-  setSapServiceLayerStatusAction,
-  testSapServiceLayerConnectionAction,
-  updateSapServiceLayerSettingsAction,
-} from "@/features/sap/actions/sap.actions";
+  deleteProviderSapSettingsAction,
+  saveProviderSapSettingsAction,
+  setProviderSapStatusAction,
+  testProviderSapConnectionAction,
+  updateProviderSapSettingsAction,
+} from "@/features/provider/actions/provider-sap.actions";
 import { DeleteConfirmDialog } from "@/components/data-table/delete-confirm-dialog";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
 import type { SapServiceLayerSettings } from "@/features/sap/schemas/sap-service-layer.schema";
@@ -29,13 +29,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { SapSessionStatus } from "./sap-session-status";
+import { TenantSapSessionStatus } from "./tenant-sap-session-status";
 
-interface SapServiceLayerFormProps {
+interface TenantSapServiceLayerFormProps {
+  /** Target customer tenant — never the operator's own platform tenant. */
+  tenantId: string;
   initial: SapServiceLayerSettings[];
 }
 
-export function SapServiceLayerForm({ initial }: SapServiceLayerFormProps) {
+export function TenantSapServiceLayerForm({
+  tenantId,
+  initial,
+}: TenantSapServiceLayerFormProps) {
   const testFeedItems = [
     {
       atSecond: 0,
@@ -96,8 +101,11 @@ export function SapServiceLayerForm({ initial }: SapServiceLayerFormProps) {
       languageCode,
     };
     const result = editingId
-      ? await updateSapServiceLayerSettingsAction({ configId: editingId, ...payload })
-      : await saveSapServiceLayerSettingsAction(payload);
+      ? await updateProviderSapSettingsAction(tenantId, {
+          configId: editingId,
+          ...payload,
+        })
+      : await saveProviderSapSettingsAction(tenantId, payload);
     setIsSaving(false);
 
     if ("error" in result) {
@@ -152,7 +160,7 @@ export function SapServiceLayerForm({ initial }: SapServiceLayerFormProps) {
 
   async function setStatus(configId: string, nextEnabled: boolean) {
     setStatusUpdatingId(configId);
-    const result = await setSapServiceLayerStatusAction({
+    const result = await setProviderSapStatusAction(tenantId, {
       configId,
       isEnabled: nextEnabled,
     });
@@ -176,7 +184,7 @@ export function SapServiceLayerForm({ initial }: SapServiceLayerFormProps) {
 
   async function testConnection() {
     setIsTesting(true);
-    const result = await testSapServiceLayerConnectionAction({
+    const result = await testProviderSapConnectionAction({
       baseUrl,
       companyDb,
       username,
@@ -206,7 +214,9 @@ export function SapServiceLayerForm({ initial }: SapServiceLayerFormProps) {
     setDeletingId(null);
     setIsDeleting(true);
 
-    const result = await deleteSapServiceLayerSettingsAction({ configId: targetId });
+    const result = await deleteProviderSapSettingsAction(tenantId, {
+      configId: targetId,
+    });
     setIsDeleting(false);
     if (result.error) {
       setConfigs(previous);
@@ -332,7 +342,10 @@ export function SapServiceLayerForm({ initial }: SapServiceLayerFormProps) {
               Manage multiple SAP company databases and choose which one is active.
             </p>
           </div>
-          <SapSessionStatus refreshKey={sessionRefreshKey} />
+          <TenantSapSessionStatus
+            tenantId={tenantId}
+            refreshKey={sessionRefreshKey}
+          />
           <Table>
             <TableHeader>
               <TableRow>

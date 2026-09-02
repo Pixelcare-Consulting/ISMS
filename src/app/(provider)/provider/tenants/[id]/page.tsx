@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { PageHeader } from "@/app/(app)/_components/page-header";
 import { EditOrganizationForm } from "@/app/(provider)/provider/tenants/_components/edit-organization-form";
 import { ProviderUsersTable } from "@/app/(provider)/provider/tenants/_components/provider-users-table";
+import { TenantSapServiceLayerForm } from "@/app/(provider)/provider/tenants/_components/tenant-sap-service-layer-form";
 import { TenantStatusActions } from "@/app/(provider)/provider/tenants/_components/tenant-status-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import {
   getProviderCustomerDetailAction,
   listProviderCustomerUsersAction,
 } from "@/features/provider/actions/provider.actions";
+import { listProviderSapSettingsAction } from "@/features/provider/actions/provider-sap.actions";
 import { pageMetadata } from "@/lib/shared/seo";
 
 export const metadata = pageMetadata("Tenant detail");
@@ -32,9 +34,10 @@ export default async function ProviderTenantDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [tenant, usersBundle] = await Promise.all([
+  const [tenant, usersBundle, sapSettings] = await Promise.all([
     getProviderCustomerDetailAction(id),
     listProviderCustomerUsersAction(id),
+    listProviderSapSettingsAction(id),
   ]);
 
   if (!tenant || !usersBundle) {
@@ -150,6 +153,18 @@ export default async function ProviderTenantDetailPage({
           departments={usersBundle.departments}
           orgDisabled={orgDisabled}
         />
+      </div>
+
+      <div className="space-y-3">
+        <div>
+          <h2 className="text-base font-semibold">SAP Service Layer</h2>
+          <p className="text-sm text-muted-foreground">
+            Connection credentials for this organization&apos;s SAP Business One
+            Service Layer. Platform operators only — tenant administrators
+            cannot view or change these.
+          </p>
+        </div>
+        <TenantSapServiceLayerForm tenantId={tenant.id} initial={sapSettings} />
       </div>
     </div>
   );
