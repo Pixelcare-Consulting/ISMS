@@ -399,7 +399,7 @@ export function SerialNumberTable({
 
       {canManage ? (
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogContent>
+          <DialogContent className="sm:max-w-lg">
             <DialogHeader>
               <DialogTitle>
                 {editing ? "Edit serial number" : "Add serial number"}

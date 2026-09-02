@@ -290,7 +290,7 @@ export function ActionProgressDialog({
                     ) : (
                       <XCircle className="size-4 shrink-0 text-destructive" />
                     )}
-                    <span className="truncate">
+                    <span className="min-w-0 truncate">
                       {phase === "running"
                         ? "Working…"
                         : phase === "success"

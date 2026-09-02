@@ -85,7 +85,7 @@ export function SearchableSelect({
   }
 
   return (
-    <div className={cn("space-y-1.5", className)}>
+    <div className={cn("min-w-0 space-y-1.5", className)}>
       {label ? <Label htmlFor={id}>{label}</Label> : null}
 
       {name ? (
@@ -109,6 +109,7 @@ export function SearchableSelect({
             role="combobox"
             aria-expanded={open}
             disabled={disabled}
+            title={selected?.label}
             className={cn(
               "h-9 w-full justify-between border-input bg-card font-normal shadow-sm",
               "hover:border-primary/40 hover:bg-card hover:text-foreground",
@@ -117,7 +118,9 @@ export function SearchableSelect({
           >
             <span
               className={cn(
-                "truncate text-left",
+                // min-w-0: without it the flex item refuses to shrink and the
+                // label spills out of the dialog instead of truncating.
+                "min-w-0 truncate text-left",
                 !selected && "text-muted-foreground",
               )}
             >

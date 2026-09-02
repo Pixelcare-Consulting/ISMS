@@ -49,7 +49,11 @@ const DialogContent = React.forwardRef<
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
-          "fixed left-1/2 top-1/2 z-50 grid w-[calc(100%-2rem)] max-w-md max-h-[calc(100svh-2rem)] overflow-y-auto -translate-x-1/2 -translate-y-1/2",
+          "fixed left-1/2 top-1/2 z-50 grid w-[calc(100%-2rem)] max-w-md max-h-[calc(100svh-2rem)] -translate-x-1/2 -translate-y-1/2",
+          // Grid children default to min-width:auto, so a wide child (long
+          // select label, code cell) would widen the track and force a
+          // horizontal scrollbar instead of truncating/wrapping.
+          "overflow-y-auto overflow-x-hidden [&>*]:min-w-0",
           "gap-4 rounded-xl border bg-card p-4 sm:p-6 shadow-xl",
           className,
         )}
