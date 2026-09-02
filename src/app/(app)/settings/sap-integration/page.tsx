@@ -1,6 +1,7 @@
 import { listSapJobsAction } from "@/features/sap/actions/sap.actions";
 import { requirePermission } from "@/lib/auth/permissions";
 import { SectionPageLead } from "@/components/navigation/section-page-lead";
+import { SapConnectionBadge } from "@/app/(app)/settings/sap-integration/_components/sap-connection-badge";
 import { SapIntegrationPanel } from "@/app/(app)/settings/sap-integration/_components/sap-integration-panel";
 
 interface SapIntegrationPageProps {
@@ -15,9 +16,13 @@ export default async function SapIntegrationPage({ searchParams }: SapIntegratio
 
   return (
     <div className="space-y-4">
-      <SectionPageLead>
-        Outbound jobs with idempotency keys and mock order→SAP→delivery processor.
-      </SectionPageLead>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <SectionPageLead>
+          Outbound jobs with idempotency keys and mock order→SAP→delivery
+          processor.
+        </SectionPageLead>
+        <SapConnectionBadge />
+      </div>
       <SapIntegrationPanel
         jobs={jobs}
         initialSort={params.sort ?? ""}

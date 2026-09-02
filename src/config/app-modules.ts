@@ -190,7 +190,7 @@ export const appModules: AppModule[] = [
     route: "/settings/sap-integration",
     slugPrefix: "sap",
     navPermission: "sap.manage",
-    description: "SAP outbound queue and Service Layer settings",
+    description: "SAP outbound integration queue",
     actions: permissionActions("view", "manage"),
   },
   {

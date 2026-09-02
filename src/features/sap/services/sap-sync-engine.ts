@@ -7,6 +7,7 @@ import type {
 import type { SapSyncResult, SapSyncSkip } from "@/features/sap/schemas/sap-master-sync.schema";
 import { sapPageSize, sapErrorMessage } from "@/features/sap/services/sap-master-data";
 import { sapServiceLayerClient } from "@/features/sap/services/sap-service-layer-client";
+import { SAP_NO_CONNECTION_MESSAGE } from "@/config/platform";
 import { sapServiceLayerService } from "@/features/sap/services/sap-service-layer.service";
 import type { SapServiceLayerCredentials } from "@/features/sap/types/sap-service-layer";
 import { withSapSyncLock } from "@/features/sap/services/sap-sync-lock";
@@ -164,9 +165,7 @@ async function runSlice(
 ): Promise<SapSyncResult> {
   const creds = await sapServiceLayerService.getCredentials(tenantId);
   if (!creds) {
-    throw new Error(
-      "No active SAP Service Layer connection. Enable one under Settings → SAP Integration → Service Layer.",
-    );
+    throw new Error(SAP_NO_CONNECTION_MESSAGE);
   }
 
   let cursor = await sapSyncCursorRepository.get(tenantId, entity.entity);
