@@ -20,6 +20,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import {
+  MAX_RENDERED_OPTIONS,
   type SearchableOption,
 } from "@/components/ui/searchable-select";
 import { cn } from "@/utils/cn";
@@ -59,15 +60,33 @@ export function SearchableMultiSelect({
     [options, selectedSet],
   );
 
+  // Lowercase once per list, not once per option per keystroke.
+  const haystack = useMemo(
+    () =>
+      options.map((option) => ({
+        option,
+        text: `${option.label} ${option.description ?? ""}`.toLowerCase(),
+      })),
+    [options],
+  );
+
+  // Full match set — "Select all filtered" and the select-all disabled state
+  // must consider every match, not just the rendered window.
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return options;
-    return options.filter(
-      (option) =>
-        option.label.toLowerCase().includes(q) ||
-        (option.description?.toLowerCase().includes(q) ?? false),
-    );
-  }, [options, query]);
+    return haystack
+      .filter((entry) => entry.text.includes(q))
+      .map((entry) => entry.option);
+  }, [haystack, options, query]);
+
+  // Rendering every match locks the browser on big lists (dealers, warehouses),
+  // since cmdk registers and re-sorts each item it renders.
+  const visible = useMemo(
+    () => filtered.slice(0, MAX_RENDERED_OPTIONS),
+    [filtered],
+  );
+  const hiddenCount = filtered.length - visible.length;
 
   const allFilteredSelected =
     filtered.length > 0 && filtered.every((option) => selectedSet.has(option.id));
@@ -124,7 +143,7 @@ export function SearchableMultiSelect({
             >
               <span
                 className={cn(
-                  "truncate text-left",
+                  "min-w-0 truncate text-left",
                   selected.length === 0 && "text-muted-foreground",
                 )}
               >
@@ -171,7 +190,7 @@ export function SearchableMultiSelect({
               <CommandList onWheel={(event) => event.stopPropagation()}>
                 <CommandEmpty>No matches.</CommandEmpty>
                 <CommandGroup>
-                  {filtered.map((option) => {
+                  {visible.map((option) => {
                     const isSelected = selectedSet.has(option.id);
                     return (
                       <CommandItem
@@ -197,6 +216,13 @@ export function SearchableMultiSelect({
                     );
                   })}
                 </CommandGroup>
+                {hiddenCount > 0 ? (
+                  <p className="border-t px-3 py-2 text-xs text-muted-foreground">
+                    {hiddenCount.toLocaleString()} more match
+                    {hiddenCount === 1 ? "" : "es"} — keep typing to narrow.
+                    Select all still applies to every match.
+                  </p>
+                ) : null}
               </CommandList>
             </Command>
           </PopoverContent>

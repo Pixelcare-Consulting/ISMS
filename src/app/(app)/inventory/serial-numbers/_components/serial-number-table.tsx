@@ -149,8 +149,14 @@ export function SerialNumberTable({
     );
   }
 
-  const modelLabelById = useMemo(
-    () => new Map(modelOptions.map((m) => [m.id, `${m.skuCode} — ${m.name}`])),
+  // 11k+ models: build the label map and the select options once, not on every
+  // render, and keep a stable array identity so the select can memoize too.
+  const modelSelectOptions = useMemo(
+    () =>
+      modelOptions.map((m) => ({
+        id: m.id,
+        label: `${m.skuCode} — ${m.name}`,
+      })),
     [modelOptions],
   );
   const suggestions = useMemo(
@@ -419,10 +425,7 @@ export function SerialNumberTable({
               <SearchableSelect
                 label="Model"
                 id="serial-model"
-                options={modelOptions.map((model) => ({
-                  id: model.id,
-                  label: modelLabelById.get(model.id) ?? model.id,
-                }))}
+                options={modelSelectOptions}
                 value={formModelId}
                 onChange={setFormModelId}
                 placeholder="Select model…"
