@@ -139,7 +139,7 @@ export const appNavigation: NavEntry[] = [
   },
   {
     type: "group",
-    label: "Sales & ATRs",
+    label: "Sales & Returns",
     icon: History,
     items: [
       {
@@ -267,7 +267,7 @@ export const appNavigation: NavEntry[] = [
       },
       {
         href: "/reports/sales",
-        label: "Sales & ATRs",
+        label: "Sales & Returns",
         icon: Store,
         anyPermissions: ["reports.view", "sales.create"],
         badge: "new",

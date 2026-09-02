@@ -3,7 +3,7 @@ import { requireAnyPermission } from "@/lib/auth/permissions";
 import { pageMetadata } from "@/lib/shared/seo";
 
 export const metadata = pageMetadata(
-  "Sales & ATRs",
+  "Sales & Returns",
   "Branch sales with serial numbers and ATR/return status.",
 );
 

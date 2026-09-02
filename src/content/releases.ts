@@ -506,7 +506,7 @@ export const RELEASES: ReleaseNote[] = [
     releasedAt: "2026-08-11T13:25:00+08:00",
     title: "Search suggestions stay above table headers",
     highlights: [
-      "Table search suggestions no longer hide behind column headers on Sales & ATRs and Official Sales",
+      "Table search suggestions no longer hide behind column headers on Sales & Returns and Official Sales",
     ],
     changes: [
       {
@@ -564,7 +564,7 @@ export const RELEASES: ReleaseNote[] = [
       "Browse warehouse serial numbers from Inventory → Warehouse stock",
       "Open the same list from Settings → Warehouses → Stock, optionally filtered to one warehouse",
       "Filter by warehouse, location, or search by serial / SKU — read-only for now",
-      "Sidebar menus are grouped in a clearer day-to-day order — Orders, Sales & ATRs, Logistics, then Inventory",
+      "Sidebar menus are grouped in a clearer day-to-day order — Orders, Sales & Returns, Logistics, then Inventory",
     ],
     changes: [
       {
@@ -600,7 +600,7 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "improvement",
         description:
-          "The sidebar follows a clearer workflow order: Orders, Sales & ATRs, Logistics, Inventory, Reports, and Audit Logs — with AORs first under Settings → Operations & Planning",
+          "The sidebar follows a clearer workflow order: Orders, Sales & Returns, Logistics, Inventory, Reports, and Audit Logs — with AORs first under Settings → Operations & Planning",
       },
     ],
   },
@@ -996,7 +996,7 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "improvement",
         description:
-          "Stock units shows Stock (STK) only; other statuses belong in Sales & ATRs or Logistics",
+          "Stock units shows Stock (STK) only; other statuses belong in Sales & Returns or Logistics",
       },
       {
         type: "improvement",
@@ -1782,7 +1782,7 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "improvement",
         description:
-          "Sales & ATRs return actions (request, evaluate, approve, reject, restore) ask for confirmation before running",
+          "Sales & Returns return actions (request, evaluate, approve, reject, restore) ask for confirmation before running",
       },
       {
         type: "improvement",
@@ -1828,7 +1828,7 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "improvement",
         description:
-          "Sales & ATRs list uses clear status badges and consistent serial / amount formatting",
+          "Sales & Returns list uses clear status badges and consistent serial / amount formatting",
       },
       {
         type: "improvement",
