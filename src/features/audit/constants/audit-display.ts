@@ -69,6 +69,7 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   "sap.inventory_adjustment_processed": "SAP inventory adjustment processed",
   "sap.job_failed": "SAP job failed",
   "sap.job_dead_letter": "SAP job dead letter",
+  "product_model.sap_brand_push": "Model brands pushed to SAP",
   "announcement.created": "Announcement created",
   "announcement.updated": "Announcement updated",
   "announcement.deleted": "Announcement deleted",

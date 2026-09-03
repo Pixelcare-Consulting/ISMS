@@ -80,6 +80,12 @@ export interface ModelImportRowPlan {
   changes: ModelImportFieldChange[];
 }
 
+/** One SAP write outcome kept as an example under the import's summary. */
+export interface ModelImportSapFailure {
+  sku: string;
+  message: string;
+}
+
 export interface ModelImportPreview {
   /**
    * Opaque server-derived handle for the plan built from this upload. The apply
@@ -92,6 +98,12 @@ export interface ModelImportPreview {
   updateCount: number;
   unchangedCount: number;
   canApply: boolean;
+  /**
+   * Rows whose brand will be checked against SAP's `U_Brand` after the ISMS writes.
+   * Every valid row counts here — only the ones SAP disagrees with are written, and
+   * that comparison happens at apply time so the preview stays offline.
+   */
+  sapBrandRowCount: number;
   errors: ModelImportRowError[];
   rows: ModelImportRowPlan[];
 }
@@ -102,6 +114,10 @@ export interface ModelImportResult {
   modelsUnchanged: number;
   brandsCreated: number;
   seriesCreated: number;
+  /** SAP items whose `U_Brand` was written. */
+  sapBrandsUpdated: number;
+  /** SAP items that refused the write. */
+  sapBrandsFailed: number;
 }
 
 /** Progress payload for client-driven chunked model import apply. */
@@ -110,11 +126,29 @@ export interface ModelImportChunkProgress {
   total: number;
   nextOffset: number;
   done: boolean;
+  /**
+   * Which half of the apply this chunk did. The ISMS writes run first and in full;
+   * the SAP brand push follows on the same offset timeline.
+   */
+  phase: "database" | "sap";
   /** Counts written in this chunk only — client accumulates across the loop. */
   modelsCreated: number;
   modelsUpdated: number;
   brandsCreated: number;
   seriesCreated: number;
+  /** SAP `U_Brand` outcomes for this chunk only — also accumulated by the client. */
+  sapBrandsUpdated: number;
+  sapBrandsMatched: number;
+  sapBrandsMissing: number;
+  sapBrandsFailed: number;
+  /** Capped sample of the chunk's failures, for the summary the user sees. */
+  sapBrandFailures: ModelImportSapFailure[];
+  /**
+   * The SAP push stopped early and every remaining row was left alone — no
+   * connection, or the company database has no such UDF. The ISMS import still
+   * finished; this is a warning, never an error.
+   */
+  sapBrandNotice?: string;
   /** Present on the final chunk. */
   modelsUnchanged?: number;
   /** Present only when the final chunk succeeds. */

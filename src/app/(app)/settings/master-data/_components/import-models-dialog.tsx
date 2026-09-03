@@ -59,6 +59,7 @@ export function ImportModelsDialog({
     processed: number;
     total: number;
     elapsedMs: number;
+    phase: "database" | "sap";
   } | null>(null);
 
   const applying = applyProgress !== null;
@@ -114,8 +115,13 @@ export function ImportModelsDialog({
       let modelsUpdated = 0;
       let brandsCreated = 0;
       let seriesCreated = 0;
+      let sapUpdated = 0;
+      let sapFailed = 0;
+      let sapMissing = 0;
+      let sapNotice: string | undefined;
+      let sapFirstFailure: string | undefined;
 
-      setApplyProgress({ processed: 0, total: 0, elapsedMs: 0 });
+      setApplyProgress({ processed: 0, total: 0, elapsedMs: 0, phase: "database" });
 
       // Normally only the plan key travels; the workbook is re-sent solely when the
       // server reports its cached plan is gone, so a 5 MB file is not uploaded per chunk.
@@ -159,6 +165,14 @@ export function ImportModelsDialog({
           modelsUpdated += progress.modelsUpdated;
           brandsCreated += progress.brandsCreated;
           seriesCreated += progress.seriesCreated;
+          sapUpdated += progress.sapBrandsUpdated;
+          sapFailed += progress.sapBrandsFailed;
+          sapMissing += progress.sapBrandsMissing;
+          if (progress.sapBrandNotice) sapNotice = progress.sapBrandNotice;
+          if (!sapFirstFailure && progress.sapBrandFailures.length > 0) {
+            const [first] = progress.sapBrandFailures;
+            sapFirstFailure = `${first.sku}: ${first.message}`;
+          }
           lastProcessed = progress.processed;
           lastTotal = progress.total;
 
@@ -166,6 +180,7 @@ export function ImportModelsDialog({
             processed: progress.processed,
             total: progress.total,
             elapsedMs: Date.now() - startedAtMs,
+            phase: progress.phase,
           });
 
           if (progress.done) {
@@ -180,7 +195,26 @@ export function ImportModelsDialog({
             if (seriesCreated > 0) {
               parts.push(`${seriesCreated} series added`);
             }
+            if (sapUpdated > 0) {
+              parts.push(`${sapUpdated} SAP brand${sapUpdated === 1 ? "" : "s"} updated`);
+            }
             toast.success(parts.join(" · "));
+
+            // The SAP push is best-effort, so anything it could not do is a warning
+            // alongside the success above — never a failed import.
+            if (sapNotice) {
+              toast.warning(`Brands were not pushed to SAP. ${sapNotice}`);
+            } else if (sapFailed > 0) {
+              toast.warning(
+                `${sapFailed} SAP brand update${sapFailed === 1 ? "" : "s"} failed` +
+                  `${sapFirstFailure ? ` — ${sapFirstFailure}` : "."}`,
+              );
+            } else if (sapMissing > 0) {
+              toast.warning(
+                `${sapMissing} SKU${sapMissing === 1 ? " is" : "s are"} not in SAP yet, ` +
+                  `so ${sapMissing === 1 ? "its brand" : "their brands"} were not pushed.`,
+              );
+            }
             setApplyProgress(null);
             handleClose(false);
             router.refresh();
@@ -229,6 +263,11 @@ export function ImportModelsDialog({
               Unknown SKUs are created; existing ones update when values differ. Blank
               optional cells stay unchanged.
             </p>
+            <p>
+              Brand is also written to the item&apos;s <strong>U_Brand</strong> field in
+              SAP, for every row in the file. If SAP is unavailable the import still
+              finishes and reports what it could not push.
+            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -263,7 +302,11 @@ export function ImportModelsDialog({
 
           {applyProgress ? (
             <ImportApplyProgress
-              label="Importing…"
+              label={
+                applyProgress.phase === "sap"
+                  ? "Updating brands in SAP…"
+                  : "Importing…"
+              }
               processed={applyProgress.processed}
               total={applyProgress.total}
               elapsedMs={applyProgress.elapsedMs}
@@ -285,6 +328,12 @@ export function ImportModelsDialog({
                 <span className="text-muted-foreground">
                   {preview.unchangedCount} unchanged (skipped)
                 </span>
+                {preview.sapBrandRowCount > 0 ? (
+                  <span className="text-muted-foreground">
+                    {preview.sapBrandRowCount} brand
+                    {preview.sapBrandRowCount === 1 ? "" : "s"} checked against SAP
+                  </span>
+                ) : null}
               </div>
 
               {hasErrors ? (
