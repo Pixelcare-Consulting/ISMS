@@ -18,8 +18,18 @@ import { mapWithConcurrency } from "@/lib/shared/concurrency";
  * database without the UDF must report and move on — never fail the import.
  */
 
+/** The UDF as named in SAP's own dialog. The OData property is `U_` + this. */
+export const SAP_BRAND_UDF_NAME = "Brand";
+
 /** The user-defined field on OITM that holds the brand name. */
-export const SAP_BRAND_UDF = "U_Brand";
+export const SAP_BRAND_UDF = `U_${SAP_BRAND_UDF_NAME}`;
+
+/**
+ * How long a fetched field definition is reused. The definition changes only when
+ * someone edits the UDF in SAP, so this is about not re-reading it once per chunk;
+ * a short life keeps a newly added valid value from waiting long to take effect.
+ */
+const FIELD_DEFINITION_TTL_MS = 5 * 60 * 1000;
 
 /**
  * SKUs per read. Service Layer caps a page at 20 unless asked otherwise, so the
@@ -70,25 +80,110 @@ export interface BrandPushOutcome {
   aborted?: string;
 }
 
+/**
+ * The UDF's allowed values, when it was set up as a list field.
+ *
+ * A B1 UDF can be free text or a fixed list ("Set Valid Values for Field"). A list
+ * accepts only its own spellings, so pushing ISMS's spelling verbatim would be
+ * refused for a brand that differs by so much as its casing. Reading the definition
+ * lets the push send what SAP will actually take, and say something useful about a
+ * brand SAP has no value for.
+ */
+interface BrandFieldDefinition {
+  /** Lowercased valid value → the exact spelling SAP expects. Empty when free text. */
+  validValues: Map<string, string>;
+}
+
+const fieldDefinitionCache = new Map<
+  string,
+  { definition: BrandFieldDefinition; expiresAt: number }
+>();
+
+async function loadFieldDefinition(
+  creds: SapServiceLayerCredentials,
+): Promise<BrandFieldDefinition> {
+  const cacheKey = creds.id ?? `${creds.baseUrl}|${creds.companyDb}`;
+  const cached = fieldDefinitionCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.definition;
+
+  const filter = `TableName eq 'OITM' and Name eq '${SAP_BRAND_UDF_NAME}'`;
+  const response = await sapServiceLayerClient.request<{
+    value?: { ValidValuesMD?: { Value?: unknown }[] }[];
+  }>({
+    creds,
+    method: "GET",
+    path: `/UserFieldsMD?$filter=${encodeURIComponent(filter)}`,
+  });
+
+  // Metadata being unreadable is not worth failing the push over — fall back to
+  // sending the brand as ISMS spells it and let SAP have the final say per row.
+  const validValues = new Map<string, string>();
+  if (response.statusCode === 200) {
+    const [field] = response.data?.value ?? [];
+    for (const entry of field?.ValidValuesMD ?? []) {
+      const value = sapText(entry.Value);
+      if (value) validValues.set(value.toLowerCase(), value);
+    }
+  }
+
+  const definition: BrandFieldDefinition = { validValues };
+  fieldDefinitionCache.set(cacheKey, {
+    definition,
+    expiresAt: Date.now() + FIELD_DEFINITION_TTL_MS,
+  });
+  return definition;
+}
+
+/**
+ * What to actually write for this brand: SAP's own spelling when the field is a
+ * list, the brand as given when it is free text, or a reason it cannot be written.
+ */
+function resolveValue(
+  definition: BrandFieldDefinition,
+  brand: string,
+): { value: string } | { rejected: string } {
+  if (definition.validValues.size === 0) return { value: brand };
+
+  const match = definition.validValues.get(brand.toLowerCase());
+  if (match) return { value: match };
+
+  const allowed = [...definition.validValues.values()].join(", ");
+  return {
+    rejected:
+      `SAP only accepts these values for ${SAP_BRAND_UDF}: ${allowed}. ` +
+      `Add "${brand}" to the field's valid values in SAP, or rename the brand to match.`,
+  };
+}
+
 /** OData string literal — single quotes double, per OData's own escaping. */
 function odataString(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
 /**
- * A 400 naming the UDF means the company database has no such field. Worth
- * detecting: without it a 20,000-row import makes 20,000 identical failures
- * instead of one message telling the operator to create the UDF.
+ * Does this 400 look like SAP objecting to the field itself, rather than to
+ * something else about the request?
+ *
+ * Naming the field is not enough on its own — Service Layer errors often echo the
+ * query back, and the query contains the field name, so a complaint about anything
+ * else in it would read as a missing UDF. Requiring a "does not exist" flavoured
+ * word alongside it keeps the two apart. The check only chooses which hint to add;
+ * SAP's own text is reported either way, so a wrong guess here misleads no one.
  */
-function isMissingUdfResponse(statusCode: number, rawBody: string): boolean {
+function looksLikeMissingUdf(statusCode: number, rawBody: string): boolean {
   if (statusCode !== 400) return false;
-  return rawBody.includes(SAP_BRAND_UDF);
+  if (!rawBody.includes(SAP_BRAND_UDF)) return false;
+  return /exist|invalid|unknown|not found|cannot find|no such/i.test(rawBody);
 }
 
-function missingUdfMessage(): string {
+/** SAP's own words first, then what to do about it when we can tell. */
+function describeItemsFailure(statusCode: number, rawBody: string): string {
+  const sapSaid = sapErrorMessage(statusCode, rawBody, "Items");
+  if (!looksLikeMissingUdf(statusCode, rawBody)) return sapSaid;
   return (
-    `SAP does not recognize the ${SAP_BRAND_UDF} field on items. ` +
-    `Create the user-defined field on OITM, then run the import again to push brands.`
+    `${sapSaid} — SAP does not recognize the ${SAP_BRAND_UDF} field on items. ` +
+    `Check that the user-defined field exists on OITM and that its name matches ` +
+    `exactly (case-sensitive): a UDF named "Brand" is the property ${SAP_BRAND_UDF}.`
   );
 }
 
@@ -122,11 +217,8 @@ async function readCurrentBrands(
       headers: { Prefer: `odata.maxpagesize=${READ_BATCH}` },
     });
 
-    if (isMissingUdfResponse(response.statusCode, response.rawBody)) {
-      throw new Error(missingUdfMessage());
-    }
     if (response.statusCode >= 400) {
-      throw new Error(sapErrorMessage(response.statusCode, response.rawBody, "Items"));
+      throw new Error(describeItemsFailure(response.statusCode, response.rawBody));
     }
 
     for (const row of response.data?.value ?? []) {
@@ -152,12 +244,13 @@ async function patchBrand(
   });
 
   if (response.statusCode >= 200 && response.statusCode < 300) return { ok: true };
-  if (isMissingUdfResponse(response.statusCode, response.rawBody)) {
-    return { ok: false, message: missingUdfMessage(), fatal: true };
-  }
+
+  // A field SAP does not have will refuse every remaining row identically, so that
+  // one case ends the phase instead of repeating itself thousands of times.
   return {
     ok: false,
-    message: sapErrorMessage(response.statusCode, response.rawBody, "Items"),
+    message: describeItemsFailure(response.statusCode, response.rawBody),
+    fatal: looksLikeMissingUdf(response.statusCode, response.rawBody),
   };
 }
 
@@ -197,8 +290,26 @@ export const modelBrandSapPushService = {
       return { ...empty, aborted: errorMessage(error) };
     }
 
+    // Free text unless SAP says otherwise; a metadata failure is not fatal here.
+    let definition: BrandFieldDefinition = { validValues: new Map() };
+    try {
+      definition = await loadFieldDefinition(creds);
+    } catch {
+      // Fall through with no valid values — SAP still refuses anything it dislikes.
+    }
+
+    const failures: BrandPushFailure[] = [];
+    let updated = 0;
+    let failed = 0;
     let matched = 0;
     let missing = 0;
+    let aborted: string | undefined;
+
+    const addFailure = (sku: string, message: string) => {
+      failed += 1;
+      if (failures.length < MAX_FAILURE_SAMPLES) failures.push({ sku, message });
+    };
+
     const toPush: BrandPushRow[] = [];
     for (const row of rows) {
       const existing = current.get(row.sku.toLowerCase());
@@ -206,17 +317,20 @@ export const modelBrandSapPushService = {
         missing += 1;
         continue;
       }
-      if (existing === row.brand) {
+
+      const resolved = resolveValue(definition, row.brand);
+      if ("rejected" in resolved) {
+        addFailure(row.sku, resolved.rejected);
+        continue;
+      }
+      // Compare against what would actually be written, so a brand that differs
+      // from SAP only in casing on a list field counts as already correct.
+      if (existing === resolved.value) {
         matched += 1;
         continue;
       }
-      toPush.push(row);
+      toPush.push({ sku: row.sku, brand: resolved.value });
     }
-
-    const failures: BrandPushFailure[] = [];
-    let updated = 0;
-    let failed = 0;
-    let aborted: string | undefined;
 
     const results = await mapWithConcurrency(toPush, PUSH_CONCURRENCY, async (row) => {
       // A fatal answer from an earlier lane makes the rest pointless.
@@ -237,10 +351,7 @@ export const modelBrandSapPushService = {
         continue;
       }
       if ("fatal" in result && result.fatal) continue;
-      failed += 1;
-      if (failures.length < MAX_FAILURE_SAMPLES) {
-        failures.push({ sku: toPush[index].sku, message: result.message });
-      }
+      addFailure(toPush[index].sku, result.message);
     }
 
     return { updated, matched, missing, failed, failures, aborted };
