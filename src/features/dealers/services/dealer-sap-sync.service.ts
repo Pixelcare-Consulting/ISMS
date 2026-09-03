@@ -1,5 +1,5 @@
 import { dealerRepository } from "@/features/dealers/repositories/dealer.repository";
-import { parseSapFlag, sapText } from "@/features/sap/services/sap-master-data";
+import { sapText } from "@/features/sap/services/sap-master-data";
 import { runSapSync } from "@/features/sap/services/sap-sync-engine";
 import type { SapSyncEntity } from "@/features/sap/types/sap-sync-entity";
 import type { SapSyncResult } from "@/features/sap/schemas/sap-master-sync.schema";
@@ -8,8 +8,10 @@ import type { BranchStatus } from "@/lib/database/generated/prisma/client";
 /**
  * Business partner master data (OCRD) → ISMS dealers, matched on `sapCode`.
  *
- * Customers only: `CardType eq 'cCustomer'` excludes suppliers (cSupplier) and leads
- * (cLid), which have no ISMS counterpart.
+ * Active customers only: `CardType eq 'cCustomer'` excludes suppliers (cSupplier) and
+ * leads (cLid), which have no ISMS counterpart, and `Valid eq 'tYES' and Frozen eq 'tNO'`
+ * excludes anything SAP itself has closed out or blocked — those rows are never fetched,
+ * so a dealer that goes inactive in SAP simply stops coming back from the sync.
  *
  * Syncs `name` and `status` only. Area, dealer type, dealer area and mode of payment are
  * ISMS-only classifications with no SAP counterpart and are never touched — dealers
@@ -28,8 +30,8 @@ export const dealerSyncEntity: SapSyncEntity<DealerRecord> = {
   noun: { one: "dealer", many: "dealers" },
 
   entity: "BusinessPartners",
-  select: "CardCode,CardName,Valid,Frozen",
-  filter: "CardType eq 'cCustomer'",
+  select: "CardCode,CardName",
+  filter: "CardType eq 'cCustomer' and Valid eq 'tYES' and Frozen eq 'tNO'",
   keyField: "CardCode",
   keyKind: "string",
 
@@ -41,14 +43,11 @@ export const dealerSyncEntity: SapSyncEntity<DealerRecord> = {
     const sapCode = sapText(row.CardCode);
     if (!sapCode) return { skip: "SAP customer has no code" };
 
-    // SAP gates a partner two ways: `Valid` (master record usable at all) and `Frozen`
-    // (temporarily blocked from transactions). Either one closed maps to ISMS `inactive`.
-    const status: BranchStatus =
-      parseSapFlag(row.Valid) && !parseSapFlag(row.Frozen) ? "active" : "inactive";
-
+    // The `filter` above already restricts the fetch to valid, unfrozen customers, so
+    // every row that makes it here is active.
     return {
       // Stored exactly as SAP has it, blanks included — SAP is the source of truth.
-      record: { sapCode, name: sapText(row.CardName), status },
+      record: { sapCode, name: sapText(row.CardName), status: "active" },
     };
   },
 
