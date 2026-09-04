@@ -150,7 +150,7 @@ export function SerialNumberTable({
   }
 
   // 11k+ models: build the label map and the select options once, not on every
-  // render, and keep a stable array identity so the select can memoize too.
+  // render, and keep a stable array identity so the select can memoize too
   const modelSelectOptions = useMemo(
     () =>
       modelOptions.map((m) => ({
