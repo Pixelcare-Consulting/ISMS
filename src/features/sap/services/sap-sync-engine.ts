@@ -172,7 +172,7 @@ async function runSlice(
     throw new Error(SAP_NO_CONNECTION_MESSAGE);
   }
 
-  let cursor = await sapSyncCursorRepository.get(tenantId, entity.entity);
+  let cursor = await sapSyncCursorRepository.get(tenantId, entity.key);
 
   // A pass in progress is resumed; otherwise one starts here. Measuring the row count is
   // part of starting, so the denominator belongs to the pass it describes.
@@ -184,7 +184,7 @@ async function runSlice(
   if (cursor.passStartedAt === null) {
     cursor = await sapSyncCursorRepository.beginPass(
       tenantId,
-      entity.entity,
+      entity.key,
       entity.segment ? null : await measureTotal(creds, entity),
     );
   }
@@ -263,7 +263,7 @@ async function runSlice(
       // progress, never the pass, and never its place in the key set.
       await sapSyncCursorRepository.advance(
         tenantId,
-        entity.entity,
+        entity.key,
         encodePosition(position),
         passRows,
       );
@@ -286,7 +286,7 @@ async function runSlice(
       lastKey = endKey;
 
       // Saved per page: an interrupted run loses one page of progress, never the pass.
-      await sapSyncCursorRepository.advance(tenantId, entity.entity, lastKey, passRows);
+      await sapSyncCursorRepository.advance(tenantId, entity.key, lastKey, passRows);
 
       if (Date.now() >= deadline) break;
     }
@@ -295,7 +295,7 @@ async function runSlice(
   // Finishing a pass arms the next one. Nothing schedules it here — the next run finds no
   // pass in progress and starts one, which is also what makes a small entity's every run
   // a complete, fresh read.
-  if (completed) await sapSyncCursorRepository.completePass(tenantId, entity.entity);
+  if (completed) await sapSyncCursorRepository.completePass(tenantId, entity.key);
 
   const result: SapSyncResult = {
     fetched,
@@ -310,6 +310,7 @@ async function runSlice(
 
   logger.info(
     {
+      sync: entity.key,
       entity: entity.entity,
       tenantId,
       pages,
@@ -330,6 +331,7 @@ async function runSlice(
     action: entity.audit.action,
     entityType: entity.audit.entityType,
     metadata: {
+      sync: entity.key,
       entity: entity.entity,
       fetched,
       created,
@@ -369,7 +371,7 @@ export function runSapSync(
     } catch (e) {
       await sapSyncCursorRepository.recordError(
         tenantId,
-        entity.entity,
+        entity.key,
         e instanceof Error ? e.message : "Unknown error",
       );
       throw e;

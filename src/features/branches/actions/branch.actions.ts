@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { branchSapSyncService } from "@/features/branches/services/branch-sap-sync.service";
+import { branchWarehouseSapSyncService } from "@/features/branches/services/branch-warehouse-sap-sync.service";
 import { branchService } from "@/features/branches/services/branch.service";
 import { branchScheduleSchema } from "@/features/branches/schemas/branch.schema";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
@@ -78,6 +79,27 @@ export async function syncBranchesFromSapAction() {
   const session = await requirePermission("branches.manage");
   try {
     const result = await branchSapSyncService.syncFromSap(
+      session.user.tenantId,
+      session.user.id,
+    );
+    revalidatePath("/settings/branches");
+    return { success: true as const, result };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to sync branches from SAP" };
+  }
+}
+
+/**
+ * Import SAP warehouses typed `Branch` as ISMS branches.
+ *
+ * Separate from `syncBranchesFromSapAction`, which reads SAP's multi-branch (OBRA)
+ * entity — the two sources key on different code namespaces and neither touches the
+ * other's rows.
+ */
+export async function syncBranchesFromSapWarehousesAction() {
+  const session = await requirePermission("branches.manage");
+  try {
+    const result = await branchWarehouseSapSyncService.syncFromSap(
       session.user.tenantId,
       session.user.id,
     );

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { serviceCenterRepository } from "@/features/service-centers/repositories/service-center.repository";
+import { serviceCenterSapSyncService } from "@/features/service-centers/services/service-center-sap-sync.service";
 import { requirePermission } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/database/client";
 
@@ -92,5 +93,22 @@ export async function deleteServiceCenterLocationAction(id: string) {
     return { success: true as const };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to delete location" };
+  }
+}
+
+/** Import SAP warehouses typed `Service Center` as ISMS service centres. */
+export async function syncServiceCentersFromSapAction() {
+  const session = await requirePermission("service_centers.manage");
+  try {
+    const result = await serviceCenterSapSyncService.syncFromSap(
+      session.user.tenantId,
+      session.user.id,
+    );
+    revalidate();
+    return { success: true as const, result };
+  } catch (e) {
+    return {
+      error: e instanceof Error ? e.message : "Failed to sync service centres from SAP",
+    };
   }
 }

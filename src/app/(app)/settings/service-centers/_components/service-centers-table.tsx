@@ -11,7 +11,9 @@ import {
   deleteServiceCenterAction,
   deleteServiceCenterLocationAction,
   listServiceCenterFormOptionsAction,
+  syncServiceCentersFromSapAction,
 } from "@/features/service-centers/actions/service-center.actions";
+import { SapSyncButton } from "@/features/sap/components/sap-sync-button";
 import {
   DeleteConfirmDialog,
   TableEmptyRow,
@@ -228,10 +230,17 @@ export function ServiceCentersTable({ centers }: { centers: CenterRow[] }) {
           suggestions,
         }}
         toolbarActions={
-          <Button type="button" size="sm" onClick={() => onAddOpenChange(true)}>
-            <Plus className="size-3.5" />
-            Add center
-          </Button>
+          <>
+            <SapSyncButton
+              syncKey="service-center"
+              noun={{ one: "service centre", many: "service centres" }}
+              onSync={syncServiceCentersFromSapAction}
+            />
+            <Button type="button" size="sm" onClick={() => onAddOpenChange(true)}>
+              <Plus className="size-3.5" />
+              Add center
+            </Button>
+          </>
         }
         pageSize={{ value: pageSize, onChange: setPageSize }}
         pagination={{

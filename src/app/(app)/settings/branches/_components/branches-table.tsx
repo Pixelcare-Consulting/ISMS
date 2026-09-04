@@ -6,7 +6,11 @@ import { useMemo, useState, useTransition } from "react";
 import { LayoutGrid, Upload } from "lucide-react";
 import { toast } from "sonner";
 
-import { deleteBranchAction } from "@/features/branches/actions/branch.actions";
+import {
+  deleteBranchAction,
+  syncBranchesFromSapWarehousesAction,
+} from "@/features/branches/actions/branch.actions";
+import { SapSyncButton } from "@/features/sap/components/sap-sync-button";
 import { CreateBranchDialog } from "@/app/(app)/settings/branches/_components/create-branch-dialog";
 import { EditBranchDialog } from "@/app/(app)/settings/branches/_components/edit-branch-dialog";
 import { ImportBranchesDialog } from "@/app/(app)/settings/branches/_components/import-branches-dialog";
@@ -152,6 +156,14 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
                 noun={{ one: "branch", many: "branches" }}
                 onSync={syncBranchesFromSapAction}
               /> */}
+              {/* Branches as SAP actually holds them: warehouses typed `Branch`. The
+                  commented-out button above reads SAP's separate multi-branch (OBRA)
+                  entity and is kept for whenever that source is wanted again. */}
+              <SapSyncButton
+                syncKey="branch-from-warehouse"
+                noun={{ one: "branch", many: "branches" }}
+                onSync={syncBranchesFromSapWarehousesAction}
+              />
               <Button variant="outline" size="sm" onClick={() => setImporting(true)}>
                 <Upload className="mr-1 size-4" />
                 Import

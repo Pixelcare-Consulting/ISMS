@@ -2054,7 +2054,12 @@ model SapIntegrationJob {
 model SapSyncCursor {
   id       String @id @default(cuid())
   tenantId String @map("tenant_id")
-  /** Service Layer entity set, e.g. `SerialNumberDetails`. */
+  /**
+   * The sync this cursor belongs to — a descriptor's `key`, e.g. `serial-number`, not the
+   * Service Layer entity it reads. Those were the same thing until the warehouse-type
+   * syncs, where `branch`, `warehouse` and `service-center` all read `Warehouses` and each
+   * needs its own place in it.
+   */
   entity   String
 
   /**
