@@ -2,7 +2,6 @@ import { sapText } from "@/features/sap/services/sap-master-data";
 import { runSapSync } from "@/features/sap/services/sap-sync-engine";
 import {
   SAP_WAREHOUSE_TYPES,
-  SAP_WAREHOUSE_TYPE_FIELD,
   sapWarehouseTypeFilter,
 } from "@/features/sap/services/sap-warehouse-type";
 import { serviceCenterRepository } from "@/features/service-centers/repositories/service-center.repository";
@@ -14,9 +13,8 @@ import type { SapSyncResult } from "@/features/sap/schemas/sap-master-sync.schem
  * `sapCode`.
  *
  * A service centre holds stock, so SAP models it as a warehouse and marks it one only by
- * `U_Warehouse_Type`. Filtered server-side for the same reason as the branch sync: the
- * type is unambiguous, so there is nothing to report about the rows that are not service
- * centres.
+ * `U_Warehouse_Type`. Filtered server-side on that type, as the branch and warehouse syncs
+ * are on theirs, so a row reaches exactly one of the three.
  *
  * Syncs `name` only. Area, dealer type, dealer area and mode of payment are ISMS-only
  * classifications with no SAP counterpart, so a service centre created here lands with
@@ -38,7 +36,7 @@ export const serviceCenterSyncEntity: SapSyncEntity<ServiceCenterRecord> = {
   noun: { one: "service centre", many: "service centres" },
 
   entity: "Warehouses",
-  select: `WarehouseCode,WarehouseName,${SAP_WAREHOUSE_TYPE_FIELD}`,
+  select: "WarehouseCode,WarehouseName",
   filter: sapWarehouseTypeFilter(SAP_WAREHOUSE_TYPES.serviceCenter),
   keyField: "WarehouseCode",
   keyKind: "string",

@@ -3,7 +3,6 @@ import { sapText } from "@/features/sap/services/sap-master-data";
 import { runSapSync } from "@/features/sap/services/sap-sync-engine";
 import {
   SAP_WAREHOUSE_TYPES,
-  SAP_WAREHOUSE_TYPE_FIELD,
   sapWarehouseTypeFilter,
 } from "@/features/sap/services/sap-warehouse-type";
 import type { SapSyncEntity } from "@/features/sap/types/sap-sync-entity";
@@ -19,10 +18,9 @@ import type { SapSyncResult } from "@/features/sap/schemas/sap-master-sync.schem
  * warehouse codes here (`ABB001`), OBRA's own numeric codes there (`1`, `2`) — so each
  * only ever creates and updates its own rows.
  *
- * Filtered server-side, unlike the warehouse sync, which walks the entity whole to report
- * what is still untyped. A branch-typed row is unambiguous, so there is nothing to report:
- * fetching only the matches keeps this sync's skip list about genuine problems rather than
- * about the ~1,300 rows that were never branches.
+ * Filtered server-side on the type, as the warehouse and service-centre syncs are on
+ * theirs: a row reaches exactly one of the three, so this sync's skip list stays about
+ * genuine problems rather than about the ~1,300 rows that were never branches.
  *
  * Syncs `name` only. Area, dealer, primary warehouse and the rest are ISMS-only
  * classifications with no SAP counterpart; a branch created here lands with them unset and
@@ -40,7 +38,7 @@ export const branchWarehouseSyncEntity: SapSyncEntity<BranchRecord> = {
   noun: { one: "branch", many: "branches" },
 
   entity: "Warehouses",
-  select: `WarehouseCode,WarehouseName,${SAP_WAREHOUSE_TYPE_FIELD}`,
+  select: "WarehouseCode,WarehouseName",
   filter: sapWarehouseTypeFilter(SAP_WAREHOUSE_TYPES.branch),
   keyField: "WarehouseCode",
   keyKind: "string",

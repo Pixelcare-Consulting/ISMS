@@ -7,11 +7,15 @@
  * models those as three separate tables, so the type is the routing key: one Service
  * Layer entity feeds `branches`, `warehouses` and `service_centers`.
  *
+ * Each of the three syncs filters on its own type server-side, so the split happens in
+ * SAP and a row reaches exactly one of them. Nothing here parses the field back out of a
+ * row: the filter is the whole mechanism.
+ *
  * Confirmed against the live company database (`scripts/check-sap-warehouse-type-udf.mjs`):
  * the UDF is a *list* field with exactly the three values below, so SAP itself rejects
  * anything else and the values can be compared exactly — no casing or whitespace
  * tolerance is needed, and none is applied. What the field *is* routinely is null: it was
- * added after the warehouses were, so most rows are still untyped and stay unroutable
+ * added after the warehouses were, so most rows are still untyped and reach no sync at all
  * until someone fills them in.
  */
 
@@ -35,25 +39,4 @@ export type SapWarehouseType =
  */
 export function sapWarehouseTypeFilter(type: SapWarehouseType): string {
   return `${SAP_WAREHOUSE_TYPE_FIELD} eq '${type}'`;
-}
-
-/**
- * What a SAP warehouse row says it is.
- *
- * `raw` is the field as SAP holds it, trimmed, and `null` when it is unset — the Service
- * Layer returns `""` for an unset string on some fields and `null` on others, and neither
- * is a type. `type` is that value once matched against the list, so a row SAP somehow
- * returned with an off-list value reads as `{ raw: "…", type: null }` and can be reported
- * as unrecognised rather than mistaken for untyped.
- */
-export function sapWarehouseType(row: Record<string, unknown>): {
-  raw: string | null;
-  type: SapWarehouseType | null;
-} {
-  const value = row[SAP_WAREHOUSE_TYPE_FIELD];
-  const text = value === null || value === undefined ? "" : String(value).trim();
-  if (text === "") return { raw: null, type: null };
-
-  const type = Object.values(SAP_WAREHOUSE_TYPES).find((known) => known === text);
-  return { raw: text, type: type ?? null };
 }
