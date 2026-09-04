@@ -14,9 +14,9 @@ import type { SkuStatus } from "@/lib/database/generated/prisma/client";
  * simply stops coming back, exactly like an inactive dealer.
  *
  * Syncs `description` (and `name`, which carries the same ItemName because the column is
- * NOT NULL), `status` and `brand`. Series, feature, resolution, size, SRP and CBM are
- * ISMS-only classifications with no SAP counterpart and are never touched — models
- * created by a sync land with them unset.
+ * NOT NULL), `status` (SAP Active → `active`, Inactive → `retired`) and `brand`. Series,
+ * feature, resolution, size, SRP and CBM are ISMS-only classifications with no SAP
+ * counterpart and are never touched — models created by a sync land with them unset.
  *
  * Runs before serial numbers in the sync registry: a serial cannot be stored without its
  * model, so syncing items first is what lets the same cron pass link them.
@@ -57,11 +57,14 @@ export const modelSyncEntity: SapSyncEntity<ModelRecord> = {
     const brandName = sapText(row.U_Brand);
     if (!brandName) return { skip: "SAP item has no brand", example: skuCode };
 
-    // `Valid` (item usable at all) and `Frozen` (blocked from transactions) both map to
-    // `hold` — the ISMS status that keeps a model out of ordering and planogram pickers.
-    // `retired` is never set by a sync; it stays a deliberate ISMS decision.
+    // The Active / Inactive / Advanced radio group on SAP's Item Master Data window is
+    // backed by these two flags: Active writes Valid=tYES, Frozen=tNO, and Inactive
+    // writes Frozen=tYES. Only those two are used here, so anything that is not plainly
+    // active is Inactive in SAP and `retired` in ISMS.
+    //
+    // `hold` is never written by a sync — it is an ISMS-only pause, set by hand.
     const status: SkuStatus =
-      parseSapFlag(row.Valid) && !parseSapFlag(row.Frozen) ? "active" : "hold";
+      parseSapFlag(row.Valid) && !parseSapFlag(row.Frozen) ? "active" : "retired";
 
     return { record: { skuCode, name: sapText(row.ItemName), status, brandName } };
   },
