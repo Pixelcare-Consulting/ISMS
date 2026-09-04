@@ -61,12 +61,61 @@ async function loadTenantIsPlatform(tenantId: string): Promise<boolean> {
 const authSecret =
   process.env.BETTER_AUTH_SECRET ?? process.env.AUTH_SECRET ?? "";
 
+/**
+ * Every Vercel deployment answers on its own hostname, so a single
+ * `BETTER_AUTH_URL` cannot cover preview builds: Better Auth compares the
+ * request `Origin` against `trustedOrigins` and rejects anything else with
+ * `INVALID_ORIGIN`. Collect every host this deployment is legitimately
+ * reachable on instead of trusting one hard-coded URL.
+ *
+ * `VERCEL_PROJECT_PRODUCTION_URL` - the project's production domain
+ * `VERCEL_BRANCH_URL`             - stable per-branch alias (`…-git-develop-…`)
+ * `VERCEL_URL`                    - unique per deployment
+ *
+ * Vercel exposes those three as bare hostnames, hence the scheme prefixing.
+ */
+function toOrigin(value: string | undefined): string | null {
+  if (!value) return null;
+  const withScheme = /^https?:\/\//.test(value) ? value : `https://${value}`;
+  try {
+    return new URL(withScheme).origin;
+  } catch {
+    return null;
+  }
+}
+
+const configuredAuthUrl = process.env.BETTER_AUTH_URL ?? process.env.AUTH_URL;
+
+/**
+ * Preview and custom-environment deployments have no fixed URL, so let Better
+ * Auth infer the base URL from the incoming request. Production keeps the
+ * explicit value so links generated off-request point at the real domain.
+ */
+const isNonProductionDeployment =
+  Boolean(process.env.VERCEL_ENV) && process.env.VERCEL_ENV !== "production";
+
+const authBaseUrl = isNonProductionDeployment ? undefined : configuredAuthUrl;
+
+const authTrustedOrigins = [
+  ...new Set(
+    [
+      configuredAuthUrl,
+      process.env.NEXT_PUBLIC_APP_URL,
+      process.env.VERCEL_PROJECT_PRODUCTION_URL,
+      process.env.VERCEL_BRANCH_URL,
+      process.env.VERCEL_URL,
+    ]
+      .map(toOrigin)
+      .filter((origin): origin is string => origin !== null),
+  ),
+];
+
 export const auth = betterAuth({
   database: prismaAdapter(prisma, {
     provider: "postgresql",
   }),
   secret: authSecret,
-  baseURL: process.env.BETTER_AUTH_URL ?? process.env.AUTH_URL,
+  baseURL: authBaseUrl,
   emailAndPassword: {
     enabled: true,
     password: {
@@ -137,9 +186,7 @@ export const auth = betterAuth({
     }),
     nextCookies(),
   ],
-  trustedOrigins: process.env.BETTER_AUTH_URL
-    ? [process.env.BETTER_AUTH_URL]
-    : undefined,
+  trustedOrigins: authTrustedOrigins.length > 0 ? authTrustedOrigins : undefined,
 });
 
 export type AuthSession = typeof auth.$Infer.Session;
