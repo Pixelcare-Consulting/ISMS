@@ -1,11 +1,18 @@
 import { auditService } from "@/features/audit/services/audit.service";
 import { sapSyncCursorRepository } from "@/features/sap/repositories/sap-sync-cursor.repository";
-import type {
-  SapSyncEntity,
-  SapSyncKeyKind,
-} from "@/features/sap/types/sap-sync-entity";
+import type { SapSyncEntity } from "@/features/sap/types/sap-sync-entity";
 import type { SapSyncResult, SapSyncSkip } from "@/features/sap/schemas/sap-master-sync.schema";
-import { sapPageSize, sapErrorMessage } from "@/features/sap/services/sap-master-data";
+import {
+  sapPageSize,
+  sapErrorMessage,
+  sapKeyLiteral,
+} from "@/features/sap/services/sap-master-data";
+import {
+  decodePosition,
+  encodePosition,
+  planSegment,
+  segmentClause,
+} from "@/features/sap/services/sap-sync-segment";
 import { sapServiceLayerClient } from "@/features/sap/services/sap-service-layer-client";
 import { SAP_NO_CONNECTION_MESSAGE } from "@/config/platform";
 import { sapServiceLayerService } from "@/features/sap/services/sap-service-layer.service";
@@ -46,23 +53,19 @@ function budgetMs(override?: number): number {
 const MAX_SKIP_EXAMPLES = 20;
 
 /**
- * Render a cursor position as an OData literal.
- *
- * String keys are quoted with `'` doubled, per OData's own escaping. The value is passed
- * back exactly as SAP returned it: the Service Layer compares strings under the company
- * database's collation, not byte order (it sorts `100L10E` before `-1P55QUHV06`), so
- * anything we normalise here could silently skip rows.
+ * The `$filter` for one page: the entity's own filter, the segment being walked if there
+ * is one, and where the last page ended.
  */
-function keyLiteral(value: string, kind: SapSyncKeyKind): string {
-  return kind === "number" ? value : `'${value.replace(/'/g, "''")}'`;
-}
-
-/** The `$filter` for one page: the entity's own filter plus where the last page ended. */
-function pageFilter(entity: SapSyncEntity, lastKey: string | null): string | undefined {
+function pageFilter(
+  entity: SapSyncEntity,
+  lastKey: string | null,
+  segment?: string,
+): string | undefined {
   const clauses: string[] = [];
   if (entity.filter) clauses.push(entity.filter);
+  if (segment) clauses.push(segment);
   if (lastKey !== null) {
-    clauses.push(`${entity.keyField} gt ${keyLiteral(lastKey, entity.keyKind)}`);
+    clauses.push(`${entity.keyField} gt ${sapKeyLiteral(lastKey, entity.keyKind)}`);
   }
   return clauses.length > 0 ? clauses.join(" and ") : undefined;
 }
@@ -75,9 +78,10 @@ async function fetchPage(
   creds: SapServiceLayerCredentials,
   entity: SapSyncEntity,
   lastKey: string | null,
+  segment?: string,
 ): Promise<Record<string, unknown>[]> {
   const params = [`$select=${entity.select}`, `$orderby=${entity.keyField}`];
-  const filter = pageFilter(entity, lastKey);
+  const filter = pageFilter(entity, lastKey, segment);
   if (filter) params.splice(1, 0, `$filter=${encodeURIComponent(filter)}`);
 
   const response = await sapServiceLayerClient.request<SapCollectionResponse>({
@@ -172,11 +176,16 @@ async function runSlice(
 
   // A pass in progress is resumed; otherwise one starts here. Measuring the row count is
   // part of starting, so the denominator belongs to the pass it describes.
+  //
+  // A segmented entity has no denominator: `$count` would have to be asked once per
+  // segment before a single row is read, which on a large key set is minutes of stalling
+  // to populate a progress bar. The engine already treats a missing total as "progress
+  // unreported", so that is what a segmented walk reports.
   if (cursor.passStartedAt === null) {
     cursor = await sapSyncCursorRepository.beginPass(
       tenantId,
       entity.entity,
-      await measureTotal(creds, entity),
+      entity.segment ? null : await measureTotal(creds, entity),
     );
   }
 
@@ -184,7 +193,6 @@ async function runSlice(
   const deadline = Date.now() + budgetMs(options?.budgetMs);
   const skips = new SkipTally();
 
-  let lastKey = cursor.lastKey;
   let passRows = cursor.passRows;
   let fetched = 0;
   let pages = 0;
@@ -193,15 +201,8 @@ async function runSlice(
   let unchanged = 0;
   let completed = false;
 
-  for (;;) {
-    const rows = await fetchPage(creds, entity, lastKey);
-
-    if (rows.length === 0) {
-      completed = true;
-      break;
-    }
-
-    const endKey = pageEndKey(rows, entity);
+  /** Parse and write one page, folding what it did into this run's totals. */
+  async function applyRows(rows: Record<string, unknown>[]): Promise<void> {
     const records: unknown[] = [];
     for (const row of rows) {
       const parsed = entity.parse(row, context);
@@ -220,12 +221,75 @@ async function runSlice(
     fetched += rows.length;
     passRows += rows.length;
     pages += 1;
-    lastKey = endKey;
+  }
 
-    // Saved per page: an interrupted run loses one page of progress, never the pass.
-    await sapSyncCursorRepository.advance(tenantId, entity.entity, lastKey, passRows);
+  if (entity.segment) {
+    // Sorted and de-duplicated so segment boundaries fall in the same places on every run
+    // of a pass — the cursor's anchor is only meaningful against a stable ordering. The
+    // comparison is JavaScript's, never SAP's: segment membership is an explicit `or`
+    // list, so unlike a `gt` walk this never depends on the company database's collation.
+    const keys = [...new Set(entity.segment.keys(context))].sort();
+    let position = decodePosition(cursor.lastKey);
 
-    if (Date.now() >= deadline) break;
+    for (;;) {
+      const plan = planSegment(keys, position.anchor, entity.segment);
+      // No segment left to start: every key ISMS holds has been walked.
+      if (!plan) {
+        completed = true;
+        break;
+      }
+
+      const rows = await fetchPage(
+        creds,
+        entity,
+        position.lastKey,
+        segmentClause(entity.segment, plan.keys),
+      );
+
+      if (rows.length === 0) {
+        // This segment is exhausted; move to the next one, or finish the pass.
+        if (plan.next === null) {
+          completed = true;
+          break;
+        }
+        position = { anchor: plan.next, lastKey: null };
+      } else {
+        const endKey = pageEndKey(rows, entity);
+        await applyRows(rows);
+        position = { anchor: plan.anchor, lastKey: endKey };
+      }
+
+      // Saved per page and per segment hop alike: an interrupted run loses one page of
+      // progress, never the pass, and never its place in the key set.
+      await sapSyncCursorRepository.advance(
+        tenantId,
+        entity.entity,
+        encodePosition(position),
+        passRows,
+      );
+
+      if (Date.now() >= deadline) break;
+    }
+  } else {
+    let lastKey = cursor.lastKey;
+
+    for (;;) {
+      const rows = await fetchPage(creds, entity, lastKey);
+
+      if (rows.length === 0) {
+        completed = true;
+        break;
+      }
+
+      const endKey = pageEndKey(rows, entity);
+      await applyRows(rows);
+      lastKey = endKey;
+
+      // Saved per page: an interrupted run loses one page of progress, never the pass.
+      await sapSyncCursorRepository.advance(tenantId, entity.entity, lastKey, passRows);
+
+      if (Date.now() >= deadline) break;
+    }
   }
 
   // Finishing a pass arms the next one. Nothing schedules it here — the next run finds no

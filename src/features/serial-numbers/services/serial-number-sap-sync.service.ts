@@ -13,6 +13,9 @@ import { serialNumberRepository } from "@/features/serial-numbers/repositories/s
  *
  * At ~4M rows this is the entity the whole sliced design exists for, but it is described
  * here exactly like the others; the engine is what notices it takes several runs.
+ *
+ * It is also the only sync that walks a *segment* — the fetch is restricted to the item
+ * codes ISMS actually holds, rather than reading OSRN whole and discarding most of it.
  */
 
 interface SerialRecord {
@@ -36,6 +39,24 @@ export const serialNumberSyncEntity: SapSyncEntity<SerialRecord, ModelIndex> = {
   select: "DocEntry,SerialNumber,ItemCode",
   keyField: "DocEntry",
   keyKind: "number",
+
+  /**
+   * Only serials belonging to items ISMS holds are fetched at all.
+   *
+   * A serial whose item is not in `product_models` can never be stored — `modelId` is a
+   * required FK — so reading it is pure cost, and at OSRN's scale that cost is the whole
+   * sync. Since the item sync now takes only branded items (`U_Brand`), this narrows the
+   * walk to the serials of branded stock rather than the entire four-million-row table.
+   *
+   * The item list is far too large for one Service Layer URL, so the engine walks it in
+   * segments and pages by `DocEntry` inside each; see `SapSyncSegment`. The `parse` guard
+   * below stays as the backstop for a row SAP returns that the filter did not exclude.
+   */
+  segment: {
+    field: "ItemCode",
+    kind: "string",
+    keys: (modelIdBySku) => [...modelIdBySku.keys()],
+  },
 
   audit: { action: "serial_number.sap_sync", entityType: "SerialNumber" },
 
