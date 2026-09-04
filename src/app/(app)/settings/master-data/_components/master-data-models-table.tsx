@@ -521,7 +521,12 @@ export function MasterDataModelsTable({
   );
 }
 
-const SKU_STATUSES = ["active", "hold", "retired"] as const;
+/**
+ * Retiring a SKU is not a manual decision: `retired` is reachable only through the model
+ * import, never from this table, so the dropdown offers the two statuses a user may set.
+ */
+const SKU_STATUSES = ["active", "hold"] as const;
+type SkuOption = (typeof SKU_STATUSES)[number];
 
 function ModelStatusSelect({
   modelId,
@@ -539,7 +544,7 @@ function ModelStatusSelect({
     startTransition(async () => {
       const result = await updateModelStatusAction({
         modelId,
-        status: next as (typeof SKU_STATUSES)[number],
+        status: next as SkuOption,
       });
       if (result.error) {
         toast.error(result.error);
@@ -550,13 +555,15 @@ function ModelStatusSelect({
     });
   }
 
+  // A model that is already retired keeps its own entry so the trigger reads "retired"
+  // instead of falling back to the empty placeholder; it is still not settable from here.
+  const options = [...SKU_STATUSES, ...(SKU_STATUSES.includes(status as SkuOption) ? [] : [status])]
+    .map((s) => ({ id: s, label: s }));
+
   return (
     <SearchableSelect
       className="min-w-28 capitalize"
-      options={SKU_STATUSES.map((s) => ({
-        id: s,
-        label: s,
-      }))}
+      options={options}
       value={status}
       disabled={pending}
       searchPlaceholder="Search status…"
