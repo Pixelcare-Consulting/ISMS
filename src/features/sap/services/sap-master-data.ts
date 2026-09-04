@@ -1,3 +1,5 @@
+import type { SapSyncKeyKind } from "@/features/sap/types/sap-sync-entity";
+
 /**
  * Small shared helpers for the SAP → ISMS master-data syncs.
  *
@@ -88,4 +90,16 @@ export function describeWriteError(error: unknown): string {
     }
   }
   return error instanceof Error ? error.message : "Could not be saved";
+}
+
+/**
+ * Render a key as an OData literal.
+ *
+ * String keys are quoted with `'` doubled, per OData's own escaping. The value is passed
+ * back exactly as SAP returned it: the Service Layer compares strings under the company
+ * database's collation, not byte order (it sorts `100L10E` before `-1P55QUHV06`), so
+ * anything normalised here could silently skip rows.
+ */
+export function sapKeyLiteral(value: string, kind: SapSyncKeyKind): string {
+  return kind === "number" ? value : `'${value.replace(/'/g, "''")}'`;
 }

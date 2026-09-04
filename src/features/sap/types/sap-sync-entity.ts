@@ -35,6 +35,32 @@ export interface SapSyncApplyResult {
   failures: { reason: string; example?: string | null }[];
 }
 
+/**
+ * Restrict a walk to rows whose `field` holds one of a set of keys ISMS supplies.
+ *
+ * For *child* entities only worth reading for the parents ISMS knows about: OSRN serials
+ * belonging to items in `product_models`, and the same shape for any OBTN batch or
+ * per-item price sync added later. The other syncs walk their own entity under a constant
+ * filter and never need this.
+ *
+ * The key set is routinely far larger than one Service Layer URL can carry, so the engine
+ * walks it in *segments* — a run of keys whose `or` chain fits a single request — and
+ * pages within each segment by the entity's own key. Segments are sized by encoded URL
+ * bytes rather than a key count, so the same descriptor works at five hundred keys and at
+ * five hundred thousand. That two-dimensional walk is why a segmented cursor records two
+ * positions where the plain walk records one.
+ */
+export interface SapSyncSegment<TContext = unknown> {
+  /** SAP field holding the parent key, e.g. `"ItemCode"` on SerialNumberDetails. */
+  field: string;
+  kind: SapSyncKeyKind;
+  /**
+   * The parent keys to walk, from the prepared context. Order is irrelevant — the engine
+   * sorts them so segment boundaries are the same on every run of a pass.
+   */
+  keys(context: TContext): string[];
+}
+
 export interface SapSyncEntity<TRecord = unknown, TContext = unknown> {
   /** Stable id for the lock, the UI sync key and the cron's registry, e.g. `"dealer"`. */
   key: string;
@@ -53,6 +79,12 @@ export interface SapSyncEntity<TRecord = unknown, TContext = unknown> {
   keyKind: SapSyncKeyKind;
   /** Standing `$filter` for rows ISMS cares about, e.g. `"CardType eq 'cCustomer'"`. */
   filter?: string;
+  /**
+   * Opt in to a segmented walk, restricting the fetch to parents ISMS knows (see
+   * `SapSyncSegment`). Omit it — as four of the five syncs do — and the entity is walked
+   * whole under `filter` alone.
+   */
+  segment?: SapSyncSegment<TContext>;
 
   audit: { action: string; entityType: string };
 
