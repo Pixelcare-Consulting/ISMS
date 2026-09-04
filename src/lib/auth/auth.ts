@@ -62,17 +62,17 @@ const authSecret =
   process.env.BETTER_AUTH_SECRET ?? process.env.AUTH_SECRET ?? "";
 
 /**
- * Every Vercel deployment answers on its own hostname, so a single
- * `BETTER_AUTH_URL` cannot cover preview builds: Better Auth compares the
- * request `Origin` against `trustedOrigins` and rejects anything else with
- * `INVALID_ORIGIN`. Collect every host this deployment is legitimately
- * reachable on instead of trusting one hard-coded URL.
+ * Better Auth compares the request `Origin` against `trustedOrigins` and
+ * answers 403 `INVALID_ORIGIN` on a miss. Vercel serves one deployment on
+ * several hostnames — the production domain, aliases such as
+ * `isms-finden-dev.vercel.app`, the per-branch alias and the per-build URL —
+ * and only some of them are knowable from environment variables.
  *
  * `VERCEL_PROJECT_PRODUCTION_URL` - the project's production domain
  * `VERCEL_BRANCH_URL`             - stable per-branch alias (`…-git-develop-…`)
  * `VERCEL_URL`                    - unique per deployment
  *
- * Vercel exposes those three as bare hostnames, hence the scheme prefixing.
+ * Vercel exposes those as bare hostnames, hence the scheme prefixing.
  */
 function toOrigin(value: string | undefined): string | null {
   if (!value) return null;
@@ -86,17 +86,7 @@ function toOrigin(value: string | undefined): string | null {
 
 const configuredAuthUrl = process.env.BETTER_AUTH_URL ?? process.env.AUTH_URL;
 
-/**
- * Preview and custom-environment deployments have no fixed URL, so let Better
- * Auth infer the base URL from the incoming request. Production keeps the
- * explicit value so links generated off-request point at the real domain.
- */
-const isNonProductionDeployment =
-  Boolean(process.env.VERCEL_ENV) && process.env.VERCEL_ENV !== "production";
-
-const authBaseUrl = isNonProductionDeployment ? undefined : configuredAuthUrl;
-
-const authTrustedOrigins = [
+const staticTrustedOrigins = [
   ...new Set(
     [
       configuredAuthUrl,
@@ -110,12 +100,31 @@ const authTrustedOrigins = [
   ),
 ];
 
+/**
+ * Aliases assigned in the Vercel dashboard (the develop environment answers on
+ * `isms-finden-dev.vercel.app`) appear in no environment variable, so the list
+ * above cannot cover them. Trust the host the request was actually addressed to
+ * as well: `Origin` is where a request came from, `Host` is where it was sent,
+ * so a cross-site request still carries the attacker's `Origin` and is still
+ * rejected. This only admits same-origin requests, and Vercel only routes
+ * hostnames that belong to this project — CSRF protection stays intact.
+ */
+function resolveTrustedOrigins(request?: Request): string[] {
+  const headers = request?.headers;
+  const host = headers?.get("x-forwarded-host") ?? headers?.get("host");
+  const protocol = headers?.get("x-forwarded-proto") ?? "https";
+  const requestOrigin = toOrigin(host ? `${protocol}://${host}` : undefined);
+  return requestOrigin
+    ? [...staticTrustedOrigins, requestOrigin]
+    : staticTrustedOrigins;
+}
+
 export const auth = betterAuth({
   database: prismaAdapter(prisma, {
     provider: "postgresql",
   }),
   secret: authSecret,
-  baseURL: authBaseUrl,
+  baseURL: configuredAuthUrl,
   emailAndPassword: {
     enabled: true,
     password: {
@@ -186,7 +195,7 @@ export const auth = betterAuth({
     }),
     nextCookies(),
   ],
-  trustedOrigins: authTrustedOrigins.length > 0 ? authTrustedOrigins : undefined,
+  trustedOrigins: resolveTrustedOrigins,
 });
 
 export type AuthSession = typeof auth.$Infer.Session;
