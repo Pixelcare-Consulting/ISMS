@@ -191,15 +191,20 @@ export async function syncModelsFromSapAction() {
 
     // The models list is cached per brand scope, and a sync can change a model in any
     // of them, so clearing the "all" key alone would leave brand-filtered views stale.
+    // Read after the sync, so a brand the sync just created from `U_Brand` is included.
     const brands = await prisma.brand.findMany({ where: { tenantId }, select: { id: true } });
     await Promise.all([
       invalidateModelsCache(tenantId),
+      // A sync creates any brand `U_Brand` names that ISMS did not have, so the brand
+      // list is as much a sync output as the models are.
+      deleteCache(cacheKey("tenant", tenantId, "master-data", "brands")),
       ...brands.map((brand) =>
         deleteCache(cacheKey("tenant", tenantId, "master-data", "models", brand.id)),
       ),
     ]);
 
     revalidatePath("/settings/master-data/models");
+    revalidatePath("/settings/master-data/brands");
     return { success: true as const, result };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to sync models from SAP" };
