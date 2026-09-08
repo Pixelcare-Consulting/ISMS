@@ -2,13 +2,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState, useTransition } from "react";
-import { Upload } from "lucide-react";
+import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import {
   addPlanogramModelAction,
-  importPlanogramCsvForBranchAction,
   listActiveModelsForPlanogramAction,
   removePlanogramModelAction,
   updatePlanogramMaxQtyAction,
@@ -85,7 +83,6 @@ export function PlanogramTable({
   offPlanogramSerialCount?: number;
 }) {
   const router = useRouter();
-  const fileRef = useRef<HTMLInputElement>(null);
   const [pending, startTransition] = useTransition();
   const [showAdd, setShowAdd] = useState(false);
   const [query, setQuery] = useState("");
@@ -145,30 +142,6 @@ export function PlanogramTable({
     });
   }
 
-  function handleImport(formData: FormData) {
-    startTransition(async () => {
-      const result = await importPlanogramCsvForBranchAction(branchId, formData);
-      if (result.error) {
-        toast.error(result.error);
-        return;
-      }
-      toast.success(`Planogram imported (${result.skuCount ?? 0} SKUs)`);
-      router.refresh();
-    });
-  }
-
-  function importBundledCsv() {
-    startTransition(async () => {
-      const result = await importPlanogramCsvForBranchAction(branchId);
-      if (result.error) {
-        toast.error(result.error);
-        return;
-      }
-      toast.success(`Planogram synced from BRS CSV (${result.skuCount ?? 0} SKUs)`);
-      router.refresh();
-    });
-  }
-
   return (
     <div className="space-y-4">
       {offPlanogramSerialCount > 0 ? (
@@ -200,42 +173,9 @@ export function PlanogramTable({
                 size="sm"
               />
               {canManage ? (
-                <>
-                  <input
-                    ref={fileRef}
-                    type="file"
-                    accept=".csv,text/csv"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      const fd = new FormData();
-                      fd.set("file", file);
-                      handleImport(fd);
-                      e.target.value = "";
-                    }}
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={pending}
-                    onClick={() => fileRef.current?.click()}
-                  >
-                    <Upload className="mr-1 size-4" />
-                    Import CSV
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={pending}
-                    onClick={importBundledCsv}
-                  >
-                    Sync BRS CSV
-                  </Button>
-                  <Button size="sm" onClick={() => setShowAdd(true)}>
-                    Add model
-                  </Button>
-                </>
+                <Button size="sm" onClick={() => setShowAdd(true)}>
+                  Add model
+                </Button>
               ) : null}
             </div>
           </div>

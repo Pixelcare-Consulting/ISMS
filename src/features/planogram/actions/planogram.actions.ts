@@ -5,15 +5,8 @@ import { z } from "zod";
 
 import { branchService } from "@/features/branches/services/branch.service";
 import { planogramService } from "@/features/planogram/services/planogram.service";
-import {
-  parsePlanogramCsvFromContent,
-  syncPlanogramFromCsvContent,
-  upsertModelsFromPlanogramRows,
-} from "@/features/planogram/services/planogram-csv-sync.service";
-import { prisma } from "@/lib/database/client";
 import { getUserBranchIds } from "@/lib/aor/scope";
 import { hasPermission, requirePermission, requirePlanogramView } from "@/lib/auth/permissions";
-import { DEALER1_BRANCH_MAP, readPlanogramCsvContent } from "../../../../prisma/seed-planogram-from-csv";
 
 function revalidatePlanogram(branchId: string) {
   revalidatePath(`/settings/branches/${branchId}/planogram`);
@@ -70,78 +63,6 @@ export async function listPlanogramAction(branchId: string) {
     planogramService.getBranchSummary(session.user.tenantId, branchId),
   ]);
   return { rows, summary, canManage };
-}
-
-export async function importPlanogramCsvForBranchAction(
-  branchId: string,
-  formData?: FormData,
-) {
-  const session = await requirePlanogramManage();
-
-  const branch = await prisma.branch.findFirst({
-    where: { id: branchId, tenantId: session.user.tenantId },
-  });
-  if (!branch) return { error: "Branch not found" };
-
-  const branchDef = DEALER1_BRANCH_MAP.find((b) => b.sapCode === branch.sapCode);
-  if (!branchDef) {
-    return { error: "Branch is not mapped to BRS Dealer 1 CSV columns" };
-  }
-
-  const file = formData?.get("file");
-  const content =
-    file instanceof File && file.size > 0 ? await file.text() : readPlanogramCsvContent();
-
-  const planogramRows = parsePlanogramCsvFromContent(content);
-
-  const brandRecords = new Map<string, { id: string; code: string }>();
-  for (const brandName of [...new Set(planogramRows.map((r) => r.brand))]) {
-    const code = brandName.slice(0, 4).toUpperCase();
-    const brand = await prisma.brand.upsert({
-      where: { tenantId_name: { tenantId: session.user.tenantId, name: brandName } },
-      create: { tenantId: session.user.tenantId, name: brandName, code },
-      update: {},
-    });
-    brandRecords.set(brandName, { id: brand.id, code: brand.code ?? code });
-  }
-
-  const seriesRecords = new Map<string, string>();
-  async function getSeriesId(brandName: string, series: string) {
-    const key = `${brandName}:${series}`;
-    if (seriesRecords.has(key)) return seriesRecords.get(key)!;
-    const brandId = brandRecords.get(brandName)?.id;
-    if (!brandId) throw new Error(`Brand not found: ${brandName}`);
-    const seriesName = series || "General";
-    const seriesRow = await prisma.series.upsert({
-      where: { tenantId_name: { tenantId: session.user.tenantId, name: seriesName } },
-      create: { tenantId: session.user.tenantId, name: seriesName },
-      update: {},
-    });
-    seriesRecords.set(key, seriesRow.id);
-    return seriesRow.id;
-  }
-
-  const modelIdBySku = await upsertModelsFromPlanogramRows(
-    prisma,
-    session.user.tenantId,
-    planogramRows,
-    brandRecords,
-    getSeriesId,
-  );
-
-  try {
-    await syncPlanogramFromCsvContent(
-      prisma,
-      session.user.tenantId,
-      content,
-      [{ id: branchId, branchIndex: branchDef.branchIndex }],
-      modelIdBySku,
-    );
-    revalidatePlanogram(branchId);
-    return { success: true as const, skuCount: planogramRows.length };
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : "Import failed" };
-  }
 }
 
 export async function listActiveModelsForPlanogramAction(branchId: string) {
