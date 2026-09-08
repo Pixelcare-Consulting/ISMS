@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Upload } from "lucide-react";
 
+import { ImportPlanogramDialog } from "@/app/(app)/settings/planogram/_components/import-planogram-dialog";
 import {
   DataTableEmptyState,
   TableEmptyRow,
@@ -36,12 +37,17 @@ export interface PlanogramBranchRow {
 
 interface PlanogramBranchesTableProps {
   branches: PlanogramBranchRow[];
+  canManage?: boolean;
 }
 
 const COL_COUNT = 5;
 
-export function PlanogramBranchesTable({ branches }: PlanogramBranchesTableProps) {
+export function PlanogramBranchesTable({
+  branches,
+  canManage = false,
+}: PlanogramBranchesTableProps) {
   const [query, setQuery] = useState("");
+  const [importing, setImporting] = useState(false);
 
   const filtered = useMemo(
     () =>
@@ -79,7 +85,22 @@ export function PlanogramBranchesTable({ branches }: PlanogramBranchesTableProps
   });
 
   if (branches.length === 0) {
-    return <DataTableEmptyState message="No branches available for your account." />;
+    return (
+      <div className="space-y-4">
+        {canManage ? (
+          <div className="flex justify-end">
+            <Button variant="outline" size="sm" onClick={() => setImporting(true)}>
+              <Upload className="mr-1 size-4" />
+              Import
+            </Button>
+          </div>
+        ) : null}
+        <DataTableEmptyState message="No branches available for your account." />
+        {canManage ? (
+          <ImportPlanogramDialog open={importing} onOpenChange={setImporting} />
+        ) : null}
+      </div>
+    );
   }
 
   return (
@@ -99,6 +120,14 @@ export function PlanogramBranchesTable({ branches }: PlanogramBranchesTableProps
             onClear={selection.clearSelection}
             size="sm"
           />
+        }
+        toolbarActions={
+          canManage ? (
+            <Button variant="outline" size="sm" onClick={() => setImporting(true)}>
+              <Upload className="mr-1 size-4" />
+              Import
+            </Button>
+          ) : undefined
         }
         pageSize={{ value: pageSize, onChange: setPageSize }}
         pagination={{
@@ -163,6 +192,9 @@ export function PlanogramBranchesTable({ branches }: PlanogramBranchesTableProps
             )}
           </TableBody>
       </GlobalDataTable>
+      {canManage ? (
+        <ImportPlanogramDialog open={importing} onOpenChange={setImporting} />
+      ) : null}
     </div>
   );
 }

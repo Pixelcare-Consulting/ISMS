@@ -11,14 +11,16 @@ export const PLANOGRAM_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "What this page is for",
       description:
-        "Planogram defines which SKUs a branch may hold, shelf capacity, and minimum inventory levels (MIL). Planning and order enforcement use these limits.",
+        "Planogram is the ISMS shelf plan: which SKUs a branch may hold, shelf capacity, and minimum inventory life (MIL). Planning and order limits use these values. It is not a SAP document.",
     },
     {
       title: "How to use it",
       bullets: [
-        "Open a branch to set authorized models, capacity, and MIL.",
-        "Keep MIL aligned with branch policy so auto-replenish suggests sensible quantities.",
-        "Dashboard alerts can flag planogram / MIL issues when configured.",
+        "Use Import → Download template to get a Planogram spreadsheet (branch SAP code, SKU, max qty, MIL days) prefilled with your current rows.",
+        "SKUs and branches must already exist from Models, Branches, or SAP. The template does not create new products.",
+        "Upload that same file to preview creates and updates. Rows you leave out stay as they are.",
+        "Open a branch to add a model, edit max qty or MIL, or remove a SKU one at a time. Add model needs Allowed models first — if that list is empty, you get a shortcut to open it.",
+        "Forecast uses the official template on Planning — do not upload that file here.",
       ],
     },
     {

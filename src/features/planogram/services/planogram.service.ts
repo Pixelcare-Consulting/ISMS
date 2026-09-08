@@ -27,6 +27,32 @@ export interface PlanogramBranchSummary {
   offPlanogramSerialCount: number;
 }
 
+export type PlanogramAddEmptyReason =
+  | "no_allowed_models"
+  | "no_active_skus"
+  | "all_already_on_planogram";
+
+export type ActiveModelForAdd = {
+  id: string;
+  skuCode: string;
+  name: string;
+  status: string;
+};
+
+export type ActiveModelsForAddResult = {
+  models: ActiveModelForAdd[];
+  emptyReason: PlanogramAddEmptyReason | null;
+};
+
+export class PlanogramModelNotAllowedError extends Error {
+  readonly emptyReason = "no_allowed_models" as const;
+
+  constructor() {
+    super("Model is not on this branch's allowed-models list");
+    this.name = "PlanogramModelNotAllowedError";
+  }
+}
+
 function formatSrp(value: { toNumber?: () => number } | number | null | undefined) {
   if (value == null) return null;
   const num = typeof value === "number" ? value : Number(value);
@@ -136,7 +162,7 @@ export const planogramService = {
       input.modelId,
     );
     if (!allowed) {
-      throw new Error("Model is not on this branch's allowed-models list");
+      throw new PlanogramModelNotAllowedError();
     }
 
     const existing = await planogramRepository.findPlanogramEntry(
@@ -266,7 +292,10 @@ export const planogramService = {
     });
   },
 
-  async listActiveModelsForAdd(tenantId: string, branchId: string) {
+  async listActiveModelsForAdd(
+    tenantId: string,
+    branchId: string,
+  ): Promise<ActiveModelsForAddResult> {
     const [models, entries, allowedModelIds] = await Promise.all([
       masterDataRepository.listModels(tenantId) as Promise<
         { id: string; skuCode: string; name: string; status: string }[]
@@ -278,11 +307,35 @@ export const planogramService = {
     ]);
 
     const onPlanogram = new Set(entries.map((e) => e.modelId));
-    return models
-      .filter(
-        (m) => m.status === "active" && !onPlanogram.has(m.id) && allowedModelIds.has(m.id),
-      )
-      .map((m) => ({ id: m.id, skuCode: m.skuCode, name: m.name, status: m.status }));
+    const activeModels = models.filter((m) => m.status === "active");
+    const allowedActive = activeModels.filter((m) => allowedModelIds.has(m.id));
+    const available = allowedActive.filter((m) => !onPlanogram.has(m.id));
+
+    if (available.length > 0) {
+      return {
+        models: available.map((m) => ({
+          id: m.id,
+          skuCode: m.skuCode,
+          name: m.name,
+          status: m.status,
+        })),
+        emptyReason: null,
+      };
+    }
+
+    if (allowedModelIds.size === 0) {
+      return { models: [], emptyReason: "no_allowed_models" };
+    }
+
+    if (activeModels.length === 0) {
+      return { models: [], emptyReason: "no_active_skus" };
+    }
+
+    if (allowedActive.length === 0) {
+      return { models: [], emptyReason: "no_allowed_models" };
+    }
+
+    return { models: [], emptyReason: "all_already_on_planogram" };
   },
 
   async listModelCandidatesForAllowedList(tenantId: string, branchId: string) {

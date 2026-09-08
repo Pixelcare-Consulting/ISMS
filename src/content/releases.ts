@@ -52,6 +52,75 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.35.0",
+    date: "2026-09-08",
+    releasedAt: "2026-09-08T14:45:00+08:00",
+    title: "Official Forecast template",
+    highlights: [
+      "Settings → Planning now has the same Download template flow as Models, Branches, and Planogram — one spreadsheet for the planning period, branch SAP code, and revenue target",
+      "The download is filled with your current period targets so you can edit and send it back",
+      "Upload shows what will be added or changed before you apply; branches you leave out stay as they are",
+      "The old wide BRS file is no longer used on Planning — shelf max and MIL stay on Planogram",
+      "Adding a model on a branch planogram tells you if Allowed models is empty, with a shortcut to open that list",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Download a Forecast template from Settings → Planning, fill the period, branch SAP code, and revenue target, then upload to preview and apply",
+      },
+      {
+        type: "feature",
+        description:
+          "When a branch has no allowed models, Add model explains that and offers Open Allowed models instead of loading an empty list",
+      },
+      {
+        type: "improvement",
+        description:
+          "The Forecast template lists your current period targets so you start from live data, and includes branch names for reading (they are ignored on upload)",
+      },
+      {
+        type: "improvement",
+        description:
+          "Add model only offers active SKUs already on Allowed models — it does not add products to that list for you",
+      },
+      {
+        type: "fix",
+        description:
+          "The old BRS spreadsheet is no longer accepted on Planning, so the wrong file cannot overwrite revenue targets or shelf plans",
+      },
+    ],
+  },
+  {
+    version: "0.34.0",
+    date: "2026-09-08",
+    releasedAt: "2026-09-08T13:30:00+08:00",
+    title: "Official Planogram template",
+    highlights: [
+      "Settings → Planogram now has the same Download template flow as Models and Branches — one spreadsheet for branch SAP code, SKU, shelf max, and MIL days",
+      "The download is filled with your current planogram rows so you can edit and send it back",
+      "Upload shows what will be added or changed before you apply; rows you leave out stay as they are",
+      "The old wide BRS file is no longer used on Planogram — keep that file for Planning → Import forecast",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Download a Planogram template from Settings → Planogram, fill branch SAP code, SKU, shelf max, and MIL days, then upload to preview and apply",
+      },
+      {
+        type: "improvement",
+        description:
+          "The template lists your current shelf plan so you start from live data, and blank MIL days default to 30",
+      },
+      {
+        type: "fix",
+        description:
+          "The old BRS spreadsheet is no longer accepted on Planogram, so the wrong file cannot overwrite shelf plans",
+      },
+    ],
+  },
+  {
     version: "0.33.0",
     date: "2026-09-01",
     releasedAt: "2026-09-01T15:30:00+08:00",

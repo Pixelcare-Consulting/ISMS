@@ -13,6 +13,11 @@ import {
   MODEL_SHEET_NAME,
 } from "@/features/master-data/schemas/model-import.schema";
 import {
+  modelBrandSapPushService,
+  type BrandPushOutcome,
+  type BrandPushRow,
+} from "@/features/master-data/services/model-brand-sap-push.service";
+import {
   buildModelTemplateWorkbook,
   readModelImportWorkbook,
   type ModelTemplateRow,
@@ -35,6 +40,12 @@ const MAX_ROWS = 20_000;
 const APPLY_CHUNK_SIZE = 250;
 /** Lanes for the genuinely per-row updates. Lower this if the pool is small. */
 const WRITE_CONCURRENCY = 8;
+/**
+ * Rows per SAP push chunk. Far smaller than the database chunk: each row can cost a
+ * Service Layer round trip, so this is what keeps one request inside the function
+ * timeout. It also matches the push service's read batch, so a chunk costs one read.
+ */
+const SAP_PUSH_CHUNK = 100;
 const PLAN_NAMESPACE = "model-import";
 
 type ExistingModel = {
@@ -66,9 +77,20 @@ interface RowPlanInternal extends ModelImportRowPlan {
   statusProvided: boolean;
 }
 
+/** What one applied slice of database writes did. The SAP counts are tracked apart. */
+type ModelWriteCounts = Pick<
+  ModelImportResult,
+  "modelsCreated" | "modelsUpdated" | "brandsCreated" | "seriesCreated"
+>;
+
 interface ImportPlan {
   preview: ModelImportPreview;
   writes: RowPlanInternal[];
+  /**
+   * Brand values to reconcile with SAP once the ISMS writes are done — every row
+   * the file keeps, not only the ones ISMS changes. See where it is filled.
+   */
+  sapPushes: BrandPushRow[];
 }
 
 function lookupKey(value: string): string {
@@ -280,6 +302,10 @@ async function buildPlan(tenantId: string, sheet: SheetRows): Promise<ImportPlan
     existingBySku.set(lookupKey(model.skuCode), model);
   }
   const brandByName = new Map(brands.map((b) => [lookupKey(b.name), b.id]));
+  // Brand matching is case-insensitive, so the file's spelling and the stored one can
+  // differ. SAP gets what ISMS actually calls the brand, or the file's spelling when
+  // this import is what creates it.
+  const brandLabelByName = new Map(brands.map((b) => [lookupKey(b.name), b.name]));
   const seriesByName = new Map(seriesList.map((s) => [lookupKey(s.name), s.id]));
   const featureByName = new Map(features.map((f) => [lookupKey(f.name), f.id]));
   const resolutionByName = new Map(resolutions.map((r) => [lookupKey(r.name), r.id]));
@@ -288,6 +314,7 @@ async function buildPlan(tenantId: string, sheet: SheetRows): Promise<ImportPlan
   const errors: ModelImportRowError[] = [];
   const previewRows: ModelImportRowPlan[] = [];
   const writes: RowPlanInternal[] = [];
+  const sapPushes: BrandPushRow[] = [];
   const seenInFile = new Set<string>();
   let createCount = 0;
   let updateCount = 0;
@@ -382,6 +409,15 @@ async function buildPlan(tenantId: string, sheet: SheetRows): Promise<ImportPlan
     }
 
     if (!rowOk) continue;
+
+    // Every row the file keeps carries its brand to SAP, including ones ISMS is
+    // about to skip: "unchanged" is measured against ISMS, and says nothing about
+    // what SAP holds. Re-uploading the file is how a stale or blank `U_Brand` gets
+    // repaired, so the push set cannot be limited to the planned writes.
+    sapPushes.push({
+      sku,
+      brand: brandLabelByName.get(lookupKey(brand)) ?? brand,
+    });
 
     const existing = existingBySku.get(skuKey) ?? null;
     const brandId = brandByName.get(lookupKey(brand)) ?? null;
@@ -511,10 +547,12 @@ async function buildPlan(tenantId: string, sheet: SheetRows): Promise<ImportPlan
       updateCount,
       unchangedCount,
       canApply,
+      sapBrandRowCount: sapPushes.length,
       errors,
       rows: previewRows.slice(0, 200),
     },
     writes,
+    sapPushes,
   };
 }
 
@@ -530,7 +568,7 @@ async function applyWriteSlice(
   tenantId: string,
   actorUserId: string,
   writes: RowPlanInternal[],
-): Promise<Omit<ModelImportResult, "modelsUnchanged">> {
+): Promise<ModelWriteCounts> {
   if (writes.length === 0) {
     return { modelsCreated: 0, modelsUpdated: 0, brandsCreated: 0, seriesCreated: 0 };
   }
@@ -637,6 +675,61 @@ async function applyWriteSlice(
   return { modelsCreated, modelsUpdated, brandsCreated, seriesCreated };
 }
 
+function emptySapOutcome(aborted?: string): BrandPushOutcome {
+  return { updated: 0, matched: 0, missing: 0, failed: 0, failures: [], aborted };
+}
+
+/**
+ * Reconcile one slice of the file's brands with SAP's `U_Brand`.
+ *
+ * Runs after the ISMS writes and never throws: SAP being down, unconfigured, or
+ * missing the UDF leaves the import itself intact and is reported back as a notice.
+ */
+async function applySapSlice(
+  tenantId: string,
+  actorUserId: string,
+  rows: BrandPushRow[],
+): Promise<BrandPushOutcome> {
+  if (rows.length === 0) return emptySapOutcome();
+
+  const creds = await modelBrandSapPushService.getCredentials(tenantId);
+  if (!creds) return emptySapOutcome(modelBrandSapPushService.noConnectionMessage());
+
+  let outcome: BrandPushOutcome;
+  try {
+    outcome = await modelBrandSapPushService.pushBrands(creds, rows);
+  } catch (error) {
+    outcome = emptySapOutcome(
+      error instanceof Error ? error.message : "SAP brand update failed.",
+    );
+  }
+
+  // Writing into another system is worth a record even when nothing changed hands,
+  // but a chunk that only found agreement is not news.
+  if (outcome.updated > 0 || outcome.failed > 0 || outcome.aborted) {
+    await auditService.logMany([
+      {
+        tenantId,
+        userId: actorUserId,
+        action: "product_model.sap_brand_push",
+        entityType: "ProductModel",
+        metadata: {
+          source: "model-import",
+          attempted: rows.length,
+          updated: outcome.updated,
+          matched: outcome.matched,
+          missing: outcome.missing,
+          failed: outcome.failed,
+          failures: outcome.failures,
+          ...(outcome.aborted ? { aborted: outcome.aborted } : {}),
+        },
+      },
+    ]);
+  }
+
+  return outcome;
+}
+
 function emptyChunkProgress(
   total: number,
   planKey: string | undefined,
@@ -647,10 +740,16 @@ function emptyChunkProgress(
     total,
     nextOffset: total,
     done: true,
+    phase: "database",
     modelsCreated: 0,
     modelsUpdated: 0,
     brandsCreated: 0,
     seriesCreated: 0,
+    sapBrandsUpdated: 0,
+    sapBrandsMatched: 0,
+    sapBrandsMissing: 0,
+    sapBrandsFailed: 0,
+    sapBrandFailures: [],
     modelsUnchanged: unchangedCount,
     planKey,
     result: {
@@ -659,6 +758,8 @@ function emptyChunkProgress(
       modelsUnchanged: unchangedCount,
       brandsCreated: 0,
       seriesCreated: 0,
+      sapBrandsUpdated: 0,
+      sapBrandsFailed: 0,
     },
   };
 }
@@ -670,10 +771,16 @@ function planExpiredProgress(offset: number): ModelImportChunkProgress {
     total: 0,
     nextOffset: offset,
     done: false,
+    phase: "database",
     modelsCreated: 0,
     modelsUpdated: 0,
     brandsCreated: 0,
     seriesCreated: 0,
+    sapBrandsUpdated: 0,
+    sapBrandsMatched: 0,
+    sapBrandsMissing: 0,
+    sapBrandsFailed: 0,
+    sapBrandFailures: [],
     planExpired: true,
   };
 }
@@ -749,28 +856,70 @@ export const modelImportService = {
       );
     }
 
-    // The stable list is the planned writes — unchanged rows are not work, and the
-    // plan was built before any chunk wrote, so the totals stay honest throughout.
+    // Two phases share one offset timeline, so the browser's loop and its progress
+    // bar do not need to know there are two. First the ISMS writes — unchanged rows
+    // are not work there — then the SAP brand push, which does cover them.
     const writes = plan.writes;
-    const total = writes.length;
+    const sapPushes = plan.sapPushes;
+    const dbTotal = writes.length;
+    const total = dbTotal + sapPushes.length;
     const unchangedCount = plan.preview.unchangedCount;
 
-    if (total === 0) {
-      invalidatePlan(planKey);
-      return emptyChunkProgress(total, planKey, unchangedCount);
-    }
-    if (input.offset >= total) {
+    if (total === 0 || input.offset >= total) {
       invalidatePlan(planKey);
       return emptyChunkProgress(total, planKey, unchangedCount);
     }
 
-    const chunk = writes.slice(input.offset, input.offset + APPLY_CHUNK_SIZE);
-    const written = await applyWriteSlice(input.tenantId, input.actorUserId, chunk);
-    const nextOffset = input.offset + chunk.length;
+    if (input.offset < dbTotal) {
+      const chunk = writes.slice(input.offset, input.offset + APPLY_CHUNK_SIZE);
+      const written = await applyWriteSlice(input.tenantId, input.actorUserId, chunk);
+      const nextOffset = input.offset + chunk.length;
+      // Only true when nothing is queued for SAP; otherwise the push phase follows.
+      const done = nextOffset >= total;
+      if (done) invalidatePlan(planKey);
+
+      return {
+        processed: nextOffset,
+        total,
+        nextOffset,
+        done,
+        phase: "database",
+        modelsCreated: written.modelsCreated,
+        modelsUpdated: written.modelsUpdated,
+        brandsCreated: written.brandsCreated,
+        seriesCreated: written.seriesCreated,
+        sapBrandsUpdated: 0,
+        sapBrandsMatched: 0,
+        sapBrandsMissing: 0,
+        sapBrandsFailed: 0,
+        sapBrandFailures: [],
+        // Unchanged comes from the pre-write plan, so it is correct on every chunk.
+        modelsUnchanged: unchangedCount,
+        planKey,
+        // Chunk counts are authoritative; client (and apply()) accumulate them.
+        // Final result here is last-chunk only — callers must sum chunk deltas.
+        result: done
+          ? {
+              modelsCreated: written.modelsCreated,
+              modelsUpdated: written.modelsUpdated,
+              modelsUnchanged: unchangedCount,
+              brandsCreated: written.brandsCreated,
+              seriesCreated: written.seriesCreated,
+              sapBrandsUpdated: 0,
+              sapBrandsFailed: 0,
+            }
+          : undefined,
+      };
+    }
+
+    const sapOffset = input.offset - dbTotal;
+    const sapChunk = sapPushes.slice(sapOffset, sapOffset + SAP_PUSH_CHUNK);
+    const outcome = await applySapSlice(input.tenantId, input.actorUserId, sapChunk);
+
+    // An abort applies to the whole tenant, not this slice — walking the remaining
+    // chunks would repeat the same failure and the same message per chunk.
+    const nextOffset = outcome.aborted ? total : input.offset + sapChunk.length;
     const done = nextOffset >= total;
-
-    // A finished import makes the cached diff stale — drop it so re-uploading the
-    // same workbook re-diffs against what was just written.
     if (done) invalidatePlan(planKey);
 
     return {
@@ -778,22 +927,28 @@ export const modelImportService = {
       total,
       nextOffset,
       done,
-      modelsCreated: written.modelsCreated,
-      modelsUpdated: written.modelsUpdated,
-      brandsCreated: written.brandsCreated,
-      seriesCreated: written.seriesCreated,
-      // Unchanged comes from the pre-write plan, so it is correct on every chunk.
+      phase: "sap",
+      modelsCreated: 0,
+      modelsUpdated: 0,
+      brandsCreated: 0,
+      seriesCreated: 0,
+      sapBrandsUpdated: outcome.updated,
+      sapBrandsMatched: outcome.matched,
+      sapBrandsMissing: outcome.missing,
+      sapBrandsFailed: outcome.failed,
+      sapBrandFailures: outcome.failures,
+      sapBrandNotice: outcome.aborted,
       modelsUnchanged: unchangedCount,
       planKey,
-      // Chunk counts are authoritative; client (and apply()) accumulate them.
-      // Final result here is last-chunk only — callers must sum chunk deltas.
       result: done
         ? {
-            modelsCreated: written.modelsCreated,
-            modelsUpdated: written.modelsUpdated,
+            modelsCreated: 0,
+            modelsUpdated: 0,
             modelsUnchanged: unchangedCount,
-            brandsCreated: written.brandsCreated,
-            seriesCreated: written.seriesCreated,
+            brandsCreated: 0,
+            seriesCreated: 0,
+            sapBrandsUpdated: outcome.updated,
+            sapBrandsFailed: outcome.failed,
           }
         : undefined,
     };
@@ -815,6 +970,8 @@ export const modelImportService = {
     let brandsCreated = 0;
     let seriesCreated = 0;
     let modelsUnchanged = 0;
+    let sapBrandsUpdated = 0;
+    let sapBrandsFailed = 0;
 
     for (;;) {
       const progress = await this.applyChunk({
@@ -832,6 +989,8 @@ export const modelImportService = {
       modelsUpdated += progress.modelsUpdated;
       brandsCreated += progress.brandsCreated;
       seriesCreated += progress.seriesCreated;
+      sapBrandsUpdated += progress.sapBrandsUpdated;
+      sapBrandsFailed += progress.sapBrandsFailed;
       if (progress.done) {
         return {
           modelsCreated,
@@ -839,6 +998,8 @@ export const modelImportService = {
           modelsUnchanged,
           brandsCreated,
           seriesCreated,
+          sapBrandsUpdated,
+          sapBrandsFailed,
         };
       }
       offset = progress.nextOffset;

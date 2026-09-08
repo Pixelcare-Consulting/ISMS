@@ -3,11 +3,12 @@ import type { ModuleGuideContent } from "@/content/module-guides/types";
 export const PLANNING_MODULE_GUIDE: ModuleGuideContent = {
   title: "Planning & Forecast",
   description:
-    "Import forecast data, run shelf allocation against planogram capacity, and generate suggested auto-replenish drafts for branches.",
+    "Import the official Forecast template (period, branch SAP code, revenue target), run shelf allocation against planogram capacity, and generate suggested auto-replenish drafts for branches.",
   tips: [
-    { label: "Refresh forecast inputs before running allocation" },
+    { label: "Download the Forecast template, then upload the same file to preview and apply" },
+    { label: "Each row is one branch for a single planning period, with a revenue target" },
+    { label: "Shelf max and MIL stay on Planogram — this file does not change the shelf plan" },
     { label: "Review drafts under Suggested orders before TL / SP approval" },
-    { label: "Keep planograms current so gaps and suggestions stay accurate" },
   ],
   storageKey: "module-guide.planning",
 };

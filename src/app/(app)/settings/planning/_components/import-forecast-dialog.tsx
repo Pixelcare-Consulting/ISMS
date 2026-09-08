@@ -6,11 +6,11 @@ import { Download, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import {
-  applyModelImportChunkAction,
-  downloadModelImportTemplateAction,
-  previewModelImportAction,
-} from "@/features/master-data/actions/model-import.actions";
-import type { ModelImportPreview } from "@/features/master-data/schemas/model-import.schema";
+  applyForecastImportChunkAction,
+  downloadForecastImportTemplateAction,
+  previewForecastImportAction,
+} from "@/features/forecast/actions/forecast-import.actions";
+import type { ForecastImportPreview } from "@/features/forecast/schemas/forecast-import.schema";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -43,7 +43,22 @@ function downloadWorkbook(base64: string, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-export function ImportModelsDialog({
+function actionLabel(action: "create" | "update" | "skip"): string {
+  switch (action) {
+    case "create":
+      return "Create";
+    case "update":
+      return "Update";
+    case "skip":
+      return "Unchanged";
+    default: {
+      const _exhaustive: never = action;
+      return _exhaustive;
+    }
+  }
+}
+
+export function ImportForecastDialog({
   open,
   onOpenChange,
 }: {
@@ -53,13 +68,12 @@ export function ImportModelsDialog({
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<ModelImportPreview | null>(null);
+  const [preview, setPreview] = useState<ForecastImportPreview | null>(null);
   const [pending, startTransition] = useTransition();
   const [applyProgress, setApplyProgress] = useState<{
     processed: number;
     total: number;
     elapsedMs: number;
-    phase: "database" | "sap";
   } | null>(null);
 
   const applying = applyProgress !== null;
@@ -80,8 +94,8 @@ export function ImportModelsDialog({
 
   function handleTemplate() {
     startTransition(async () => {
-      const base64 = await downloadModelImportTemplateAction();
-      downloadWorkbook(base64, "models-import-template.xlsx");
+      const base64 = await downloadForecastImportTemplateAction();
+      downloadWorkbook(base64, "forecast-import-template.xlsx");
     });
   }
 
@@ -91,7 +105,7 @@ export function ImportModelsDialog({
     const formData = new FormData();
     formData.set("file", selected);
     startTransition(async () => {
-      const result = await previewModelImportAction(formData);
+      const result = await previewForecastImportAction(formData);
       if ("error" in result) {
         toast.error(result.error);
         reset();
@@ -111,20 +125,11 @@ export function ImportModelsDialog({
       let offset = 0;
       let lastProcessed = 0;
       let lastTotal = 0;
-      let modelsCreated = 0;
-      let modelsUpdated = 0;
-      let brandsCreated = 0;
-      let seriesCreated = 0;
-      let sapUpdated = 0;
-      let sapFailed = 0;
-      let sapMissing = 0;
-      let sapNotice: string | undefined;
-      let sapFirstFailure: string | undefined;
+      let created = 0;
+      let updated = 0;
 
-      setApplyProgress({ processed: 0, total: 0, elapsedMs: 0, phase: "database" });
+      setApplyProgress({ processed: 0, total: 0, elapsedMs: 0 });
 
-      // Normally only the plan key travels; the workbook is re-sent solely when the
-      // server reports its cached plan is gone, so a 5 MB file is not uploaded per chunk.
       let planKey = preview.planKey;
       let resendFile = !planKey;
 
@@ -135,7 +140,7 @@ export function ImportModelsDialog({
           if (planKey) formData.set("planKey", planKey);
           formData.set("offset", String(offset));
 
-          const progress = await applyModelImportChunkAction(formData);
+          const progress = await applyForecastImportChunkAction(formData);
           if ("error" in progress) {
             toast.error(
               `${progress.error} Stopped after ${lastProcessed} of ${lastTotal || "?"}. You can try Apply again.`,
@@ -145,8 +150,6 @@ export function ImportModelsDialog({
           }
 
           if (progress.planExpired) {
-            // Nothing was written for this offset. Retry it once with the workbook
-            // attached; a second miss means the server could not rebuild the plan.
             if (resendFile) {
               toast.error(
                 `Import failed. Stopped after ${lastProcessed} of ${lastTotal || "?"}. You can try Apply again.`,
@@ -161,18 +164,8 @@ export function ImportModelsDialog({
           resendFile = false;
           if (progress.planKey) planKey = progress.planKey;
 
-          modelsCreated += progress.modelsCreated;
-          modelsUpdated += progress.modelsUpdated;
-          brandsCreated += progress.brandsCreated;
-          seriesCreated += progress.seriesCreated;
-          sapUpdated += progress.sapBrandsUpdated;
-          sapFailed += progress.sapBrandsFailed;
-          sapMissing += progress.sapBrandsMissing;
-          if (progress.sapBrandNotice) sapNotice = progress.sapBrandNotice;
-          if (!sapFirstFailure && progress.sapBrandFailures.length > 0) {
-            const [first] = progress.sapBrandFailures;
-            sapFirstFailure = `${first.sku}: ${first.message}`;
-          }
+          created += progress.created;
+          updated += progress.updated;
           lastProcessed = progress.processed;
           lastTotal = progress.total;
 
@@ -180,41 +173,17 @@ export function ImportModelsDialog({
             processed: progress.processed,
             total: progress.total,
             elapsedMs: Date.now() - startedAtMs,
-            phase: progress.phase,
           });
 
           if (progress.done) {
+            const period = progress.periodLabel || preview.periodLabel;
             const parts = [
-              `${modelsCreated} created`,
-              `${modelsUpdated} updated`,
+              `Period ${period}`,
+              `${created} created`,
+              `${updated} updated`,
               `${unchangedCount} unchanged`,
             ];
-            if (brandsCreated > 0) {
-              parts.push(`${brandsCreated} brand${brandsCreated === 1 ? "" : "s"} added`);
-            }
-            if (seriesCreated > 0) {
-              parts.push(`${seriesCreated} series added`);
-            }
-            if (sapUpdated > 0) {
-              parts.push(`${sapUpdated} SAP brand${sapUpdated === 1 ? "" : "s"} updated`);
-            }
             toast.success(parts.join(" · "));
-
-            // The SAP push is best-effort, so anything it could not do is a warning
-            // alongside the success above — never a failed import.
-            if (sapNotice) {
-              toast.warning(`Brands were not pushed to SAP. ${sapNotice}`);
-            } else if (sapFailed > 0) {
-              toast.warning(
-                `${sapFailed} SAP brand update${sapFailed === 1 ? "" : "s"} failed` +
-                  `${sapFirstFailure ? ` — ${sapFirstFailure}` : "."}`,
-              );
-            } else if (sapMissing > 0) {
-              toast.warning(
-                `${sapMissing} SKU${sapMissing === 1 ? " is" : "s are"} not in SAP yet, ` +
-                  `so ${sapMissing === 1 ? "its brand" : "their brands"} were not pushed.`,
-              );
-            }
             setApplyProgress(null);
             handleClose(false);
             router.refresh();
@@ -249,24 +218,20 @@ export function ImportModelsDialog({
         }}
       >
         <DialogHeader>
-          <DialogTitle>Import models</DialogTitle>
+          <DialogTitle>Import forecast</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="text-muted-foreground space-y-2 text-sm">
             <p>
-              Download the <strong>Models</strong> template, fill in SKU, name, brand, and
-              series (optional feature, resolution, actual size, and status), then upload
-              that same file. Other spreadsheet layouts are not accepted.
+              Download the <strong>Forecast</strong> template, fill in period, branch SAP
+              code, and revenue target, then upload that same file. The old BRS wide
+              spreadsheet is not accepted here.
             </p>
             <p>
-              Unknown SKUs are created; existing ones update when values differ. Blank
-              optional cells stay unchanged.
-            </p>
-            <p>
-              Brand is also written to the item&apos;s <strong>U_Brand</strong> field in
-              SAP, for every row in the file. If SAP is unavailable the import still
-              finishes and reports what it could not push.
+              Branches must already exist — this import does not create branches, SKUs, or
+              planogram rows. Shelf max stays on Planogram. Rows left out of the file are
+              not removed.
             </p>
           </div>
 
@@ -302,11 +267,7 @@ export function ImportModelsDialog({
 
           {applyProgress ? (
             <ImportApplyProgress
-              label={
-                applyProgress.phase === "sap"
-                  ? "Updating brands in SAP…"
-                  : "Importing…"
-              }
+              label="Importing…"
               processed={applyProgress.processed}
               total={applyProgress.total}
               elapsedMs={applyProgress.elapsedMs}
@@ -316,6 +277,10 @@ export function ImportModelsDialog({
           {preview ? (
             <div className="space-y-4">
               <div className="flex flex-wrap gap-4 rounded-lg border px-4 py-3 text-sm">
+                <span>
+                  Period <strong>{preview.periodLabel || "—"}</strong>
+                  {preview.periodWillActivate ? " (will be set active)" : ""}
+                </span>
                 <span>
                   <strong>{preview.rowCount}</strong> rows
                 </span>
@@ -328,12 +293,6 @@ export function ImportModelsDialog({
                 <span className="text-muted-foreground">
                   {preview.unchangedCount} unchanged (skipped)
                 </span>
-                {preview.sapBrandRowCount > 0 ? (
-                  <span className="text-muted-foreground">
-                    {preview.sapBrandRowCount} brand
-                    {preview.sapBrandRowCount === 1 ? "" : "s"} checked against SAP
-                  </span>
-                ) : null}
               </div>
 
               {hasErrors ? (
@@ -348,7 +307,7 @@ export function ImportModelsDialog({
                       <li key={`${error.sheet}-${error.rowNumber}-${index}`}>
                         <span className="text-muted-foreground">
                           {error.sheet} · row {error.rowNumber}
-                          {error.sku !== "—" ? ` · ${error.sku}` : ""}
+                          {error.sapCode !== "—" ? ` · ${error.sapCode}` : ""}
                         </span>{" "}
                         {error.message}
                       </li>
@@ -367,20 +326,22 @@ export function ImportModelsDialog({
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>SKU</TableHead>
-                        <TableHead>Name</TableHead>
+                        <TableHead>SAP code</TableHead>
+                        <TableHead>Branch</TableHead>
+                        <TableHead className="text-right">Target</TableHead>
                         <TableHead>Action</TableHead>
                         {showChangesColumn ? <TableHead>Changes</TableHead> : null}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {preview.rows.map((row) => (
-                        <TableRow key={`${row.sku}-${row.rowNumber}`}>
-                          <TableCell className="font-mono text-xs">{row.sku}</TableCell>
-                          <TableCell>{row.name}</TableCell>
-                          <TableCell className="text-sm capitalize">
-                            {row.action === "skip" ? "Unchanged" : row.action}
+                        <TableRow key={`${row.sapCode}-${row.rowNumber}`}>
+                          <TableCell className="font-mono text-xs">{row.sapCode}</TableCell>
+                          <TableCell className="text-sm">{row.branchName}</TableCell>
+                          <TableCell className="text-right tabular-nums text-sm">
+                            {row.revenueTarget.toLocaleString("en-PH")}
                           </TableCell>
+                          <TableCell className="text-sm">{actionLabel(row.action)}</TableCell>
                           {showChangesColumn ? (
                             <TableCell className="text-sm">
                               {row.changes.length === 0 ? (
