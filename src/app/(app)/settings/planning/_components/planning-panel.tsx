@@ -4,18 +4,19 @@ import Link from "next/link";
 
 import { useRouter } from "next/navigation";
 
-import { useRef, useTransition } from "react";
+import { useState, useTransition } from "react";
 
+import { Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import {
   generateSuggestedOrdersAction,
-  importBrsCsvAction,
   runAllocationAction,
   submitSuggestedOrdersAction,
 } from "@/features/forecast/actions/forecast.actions";
 
 import { AllocationGapsTable } from "@/features/forecast/components/allocation-gaps-table";
+import { ImportForecastDialog } from "@/app/(app)/settings/planning/_components/import-forecast-dialog";
 
 import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
@@ -101,7 +102,7 @@ export function PlanningPanel({
 }: PlanningPanelProps) {
   const router = useRouter();
 
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
 
   const [pending, startTransition] = useTransition();
   const targetSelection = useTableSelection(targets.map((target) => target.id));
@@ -130,24 +131,6 @@ export function PlanningPanel({
     });
   }
 
-  function handleCsvUpload(formData: FormData) {
-    startTransition(async () => {
-      const result = await importBrsCsvAction(formData);
-
-      if (result.error) {
-        toast.error(result.error);
-
-        return;
-      }
-
-      if (!("label" in result)) return;
-
-      toast.success(`Imported period ${result.label}`);
-
-      router.refresh();
-    });
-  }
-
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -164,34 +147,15 @@ export function PlanningPanel({
       </div>
 
       <div className="flex flex-wrap gap-1 rounded-xl border bg-card p-1.5 shadow-sm">
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".csv,text/csv"
-          className="hidden"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-
-            if (!file) return;
-
-            const fd = new FormData();
-
-            fd.set("file", file);
-
-            handleCsvUpload(fd);
-
-            e.target.value = "";
-          }}
-        />
-
         <Button
           size="sm"
           variant="outline"
           className="rounded-lg"
           disabled={pending}
-          onClick={() => fileRef.current?.click()}
+          onClick={() => setImporting(true)}
         >
-          Upload forecast CSV
+          <Upload className="mr-1 size-4" />
+          Import forecast
         </Button>
 
         {period ? (
@@ -312,10 +276,12 @@ export function PlanningPanel({
         </>
       ) : (
         <p className="text-sm text-muted-foreground">
-          No active planning period. Upload the BRS Planogram &amp; Forecast CSV
-          to begin.
+          No active planning period. Download the Forecast template to set the period
+          and each branch&apos;s revenue target.
         </p>
       )}
+
+      <ImportForecastDialog open={importing} onOpenChange={setImporting} />
     </div>
   );
 }

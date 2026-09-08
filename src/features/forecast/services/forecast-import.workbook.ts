@@ -1,11 +1,11 @@
 import ExcelJS from "exceljs";
 
 import {
-  PLANOGRAM_IMPORT_ALIAS_MAP,
-  PLANOGRAM_IMPORT_REQUIRED_COLUMNS,
-  PLANOGRAM_SHEET_HEADERS,
-  PLANOGRAM_SHEET_NAME,
-} from "@/features/planogram/schemas/planogram-import.schema";
+  FORECAST_IMPORT_ALIAS_MAP,
+  FORECAST_IMPORT_REQUIRED_COLUMNS,
+  FORECAST_SHEET_HEADERS,
+  FORECAST_SHEET_NAME,
+} from "@/features/forecast/schemas/forecast-import.schema";
 import { normalizeHeader, parseCsvTable } from "@/lib/shared/parse-csv";
 
 export interface SheetRows {
@@ -14,17 +14,20 @@ export interface SheetRows {
   rows: { rowNumber: number; values: Record<string, string> }[];
 }
 
-export interface PlanogramTemplateRow {
+export interface ForecastTemplateRow {
+  period: string;
   sapCode: string;
-  sku: string;
-  maxQty: number;
-  milDays: number;
+  revenueTarget: number;
+  branchName: string;
 }
 
 const EMPTY_SHEET: SheetRows = { present: false, columns: new Set(), rows: [] };
 
 const BRS_LAYOUT_ERROR =
-  "This file is the old BRS forecast/planogram layout, not the Planogram template. Download the template (sap_code, sku, max_qty, mil_days). Branch revenue belongs on Planning with the Forecast template.";
+  "This file is the old BRS forecast/planogram layout, not the Forecast template. Download the template (period, sap_code, revenue_target). Use Planogram for shelf max and MIL days.";
+
+const PLANOGRAM_FILE_ERROR =
+  "This file looks like the Planogram template, not Forecast. Download the Forecast template (period, sap_code, revenue_target). Shelf max belongs under Planogram.";
 
 /** Headers that appear on the wide Dealer 1 BRS sheet (Brand / SKU / Model / Series / SRP + Y/N pairs). */
 const BRS_WIDE_HEADER_HINTS = new Set([
@@ -33,6 +36,7 @@ const BRS_WIDE_HEADER_HINTS = new Set([
   "modelname",
   "series",
   "srp",
+  "sku",
   "target",
   "forecast",
   "revenue",
@@ -74,7 +78,7 @@ function readSheet(sheet: ExcelJS.Worksheet | undefined): {
       for (const cell of cells) {
         rawHeaders.push(normalizeHeader(cell ?? ""));
       }
-      keys = cells.map((cell) => PLANOGRAM_IMPORT_ALIAS_MAP[normalizeHeader(cell ?? "")] ?? null);
+      keys = cells.map((cell) => FORECAST_IMPORT_ALIAS_MAP[normalizeHeader(cell ?? "")] ?? null);
       for (const key of keys) if (key) columns.add(key);
       return;
     }
@@ -112,52 +116,64 @@ function looksLikeBrsWideLayout(columns: Set<string>, rawHeaders: string[]): boo
   const brsHits = rawHeaders.filter((header) => BRS_WIDE_HEADER_HINTS.has(header));
   const ynPairs = rawHeaders.filter((header) => header === "y" || header === "n").length;
   const missingTemplateKeys =
-    !columns.has("sap_code") || !columns.has("max_qty");
+    !columns.has("sap_code") || !columns.has("revenue_target") || !columns.has("period");
 
-  if (brsHits.length >= 2 && missingTemplateKeys) return true;
-  if (ynPairs >= 2 && missingTemplateKeys) return true;
+  if (!missingTemplateKeys) return false;
+  if (brsHits.length >= 2) return true;
+  if (ynPairs >= 2) return true;
+  if (rawHeaders[0] === "period" && !columns.has("sap_code")) return true;
   return false;
+}
+
+function looksLikePlanogramTemplate(columns: Set<string>, rawHeaders: string[]): boolean {
+  const hasPlanogramCols = rawHeaders.includes("sku") && rawHeaders.includes("maxqty");
+  const missingForecast = !columns.has("period") || !columns.has("revenue_target");
+  return hasPlanogramCols && missingForecast;
 }
 
 function assertOurTemplate(columns: Set<string>, rawHeaders: string[]): void {
   if (looksLikeBrsWideLayout(columns, rawHeaders)) {
     throw new Error(BRS_LAYOUT_ERROR);
   }
+  if (looksLikePlanogramTemplate(columns, rawHeaders)) {
+    throw new Error(PLANOGRAM_FILE_ERROR);
+  }
 
-  const missing = PLANOGRAM_IMPORT_REQUIRED_COLUMNS.filter((col) => !columns.has(col));
+  const missing = FORECAST_IMPORT_REQUIRED_COLUMNS.filter((col) => !columns.has(col));
   if (missing.length > 0) {
     throw new Error(
-      `The Planogram sheet needs columns: ${PLANOGRAM_IMPORT_REQUIRED_COLUMNS.join(", ")}. Missing: ${missing.join(", ")}. Download the template.`,
+      `The Forecast sheet needs columns: ${FORECAST_IMPORT_REQUIRED_COLUMNS.join(", ")}. Missing: ${missing.join(", ")}. Download the template.`,
     );
   }
 }
 
-/** Build the downloadable Planogram template (sample row when empty). */
-export async function buildPlanogramTemplateWorkbook(
-  rows: PlanogramTemplateRow[],
+/** Build the downloadable Forecast template (sample row when empty). */
+export async function buildForecastTemplateWorkbook(
+  rows: ForecastTemplateRow[],
 ): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "ISMS";
   workbook.created = new Date();
 
-  const sheet = workbook.addWorksheet(PLANOGRAM_SHEET_NAME);
-  sheet.addRow([...PLANOGRAM_SHEET_HEADERS]);
+  const sheet = workbook.addWorksheet(FORECAST_SHEET_NAME);
+  sheet.addRow([...FORECAST_SHEET_HEADERS]);
   for (const row of rows) {
-    sheet.addRow([row.sapCode, row.sku, row.maxQty, row.milDays]);
+    sheet.addRow([row.period, row.sapCode, row.revenueTarget, row.branchName]);
   }
   if (rows.length === 0) {
-    sheet.addRow(["WMK-001", "100L10E", 1, 30]);
+    sheet.addRow(["Dec-25", "WMK-001", 1000000, ""]);
   }
-  styleHeader(sheet, [14, 14, 12, 12]);
+  styleHeader(sheet, [14, 14, 16, 28]);
 
   const buffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(buffer);
 }
 
 /**
- * Read an .xlsx or .csv upload. Accepts only our Planogram template columns.
+ * Read an .xlsx or .csv upload. Accepts only our Forecast template columns.
+ * `branch_name` is ignored even if present.
  */
-export async function readPlanogramImportWorkbook(file: Buffer): Promise<SheetRows> {
+export async function readForecastImportWorkbook(file: Buffer): Promise<SheetRows> {
   if (!looksLikeXlsx(file)) {
     const table = parseCsvTable(file.toString("utf8"));
     if (table.headers.length === 0) {
@@ -166,7 +182,7 @@ export async function readPlanogramImportWorkbook(file: Buffer): Promise<SheetRo
     const columns = new Set<string>();
     const rawHeaders = table.headers.map((header) => normalizeHeader(header));
     for (const header of table.headers) {
-      const key = PLANOGRAM_IMPORT_ALIAS_MAP[normalizeHeader(header)];
+      const key = FORECAST_IMPORT_ALIAS_MAP[normalizeHeader(header)];
       if (key) columns.add(key);
     }
     assertOurTemplate(columns, rawHeaders);
@@ -174,7 +190,7 @@ export async function readPlanogramImportWorkbook(file: Buffer): Promise<SheetRo
     const rows: SheetRows["rows"] = table.records.map((record) => {
       const values: Record<string, string> = {};
       for (const [rawKey, value] of Object.entries(record.values)) {
-        const canonical = PLANOGRAM_IMPORT_ALIAS_MAP[rawKey];
+        const canonical = FORECAST_IMPORT_ALIAS_MAP[rawKey];
         if (canonical) values[canonical] = value;
       }
       return { rowNumber: record.rowNumber, values };
@@ -191,7 +207,7 @@ export async function readPlanogramImportWorkbook(file: Buffer): Promise<SheetRo
       (candidate) => candidate.name.trim().toLowerCase() === name.toLowerCase(),
     );
 
-  const named = byName(PLANOGRAM_SHEET_NAME);
+  const named = byName(FORECAST_SHEET_NAME);
   if (named) {
     const { sheet, rawHeaders } = readSheet(named);
     assertOurTemplate(sheet.columns, rawHeaders);
@@ -200,7 +216,7 @@ export async function readPlanogramImportWorkbook(file: Buffer): Promise<SheetRo
 
   for (const candidate of workbook.worksheets) {
     const { sheet, rawHeaders } = readSheet(candidate);
-    if (PLANOGRAM_IMPORT_REQUIRED_COLUMNS.every((col) => sheet.columns.has(col))) {
+    if (FORECAST_IMPORT_REQUIRED_COLUMNS.every((col) => sheet.columns.has(col))) {
       assertOurTemplate(sheet.columns, rawHeaders);
       return sheet;
     }
@@ -208,7 +224,7 @@ export async function readPlanogramImportWorkbook(file: Buffer): Promise<SheetRo
 
   const first = readSheet(workbook.worksheets[0]);
   if (!first.sheet.present) {
-    throw new Error(`Add a sheet named "${PLANOGRAM_SHEET_NAME}" with the template columns.`);
+    throw new Error(`Add a sheet named "${FORECAST_SHEET_NAME}" with the template columns.`);
   }
   assertOurTemplate(first.sheet.columns, first.rawHeaders);
   return first.sheet;

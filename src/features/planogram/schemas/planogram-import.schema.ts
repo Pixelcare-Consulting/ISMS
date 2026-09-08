@@ -2,10 +2,11 @@
  * Workbook contract for bulk planogram import (Settings → Planogram).
  *
  * Sheet "Planogram" — one row per branch + SKU. Template-only: the old BRS
- * wide Y/N layout is rejected here (that file still belongs on Planning forecast).
+ * wide Y/N layout is rejected here.
  *
  * SKUs and branch SAP codes must already exist. Rows not in the file are not
- * deleted. Blank mil_days defaults to 30.
+ * deleted. Blank mil_days defaults to 30. Branch revenue uses the Forecast
+ * template on Planning.
  */
 
 export const PLANOGRAM_SHEET_NAME = "Planogram";

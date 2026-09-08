@@ -99,31 +99,6 @@ export async function listBranchesForPlanningAction() {
   return branches.map((b) => ({ id: b.id, name: b.name }));
 }
 
-export async function importBrsCsvAction(formData: FormData) {
-  const session = await requireForecastManage();
-  const file = formData.get("file");
-  if (!(file instanceof File)) {
-    return { error: "CSV file required" };
-  }
-
-  const content = await file.text();
-  if (!content.trim()) {
-    return { error: "CSV file is empty" };
-  }
-
-  try {
-    const result = await forecastService.importBrsCsv(
-      session.user.tenantId,
-      session.user.id,
-      content,
-    );
-    revalidatePlanning();
-    return { success: true as const, ...result };
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : "Import failed" };
-  }
-}
-
 export async function runAllocationAction(periodId: string) {
   const session = await requireForecastManage();
 

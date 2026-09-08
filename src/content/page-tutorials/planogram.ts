@@ -19,8 +19,8 @@ export const PLANOGRAM_PAGE_TUTORIAL: PageTutorialContent = {
         "Use Import → Download template to get a Planogram spreadsheet (branch SAP code, SKU, max qty, MIL days) prefilled with your current rows.",
         "SKUs and branches must already exist from Models, Branches, or SAP. The template does not create new products.",
         "Upload that same file to preview creates and updates. Rows you leave out stay as they are.",
-        "Open a branch to add a model, edit max qty or MIL, or remove a SKU one at a time.",
-        "Forecast still uses the BRS file on Planning — do not upload that wide spreadsheet here.",
+        "Open a branch to add a model, edit max qty or MIL, or remove a SKU one at a time. Add model needs Allowed models first — if that list is empty, you get a shortcut to open it.",
+        "Forecast uses the official template on Planning — do not upload that file here.",
       ],
     },
     {

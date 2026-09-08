@@ -8,7 +8,8 @@ export const PLANOGRAM_MODULE_GUIDE: ModuleGuideContent = {
     { label: "Download the Planogram template, then upload the same file to preview and apply" },
     { label: "Each row is a branch SAP code plus a SKU, with shelf max and optional MIL days (blank = 30)" },
     { label: "SKUs must already exist — this file does not create products" },
-    { label: "Use Planning → Import forecast for the old BRS spreadsheet, not this page" },
+    { label: "Use Planning → Import forecast for period and revenue targets, not this page" },
+    { label: "Add model on a branch needs Allowed models first" },
     { label: "Off-planogram badges on Stock units follow this list" },
   ],
   storageKey: "module-guide.planogram",
@@ -20,7 +21,7 @@ export const BRANCH_PLANOGRAM_MODULE_GUIDE: ModuleGuideContent = {
   description:
     "Authorized models, shelf capacity (max qty), and minimum inventory life (MIL) aging rules for this branch.",
   tips: [
-    { label: "Add or remove models the branch is allowed to carry" },
+    { label: "Add or remove models the branch is allowed to carry — Add model requires Allowed models first" },
     { label: "Capacity and MIL feed Planning allocation and suggested orders" },
     { label: "Bulk updates use Import on Settings → Planogram (official template)" },
   ],

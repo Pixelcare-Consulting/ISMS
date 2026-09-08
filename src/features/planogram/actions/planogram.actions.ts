@@ -4,7 +4,10 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { branchService } from "@/features/branches/services/branch.service";
-import { planogramService } from "@/features/planogram/services/planogram.service";
+import {
+  PlanogramModelNotAllowedError,
+  planogramService,
+} from "@/features/planogram/services/planogram.service";
 import { getUserBranchIds } from "@/lib/aor/scope";
 import { hasPermission, requirePermission, requirePlanogramView } from "@/lib/auth/permissions";
 
@@ -91,6 +94,9 @@ export async function addPlanogramModelAction(input: unknown) {
     revalidatePlanogram(parsed.data.branchId);
     return { success: true as const };
   } catch (e) {
+    if (e instanceof PlanogramModelNotAllowedError) {
+      return { error: e.message, emptyReason: e.emptyReason };
+    }
     return { error: e instanceof Error ? e.message : "Failed to add model" };
   }
 }

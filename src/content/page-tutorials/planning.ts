@@ -17,7 +17,7 @@ export const PLANNING_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "How to use it",
       bullets: [
-        "Import or refresh forecast inputs before running allocation. Use the BRS forecast spreadsheet here — shelf max and MIL now use the Planogram template under Settings → Planogram.",
+        "Use Import forecast → Download template for the Forecast spreadsheet (planning period, branch SAP code, revenue target). Shelf max and MIL stay on the Planogram template under Settings → Planogram.",
         "Generate suggested orders, then review them under Planning → Suggested orders.",
         "Branch orders still go through TL / SP approval after suggestions become real orders.",
       ],

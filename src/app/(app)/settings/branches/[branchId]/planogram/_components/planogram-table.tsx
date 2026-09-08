@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import {
@@ -12,6 +12,7 @@ import {
   updatePlanogramMaxQtyAction,
   updatePlanogramMilAction,
 } from "@/features/planogram/actions/planogram.actions";
+import type { PlanogramAddEmptyReason } from "@/features/planogram/services/planogram.service";
 import {
   AppDataTable,
   AppDataTableBody,
@@ -28,6 +29,16 @@ import {
   useTableSelection,
 } from "@/components/data-table";
 import { GlobalTableHead, useClientTableSort } from "@/lib/data-table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,16 +82,33 @@ function formatPeso(value: number | null) {
   }).format(value);
 }
 
+function messageForAddEmptyReason(reason: PlanogramAddEmptyReason): string {
+  switch (reason) {
+    case "no_allowed_models":
+      return "This branch has no allowed models. Add active SKUs on Allowed models first.";
+    case "no_active_skus":
+      return "There are no active SKUs in Models.";
+    case "all_already_on_planogram":
+      return "All allowed active SKUs are already on this planogram.";
+    default: {
+      const _exhaustive: never = reason;
+      return _exhaustive;
+    }
+  }
+}
+
 export function PlanogramTable({
   branchId,
   rows,
   canManage,
   offPlanogramSerialCount = 0,
+  onOpenAllowedModels,
 }: {
   branchId: string;
   rows: PlanogramRow[];
   canManage: boolean;
   offPlanogramSerialCount?: number;
+  onOpenAllowedModels?: () => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -243,6 +271,10 @@ export function PlanogramTable({
         <AddPlanogramDialog
           branchId={branchId}
           onClose={() => setShowAdd(false)}
+          onOpenAllowedModels={() => {
+            setShowAdd(false);
+            onOpenAllowedModels?.();
+          }}
           onAdded={() => {
             setShowAdd(false);
             router.refresh();
@@ -406,24 +438,50 @@ function AddPlanogramDialog({
   branchId,
   onClose,
   onAdded,
+  onOpenAllowedModels,
 }: {
   branchId: string;
   onClose: () => void;
   onAdded: () => void;
+  onOpenAllowedModels?: () => void;
 }) {
   const [pending, startTransition] = useTransition();
+  const [loading, setLoading] = useState(true);
   const [models, setModels] = useState<
     { id: string; skuCode: string; name: string }[]
   >([]);
   const [modelId, setModelId] = useState("");
   const [maxQty, setMaxQty] = useState(5);
   const [daysThreshold, setDaysThreshold] = useState(30);
+  const [emptyReason, setEmptyReason] = useState<PlanogramAddEmptyReason | null>(
+    null,
+  );
 
-  async function loadModels() {
-    const list = await listActiveModelsForPlanogramAction(branchId);
-    setModels(list.map((m) => ({ id: m.id, skuCode: m.skuCode, name: m.name })));
-    if (list[0]) setModelId(list[0].id);
-  }
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadModels() {
+      setLoading(true);
+      try {
+        const result = await listActiveModelsForPlanogramAction(branchId);
+        if (cancelled) return;
+        setModels(result.models.map((m) => ({ id: m.id, skuCode: m.skuCode, name: m.name })));
+        setModelId(result.models[0]?.id ?? "");
+        setEmptyReason(result.emptyReason);
+      } catch (error) {
+        if (cancelled) return;
+        toast.error(error instanceof Error ? error.message : "Failed to load active SKUs");
+        setEmptyReason(null);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    void loadModels();
+    return () => {
+      cancelled = true;
+    };
+  }, [branchId]);
 
   function submit() {
     startTransition(async () => {
@@ -433,7 +491,11 @@ function AddPlanogramDialog({
         maxQty,
         daysThreshold,
       });
-      if (result.error) {
+      if ("emptyReason" in result && result.emptyReason) {
+        setEmptyReason(result.emptyReason);
+        return;
+      }
+      if ("error" in result && result.error) {
         toast.error(result.error);
         return;
       }
@@ -443,55 +505,89 @@ function AddPlanogramDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md space-y-4 rounded-xl border bg-card p-6 shadow-lg">
-        <h3 className="font-medium">Add model to planogram</h3>
-        {models.length === 0 ? (
-          <Button variant="outline" type="button" onClick={loadModels}>
-            Load active SKUs
-          </Button>
-        ) : (
-          <>
-            <SearchableSelect
-              label="Model"
-              options={models.map((m) => ({
-                id: m.id,
-                label: `${m.skuCode} — ${m.name}`,
-              }))}
-              value={modelId}
-              onChange={setModelId}
-              placeholder="Select model…"
-              searchPlaceholder="Search models…"
-            />
-            <div>
-              <Label>Max qty</Label>
-              <Input
-                type="number"
-                min={1}
-                value={maxQty}
-                onChange={(e) => setMaxQty(Number(e.target.value))}
+    <>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+        <div className="w-full max-w-md space-y-4 rounded-xl border bg-card p-6 shadow-lg">
+          <h3 className="font-medium">Add model to planogram</h3>
+          {loading ? (
+            <p className="text-sm text-muted-foreground">Loading active SKUs…</p>
+          ) : models.length > 0 ? (
+            <>
+              <SearchableSelect
+                label="Model"
+                options={models.map((m) => ({
+                  id: m.id,
+                  label: `${m.skuCode} — ${m.name}`,
+                }))}
+                value={modelId}
+                onChange={setModelId}
+                placeholder="Select model…"
+                searchPlaceholder="Search models…"
               />
-            </div>
-            <div>
-              <Label>MIL days threshold</Label>
-              <Input
-                type="number"
-                min={1}
-                value={daysThreshold}
-                onChange={(e) => setDaysThreshold(Number(e.target.value))}
-              />
-            </div>
-          </>
-        )}
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button disabled={pending || !modelId} onClick={submit}>
-            Add
-          </Button>
+              <div>
+                <Label>Max qty</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={maxQty}
+                  onChange={(e) => setMaxQty(Number(e.target.value))}
+                />
+              </div>
+              <div>
+                <Label>MIL days threshold</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={daysThreshold}
+                  onChange={(e) => setDaysThreshold(Number(e.target.value))}
+                />
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No active SKUs available to add.
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button disabled={pending || loading || !modelId} onClick={submit}>
+              Add
+            </Button>
+          </div>
         </div>
       </div>
-    </div>
+
+      <AlertDialog
+        open={emptyReason !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEmptyReason(null);
+            onClose();
+          }
+        }}
+      >
+        <AlertDialogContent className="z-60" overlayClassName="z-60">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cannot add model</AlertDialogTitle>
+            <AlertDialogDescription>
+              {emptyReason ? messageForAddEmptyReason(emptyReason) : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setEmptyReason(null);
+                onOpenAllowedModels?.();
+              }}
+            >
+              Open Allowed models
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
