@@ -6,6 +6,11 @@ import { useState } from "react";
 
 import { SidebarNavNewBadge } from "@/app/(app)/_components/sidebar-nav-new-badge";
 import {
+  SIDEBAR_NAV_BUTTON_WRAP_CLASS,
+  SIDEBAR_NAV_LABEL_CLASS,
+  SIDEBAR_NAV_SUB_BUTTON_WRAP_CLASS,
+} from "@/app/(app)/_components/sidebar-nav-item";
+import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
@@ -49,10 +54,14 @@ export function SidebarNavGroup({ group, items, pathname }: SidebarNavGroupProps
     >
       <SidebarMenuItem>
         <CollapsibleTrigger asChild>
-          <SidebarMenuButton tooltip={group.label} isActive={isChildActive}>
-            <Icon />
-            <span>{group.label}</span>
-            <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+          <SidebarMenuButton
+            tooltip={group.label}
+            isActive={isChildActive}
+            className={SIDEBAR_NAV_BUTTON_WRAP_CLASS}
+          >
+            <Icon className="mt-0.5" />
+            <span className={SIDEBAR_NAV_LABEL_CLASS}>{group.label}</span>
+            <ChevronRight className="mt-0.5 ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
           </SidebarMenuButton>
         </CollapsibleTrigger>
         <CollapsibleContent>
@@ -91,10 +100,14 @@ function SidebarNavSubItem({
 
   return (
     <SidebarMenuSubItem>
-      <SidebarMenuSubButton asChild isActive={active}>
+      <SidebarMenuSubButton
+        asChild
+        isActive={active}
+        className={SIDEBAR_NAV_SUB_BUTTON_WRAP_CLASS}
+      >
         <Link href={item.href}>
           <ItemIcon />
-          <span className="min-w-0 flex-1 truncate">{item.label}</span>
+          <span className={SIDEBAR_NAV_LABEL_CLASS}>{item.label}</span>
           {item.badge === "new" ? <SidebarNavNewBadge /> : null}
         </Link>
       </SidebarMenuSubButton>
@@ -121,11 +134,15 @@ function SidebarNavSubGroup({
       className="group/subcollapsible"
     >
       <SidebarMenuSubItem>
-        <SidebarMenuSubButton asChild isActive={isChildActive}>
+        <SidebarMenuSubButton
+          asChild
+          isActive={isChildActive}
+          className={SIDEBAR_NAV_SUB_BUTTON_WRAP_CLASS}
+        >
           <CollapsibleTrigger type="button">
             <Icon />
-            <span className="min-w-0 flex-1 truncate">{subGroup.label}</span>
-            <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/subcollapsible:rotate-90" />
+            <span className={SIDEBAR_NAV_LABEL_CLASS}>{subGroup.label}</span>
+            <ChevronRight className="mt-0.5 ml-auto transition-transform duration-200 group-data-[state=open]/subcollapsible:rotate-90" />
           </CollapsibleTrigger>
         </SidebarMenuSubButton>
         <CollapsibleContent>

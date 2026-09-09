@@ -52,6 +52,22 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.35.2",
+    date: "2026-09-09",
+    releasedAt: "2026-09-09T10:20:00+08:00",
+    title: "Full names in the sidebar",
+    highlights: [
+      "Long menu names wrap onto a second line, so labels like Planning & Forecast stay readable instead of being cut off",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Sidebar menu names wrap so the full label stays visible, including next to a New badge",
+      },
+    ],
+  },
+  {
     version: "0.35.1",
     date: "2026-09-09",
     releasedAt: "2026-09-09T10:05:00+08:00",

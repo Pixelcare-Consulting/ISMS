@@ -10,6 +10,14 @@ import {
 import { isNavItemActive } from "@/config/app-navigation";
 import type { LucideIcon } from "lucide-react";
 
+export const SIDEBAR_NAV_LABEL_CLASS =
+  "min-w-0 flex-1 break-words leading-snug !overflow-visible !whitespace-normal !text-clip";
+
+export const SIDEBAR_NAV_BUTTON_WRAP_CLASS = "h-auto min-h-8 items-start py-1.5";
+
+export const SIDEBAR_NAV_SUB_BUTTON_WRAP_CLASS =
+  "h-auto min-h-7 items-start py-1 [&>svg]:mt-0.5";
+
 interface SidebarNavItemProps {
   href: string;
   label: string;
@@ -31,7 +39,12 @@ export function SidebarNavItem({
 
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton asChild isActive={isActive} tooltip={label}>
+      <SidebarMenuButton
+        asChild
+        isActive={isActive}
+        tooltip={label}
+        className={SIDEBAR_NAV_BUTTON_WRAP_CLASS}
+      >
         <Link href={href}>
           {isActive ? (
             <span
@@ -39,8 +52,8 @@ export function SidebarNavItem({
               aria-hidden
             />
           ) : null}
-          <Icon />
-          <span className="min-w-0 flex-1 truncate">{label}</span>
+          <Icon className="mt-0.5" />
+          <span className={SIDEBAR_NAV_LABEL_CLASS}>{label}</span>
           {badge === "new" ? <SidebarNavNewBadge /> : null}
         </Link>
       </SidebarMenuButton>
