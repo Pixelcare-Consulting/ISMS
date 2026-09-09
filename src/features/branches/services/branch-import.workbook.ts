@@ -253,7 +253,7 @@ export async function buildTemplateWorkbook(branches: BranchTemplateRow[]): Prom
       "",
     ]);
   }
-  styleHeader(branchSheet, [14, 28, 10, 22, 20, 16, 16, 14, 14, 28, 14, 16, 16, 24]);
+  styleHeader(branchSheet, [18, 28, 10, 22, 20, 16, 16, 14, 14, 28, 14, 16, 16, 24]);
 
   const buffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(buffer);

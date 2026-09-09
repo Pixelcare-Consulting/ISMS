@@ -2,7 +2,7 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.35.0`
+**Current version:** `0.35.1`
 
 ## Stack
 
@@ -19,7 +19,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | **Competitors** | Market observations with master Competitor + Competitor brand/model lookups, AOR-bound branch, optional promotion; KPIs + CRUD (`/competitors`) |
 | **Settings** | Company, users, departments, roles, permissions catalog (`roles.manage`; assign via Roles), branches, warehouses, dealers, service centers, AORs (branches / warehouses / service centers assign + sync), master data (incl. Series / Categories, Competitors / Competitor brands), status codes (per-module tabs + badge colors); collapsible Module guides on complex settings/ops pages |
 | **Planning** | Official Forecast template (period, branch SAP code, revenue target) download + import, allocation, suggested auto-replenish orders (`/settings/planning`, `/planning/suggested-orders`) |
-| **Planogram** | Per-branch SKU shelf capacity, MIL, order enforcement; official Excel template (sap_code, sku, max_qty, mil_days) download + import; Add model requires Allowed models first |
+| **Planogram** | Per-branch SKU shelf capacity, MIL, order enforcement; official Excel template (branch_sap_code, sku, max_qty, mil_days) download + import; Add model requires Allowed models first |
 | **Policies** | Full document control (ISO track) |
 | **Inventory** | Serialized stock (STK on Stock units), **warehouse stock** SN list (`/inventory/warehouse-stock`; also Settings → Warehouses →image.png Stock), AOR-scoped lists, series QTY/VALUE + DR#/date/aging, **physical stock count / P-Count** (`/inventory/stock-count`) |
 | **Orders** | Nav group: Manual / Special / Auto replenish (`/orders/manual` etc.); per-type `orders.manual`, `orders.special`, `orders.auto_replenish` with view/create/approve; PS → TL → SP; SO#, processed orders, delivery-due auto-reschedule |
@@ -73,7 +73,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/settings/dealers` | `dealers.manage` |
 | `/settings/service-centers` | `service_centers.manage` |
 | `/settings/aors` | `aors.manage` |
-| `/settings/planning`, `/planogram` | `forecast.manage` / `planogram.*` (Planning: Forecast template — period, sap_code, revenue_target; Planogram: Download template + upload; SKUs/branches must already exist; Add model needs Allowed models) |
+| `/settings/planning`, `/planogram` | `forecast.manage` / `planogram.*` (Planning: Forecast template — period, branch_sap_code, revenue_target; Planogram: Download template + upload; SKUs/branches must already exist; Add model needs Allowed models) |
 | `/settings/master-data/*` | `master_data.manage` (Models: Import template + upload; creates new SKUs / updates existing; our template only) |
 | `/settings/sap-integration` | `sap.manage` (queue) |
 | `/settings/sap-integration/service-layer` | `sap.manage` (B1 Service Layer config) |

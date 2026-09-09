@@ -242,7 +242,7 @@ export function ImportBranchesDialog({
           <div className="text-muted-foreground text-sm">
             <p>
               The download template is a single <strong>Branches</strong> sheet with columns for
-              SAP code, name, status, dealer, warehouse, geo, alternate branches, and delivery
+              branch SAP code, name, status, dealer, warehouse, geo, alternate branches, and delivery
               schedule — pre-filled from your active branches.
             </p>
           </div>
@@ -344,7 +344,7 @@ export function ImportBranchesDialog({
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>SAP code</TableHead>
+                        <TableHead>Branch SAP code</TableHead>
                         <TableHead>Branch</TableHead>
                         <TableHead>Action</TableHead>
                         <TableHead>Changes</TableHead>

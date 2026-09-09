@@ -331,7 +331,7 @@ export function ImportPlanogramDialog({
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>SAP code</TableHead>
+                        <TableHead>Branch SAP code</TableHead>
                         <TableHead>SKU</TableHead>
                         <TableHead>Action</TableHead>
                         {showChangesColumn ? <TableHead>Changes</TableHead> : null}

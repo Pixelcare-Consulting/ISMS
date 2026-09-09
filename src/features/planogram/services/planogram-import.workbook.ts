@@ -2,6 +2,7 @@ import ExcelJS from "exceljs";
 
 import {
   PLANOGRAM_IMPORT_ALIAS_MAP,
+  PLANOGRAM_IMPORT_COLUMN_LABELS,
   PLANOGRAM_IMPORT_REQUIRED_COLUMNS,
   PLANOGRAM_SHEET_HEADERS,
   PLANOGRAM_SHEET_NAME,
@@ -24,7 +25,7 @@ export interface PlanogramTemplateRow {
 const EMPTY_SHEET: SheetRows = { present: false, columns: new Set(), rows: [] };
 
 const BRS_LAYOUT_ERROR =
-  "This file is the old BRS forecast/planogram layout, not the Planogram template. Download the template (sap_code, sku, max_qty, mil_days). Branch revenue belongs on Planning with the Forecast template.";
+  "This file is the old BRS forecast/planogram layout, not the Planogram template. Download the template (branch_sap_code, sku, max_qty, mil_days). Branch revenue belongs on Planning with the Forecast template.";
 
 /** Headers that appear on the wide Dealer 1 BRS sheet (Brand / SKU / Model / Series / SRP + Y/N pairs). */
 const BRS_WIDE_HEADER_HINTS = new Set([
@@ -126,8 +127,12 @@ function assertOurTemplate(columns: Set<string>, rawHeaders: string[]): void {
 
   const missing = PLANOGRAM_IMPORT_REQUIRED_COLUMNS.filter((col) => !columns.has(col));
   if (missing.length > 0) {
+    const requiredLabels = PLANOGRAM_IMPORT_REQUIRED_COLUMNS.map(
+      (col) => PLANOGRAM_IMPORT_COLUMN_LABELS[col] ?? col,
+    );
+    const missingLabels = missing.map((col) => PLANOGRAM_IMPORT_COLUMN_LABELS[col] ?? col);
     throw new Error(
-      `The Planogram sheet needs columns: ${PLANOGRAM_IMPORT_REQUIRED_COLUMNS.join(", ")}. Missing: ${missing.join(", ")}. Download the template.`,
+      `The Planogram sheet needs columns: ${requiredLabels.join(", ")}. Missing: ${missingLabels.join(", ")}. Download the template.`,
     );
   }
 }
@@ -148,7 +153,7 @@ export async function buildPlanogramTemplateWorkbook(
   if (rows.length === 0) {
     sheet.addRow(["WMK-001", "100L10E", 1, 30]);
   }
-  styleHeader(sheet, [14, 14, 12, 12]);
+  styleHeader(sheet, [18, 14, 12, 12]);
 
   const buffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(buffer);

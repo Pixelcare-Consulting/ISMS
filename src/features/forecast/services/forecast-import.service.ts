@@ -256,7 +256,7 @@ async function buildPlan(
       continue;
     }
     if (isBlankOrDash(sapCode)) {
-      pushError("sap_code is empty.");
+      pushError("branch_sap_code is empty.");
       continue;
     }
 
@@ -317,7 +317,7 @@ async function buildPlan(
       rowNumber: 2,
       sapCode: "—",
       period: "—",
-      message: "Add at least one row with period, sap_code, and revenue_target.",
+      message: "Add at least one row with period, branch_sap_code, and revenue_target.",
     });
   }
 

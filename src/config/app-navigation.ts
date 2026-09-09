@@ -79,7 +79,6 @@ export const appNavigation: NavEntry[] = [
     label: "Dashboard",
     icon: LayoutDashboard,
     permission: getModuleNavPermission("dashboard"),
-    badge: "new",
   },
   {
     type: "link",
@@ -105,7 +104,6 @@ export const appNavigation: NavEntry[] = [
           "orders.create",
           "orders.approve",
         ],
-        badge: "new",
       },
       {
         href: "/orders/special",
@@ -119,7 +117,6 @@ export const appNavigation: NavEntry[] = [
           "orders.create",
           "orders.approve",
         ],
-        badge: "new",
       },
       {
         href: "/orders/auto-replenish",
@@ -133,7 +130,6 @@ export const appNavigation: NavEntry[] = [
           "orders.create",
           "orders.approve",
         ],
-        badge: "new",
       },
     ],
   },
@@ -147,7 +143,6 @@ export const appNavigation: NavEntry[] = [
         label: "Sales Transactions",
         icon: Store,
         anyPermissions: ["sales.view", "sales.create", "sales.update"],
-        badge: "new",
       },
       {
         href: "/returns",
@@ -162,7 +157,6 @@ export const appNavigation: NavEntry[] = [
           "returns.approve",
           "returns.complete",
         ],
-        badge: "new",
       },
     ],
   },
@@ -202,14 +196,12 @@ export const appNavigation: NavEntry[] = [
         icon: Package,
         exact: true,
         permission: "inventory.view",
-        badge: "new",
       },
       {
         href: "/inventory/warehouse-stock",
         label: "Warehouse stock",
         icon: Warehouse,
         anyPermissions: ["inventory.view", "warehouses.manage"],
-        badge: "new",
       },
       {
         href: "/inventory/stock-count",
@@ -270,14 +262,12 @@ export const appNavigation: NavEntry[] = [
         label: "Sales & Returns",
         icon: Store,
         anyPermissions: ["reports.view", "sales.create"],
-        badge: "new",
       },
       {
         href: "/reports/official-sales",
         label: "Official Sales",
         icon: ScrollText,
         anyPermissions: ["official_sales.view", "official_sales.manage"],
-        badge: "new",
       },
       {
         href: "/reports/pcount",
@@ -365,7 +355,6 @@ export const appNavigation: NavEntry[] = [
         label: "Serial number logs",
         icon: Barcode,
         permission: "serial_logs.view",
-        badge: "new",
       },
     ],
   },
@@ -393,7 +382,6 @@ export const appNavigation: NavEntry[] = [
         label: "SC Inventory",
         icon: Package,
         permission: "service_centers.inventory.view",
-        badge: "new",
       },
       {
         href: "/service-centers/sales",
@@ -403,7 +391,6 @@ export const appNavigation: NavEntry[] = [
           "service_centers.sales.view",
           "service_centers.sales.create",
         ],
-        badge: "new",
       },
       {
         href: "/service-centers/orders",
@@ -414,7 +401,6 @@ export const appNavigation: NavEntry[] = [
           "service_centers.orders.create",
           "service_centers.orders.approve",
         ],
-        badge: "new",
       },
       {
         href: "/service-centers/deliveries",
@@ -425,18 +411,16 @@ export const appNavigation: NavEntry[] = [
           "service_centers.logistics.create",
           "service_centers.logistics.manage",
         ],
-        badge: "new",
       },
       {
         href: "/service-centers/pullouts",
         label: "SC Pull-outs",
         icon: ArrowUpToLine,
-        anyPermissions: [
+        anyPermissions: [ 
           "service_centers.logistics.view",
           "service_centers.logistics.create",
           "service_centers.logistics.manage",
         ],
-        badge: "new",
       },
     ],
   },
@@ -467,7 +451,6 @@ export const appNavigation: NavEntry[] = [
             label: "Status",
             icon: Clock,
             permission: "status_settings.manage",
-            badge: "new",
           },
         ],
       },
@@ -492,19 +475,21 @@ export const appNavigation: NavEntry[] = [
             label: "Planning & Forecast",
             icon: LayoutGrid,
             anyPermissions: ["forecast.manage", "planogram.manage"],
+            badge: "new",
           },
           {
             href: "/settings/planogram",
             label: "Planogram",
             icon: LayoutGrid,
             anyPermissions: ["planogram.view", "planogram.manage"],
+            badge: "new",
           },
           {
             href: "/settings/ordering",
             label: "Ordering policy",
             icon: CalendarClock,
             anyPermissions: ["ordering_settings.view", "ordering_settings.manage"],
-            badge: "new",
+            
           },
         ],
       },

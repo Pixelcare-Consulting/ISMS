@@ -260,7 +260,7 @@ async function buildPlan(
     };
 
     if (isBlankOrDash(sapCode)) {
-      pushError("sap_code is empty.");
+      pushError("branch_sap_code is empty.");
       continue;
     }
     if (isBlankOrDash(sku)) {

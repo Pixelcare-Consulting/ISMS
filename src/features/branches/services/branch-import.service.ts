@@ -461,13 +461,13 @@ export const branchImportService = {
 
     if (!branchSheet.columns.has("sapcode")) {
       throw new Error(
-        `The branches sheet needs a sap_code / BRANCH CODE column. Download the template or upload a PSG ISMS workbook.`,
+        `The branches sheet needs a branch_sap_code / BRANCH CODE column. Download the template or upload a PSG ISMS workbook.`,
       );
     }
     if (allowedSheet.present && allowedSheet.rows.length > 0) {
       if (!allowedSheet.columns.has("sapcode") || !allowedSheet.columns.has("skucode")) {
         throw new Error(
-          `The "${ALLOWED_MODEL_SHEET_NAME}" sheet needs sap_code and sku_code columns.`,
+          `The "${ALLOWED_MODEL_SHEET_NAME}" sheet needs branch_sap_code and sku_code columns.`,
         );
       }
     }
@@ -581,7 +581,7 @@ export const branchImportService = {
     ): BranchRecord | { sapCode: string; pendingCreate: true } | null {
       const sapCode = row.values.sapcode?.trim() ?? "";
       if (!sapCode || isBlankOrDash(sapCode)) {
-        errors.push({ sheet, rowNumber: row.rowNumber, sapCode: "", message: "sap_code is empty." });
+        errors.push({ sheet, rowNumber: row.rowNumber, sapCode: "", message: "branch_sap_code is empty." });
         return null;
       }
       const existing = branchBySapCode.get(lookupKey(sapCode));

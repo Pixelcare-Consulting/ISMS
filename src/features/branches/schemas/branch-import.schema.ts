@@ -1,11 +1,11 @@
 /**
  * Workbook contract for the bulk branch import.
  *
- * Sheet 1 (Branches) — form-aligned columns (sap_code, branch_name, dealer, geo,
+ * Sheet 1 (Branches) — form-aligned columns (branch_sap_code, branch_name, dealer, geo,
  * alternates, schedule, …). Also accepts a single-sheet PSG ISMS export (sheet
  * named ISMS or first sheet with BRANCH CODE / AREA / STATUS headers).
  *
- * Optional legacy sheet (Allowed Models) — sap_code, sku_code. Still parsed/applied
+ * Optional legacy sheet (Allowed Models) — branch_sap_code, sku_code. Still parsed/applied
  * when present in an older file; the download template no longer includes it.
  *
  * Unknown sap_codes are created; existing ones are updated. Allowed Models still
@@ -16,7 +16,7 @@ export const BRANCH_SHEET_NAME = "Branches";
 export const ALLOWED_MODEL_SHEET_NAME = "Allowed Models";
 
 export const BRANCH_SHEET_HEADERS = [
-  "sap_code",
+  "branch_sap_code",
   "branch_name",
   "status",
   "dealer",
@@ -32,9 +32,9 @@ export const BRANCH_SHEET_HEADERS = [
   "schedule_notes",
 ] as const;
 
-export const ALLOWED_MODEL_SHEET_HEADERS = ["sap_code", "sku_code"];
+export const ALLOWED_MODEL_SHEET_HEADERS = ["branch_sap_code", "sku_code"];
 
-/** Normalized header → canonical key, so "SAP Code"/"sap_code"/"sapcode" all match. */
+/** Normalized header → canonical key, so "Branch SAP Code"/"branch_sap_code"/"sap_code" all match. */
 export const BRANCH_IMPORT_ALIAS_MAP: Record<string, string> = {
   sapcode: "sapcode",
   branchcode: "sapcode",

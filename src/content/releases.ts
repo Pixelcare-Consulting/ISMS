@@ -52,6 +52,23 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.35.1",
+    date: "2026-09-09",
+    releasedAt: "2026-09-09T10:05:00+08:00",
+    title: "Clearer branch SAP code on import templates",
+    highlights: [
+      "Planogram, Planning, and Branches download templates now label the branch column as branch SAP code, so it is not mixed up with a product code",
+      "Spreadsheets you already filled with the old header still upload as before",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Download templates for Planogram, Planning, and Branches use branch SAP code as the column name so people know which code to fill in — older files still upload as before",
+      },
+    ],
+  },
+  {
     version: "0.35.0",
     date: "2026-09-08",
     releasedAt: "2026-09-08T14:45:00+08:00",

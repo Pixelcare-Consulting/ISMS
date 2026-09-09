@@ -2,6 +2,7 @@ import ExcelJS from "exceljs";
 
 import {
   FORECAST_IMPORT_ALIAS_MAP,
+  FORECAST_IMPORT_COLUMN_LABELS,
   FORECAST_IMPORT_REQUIRED_COLUMNS,
   FORECAST_SHEET_HEADERS,
   FORECAST_SHEET_NAME,
@@ -24,10 +25,10 @@ export interface ForecastTemplateRow {
 const EMPTY_SHEET: SheetRows = { present: false, columns: new Set(), rows: [] };
 
 const BRS_LAYOUT_ERROR =
-  "This file is the old BRS forecast/planogram layout, not the Forecast template. Download the template (period, sap_code, revenue_target). Use Planogram for shelf max and MIL days.";
+  "This file is the old BRS forecast/planogram layout, not the Forecast template. Download the template (period, branch_sap_code, revenue_target). Use Planogram for shelf max and MIL days.";
 
 const PLANOGRAM_FILE_ERROR =
-  "This file looks like the Planogram template, not Forecast. Download the Forecast template (period, sap_code, revenue_target). Shelf max belongs under Planogram.";
+  "This file looks like the Planogram template, not Forecast. Download the Forecast template (period, branch_sap_code, revenue_target). Shelf max belongs under Planogram.";
 
 /** Headers that appear on the wide Dealer 1 BRS sheet (Brand / SKU / Model / Series / SRP + Y/N pairs). */
 const BRS_WIDE_HEADER_HINTS = new Set([
@@ -141,8 +142,12 @@ function assertOurTemplate(columns: Set<string>, rawHeaders: string[]): void {
 
   const missing = FORECAST_IMPORT_REQUIRED_COLUMNS.filter((col) => !columns.has(col));
   if (missing.length > 0) {
+    const requiredLabels = FORECAST_IMPORT_REQUIRED_COLUMNS.map(
+      (col) => FORECAST_IMPORT_COLUMN_LABELS[col] ?? col,
+    );
+    const missingLabels = missing.map((col) => FORECAST_IMPORT_COLUMN_LABELS[col] ?? col);
     throw new Error(
-      `The Forecast sheet needs columns: ${FORECAST_IMPORT_REQUIRED_COLUMNS.join(", ")}. Missing: ${missing.join(", ")}. Download the template.`,
+      `The Forecast sheet needs columns: ${requiredLabels.join(", ")}. Missing: ${missingLabels.join(", ")}. Download the template.`,
     );
   }
 }
@@ -163,7 +168,7 @@ export async function buildForecastTemplateWorkbook(
   if (rows.length === 0) {
     sheet.addRow(["Dec-25", "WMK-001", 1000000, ""]);
   }
-  styleHeader(sheet, [14, 14, 16, 28]);
+  styleHeader(sheet, [14, 18, 16, 28]);
 
   const buffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(buffer);

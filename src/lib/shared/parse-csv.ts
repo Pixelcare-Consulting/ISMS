@@ -58,7 +58,7 @@ function isBlankRow(cells: string[]): boolean {
   return cells.every((value) => value.trim() === "");
 }
 
-/** Normalize a header cell so "SAP Code", "sap_code" and "sapcode" all match. */
+/** Normalize a header cell so "Branch SAP Code", "branch_sap_code" and "sap_code" all match. */
 export function normalizeHeader(value: string): string {
   return value.trim().toLowerCase().replace(/[\s_-]+/g, "");
 }

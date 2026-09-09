@@ -326,7 +326,7 @@ export function ImportForecastDialog({
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>SAP code</TableHead>
+                        <TableHead>Branch SAP code</TableHead>
                         <TableHead>Branch</TableHead>
                         <TableHead className="text-right">Target</TableHead>
                         <TableHead>Action</TableHead>

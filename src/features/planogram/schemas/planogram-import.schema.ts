@@ -11,7 +11,15 @@
 
 export const PLANOGRAM_SHEET_NAME = "Planogram";
 
-export const PLANOGRAM_SHEET_HEADERS = ["sap_code", "sku", "max_qty", "mil_days"] as const;
+export const PLANOGRAM_SHEET_HEADERS = ["branch_sap_code", "sku", "max_qty", "mil_days"] as const;
+
+/** Download header shown when a required canonical column is missing. */
+export const PLANOGRAM_IMPORT_COLUMN_LABELS: Record<string, string> = {
+  sap_code: "branch_sap_code",
+  sku: "sku",
+  max_qty: "max_qty",
+  mil_days: "mil_days",
+};
 
 /** Normalized header → canonical key for our template columns only. */
 export const PLANOGRAM_IMPORT_ALIAS_MAP: Record<string, string> = {

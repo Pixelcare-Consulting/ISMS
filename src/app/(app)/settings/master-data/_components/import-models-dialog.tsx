@@ -263,11 +263,6 @@ export function ImportModelsDialog({
               Unknown SKUs are created; existing ones update when values differ. Blank
               optional cells stay unchanged.
             </p>
-            <p>
-              Brand is also written to the item&apos;s <strong>U_Brand</strong> field in
-              SAP, for every row in the file. If SAP is unavailable the import still
-              finishes and reports what it could not push.
-            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">

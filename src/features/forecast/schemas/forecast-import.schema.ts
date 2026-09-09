@@ -14,10 +14,17 @@ export const FORECAST_SHEET_NAME = "Forecast";
 
 export const FORECAST_SHEET_HEADERS = [
   "period",
-  "sap_code",
+  "branch_sap_code",
   "revenue_target",
   "branch_name",
 ] as const;
+
+/** Download header shown when a required canonical column is missing. */
+export const FORECAST_IMPORT_COLUMN_LABELS: Record<string, string> = {
+  period: "period",
+  sap_code: "branch_sap_code",
+  revenue_target: "revenue_target",
+};
 
 /** Normalized header → canonical key for our template columns only. */
 export const FORECAST_IMPORT_ALIAS_MAP: Record<string, string> = {
