@@ -526,6 +526,7 @@ export const appNavigation: NavEntry[] = [
             label: "Branches",
             icon: MapPin,
             permission: "branches.manage",
+            badge: "new",
           },
           {
             href: "/settings/warehouses",
@@ -539,12 +540,14 @@ export const appNavigation: NavEntry[] = [
             label: "Service centers",
             icon: Building2,
             permission: "service_centers.manage",
+            badge: "new",
           },
           {
             href: "/settings/dealers",
             label: "Dealers",
             icon: Store,
             permission: "dealers.manage",
+            badge: "new",
           },
         ],
       },

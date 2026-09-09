@@ -139,7 +139,7 @@ function SidebarNavSubGroup({
           isActive={isChildActive}
           className={SIDEBAR_NAV_SUB_BUTTON_WRAP_CLASS}
         >
-          <CollapsibleTrigger type="button">
+          <CollapsibleTrigger type="button" className="w-full text-left">
             <Icon />
             <span className={SIDEBAR_NAV_LABEL_CLASS}>{subGroup.label}</span>
             <ChevronRight className="mt-0.5 ml-auto transition-transform duration-200 group-data-[state=open]/subcollapsible:rotate-90" />
