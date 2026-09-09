@@ -2,19 +2,20 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.36.4`
+**Current version:** `0.37.0`
 
 ## Stack
 
-Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand · Better Auth · Prisma 7 · PostgreSQL (Docker / self-hosted) · Pino · Resend · Local filesystem storage · React PDF
+Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand · Better Auth · Prisma 7 · PostgreSQL (Docker / self-hosted) · Pino · Resend · Local filesystem storage · React PDF · Vercel AI SDK
 
 ## What's shipped
 
 | Area | Features |
 |------|----------|
 | **Auth** | Email/password (Better Auth), tenant-scoped sessions, demo seed users; public `/register` off unless `ALLOW_PUBLIC_REGISTER=true` |
+| **Help** | Workflow guides, FAQs, page tutorials; **ISMS Assist** (ask in plain language over Help content; sources shown) |
 | **Provider** | Platform console at `/provider/*` for platform operators only (provider role on the `isPlatform` Pixelcare tenant): customer summaries, create org + first Tenant Admin, org branding edit, full user/admin management, soft-disable/restore, global permissions |
-| **Dashboard** | Role-aware activity cards (top 4); Inventory summary + Planning & alerts; This month (icons) beside Order pipeline; **Sales overview** (month KPIs, status mix, return pipeline, top branches/models) when you can access Sales; compliance overview when no ops access; active announcement banner |
+| **Dashboard** | Role-aware activity cards (top 4); Inventory summary + Planning & alerts; This month (icons) beside Order pipeline; **Sales overview** (month KPIs, status mix, return pipeline, top branches/models) when you can access Sales; compliance overview when no ops access; active announcement banner; optional **daily briefing** (ISMS Assist) |
 | **Announcements** | Tenant posts (title, body, publish/expiry); list + CRUD (`/announcements`) |
 | **Competitors** | Market observations with master Competitor + Competitor brand/model lookups, AOR-bound branch, optional promotion; KPIs + CRUD (`/competitors`) |
 | **Settings** | Company, users, departments, roles, permissions catalog (`roles.manage`; assign via Roles), branches, warehouses, dealers, service centers, AORs (branches / warehouses / service centers assign + sync), master data (incl. Series / Categories, Competitors / Competitor brands), status codes (per-module tabs + badge colors); collapsible Module guides on complex settings/ops pages |
@@ -29,7 +30,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | **Service** | Service center ops (AOR-scoped): inventory + manual stock-in, sales encode + request return, orders, deliveries (backload → STK), pull-outs under `/service-centers/*` |
 | **Reports** | Processed orders, daily stock, transfers, sales CSV (`/reports/sales`), **P-Count** (`/reports/pcount`), **Official Sales** dealer-template staging — Action Key process (`ADD` / `WHSE_ADD` / `DEL` → Official Sold; already-OFS ADD is idempotent; DEL restores STK at Branch Sold; stock adjustments appear in Serial Number Logs; process summarizes failed serials), progress popup, View details, and ? quick guide (`/reports/official-sales`) |
 | **SAP** | Outbound job queue + mock processor; **Service Layer** settings (encrypted credentials) + shared Redis-backed B1 session (L1 in-memory fallback) with status UI (Connect/Logout) and refresh-on-401 |
-| **RBAC** | ISO + BRS roles (PS, TL, SP/SPA, Logistics, AE, Accounting); shared action vocabulary + module allowlists; Roles simple checklist + module×action matrix; Super Admins see built-in system roles and can adjust grants (rename/delete stay locked); Returns / Replacement uses `returns.view` (all tabs), `returns.branch.view` / `returns.service.view` (tabs), plus `request` / `evaluate` / `approve` / `complete` (Approvals tab uses evaluate/approve/complete — no separate approvals.view); legacy `sales.return.*` / SC return aliases still work; sale header Edit uses `sales.update`; Logistics uses `logistics.view` / `create` / `manage`; Service uses `service_centers.*` ops perms |
+| **RBAC** | ISO + BRS roles (PS, TL, SP/SPA, Logistics, AE, Accounting); shared action vocabulary + module allowlists; Roles simple checklist + module×action matrix; Super Admins see built-in system roles and can adjust grants (rename/delete stay locked); Returns / Replacement uses `returns.view` (all tabs), `returns.branch.view` / `returns.service.view` (tabs), plus `request` / `evaluate` / `approve` / `complete` (Approvals tab uses evaluate/approve/complete — no separate approvals.view); legacy `sales.return.*` / SC return aliases still work; sale header Edit uses `sales.update`; Logistics uses `logistics.view` / `create` / `manage`; Service uses `service_centers.*` ops perms; ISMS Assist uses `ai.assist` |
 
 ### App routes
 
@@ -41,6 +42,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/provider` | Platform operator (Pixelcare provider) — overview KPIs |
 | `/provider/tenants` | Platform operator — customer list (status filters) / create / detail (org branding + users) / disable / restore |
 | `/provider/permissions` | Platform operator — global permissions catalog |
+| `/help` | Authenticated — Help & Support; Assist when `ai.assist` |
 | `/dashboard` | Authenticated tenant app (platform operators redirect to `/provider`) |
 | `/announcements` | `announcements.view` / `announcements.manage` |
 | `/competitors` | `competitors.view` / `competitors.manage` |
@@ -187,6 +189,8 @@ Public `/register` is closed by default. Set `ALLOW_PUBLIC_REGISTER=true` in `.e
 | `ALLOW_PUBLIC_REGISTER` | Set to `true` to enable `/register` self-serve tenants (local/demo only) |
 | `PRISMA_LOG_QUERIES=1` | SQL query logging in dev |
 | `LOG_LEVEL` | Pino level (`debug` in dev, `info` in prod) |
+| `OPENAI_API_KEY` | Optional. Enables ISMS Assist (Help copilot + Dashboard briefing). UI stays usable without it |
+| `AI_MODEL` | Optional. OpenAI model id (default `gpt-4o-mini`) |
 
 ## Publishing a release
 

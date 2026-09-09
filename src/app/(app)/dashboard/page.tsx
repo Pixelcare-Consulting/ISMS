@@ -17,6 +17,10 @@ import {
 } from "@/features/dashboard/actions/dashboard-kpi.actions";
 import { buildDashboardViewModel } from "@/features/dashboard/lib/build-dashboard-view-model";
 import { listActiveAnnouncementsAction } from "@/features/announcements/actions/announcement.actions";
+import { getCachedDashboardBriefingAction } from "@/features/ai/actions/ai.actions";
+import { DashboardBriefingStrip } from "@/features/ai/components/dashboard-briefing-strip";
+import { canUseAiAssist } from "@/features/ai/constants/ai-permissions";
+import { isAiConfigured } from "@/features/ai/lib/provider";
 import { ActiveAnnouncementBanner } from "@/features/announcements/components/active-announcement-banner";
 import { DashboardOpsKpis } from "@/app/(app)/dashboard/_components/dashboard-ops-kpis";
 import { DashboardAnalyticsCharts } from "@/app/(app)/dashboard/_components/dashboard-analytics-charts";
@@ -39,12 +43,17 @@ export default async function DashboardPage() {
   const permissions = session.user.permissions ?? [];
   const roleSlugs = session.user.roleSlugs ?? [];
 
-  const [opsKpis, analytics, salesAnalytics, activeAnnouncements] =
+  const canAssist = canUseAiAssist(permissions);
+
+  const [opsKpis, analytics, salesAnalytics, activeAnnouncements, briefingResult] =
     await Promise.all([
       getDashboardKpisAction(),
       getDashboardAnalyticsAction(),
       getDashboardSalesAnalyticsAction(),
       listActiveAnnouncementsAction(),
+      canAssist
+        ? getCachedDashboardBriefingAction()
+        : Promise.resolve({ ok: false as const, briefing: null, configured: false }),
     ]);
 
   const view = buildDashboardViewModel({
@@ -70,6 +79,14 @@ export default async function DashboardPage() {
         description={`Welcome back, ${displayName} · ${view.personaLabel}`}
       />
       <ActiveAnnouncementBanner announcements={activeAnnouncements} />
+
+      {canAssist ? (
+        <DashboardBriefingStrip
+          canAssist={canAssist}
+          configured={isAiConfigured()}
+          initial={briefingResult.ok ? briefingResult.briefing : null}
+        />
+      ) : null}
 
       {opsKpis && view.kpiKeys.length > 0 ? (
         <DashboardOpsKpis kpis={opsKpis} visibleKeys={view.kpiKeys} />

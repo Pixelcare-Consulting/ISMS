@@ -1,6 +1,6 @@
 {
   "name": "isms",
-  "version": "0.36.4",
+  "version": "0.37.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -29,6 +29,7 @@
     "docs:sap-b1-proposal": "node scripts/generate-sap-b1-automation-proposal.mjs"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^4.0.60",
     "@better-auth/infra": "^0.3.6",
     "@hookform/resolvers": "^5.2.2",
     "@prisma/adapter-pg": "^7.0.0",
@@ -45,6 +46,7 @@
     "@supabase/supabase-js": "^2.112.0",
     "@upstash/redis": "^1.38.0",
     "@vercel/blob": "^2.6.1",
+    "ai": "^7.0.93",
     "bcryptjs": "^3.0.3",
     "better-auth": "^1.6.23",
     "class-variance-authority": "^0.7.1",

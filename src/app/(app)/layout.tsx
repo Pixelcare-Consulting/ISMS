@@ -14,6 +14,9 @@ import { WhatsNewHeaderAction } from "@/app/(app)/_components/whats-new-header-a
 import { DocumentTitle } from "@/components/document-title";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { resolveRouteTitle } from "@/config/route-titles";
+import { AiCopilotLauncher } from "@/features/ai/components/ai-copilot-launcher";
+import { canUseAiAssist } from "@/features/ai/constants/ai-permissions";
+import { isAiConfigured } from "@/features/ai/lib/provider";
 import { SapSyncReportDialogs } from "@/features/sap/components/sap-sync-report-dialogs";
 import { pageMetadata } from "@/lib/shared/seo";
 
@@ -70,6 +73,10 @@ export default async function AppLayout({
       </SidebarInset>
 
       <SapSyncReportDialogs />
+      <AiCopilotLauncher
+        canAssist={canUseAiAssist(session.user.permissions)}
+        configured={isAiConfigured()}
+      />
     </SidebarProvider>
   );
 }

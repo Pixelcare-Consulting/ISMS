@@ -1,2 +1,2 @@
-/** Sprint 7 — AI */
-export const aiFeatureStub = true;
+export { AI_ASSIST_PERMISSION, canUseAiAssist } from "@/features/ai/constants/ai-permissions";
+export { isAiConfigured } from "@/features/ai/lib/provider";

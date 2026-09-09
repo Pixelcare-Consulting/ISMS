@@ -33,6 +33,7 @@ export const DEMO_USERS = [
 
 export const PERMISSIONS = [
   { slug: "dashboard.manage", name: "Manage Dashboard" },
+  { slug: "ai.assist", name: "Use ISMS Assist" },
   { slug: "company.view", name: "View company settings" },
   { slug: "company.manage", name: "Manage company settings" },
   { slug: "users.view", name: "View users" },
@@ -197,6 +198,7 @@ export const ROLES = [
     description: "Tenant administrator",
     permissions: [
       "dashboard.manage",
+      "ai.assist",
       ...SETTINGS_VIEW_WITH_MANAGE,
       "company.manage",
       "users.manage",
@@ -257,6 +259,7 @@ export const ROLES = [
     description: "ISMS program manager",
     permissions: [
       "dashboard.manage",
+      "ai.assist",
       "users.view",
       "users.manage",
       "departments.view",
@@ -278,6 +281,7 @@ export const ROLES = [
     description: "Internal auditor",
     permissions: [
       "dashboard.manage",
+      "ai.assist",
       "audits.create",
       "audits.close",
       "reports.view",
@@ -294,6 +298,7 @@ export const ROLES = [
     description: "Department head",
     permissions: [
       "dashboard.manage",
+      "ai.assist",
       "policies.create",
       "policies.view",
       "reports.view",
@@ -309,6 +314,7 @@ export const ROLES = [
     description: "Standard employee",
     permissions: [
       "dashboard.manage",
+      "ai.assist",
       "reports.view",
       "audit_logs.view",
       "serial_logs.view",
@@ -323,6 +329,7 @@ export const ROLES = [
     description: "Branch sales — create orders and transfers",
     permissions: [
       "dashboard.manage",
+      "ai.assist",
       "inventory.view",
       ...ORDERS_VIEW_ALL,
       ...ORDERS_CREATE_ALL,
@@ -351,6 +358,7 @@ export const ROLES = [
     description: "First-level order and transfer approval",
     permissions: [
       "dashboard.manage",
+      "ai.assist",
       "inventory.view",
       ...ORDERS_VIEW_ALL,
       ...ORDERS_APPROVE_ALL,
@@ -387,6 +395,7 @@ export const ROLES = [
     description: "Supply Planning — order approval and forecast (xlsx SP)",
     permissions: [
       "dashboard.manage",
+      "ai.assist",
       "master_data.view",
       "master_data.manage",
       "inventory.view",
@@ -408,6 +417,7 @@ export const ROLES = [
     description: "SPA — same approval scope as SP for processed-order reporting",
     permissions: [
       "dashboard.manage",
+      "ai.assist",
       "inventory.view",
       ...ORDERS_VIEW_ALL,
       ...ORDERS_APPROVE_ALL,
@@ -427,6 +437,7 @@ export const ROLES = [
     description: "Alias for SP permissions",
     permissions: [
       "dashboard.manage",
+      "ai.assist",
       ...ORDERS_VIEW_ALL,
       ...ORDERS_APPROVE_ALL,
       "forecast.view",
@@ -444,6 +455,7 @@ export const ROLES = [
     description: "Alias for SPA permissions",
     permissions: [
       "dashboard.manage",
+      "ai.assist",
       ...ORDERS_VIEW_ALL,
       ...ORDERS_APPROVE_ALL,
       "forecast.view",
@@ -461,6 +473,7 @@ export const ROLES = [
     description: "Delivery, transfer, pull-out processing",
     permissions: [
       "dashboard.manage",
+      "ai.assist",
       "inventory.view",
       ...ORDERS_VIEW_ALL,
       ...ORDERS_APPROVE_ALL,
@@ -493,6 +506,7 @@ export const ROLES = [
     description: "Multi-branch dashboard visibility",
     permissions: [
       "dashboard.manage",
+      "ai.assist",
       "inventory.view",
       ...ORDERS_VIEW_ALL,
       "reports.view",
@@ -516,6 +530,7 @@ export const ROLES = [
     description: "Official Sales processing and sale header corrections",
     permissions: [
       "dashboard.manage",
+      "ai.assist",
       "inventory.view",
       "sales.view",
       "sales.update",

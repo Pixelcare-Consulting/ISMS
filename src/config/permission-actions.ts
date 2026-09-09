@@ -13,6 +13,7 @@ export interface PermissionActionDef {
 /** Ordered vocabulary — standard CRUD-ish first, then domain extras. */
 export const PERMISSION_ACTION_ORDER = [
   "view",
+  "assist",
   "branch.view",
   "service.view",
   "create",
@@ -42,6 +43,11 @@ export const PERMISSION_ACTIONS: Record<
     value: "view",
     label: "View",
     description: "Read / list access",
+  },
+  assist: {
+    value: "assist",
+    label: "Assist",
+    description: "Ask ISMS Assist and read the daily briefing",
   },
   "branch.view": {
     value: "branch.view",

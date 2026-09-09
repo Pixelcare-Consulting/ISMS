@@ -28,6 +28,15 @@ export const appModules: AppModule[] = [
     actions: permissionActions("manage", "view"),
   },
   {
+    id: "ai",
+    name: "ISMS Assist",
+    route: "/help",
+    slugPrefix: "ai",
+    navPermission: "ai.assist",
+    description: "Ask ISMS for help and a daily Dashboard briefing",
+    actions: permissionActions("assist"),
+  },
+  {
     id: "company",
     name: "Company Settings",
     route: "/settings/company",

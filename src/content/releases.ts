@@ -52,6 +52,52 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.37.0",
+    date: "2026-09-09",
+    releasedAt: "2026-09-09T16:45:00+08:00",
+    title: "Ask ISMS for help",
+    highlights: [
+      "Ask ISMS Assist in plain language from Help & Support — answers come from your guides and show where to read more",
+      "Open Assist from the sparkle bubble in the bottom-right corner while you work",
+      "Dashboard can add a short daily briefing from the numbers you already see, written for your role",
+      "Tap a starter question to get going, then keep asking in your own words",
+      "Assist still answers from Help when the live helper is busy, and Refresh can retry a quiet Dashboard briefing",
+      "Assist never approves orders, returns, or stock for you — you still confirm every action",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Ask ISMS Assist from Help & Support; answers cite the original guides",
+      },
+      {
+        type: "feature",
+        description:
+          "Dashboard can show a short daily briefing from your existing numbers, in language for your role",
+      },
+      {
+        type: "improvement",
+        description:
+          "A sparkle bubble stays in the bottom-right so you can ask Assist without leaving the page you are on",
+      },
+      {
+        type: "improvement",
+        description:
+          "Starter questions appear when Assist is empty so you can tap a common how-to instead of typing from scratch",
+      },
+      {
+        type: "fix",
+        description:
+          "Assist answers from Help again when the live helper cannot reply, instead of a generic ‘try again’ message",
+      },
+      {
+        type: "fix",
+        description:
+          "When Assist answers from Help, it no longer repeats the same question twice in the reply",
+      },
+    ],
+  },
+  {
     version: "0.36.4",
     date: "2026-09-09",
     releasedAt: "2026-09-09T14:10:00+08:00",

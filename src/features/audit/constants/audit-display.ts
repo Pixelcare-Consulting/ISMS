@@ -73,6 +73,8 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   "announcement.created": "Announcement created",
   "announcement.updated": "Announcement updated",
   "announcement.deleted": "Announcement deleted",
+  "ai.copilot.ask": "ISMS Assist question",
+  "ai.briefing.generate": "Daily briefing generated",
 };
 
 const ENTITY_TYPE_LABELS: Record<string, string> = {
@@ -98,6 +100,7 @@ const ENTITY_TYPE_LABELS: Record<string, string> = {
   SapIntegrationJob: "SAP integration job",
   SapServiceLayerConfig: "SAP Service Layer config",
   Announcement: "Announcement",
+  AiAssist: "ISMS Assist",
 };
 
 const OPERATIONAL_SUMMARY_KEYS = [

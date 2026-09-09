@@ -236,4 +236,6 @@ export const CACHE_TTL = {
   masterData: 300,
   reasonCodes: 120,
   dashboardKpis: 60,
+  /** Daily briefing — one hour, keyed by Manila calendar day. */
+  aiBriefing: 3600,
 } as const;

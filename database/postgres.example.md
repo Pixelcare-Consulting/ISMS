@@ -36,6 +36,8 @@ docker compose exec -T postgres psql -U isms -d isms < database/extensions.sql
 | `BETTER_AUTH_URL` / `AUTH_URL` | App origin for Better Auth callbacks |
 | `STORAGE_ROOT` | Local uploads root (default `.data/uploads`) |
 | `ALLOW_PUBLIC_REGISTER` | Set `true` to enable public `/register` (local/demo only; off by default) |
+| `OPENAI_API_KEY` | Optional. Turns on ISMS Assist (Help questions + Dashboard briefing) |
+| `AI_MODEL` | Optional OpenAI model id (default `gpt-4o-mini`) |
 
 Without a connection pooler, `DATABASE_URL` and `DIRECT_URL` can be identical.
 
