@@ -56,8 +56,8 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
 
   return (
     <div className="space-y-4">
-      <InventoryKpisStrip kpis={kpis} />
       <ModuleGuide {...INVENTORY_MODULE_GUIDE} />
+      <InventoryKpisStrip kpis={kpis} />
       <InventorySeriesSummaryPanel summary={seriesSummary} />
       <InventoryTable
         result={result}

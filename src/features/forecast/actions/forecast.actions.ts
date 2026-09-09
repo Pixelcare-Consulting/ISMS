@@ -99,7 +99,7 @@ export async function activatePlanningPeriodAction(periodId: string) {
 
 export async function listPlanningTargetsAction(periodId: string) {
   const session = await requireForecastManage();
-  return forecastRepository.listTargetsForPeriod(session.user.tenantId, periodId);
+  return forecastService.listPlanningTargets(session.user.tenantId, periodId);
 }
 
 export async function createPlanningTargetAction(input: unknown) {
@@ -253,6 +253,7 @@ export async function submitSuggestedOrdersAction() {
 
 export async function listDraftSuggestedOrdersAction(input?: {
   page?: number;
+  limit?: number;
   branchId?: string;
   q?: string;
   sort?: string;
@@ -261,7 +262,7 @@ export async function listDraftSuggestedOrdersAction(input?: {
   const session = await requireForecastManage();
   return suggestedOrderService.listDraftSuggestedOrdersPaginated(
     session.user.tenantId,
-    { page: input?.page },
+    { page: input?.page, limit: input?.limit },
     { branchId: input?.branchId, q: input?.q },
     { field: parseDraftOrderSort(input?.sort), dir: parseSortDir(input?.sortDir) },
   );

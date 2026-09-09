@@ -25,7 +25,7 @@ export function DataTableShell({ children, className, style }: DataTableShellPro
 }
 
 interface DataTableEmptyContentProps {
-  message: string;
+  message: React.ReactNode;
   className?: string;
 }
 

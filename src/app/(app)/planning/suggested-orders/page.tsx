@@ -20,6 +20,7 @@ interface SuggestedOrdersPageProps {
     page?: string;
     gapsPage?: string;
     limit?: string;
+    draftLimit?: string;
     branch?: string;
     q?: string;
     draftBranch?: string;
@@ -47,6 +48,7 @@ export default async function SuggestedOrdersPage({
   const params = await searchParams;
   const draftPage = Number(params.page) || 1;
   const gapsPage = Number(params.gapsPage) || 1;
+  const draftsLimit = parseTablePageSize(params.draftLimit);
   const gapsLimit = parseTablePageSize(params.limit);
 
   const dashboard = await getPlanningDashboardAction();
@@ -54,6 +56,7 @@ export default async function SuggestedOrdersPage({
   const [draftsResult, gapsResult, branches] = await Promise.all([
     listDraftSuggestedOrdersAction({
       page: draftPage,
+      limit: draftsLimit,
       branchId: params.draftBranch,
       q: params.draftQ,
       sort: params.draftSort,
@@ -80,6 +83,7 @@ export default async function SuggestedOrdersPage({
 
   const gapsPreserveParams = buildPreserveParams({
     page: draftPage > 1 ? String(draftPage) : undefined,
+    draftLimit: draftsLimit !== DEFAULT_TABLE_PAGE_SIZE ? String(draftsLimit) : undefined,
     draftBranch: params.draftBranch,
     draftQ: params.draftQ,
     draftSort: params.draftSort,

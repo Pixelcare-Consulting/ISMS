@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -216,6 +217,9 @@ export function BranchRevenueTargetsTable({
         }
         toolbarActions={
           <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="outline" asChild>
+              <Link href="/planning/suggested-orders">View suggested orders</Link>
+            </Button>
             {selection.selectedCount > 0 ? (
               <Button
                 variant="destructive"

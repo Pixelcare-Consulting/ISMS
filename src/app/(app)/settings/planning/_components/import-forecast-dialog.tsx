@@ -233,6 +233,9 @@ export function ImportForecastDialog({
               planogram rows. Shelf max stays on Planogram. Rows left out of the file are
               not removed.
             </p>
+            <p>
+              Keep Forecast period as text (<strong>Dec-25</strong>), not an Excel date.
+            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">

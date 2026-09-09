@@ -11,7 +11,6 @@ import {
   syncBranchesFromSapWarehousesAction,
 } from "@/features/branches/actions/branch.actions";
 import { SapSyncButton } from "@/features/sap/components/sap-sync-button";
-import { CreateBranchDialog } from "@/app/(app)/settings/branches/_components/create-branch-dialog";
 import { EditBranchDialog } from "@/app/(app)/settings/branches/_components/edit-branch-dialog";
 import { ImportBranchesDialog } from "@/app/(app)/settings/branches/_components/import-branches-dialog";
 import {
@@ -20,13 +19,9 @@ import {
   TableIndexCell,
   TableIndexHead,
   TableRowActions,
-  TableRowCheckbox,
-  TableSelectAllCheckbox,
-  TableSelectionBadge,
   TableStatusBadge,
   uniqueSearchSuggestions,
   useClientTablePagination,
-  useTableSelection,
 } from "@/components/data-table";
 import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
@@ -38,7 +33,7 @@ import {
 } from "@/components/ui/table";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
-const COLUMN_COUNT = 7;
+const COLUMN_COUNT = 6;
 
 interface BranchRow {
   id: string;
@@ -96,7 +91,6 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
     [rows],
   );
 
-  const selection = useTableSelection(filtered.map((branch) => branch.id));
   const sort = useClientTableSort(filtered, {
     sapCode: (b) => b.sapCode,
     name: (b) => b.name,
@@ -143,12 +137,6 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
           placeholder: "Search branches…",
           suggestions,
         }}
-        toolbarLeading={
-          <TableSelectionBadge
-            count={selection.selectedCount}
-            onClear={selection.clearSelection}
-          />
-        }
         toolbarActions={
           <>
               {/* DO NOT DELETE THIS BUTTON - IT IS USED FOR SAP SYNCING <SapSyncButton
@@ -168,12 +156,6 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
                 <Upload className="mr-1 size-4" />
                 Import
               </Button>
-              <CreateBranchDialog
-                onCreated={(branch) => {
-                  setRows((currentRows) => [branch, ...currentRows]);
-                  router.refresh();
-                }}
-              />
           </>
         }
         pageSize={{ value: pageSize, onChange: setPageSize }}
@@ -187,15 +169,9 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
       >
             <TableHeader>
               <TableRow>
-                <TableSelectAllCheckbox
-                  isAllSelected={selection.isAllSelected}
-                  isPartiallySelected={selection.isPartiallySelected}
-                  onToggleAll={selection.toggleAll}
-                  aria-label="Select all branches"
-                />
                 <TableIndexHead />
-                <GlobalTableHead {...sort.sortProps("sapCode")}>SAP code</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("name")}>Name</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("sapCode")}>SAP Code</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("name")}>Branch Name</GlobalTableHead>
                 <GlobalTableHead {...sort.sortProps("area")}>Area</GlobalTableHead>
                 <GlobalTableHead {...sort.sortProps("status")}>Status</GlobalTableHead>
                 <GlobalTableHead className="w-32" />
@@ -208,16 +184,8 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
                 pageItems.map((branch, index) => (
                   <TableRow
                     key={branch.id}
-                    data-state={selection.isRowSelected(branch.id) ? "selected" : undefined}
                     className={index % 2 === 1 ? "bg-table-stripe" : undefined}
                   >
-                    <TableRowCheckbox
-                      checked={selection.isRowSelected(branch.id)}
-                      onCheckedChange={(checked) =>
-                        selection.toggleRow(branch.id, checked)
-                      }
-                      aria-label={`Select branch ${branch.name}`}
-                    />
                     <TableIndexCell index={indexOffset + index + 1} />
                     <TableCell className="font-mono text-sm">{branch.sapCode}</TableCell>
                     <TableCell>{branch.name}</TableCell>

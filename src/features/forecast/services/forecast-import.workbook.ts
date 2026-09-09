@@ -43,6 +43,10 @@ const BRS_WIDE_HEADER_HINTS = new Set([
   "revenue",
 ]);
 
+const MANILA_TZ = "Asia/Manila";
+const PERIOD_LABEL_RE = /^[A-Za-z]{3}[-/\s]\d{2,4}$/;
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}(?:T[\d:.]+(?:Z|[+-]\d{2}:\d{2})?)?$/;
+
 function cellToString(value: ExcelJS.CellValue): string {
   if (value == null) return "";
   if (typeof value === "string") return value.trim();
@@ -58,6 +62,60 @@ function cellToString(value: ExcelJS.CellValue): string {
   return "";
 }
 
+function looksLikePeriodLabel(text: string): boolean {
+  return PERIOD_LABEL_RE.test(text.trim());
+}
+
+function formatManilaMonthYear(date: Date): string {
+  if (Number.isNaN(date.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: MANILA_TZ,
+    month: "short",
+    year: "2-digit",
+  }).formatToParts(date);
+  const month = parts.find((part) => part.type === "month")?.value ?? "";
+  const year = parts.find((part) => part.type === "year")?.value ?? "";
+  return month && year ? `${month}-${year}` : "";
+}
+
+/** Period column only: keep Dec-25 text; convert Excel Date / ISO to MMM-yy (Asia/Manila). */
+function periodValueToLabel(value: ExcelJS.CellValue, displayedText?: string): string {
+  const displayed = displayedText?.trim() ?? "";
+  if (displayed && looksLikePeriodLabel(displayed)) return displayed;
+
+  if (value instanceof Date) {
+    return formatManilaMonthYear(value);
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (looksLikePeriodLabel(trimmed)) return trimmed;
+    if (ISO_DATE_RE.test(trimmed)) {
+      const labeled = formatManilaMonthYear(new Date(trimmed));
+      if (labeled) return labeled;
+    }
+    return trimmed;
+  }
+
+  if (typeof value === "object" && value) {
+    if ("result" in value && value.result != null) {
+      return periodValueToLabel(value.result, displayed);
+    }
+    if ("richText" in value && Array.isArray(value.richText)) {
+      return periodValueToLabel(value.richText.map((part) => part.text).join(""), displayed);
+    }
+    if ("text" in value && typeof value.text === "string") {
+      return periodValueToLabel(value.text, displayed);
+    }
+  }
+
+  return cellToString(value);
+}
+
+function periodCellToLabel(cell: ExcelJS.Cell): string {
+  return periodValueToLabel(cell.value, cell.text);
+}
+
 function readSheet(sheet: ExcelJS.Worksheet | undefined): {
   sheet: SheetRows;
   rawHeaders: string[];
@@ -70,26 +128,35 @@ function readSheet(sheet: ExcelJS.Worksheet | undefined): {
   let keys: (string | null)[] | null = null;
 
   sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-    const cells: string[] = [];
-    row.eachCell({ includeEmpty: true }, (cell, columnNumber) => {
-      cells[columnNumber - 1] = cellToString(cell.value);
-    });
+    const colCount = Math.max(row.cellCount, keys?.length ?? 0);
+    const cells: ExcelJS.Cell[] = [];
+    for (let col = 1; col <= colCount; col += 1) {
+      cells.push(row.getCell(col));
+    }
 
     if (!keys) {
       for (const cell of cells) {
-        rawHeaders.push(normalizeHeader(cell ?? ""));
+        rawHeaders.push(normalizeHeader(cellToString(cell.value)));
       }
-      keys = cells.map((cell) => FORECAST_IMPORT_ALIAS_MAP[normalizeHeader(cell ?? "")] ?? null);
+      keys = cells.map(
+        (cell) => FORECAST_IMPORT_ALIAS_MAP[normalizeHeader(cellToString(cell.value))] ?? null,
+      );
       for (const key of keys) if (key) columns.add(key);
       return;
     }
 
-    if (cells.every((cell) => !cell)) return;
-
     const values: Record<string, string> = {};
     keys.forEach((key, index) => {
-      if (key) values[key] = cells[index] ?? "";
+      if (!key) return;
+      const cell = cells[index];
+      values[key] = !cell
+        ? ""
+        : key === "period"
+          ? periodCellToLabel(cell)
+          : cellToString(cell.value);
     });
+
+    if (Object.values(values).every((cell) => !cell)) return;
     rows.push({ rowNumber, values });
   });
 
@@ -162,13 +229,28 @@ export async function buildForecastTemplateWorkbook(
 
   const sheet = workbook.addWorksheet(FORECAST_SHEET_NAME);
   sheet.addRow([...FORECAST_SHEET_HEADERS]);
+  sheet.getColumn(1).numFmt = "@";
+
+  const writeDataRow = (
+    period: string,
+    sapCode: string,
+    revenueTarget: number,
+    branchName: string,
+  ) => {
+    const dataRow = sheet.addRow([String(period), sapCode, revenueTarget, branchName]);
+    const periodCell = dataRow.getCell(1);
+    periodCell.value = String(period);
+    periodCell.numFmt = "@";
+  };
+
   for (const row of rows) {
-    sheet.addRow([row.period, row.sapCode, row.revenueTarget, row.branchName]);
+    writeDataRow(row.period, row.sapCode, row.revenueTarget, row.branchName);
   }
   if (rows.length === 0) {
-    sheet.addRow(["Dec-25", "WMK-001", 1000000, ""]);
+    writeDataRow("Dec-25", "WMK-001", 1000000, "");
   }
   styleHeader(sheet, [14, 18, 16, 28]);
+  sheet.getColumn(1).numFmt = "@";
 
   const buffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(buffer);
@@ -196,7 +278,9 @@ export async function readForecastImportWorkbook(file: Buffer): Promise<SheetRow
       const values: Record<string, string> = {};
       for (const [rawKey, value] of Object.entries(record.values)) {
         const canonical = FORECAST_IMPORT_ALIAS_MAP[rawKey];
-        if (canonical) values[canonical] = value;
+        if (canonical) {
+          values[canonical] = canonical === "period" ? periodValueToLabel(value) : value;
+        }
       }
       return { rowNumber: record.rowNumber, values };
     });

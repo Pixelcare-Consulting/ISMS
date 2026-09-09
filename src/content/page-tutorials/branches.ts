@@ -12,15 +12,15 @@ export const BRANCHES_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "What this page is for",
       description:
-        "Branches are the operational locations for inventory, orders, deliveries, and sales. SAP codes and delivery areas feed logistics and reporting.",
+        "Branches are the operational locations for inventory, orders, deliveries, and sales. SAP is the source of truth for SAP Code and Branch Name — Sync from SAP adds and updates them.",
     },
     {
       title: "How to use it",
       bullets: [
-        "Create branches linked to dealers with accurate SAP codes.",
-        "Sync from SAP pulls branch master data over the Service Layer and matches on SAP code — it adds and updates branches, but never deletes or deactivates ones SAP no longer lists.",
-        "Keep delivery areas current so logistics can schedule correctly.",
-        "Planogram and AOR assignments are per branch — create branches before those setups.",
+        "Use Sync from SAP to bring in new branches and refresh codes and names. There is no Add branch — SAP owns those identity fields.",
+        "Sync matches on SAP code. It adds and updates branches, but never deletes or deactivates ones SAP no longer lists.",
+        "Edit a branch to set status, dealer, area, warehouses, and delivery schedule. SAP Code and Branch Name stay locked.",
+        "Import is still available for bulk updates. Planogram and AOR assignments are per branch — sync branches before those setups.",
       ],
     },
     {

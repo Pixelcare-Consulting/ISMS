@@ -7,11 +7,14 @@ import { Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import {
-  generateSuggestedOrdersAction,
   runAllocationAction,
   submitSuggestedOrdersAction,
 } from "@/features/forecast/actions/forecast.actions";
 import { AllocationGapsTable } from "@/features/forecast/components/allocation-gaps-table";
+import {
+  AllocationCompleteDialog,
+  type AllocationCompleteResult,
+} from "@/app/(app)/settings/planning/_components/allocation-complete-dialog";
 import { ImportForecastDialog } from "@/app/(app)/settings/planning/_components/import-forecast-dialog";
 import {
   BranchRevenueTargetsTable,
@@ -84,6 +87,8 @@ export function PlanningPanel({
 }: PlanningPanelProps) {
   const router = useRouter();
   const [importing, setImporting] = useState(false);
+  const [allocationResult, setAllocationResult] =
+    useState<AllocationCompleteResult | null>(null);
   const [pending, startTransition] = useTransition();
 
   function runAction(
@@ -97,6 +102,22 @@ export function PlanningPanel({
         return;
       }
       toast.success(label);
+      router.refresh();
+    });
+  }
+
+  function handleRunAllocation() {
+    if (!period) return;
+    startTransition(async () => {
+      const result = await runAllocationAction(period.id);
+      if ("error" in result) {
+        toast.error(result.error);
+        return;
+      }
+      setAllocationResult({
+        gapCount: result.gapCount,
+        totalGapUnits: result.totalGapUnits,
+      });
       router.refresh();
     });
   }
@@ -137,24 +158,9 @@ export function PlanningPanel({
               size="sm"
               className="rounded-lg"
               disabled={pending}
-              onClick={() =>
-                runAction("Allocation computed", () => runAllocationAction(period.id))
-              }
+              onClick={handleRunAllocation}
             >
               Run allocation
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="rounded-lg"
-              disabled={pending}
-              onClick={() =>
-                runAction("Suggested orders created", () =>
-                  generateSuggestedOrdersAction(period.id),
-                )
-              }
-            >
-              Generate suggested orders
             </Button>
             <Button
               size="sm"
@@ -168,11 +174,11 @@ export function PlanningPanel({
               Submit drafts for TL review
             </Button>
           </>
-        ) : null}
-
-        <Button size="sm" variant="outline" className="rounded-lg" asChild>
-          <Link href="/planning/suggested-orders">View suggested orders</Link>
-        </Button>
+        ) : (
+          <Button size="sm" variant="outline" className="rounded-lg" asChild>
+            <Link href="/planning/suggested-orders">View suggested orders</Link>
+          </Button>
+        )}
       </div>
 
       {period ? (
@@ -203,6 +209,16 @@ export function PlanningPanel({
       )}
 
       <ImportForecastDialog open={importing} onOpenChange={setImporting} />
+      {period ? (
+        <AllocationCompleteDialog
+          open={allocationResult !== null}
+          onOpenChange={(open) => {
+            if (!open) setAllocationResult(null);
+          }}
+          periodId={period.id}
+          result={allocationResult}
+        />
+      ) : null}
     </div>
   );
 }

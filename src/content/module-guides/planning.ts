@@ -3,14 +3,15 @@ import type { ModuleGuideContent } from "@/content/module-guides/types";
 export const PLANNING_MODULE_GUIDE: ModuleGuideContent = {
   title: "Planning & Forecast",
   description:
-    "Pick the planning period, set branch revenue targets, run shelf allocation against planogram capacity, and generate suggested auto-replenish drafts.",
+    "Pick the planning period, set branch revenue targets, run shelf allocation, then confirm generate in the popup to create suggested auto-replenish drafts.",
   tips: [
     { label: "Use the Active period list at the top to switch periods — that period becomes the one used on the dashboard" },
     { label: "Click the cards to jump to branch targets, allocation gaps, or Suggested orders" },
     { label: "Add, edit, or remove one branch target on this page; use Import forecast when you have many branches to load at once" },
     { label: "Download the Forecast template (period, branch SAP code, revenue target), then upload the same file to preview and apply" },
+    { label: "Keep Forecast period as text (Dec-25), not an Excel date" },
     { label: "Shelf max and MIL stay on Planogram — this file does not change the shelf plan" },
-    { label: "Review drafts under Suggested orders before TL / SP approval" },
+    { label: "Run allocation, then Generate or Skip in the popup. Review drafts next to Add target under Suggested orders before TL / SP approval" },
   ],
   storageKey: "module-guide.planning",
 };

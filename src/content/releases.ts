@@ -52,6 +52,80 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.36.3",
+    date: "2026-09-09",
+    releasedAt: "2026-09-09T13:55:00+08:00",
+    title: "Clearer branches, reliable planning targets",
+    highlights: [
+      "Branches no longer show unused row checkboxes, and there is no Add branch — new branches come from Sync from SAP, or you can still Import",
+      "The list and Edit now say SAP Code and Branch Name; those two stay locked when you edit a branch",
+      "Planning opens and saves branch revenue targets without an error",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "On Branches, unused checkboxes are gone and Add branch is removed — use Sync from SAP for new branches, or Import when you have a file",
+      },
+      {
+        type: "improvement",
+        description:
+          "Branch list and Edit use SAP Code and Branch Name; both stay locked on edit so only status and other details can change",
+      },
+      {
+        type: "fix",
+        description:
+          "Planning no longer errors when you open the page or save a branch revenue target",
+      },
+    ],
+  },
+  {
+    version: "0.36.2",
+    date: "2026-09-09",
+    releasedAt: "2026-09-09T13:50:00+08:00",
+    title: "Allocation then generate, in one step",
+    highlights: [
+      "After you run allocation, a popup shows how many shelf gaps were found and lets you generate suggested drafts or skip",
+      "If there are no gaps, generate stays off so you are not sent to an empty result",
+      "View suggested orders sits next to Add target on the branch list; Submit drafts stays in the top bar",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Run allocation now finishes with a popup: generate suggested auto-replenish drafts right away, or skip and come back later",
+      },
+      {
+        type: "improvement",
+        description:
+          "View suggested orders is next to Add target on the branch list, so you can jump to drafts while you work on targets",
+      },
+    ],
+  },
+  {
+    version: "0.36.1",
+    date: "2026-09-09",
+    releasedAt: "2026-09-09T13:20:00+08:00",
+    title: "Clearer suggested-order drafts",
+    highlights: [
+      "Draft auto-replenish orders now have a clear title and a single branch filter that lines up with search",
+      "Pick one branch or All branches, then Apply — long branch names are still searchable in the list",
+      "When there are no drafts yet, the page tells you to Generate from allocation",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Suggested-order drafts are easier to scan: the title sits with your selection count, and you pick one branch (or all) in a filter that lines up with search and Apply",
+      },
+      {
+        type: "improvement",
+        description:
+          "If there are no replenish drafts yet, the empty message points you to Generate from allocation — drafts stay drafts until you submit them for review",
+      },
+    ],
+  },
+  {
     version: "0.36.0",
     date: "2026-09-09",
     releasedAt: "2026-09-09T13:10:00+08:00",
@@ -62,7 +136,8 @@ export const RELEASES: ReleaseNote[] = [
       "Add, edit, or remove one branch revenue target on the page; Import forecast is still how you load many branches at once",
       "On Planogram, click the cards to find empty branches, those short of shelf max, or past MIL — click the same card again or Total to see everyone",
       "Import planogram is still the bulk path; Open a branch to change one SKU at a time",
-    ],
+      "Forecast period in the spreadsheet stays as Dec-25 and is not turned into a date",
+      ],
     changes: [
       {
         type: "feature",
@@ -93,6 +168,11 @@ export const RELEASES: ReleaseNote[] = [
         type: "improvement",
         description:
           "Opening a branch stays in Planogram, Back returns you to the list, and unused checkboxes are gone from the branch and SKU tables",
+      },
+      {
+        type: "fix",
+        description:
+          "Forecast period stays as Dec-25 when you download or import the template — Excel no longer turns it into a calendar date",
       },
     ],
   },

@@ -7,7 +7,6 @@ import {
   listPlanningPeriodsAction,
   listPlanningTargetsAction,
 } from "@/features/forecast/actions/forecast.actions";
-import { forecastService } from "@/features/forecast/services/forecast.service";
 import { ModuleGuide } from "@/components/module-guide";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { requireAnyPermission } from "@/lib/auth/permissions";
@@ -77,14 +76,6 @@ export default async function PlanningPage({ searchParams }: PlanningPageProps) 
         { items: [], total: 0, page: 1, limit: gapLimit, totalPages: 1 },
       ];
 
-  const formattedTargets = targets.map((t) => ({
-    id: t.id,
-    branchId: t.branchId,
-    revenueTarget: Number(t.revenueTarget.toString()),
-    revenueLabel: forecastService.formatRevenueTarget(t.revenueTarget),
-    branch: { name: t.branch.name, sapCode: t.branch.sapCode },
-  }));
-
   const clientPeriod = period
     ? { id: period.id, label: period.label, isActive: period.isActive }
     : null;
@@ -139,7 +130,7 @@ export default async function PlanningPage({ searchParams }: PlanningPageProps) 
           gaps: planningHref("#allocation-gaps", period?.id, filterState),
           drafts: "/planning/suggested-orders",
         }}
-        targets={formattedTargets}
+        targets={targets}
         gapsResult={clientGaps}
         branches={branches}
         currentBranch={params.branch}

@@ -7,6 +7,7 @@ import {
   planningTargetDeleteSchema,
   planningTargetUpdateSchema,
 } from "@/features/forecast/schemas/planning-target.schema";
+import { decimalToNumber } from "@/lib/database/decimal";
 
 function isUniqueConstraintError(error: unknown): boolean {
   return (
@@ -17,8 +18,37 @@ function isUniqueConstraintError(error: unknown): boolean {
   );
 }
 
-function revenueNumber(value: { toString: () => string } | number) {
-  return typeof value === "number" ? value : Number(value.toString());
+export type ClientPlanningTarget = {
+  id: string;
+  branchId: string;
+  revenueTarget: number;
+  revenueLabel: string;
+  branch: { name: string; sapCode: string };
+};
+
+type PlanningTargetWithBranch = {
+  id: string;
+  branchId: string;
+  revenueTarget: { toString(): string } | number;
+  branch: { name: string; sapCode: string };
+};
+
+function formatRevenueTarget(value: { toString(): string } | number) {
+  return new Intl.NumberFormat("en-PH", {
+    style: "currency",
+    currency: "PHP",
+    maximumFractionDigits: 0,
+  }).format(decimalToNumber(value));
+}
+
+export function toClientPlanningTarget(row: PlanningTargetWithBranch): ClientPlanningTarget {
+  return {
+    id: row.id,
+    branchId: row.branchId,
+    revenueTarget: decimalToNumber(row.revenueTarget),
+    revenueLabel: formatRevenueTarget(row.revenueTarget),
+    branch: { name: row.branch.name, sapCode: row.branch.sapCode },
+  };
 }
 
 export const forecastService = {
@@ -72,11 +102,12 @@ export const forecastService = {
   },
 
   formatRevenueTarget(value: { toString: () => string } | number) {
-    return new Intl.NumberFormat("en-PH", {
-      style: "currency",
-      currency: "PHP",
-      maximumFractionDigits: 0,
-    }).format(revenueNumber(value));
+    return formatRevenueTarget(value);
+  },
+
+  async listPlanningTargets(tenantId: string, periodId: string) {
+    const rows = await forecastRepository.listTargetsForPeriod(tenantId, periodId);
+    return rows.map(toClientPlanningTarget);
   },
 
   async createPlanningTarget(input: {
@@ -124,7 +155,7 @@ export const forecastService = {
           source: "planning-ui",
         },
       });
-      return row;
+      return toClientPlanningTarget(row);
     } catch (error) {
       if (isUniqueConstraintError(error)) {
         throw new Error("This branch already has a target for this period");
@@ -167,11 +198,11 @@ export const forecastService = {
         branchId: existing.branchId,
         sapCode: existing.branch.sapCode,
         revenueTarget: parsed.data.revenueTarget,
-        previousRevenueTarget: revenueNumber(existing.revenueTarget),
+        previousRevenueTarget: decimalToNumber(existing.revenueTarget),
         source: "planning-ui",
       },
     });
-    return row;
+    return toClientPlanningTarget(row);
   },
 
   async deletePlanningTarget(input: { tenantId: string; actorUserId: string; id: string }) {
@@ -196,7 +227,7 @@ export const forecastService = {
         periodLabel: period?.label,
         branchId: existing.branchId,
         sapCode: existing.branch.sapCode,
-        revenueTarget: revenueNumber(existing.revenueTarget),
+        revenueTarget: decimalToNumber(existing.revenueTarget),
         source: "planning-ui",
       },
     });
@@ -234,7 +265,7 @@ export const forecastService = {
           periodId: row.periodId,
           branchId: row.branchId,
           sapCode: row.branch.sapCode,
-          revenueTarget: revenueNumber(row.revenueTarget),
+          revenueTarget: decimalToNumber(row.revenueTarget),
           source: "planning-ui",
         },
       })),

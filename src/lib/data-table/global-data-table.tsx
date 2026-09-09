@@ -52,7 +52,9 @@ export interface GlobalDataTableProps {
   footer?: ReactNode;
   pagination?: GlobalDataTablePagination;
   empty?: boolean;
-  emptyMessage?: string;
+  emptyMessage?: ReactNode;
+  /** Extra classes on the empty-state block (padding / hierarchy). */
+  emptyClassName?: string;
 }
 
 /**
@@ -80,6 +82,7 @@ export function GlobalDataTable({
   pagination,
   empty = false,
   emptyMessage = "No data.",
+  emptyClassName,
 }: GlobalDataTableProps) {
   const toolbarRef = useRef<HTMLDivElement>(null);
   const tableWrapRef = useRef<HTMLDivElement>(null);
@@ -195,7 +198,7 @@ export function GlobalDataTable({
         {banner}
 
         {empty ? (
-          <DataTableEmptyContent message={emptyMessage} />
+          <DataTableEmptyContent message={emptyMessage} className={emptyClassName} />
         ) : (
           <>
             {/*

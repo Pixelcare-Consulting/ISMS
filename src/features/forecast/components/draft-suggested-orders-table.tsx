@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
-
 import {
   TableIndexCell,
   TableIndexHead,
@@ -13,6 +12,12 @@ import {
   uniqueSearchSuggestions,
   useTableSelection,
 } from "@/components/data-table";
+import {
+  DEFAULT_TABLE_PAGE_SIZE,
+  parseTablePageSize,
+  type TablePageSize,
+} from "@/components/data-table/table-page-size";
+import { TableSearchBar } from "@/components/data-table/table-search-bar";
 import { Button } from "@/components/ui/button";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
@@ -39,6 +44,7 @@ interface DraftFilters {
   q?: string;
   sort?: string;
   dir?: string;
+  limit?: number;
 }
 
 type DraftSortField = "orderNumber" | "branch" | "status";
@@ -52,7 +58,7 @@ interface DraftSuggestedOrdersTableProps {
     total: number;
     page: number;
     totalPages: number;
-    limit?: number;
+    limit: number;
   };
   branches: { id: string; name: string }[];
   currentBranch?: string;
@@ -86,6 +92,10 @@ function buildDraftsHref(
   if (filters.sort && filters.dir) params.set("draftDir", filters.dir);
   else params.delete("draftDir");
 
+  const limit = parseTablePageSize(filters.limit);
+  if (limit !== DEFAULT_TABLE_PAGE_SIZE) params.set("draftLimit", String(limit));
+  else params.delete("draftLimit");
+
   const qs = params.toString();
   return qs ? `${basePath}?${qs}` : basePath;
 }
@@ -110,6 +120,9 @@ export function DraftSuggestedOrdersTable({
   const sortDir = (
     (searchParams.get("draftDir") ?? initialSortDir) === "asc" ? "asc" : "desc"
   ) as DraftSortDir;
+  const pageSize = parseTablePageSize(
+    searchParams.get("draftLimit") ?? result.limit,
+  );
 
   const suggestions = useMemo(
     () =>
@@ -124,7 +137,8 @@ export function DraftSuggestedOrdersTable({
   );
 
   const hasActiveFilters = Boolean(currentBranch || currentQ);
-  const indexOffset = (result.page - 1) * (result.limit ?? 25);
+  const showClear = hasActiveFilters || Boolean(branch || q.trim());
+  const indexOffset = (result.page - 1) * pageSize;
 
   function applyFilters() {
     router.push(
@@ -137,6 +151,7 @@ export function DraftSuggestedOrdersTable({
           q: q.trim() || undefined,
           sort: sort || undefined,
           dir: sort ? sortDir : undefined,
+          limit: pageSize,
         },
         preserveParams,
       ),
@@ -146,7 +161,27 @@ export function DraftSuggestedOrdersTable({
   function clearFilters() {
     setBranch("");
     setQ("");
-    router.push(buildDraftsHref(basePath, 1, pageParam, {}, preserveParams));
+    router.push(
+      buildDraftsHref(basePath, 1, pageParam, { limit: pageSize }, preserveParams),
+    );
+  }
+
+  function handlePageSizeChange(limit: TablePageSize) {
+    router.push(
+      buildDraftsHref(
+        basePath,
+        1,
+        pageParam,
+        {
+          branch: currentBranch,
+          q: currentQ,
+          sort: sort || undefined,
+          dir: sort ? sortDir : undefined,
+          limit,
+        },
+        preserveParams,
+      ),
+    );
   }
 
   function toggleSort(field: DraftSortField) {
@@ -156,7 +191,13 @@ export function DraftSuggestedOrdersTable({
         basePath,
         1,
         pageParam,
-        { branch: currentBranch, q: currentQ, sort: next.sort, dir: next.dir },
+        {
+          branch: currentBranch,
+          q: currentQ,
+          sort: next.sort,
+          dir: next.dir,
+          limit: pageSize,
+        },
         preserveParams,
       ),
     );
@@ -166,7 +207,46 @@ export function DraftSuggestedOrdersTable({
     <section className="space-y-2">
       <GlobalDataTable
         stickyHeader
+        pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
         toolbarLeading={
+          <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="flex shrink-0 items-center gap-2">
+              <span className="whitespace-nowrap text-sm font-medium text-muted-foreground">
+                Branch
+              </span>
+              <SearchableSelect
+                id="drafts-branch"
+                className="w-52"
+                options={[
+                  { id: "all", label: "All branches" },
+                  ...branches.map((b) => ({ id: b.id, label: b.name })),
+                ]}
+                value={branch || "all"}
+                onChange={(value) => setBranch(value === "all" ? "" : value)}
+                placeholder="All branches"
+                searchPlaceholder="Search branches…"
+              />
+            </div>
+            <TableSearchBar
+              value={q}
+              onChange={setQ}
+              placeholder="Order #, branch, SKU…"
+              suggestions={suggestions}
+              className="w-full sm:max-w-sm"
+            />
+            <div className="flex shrink-0 items-center gap-2">
+              <Button type="button" size="sm" onClick={applyFilters}>
+                Apply
+              </Button>
+              {showClear ? (
+                <Button type="button" size="sm" variant="outline" onClick={clearFilters}>
+                  Clear
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        }
+        toolbarActions={
           <>
             <span className="text-sm font-medium">Draft auto-replenish orders</span>
             <TableSelectionBadge
@@ -174,45 +254,34 @@ export function DraftSuggestedOrdersTable({
               onClear={selection.clearSelection}
               size="sm"
             />
-            <SearchableSelect
-              label="Branch"
-              id="drafts-branch"
-              options={[
-                { id: "all", label: "All branches" },
-                ...branches.map((b) => ({ id: b.id, label: b.name })),
-              ]}
-              value={branch || "all"}
-              onChange={(value) => setBranch(value === "all" ? "" : value)}
-              searchPlaceholder="Search branches…"
-            />
-          </>
-        }
-        search={{
-          value: q,
-          onChange: setQ,
-          placeholder: "Order #, branch, SKU…",
-          suggestions,
-        }}
-        toolbarActions={
-          <>
-            <Button type="button" size="sm" onClick={applyFilters}>
-              Apply
-            </Button>
-            {hasActiveFilters ? (
-              <Button type="button" size="sm" variant="outline" onClick={clearFilters}>
-                Clear
-              </Button>
-            ) : null}
           </>
         }
         empty={result.items.length === 0}
-        emptyMessage="No draft suggested orders. Run allocation then generate."
+        emptyClassName="px-6 py-16"
+        emptyMessage={
+          <span className="mx-auto block max-w-sm space-y-1">
+            <span className="block text-sm font-medium text-foreground">
+              No replenish drafts yet
+            </span>
+            <span className="block text-sm">
+              Generate from allocation to create suggested orders.
+            </span>
+          </span>
+        }
         banner={
           hasActiveFilters ? (
             <p className="border-b px-4 py-2 text-xs text-muted-foreground">
               Filtered results.
               <Button variant="link" className="ml-1 h-auto p-0 text-xs" asChild>
-                <Link href={buildDraftsHref(basePath, 1, pageParam, {}, preserveParams)}>
+                <Link
+                  href={buildDraftsHref(
+                    basePath,
+                    1,
+                    pageParam,
+                    { limit: pageSize },
+                    preserveParams,
+                  )}
+                >
                   Show all drafts
                 </Link>
               </Button>
@@ -229,7 +298,13 @@ export function DraftSuggestedOrdersTable({
               basePath,
               page,
               pageParam,
-              { branch: currentBranch, q: currentQ, sort: sort || undefined, dir: sort ? sortDir : undefined },
+              {
+                branch: currentBranch,
+                q: currentQ,
+                sort: sort || undefined,
+                dir: sort ? sortDir : undefined,
+                limit: pageSize,
+              },
               preserveParams,
             ),
         }}

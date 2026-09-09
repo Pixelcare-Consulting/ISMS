@@ -225,12 +225,11 @@ function EditBranchForm({
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const fd = new FormData(e.currentTarget);
     startTransition(async () => {
       const result = await updateBranchAction({
         branchId: branch.id,
-        sapCode: String(fd.get("sapCode")),
-        name: String(fd.get("name")),
+        sapCode: branch.sapCode,
+        name: branch.name,
         status: (status as "active" | "inactive") || "active",
         areaId: areaId || null,
         branchAreaId: branchAreaId || null,
@@ -263,12 +262,12 @@ function EditBranchForm({
     <form onSubmit={onSubmit} className="space-y-3">
       <div className="grid grid-cols-[minmax(0,9rem)_1fr] gap-2">
         <div className="space-y-2">
-          <Label htmlFor="edit-sapCode">SAP code</Label>
-          <Input id="edit-sapCode" name="sapCode" defaultValue={branch.sapCode} required />
+          <Label htmlFor="edit-sapCode">SAP Code</Label>
+          <Input id="edit-sapCode" defaultValue={branch.sapCode} disabled />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="edit-name">Name</Label>
-          <Input id="edit-name" name="name" defaultValue={branch.name} required />
+          <Label htmlFor="edit-name">Branch Name</Label>
+          <Input id="edit-name" defaultValue={branch.name} disabled />
         </div>
       </div>
       <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
