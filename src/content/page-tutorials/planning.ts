@@ -21,7 +21,7 @@ export const PLANNING_PAGE_TUTORIAL: PageTutorialContent = {
         "Click Total branches to jump to the target list, Allocation gaps or Allocation rows to jump to the gap table, and Draft suggestions to open Suggested orders.",
         "Add, edit, or remove one branch revenue target on this page. Select several rows to remove them together.",
         "Use Import forecast → Download template when you need to load or update many branches at once (planning period, branch SAP code, revenue target). Shelf max and MIL stay on Settings → Planogram.",
-        "Run allocation. In the popup, generate suggested orders or skip. Review drafts under Suggested orders (next to Add target). Branch orders still go through TL / SP approval after suggestions become real orders.",
+        "Run allocation. In the popup, generate suggested orders to open Suggested orders, or skip to stay here. Review drafts under Suggested orders (next to Add target). Branch orders still go through TL / SP approval after suggestions become real orders.",
       ],
     },
     {

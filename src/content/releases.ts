@@ -52,6 +52,34 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.36.4",
+    date: "2026-09-09",
+    releasedAt: "2026-09-09T14:10:00+08:00",
+    title: "Generate opens Suggested orders",
+    highlights: [
+      "After you generate suggested orders, you land on Suggested orders so you can review the new drafts right away",
+      "Branch revenue targets and draft orders show SAP Code right after the row number, matching how you look up a branch",
+      "Suggested orders uses Back to Planning, a white Submit all for TL review bar like Planning, aligned draft checkboxes, and generate only from Planning",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Generate suggested orders now opens Suggested orders so you can review the new drafts immediately",
+      },
+      {
+        type: "improvement",
+        description:
+          "SAP Code sits next to the row number on branch revenue targets and draft orders",
+      },
+      {
+        type: "improvement",
+        description:
+          "Suggested orders has Back to Planning, a white Submit all for TL review bar like Planning, aligned draft checkboxes, and generate only from the Planning popup",
+      },
+    ],
+  },
+  {
     version: "0.36.3",
     date: "2026-09-09",
     releasedAt: "2026-09-09T13:55:00+08:00",

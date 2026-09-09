@@ -4,10 +4,7 @@ import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { toast } from "sonner";
 
-import {
-  generateSuggestedOrdersAction,
-  submitSuggestedOrdersAction,
-} from "@/features/forecast/actions/forecast.actions";
+import { submitSuggestedOrdersAction } from "@/features/forecast/actions/forecast.actions";
 import { AllocationGapsTable } from "@/features/forecast/components/allocation-gaps-table";
 import { DraftSuggestedOrdersTable } from "@/features/forecast/components/draft-suggested-orders-table";
 import { Button } from "@/components/ui/button";
@@ -16,7 +13,7 @@ interface DraftOrder {
   id: string;
   orderNumber: string;
   status: string;
-  branch: { id: string; name: string };
+  branch: { id: string; name: string; sapCode: string };
   details: { quantity: number; model: { skuCode: string; name: string } }[];
 }
 
@@ -41,7 +38,6 @@ export function SuggestedOrdersTable({
   draftsResult,
   gapsResult,
   branches,
-  periodId,
   currentDraftBranch,
   currentDraftQ,
   currentGapBranch,
@@ -56,7 +52,6 @@ export function SuggestedOrdersTable({
   draftsResult: Paginated<DraftOrder>;
   gapsResult: Paginated<GapRow>;
   branches: { id: string; name: string }[];
-  periodId: string | null;
   currentDraftBranch?: string;
   currentDraftQ?: string;
   currentGapBranch?: string;
@@ -70,22 +65,6 @@ export function SuggestedOrdersTable({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-
-  function generate() {
-    if (!periodId) {
-      toast.error("No active planning period");
-      return;
-    }
-    startTransition(async () => {
-      const result = await generateSuggestedOrdersAction(periodId);
-      if (result.error) {
-        toast.error(result.error);
-        return;
-      }
-      toast.success(`Created ${result.orders?.length ?? 0} draft order(s)`);
-      router.refresh();
-    });
-  }
 
   function submitAll() {
     startTransition(async () => {
@@ -104,16 +83,8 @@ export function SuggestedOrdersTable({
       <div className="flex flex-wrap gap-1 rounded-xl border bg-card p-1.5 shadow-sm">
         <Button
           size="sm"
-          className="rounded-lg"
-          disabled={pending || !periodId}
-          onClick={generate}
-        >
-          Generate from allocation
-        </Button>
-        <Button
-          size="sm"
           variant="outline"
-          className="rounded-lg"
+          className="rounded-lg bg-card"
           disabled={pending || draftsResult.total === 0}
           onClick={submitAll}
         >

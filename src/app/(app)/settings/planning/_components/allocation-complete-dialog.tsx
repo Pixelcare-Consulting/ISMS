@@ -52,7 +52,7 @@ export function AllocationCompleteDialog({
           : `${count} suggested drafts created`,
       );
       onOpenChange(false);
-      router.refresh();
+      router.push("/planning/suggested-orders");
     });
   }
 

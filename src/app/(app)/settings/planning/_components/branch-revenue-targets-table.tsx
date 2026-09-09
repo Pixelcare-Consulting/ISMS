@@ -256,12 +256,12 @@ export function BranchRevenueTargetsTable({
                   (selection.isPartiallySelected ? "indeterminate" : false)
                 }
                 onCheckedChange={(checked) => selection.toggleAll(checked === true)}
-                aria-label="Select all revenue targets"
+                aria-label="Select all revenue targets" 
               />
             </GlobalTableHead>
             <TableIndexHead />
-            <GlobalTableHead {...sort.sortProps("branch")}>Branch</GlobalTableHead>
-            <GlobalTableHead {...sort.sortProps("sap")}>SAP</GlobalTableHead>
+            <GlobalTableHead {...sort.sortProps("sap")}>SAP Code</GlobalTableHead>
+              <GlobalTableHead {...sort.sortProps("branch")}>Branch</GlobalTableHead>
             <GlobalTableHead className="text-right" {...sort.sortProps("target")}>
               Target
             </GlobalTableHead>
@@ -288,8 +288,8 @@ export function BranchRevenueTargetsTable({
                   />
                 </TableCell>
                 <TableIndexCell index={indexOffset + index + 1} />
-                <TableCell className="font-medium">{row.branch.name}</TableCell>
                 <TableCell className="font-mono text-sm">{row.branch.sapCode}</TableCell>
+                <TableCell className="font-medium">{row.branch.name}</TableCell>
                 <TableCell className="text-right tabular-nums">{row.revenueLabel}</TableCell>
                 <TableRowActions
                   onEdit={() => openEdit(row)}

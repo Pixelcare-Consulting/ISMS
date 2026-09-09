@@ -11,7 +11,7 @@ import {
 } from "@/lib/shared/pagination";
 import type { Prisma } from "@prisma/client";
 
-export type DraftOrderListSort = "orderNumber" | "branch" | "status";
+export type DraftOrderListSort = "sap" | "orderNumber" | "branch" | "status";
 export type DraftOrderListSortDir = "asc" | "desc";
 
 function draftOrderPrismaOrderBy(
@@ -19,14 +19,19 @@ function draftOrderPrismaOrderBy(
   dir: DraftOrderListSortDir,
 ): Prisma.BranchOrderOrderByWithRelationInput {
   switch (field) {
+    case "sap":
+      return { branch: { sapCode: dir } };
     case "orderNumber":
       return { orderNumber: dir };
     case "branch":
       return { branch: { name: dir } };
     case "status":
       return { status: dir };
-    default:
+    default: {
+      const _exhaustive: never = field;
+      void _exhaustive;
       return { createdAt: dir };
+    }
   }
 }
 
@@ -44,6 +49,7 @@ function draftSuggestedOrdersWhere(
       ? {
           OR: [
             { orderNumber: { contains: q, mode: "insensitive" } },
+            { branch: { sapCode: { contains: q, mode: "insensitive" } } },
             { branch: { name: { contains: q, mode: "insensitive" } } },
             {
               details: {
@@ -175,7 +181,7 @@ export const suggestedOrderService = {
     return prisma.branchOrder.findMany({
       where: draftSuggestedOrdersWhere(tenantId),
       include: {
-        branch: { select: { id: true, name: true } },
+        branch: { select: { id: true, name: true, sapCode: true } },
         details: {
           include: { model: { select: { skuCode: true, name: true } } },
         },
@@ -200,7 +206,7 @@ export const suggestedOrderService = {
       prisma.branchOrder.findMany({
         where,
         include: {
-          branch: { select: { id: true, name: true } },
+          branch: { select: { id: true, name: true, sapCode: true } },
           details: {
             include: { model: { select: { skuCode: true, name: true } } },
           },

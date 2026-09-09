@@ -6,8 +6,6 @@ import { useMemo, useState } from "react";
 import {
   TableIndexCell,
   TableIndexHead,
-  TableRowCheckbox,
-  TableSelectAllCheckbox,
   TableSelectionBadge,
   uniqueSearchSuggestions,
   useTableSelection,
@@ -19,6 +17,7 @@ import {
 } from "@/components/data-table/table-page-size";
 import { TableSearchBar } from "@/components/data-table/table-search-bar";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   TableBody,
@@ -35,7 +34,7 @@ interface DraftOrderRow {
   id: string;
   orderNumber: string;
   status: string;
-  branch: { id: string; name: string };
+  branch: { id: string; name: string; sapCode: string };
   details: { quantity: number; model: { skuCode: string; name: string } }[];
 }
 
@@ -47,7 +46,7 @@ interface DraftFilters {
   limit?: number;
 }
 
-type DraftSortField = "orderNumber" | "branch" | "status";
+type DraftSortField = "sap" | "orderNumber" | "branch" | "status";
 type DraftSortDir = "asc" | "desc";
 
 interface DraftSuggestedOrdersTableProps {
@@ -128,6 +127,7 @@ export function DraftSuggestedOrdersTable({
     () =>
       uniqueSearchSuggestions(
         result.items.map((item) => item.orderNumber),
+        result.items.map((item) => item.branch.sapCode),
         result.items.map((item) => item.branch.name),
         result.items.flatMap((item) =>
           item.details.flatMap((detail) => [detail.model.skuCode, detail.model.name]),
@@ -230,7 +230,7 @@ export function DraftSuggestedOrdersTable({
             <TableSearchBar
               value={q}
               onChange={setQ}
-              placeholder="Order #, branch, SKU…"
+              placeholder="Order #, SAP Code, branch, SKU…"
               suggestions={suggestions}
               className="w-full sm:max-w-sm"
             />
@@ -264,7 +264,8 @@ export function DraftSuggestedOrdersTable({
               No replenish drafts yet
             </span>
             <span className="block text-sm">
-              Generate from allocation to create suggested orders.
+              On Planning, run allocation, then generate suggested orders from
+              the popup.
             </span>
           </span>
         }
@@ -311,13 +312,25 @@ export function DraftSuggestedOrdersTable({
       >
         <TableHeader>
           <TableRow className="bg-muted/30 hover:bg-muted/30">
-            <TableSelectAllCheckbox
-              isAllSelected={selection.isAllSelected}
-              isPartiallySelected={selection.isPartiallySelected}
-              onToggleAll={selection.toggleAll}
-              aria-label="Select all draft orders"
-            />
+            <GlobalTableHead className="w-10">
+              <Checkbox
+                checked={
+                  selection.isAllSelected ||
+                  (selection.isPartiallySelected ? "indeterminate" : false)
+                }
+                onCheckedChange={(checked) => selection.toggleAll(checked === true)}
+                aria-label="Select all draft orders"
+              />
+            </GlobalTableHead>
             <TableIndexHead />
+            <GlobalTableHead
+              sortKey="sap"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as DraftSortField)}
+            >
+              SAP Code
+            </GlobalTableHead>
             <GlobalTableHead
               sortKey="orderNumber"
               activeSortKey={sort}
@@ -353,12 +366,17 @@ export function DraftSuggestedOrdersTable({
               data-state={selection.isRowSelected(o.id) ? "selected" : undefined}
               className={cn(index % 2 === 1 && "bg-table-stripe")}
             >
-              <TableRowCheckbox
-                checked={selection.isRowSelected(o.id)}
-                onCheckedChange={(checked) => selection.toggleRow(o.id, checked)}
-                aria-label={`Select draft order ${o.orderNumber}`}
-              />
+              <TableCell>
+                <Checkbox
+                  checked={selection.isRowSelected(o.id)}
+                  onCheckedChange={(checked) =>
+                    selection.toggleRow(o.id, checked === true)
+                  }
+                  aria-label={`Select draft order ${o.orderNumber}`}
+                />
+              </TableCell>
               <TableIndexCell index={indexOffset + index + 1} />
+              <TableCell className="font-mono text-sm">{o.branch.sapCode}</TableCell>
               <TableCell className="font-mono text-sm">
                 <Link href="/orders" className="underline">
                   {o.orderNumber}

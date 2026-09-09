@@ -19,13 +19,13 @@ export const SUGGESTED_ORDERS_PAGE_TUTORIAL: PageTutorialContent = {
       bullets: [
         "Review draft lines and allocation gaps by branch.",
         "Submit ready drafts for Team Leader review, then Supply Planning approval on Branch orders.",
-        "Use Planning to regenerate suggestions after forecast or planogram changes.",
+        "To create or refresh drafts, go back to Planning, run allocation, and generate from the popup after forecast or planogram changes.",
       ],
     },
     {
       title: "Related pages",
       bullets: [
-        "Settings → Planning — run allocation and generate drafts.",
+        "Settings → Planning — run allocation, then generate drafts from the popup.",
         "Branch orders — approve submitted auto-replenish orders.",
       ],
     },

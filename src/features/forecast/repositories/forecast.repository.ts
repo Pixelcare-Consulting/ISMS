@@ -24,8 +24,11 @@ function allocationGapPrismaOrderBy(
       return [{ planogramMax: dir }];
     case "gapQty":
       return [{ gapQty: dir }];
-    default:
+    default: {
+      const _exhaustive: never = field;
+      void _exhaustive;
       return [{ branch: { name: "asc" } }, { model: { skuCode: "asc" } }];
+    }
   }
 }
 
@@ -166,7 +169,7 @@ export const forecastRepository = {
     return prisma.branchAllocation.findMany({
       where: allocationGapsWhere(tenantId, periodId),
       include: {
-        branch: { select: { id: true, name: true } },
+        branch: { select: { id: true, name: true, sapCode: true } },
         model: { select: { id: true, skuCode: true, name: true } },
       },
       orderBy: [{ branch: { name: "asc" } }, { model: { skuCode: "asc" } }],
@@ -190,7 +193,7 @@ export const forecastRepository = {
       prisma.branchAllocation.findMany({
         where,
         include: {
-          branch: { select: { id: true, name: true } },
+          branch: { select: { id: true, name: true, sapCode: true } },
           model: { select: { id: true, skuCode: true, name: true } },
         },
         orderBy,

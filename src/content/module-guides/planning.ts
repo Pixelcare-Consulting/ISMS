@@ -11,7 +11,7 @@ export const PLANNING_MODULE_GUIDE: ModuleGuideContent = {
     { label: "Download the Forecast template (period, branch SAP code, revenue target), then upload the same file to preview and apply" },
     { label: "Keep Forecast period as text (Dec-25), not an Excel date" },
     { label: "Shelf max and MIL stay on Planogram — this file does not change the shelf plan" },
-    { label: "Run allocation, then Generate or Skip in the popup. Review drafts next to Add target under Suggested orders before TL / SP approval" },
+    { label: "Run allocation, then Generate or Skip in the popup. Generate opens Suggested orders so you can review drafts before TL / SP approval" },
   ],
   storageKey: "module-guide.planning",
 };
@@ -24,7 +24,7 @@ export const SUGGESTED_ORDERS_MODULE_GUIDE: ModuleGuideContent = {
   tips: [
     { label: "Review draft lines and gaps by branch before submitting" },
     { label: "Submit for TL review, then SP approval on Branch orders" },
-    { label: "Regenerate from Planning after forecast or planogram changes" },
+    { label: "To create or refresh drafts, run allocation on Planning and generate from the popup" },
   ],
   storageKey: "module-guide.suggested-orders",
 };

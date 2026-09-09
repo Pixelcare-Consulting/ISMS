@@ -31,6 +31,7 @@ const ALLOCATION_GAP_SORT_FIELDS = new Set<AllocationGapListSort>([
   "gapQty",
 ]);
 const DRAFT_ORDER_SORT_FIELDS = new Set<DraftOrderListSort>([
+  "sap",
   "orderNumber",
   "branch",
   "status",

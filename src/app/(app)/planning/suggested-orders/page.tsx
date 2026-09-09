@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 
 import {
   getPlanningDashboardAction,
@@ -108,7 +109,10 @@ export default async function SuggestedOrdersPage({
         actions={
           <div className="flex gap-2">
             <Button variant="outline" asChild>
-              <Link href="/settings/planning">Planning</Link>
+              <Link href="/settings/planning">
+                <ArrowLeft className="size-4" />
+                Back
+              </Link>
             </Button>
             <Button variant="outline" asChild>
               <Link href="/orders">All orders</Link>
@@ -118,7 +122,26 @@ export default async function SuggestedOrdersPage({
       />
       <ModuleGuide {...SUGGESTED_ORDERS_MODULE_GUIDE} />
       <SuggestedOrdersTable
-        draftsResult={draftsResult}
+        draftsResult={{
+          items: draftsResult.items.map((order) => ({
+            id: order.id,
+            orderNumber: order.orderNumber,
+            status: order.status,
+            branch: {
+              id: order.branch.id,
+              name: order.branch.name,
+              sapCode: order.branch.sapCode,
+            },
+            details: order.details.map((detail) => ({
+              quantity: detail.quantity,
+              model: { skuCode: detail.model.skuCode, name: detail.model.name },
+            })),
+          })),
+          total: draftsResult.total,
+          page: draftsResult.page,
+          limit: draftsResult.limit,
+          totalPages: draftsResult.totalPages,
+        }}
         gapsResult={{
           items: gapsResult.items.map((g) => ({
             id: g.id,
@@ -134,7 +157,6 @@ export default async function SuggestedOrdersPage({
           totalPages: gapsResult.totalPages,
         }}
         branches={branches}
-        periodId={dashboard.period?.id ?? null}
         currentDraftBranch={params.draftBranch}
         currentDraftQ={params.draftQ}
         currentGapBranch={params.branch}

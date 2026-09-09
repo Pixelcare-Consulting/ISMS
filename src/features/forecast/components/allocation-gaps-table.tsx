@@ -24,7 +24,9 @@ import {
   TableCell,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";export interface AllocationGapRow {
+} from "@/components/ui/table";
+
+export interface AllocationGapRow {
   id: string;
   gapQty: number;
   planogramMax: number;
