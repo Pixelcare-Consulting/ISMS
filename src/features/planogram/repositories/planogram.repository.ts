@@ -478,4 +478,19 @@ export const planogramRepository = {
       },
     });
   },
+
+  async countPlanogramRowsByBranch(
+    tenantId: string,
+    branchIds: string[],
+  ): Promise<Map<string, number>> {
+    if (branchIds.length === 0) return new Map();
+
+    const rows = await prisma.branchPlanogram.groupBy({
+      by: ["branchId"],
+      where: { tenantId, branchId: { in: branchIds } },
+      _count: { id: true },
+    });
+
+    return new Map(rows.map((row) => [row.branchId, row._count.id]));
+  },
 };

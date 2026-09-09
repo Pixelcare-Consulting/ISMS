@@ -29,6 +29,8 @@ import { cn } from "@/utils/cn";
 export interface GlobalDataTableProps {
   children: ReactNode;
   className?: string;
+  /** Applied to the inner `<table>` (e.g. `table-fixed` for tight checkbox columns). */
+  tableClassName?: string;
   /**
    * Freeze toolbar + column headers on page scroll. Track: `sticky table header`.
    * The freeze is dropped automatically while the table is too wide for its card
@@ -65,6 +67,7 @@ export interface GlobalDataTableProps {
 export function GlobalDataTable({
   children,
   className,
+  tableClassName,
   stickyHeader = false,
   scrollable = false,
   search,
@@ -210,16 +213,20 @@ export function GlobalDataTable({
                   overflowsCard ? "overflow-x-auto" : "overflow-visible",
                 )}
               >
-                <Table ref={tableRef} scrollContainer={false}>
+                <Table
+                  ref={tableRef}
+                  scrollContainer={false}
+                  className={tableClassName}
+                >
                   {children}
                 </Table>
               </div>
             ) : scrollable ? (
               <DataTableScroll>
-                <Table>{children}</Table>
+                <Table className={tableClassName}>{children}</Table>
               </DataTableScroll>
             ) : (
-              <Table>{children}</Table>
+              <Table className={tableClassName}>{children}</Table>
             )}
             {footer}
             {pagination ? (

@@ -10,8 +10,10 @@ import {
 } from "@/features/planogram/services/planogram.service";
 import { getUserBranchIds } from "@/lib/aor/scope";
 import { hasPermission, requirePermission, requirePlanogramView } from "@/lib/auth/permissions";
+import type { AppSession } from "@/lib/auth/session";
 
 function revalidatePlanogram(branchId: string) {
+  revalidatePath(`/settings/planogram/${branchId}`);
   revalidatePath(`/settings/branches/${branchId}/planogram`);
   revalidatePath("/settings/planogram");
   revalidatePath("/dashboard");
@@ -28,8 +30,7 @@ async function requirePlanogramManage() {
   return requirePermission("planogram.manage");
 }
 
-export async function listBranchesForPlanogramAction() {
-  const { session } = await requirePlanogramAccess();
+async function listScopedPlanogramBranches(session: AppSession) {
   const allBranches = await branchService.listBranches(session.user.tenantId);
   const all = allBranches.filter((b) => b.status === "active");
 
@@ -48,6 +49,17 @@ export async function listBranchesForPlanogramAction() {
   return all
     .filter((b) => allowed.has(b.id))
     .map((b) => ({ id: b.id, name: b.name, sapCode: b.sapCode }));
+}
+
+export async function listBranchesForPlanogramAction() {
+  const { session } = await requirePlanogramAccess();
+  return listScopedPlanogramBranches(session);
+}
+
+export async function getPlanogramIndexAction() {
+  const { session } = await requirePlanogramAccess();
+  const branches = await listScopedPlanogramBranches(session);
+  return planogramService.getPlanogramIndex(session.user.tenantId, branches);
 }
 
 export async function listPlanogramAction(branchId: string) {

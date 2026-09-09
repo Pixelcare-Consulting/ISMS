@@ -4,7 +4,7 @@ export const PLANOGRAM_PAGE_TUTORIAL: PageTutorialContent = {
   id: "settings-planogram",
   triggerLabel: "Open planogram tutorial",
   dialogTitle: "Planogram — quick guide",
-  dialogDescription: "Authorized SKUs and MIL thresholds per branch.",
+  dialogDescription: "Find empty or short branches, then set authorized SKUs and MIL.",
   helpHref: "/help",
   helpLinkLabel: "Full Help & Support portal",
   sections: [
@@ -16,10 +16,10 @@ export const PLANOGRAM_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "How to use it",
       bullets: [
-        "Use Import → Download template to get a Planogram spreadsheet (branch SAP code, SKU, max qty, MIL days) prefilled with your current rows.",
-        "SKUs and branches must already exist from Models, Branches, or SAP. The template does not create new products.",
-        "Upload that same file to preview creates and updates. Rows you leave out stay as they are.",
-        "Open a branch to add a model, edit max qty or MIL, or remove a SKU one at a time. Add model needs Allowed models first — if that list is empty, you get a shortcut to open it.",
+        "Click the cards to filter the list: branches with a planogram, none yet (empty), stock below shelf max, or past MIL. Total branches shows everyone. Click the same card again to clear the filter.",
+        "Each branch row shows how many SKUs it has, how many are below max, and MIL. Open a branch to add a model, edit max qty or MIL, or remove one SKU. Add model needs Allowed models first — if that list is empty, you get a shortcut to open it.",
+        "Use Import → Download template when you need to load or update many branches at once (branch SAP code, SKU, max qty, MIL days). The download is filled with your current rows.",
+        "SKUs and branches must already exist from Models, Branches, or SAP. The template does not create new products. Upload that same file to preview creates and updates. Rows you leave out stay as they are.",
         "Forecast uses the official template on Planning — do not upload that file here.",
       ],
     },

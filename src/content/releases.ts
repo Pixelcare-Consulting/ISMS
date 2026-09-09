@@ -52,6 +52,51 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.36.0",
+    date: "2026-09-09",
+    releasedAt: "2026-09-09T13:10:00+08:00",
+    title: "Demand Planning from the page",
+    highlights: [
+      "Switch the planning period at the top of Planning — that period becomes the one used on the dashboard",
+      "Click the Planning cards to jump to branch targets, allocation gaps, or Suggested orders",
+      "Add, edit, or remove one branch revenue target on the page; Import forecast is still how you load many branches at once",
+      "On Planogram, click the cards to find empty branches, those short of shelf max, or past MIL — click the same card again or Total to see everyone",
+      "Import planogram is still the bulk path; Open a branch to change one SKU at a time",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Choose the planning period from the top of Settings → Planning; switching it also makes that period the one used on the dashboard",
+      },
+      {
+        type: "feature",
+        description:
+          "Click Planning cards to jump to branch targets, allocation gaps, or Suggested orders",
+      },
+      {
+        type: "feature",
+        description:
+          "Add, edit, or remove a single branch revenue target on Planning without a spreadsheet",
+      },
+      {
+        type: "feature",
+        description:
+          "Click Planogram cards to list branches with a shelf plan, none yet, short of shelf max, or past MIL",
+      },
+      {
+        type: "improvement",
+        description:
+          "Import forecast and Import planogram stay the way to update many branches at once; one-SKU edits still use Open on a branch",
+      },
+      {
+        type: "improvement",
+        description:
+          "Opening a branch stays in Planogram, Back returns you to the list, and unused checkboxes are gone from the branch and SKU tables",
+      },
+    ],
+  },
+  {
     version: "0.35.2",
     date: "2026-09-09",
     releasedAt: "2026-09-09T11:55:00+08:00",

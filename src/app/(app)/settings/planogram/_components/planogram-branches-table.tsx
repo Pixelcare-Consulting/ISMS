@@ -11,12 +11,8 @@ import {
   TableIndexCell,
   TableIndexHead,
   TableRowActions,
-  TableRowCheckbox,
-  TableSelectAllCheckbox,
-  TableSelectionBadge,
   uniqueSearchSuggestions,
   useClientTablePagination,
-  useTableSelection,
 } from "@/components/data-table";
 import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
@@ -26,50 +22,70 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  buildBranchPlanogramHref,
+  matchesPlanogramIndexView,
+  type PlanogramIndexBranch,
+  type PlanogramIndexView,
+} from "@/features/planogram/lib/planogram-index";
 import { matchesTableSearch } from "@/utils/match-table-search";
 import { cn } from "@/utils/cn";
 
-export interface PlanogramBranchRow {
-  id: string;
-  name: string;
-  sapCode: string;
-}
-
 interface PlanogramBranchesTableProps {
-  branches: PlanogramBranchRow[];
+  branches: PlanogramIndexBranch[];
+  view: PlanogramIndexView | null;
+  query: string;
+  onQueryChange: (query: string) => void;
   canManage?: boolean;
 }
 
-const COL_COUNT = 5;
+const COL_COUNT = 7;
+
+function emptyMessage(view: PlanogramIndexView | null): string {
+  if (view == null) return "No branches match your search.";
+  if (view === "empty") {
+    return "No branches match this filter. Open a branch to add SKUs (Allowed models first) or Import the Planogram template.";
+  }
+  return "No branches match this filter.";
+}
 
 export function PlanogramBranchesTable({
   branches,
+  view,
+  query,
+  onQueryChange,
   canManage = false,
 }: PlanogramBranchesTableProps) {
-  const [query, setQuery] = useState("");
   const [importing, setImporting] = useState(false);
+
+  const viewFiltered = useMemo(
+    () => branches.filter((branch) => matchesPlanogramIndexView(branch, view)),
+    [branches, view],
+  );
 
   const filtered = useMemo(
     () =>
-      branches.filter((branch) =>
+      viewFiltered.filter((branch) =>
         matchesTableSearch(query, [branch.name, branch.sapCode]),
       ),
-    [branches, query],
+    [viewFiltered, query],
   );
 
   const suggestions = useMemo(
     () =>
       uniqueSearchSuggestions(
-        branches.map((branch) => branch.name),
-        branches.map((branch) => branch.sapCode),
+        viewFiltered.map((branch) => branch.name),
+        viewFiltered.map((branch) => branch.sapCode),
       ),
-    [branches],
+    [viewFiltered],
   );
 
-  const selection = useTableSelection(filtered.map((branch) => branch.id));
   const sort = useClientTableSort(filtered, {
     name: (branch) => branch.name,
     sapCode: (branch) => branch.sapCode,
+    skuCount: (branch) => branch.skuCount,
+    belowCapacityCount: (branch) => branch.belowCapacityCount,
+    milCount: (branch) => branch.milCount,
   });
   const {
     page,
@@ -81,7 +97,7 @@ export function PlanogramBranchesTable({
     pageItems,
     indexOffset,
   } = useClientTablePagination(sort.sorted, {
-    resetKey: `${query}:${sort.sortKey}:${sort.sortDir}`,
+    resetKey: `${view ?? "all"}:${query}:${sort.sortKey}:${sort.sortDir}`,
   });
 
   if (branches.length === 0) {
@@ -110,17 +126,10 @@ export function PlanogramBranchesTable({
         stickyHeader
         search={{
           value: query,
-          onChange: setQuery,
+          onChange: onQueryChange,
           placeholder: "Search by branch name or SAP code…",
           suggestions,
         }}
-        toolbarLeading={
-          <TableSelectionBadge
-            count={selection.selectedCount}
-            onClear={selection.clearSelection}
-            size="sm"
-          />
-        }
         toolbarActions={
           canManage ? (
             <Button variant="outline" size="sm" onClick={() => setImporting(true)}>
@@ -134,54 +143,68 @@ export function PlanogramBranchesTable({
           total,
           page,
           totalPages,
-          itemLabel: "branch",
+          itemLabel: "branches",
           onPageChange: setPage,
         }}
       >
           <TableHeader>
             <TableRow className="bg-muted/30 hover:bg-muted/30">
-              <TableSelectAllCheckbox
-                isAllSelected={selection.isAllSelected}
-                isPartiallySelected={selection.isPartiallySelected}
-                onToggleAll={selection.toggleAll}
-                aria-label="Select all branches"
-              />
               <TableIndexHead />
-              <GlobalTableHead className="w-[45%]" {...sort.sortProps("name")}>
-                Branch
+              <GlobalTableHead {...sort.sortProps("sapCode")}>SAP code</GlobalTableHead>
+              <GlobalTableHead {...sort.sortProps("name")}>Branch</GlobalTableHead>
+              <GlobalTableHead className="text-right" {...sort.sortProps("skuCount")}>
+                SKUs
               </GlobalTableHead>
-              <GlobalTableHead className="w-[35%]" {...sort.sortProps("sapCode")}>
-                SAP code
+              <GlobalTableHead
+                className="text-right"
+                {...sort.sortProps("belowCapacityCount")}
+              >
+                Below max
               </GlobalTableHead>
-              <GlobalTableHead className="w-[20%] text-right"> </GlobalTableHead>
+              <GlobalTableHead className="text-right" {...sort.sortProps("milCount")}>
+                MIL
+              </GlobalTableHead>
+              <GlobalTableHead className="text-right"> </GlobalTableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtered.length === 0 ? (
-              <TableEmptyRow
-                colSpan={COL_COUNT}
-                message="No branches match your search."
-              />
+              <TableEmptyRow colSpan={COL_COUNT} message={emptyMessage(view)} />
             ) : (
               pageItems.map((branch, index) => (
                 <TableRow
                   key={branch.id}
-                  data-state={selection.isRowSelected(branch.id) ? "selected" : undefined}
                   className={cn(index % 2 === 1 && "bg-table-stripe")}
                 >
-                  <TableRowCheckbox
-                    checked={selection.isRowSelected(branch.id)}
-                    onCheckedChange={(checked) => selection.toggleRow(branch.id, checked)}
-                    aria-label={`Select branch ${branch.name}`}
-                  />
                   <TableIndexCell index={indexOffset + index + 1} />
-                  <TableCell className="font-medium">{branch.name}</TableCell>
                   <TableCell className="font-mono text-sm text-muted-foreground">
                     {branch.sapCode}
                   </TableCell>
+                  <TableCell className="font-medium">{branch.name}</TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {branch.skuCount}
+                  </TableCell>
+                  <TableCell
+                    className={cn(
+                      "text-right tabular-nums",
+                      branch.belowCapacityCount === 0 && "text-muted-foreground",
+                    )}
+                  >
+                    {branch.belowCapacityCount}
+                  </TableCell>
+                  <TableCell
+                    className={cn(
+                      "text-right tabular-nums",
+                      branch.milCount > 0
+                        ? "font-medium text-amber-600 dark:text-amber-400"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    {branch.milCount}
+                  </TableCell>
                   <TableRowActions>
                     <Button variant="outline" size="sm" asChild>
-                      <Link href={`/settings/branches/${branch.id}/planogram`}>
+                      <Link href={buildBranchPlanogramHref(branch.id, { view, q: query })}>
                         Open
                         <ChevronRight className="size-4" />
                       </Link>

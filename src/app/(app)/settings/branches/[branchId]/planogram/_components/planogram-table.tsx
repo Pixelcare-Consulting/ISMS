@@ -21,12 +21,8 @@ import {
   TableIndexCell,
   TableIndexHead,
   TableRowActions,
-  TableRowCheckbox,
   TableSearchBar,
-  TableSelectAllCheckbox,
-  TableSelectionBadge,
   uniqueSearchSuggestions,
-  useTableSelection,
 } from "@/components/data-table";
 import { GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 import {
@@ -151,8 +147,7 @@ export function PlanogramTable({
     [rows],
   );
 
-  const selection = useTableSelection(filtered.map((row) => row.id));
-  const colCount = canManage ? 12 : 11;
+  const colCount = canManage ? 11 : 10;
 
   function handleRemove() {
     if (!deleting) return;
@@ -195,11 +190,6 @@ export function PlanogramTable({
               className="sm:max-w-sm"
             />
             <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <TableSelectionBadge
-                count={selection.selectedCount}
-                onClear={selection.clearSelection}
-                size="sm"
-              />
               {canManage ? (
                 <Button size="sm" onClick={() => setShowAdd(true)}>
                   Add model
@@ -213,12 +203,6 @@ export function PlanogramTable({
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/30 hover:bg-muted/30">
-                <TableSelectAllCheckbox
-                  isAllSelected={selection.isAllSelected}
-                  isPartiallySelected={selection.isPartiallySelected}
-                  onToggleAll={selection.toggleAll}
-                  aria-label="Select all planogram rows"
-                />
                 <TableIndexHead />
                 <GlobalTableHead {...sort.sortProps("sku")}>SKU</GlobalTableHead>
                 <GlobalTableHead {...sort.sortProps("model")}>Model</GlobalTableHead>
@@ -252,8 +236,6 @@ export function PlanogramTable({
                   <PlanogramRowEditor
                     key={row.id}
                     index={index}
-                    selected={selection.isRowSelected(row.id)}
-                    onSelect={(checked) => selection.toggleRow(row.id, checked)}
                     branchId={branchId}
                     row={row}
                     canManage={canManage}
@@ -301,8 +283,6 @@ export function PlanogramTable({
 
 function PlanogramRowEditor({
   index,
-  selected,
-  onSelect,
   branchId,
   row,
   canManage,
@@ -311,8 +291,6 @@ function PlanogramRowEditor({
   onSaved,
 }: {
   index: number;
-  selected: boolean;
-  onSelect: (checked: boolean) => void;
   branchId: string;
   row: PlanogramRow;
   canManage: boolean;
@@ -362,15 +340,7 @@ function PlanogramRowEditor({
   }
 
   return (
-    <TableRow
-      data-state={selected ? "selected" : undefined}
-      className={cn(index % 2 === 1 && "bg-table-stripe")}
-    >
-      <TableRowCheckbox
-        checked={selected}
-        onCheckedChange={onSelect}
-        aria-label={`Select planogram row ${row.model.skuCode}`}
-      />
+    <TableRow className={cn(index % 2 === 1 && "bg-table-stripe")}>
       <TableIndexCell index={index + 1} />
       <TableCell className="font-mono text-sm">{row.model.skuCode}</TableCell>
       <TableCell>{row.model.name}</TableCell>

@@ -3,12 +3,14 @@ import type { ModuleGuideContent } from "@/content/module-guides/types";
 export const PLANOGRAM_MODULE_GUIDE: ModuleGuideContent = {
   title: "Planogram",
   description:
-    "Define which SKUs a branch may hold, shelf capacity, and minimum inventory levels (MIL). Download the official template to load or update many branches at once.",
+    "See which branches have a shelf plan, then set authorized SKUs, shelf capacity, and minimum inventory levels (MIL).",
   tips: [
-    { label: "Download the Planogram template, then upload the same file to preview and apply" },
-    { label: "Each row is a branch SAP code plus a SKU, with shelf max and optional MIL days (blank = 30)" },
+    { label: "Click the cards to list branches with a planogram, none yet, stock below shelf max, or past MIL — click the same card again or Total branches to clear" },
+    { label: "Each row shows SKUs, how many are below max, and MIL — Open a branch to add, edit, or remove one SKU" },
+    { label: "Use Import for many branches at once: download the template, then upload the same file to preview and apply" },
+    { label: "Each import row is a branch SAP code plus a SKU, with shelf max and optional MIL days (blank = 30)" },
     { label: "SKUs must already exist — this file does not create products" },
-    { label: "Use Planning → Import forecast for period and revenue targets, not this page" },
+    { label: "Use Planning to set period and revenue targets, not this page" },
     { label: "Add model on a branch needs Allowed models first" },
     { label: "Off-planogram badges on Stock units follow this list" },
   ],

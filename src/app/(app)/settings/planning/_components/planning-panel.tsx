@@ -1,11 +1,8 @@
 "use client";
 
 import Link from "next/link";
-
 import { useRouter } from "next/navigation";
-
 import { useState, useTransition } from "react";
-
 import { Upload } from "lucide-react";
 import { toast } from "sonner";
 
@@ -14,45 +11,35 @@ import {
   runAllocationAction,
   submitSuggestedOrdersAction,
 } from "@/features/forecast/actions/forecast.actions";
-
 import { AllocationGapsTable } from "@/features/forecast/components/allocation-gaps-table";
 import { ImportForecastDialog } from "@/app/(app)/settings/planning/_components/import-forecast-dialog";
-
-import { useTableSelection } from "@/components/data-table/use-table-selection";
-import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
-import { KpiCard } from "@/lib/kpi-cards";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  BranchRevenueTargetsTable,
+  type PlanningBranchOption,
+  type PlanningTargetRow,
+} from "@/app/(app)/settings/planning/_components/branch-revenue-targets-table";
+import { PlanningKpiStrip } from "@/app/(app)/settings/planning/_components/planning-kpi-strip";
+import type { PlanningPeriodOption } from "@/app/(app)/settings/planning/_components/planning-period-select";
+import { Button } from "@/components/ui/button";
 
 interface PlanningPanelProps {
   period: {
     id: string;
-
     label: string;
-
     isActive: boolean;
-
-    _count?: { allocations: number };
   } | null;
-
+  periods: PlanningPeriodOption[];
   gapCount: number;
-
+  allocationRowCount: number;
   draftOrders: number;
-
-  targets: {
-    id: string;
-
-    revenueLabel: string;
-
-    branch: { name: string; sapCode: string };
-  }[];
-
+  targetBranchCount: number;
+  tenantBranchCount: number;
+  kpiHrefs: {
+    totalBranches: string;
+    gaps: string;
+    drafts: string;
+  };
+  targets: PlanningTargetRow[];
   gapsResult: {
     items: {
       id: string;
@@ -67,50 +54,37 @@ interface PlanningPanelProps {
     limit: number;
     totalPages: number;
   };
-
-  branches: { id: string; name: string }[];
-
+  branches: PlanningBranchOption[];
   currentBranch?: string;
-
   currentQ?: string;
-
   initialSort?: string;
-
   initialSortDir?: string;
+  gapsPreserveParams?: Record<string, string>;
+  periodPreserveParams?: Record<string, string>;
 }
 
 export function PlanningPanel({
   period,
-
+  periods,
   gapCount,
-
+  allocationRowCount,
   draftOrders,
-
+  targetBranchCount,
+  tenantBranchCount,
+  kpiHrefs,
   targets,
-
   gapsResult,
-
   branches,
-
   currentBranch,
-
   currentQ,
-
   initialSort,
-
   initialSortDir,
+  gapsPreserveParams,
+  periodPreserveParams,
 }: PlanningPanelProps) {
   const router = useRouter();
-
   const [importing, setImporting] = useState(false);
-
   const [pending, startTransition] = useTransition();
-  const targetSelection = useTableSelection(targets.map((target) => target.id));
-  const targetSort = useClientTableSort(targets, {
-    branch: (t) => t.branch.name,
-    sap: (t) => t.branch.sapCode,
-    target: (t) => t.revenueLabel,
-  });
 
   function runAction(
     label: string,
@@ -118,33 +92,32 @@ export function PlanningPanel({
   ) {
     startTransition(async () => {
       const result = await fn();
-
       if (result.error) {
         toast.error(result.error);
-
         return;
       }
-
       toast.success(label);
-
       router.refresh();
     });
   }
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard label="Active period" value={period?.label ?? "None"} />
-
-        <KpiCard label="Allocation gaps" value={String(gapCount)} />
-
-        <KpiCard label="Draft suggestions" value={String(draftOrders)} />
-
-        <KpiCard
-          label="Allocation rows"
-          value={String(period?._count?.allocations ?? 0)}
-        />
-      </div>
+      <PlanningKpiStrip
+        periods={periods}
+        selectedPeriodId={period?.id ?? ""}
+        periodLabel={period?.label ?? null}
+        isActivePeriod={period?.isActive ?? false}
+        targetBranchCount={targetBranchCount}
+        tenantBranchCount={tenantBranchCount}
+        gapCount={gapCount}
+        allocationRowCount={allocationRowCount}
+        draftOrders={draftOrders}
+        totalBranchesHref={kpiHrefs.totalBranches}
+        gapsHref={kpiHrefs.gaps}
+        draftsHref={kpiHrefs.drafts}
+        periodPreserveParams={periodPreserveParams}
+      />
 
       <div className="flex flex-wrap gap-1 rounded-xl border bg-card p-1.5 shadow-sm">
         <Button
@@ -165,14 +138,11 @@ export function PlanningPanel({
               className="rounded-lg"
               disabled={pending}
               onClick={() =>
-                runAction("Allocation computed", () =>
-                  runAllocationAction(period.id),
-                )
+                runAction("Allocation computed", () => runAllocationAction(period.id))
               }
             >
               Run allocation
             </Button>
-
             <Button
               size="sm"
               variant="outline"
@@ -186,16 +156,13 @@ export function PlanningPanel({
             >
               Generate suggested orders
             </Button>
-
             <Button
               size="sm"
               variant="outline"
               className="rounded-lg"
               disabled={pending || draftOrders === 0}
               onClick={() =>
-                runAction("Submitted for TL review", () =>
-                  submitSuggestedOrdersAction(),
-                )
+                runAction("Submitted for TL review", () => submitSuggestedOrdersAction())
               }
             >
               Submit drafts for TL review
@@ -210,74 +177,28 @@ export function PlanningPanel({
 
       {period ? (
         <>
-          <GlobalDataTable
-            stickyHeader
-            toolbarLeading={
-              <span className="text-sm font-medium">Branch revenue targets</span>
-            }
-            empty={targets.length === 0}
-            emptyMessage="No branch revenue targets for this period."
-            toolbarActions={
-              targetSelection.selectedCount > 0 ? (
-                <Button variant="secondary" size="sm" onClick={targetSelection.clearSelection}>
-                  {targetSelection.selectedCount} selected
-                </Button>
-              ) : null
-            }
-          >
-                <TableHeader>
-                  <TableRow>
-                    <GlobalTableHead className="w-10">
-                      <Checkbox
-                        checked={targetSelection.isAllSelected || (targetSelection.isPartiallySelected ? "indeterminate" : false)}
-                        onCheckedChange={(checked) => targetSelection.toggleAll(checked === true)}
-                        aria-label="Select all revenue targets"
-                      />
-                    </GlobalTableHead>
-                    <GlobalTableHead className="w-12">#</GlobalTableHead>
-                    <GlobalTableHead {...targetSort.sortProps("branch")}>Branch</GlobalTableHead>
-                    <GlobalTableHead {...targetSort.sortProps("sap")}>SAP</GlobalTableHead>
-                    <GlobalTableHead
-                      className="text-right"
-                      {...targetSort.sortProps("target")}
-                    >
-                      Target
-                    </GlobalTableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {targetSort.sorted.map((t, index) => (
-                    <TableRow key={t.id} data-state={targetSelection.isRowSelected(t.id) ? "selected" : undefined}>
-                      <TableCell>
-                        <Checkbox
-                          checked={targetSelection.isRowSelected(t.id)}
-                          onCheckedChange={(checked) => targetSelection.toggleRow(t.id, checked === true)}
-                          aria-label={`Select target for ${t.branch.name}`}
-                        />
-                      </TableCell>
-                      <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
-                      <TableCell className="font-medium">{t.branch.name}</TableCell>
-                      <TableCell className="font-mono text-sm">{t.branch.sapCode}</TableCell>
-                      <TableCell className="text-right tabular-nums">{t.revenueLabel}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-          </GlobalDataTable>
-
-          <AllocationGapsTable
-            basePath="/settings/planning"
-            result={gapsResult}
+          <BranchRevenueTargetsTable
+            periodId={period.id}
+            targets={targets}
             branches={branches}
-            currentBranch={currentBranch}
-            currentQ={currentQ}
-            initialSort={initialSort}
-            initialSortDir={initialSortDir}
           />
+          <div id="allocation-gaps" className="scroll-mt-24">
+            <AllocationGapsTable
+              basePath="/settings/planning"
+              result={gapsResult}
+              branches={branches}
+              currentBranch={currentBranch}
+              currentQ={currentQ}
+              initialSort={initialSort}
+              initialSortDir={initialSortDir}
+              preserveParams={gapsPreserveParams}
+            />
+          </div>
         </>
       ) : (
         <p className="text-sm text-muted-foreground">
-          No active planning period. Download the Forecast template to set the period
-          and each branch&apos;s revenue target.
+          No planning period yet. Import forecast to set the period and each
+          branch&apos;s revenue target, or add a target after a period exists.
         </p>
       )}
 

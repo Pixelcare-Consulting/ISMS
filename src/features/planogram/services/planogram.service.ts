@@ -1,5 +1,9 @@
 import { auditService } from "@/features/audit/services/audit.service";
 import { masterDataRepository } from "@/features/master-data/repositories/master-data.repository";
+import type {
+  PlanogramIndexBranch,
+  PlanogramIndexKpis,
+} from "@/features/planogram/lib/planogram-index";
 import { planogramRepository } from "@/features/planogram/repositories/planogram.repository";
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
 
@@ -471,7 +475,19 @@ export const planogramService = {
     });
   },
 
-  async getMilAndCapacityAlerts(tenantId: string, branchIds: string[] | null) {
+  async getMilAndCapacityAlertDetails(
+    tenantId: string,
+    branchIds: string[] | null,
+  ) {
+    if (branchIds && branchIds.length === 0) {
+      return {
+        belowCapacity: 0,
+        milBreaches: 0,
+        belowCapacityByBranch: new Map<string, number>(),
+        milBreachesByBranch: new Map<string, number>(),
+      };
+    }
+
     const entries = await planogramRepository.listBelowCapacityAndMilBreaches(
       tenantId,
       branchIds,
@@ -513,23 +529,88 @@ export const planogramService = {
 
     let belowCapacity = 0;
     let milBreaches = 0;
+    const belowCapacityByBranch = new Map<string, number>();
+    const milBreachesByBranch = new Map<string, number>();
     const now = Date.now();
 
     for (const entry of entries) {
       const pairKey = `${entry.branchId}:${entry.modelId}`;
       const stockCount = stockByPair.get(pairKey) ?? 0;
-      if (stockCount < entry.maxQty) belowCapacity += 1;
+      if (stockCount < entry.maxQty) {
+        belowCapacity += 1;
+        belowCapacityByBranch.set(
+          entry.branchId,
+          (belowCapacityByBranch.get(entry.branchId) ?? 0) + 1,
+        );
+      }
 
       const milDays = milByPair.get(pairKey);
       const oldestStock = oldestByPair.get(pairKey);
       if (milDays != null && oldestStock) {
         const ageDays =
           (now - oldestStock.updatedAt.getTime()) / (1000 * 60 * 60 * 24);
-        if (ageDays > milDays) milBreaches += 1;
+        if (ageDays > milDays) {
+          milBreaches += 1;
+          milBreachesByBranch.set(
+            entry.branchId,
+            (milBreachesByBranch.get(entry.branchId) ?? 0) + 1,
+          );
+        }
       }
     }
 
-    return { belowCapacity, milBreaches };
+    return {
+      belowCapacity,
+      milBreaches,
+      belowCapacityByBranch,
+      milBreachesByBranch,
+    };
+  },
+
+  async getMilAndCapacityAlerts(tenantId: string, branchIds: string[] | null) {
+    const details = await planogramService.getMilAndCapacityAlertDetails(
+      tenantId,
+      branchIds,
+    );
+    return {
+      belowCapacity: details.belowCapacity,
+      milBreaches: details.milBreaches,
+    };
+  },
+
+  async getPlanogramIndex(
+    tenantId: string,
+    branches: { id: string; name: string; sapCode: string }[],
+  ): Promise<{ branches: PlanogramIndexBranch[]; kpis: PlanogramIndexKpis }> {
+    const branchIds = branches.map((branch) => branch.id);
+    const [skuCounts, alerts] = await Promise.all([
+      planogramRepository.countPlanogramRowsByBranch(tenantId, branchIds),
+      planogramService.getMilAndCapacityAlertDetails(tenantId, branchIds),
+    ]);
+
+    const indexBranches = branches.map((branch) => ({
+      id: branch.id,
+      name: branch.name,
+      sapCode: branch.sapCode,
+      skuCount: skuCounts.get(branch.id) ?? 0,
+      belowCapacityCount: alerts.belowCapacityByBranch.get(branch.id) ?? 0,
+      milCount: alerts.milBreachesByBranch.get(branch.id) ?? 0,
+    }));
+
+    const withPlanogram = indexBranches.filter((branch) => branch.skuCount > 0).length;
+    const skuRows = indexBranches.reduce((sum, branch) => sum + branch.skuCount, 0);
+
+    return {
+      branches: indexBranches,
+      kpis: {
+        totalBranches: indexBranches.length,
+        withPlanogram,
+        noPlanogram: indexBranches.length - withPlanogram,
+        skuRows,
+        belowCapacity: alerts.belowCapacity,
+        milBreaches: alerts.milBreaches,
+      },
+    };
   },
 
   listModelsForOrder(tenantId: string, branchId: string, orderType: string) {

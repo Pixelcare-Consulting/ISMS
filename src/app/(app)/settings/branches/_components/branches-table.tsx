@@ -230,7 +230,7 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
                       onDelete={() => setDeleting(branch)}
                     >
                       <Button variant="ghost" size="icon" className="size-8" asChild title="Planogram">
-                        <Link href={`/settings/branches/${branch.id}/planogram`}>
+                        <Link href={`/settings/planogram/${branch.id}`}>
                           <LayoutGrid className="size-4" />
                         </Link>
                       </Button>

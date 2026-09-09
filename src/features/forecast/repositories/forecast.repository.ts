@@ -70,6 +70,87 @@ export const forecastRepository = {
     return prisma.planningPeriod.findMany({
       where: { tenantId },
       orderBy: { createdAt: "desc" },
+      select: { id: true, label: true, isActive: true, createdAt: true },
+    });
+  },
+
+  countTenantBranches(tenantId: string) {
+    return prisma.branch.count({
+      where: { tenantId, deletedAt: null },
+    });
+  },
+
+  findBranchForPlanning(tenantId: string, branchId: string) {
+    return prisma.branch.findFirst({
+      where: { id: branchId, tenantId, deletedAt: null },
+      select: { id: true, name: true, sapCode: true },
+    });
+  },
+
+  async activatePeriod(tenantId: string, periodId: string) {
+    return prisma.$transaction(async (tx) => {
+      const period = await tx.planningPeriod.findFirst({
+        where: { id: periodId, tenantId },
+      });
+      if (!period) return null;
+
+      await tx.planningPeriod.updateMany({
+        where: { tenantId, isActive: true, id: { not: periodId } },
+        data: { isActive: false },
+      });
+
+      return tx.planningPeriod.update({
+        where: { id: periodId },
+        data: { isActive: true },
+      });
+    });
+  },
+
+  findTargetById(tenantId: string, id: string) {
+    return prisma.branchForecastTarget.findFirst({
+      where: { id, tenantId },
+      include: { branch: { select: { id: true, name: true, sapCode: true } } },
+    });
+  },
+
+  findTargetByPeriodBranch(tenantId: string, periodId: string, branchId: string) {
+    return prisma.branchForecastTarget.findFirst({
+      where: { tenantId, periodId, branchId },
+    });
+  },
+
+  createTarget(
+    tenantId: string,
+    input: { periodId: string; branchId: string; revenueTarget: number },
+  ) {
+    return prisma.branchForecastTarget.create({
+      data: {
+        tenantId,
+        periodId: input.periodId,
+        branchId: input.branchId,
+        revenueTarget: input.revenueTarget,
+      },
+      include: { branch: { select: { id: true, name: true, sapCode: true } } },
+    });
+  },
+
+  updateTargetRevenue(tenantId: string, id: string, revenueTarget: number) {
+    return prisma.branchForecastTarget.update({
+      where: { id },
+      data: { revenueTarget },
+      include: { branch: { select: { id: true, name: true, sapCode: true } } },
+    });
+  },
+
+  deleteTarget(tenantId: string, id: string) {
+    return prisma.branchForecastTarget.delete({
+      where: { id },
+    });
+  },
+
+  deleteTargets(tenantId: string, ids: string[]) {
+    return prisma.branchForecastTarget.deleteMany({
+      where: { tenantId, id: { in: ids } },
     });
   },
 
@@ -173,15 +254,15 @@ export const forecastRepository = {
     });
   },
 
-  getPlanningSummary(tenantId: string) {
+  getPlanningSummary(tenantId: string, periodId?: string) {
     return prisma.planningPeriod.findFirst({
-      where: { tenantId, isActive: true },
+      where: periodId
+        ? { tenantId, id: periodId }
+        : { tenantId, isActive: true },
       include: {
-        branchTargets: {
-          include: { branch: { select: { name: true } } },
-        },
-        _count: { select: { allocations: true } },
+        _count: { select: { allocations: true, branchTargets: true } },
       },
+      ...(periodId ? {} : { orderBy: { updatedAt: "desc" as const } }),
     });
   },
 

@@ -21,7 +21,9 @@ export function TableSelectAllCheckbox({
   className,
 }: TableSelectAllCheckboxProps) {
   return (
-    <TableHead className={cn("w-10", className)}>
+    <TableHead
+      className={cn("w-[1%] max-w-10 whitespace-nowrap p-0", className)}
+    >
       <Checkbox
         checked={
           isAllSelected || (isPartiallySelected ? "indeterminate" : false)
@@ -50,7 +52,9 @@ export function TableRowCheckbox({
   disabled = false,
 }: TableRowCheckboxProps) {
   return (
-    <TableCell className={className}>
+    <TableCell
+      className={cn("w-[1%] max-w-10 whitespace-nowrap p-0", className)}
+    >
       <Checkbox
         checked={checked}
         disabled={disabled}

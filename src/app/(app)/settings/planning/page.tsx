@@ -4,6 +4,7 @@ import {
   getPlanningDashboardAction,
   listAllocationGapsAction,
   listBranchesForPlanningAction,
+  listPlanningPeriodsAction,
   listPlanningTargetsAction,
 } from "@/features/forecast/actions/forecast.actions";
 import { forecastService } from "@/features/forecast/services/forecast.service";
@@ -24,7 +25,24 @@ interface PlanningPageProps {
     q?: string;
     sort?: string;
     dir?: string;
+    period?: string;
   }>;
+}
+
+function planningHref(
+  hash: string,
+  periodId: string | undefined,
+  filters: { branch?: string; q?: string; sort?: string; dir?: string; limit?: string },
+) {
+  const params = new URLSearchParams();
+  if (periodId) params.set("period", periodId);
+  if (filters.branch) params.set("branch", filters.branch);
+  if (filters.q) params.set("q", filters.q);
+  if (filters.sort) params.set("sort", filters.sort);
+  if (filters.sort && filters.dir) params.set("dir", filters.dir);
+  if (filters.limit) params.set("limit", filters.limit);
+  const qs = params.toString();
+  return `/settings/planning${qs ? `?${qs}` : ""}${hash}`;
 }
 
 export default async function PlanningPage({ searchParams }: PlanningPageProps) {
@@ -34,10 +52,15 @@ export default async function PlanningPage({ searchParams }: PlanningPageProps) 
   const gapPage = Number(params.page) || 1;
   const gapLimit = parseTablePageSize(params.limit);
 
-  const dashboard = await getPlanningDashboardAction();
+  const [periods, dashboard, branches] = await Promise.all([
+    listPlanningPeriodsAction(),
+    getPlanningDashboardAction(params.period),
+    listBranchesForPlanningAction(),
+  ]);
+
   const period = dashboard.period;
 
-  const [targets, gapsResult, branches] = period
+  const [targets, gapsResult] = period
     ? await Promise.all([
         listPlanningTargetsAction(period.id),
         listAllocationGapsAction(period.id, {
@@ -48,23 +71,22 @@ export default async function PlanningPage({ searchParams }: PlanningPageProps) 
           sort: params.sort,
           sortDir: params.dir,
         }),
-        listBranchesForPlanningAction(),
       ])
-    : [[], { items: [], total: 0, page: 1, limit: gapLimit, totalPages: 1 }, []];
+    : [
+        [],
+        { items: [], total: 0, page: 1, limit: gapLimit, totalPages: 1 },
+      ];
 
   const formattedTargets = targets.map((t) => ({
     id: t.id,
+    branchId: t.branchId,
+    revenueTarget: Number(t.revenueTarget.toString()),
     revenueLabel: forecastService.formatRevenueTarget(t.revenueTarget),
     branch: { name: t.branch.name, sapCode: t.branch.sapCode },
   }));
 
   const clientPeriod = period
-    ? {
-        id: period.id,
-        label: period.label,
-        isActive: period.isActive,
-        _count: period._count,
-      }
+    ? { id: period.id, label: period.label, isActive: period.isActive }
     : null;
 
   const clientGaps = {
@@ -80,6 +102,14 @@ export default async function PlanningPage({ searchParams }: PlanningPageProps) 
     page: gapsResult.page,
     limit: gapsResult.limit,
     totalPages: gapsResult.totalPages,
+  };
+
+  const filterState = {
+    branch: params.branch,
+    q: params.q,
+    sort: params.sort,
+    dir: params.dir,
+    limit: params.limit,
   };
 
   return (
@@ -98,8 +128,17 @@ export default async function PlanningPage({ searchParams }: PlanningPageProps) 
       <ModuleGuide {...PLANNING_MODULE_GUIDE} />
       <PlanningPanel
         period={clientPeriod}
+        periods={periods}
         gapCount={dashboard.gapCount}
+        allocationRowCount={dashboard.allocationRowCount}
         draftOrders={dashboard.draftOrders}
+        targetBranchCount={dashboard.targetBranchCount}
+        tenantBranchCount={dashboard.tenantBranchCount}
+        kpiHrefs={{
+          totalBranches: planningHref("#branch-targets", period?.id, filterState),
+          gaps: planningHref("#allocation-gaps", period?.id, filterState),
+          drafts: "/planning/suggested-orders",
+        }}
         targets={formattedTargets}
         gapsResult={clientGaps}
         branches={branches}
@@ -107,6 +146,16 @@ export default async function PlanningPage({ searchParams }: PlanningPageProps) 
         currentQ={params.q}
         initialSort={params.sort ?? ""}
         initialSortDir={params.dir ?? "desc"}
+        gapsPreserveParams={period ? { period: period.id } : undefined}
+        periodPreserveParams={Object.fromEntries(
+          Object.entries({
+            branch: params.branch,
+            q: params.q,
+            sort: params.sort,
+            dir: params.sort ? params.dir : undefined,
+            limit: params.limit,
+          }).filter((entry): entry is [string, string] => Boolean(entry[1])),
+        )}
       />
     </div>
   );

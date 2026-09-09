@@ -114,6 +114,9 @@ export function resolveRouteTitle(pathname: string): string | null {
   if (path.startsWith("/inventory/stock-count/")) {
     return "P-Count session";
   }
+  if (path.startsWith("/settings/planogram/")) {
+    return "Branch planogram";
+  }
   if (path.startsWith("/settings/branches/") && path.includes("/planogram")) {
     return "Branch planogram";
   }
