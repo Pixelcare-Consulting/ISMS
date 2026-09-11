@@ -59,28 +59,6 @@ export function PlanogramKpisStrip({ kpis, view, query }: PlanogramKpisStripProp
       href: cardHref("with", view, query),
       tone: selectedTone(view === "with"),
     },
-    {
-      key: "below",
-      label: "Below capacity",
-      value: kpis.belowCapacity,
-      href: cardHref("below", view, query),
-      tone: selectedTone(
-        view === "below",
-        kpis.belowCapacity > 0 ? "warning" : "neutral",
-      ),
-      hint: "Stock under shelf max",
-    },
-    {
-      key: "mil",
-      label: "MIL breaches",
-      value: kpis.milBreaches,
-      href: cardHref("mil", view, query),
-      tone: selectedTone(
-        view === "mil",
-        kpis.milBreaches > 0 ? "warning" : "neutral",
-      ),
-      hint: "Past MIL days",
-    },
   ];
 
   return <GlobalKpiCards items={items} />;

@@ -111,22 +111,22 @@ const STATUS_VARIANT_MAP = {
 
 /** Sticky left freeze — checkbox → # → Serial (manage mode). */
 const stickyHeadCheckbox =
-  "sticky left-0 top-[var(--sticky-toolbar-height,0px)] z-40 w-10 min-w-10 border-r border-border/60 bg-muted";
+  "sticky left-0 top-[var(--sticky-toolbar-height,0px)] z-40 w-12 min-w-12 max-w-12 pl-3 pr-2 border-r border-border/60 bg-muted";
 const stickyHeadIndexManage =
-  "sticky left-10 z-40 w-12 min-w-12 border-r border-border/60 bg-muted text-center";
+  "sticky left-12 z-40 w-12 min-w-12 border-r border-border/60 bg-muted text-center";
 const stickyHeadSerialManage =
-  "sticky left-[5.5rem] z-40 min-w-[9rem] border-r border-border/60 bg-muted shadow-[4px_0_8px_-4px_rgba(0,0,0,0.08)]";
+  "sticky left-24 z-40 min-w-[9rem] border-r border-border/60 bg-muted shadow-[4px_0_8px_-4px_rgba(0,0,0,0.08)]";
 const stickyHeadIndexSolo =
   "sticky left-0 z-40 w-12 min-w-12 border-r border-border/60 bg-muted text-center";
 const stickyHeadSerialSolo =
   "sticky left-12 z-40 min-w-[9rem] border-r border-border/60 bg-muted shadow-[4px_0_8px_-4px_rgba(0,0,0,0.08)]";
 
 const stickyCellCheckbox =
-  "sticky left-0 z-10 w-10 min-w-10 border-r border-border/60";
+  "sticky left-0 z-10 w-12 min-w-12 max-w-12 pl-3 pr-2 border-r border-border/60";
 const stickyCellIndexManage =
-  "sticky left-10 z-10 w-12 min-w-12 border-r border-border/60";
+  "sticky left-12 z-10 w-12 min-w-12 border-r border-border/60";
 const stickyCellSerialManage =
-  "sticky left-[5.5rem] z-10 min-w-[9rem] border-r border-border/60 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.06)]";
+  "sticky left-24 z-10 min-w-[9rem] border-r border-border/60 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.06)]";
 const stickyCellIndexSolo =
   "sticky left-0 z-10 w-12 min-w-12 border-r border-border/60";
 const stickyCellSerialSolo =

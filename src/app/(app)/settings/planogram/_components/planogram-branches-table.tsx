@@ -39,7 +39,7 @@ interface PlanogramBranchesTableProps {
   canManage?: boolean;
 }
 
-const COL_COUNT = 7;
+const COL_COUNT = 5;
 
 function emptyMessage(view: PlanogramIndexView | null): string {
   if (view == null) return "No branches match your search.";
@@ -84,8 +84,6 @@ export function PlanogramBranchesTable({
     name: (branch) => branch.name,
     sapCode: (branch) => branch.sapCode,
     skuCount: (branch) => branch.skuCount,
-    belowCapacityCount: (branch) => branch.belowCapacityCount,
-    milCount: (branch) => branch.milCount,
   });
   const {
     page,
@@ -155,15 +153,6 @@ export function PlanogramBranchesTable({
               <GlobalTableHead className="text-right" {...sort.sortProps("skuCount")}>
                 SKUs
               </GlobalTableHead>
-              <GlobalTableHead
-                className="text-right"
-                {...sort.sortProps("belowCapacityCount")}
-              >
-                Below max
-              </GlobalTableHead>
-              <GlobalTableHead className="text-right" {...sort.sortProps("milCount")}>
-                MIL
-              </GlobalTableHead>
               <GlobalTableHead className="text-right"> </GlobalTableHead>
             </TableRow>
           </TableHeader>
@@ -183,24 +172,6 @@ export function PlanogramBranchesTable({
                   <TableCell className="font-medium">{branch.name}</TableCell>
                   <TableCell className="text-right tabular-nums">
                     {branch.skuCount}
-                  </TableCell>
-                  <TableCell
-                    className={cn(
-                      "text-right tabular-nums",
-                      branch.belowCapacityCount === 0 && "text-muted-foreground",
-                    )}
-                  >
-                    {branch.belowCapacityCount}
-                  </TableCell>
-                  <TableCell
-                    className={cn(
-                      "text-right tabular-nums",
-                      branch.milCount > 0
-                        ? "font-medium text-amber-600 dark:text-amber-400"
-                        : "text-muted-foreground",
-                    )}
-                  >
-                    {branch.milCount}
                   </TableCell>
                   <TableRowActions>
                     <Button variant="outline" size="sm" asChild>

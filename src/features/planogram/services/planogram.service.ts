@@ -583,18 +583,16 @@ export const planogramService = {
     branches: { id: string; name: string; sapCode: string }[],
   ): Promise<{ branches: PlanogramIndexBranch[]; kpis: PlanogramIndexKpis }> {
     const branchIds = branches.map((branch) => branch.id);
-    const [skuCounts, alerts] = await Promise.all([
-      planogramRepository.countPlanogramRowsByBranch(tenantId, branchIds),
-      planogramService.getMilAndCapacityAlertDetails(tenantId, branchIds),
-    ]);
+    const skuCounts = await planogramRepository.countPlanogramRowsByBranch(
+      tenantId,
+      branchIds,
+    );
 
     const indexBranches = branches.map((branch) => ({
       id: branch.id,
       name: branch.name,
       sapCode: branch.sapCode,
       skuCount: skuCounts.get(branch.id) ?? 0,
-      belowCapacityCount: alerts.belowCapacityByBranch.get(branch.id) ?? 0,
-      milCount: alerts.milBreachesByBranch.get(branch.id) ?? 0,
     }));
 
     const withPlanogram = indexBranches.filter((branch) => branch.skuCount > 0).length;
@@ -607,8 +605,6 @@ export const planogramService = {
         withPlanogram,
         noPlanogram: indexBranches.length - withPlanogram,
         skuRows,
-        belowCapacity: alerts.belowCapacity,
-        milBreaches: alerts.milBreaches,
       },
     };
   },

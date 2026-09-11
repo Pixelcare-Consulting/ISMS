@@ -1,4 +1,4 @@
-export const PLANOGRAM_INDEX_VIEWS = ["with", "empty", "below", "mil"] as const;
+export const PLANOGRAM_INDEX_VIEWS = ["with", "empty"] as const;
 
 export type PlanogramIndexView = (typeof PLANOGRAM_INDEX_VIEWS)[number];
 
@@ -7,8 +7,6 @@ export interface PlanogramIndexKpis {
   withPlanogram: number;
   noPlanogram: number;
   skuRows: number;
-  belowCapacity: number;
-  milBreaches: number;
 }
 
 export interface PlanogramIndexBranch {
@@ -16,19 +14,12 @@ export interface PlanogramIndexBranch {
   name: string;
   sapCode: string;
   skuCount: number;
-  belowCapacityCount: number;
-  milCount: number;
 }
 
 export function parsePlanogramIndexView(
   value: string | undefined,
 ): PlanogramIndexView | null {
-  if (
-    value === "with" ||
-    value === "empty" ||
-    value === "below" ||
-    value === "mil"
-  ) {
+  if (value === "with" || value === "empty") {
     return value;
   }
   return null;
@@ -71,10 +62,6 @@ export function matchesPlanogramIndexView(
       return branch.skuCount > 0;
     case "empty":
       return branch.skuCount === 0;
-    case "below":
-      return branch.belowCapacityCount > 0;
-    case "mil":
-      return branch.milCount > 0;
     default: {
       const _exhaustive: never = view;
       return _exhaustive;

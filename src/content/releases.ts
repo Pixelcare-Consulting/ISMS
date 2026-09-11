@@ -52,19 +52,35 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.38.2",
+    date: "2026-09-11",
+    releasedAt: "2026-09-11T14:50:00+08:00",
+    title: "Official Sales checkbox spacing",
+    highlights: [
+      "Official Sales row checkboxes now sit slightly inward from the table edge",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Official Sales checkboxes have left spacing so they no longer sit flush against the table edge",
+      },
+    ],
+  },
+  {
     version: "0.38.1",
     date: "2026-09-11",
     releasedAt: "2026-09-11T14:10:00+08:00",
     title: "Simpler planogram setup",
     highlights: [
-      "The planogram SKU list no longer shows shelf max or MIL days — you just assign models",
+      "Planogram no longer shows shelf max or MIL on cards, the branch list, or the SKU list — you just assign models",
       "Import uses branch SAP code and SKU only; download the template, fill it in, and upload",
     ],
     changes: [
       {
         type: "improvement",
         description:
-          "Planogram no longer asks for shelf max or MIL days on the SKU table or import — assign branch SAP code and SKU only",
+          "Planogram no longer shows shelf max or MIL on cards, the branch list, the SKU table, or import — assign branch SAP code and SKU only",
       },
     ],
   },
