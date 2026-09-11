@@ -18,14 +18,12 @@ export interface SheetRows {
 export interface PlanogramTemplateRow {
   sapCode: string;
   sku: string;
-  maxQty: number;
-  milDays: number;
 }
 
 const EMPTY_SHEET: SheetRows = { present: false, columns: new Set(), rows: [] };
 
 const BRS_LAYOUT_ERROR =
-  "This file is the old BRS forecast/planogram layout, not the Planogram template. Download the template (branch_sap_code, sku, max_qty, mil_days). Branch revenue belongs on Planning with the Forecast template.";
+  "This file is the old BRS forecast/planogram layout, not the Planogram template. Download the template (branch_sap_code, sku). Branch revenue belongs on Planning with the Forecast template.";
 
 /** Headers that appear on the wide Dealer 1 BRS sheet (Brand / SKU / Model / Series / SRP + Y/N pairs). */
 const BRS_WIDE_HEADER_HINTS = new Set([
@@ -112,8 +110,7 @@ function styleHeader(sheet: ExcelJS.Worksheet, widths: number[]) {
 function looksLikeBrsWideLayout(columns: Set<string>, rawHeaders: string[]): boolean {
   const brsHits = rawHeaders.filter((header) => BRS_WIDE_HEADER_HINTS.has(header));
   const ynPairs = rawHeaders.filter((header) => header === "y" || header === "n").length;
-  const missingTemplateKeys =
-    !columns.has("sap_code") || !columns.has("max_qty");
+  const missingTemplateKeys = !columns.has("sap_code") || !columns.has("sku");
 
   if (brsHits.length >= 2 && missingTemplateKeys) return true;
   if (ynPairs >= 2 && missingTemplateKeys) return true;
@@ -148,12 +145,12 @@ export async function buildPlanogramTemplateWorkbook(
   const sheet = workbook.addWorksheet(PLANOGRAM_SHEET_NAME);
   sheet.addRow([...PLANOGRAM_SHEET_HEADERS]);
   for (const row of rows) {
-    sheet.addRow([row.sapCode, row.sku, row.maxQty, row.milDays]);
+    sheet.addRow([row.sapCode, row.sku]);
   }
   if (rows.length === 0) {
-    sheet.addRow(["WMK-001", "100L10E", 1, 30]);
+    sheet.addRow(["WMK-001", "100L10E"]);
   }
-  styleHeader(sheet, [18, 14, 12, 12]);
+  styleHeader(sheet, [18, 14]);
 
   const buffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(buffer);

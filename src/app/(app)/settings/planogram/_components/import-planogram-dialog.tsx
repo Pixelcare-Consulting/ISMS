@@ -229,13 +229,13 @@ export function ImportPlanogramDialog({
         <div className="space-y-4">
           <div className="text-muted-foreground space-y-2 text-sm">
             <p>
-              Download the <strong>Planogram</strong> template, fill in branch SAP code, SKU,
-              shelf max, and optional MIL days, then upload that same file. The old BRS
-              wide spreadsheet is not accepted here.
+              Download the <strong>Planogram</strong> template, fill in branch SAP code and
+              SKU, then upload that same file. The old BRS wide spreadsheet is not accepted
+              here.
             </p>
             <p>
               SKUs and branches must already exist — this import does not create models.
-              Blank MIL days become 30. Rows left out of the file are not removed.
+              Rows left out of the file are not removed.
             </p>
           </div>
 

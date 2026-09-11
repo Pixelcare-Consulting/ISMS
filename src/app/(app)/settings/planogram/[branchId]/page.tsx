@@ -80,7 +80,7 @@ export default async function BranchPlanogramPage({
     <div className="space-y-6">
       <PageHeader
         title={`Planogram — ${branch.name}`}
-        description="Authorized models, shelf capacity (max qty), and minimum inventory life (MIL) aging rules."
+        description="Authorized models this branch may carry."
         actions={<BackToPlanogramLink href={backHref} />}
       />
       <ModuleGuide {...BRANCH_PLANOGRAM_MODULE_GUIDE} />

@@ -26,7 +26,7 @@ export default async function PlanogramIndexPage({
       <PageHeader
         title="Planogram"
         tutorial={PLANOGRAM_PAGE_TUTORIAL}
-        description="Authorized SKUs and MIL thresholds per branch. Download the official template to set shelf max and MIL days."
+        description="Authorized SKUs per branch. Download the official template to assign branch SAP codes and SKUs."
         sticky={false}
       />
       <ModuleGuide {...PLANOGRAM_MODULE_GUIDE} />

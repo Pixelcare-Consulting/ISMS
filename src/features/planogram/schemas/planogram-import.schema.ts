@@ -5,20 +5,18 @@
  * wide Y/N layout is rejected here.
  *
  * SKUs and branch SAP codes must already exist. Rows not in the file are not
- * deleted. Blank mil_days defaults to 30. Branch revenue uses the Forecast
- * template on Planning.
+ * deleted. Extra columns (including leftover max_qty / mil_days) are ignored.
+ * Branch revenue uses the Forecast template on Planning.
  */
 
 export const PLANOGRAM_SHEET_NAME = "Planogram";
 
-export const PLANOGRAM_SHEET_HEADERS = ["branch_sap_code", "sku", "max_qty", "mil_days"] as const;
+export const PLANOGRAM_SHEET_HEADERS = ["branch_sap_code", "sku"] as const;
 
 /** Download header shown when a required canonical column is missing. */
 export const PLANOGRAM_IMPORT_COLUMN_LABELS: Record<string, string> = {
   sap_code: "branch_sap_code",
   sku: "sku",
-  max_qty: "max_qty",
-  mil_days: "mil_days",
 };
 
 /** Normalized header → canonical key for our template columns only. */
@@ -31,23 +29,15 @@ export const PLANOGRAM_IMPORT_ALIAS_MAP: Record<string, string> = {
   skucode: "sku",
   itemcode: "sku",
   itemno: "sku",
-  maxqty: "max_qty",
-  max_qty: "max_qty",
-  qty: "max_qty",
-  capacity: "max_qty",
-  mildays: "mil_days",
-  mil_days: "mil_days",
-  mil: "mil_days",
-  daysthreshold: "mil_days",
 };
 
-export const PLANOGRAM_IMPORT_REQUIRED_COLUMNS = ["sap_code", "sku", "max_qty"] as const;
+export const PLANOGRAM_IMPORT_REQUIRED_COLUMNS = ["sap_code", "sku"] as const;
+
+export const PLANOGRAM_DEFAULT_MAX_QTY = 1;
 
 export const PLANOGRAM_DEFAULT_MIL_DAYS = 30;
 
 export const PLANOGRAM_IMPORT_FIELD_LABELS: Record<string, string> = {
-  maxQty: "Max qty",
-  milDays: "MIL days",
   allowedModel: "Allowed model",
 };
 

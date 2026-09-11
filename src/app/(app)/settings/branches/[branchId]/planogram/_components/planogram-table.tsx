@@ -9,8 +9,6 @@ import {
   addPlanogramModelAction,
   listActiveModelsForPlanogramAction,
   removePlanogramModelAction,
-  updatePlanogramMaxQtyAction,
-  updatePlanogramMilAction,
 } from "@/features/planogram/actions/planogram.actions";
 import type { PlanogramAddEmptyReason } from "@/features/planogram/services/planogram.service";
 import {
@@ -35,10 +33,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Table,
@@ -133,7 +128,6 @@ export function PlanogramTable({
     brand: (row) => row.model.brand?.name ?? null,
     effective: (row) => row.effectiveFrom ?? null,
     stock: (row) => row.stockCount,
-    mil: (row) => row.daysThreshold,
   });
 
   const suggestions = useMemo(
@@ -147,7 +141,7 @@ export function PlanogramTable({
     [rows],
   );
 
-  const colCount = canManage ? 11 : 10;
+  const colCount = canManage ? 9 : 8;
 
   function handleRemove() {
     if (!deleting) return;
@@ -210,13 +204,7 @@ export function PlanogramTable({
                 <GlobalTableHead {...sort.sortProps("srp")}>SRP</GlobalTableHead>
                 <GlobalTableHead {...sort.sortProps("brand")}>Brand</GlobalTableHead>
                 <GlobalTableHead {...sort.sortProps("effective")}>Effective</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("stock")}>Stock / Max</GlobalTableHead>
-                <GlobalTableHead
-                  title="Minimum inventory life — alert when oldest stock exceeds this age"
-                  {...sort.sortProps("mil")}
-                >
-                  MIL (days)
-                </GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("stock")}>Stock</GlobalTableHead>
                 <TableHead className="w-28">Units</TableHead>
                 {canManage ? <TableHead className="w-24" /> : null}
               </TableRow>
@@ -241,7 +229,6 @@ export function PlanogramTable({
                     canManage={canManage}
                     pending={pending}
                     onRemove={() => setDeleting(row)}
-                    onSaved={() => router.refresh()}
                   />
                 ))
               )}
@@ -288,7 +275,6 @@ function PlanogramRowEditor({
   canManage,
   pending,
   onRemove,
-  onSaved,
 }: {
   index: number;
   branchId: string;
@@ -296,48 +282,8 @@ function PlanogramRowEditor({
   canManage: boolean;
   pending: boolean;
   onRemove: () => void;
-  onSaved: () => void;
 }) {
-  const [maxQty, setMaxQty] = useState(row.maxQty);
-  const [milDays, setMilDays] = useState(row.daysThreshold ?? 30);
-  const [saving, startTransition] = useTransition();
-
-  const belowCapacity = row.stockCount < row.maxQty;
   const inventoryHref = `/inventory?branch=${branchId}&sku=${encodeURIComponent(row.model.skuCode)}`;
-
-  function saveMaxQty() {
-    if (maxQty === row.maxQty) return;
-    startTransition(async () => {
-      const result = await updatePlanogramMaxQtyAction({
-        planogramId: row.id,
-        branchId,
-        maxQty,
-      });
-      if (result.error) {
-        toast.error(result.error);
-        return;
-      }
-      toast.success("Max qty updated");
-      onSaved();
-    });
-  }
-
-  function saveMil() {
-    if (milDays === row.daysThreshold) return;
-    startTransition(async () => {
-      const result = await updatePlanogramMilAction({
-        branchId,
-        modelId: row.model.id,
-        daysThreshold: milDays,
-      });
-      if (result.error) {
-        toast.error(result.error);
-        return;
-      }
-      toast.success("MIL threshold updated");
-      onSaved();
-    });
-  }
 
   return (
     <TableRow className={cn(index % 2 === 1 && "bg-table-stripe")}>
@@ -351,42 +297,7 @@ function PlanogramRowEditor({
         {row.effectiveFrom ?? "—"}
       </TableCell>
       <TableCell>
-        <span className={belowCapacity ? "font-medium text-amber-600" : ""}>
-          STK {row.stockCount} · DIT {row.ditCount} / max{" "}
-          {canManage ? (
-            <Input
-              type="number"
-              min={1}
-              className="inline-block h-8 w-16 px-1 text-sm"
-              value={maxQty}
-              onChange={(e) => setMaxQty(Number(e.target.value))}
-              onBlur={saveMaxQty}
-              disabled={saving || pending}
-            />
-          ) : (
-            row.maxQty
-          )}
-        </span>
-        {belowCapacity ? (
-          <Badge variant="outline" className="ml-2 text-amber-600">
-            below cap
-          </Badge>
-        ) : null}
-      </TableCell>
-      <TableCell>
-        {canManage ? (
-          <Input
-            type="number"
-            min={1}
-            className="h-8 w-20"
-            value={milDays}
-            onChange={(e) => setMilDays(Number(e.target.value))}
-            onBlur={saveMil}
-            disabled={saving || pending}
-          />
-        ) : (
-          (row.daysThreshold ?? "—")
-        )}
+        STK {row.stockCount} · DIT {row.ditCount}
       </TableCell>
       <TableCell>
         <Button variant="link" size="sm" className="h-auto p-0" asChild>
@@ -421,8 +332,6 @@ function AddPlanogramDialog({
     { id: string; skuCode: string; name: string }[]
   >([]);
   const [modelId, setModelId] = useState("");
-  const [maxQty, setMaxQty] = useState(5);
-  const [daysThreshold, setDaysThreshold] = useState(30);
   const [emptyReason, setEmptyReason] = useState<PlanogramAddEmptyReason | null>(
     null,
   );
@@ -458,8 +367,8 @@ function AddPlanogramDialog({
       const result = await addPlanogramModelAction({
         branchId,
         modelId,
-        maxQty,
-        daysThreshold,
+        maxQty: 1,
+        daysThreshold: 30,
       });
       if ("emptyReason" in result && result.emptyReason) {
         setEmptyReason(result.emptyReason);
@@ -494,24 +403,6 @@ function AddPlanogramDialog({
                 placeholder="Select model…"
                 searchPlaceholder="Search models…"
               />
-              <div>
-                <Label>Max qty</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={maxQty}
-                  onChange={(e) => setMaxQty(Number(e.target.value))}
-                />
-              </div>
-              <div>
-                <Label>MIL days threshold</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={daysThreshold}
-                  onChange={(e) => setDaysThreshold(Number(e.target.value))}
-                />
-              </div>
             </>
           ) : (
             <p className="text-sm text-muted-foreground">

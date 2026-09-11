@@ -52,6 +52,23 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.38.1",
+    date: "2026-09-11",
+    releasedAt: "2026-09-11T14:10:00+08:00",
+    title: "Simpler planogram setup",
+    highlights: [
+      "The planogram SKU list no longer shows shelf max or MIL days — you just assign models",
+      "Import uses branch SAP code and SKU only; download the template, fill it in, and upload",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Planogram no longer asks for shelf max or MIL days on the SKU table or import — assign branch SAP code and SKU only",
+      },
+    ],
+  },
+  {
     version: "0.38.0",
     date: "2026-09-10",
     releasedAt: "2026-09-10T18:14:00+08:00",

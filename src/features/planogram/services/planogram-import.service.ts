@@ -1,6 +1,7 @@
 import type { CreateAuditLogInput } from "@/features/audit/repositories/audit-log.repository";
 import { auditService } from "@/features/audit/services/audit.service";
 import {
+  PLANOGRAM_DEFAULT_MAX_QTY,
   PLANOGRAM_DEFAULT_MIL_DAYS,
   PLANOGRAM_IMPORT_FIELD_LABELS,
   PLANOGRAM_SHEET_NAME,
@@ -82,26 +83,6 @@ function pushChange(
   });
 }
 
-function parsePositiveInt(raw: string | undefined, label: string): number | { error: string } {
-  if (raw == null || isBlankOrDash(raw)) {
-    return { error: `${label} is required.` };
-  }
-  const parsed = Number.parseInt(raw.replace(/,/g, "").trim(), 10);
-  if (!Number.isFinite(parsed) || parsed < 1) {
-    return { error: `${label} must be a whole number of 1 or more.` };
-  }
-  return parsed;
-}
-
-function parseMilDays(raw: string | undefined): number | { error: string } {
-  if (raw == null || isBlankOrDash(raw)) return PLANOGRAM_DEFAULT_MIL_DAYS;
-  const parsed = Number.parseInt(raw.replace(/,/g, "").trim(), 10);
-  if (!Number.isFinite(parsed) || parsed < 1) {
-    return { error: "mil_days must be a whole number of 1 or more, or left blank for 30." };
-  }
-  return parsed;
-}
-
 async function resolveScopedBranchIds(actor: PlanogramImportActor): Promise<string[] | null> {
   const hasFullAccess =
     hasPermission(actor.permissions, "planogram.manage") ||
@@ -119,33 +100,18 @@ async function loadTemplateRows(actor: PlanogramImportActor): Promise<PlanogramT
   const branchFilter =
     scopedBranchIds && scopedBranchIds.length > 0 ? { branchId: { in: scopedBranchIds } } : {};
 
-  const [entries, mils] = await Promise.all([
-    prisma.branchPlanogram.findMany({
-      where: { tenantId: actor.tenantId, ...branchFilter },
-      select: {
-        branchId: true,
-        modelId: true,
-        maxQty: true,
-        branch: { select: { sapCode: true } },
-        model: { select: { skuCode: true } },
-      },
-      orderBy: [{ branch: { sapCode: "asc" } }, { model: { skuCode: "asc" } }],
-    }),
-    prisma.branchMilSetting.findMany({
-      where: { tenantId: actor.tenantId, ...branchFilter },
-      select: { branchId: true, modelId: true, daysThreshold: true },
-    }),
-  ]);
-
-  const milByPair = new Map(
-    mils.map((mil) => [`${mil.branchId}:${mil.modelId}`, mil.daysThreshold]),
-  );
+  const entries = await prisma.branchPlanogram.findMany({
+    where: { tenantId: actor.tenantId, ...branchFilter },
+    select: {
+      branch: { select: { sapCode: true } },
+      model: { select: { skuCode: true } },
+    },
+    orderBy: [{ branch: { sapCode: "asc" } }, { model: { skuCode: "asc" } }],
+  });
 
   return entries.map((entry) => ({
     sapCode: entry.branch.sapCode,
     sku: entry.model.skuCode,
-    maxQty: entry.maxQty,
-    milDays: milByPair.get(`${entry.branchId}:${entry.modelId}`) ?? PLANOGRAM_DEFAULT_MIL_DAYS,
   }));
 }
 
@@ -166,7 +132,7 @@ async function buildPlan(
   for (const row of sheet.rows) {
     const sapCode = row.values.sap_code?.trim() ?? "";
     const sku = row.values.sku?.trim() ?? "";
-    if (isBlankOrDash(sapCode) && isBlankOrDash(sku) && isBlankOrDash(row.values.max_qty)) {
+    if (isBlankOrDash(sapCode) && isBlankOrDash(sku)) {
       continue;
     }
     const pairKey = `${lookupKey(sapCode)}::${lookupKey(sku)}`;
@@ -216,13 +182,6 @@ async function buildPlan(
           where: { tenantId: actor.tenantId, branchId: { in: candidateBranchIds } },
           select: { id: true, branchId: true, modelId: true, maxQty: true },
         });
-  const existingMil =
-    candidateBranchIds.length === 0
-      ? []
-      : await prisma.branchMilSetting.findMany({
-          where: { tenantId: actor.tenantId, branchId: { in: candidateBranchIds } },
-          select: { branchId: true, modelId: true, daysThreshold: true },
-        });
   const existingAllowed =
     candidateBranchIds.length === 0
       ? []
@@ -234,9 +193,6 @@ async function buildPlan(
   const entryByPair = new Map(
     existingEntries.map((entry) => [`${entry.branchId}:${entry.modelId}`, entry]),
   );
-  const milByPair = new Map(
-    existingMil.map((mil) => [`${mil.branchId}:${mil.modelId}`, mil.daysThreshold]),
-  );
   const allowedPairs = new Set(existingAllowed.map((row) => `${row.branchId}:${row.modelId}`));
 
   const previewRows: PlanogramImportRowPlan[] = [];
@@ -245,7 +201,7 @@ async function buildPlan(
   for (const row of sheet.rows) {
     const sapCode = row.values.sap_code?.trim() ?? "";
     const sku = row.values.sku?.trim() ?? "";
-    if (isBlankOrDash(sapCode) && isBlankOrDash(sku) && isBlankOrDash(row.values.max_qty)) {
+    if (isBlankOrDash(sapCode) && isBlankOrDash(sku)) {
       continue;
     }
 
@@ -270,18 +226,6 @@ async function buildPlan(
 
     const pairFileKey = `${lookupKey(sapCode)}::${lookupKey(sku)}`;
     if (seenPairs.get(pairFileKey) !== row.rowNumber) {
-      continue;
-    }
-
-    const maxQty = parsePositiveInt(row.values.max_qty, "max_qty");
-    if (typeof maxQty !== "number") {
-      pushError(maxQty.error);
-      continue;
-    }
-
-    const milDays = parseMilDays(row.values.mil_days);
-    if (typeof milDays !== "number") {
-      pushError(milDays.error);
       continue;
     }
 
@@ -311,30 +255,22 @@ async function buildPlan(
 
     const pairKey = `${branch.id}:${model.id}`;
     const existing = entryByPair.get(pairKey);
-    const currentMil = milByPair.get(pairKey) ?? null;
     const allowed = allowedPairs.has(pairKey);
     const changes: PlanogramImportFieldChange[] = [];
 
-    if (!existing) {
-      pushChange(changes, "maxQty", null, maxQty);
-      pushChange(changes, "milDays", null, milDays);
-    } else {
-      pushChange(changes, "maxQty", existing.maxQty, maxQty);
-      pushChange(changes, "milDays", currentMil ?? PLANOGRAM_DEFAULT_MIL_DAYS, milDays);
-    }
     const willAddAllowedModel = !allowed;
     if (willAddAllowedModel) {
       pushChange(changes, "allowedModel", null, "add");
     }
 
-    const action = !existing ? "create" : changes.length > 0 ? "update" : "skip";
+    const action = !existing ? "create" : willAddAllowedModel ? "update" : "skip";
     const planned: RowPlanInternal = {
       rowNumber: row.rowNumber,
       sapCode: branch.sapCode,
       sku: model.skuCode,
       branchName: branch.name,
-      maxQty,
-      milDays,
+      maxQty: existing ? existing.maxQty : PLANOGRAM_DEFAULT_MAX_QTY,
+      milDays: PLANOGRAM_DEFAULT_MIL_DAYS,
       action,
       changes,
       willAddAllowedModel,
@@ -407,21 +343,20 @@ async function applyWriteSlice(
         modelId: row.modelId,
         maxQty: row.maxQty,
       },
-      update: { maxQty: row.maxQty },
-    });
-
-    await prisma.branchMilSetting.upsert({
-      where: { branchId_modelId: { branchId: row.branchId, modelId: row.modelId } },
-      create: {
-        tenantId,
-        branchId: row.branchId,
-        modelId: row.modelId,
-        daysThreshold: row.milDays,
-      },
-      update: { daysThreshold: row.milDays },
+      update: {},
     });
 
     if (row.action === "create") {
+      await prisma.branchMilSetting.upsert({
+        where: { branchId_modelId: { branchId: row.branchId, modelId: row.modelId } },
+        create: {
+          tenantId,
+          branchId: row.branchId,
+          modelId: row.modelId,
+          daysThreshold: row.milDays,
+        },
+        update: {},
+      });
       audits.push({
         tenantId,
         userId: actorUserId,
@@ -439,18 +374,6 @@ async function applyWriteSlice(
       return { created: 1, updated: 0, allowedModelsAdded: allowedAdded, audits };
     }
 
-    audits.push({
-      tenantId,
-      userId: actorUserId,
-      action: "planogram.max_qty_updated",
-      entityType: "BranchPlanogram",
-      entityId: entry.id,
-      metadata: {
-        maxQty: row.maxQty,
-        milDays: row.milDays,
-        source: "planogram-import",
-      },
-    });
     return { created: 0, updated: 1, allowedModelsAdded: allowedAdded, audits };
   });
 
