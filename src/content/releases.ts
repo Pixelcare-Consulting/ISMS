@@ -52,6 +52,25 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.38.0",
+    date: "2026-09-10",
+    releasedAt: "2026-09-10T18:14:00+08:00",
+    title: "Import price lists",
+    highlights: [
+      "Download an official Price lists template from Master data, fill it in, and upload it",
+      "Preview what will be created or updated before you apply — matching periods change amount only",
+      "SKUs and package types must already be in Master data; blank package means a general price",
+      "Rows left out of the file stay as they are — import never deletes prices",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Import price lists from the official template — preview first, then create or update matching periods",
+      },
+    ],
+  },
+  {
     version: "0.37.0",
     date: "2026-09-09",
     releasedAt: "2026-09-09T16:45:00+08:00",

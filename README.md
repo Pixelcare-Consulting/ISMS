@@ -2,7 +2,7 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.37.0`
+**Current version:** `0.38.0`
 
 ## Stack
 
@@ -76,7 +76,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/settings/service-centers` | `service_centers.manage` |
 | `/settings/aors` | `aors.manage` |
 | `/settings/planning`, `/settings/planogram`, `/settings/planogram/[branchId]` | `forecast.manage` / `planogram.*` (Planning: Forecast template — period, branch_sap_code, revenue_target; Planogram: Download template + upload; SKUs/branches must already exist; Add model needs Allowed models; Open a branch stays under Planogram) |
-| `/settings/master-data/*` | `master_data.manage` (Models: Import template + upload; creates new SKUs / updates existing; our template only) |
+| `/settings/master-data/*` | `master_data.manage` (Models: Import template + upload; creates new SKUs / updates existing; our template only. Price lists: Import template + upload; SKUs/package types must already exist; matching periods update amount) |
 | `/settings/sap-integration` | `sap.manage` (queue) |
 | `/settings/sap-integration/service-layer` | `sap.manage` (B1 Service Layer config) |
 | `/settings/permissions` | `roles.manage` — tenant catalog browse + links to Roles / matrix; platform operators → `/provider/permissions` (catalog CRUD) |

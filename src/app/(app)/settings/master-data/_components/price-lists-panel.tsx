@@ -3,13 +3,14 @@
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 
-import { Plus } from "lucide-react";
+import { Plus, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import {
   createPriceListAction,
   deletePriceListAction,
 } from "@/features/master-data/actions/master-data.actions";
+import { ImportPriceListsDialog } from "@/app/(app)/settings/master-data/_components/import-price-lists-dialog";
 import {
   PriceListCard,
   type PriceListCardRow,
@@ -85,6 +86,7 @@ export function PriceListsPanel({
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [addOpen, setAddOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [historyModelId, setHistoryModelId] = useState<string | null>(null);
   const [modelId, setModelId] = useState(models[0]?.id ?? "");
   const [amount, setAmount] = useState("");
@@ -202,6 +204,15 @@ export function PriceListsPanel({
         >
           <Button
             type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setImportOpen(true)}
+          >
+            <Upload className="size-3.5" />
+            Import
+          </Button>
+          <Button
+            type="button"
             size="sm"
             disabled={models.length === 0}
             onClick={() => setAddOpen(true)}
@@ -215,8 +226,8 @@ export function PriceListsPanel({
           <div className="rounded-xl border border-dashed border-border/80 px-6 py-14 text-center">
             <p className="text-sm text-muted-foreground">
               {models.length === 0
-                ? "Add product models first, then create price list rows."
-                : "No price list rows yet. Use Add price row to create one."}
+                ? "Add product models first, then create price list rows or use Import."
+                : "No price list rows yet. Use Import or Add price row to create them."}
             </p>
           </div>
         ) : filteredGroups.length === 0 ? (
@@ -347,6 +358,8 @@ export function PriceListsPanel({
           onDelete={(row) => setDeleting(row)}
         />
       ) : null}
+
+      <ImportPriceListsDialog open={importOpen} onOpenChange={setImportOpen} />
 
       {deleting ? (
         <DeleteConfirmDialog

@@ -19,6 +19,7 @@ export const MASTER_DATA_PAGE_TUTORIAL: PageTutorialContent = {
       bullets: [
         "Use the hub cards or tabs to open brands, models, series, categories, regions, payment types, and other lookups.",
         "On Models, use Import to download the template and upload it — only that template is accepted; new SKUs are added and existing ones are updated when details change.",
+        "On Price lists, use Import to download the template and upload it — SKUs and package types must already exist; matching periods update amount, new combinations are added, and nothing is removed.",
         "Create rows before they are needed on operational forms — missing lookups block create flows.",
         "This guide opens once for the whole master-data section; use ? anytime to reopen.",
       ],
