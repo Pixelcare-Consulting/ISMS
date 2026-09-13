@@ -1,6 +1,5 @@
 import { branchSyncEntity } from "@/features/branches/services/branch-sap-sync.service";
 import { branchWarehouseSyncEntity } from "@/features/branches/services/branch-warehouse-sap-sync.service";
-import { dealerSyncEntity } from "@/features/dealers/services/dealer-sap-sync.service";
 import { modelSyncEntity } from "@/features/master-data/services/model-sap-sync.service";
 import { serialNumberSyncEntity } from "@/features/serial-numbers/services/serial-number-sap-sync.service";
 import { serviceCenterSyncEntity } from "@/features/service-centers/services/service-center-sap-sync.service";
@@ -16,17 +15,18 @@ import type { SapSyncEntity } from "@/features/sap/types/sap-sync-entity";
  * whose model is new can link in the same run. The small entities run first anyway —
  * together they are a few seconds against the serials' several minutes.
  *
- * Three of them read the same entity: SAP keeps branches, warehouses and service centres
- * in `Warehouses` and tells them apart by `U_Warehouse_Type`. They are still three syncs
- * because they write three tables and each keeps its own place in the entity — see
- * `sap-warehouse-type.ts`.
+ * Three of them read the same entity: SAP keeps branches and warehouses in `Warehouses`
+ * and tells them apart by `U_Warehouse_Type`. They are still separate syncs because they
+ * write separate tables and each keeps its own place in the entity — see
+ * `sap-warehouse-type.ts`. Service centres come from the cost centre master instead.
+ *
+ * Dealers are not synced: they are ISMS-managed (added by hand or imported).
  */
 export const SAP_SYNC_ENTITIES: SapSyncEntity[] = [
   branchSyncEntity,
   branchWarehouseSyncEntity,
   warehouseSyncEntity,
   serviceCenterSyncEntity,
-  dealerSyncEntity,
   modelSyncEntity,
   serialNumberSyncEntity,
 ];

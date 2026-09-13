@@ -2,16 +2,16 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Plus, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import {
   createDealerAction,
   deleteDealerAction,
   listDealerFormOptionsAction,
-  syncDealersFromSapAction,
   updateDealerAction,
 } from "@/features/dealers/actions/dealer.actions";
-import { SapSyncButton } from "@/features/sap/components/sap-sync-button";
+import { ImportDealersDialog } from "@/app/(app)/settings/dealers/_components/import-dealers-dialog";
 import {
   DeleteConfirmDialog,
   TableEmptyRow,
@@ -71,6 +71,7 @@ export function DealersTable({ dealers }: { dealers: DealerRow[] }) {
   const [pending, startTransition] = useTransition();
   const [deleting, setDeleting] = useState<DealerRow | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [options, setOptions] = useState<Options | null>(null);
   const [name, setName] = useState("");
   const [sapCode, setSapCode] = useState("");
@@ -202,18 +203,14 @@ export function DealersTable({ dealers }: { dealers: DealerRow[] }) {
         }}
         toolbarActions={
           <>
-            <SapSyncButton
-              syncKey="dealer"
-              noun={{ one: "customer", many: "customers" }}
-              onSync={syncDealersFromSapAction}
-            />
-            {/* DO NOT DELETE - SAP is the source of truth for customers, so dealers are
-                created only by the sync above. Restoring this also needs the `Plus`
-                icon re-imported from lucide-react.
+            <Button variant="outline" size="sm" onClick={() => setImporting(true)}>
+              <Upload className="mr-1 size-4" />
+              Import
+            </Button>
             <Button type="button" size="sm" onClick={() => onAddOpenChange(true)}>
               <Plus className="size-3.5" />
               Add dealer
-            </Button> */}
+            </Button>
           </>
         }
         pageSize={{ value: pageSize, onChange: setPageSize }}
@@ -279,6 +276,8 @@ export function DealersTable({ dealers }: { dealers: DealerRow[] }) {
               )}
             </TableBody>
       </GlobalDataTable>
+
+      <ImportDealersDialog open={importing} onOpenChange={setImporting} />
 
       <Sheet open={addOpen} onOpenChange={onAddOpenChange}>
         <SheetContent

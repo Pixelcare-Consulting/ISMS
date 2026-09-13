@@ -96,7 +96,7 @@ export async function deleteServiceCenterLocationAction(id: string) {
   }
 }
 
-/** Import SAP warehouses typed `Service Center` as ISMS service centres. */
+/** Import SAP cost centres on dimension 5 as ISMS service centres. */
 export async function syncServiceCentersFromSapAction() {
   const session = await requirePermission("service_centers.manage");
   try {
