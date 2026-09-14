@@ -13,7 +13,7 @@ const orderListInclude = {
   createdBy: { select: { id: true, name: true, email: true } },
   details: {
     include: {
-      model: { select: { id: true, skuCode: true, name: true, brandId: true } },
+      model: { select: { id: true, skuCode: true, name: true, brandId: true, srp: true } },
     },
   },
   approvalLevels: {
@@ -37,7 +37,12 @@ function orderScopeWhere(
   };
 }
 
-export type OrderListSort = "orderNumber" | "branch" | "orderType" | "status";
+export type OrderListSort =
+  | "orderNumber"
+  | "branch"
+  | "orderType"
+  | "status"
+  | "createdAt";
 export type OrderListSortDir = "asc" | "desc";
 
 function orderPrismaOrderBy(
@@ -53,8 +58,12 @@ function orderPrismaOrderBy(
       return { orderType: dir };
     case "status":
       return { status: dir };
-    default:
+    case "createdAt":
       return { createdAt: dir };
+    default: {
+      const _exhaustive: never = field;
+      return _exhaustive;
+    }
   }
 }
 
@@ -130,7 +139,13 @@ export const orderRepository = {
       orderType: BranchOrderType;
       createdById: string;
       notes?: string;
-      details: { modelId: string; quantity: number }[];
+      brandId?: string | null;
+      details: {
+        modelId: string;
+        quantity: number;
+        remarks?: string | null;
+        amount?: number | null;
+      }[];
     },
   ) {
     const approvalChain = getOrderApprovalChain(data.orderType);
@@ -147,7 +162,15 @@ export const orderRepository = {
         status: initialStatus,
         createdById: data.createdById,
         notes: data.notes,
-        details: { create: data.details },
+        brandId: data.brandId ?? null,
+        details: {
+          create: data.details.map((line) => ({
+            modelId: line.modelId,
+            quantity: line.quantity,
+            remarks: line.remarks ?? null,
+            amount: line.amount ?? null,
+          })),
+        },
         approvalLevels: {
           create: approvalChain.map((step) => ({
             level: step.level,

@@ -28,6 +28,7 @@ import { assertOrderingAllowed } from "@/features/orders/utils/order-window";
 import { branchRepository } from "@/features/branches/repositories/branch.repository";
 import { orderingPolicyService } from "@/features/ordering/services/ordering-policy.service";
 import { sendWorkflowEmail } from "@/lib/notifications/workflow-email";
+import { decimalToNumber } from "@/lib/database/decimal";
 
 export interface OrderStatusKpi {
   code: string;
@@ -217,7 +218,12 @@ export const orderService = {
       branchId: string;
       orderType: BranchOrderType;
       notes?: string;
-      details: { modelId: string; quantity: number }[];
+      brandId?: string | null;
+      details: {
+        modelId: string;
+        quantity: number;
+        remarks?: string | null;
+      }[];
       /** When false, branch must be in the user's AOR (same scope as list). */
       hasFullAccess?: boolean;
     },
@@ -271,9 +277,25 @@ export const orderService = {
             .join("\n")
         : data.notes;
 
+    const details = await Promise.all(
+      data.details.map(async (line) => {
+        const model = await masterDataRepository.findModel(tenantId, line.modelId);
+        const srp = model ? decimalToNumber(model.srp) : 0;
+        return {
+          modelId: line.modelId,
+          quantity: line.quantity,
+          remarks: line.remarks ?? null,
+          amount: line.quantity * srp,
+        };
+      }),
+    );
+
     const order = await orderRepository.create(tenantId, {
-      ...data,
+      branchId: data.branchId,
+      orderType: data.orderType,
+      brandId: data.brandId,
       notes,
+      details,
       createdById: userId,
     });
 

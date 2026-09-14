@@ -389,6 +389,63 @@ export const planogramRepository = {
     return counts;
   },
 
+  async countInventoryByStatusForBranchModels(
+    tenantId: string,
+    branchId: string,
+    modelIds: string[],
+  ): Promise<Map<string, Map<string, number>>> {
+    const result = new Map<string, Map<string, number>>();
+    for (const modelId of modelIds) {
+      result.set(modelId, new Map());
+    }
+    if (modelIds.length === 0) return result;
+
+    const rows = await prisma.branchInventory.findMany({
+      where: {
+        tenantId,
+        branchId,
+        serialNumber: { modelId: { in: modelIds } },
+      },
+      select: {
+        statusCode: { select: { code: true } },
+        serialNumber: { select: { modelId: true } },
+      },
+    });
+
+    for (const row of rows) {
+      const modelId = row.serialNumber.modelId;
+      const code = row.statusCode.code || "OTHER";
+      const counts = result.get(modelId) ?? new Map<string, number>();
+      counts.set(code, (counts.get(code) ?? 0) + 1);
+      result.set(modelId, counts);
+    }
+    return result;
+  },
+
+  listPlanogramModelsForAnalytics(tenantId: string, branchId: string) {
+    return prisma.branchPlanogram.findMany({
+      where: {
+        tenantId,
+        branchId,
+        model: { status: "active" },
+      },
+      include: {
+        model: {
+          select: {
+            id: true,
+            skuCode: true,
+            name: true,
+            srp: true,
+            cbm: true,
+            brandId: true,
+            brand: { select: { id: true, name: true } },
+          },
+        },
+      },
+      orderBy: { model: { skuCode: "asc" } },
+    });
+  },
+
   countOffPlanogramSerials(tenantId: string, branchId: string) {
     return prisma.branchInventory.count({
       where: {

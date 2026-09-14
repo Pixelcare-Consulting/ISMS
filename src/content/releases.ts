@@ -52,6 +52,83 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.39.0",
+    date: "2026-09-14",
+    releasedAt: "2026-09-14T13:30:00+08:00",
+    title: "Smarter branch orders",
+    highlights: [
+      "Manual, Special, and Auto replenish now share Orders, Order Analytics, and Order History tabs",
+      "Order Analytics shows branch stock by status, this month’s sales, and suggested quantities before you order",
+      "Create a full branch request in one screen — several models, remarks, and special notes together",
+      "Order History lists past SO#s with quantities, amounts, and who last updated them",
+      "Order counts sit under the Orders tab as cards next to the live list",
+      "Create order lets you add extra items at the top of the model list",
+      "Order Analytics waits for a brand before showing DII and inventory, with brand tabs above the model table and pages you can step through",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Order Analytics lets you pick a branch and brand, review stock and suggested quantities, then proceed to order",
+      },
+      {
+        type: "feature",
+        description:
+          "Create order is a branch workspace so you can enter quantities and remarks for many planogram models at once",
+      },
+      {
+        type: "feature",
+        description:
+          "Create order lets you add extra items at the top of the model list",
+      },
+      {
+        type: "feature",
+        description:
+          "Order History shows past requests with ordered and approved quantities and amounts, plus who last updated them",
+      },
+      {
+        type: "improvement",
+        description:
+          "Manual, Special, and Auto replenish use the same Orders, Analytics, and History tabs so you do not hunt across different layouts",
+      },
+      {
+        type: "improvement",
+        description:
+          "Order counts sit under the Orders tab as cards so pipeline totals stay with the live list",
+      },
+      {
+        type: "improvement",
+        description:
+          "Order Analytics waits for a brand before showing DII and inventory, puts brand tabs above the model table, and paginates the list so long brand catalogs stay easy to scan",
+      },
+      {
+        type: "fix",
+        description:
+          "Order Analytics sits on a solid table with a TOTAL row so rows no longer look see-through",
+      },
+      {
+        type: "fix",
+        description:
+          "Models with no stock show the same STK 0 badge as other rows",
+      },
+      {
+        type: "fix",
+        description:
+          "Create order remarks stay fully visible — no need to scroll sideways to type notes",
+      },
+      {
+        type: "fix",
+        description:
+          "Table checkboxes sit inward from the edge so they are easier to tap",
+      },
+      {
+        type: "fix",
+        description:
+          "The Analytics branch picker looks like a real control so it is easier to spot and click",
+      },
+    ],
+  },
+  {
     version: "0.38.2",
     date: "2026-09-11",
     releasedAt: "2026-09-11T14:50:00+08:00",

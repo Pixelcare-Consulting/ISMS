@@ -3,6 +3,7 @@ import Link from "next/link";
 import { BRANCH_ORDER_TYPE_LABELS } from "@/features/orders/constants/order-status";
 import {
   getOrdersKpisAction,
+  listOrderHistoryAction,
   listOrdersAction,
 } from "@/features/orders/actions/order.actions";
 import {
@@ -10,13 +11,18 @@ import {
   ORDER_TYPE_ROUTE,
   orderTypeAccessPermissions,
 } from "@/features/orders/constants/order-permissions";
-import { OrderKpisStrip } from "@/features/orders/components/order-kpis";
+import { OrderKpisSummary } from "@/features/orders/components/order-kpis";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { ModuleGuide } from "@/components/module-guide";
 import { hasPermission, requireAnyPermission } from "@/lib/auth/permissions";
 import { ORDERS_MODULE_GUIDE } from "@/content/module-guides/orders";
 import { BRANCH_ORDERS_PAGE_TUTORIAL } from "@/content/page-tutorials/branch-orders";
 import { PageHeader } from "@/app/(app)/_components/page-header";
+import { OrderAnalyticsPanel } from "@/app/(app)/orders/_components/order-analytics-panel";
+import { OrderHistoryTable } from "@/app/(app)/orders/_components/order-history-table";
+import { OrdersCreateWorkspaceProvider } from "@/app/(app)/orders/_components/orders-create-workspace-context";
+import { OrdersPageTabs } from "@/app/(app)/orders/_components/orders-page-tabs";
+import { parseOrdersPageTab } from "@/features/orders/constants/orders-page-tabs";
 import { OrdersTable } from "@/app/(app)/orders/_components/orders-table";
 import { Button } from "@/components/ui/button";
 import type { BranchOrderType } from "@prisma/client";
@@ -24,6 +30,7 @@ import type { BranchOrderType } from "@prisma/client";
 interface OrdersTypePageProps {
   orderType: BranchOrderType;
   searchParams: Promise<{
+    tab?: string;
     page?: string;
     limit?: string;
     sort?: string;
@@ -52,18 +59,38 @@ export async function OrdersTypePage({
 }: OrdersTypePageProps) {
   const session = await requireAnyPermission(orderTypeAccessPermissions(orderType));
   const params = await searchParams;
+  const activeTab = parseOrdersPageTab(params.tab);
   const page = Number(params.page) || 1;
   const limit = parseTablePageSize(params.limit);
-  const [result, kpis] = await Promise.all([
-    listOrdersAction({ page, limit, orderType, sort: params.sort, sortDir: params.dir }),
-    getOrdersKpisAction(orderType),
-  ]);
   const viewerRoleSlugs = session.user.roleSlugs ?? [];
   const canEdit = hasOrderPermission(session.user.permissions, orderType, "create");
   const canAccessSuggestedOrders =
     hasPermission(session.user.permissions, "forecast.manage") ||
     hasPermission(session.user.permissions, "planogram.manage");
   const typeLabel = BRANCH_ORDER_TYPE_LABELS[orderType];
+  const basePath = ORDER_TYPE_ROUTE[orderType];
+
+  const [kpis, ordersResult, historyResult] = await Promise.all([
+    getOrdersKpisAction(orderType),
+    activeTab === "orders"
+      ? listOrdersAction({
+          page,
+          limit,
+          orderType,
+          sort: params.sort,
+          sortDir: params.dir,
+        })
+      : Promise.resolve(null),
+    activeTab === "history"
+      ? listOrderHistoryAction({
+          page,
+          limit,
+          orderType,
+          sort: params.sort,
+          sortDir: params.dir,
+        })
+      : Promise.resolve(null),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -81,17 +108,48 @@ export async function OrdersTypePage({
         }
       />
       <ModuleGuide {...ORDERS_MODULE_GUIDE} />
-      <OrderKpisStrip kpis={kpis} />
-      <OrdersTable
-        result={result}
-        viewerRoleSlugs={viewerRoleSlugs}
+      <OrdersCreateWorkspaceProvider
+        orderType={orderType}
         canEdit={canEdit}
         canAccessSuggestedOrders={canAccessSuggestedOrders}
-        fixedOrderType={orderType}
-        basePath={ORDER_TYPE_ROUTE[orderType]}
-        initialSort={params.sort ?? ""}
-        initialSortDir={params.dir ?? "desc"}
-      />
+      >
+        <OrdersPageTabs
+          activeTab={activeTab}
+          basePath={basePath}
+          ordersContent={
+            ordersResult ? (
+              <div className="space-y-4">
+                <OrderKpisSummary kpis={kpis} />
+                <OrdersTable
+                  result={ordersResult}
+                  viewerRoleSlugs={viewerRoleSlugs}
+                  canEdit={canEdit}
+                  canAccessSuggestedOrders={canAccessSuggestedOrders}
+                  fixedOrderType={orderType}
+                  basePath={basePath}
+                  initialSort={params.sort ?? ""}
+                  initialSortDir={params.dir ?? "desc"}
+                />
+              </div>
+            ) : null
+          }
+          analyticsContent={
+            activeTab === "analytics" ? (
+              <OrderAnalyticsPanel orderType={orderType} />
+            ) : null
+          }
+          historyContent={
+            historyResult ? (
+              <OrderHistoryTable
+                result={historyResult}
+                basePath={basePath}
+                initialSort={params.sort ?? "createdAt"}
+                initialSortDir={params.dir ?? "desc"}
+              />
+            ) : null
+          }
+        />
+      </OrdersCreateWorkspaceProvider>
     </div>
   );
 }

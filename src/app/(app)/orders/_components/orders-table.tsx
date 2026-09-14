@@ -1,17 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import { useOrdersCreateWorkspace } from "@/app/(app)/orders/_components/orders-create-workspace-context";
 import {
   approveOrderAction,
-  checkOrderWindowAction,
-  createOrderAction,
-  listActiveDealersForOrderAction,
-  listBranchesForOrderAction,
-  listModelsForOrderAction,
   rejectOrderAction,
 } from "@/features/orders/actions/order.actions";
 import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
@@ -39,8 +34,6 @@ import {
 import { uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
-import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   TableBody,
   TableCell,
@@ -76,16 +69,6 @@ interface OrderRow {
     comment?: string | null;
     approvedBy?: { name: string | null; email: string } | null;
   }[];
-}
-
-interface OrderModelOption {
-  id: string;
-  skuCode: string;
-  name: string;
-  maxQty: number | null;
-  stockCount?: number;
-  remainingCapacity?: number;
-  onPlanogram: boolean;
 }
 
 type OrderSortField = "orderNumber" | "branch" | "orderType" | "status";
@@ -150,12 +133,25 @@ function buildOrdersHref(
   return query ? `${basePath}?${query}` : basePath;
 }
 
+function buildOrdersHrefWithTab(
+  basePath: string,
+  page: number,
+  limit: number,
+  sort?: string,
+  sortDir?: string,
+  tab?: string | null,
+): string {
+  const href = buildOrdersHref(basePath, page, limit, sort, sortDir);
+  if (!tab || tab === "orders") return href;
+  const join = href.includes("?") ? "&" : "?";
+  return `${href}${join}tab=${tab}`;
+}
+
 export function OrdersTable({
   result,
   viewerRoleSlugs,
   canEdit = false,
   canAccessSuggestedOrders = false,
-  fixedOrderType,
   basePath = "/orders",
   initialSort = "",
   initialSortDir = "desc",
@@ -170,20 +166,25 @@ export function OrdersTable({
   const [processingAction, setProcessingAction] = useState<"approve" | "reject" | null>(
     null,
   );
-  const [showCreate, setShowCreate] = useState(false);
+  const createWorkspace = useOrdersCreateWorkspace();
   const pageSize = parseTablePageSize(result.limit);
+  const pageTab = searchParams.get("tab");
   const sort = (searchParams.get("sort") ?? initialSort) || "";
   const sortDir = (
     (searchParams.get("dir") ?? initialSortDir) === "asc" ? "asc" : "desc"
   ) as OrderSortDir;
 
   function handlePageSizeChange(limit: TablePageSize) {
-    router.push(buildOrdersHref(basePath, 1, limit, sort, sort ? sortDir : undefined));
+    router.push(
+      buildOrdersHrefWithTab(basePath, 1, limit, sort, sort ? sortDir : undefined, pageTab),
+    );
   }
 
   function toggleSort(field: OrderSortField) {
     const next = nextTableSort(field, sort, sortDir);
-    router.push(buildOrdersHref(basePath, 1, pageSize, next.sort, next.dir));
+    router.push(
+      buildOrdersHrefWithTab(basePath, 1, pageSize, next.sort, next.dir, pageTab),
+    );
   }
 
   const filtered = useMemo(
@@ -276,7 +277,7 @@ export function OrdersTable({
               </Button>
             ) : null}
             {canEdit ? (
-              <Button onClick={() => setShowCreate(true)}>Create order</Button>
+              <Button onClick={() => createWorkspace.openCreate()}>Create order</Button>
             ) : null}
           </>
         }
@@ -285,13 +286,20 @@ export function OrdersTable({
           page: result.page,
           totalPages: result.totalPages,
           itemLabel: "order",
-          buildHref: (page) =>
-            buildOrdersHref(basePath, page, pageSize, sort, sort ? sortDir : undefined),
+            buildHref: (page) =>
+            buildOrdersHrefWithTab(
+              basePath,
+              page,
+              pageSize,
+              sort,
+              sort ? sortDir : undefined,
+              pageTab,
+            ),
         }}
       >
         <TableHeader>
           <TableRow className="hover:bg-transparent">
-            <GlobalTableHead className="w-10">
+            <GlobalTableHead className="w-12 pl-3 pr-2">
               <Checkbox
                 checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
                 onCheckedChange={(checked) => selection.toggleAll(checked === true)}
@@ -338,7 +346,7 @@ export function OrdersTable({
         <TableBody>
           {filtered.map((o, index) => (
             <TableRow key={o.id} data-state={selection.isRowSelected(o.id) ? "selected" : undefined}>
-              <TableCell>
+              <TableCell className="w-12 pl-3 pr-2">
                 <Checkbox
                   checked={selection.isRowSelected(o.id)}
                   onCheckedChange={(checked) => selection.toggleRow(o.id, checked === true)}
@@ -444,13 +452,6 @@ export function OrdersTable({
           onReject={handleReject}
         />
       ) : null}
-      {showCreate ? (
-        <CreateOrderDialog
-          onClose={() => setShowCreate(false)}
-          fixedOrderType={fixedOrderType}
-          canAccessSuggestedOrders={canAccessSuggestedOrders}
-        />
-      ) : null}
       {editingOrder ? (
         <EditOrderDialog order={editingOrder} onClose={() => setEditingOrder(null)} />
       ) : null}
@@ -485,281 +486,6 @@ function OrderReviewButton({ order, viewerRoleSlugs, onReview }: OrderReviewButt
     <Button size="sm" variant="outline" onClick={onReview}>
       Review
     </Button>
-  );
-}
-
-function CreateOrderDialog({
-  onClose,
-  fixedOrderType,
-  canAccessSuggestedOrders = false,
-}: {
-  onClose: () => void;
-  fixedOrderType?: BranchOrderType;
-  canAccessSuggestedOrders?: boolean;
-}) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const [dealers, setDealers] = useState<{ id: string; name: string }[]>([]);
-  const [branches, setBranches] = useState<
-    { id: string; name: string; dealerId: string | null }[]
-  >([]);
-  const [models, setModels] = useState<OrderModelOption[]>([]);
-  const [dealerId, setDealerId] = useState("");
-  const [branchId, setBranchId] = useState("");
-  const [orderType, setOrderType] = useState<"manual" | "special" | "auto_replenish">(
-    fixedOrderType ?? "manual",
-  );
-  const [modelId, setModelId] = useState("");
-  const [qty, setQty] = useState(1);
-  const [loaded, setLoaded] = useState(false);
-  const [windowBlock, setWindowBlock] = useState<string | null>(null);
-  const lockedOrderType = fixedOrderType ?? null;
-
-  const selectedModel = models.find((m) => m.id === modelId);
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      const [dealerRows, branchRows] = await Promise.all([
-        listActiveDealersForOrderAction(fixedOrderType),
-        listBranchesForOrderAction(undefined, fixedOrderType),
-      ]);
-      if (cancelled) return;
-      setDealers(dealerRows);
-      setBranches(branchRows);
-      setLoaded(true);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [fixedOrderType]);
-
-  useEffect(() => {
-    if (!loaded || !dealerId) return;
-    let cancelled = false;
-    void listBranchesForOrderAction(dealerId, fixedOrderType).then((branchRows) => {
-      if (cancelled) return;
-      setBranches(branchRows);
-      setBranchId((current) =>
-        branchRows.some((b) => b.id === current) ? current : (branchRows[0]?.id ?? ""),
-      );
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [dealerId, loaded, fixedOrderType]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const branch = branchId;
-    void Promise.resolve().then(async () => {
-      if (!branch) {
-        if (!cancelled) setWindowBlock(null);
-        return;
-      }
-      const res = await checkOrderWindowAction(branch, orderType);
-      if (!cancelled) setWindowBlock(res.blocked ? res.reason : null);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [branchId, orderType]);
-
-  useEffect(() => {
-    if (!branchId) return;
-    let cancelled = false;
-    void listModelsForOrderAction(branchId, orderType).then((m) => {
-      if (cancelled) return;
-      setModels(m);
-      if (m[0]) setModelId(m[0].id);
-      else setModelId("");
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [branchId, orderType]);
-
-  function submit() {
-    startTransition(async () => {
-      const result = await createOrderAction({
-        branchId,
-        orderType,
-        details: [{ modelId, quantity: qty }],
-      });
-      if (result.error) {
-        toast.error(result.error);
-        return;
-      }
-      toast.success(
-        orderType === "special"
-          ? "Special order submitted for SP approval"
-          : orderType === "auto_replenish"
-            ? "Auto-replenish order submitted for TL review"
-            : "Manual order submitted for PS review",
-      );
-      onClose();
-      router.refresh();
-    });
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="flex w-full max-w-md max-h-[calc(100svh-2rem)] min-h-0 flex-col overflow-hidden rounded-xl border bg-card shadow-xl">
-        <div className="shrink-0 rounded-t-xl border-b bg-card p-4 sm:p-6">
-          <h3 className="font-medium">Create branch order</h3>
-        </div>
-
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-6">
-          {!loaded ? (
-            <p className="text-sm text-muted-foreground">
-              Loading dealers and branches…
-            </p>
-          ) : (
-            <>
-            <SearchableSelect
-              label="Dealer"
-              options={dealers.map((d) => ({ id: d.id, label: d.name }))}
-              value={dealerId}
-              onChange={(next) => {
-                setDealerId(next);
-                setBranchId("");
-                setModels([]);
-                setModelId("");
-              }}
-              allowClear
-              placeholder="Select dealer…"
-              searchPlaceholder="Search dealers…"
-            />
-            <SearchableSelect
-              label="Branch"
-              options={branches.map((b) => ({ id: b.id, label: b.name }))}
-              value={branchId}
-              onChange={setBranchId}
-              placeholder={dealerId ? "Select branch…" : "Select a dealer first…"}
-              searchPlaceholder="Search branches…"
-              disabled={!dealerId}
-              emptyMessage="No active branches for this dealer."
-            />
-            {windowBlock ? (
-              <p className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                {windowBlock}
-              </p>
-            ) : null}
-            <div>
-              {lockedOrderType ? (
-                <div className="space-y-1">
-                  <Label>Order type</Label>
-                  <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
-                    {lockedOrderType === "manual"
-                      ? "Manual (planogram SKUs)"
-                      : lockedOrderType === "special"
-                        ? "Special (off-planogram allowed)"
-                        : "Auto replenish (planogram SKUs)"}
-                  </p>
-                </div>
-              ) : (
-                <SearchableSelect
-                  label="Order type"
-                  options={[
-                    { id: "manual", label: "Manual (planogram SKUs)" },
-                    { id: "auto_replenish", label: "Auto replenish (planogram SKUs)" },
-                    { id: "special", label: "Special (off-planogram allowed)" },
-                  ]}
-                  value={orderType}
-                  onChange={(next) =>
-                    setOrderType(next as "manual" | "special" | "auto_replenish")
-                  }
-                  searchPlaceholder="Search order types…"
-                />
-              )}
-              {orderType === "auto_replenish" ? (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Single-line auto-replenish here
-                  {canAccessSuggestedOrders ? ", or use suggested orders" : ""}.
-                </p>
-              ) : canAccessSuggestedOrders ? (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Auto-replenish bulk path: Planning → Suggested orders.
-                </p>
-              ) : null}
-              {canAccessSuggestedOrders ? (
-                <Button variant="outline" size="sm" className="mt-2" asChild>
-                  <Link href="/planning/suggested-orders">View suggested orders</Link>
-                </Button>
-              ) : null}
-            </div>
-            <div>
-              <SearchableSelect
-                label="Model"
-                options={models.map((m) => ({
-                  id: m.id,
-                  label: `${m.skuCode} — ${m.name}${m.maxQty != null ? ` (max ${m.maxQty})` : ""}`,
-                }))}
-                value={modelId}
-                onChange={setModelId}
-                placeholder="Select model…"
-                searchPlaceholder="Search models…"
-                emptyMessage="No eligible SKUs for this branch and order type."
-                disabled={!branchId}
-              />
-              {models.length === 0 && branchId ? (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  No eligible SKUs for this branch and order type.
-                </p>
-              ) : null}
-            </div>
-            <div>
-              <Label>Quantity</Label>
-              <input
-                type="number"
-                min={1}
-                max={
-                  (orderType === "manual" || orderType === "auto_replenish") &&
-                  selectedModel?.remainingCapacity != null
-                    ? selectedModel.remainingCapacity
-                    : selectedModel?.maxQty ?? undefined
-                }
-                className="flex h-9 w-full rounded-md border px-2 text-sm"
-                value={qty}
-                onChange={(e) => setQty(Number(e.target.value))}
-              />
-              {(orderType === "manual" || orderType === "auto_replenish") &&
-              selectedModel?.maxQty != null ? (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Shelf capacity: {selectedModel.remainingCapacity ?? selectedModel.maxQty} remaining
-                  of {selectedModel.maxQty} max
-                  {selectedModel.stockCount != null ? ` (${selectedModel.stockCount} in stock)` : ""}
-                </p>
-              ) : selectedModel?.maxQty != null ? (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Planogram max: {selectedModel.maxQty}
-                </p>
-              ) : null}
-            </div>
-            </>
-          )}
-        </div>
-
-        <div className="flex shrink-0 flex-wrap justify-end gap-2 rounded-b-xl border-t bg-card p-4 sm:p-6">
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            disabled={
-              pending ||
-              !loaded ||
-              !dealerId ||
-              !branchId ||
-              !modelId ||
-              windowBlock !== null
-            }
-            onClick={submit}
-          >
-            Submit
-          </Button>
-        </div>
-      </div>
-    </div>
   );
 }
 

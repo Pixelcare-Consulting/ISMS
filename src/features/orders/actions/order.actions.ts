@@ -31,6 +31,8 @@ import {
 import { getUserBranchIds } from "@/lib/aor/scope";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import type { BranchOrderType } from "@prisma/client";
+import { decimalToNumber } from "@/lib/database/decimal";
+import type { OrderHistoryRow } from "@/features/orders/types/order-analytics";
 
 function hasFullOrderAccess(permissions: string[] | undefined) {
   return (
@@ -76,6 +78,7 @@ const ORDER_SORT_FIELDS = new Set<OrderListSort>([
   "branch",
   "orderType",
   "status",
+  "createdAt",
 ]);
 
 function parseOrderSort(value?: string): OrderListSort | undefined {
@@ -117,6 +120,7 @@ export async function listOrdersAction(input?: {
         id: d.id,
         quantity: d.quantity,
         approvedQty: d.approvedQty,
+        remarks: d.remarks,
         model: { ...d.model, sku: d.model.skuCode },
       })),
     })),
@@ -241,7 +245,8 @@ export async function createOrderAction(input: {
   branchId: string;
   orderType: "auto_replenish" | "manual" | "special";
   notes?: string;
-  details: { modelId: string; quantity: number }[];
+  brandId?: string | null;
+  details: { modelId: string; quantity: number; remarks?: string | null }[];
 }) {
   const session = await requireOrderTypePermission(input.orderType, "create");
   try {
@@ -349,4 +354,84 @@ export async function rejectOrderAction(orderId: string, comment?: string) {
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to reject order" };
   }
+}
+
+function lastUpdatedByName(order: {
+  createdBy: { name: string | null; email: string };
+  approvalLevels: {
+    approvedAt: Date | null;
+    rejectedAt: Date | null;
+    approvedBy: { name: string | null; email: string } | null;
+  }[];
+}): string {
+  const actors = order.approvalLevels
+    .map((level) => {
+      const at = level.approvedAt ?? level.rejectedAt;
+      return at && level.approvedBy
+        ? { at, person: level.approvedBy }
+        : null;
+    })
+    .filter((row): row is { at: Date; person: { name: string | null; email: string } } =>
+      row !== null,
+    )
+    .sort((a, b) => b.at.getTime() - a.at.getTime());
+  const person = actors[0]?.person ?? order.createdBy;
+  return person.name?.trim() || person.email;
+}
+
+export async function listOrderHistoryAction(input?: {
+  page?: number;
+  limit?: number;
+  orderType?: BranchOrderType;
+  sort?: string;
+  sortDir?: string;
+}) {
+  const session = input?.orderType
+    ? await requireOrderTypePageAccess(input.orderType)
+    : await requireAnyPermission(anyOrderTypePermissions("view"));
+  const limit = parseTablePageSize(input?.limit);
+  const result = await orderService.list(
+    session.user.tenantId,
+    session.user.id,
+    hasFullOrderAccess(session.user.permissions),
+    { page: input?.page, limit, orderType: input?.orderType },
+    { field: parseOrderSort(input?.sort), dir: parseOrderSortDir(input?.sortDir) },
+  );
+
+  const items: OrderHistoryRow[] = result.items.map((order) => {
+    let orderQty = 0;
+    let appQty = 0;
+    let totalAmt = 0;
+    let appAmt = 0;
+    for (const detail of order.details) {
+      const srp = decimalToNumber(detail.model.srp);
+      const approved = detail.approvedQty ?? 0;
+      orderQty += detail.quantity;
+      appQty += approved;
+      totalAmt += detail.quantity * srp;
+      appAmt += approved * srp;
+    }
+    return {
+      id: order.id,
+      orderNumber: order.orderNumber,
+      orderType: order.orderType,
+      status: order.status,
+      branchName: order.branch.name,
+      orderQty,
+      totalAmt,
+      appQty,
+      appAmt,
+      createdAt: order.createdAt.toISOString(),
+      updatedAt: order.updatedAt.toISOString(),
+      lastUpdatedBy: lastUpdatedByName(order),
+    };
+  });
+
+  return {
+    items,
+    total: result.total,
+    page: result.page,
+    limit: result.limit,
+    totalPages: result.totalPages,
+  };
 }

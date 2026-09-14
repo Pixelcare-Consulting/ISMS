@@ -22,7 +22,7 @@ export function TableSelectAllCheckbox({
 }: TableSelectAllCheckboxProps) {
   return (
     <TableHead
-      className={cn("w-[1%] max-w-10 whitespace-nowrap p-0", className)}
+      className={cn("w-12 max-w-14 whitespace-nowrap pl-3 pr-2", className)}
     >
       <Checkbox
         checked={
@@ -53,7 +53,7 @@ export function TableRowCheckbox({
 }: TableRowCheckboxProps) {
   return (
     <TableCell
-      className={cn("w-[1%] max-w-10 whitespace-nowrap p-0", className)}
+      className={cn("w-12 max-w-14 whitespace-nowrap pl-3 pr-2", className)}
     >
       <Checkbox
         checked={checked}

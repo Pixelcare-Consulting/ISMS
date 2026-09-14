@@ -2,7 +2,7 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.38.2`
+**Current version:** `0.39.0`
 
 ## Stack
 
@@ -23,7 +23,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | **Planogram** | Clickable cards filter branches with a planogram or none yet; per-branch SKU assignment; official Excel template download + import (branch SAP + SKU); Add model requires Allowed models first |
 | **Policies** | Full document control (ISO track) |
 | **Inventory** | Serialized stock (STK on Stock units), **warehouse stock** SN list (`/inventory/warehouse-stock`; also Settings → Warehouses →image.png Stock), AOR-scoped lists, series QTY/VALUE + DR#/date/aging, **physical stock count / P-Count** (`/inventory/stock-count`) |
-| **Orders** | Nav group: Manual / Special / Auto replenish (`/orders/manual` etc.); per-type `orders.manual`, `orders.special`, `orders.auto_replenish` with view/create/approve; PS → TL → SP; SO#, processed orders, delivery-due auto-reschedule |
+| **Orders** | Nav group: Manual / Special / Auto replenish (`/orders/manual` etc.); tabs **Orders \| Order Analytics \| Order History** (`?tab=`); pipeline counts sit under Orders as KPI cards; Create adds extra items at the top of the model list; Analytics waits for a brand before DII / inventory, brand tabs above the paginated model table, solid branch picker; per-branch create workspace (multi-line); per-type `orders.manual`, `orders.special`, `orders.auto_replenish` with view/create/approve; PS → TL → SP; SO#, processed orders, delivery-due auto-reschedule |
 | **Logistics** | Deliveries (accept/reject), transfers, pull-outs with SN movement; gated by `logistics.view` / `create` / `manage` |
 | **Sales** | Encode at `/sales/new` (CTA from `/sales`); PS auto-branch; TL `sales.create` + branch picker; package detail modal (qty → N sets), reserved (RSV) sales; list + KPIs show Sold / Official Sold / TO FOLLOW only (return workflow on Returns); line Edit only for TO-FOLLOW; Accounting `sales.update` edits transaction headers; Process Return per serial line from Sale details (document type, STK/DEF, problems, Return or Replacement) |
 | **Returns / Replacement** | `/returns` with Branch \| Service \| Approvals tabs gated by `returns.branch.view` / `returns.service.view` / evaluate·approve·complete (umbrella `returns.view` sees all); ATR workflow via `returns.*` (legacy `sales.return.*` / `service_centers.return.*` still work); Branch table includes report columns + ATR/ODRF download; **Service Return / Replacement** Document Types appear under Service Returns (with SC-sale returns); Dealer Initiated types need TL after CS; other types go Approved after CS; approved Return restores STK/DEF for the selected serial only; approved Replacement Same Invoice shows original TRN (read-only) and updates that sale line, or New Invoice creates a new sale |
@@ -50,9 +50,9 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/inventory/warehouse-stock` | `inventory.view` or `warehouses.manage` (read-only warehouse SNs; AOR-scoped; `?warehouse=` / `?location=` / `?q=`) |
 | `/inventory/stock-count` | `inventory.view` (nav alias: P-Count) |
 | `/orders` | Redirects to first accessible order type (or dashboard) |
-| `/orders/manual` | `orders.manual.view` / `create` / `approve` (or legacy `orders.*`) |
-| `/orders/special` | `orders.special.view` / `create` / `approve` (or legacy `orders.*`) |
-| `/orders/auto-replenish` | `orders.auto_replenish.view` / `create` / `approve` (or legacy `orders.*`) |
+| `/orders/manual` | `orders.manual.view` / `create` / `approve` (or legacy `orders.*`); tabs `?tab=orders` \| `analytics` \| `history` |
+| `/orders/special` | `orders.special.view` / `create` / `approve` (or legacy `orders.*`); tabs `?tab=orders` \| `analytics` \| `history` |
+| `/orders/auto-replenish` | `orders.auto_replenish.view` / `create` / `approve` (or legacy `orders.*`); tabs `?tab=orders` \| `analytics` \| `history` |
 | `/planning/suggested-orders` | `forecast.manage` / `planogram.manage` |
 | `/logistics/deliveries`, `/transfers`, `/pickups` | `logistics.view` / `create` / `manage` (legacy `orders.*` aliases for list) |
 | `/operations` | `inventory.view` (combined ops view) |

@@ -1,11 +1,11 @@
 import type { OrderKpis } from "@/features/orders/services/order.service";
 import { GlobalKpiCards, buildStatusKpiItems } from "@/lib/kpi-cards";
 
-interface OrderKpisStripProps {
+interface OrderKpisSummaryProps {
   kpis: OrderKpis;
 }
 
-export function OrderKpisStrip({ kpis }: OrderKpisStripProps) {
+export function OrderKpisSummary({ kpis }: OrderKpisSummaryProps) {
   return (
     <GlobalKpiCards
       items={buildStatusKpiItems({

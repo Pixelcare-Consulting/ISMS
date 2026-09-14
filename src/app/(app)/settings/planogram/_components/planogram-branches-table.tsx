@@ -144,7 +144,7 @@ export function PlanogramBranchesTable({
           itemLabel: "branches",
           onPageChange: setPage,
         }}
-      >
+      > 
           <TableHeader>
             <TableRow className="bg-muted/30 hover:bg-muted/30">
               <TableIndexHead />
