@@ -62,14 +62,14 @@ export const RELEASES: ReleaseNote[] = [
       "Create a full branch request in one screen — several models, remarks, and special notes together",
       "Order History lists past SO#s with quantities, amounts, and who last updated them",
       "Order counts sit under the Orders tab as cards next to the live list",
-      "Create order lets you add extra items at the top of the model list",
-      "Order Analytics waits for a brand before showing DII and inventory, with brand tabs above the model table and pages you can step through",
+      "Order Analytics uses Change to pick a branch then a brand in one dialog, then shows a large heading above one DII and inventory card",
+      "Create order can leave brand empty to see every model, add extra items below the table (several at once), number each row, and remove a wrong line",
     ],
     changes: [
       {
         type: "feature",
         description:
-          "Order Analytics lets you pick a branch and brand, review stock and suggested quantities, then proceed to order",
+          "Order Analytics lets you pick a branch then a brand in one Change dialog, review stock and suggested quantities, then proceed to order",
       },
       {
         type: "feature",
@@ -79,7 +79,7 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "feature",
         description:
-          "Create order lets you add extra items at the top of the model list",
+          "Create order lets you add extra items below the model list — pick several at once",
       },
       {
         type: "feature",
@@ -99,7 +99,22 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "improvement",
         description:
-          "Order Analytics waits for a brand before showing DII and inventory, puts brand tabs above the model table, and paginates the list so long brand catalogs stay easy to scan",
+          "Order Analytics shows a large heading for the chosen branch and brand, with Change to switch; DII and inventory stay hidden until both are set, and long lists still use pages",
+      },
+      {
+        type: "improvement",
+        description:
+          "Order Analytics DII, inventory, and inventory amount sit in one card with labels on the left and figures on the right",
+      },
+      {
+        type: "improvement",
+        description:
+          "Create order brand is optional — leave it empty for every model at the branch, or pick a brand to narrow the list",
+      },
+      {
+        type: "improvement",
+        description:
+          "Create order rows are numbered so you can spot a line and delete it if it does not belong",
       },
       {
         type: "fix",
@@ -119,12 +134,17 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "fix",
         description:
+          "Create order extra items keep Add beside the model picker — chosen models wrap underneath instead of pushing the button aside",
+      },
+      {
+        type: "fix",
+        description:
           "Table checkboxes sit inward from the edge so they are easier to tap",
       },
       {
         type: "fix",
         description:
-          "The Analytics branch picker looks like a real control so it is easier to spot and click",
+          "Change on Order Analytics opens a clear branch-then-brand dialog so you are not hunting for tabs under the table",
       },
     ],
   },

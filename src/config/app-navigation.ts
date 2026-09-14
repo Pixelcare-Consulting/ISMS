@@ -104,6 +104,7 @@ export const appNavigation: NavEntry[] = [
           "orders.create",
           "orders.approve",
         ],
+        badge: "new",
       },
       {
         href: "/orders/special",
@@ -117,6 +118,7 @@ export const appNavigation: NavEntry[] = [
           "orders.create",
           "orders.approve",
         ],
+        badge: "new",
       },
       {
         href: "/orders/auto-replenish",
@@ -130,6 +132,7 @@ export const appNavigation: NavEntry[] = [
           "orders.create",
           "orders.approve",
         ],
+        badge: "new",
       },
     ],
   },

@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, ChevronsUpDown, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,6 +37,8 @@ type SearchableMultiSelectProps = {
   emptyMessage?: string;
   hint?: string;
   disabled?: boolean;
+  /** Same row as the dropdown; selected chips still wrap below. */
+  actions?: ReactNode;
 };
 
 export function SearchableMultiSelect({
@@ -49,6 +51,7 @@ export function SearchableMultiSelect({
   emptyMessage = "No options available.",
   hint,
   disabled = false,
+  actions,
 }: SearchableMultiSelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -115,6 +118,8 @@ export function SearchableMultiSelect({
     <div className="space-y-1.5">
       <Label>{label}</Label>
 
+      <div className={cn(actions && "flex items-center gap-2")}>
+        <div className={cn(actions && "min-w-0 flex-1")}>
       {options.length === 0 ? (
         <p className="rounded-md border px-3 py-2 text-sm text-muted-foreground">
           {emptyMessage}
@@ -228,6 +233,9 @@ export function SearchableMultiSelect({
           </PopoverContent>
         </Popover>
       )}
+        </div>
+        {actions}
+      </div>
 
       {selected.length > 0 ? (
         <div className="flex flex-wrap gap-1.5">

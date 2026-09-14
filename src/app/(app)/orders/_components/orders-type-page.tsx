@@ -135,7 +135,7 @@ export async function OrdersTypePage({
           }
           analyticsContent={
             activeTab === "analytics" ? (
-              <OrderAnalyticsPanel orderType={orderType} />
+              <OrderAnalyticsPanel key={orderType} orderType={orderType} />
             ) : null
           }
           historyContent={

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -19,6 +20,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { SearchableMultiSelect } from "@/features/aors/components/searchable-multi-select";
 import { Textarea } from "@/components/ui/textarea";
 import {
   checkOrderWindowAction,
@@ -30,6 +32,7 @@ import { getBranchOrderWorkspaceAction } from "@/features/orders/actions/order-a
 import type { BranchOrderType } from "@prisma/client";
 import type {
   OrderAnalyticsLine,
+  OrderWorkspaceAdditionalModel,
   OrderWorkspacePayload,
 } from "@/features/orders/types/order-analytics";
 import { formatPeso } from "@/utils/format-currency";
@@ -109,7 +112,7 @@ export function CreateOrderDialog({
   const [workspace, setWorkspace] = useState<OrderWorkspacePayload | null>(null);
   const [lines, setLines] = useState<WorkspaceLine[]>([]);
   const [windowBlock, setWindowBlock] = useState<string | null>(null);
-  const [extraModelId, setExtraModelId] = useState("");
+  const [extraModelIds, setExtraModelIds] = useState<string[]>([]);
   const [loadingWorkspace, setLoadingWorkspace] = useState(false);
 
   useEffect(() => {
@@ -157,7 +160,7 @@ export function CreateOrderDialog({
           setWindowBlock(null);
           setWorkspace(null);
           setLines([]);
-          setExtraModelId("");
+          setExtraModelIds([]);
         }
         return;
       }
@@ -176,14 +179,16 @@ export function CreateOrderDialog({
         toast.error(workspaceRes.error ?? "Failed to load branch SKUs");
         setWorkspace(null);
         setLines([]);
-        setExtraModelId("");
+        setExtraModelIds([]);
         setLoadingWorkspace(false);
         return;
       }
       const data = workspaceRes.data;
       setWorkspace(data);
-      if (!brandId && data.brandId) setBrandId(data.brandId);
-      setExtraModelId("");
+      if (!brandId && data.brands.length === 1) {
+        setBrandId(data.brands[0].id);
+      }
+      setExtraModelIds([]);
       setLines(
         data.lines.map((line) => ({
           ...line,
@@ -201,16 +206,46 @@ export function CreateOrderDialog({
   const submitLines = useMemo(() => lines.filter((line) => line.qty >= 1), [lines]);
   const totalAmount = submitLines.reduce((sum, line) => sum + line.qty * line.srp, 0);
   const totalCbm = submitLines.reduce((sum, line) => sum + line.qty * line.cbm, 0);
+  const pickerCatalog = useMemo(() => {
+    const byId = new Map<string, OrderWorkspaceAdditionalModel>();
+    for (const line of workspace?.lines ?? []) {
+      byId.set(line.modelId, {
+        id: line.modelId,
+        skuCode: line.skuCode,
+        name: line.name,
+        brandId: line.brandId,
+        srp: line.srp,
+        cbm: line.cbm,
+        onPlanogram: line.onPlanogram,
+        remainingCapacity: line.remainingCapacity,
+      });
+    }
+    for (const model of workspace?.additionalModels ?? []) {
+      byId.set(model.id, model);
+    }
+    return [...byId.values()];
+  }, [workspace]);
+
   const extraOptions = useMemo(
     () =>
-      (workspace?.additionalModels ?? [])
+      pickerCatalog
         .filter((model) => !lines.some((line) => line.modelId === model.id))
         .map((model) => ({
           id: model.id,
           label: `${model.skuCode} — ${model.name}`,
         })),
-    [lines, workspace?.additionalModels],
+    [lines, pickerCatalog],
   );
+
+  const workspaceLineById = useMemo(() => {
+    const map = new Map((workspace?.lines ?? []).map((line) => [line.modelId, line]));
+    return map;
+  }, [workspace]);
+
+  const additionalById = useMemo(() => {
+    const map = new Map((workspace?.additionalModels ?? []).map((model) => [model.id, model]));
+    return map;
+  }, [workspace]);
 
   function setLineQty(modelId: string, qty: number) {
     setLines((prev) =>
@@ -231,45 +266,72 @@ export function CreateOrderDialog({
     );
   }
 
-  function addExtraItem() {
-    if (!workspace || !extraModelId) return;
-    const model = workspace.additionalModels.find((m) => m.id === extraModelId);
-    if (!model) return;
-    if (lines.some((line) => line.modelId === model.id)) {
-      toast.error("That SKU is already on the grid.");
-      return;
+  function extraLineFromModel(model: OrderWorkspaceAdditionalModel): WorkspaceLine {
+    return {
+      modelId: model.id,
+      skuCode: model.skuCode,
+      name: model.name,
+      brandId: model.brandId,
+      srp: model.srp,
+      cbm: model.cbm,
+      maxQty: 0,
+      milDays: 30,
+      inventory: [{ code: "STK", count: 0 }],
+      stkQty: 0,
+      ditQty: 0,
+      salesQty: 0,
+      salesAmount: 0,
+      rate: null,
+      milQty: 0,
+      milAmt: 0,
+      sugQty: 0,
+      remainingCapacity: model.remainingCapacity,
+      onPlanogram: model.onPlanogram,
+      qty:
+        orderType === "special"
+          ? 1
+          : Math.min(1, Math.max(0, model.remainingCapacity)),
+      remarks: "",
+      extra: true,
+    };
+  }
+
+  function addExtraItems() {
+    if (!workspace || extraModelIds.length === 0) return;
+    const existing = new Set(lines.map((line) => line.modelId));
+    const toAdd: WorkspaceLine[] = [];
+    let skipped = 0;
+    for (const id of extraModelIds) {
+      if (existing.has(id)) {
+        skipped += 1;
+        continue;
+      }
+      const original = workspaceLineById.get(id);
+      if (original) {
+        toAdd.push({
+          ...original,
+          qty: initialQty(orderType, original),
+          remarks: "",
+          extra: false,
+        });
+        existing.add(id);
+        continue;
+      }
+      const model = additionalById.get(id);
+      if (!model) continue;
+      toAdd.push(extraLineFromModel(model));
+      existing.add(id);
     }
-    setLines((prev) => [
-      {
-        modelId: model.id,
-        skuCode: model.skuCode,
-        name: model.name,
-        brandId: model.brandId,
-        srp: model.srp,
-        cbm: model.cbm,
-        maxQty: 0,
-        milDays: 30,
-        inventory: [{ code: "STK", count: 0 }],
-        stkQty: 0,
-        ditQty: 0,
-        salesQty: 0,
-        salesAmount: 0,
-        rate: null,
-        milQty: 0,
-        milAmt: 0,
-        sugQty: 0,
-        remainingCapacity: model.remainingCapacity,
-        onPlanogram: model.onPlanogram,
-        qty:
-          orderType === "special"
-            ? 1
-            : Math.min(1, Math.max(0, model.remainingCapacity)),
-        remarks: "",
-        extra: true,
-      },
-      ...prev,
-    ]);
-    setExtraModelId("");
+    if (skipped > 0) {
+      toast.error("That SKU is already on the grid.");
+    }
+    if (toAdd.length === 0) return;
+    setLines((prev) => [...prev, ...toAdd]);
+    setExtraModelIds([]);
+  }
+
+  function removeLine(modelId: string) {
+    setLines((prev) => prev.filter((line) => line.modelId !== modelId));
   }
 
   function submit() {
@@ -331,7 +393,7 @@ export function CreateOrderDialog({
                     setBrandId("");
                     setWorkspace(null);
                     setLines([]);
-                    setExtraModelId("");
+                    setExtraModelIds([]);
                   }}
                   allowClear
                   placeholder="Select dealer…"
@@ -362,22 +424,19 @@ export function CreateOrderDialog({
                   </p>
                 ) : null}
                 {workspace && workspace.brands.length > 0 ? (
-                  <div className="space-y-2">
-                    <Label>Brand</Label>
-                    <div className="flex flex-wrap gap-1.5">
-                      {workspace.brands.map((brand) => (
-                        <Button
-                          key={brand.id}
-                          type="button"
-                          size="sm"
-                          variant={brandId === brand.id ? "default" : "outline"}
-                          onClick={() => setBrandId(brand.id)}
-                        >
-                          {brand.name}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
+                  <SearchableSelect
+                    label="Brand (optional)"
+                    options={workspace.brands.map((brand) => ({
+                      id: brand.id,
+                      label: brand.name,
+                    }))}
+                    value={brandId}
+                    onChange={setBrandId}
+                    allowClear
+                    placeholder="All planogram SKUs…"
+                    searchPlaceholder="Search brands…"
+                    emptyMessage="No brands on this planogram."
+                  />
                 ) : null}
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <KpiTile
@@ -423,51 +482,37 @@ export function CreateOrderDialog({
               </p>
             ) : (
               <>
-                {workspace ? (
-                  <div className="mb-4 flex flex-wrap items-end gap-2">
-                    <div className="min-w-56 flex-1">
-                      <SearchableSelect
-                        label="Additional item"
-                        options={extraOptions}
-                        value={extraModelId}
-                        onChange={setExtraModelId}
-                        placeholder={extraPickerPlaceholder(orderType)}
-                        searchPlaceholder="Search models…"
-                        emptyMessage="No more models to add."
-                      />
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={!extraModelId}
-                      onClick={addExtraItem}
-                    >
-                      Additional item
-                    </Button>
-                  </div>
-                ) : null}
                 {lines.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
-                    No planogram SKUs for this branch and brand.
+                    {brandId
+                      ? "No planogram SKUs for this branch and brand."
+                      : "No planogram SKUs for this branch."}
                   </p>
                 ) : (
                   <table className="w-full table-fixed border-collapse text-sm">
                     <thead>
                       <tr className="border-b text-left text-xs text-muted-foreground">
-                        <th className="w-[22%] py-2 pr-2 font-medium">Model</th>
+                        <th className="w-[4%] py-2 pr-2 font-medium">#</th>
+                        <th className="w-[20%] py-2 pr-2 font-medium">Model</th>
                         <th className="w-[10%] py-2 pr-2 font-medium">INV</th>
-                        <th className="w-[8%] py-2 pr-2 font-medium">SALES</th>
-                        <th className="w-[8%] py-2 pr-2 font-medium">SUG</th>
+                        <th className="w-[7%] py-2 pr-2 font-medium">SALES</th>
+                        <th className="w-[7%] py-2 pr-2 font-medium">SUG</th>
                         <th className="w-[8%] py-2 pr-2 font-medium">CBM</th>
                         <th className="w-[12%] py-2 pr-2 font-medium">BRANCH ORD</th>
-                        <th className="w-[32%] py-2 font-medium">REMARKS</th>
+                        <th className="w-[26%] py-2 pr-2 font-medium">REMARKS</th>
+                        <th className="w-[6%] py-2 font-medium">
+                          <span className="sr-only">Remove</span>
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {lines.map((line) => {
+                      {lines.map((line, index) => {
                         const locked = lineLocked(orderType, line);
                         return (
                           <tr key={line.modelId} className="border-b align-top">
+                            <td className="py-2 pr-2 tabular-nums text-muted-foreground">
+                              {index + 1}
+                            </td>
                             <td className="min-w-0 py-2 pr-2 whitespace-normal wrap-break-word">
                               <p className="font-medium wrap-break-word">{line.skuCode}</p>
                               <p className="text-xs text-muted-foreground wrap-break-word">
@@ -502,7 +547,7 @@ export function CreateOrderDialog({
                                 }
                               />
                             </td>
-                            <td className="min-w-0 py-2">
+                            <td className="min-w-0 py-2 pr-2">
                               <Input
                                 value={line.remarks}
                                 onChange={(e) =>
@@ -512,12 +557,47 @@ export function CreateOrderDialog({
                                 className="h-8 w-full min-w-0"
                               />
                             </td>
+                            <td className="py-2">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => removeLine(line.modelId)}
+                                aria-label={`Remove ${line.skuCode}`}
+                              >
+                                <Trash2 className="size-4" />
+                              </Button>
+                            </td>
                           </tr>
                         );
                       })}
                     </tbody>
                   </table>
                 )}
+                {workspace ? (
+                  <div className="mt-4">
+                    <SearchableMultiSelect
+                      label="Additional item"
+                      options={extraOptions}
+                      selectedIds={extraModelIds}
+                      onChange={setExtraModelIds}
+                      placeholder={extraPickerPlaceholder(orderType)}
+                      searchPlaceholder="Search models…"
+                      emptyMessage="No more models to add."
+                      actions={
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="shrink-0"
+                          disabled={extraModelIds.length === 0}
+                          onClick={addExtraItems}
+                        >
+                          Additional item
+                        </Button>
+                      }
+                    />
+                  </div>
+                ) : null}
               </>
             )}
           </div>
