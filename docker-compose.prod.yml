@@ -1,0 +1,168 @@
+# Production stack — self-hosted replacement for the Vercel deployment.
+#
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+#
+# Compose interpolates ${VAR} (Traefik labels, build args, image names) from
+# --env-file / the shell; `env_file:` only feeds the containers. Passing
+# .env.production as --env-file covers both. Never use ${VAR} for secrets in
+# `environment:` blocks — put them in .env.production instead.
+name: isms-production
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  traefik:
+    image: traefik:v3.1
+    container_name: isms-traefik
+    restart: unless-stopped
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      # Redirect every plain-HTTP request to HTTPS
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --certificatesresolvers.letsencrypt.acme.email=${LETSENCRYPT_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # `touch traefik/acme.json && chmod 600 traefik/acme.json` before first run
+      - ./traefik/acme.json:/letsencrypt/acme.json
+    logging: *default-logging
+    networks:
+      - app-network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: isms-postgres
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    ports:
+      # Loopback only — reachable from the host (psql, pg_dump), not the network
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *default-logging
+    networks:
+      - app-network
+
+  postgres-backup:
+    image: prodrigestivill/postgres-backup-local:16
+    container_name: isms-postgres-backup
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env.production
+    environment:
+      POSTGRES_HOST: postgres
+    volumes:
+      - ./backups/postgres:/backups
+    logging: *default-logging
+    networks:
+      - app-network
+
+  # One-shot: applies pending Prisma migrations, then exits. `app` waits for it.
+  migrator:
+    image: ${APP_IMAGE:-isms-app:latest}
+    build: &app-build
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
+        NEXT_PUBLIC_SUPPORT_EMAIL: ${NEXT_PUBLIC_SUPPORT_EMAIL:-}
+    restart: "no"
+    env_file:
+      - .env.production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["pnpm", "exec", "prisma", "migrate", "deploy"]
+    logging: *default-logging
+    networks:
+      - app-network
+
+  app:
+    image: ${APP_IMAGE:-isms-app:latest}
+    build: *app-build
+    container_name: isms-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: 1
+      # Policy attachments + audit archives (local-fs storage, see src/lib/storage)
+      STORAGE_ROOT: /app/.data/uploads
+    volumes:
+      - uploads-data:/app/.data/uploads
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.isms.rule=Host(`${APP_DOMAIN}`)
+      - traefik.http.routers.isms.entrypoints=websecure
+      - traefik.http.routers.isms.tls.certresolver=letsencrypt
+      - traefik.http.services.isms.loadbalancer.server.port=3000
+    logging: *default-logging
+    networks:
+      - app-network
+
+  # Replaces the Vercel Cron entry from vercel.json (`/api/cron/sap-sync`,
+  # every 5 minutes). The route authenticates with `Bearer $CRON_SECRET`.
+  cron:
+    image: curlimages/curl:8.10.1
+    container_name: isms-cron
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    env_file:
+      - .env.production
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          sleep 300
+          curl -fsS -m 290 \
+            -H "Authorization: Bearer $$CRON_SECRET" \
+            http://app:3000/api/cron/sap-sync \
+            || echo "[cron] sap-sync failed ($(date -u +%FT%TZ))"
+        done
+    logging: *default-logging
+    networks:
+      - app-network
+
+volumes:
+  postgres-data:
+  uploads-data:
+
+networks:
+  app-network:
+    driver: bridge

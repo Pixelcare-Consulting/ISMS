@@ -1,0 +1,315 @@
+name: Continuous Integration
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect-changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      app: ${{ steps.set.outputs.app }}
+      workflows: ${{ steps.set.outputs.workflows }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Detect path changes
+        if: github.event_name == 'pull_request'
+        id: filter
+        uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        with:
+          filters: |
+            workflows:
+              - '.github/**'
+            app:
+              - '**'
+              - '!.github/**'
+
+      - name: Set change outputs
+        id: set
+        run: |
+          if [ "${{ github.event_name }}" != 'pull_request' ]; then
+            echo 'app=true' >> "$GITHUB_OUTPUT"
+            echo 'workflows=true' >> "$GITHUB_OUTPUT"
+          else
+            echo "app=${{ steps.filter.outputs.app }}" >> "$GITHUB_OUTPUT"
+            echo "workflows=${{ steps.filter.outputs.workflows }}" >> "$GITHUB_OUTPUT"
+          fi
+
+  quality:
+    name: Quality checks
+    needs: detect-changes
+    if: needs.detect-changes.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+        with:
+          version: 10.11.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma Client
+        run: pnpm prisma:generate
+
+      - name: Check formatting
+        run: pnpm format:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Type-check
+        run: pnpm typecheck
+
+  prisma:
+    name: Prisma checks
+    needs: detect-changes
+    if: needs.detect-changes.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/isms_staging
+      SHADOW_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/isms_staging_shadow
+    services:
+      postgres:
+        image: postgres:17.6-alpine
+        env:
+          POSTGRES_DB: isms_staging
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d isms_staging"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+        with:
+          version: 10.11.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Create Prisma shadow database
+        env:
+          PGPASSWORD: postgres
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+          psql -h localhost -U postgres -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = 'isms_staging_shadow'" | grep -q 1 \
+            || psql -h localhost -U postgres -d postgres -c "CREATE DATABASE isms_staging_shadow;"
+
+      - name: Validate Prisma schema
+        run: pnpm prisma:validate
+
+      - name: Verify Prisma migration consistency
+        run: >-
+          pnpm exec prisma migrate diff
+          --from-migrations prisma/migrations
+          --to-schema prisma/schema.prisma
+          --exit-code
+
+  test:
+    name: Test suite
+    needs: detect-changes
+    if: needs.detect-changes.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+        with:
+          version: 10.11.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma Client
+        run: pnpm prisma:generate
+
+      - name: Run tests with coverage
+        run: pnpm test:coverage
+
+  build:
+    name: Production build
+    needs: detect-changes
+    if: needs.detect-changes.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+        with:
+          version: 10.11.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma Client
+        run: pnpm prisma:generate
+
+      - name: Build production application
+        run: pnpm build
+
+  workflow-assurance:
+    name: Verify GitHub Actions
+    needs: detect-changes
+    if: needs.detect-changes.outputs.workflows == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Install actionlint
+        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+
+      - name: Lint GitHub Actions workflows
+        run: '"$(go env GOPATH)/bin/actionlint" -color'
+
+  ci-success:
+    name: CI success
+    needs:
+      - detect-changes
+      - quality
+      - prisma
+      - test
+      - build
+      - workflow-assurance
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Aggregate required checks
+        run: |
+          set -euo pipefail
+
+          if [ "${{ needs.detect-changes.result }}" != 'success' ]; then
+            echo 'detect-changes did not succeed'
+            exit 1
+          fi
+
+          if [ "${{ needs.detect-changes.outputs.app }}" = 'true' ] && \
+             [ "${{ needs.quality.result }}" != 'success' ]; then
+            echo "Quality checks expected but result was ${{ needs.quality.result }}"
+            exit 1
+          fi
+
+          if [ "${{ needs.detect-changes.outputs.app }}" = 'true' ] && \
+             [ "${{ needs.prisma.result }}" != 'success' ]; then
+            echo "Prisma checks expected but result was ${{ needs.prisma.result }}"
+            exit 1
+          fi
+
+          if [ "${{ needs.detect-changes.outputs.app }}" = 'true' ] && \
+             [ "${{ needs.test.result }}" != 'success' ]; then
+            echo "Test suite expected but result was ${{ needs.test.result }}"
+            exit 1
+          fi
+
+          if [ "${{ needs.detect-changes.outputs.app }}" = 'true' ] && \
+             [ "${{ needs.build.result }}" != 'success' ]; then
+            echo "Production build expected but result was ${{ needs.build.result }}"
+            exit 1
+          fi
+
+          if [ "${{ needs.detect-changes.outputs.workflows }}" = 'true' ] && \
+             [ "${{ needs.workflow-assurance.result }}" != 'success' ]; then
+            echo "Verify GitHub Actions expected but result was ${{ needs.workflow-assurance.result }}"
+            exit 1
+          fi
+
+          if [ "${{ needs.quality.result }}" = 'failure' ] || \
+             [ "${{ needs.quality.result }}" = 'cancelled' ]; then
+            echo "Quality checks ended with ${{ needs.quality.result }}"
+            exit 1
+          fi
+
+          if [ "${{ needs.prisma.result }}" = 'failure' ] || \
+             [ "${{ needs.prisma.result }}" = 'cancelled' ]; then
+            echo "Prisma checks ended with ${{ needs.prisma.result }}"
+            exit 1
+          fi
+
+          if [ "${{ needs.test.result }}" = 'failure' ] || \
+             [ "${{ needs.test.result }}" = 'cancelled' ]; then
+            echo "Test suite ended with ${{ needs.test.result }}"
+            exit 1
+          fi
+
+          if [ "${{ needs.build.result }}" = 'failure' ] || \
+             [ "${{ needs.build.result }}" = 'cancelled' ]; then
+            echo "Production build ended with ${{ needs.build.result }}"
+            exit 1
+          fi
+
+          if [ "${{ needs.workflow-assurance.result }}" = 'failure' ] || \
+             [ "${{ needs.workflow-assurance.result }}" = 'cancelled' ]; then
+            echo "Verify GitHub Actions ended with ${{ needs.workflow-assurance.result }}"
+            exit 1
+          fi
+
+          echo 'CI checks passed (skipped jobs are OK when path filters exclude them)'

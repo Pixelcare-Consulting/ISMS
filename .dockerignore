@@ -5,6 +5,9 @@ build
 coverage
 .data
 .git
+.github
+.claude
+.agents
 .cursor
 .vercel
 .env
@@ -15,3 +18,8 @@ _bmad
 _bmad-output
 *.tsbuildinfo
 src/lib/database/generated
+docker docs reference
+docker-compose*.yml
+Dockerfile
+traefik
+backups

@@ -1,0 +1,163 @@
+name: Deploy Container Image
+
+on:
+  workflow_run:
+    workflows:
+      - Publish Container Image
+    types:
+      - completed
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ startsWith(github.event.workflow_run.head_branch, 'v') && 'production' || 'staging' }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: pixelcare-consulting/isms_staging
+
+jobs:
+  authorize-promotion:
+    name: Authorize published image promotion
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      (github.event.workflow_run.head_branch == 'main' ||
+      startsWith(github.event.workflow_run.head_branch, 'v'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: ${{ startsWith(github.event.workflow_run.head_branch, 'v') && 'production' || 'staging' }}
+    outputs:
+      deploy_environment: ${{ steps.target.outputs.deploy_environment }}
+      image_tag: ${{ steps.target.outputs.image_tag }}
+    steps:
+      - name: Validate immutable image target
+        id: target
+        env:
+          DEPLOY_ENABLED: ${{ vars.DEPLOY_ENABLED }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$DEPLOY_ENABLED" = "true"
+
+          if [ "$HEAD_BRANCH" = "main" ]; then
+            printf 'deploy_environment=staging\n' >> "$GITHUB_OUTPUT"
+            printf 'image_tag=sha-%s\n' "$HEAD_SHA" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if ! [[ "$HEAD_BRANCH" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Production tags must use a semantic vX.Y.Z format." >&2
+            exit 1
+          fi
+
+          ref_type=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$HEAD_BRANCH" --jq '.object.type')
+          ref_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$HEAD_BRANCH" --jq '.object.sha')
+          if [ "$ref_type" = "tag" ]; then
+            ref_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$ref_sha" --jq '.object.sha')
+          fi
+
+          if [ "$ref_type" != "commit" ] && [ "$ref_type" != "tag" ]; then
+            echo "Production tag does not resolve to a commit." >&2
+            exit 1
+          fi
+          if [ "$ref_sha" != "$HEAD_SHA" ]; then
+            echo "Production tag does not resolve to the commit published by this workflow run." >&2
+            exit 1
+          fi
+
+          printf 'deploy_environment=production\n' >> "$GITHUB_OUTPUT"
+          printf 'image_tag=sha-%s\n' "$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    name: Deploy immutable image
+    needs: authorize-promotion
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: ${{ needs.authorize-promotion.outputs.deploy_environment }}
+    env:
+      DEPLOY_ENVIRONMENT: ${{ needs.authorize-promotion.outputs.deploy_environment }}
+      IMAGE_TAG: ${{ needs.authorize-promotion.outputs.image_tag }}
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@2ead5e36573f08b82fbfce1504f1a4b05a647c6f
+        env:
+          APP_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          COMPOSE_FILE: ${{ env.DEPLOY_ENVIRONMENT == 'production' && 'docker-compose.prod.yml' || 'docker-compose.staging.yml' }}
+          APP_CONTAINER: ${{ env.DEPLOY_ENVIRONMENT == 'production' && 'isms-staging' || 'isms-staging' }}
+          ENV_FILE: ${{ env.DEPLOY_ENVIRONMENT == 'production' && '.env.production' || '.env.staging' }}
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+          GHCR_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          fingerprint: ${{ secrets.SSH_HOST_FINGERPRINT }}
+          envs: APP_IMAGE,COMPOSE_FILE,APP_CONTAINER,ENV_FILE,GHCR_USERNAME,GHCR_TOKEN,DEPLOY_PATH
+          script: |
+            set -euo pipefail
+            cd "$DEPLOY_PATH"
+            test -f "$ENV_FILE"
+            printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GHCR_USERNAME" --password-stdin
+            export APP_IMAGE
+            compose() {
+              docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
+            }
+            wait_for_app_health() {
+              for attempt in $(seq 1 30); do
+                health_status=$(docker inspect --format '{{.State.Health.Status}}' "$APP_CONTAINER" 2>/dev/null || true)
+                if [ "$health_status" = "healthy" ]; then
+                  return 0
+                fi
+                if [ "$health_status" = "unhealthy" ]; then
+                  return 1
+                fi
+                sleep 2
+              done
+              return 1
+            }
+            previous_app_image=$(docker inspect --format '{{.Config.Image}}' "$APP_CONTAINER" 2>/dev/null || true)
+            compose pull app
+            compose up -d traefik postgres redis
+            compose run --rm migrator
+            compose up -d --no-deps app
+            if wait_for_app_health; then
+              exit 0
+            fi
+            compose logs --tail=100 app
+            if [ -n "$previous_app_image" ]; then
+              echo "New app image failed its health check; restoring the previous app image." >&2
+              export APP_IMAGE="$previous_app_image"
+              compose up -d --no-deps app
+              if ! wait_for_app_health; then
+                echo "Rollback app image did not become healthy." >&2
+                compose logs --tail=100 app
+              fi
+            else
+              echo "No previous app image is available for rollback." >&2
+            fi
+            exit 1
+
+      - name: Validate public HTTPS health endpoint
+        env:
+          PUBLIC_HEALTH_URL: ${{ vars.PUBLIC_HEALTH_URL }}
+        run: |
+          set -euo pipefail
+          case "$PUBLIC_HEALTH_URL" in
+            https://*) ;;
+            *)
+              echo "PUBLIC_HEALTH_URL must be an HTTPS URL." >&2
+              exit 1
+              ;;
+          esac
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+            --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 10 \
+            --max-time 30 "$PUBLIC_HEALTH_URL"

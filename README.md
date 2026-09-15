@@ -99,6 +99,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | [`docs/sales-nav-revalidation.md`](docs/sales-nav-revalidation.md) | PS/TL `/sales` nav + `sales.create` revalidation |
 | [`database/seed-users.md`](database/seed-users.md) | Demo accounts and seed profiles |
 | [`database/postgres.example.md`](database/postgres.example.md) | Docker Postgres, env, migrate, storage |
+| [`DEPLOYMENT.md`](DEPLOYMENT.md) | Self-hosted production deployment with Docker Compose (Traefik, Postgres, backups, cron) |
 | [`docs/release-notes.md`](docs/release-notes.md) | Release workflow |
 | [`src/content/releases.ts`](src/content/releases.ts) | In-app What's New |
 

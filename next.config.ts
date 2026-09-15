@@ -13,6 +13,9 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Self-contained server bundle for the Docker image (see Dockerfile runner
+  // stage). Harmless on Vercel, which ignores it.
+  output: "standalone",
   // Let Node resolve @better-auth/infra's own Zod 4 dep (z.url) instead of
   // Turbopack bundling the app's Zod 3 into the plugin.
   serverExternalPackages: ["@better-auth/infra"],
