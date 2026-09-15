@@ -15,6 +15,7 @@ import {
   useClientTablePagination,
 } from "@/components/data-table";
 import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LoadingModal } from "@/components/ui/loading-modal";
 import {
@@ -24,6 +25,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  ALLOWED_MODEL_CHIP_LIMIT,
   buildBranchPlanogramHref,
   matchesPlanogramIndexView,
   type PlanogramIndexBranch,
@@ -48,6 +50,34 @@ function emptyMessage(view: PlanogramIndexView | null): string {
     return "No branches match this filter. Open a branch to add SKUs (Allowed models first) or Import the Planogram template.";
   }
   return "No branches match this filter.";
+}
+
+function AllowedModelChips({ skuCodes }: { skuCodes: string[] }) {
+  if (skuCodes.length === 0) {
+    return <span className="text-muted-foreground">—</span>;
+  }
+
+  const visible = skuCodes.slice(0, ALLOWED_MODEL_CHIP_LIMIT);
+  const hiddenCount = skuCodes.length - visible.length;
+  const hidden = hiddenCount > 0 ? skuCodes.slice(ALLOWED_MODEL_CHIP_LIMIT) : [];
+
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      {visible.map((sku) => (
+        <Badge key={sku} variant="secondary" className="font-mono text-[11px]">
+          {sku}
+        </Badge>
+      ))}
+      {hiddenCount > 0 ? (
+        <Badge
+          className="bg-emerald-500 font-semibold tracking-wide text-white hover:bg-emerald-500"
+          title={hidden.join(", ")}
+        >
+          +{hiddenCount} MORE...
+        </Badge>
+      ) : null}
+    </div>
+  );
 }
 
 export function PlanogramBranchesTable({
@@ -75,7 +105,11 @@ export function PlanogramBranchesTable({
   const filtered = useMemo(
     () =>
       viewFiltered.filter((branch) =>
-        matchesTableSearch(query, [branch.name, branch.sapCode]),
+        matchesTableSearch(query, [
+          branch.name,
+          branch.sapCode,
+          ...branch.allowedSkuCodes,
+        ]),
       ),
     [viewFiltered, query],
   );
@@ -85,6 +119,7 @@ export function PlanogramBranchesTable({
       uniqueSearchSuggestions(
         viewFiltered.map((branch) => branch.name),
         viewFiltered.map((branch) => branch.sapCode),
+        viewFiltered.flatMap((branch) => branch.allowedSkuCodes),
       ),
     [viewFiltered],
   );
@@ -92,7 +127,7 @@ export function PlanogramBranchesTable({
   const sort = useClientTableSort(filtered, {
     name: (branch) => branch.name,
     sapCode: (branch) => branch.sapCode,
-    skuCount: (branch) => branch.skuCount,
+    allowedModels: (branch) => branch.allowedSkuCodes.length,
   });
   const {
     page,
@@ -134,7 +169,7 @@ export function PlanogramBranchesTable({
         search={{
           value: query,
           onChange: onQueryChange,
-          placeholder: "Search by branch name or SAP code…",
+          placeholder: "Search by branch name, SAP code, or SKU…",
           suggestions,
         }}
         toolbarActions={
@@ -159,8 +194,8 @@ export function PlanogramBranchesTable({
               <TableIndexHead />
               <GlobalTableHead {...sort.sortProps("sapCode")}>SAP code</GlobalTableHead>
               <GlobalTableHead {...sort.sortProps("name")}>Branch</GlobalTableHead>
-              <GlobalTableHead className="text-right" {...sort.sortProps("skuCount")}>
-                SKUs
+              <GlobalTableHead {...sort.sortProps("allowedModels")}>
+                Allowed Models
               </GlobalTableHead>
               <GlobalTableHead className="text-right"> </GlobalTableHead>
             </TableRow>
@@ -183,8 +218,8 @@ export function PlanogramBranchesTable({
                     {branch.sapCode}
                   </TableCell>
                   <TableCell className="font-medium">{branch.name}</TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {branch.skuCount}
+                  <TableCell className="min-w-[16rem] py-2">
+                    <AllowedModelChips skuCodes={branch.allowedSkuCodes} />
                   </TableCell>
                   <TableRowActions>
                     <Button

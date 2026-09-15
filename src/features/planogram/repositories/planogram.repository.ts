@@ -573,4 +573,34 @@ export const planogramRepository = {
 
     return new Map(rows.map((row) => [row.branchId, row._count.id]));
   },
+
+  async listAllowedSkuCodesByBranch(
+    tenantId: string,
+    branchIds: string[],
+  ): Promise<Map<string, string[]>> {
+    const byBranch = new Map<string, string[]>();
+    for (const branchId of branchIds) {
+      byBranch.set(branchId, []);
+    }
+    if (branchIds.length === 0) return byBranch;
+
+    const rows = await prisma.branchAllowedModel.findMany({
+      where: { tenantId, branchId: { in: branchIds } },
+      select: {
+        branchId: true,
+        model: { select: { skuCode: true } },
+      },
+      orderBy: { model: { skuCode: "asc" } },
+    });
+
+    for (const row of rows) {
+      const list = byBranch.get(row.branchId);
+      if (list) {
+        list.push(row.model.skuCode);
+      } else {
+        byBranch.set(row.branchId, [row.model.skuCode]);
+      }
+    }
+    return byBranch;
+  },
 };

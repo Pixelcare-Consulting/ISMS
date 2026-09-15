@@ -643,16 +643,17 @@ export const planogramService = {
     branches: { id: string; name: string; sapCode: string }[],
   ): Promise<{ branches: PlanogramIndexBranch[]; kpis: PlanogramIndexKpis }> {
     const branchIds = branches.map((branch) => branch.id);
-    const skuCounts = await planogramRepository.countPlanogramRowsByBranch(
-      tenantId,
-      branchIds,
-    );
+    const [skuCounts, allowedByBranch] = await Promise.all([
+      planogramRepository.countPlanogramRowsByBranch(tenantId, branchIds),
+      planogramRepository.listAllowedSkuCodesByBranch(tenantId, branchIds),
+    ]);
 
     const indexBranches = branches.map((branch) => ({
       id: branch.id,
       name: branch.name,
       sapCode: branch.sapCode,
       skuCount: skuCounts.get(branch.id) ?? 0,
+      allowedSkuCodes: allowedByBranch.get(branch.id) ?? [],
     }));
 
     const withPlanogram = indexBranches.filter((branch) => branch.skuCount > 0).length;

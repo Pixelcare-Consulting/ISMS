@@ -16,8 +16,9 @@ export type { OrdersPageTab };
 interface OrdersPageTabsProps {
   activeTab: OrdersPageTab;
   basePath: string;
+  tabs?: readonly OrdersPageTab[];
   ordersContent: ReactNode;
-  analyticsContent: ReactNode;
+  analyticsContent?: ReactNode;
   historyContent: ReactNode;
 }
 
@@ -85,6 +86,7 @@ function tabSkeleton(tab: OrdersPageTab) {
 export function OrdersPageTabs({
   activeTab,
   basePath,
+  tabs = ORDERS_PAGE_TABS,
   ordersContent,
   analyticsContent,
   historyContent,
@@ -117,7 +119,7 @@ export function OrdersPageTabs({
     <Tabs
       value={displayTab}
       onValueChange={(value) => {
-        const next = parseOrdersPageTab(value);
+        const next = parseOrdersPageTab(value, tabs);
         if (next === displayTab) return;
         setDisplayTab(next);
         startTransition(() => {
@@ -126,13 +128,13 @@ export function OrdersPageTabs({
       }}
     >
       <TabsList className="gap-2">
-        {ORDERS_PAGE_TABS.map((tab) => (
+        {tabs.map((tab) => (
           <TabsTrigger key={tab} value={tab}>
             {tabLabel(tab)}
           </TabsTrigger>
         ))}
       </TabsList>
-      {ORDERS_PAGE_TABS.map((tab) => (
+      {tabs.map((tab) => (
         <TabsContent key={tab} value={tab}>
           {displayTab === tab && (pending || contentFor(tab) == null)
             ? tabSkeleton(tab)

@@ -52,6 +52,44 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.39.5",
+    date: "2026-09-15",
+    releasedAt: "2026-09-15T11:35:00+08:00",
+    title: "Planogram allowed models as tags",
+    highlights: [
+      "Planogram branch list shows allowed SKUs as tags instead of a number",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Planogram branch list shows allowed SKUs as tags instead of a number",
+      },
+    ],
+  },
+  {
+    version: "0.39.4",
+    date: "2026-09-15",
+    releasedAt: "2026-09-15T11:30:00+08:00",
+    title: "Auto replenish uses suggested orders",
+    highlights: [
+      "Auto replenish no longer shows Create order — start from Suggested orders instead",
+      "Auto replenish now shows Orders and Order History only — Order Analytics stays on Manual and Special",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Auto replenish hides Create order so you use Suggested orders from Planning, instead of starting a blank request",
+      },
+      {
+        type: "improvement",
+        description:
+          "Auto replenish no longer includes Order Analytics, so review happens on the order list and past SO#s instead of a stock workspace",
+      },
+    ],
+  },
+  {
     version: "0.39.3",
     date: "2026-09-15",
     releasedAt: "2026-09-15T10:00:00+08:00",

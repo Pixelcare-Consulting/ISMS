@@ -22,7 +22,10 @@ import { OrderAnalyticsPanel } from "@/app/(app)/orders/_components/order-analyt
 import { OrderHistoryTable } from "@/app/(app)/orders/_components/order-history-table";
 import { OrdersCreateWorkspaceProvider } from "@/app/(app)/orders/_components/orders-create-workspace-context";
 import { OrdersPageTabs } from "@/app/(app)/orders/_components/orders-page-tabs";
-import { parseOrdersPageTab } from "@/features/orders/constants/orders-page-tabs";
+import {
+  ordersPageTabsForType,
+  parseOrdersPageTab,
+} from "@/features/orders/constants/orders-page-tabs";
 import { OrdersTable } from "@/app/(app)/orders/_components/orders-table";
 import { Button } from "@/components/ui/button";
 import type { BranchOrderType } from "@prisma/client";
@@ -59,7 +62,9 @@ export async function OrdersTypePage({
 }: OrdersTypePageProps) {
   const session = await requireAnyPermission(orderTypeAccessPermissions(orderType));
   const params = await searchParams;
-  const activeTab = parseOrdersPageTab(params.tab);
+  const pageTabs = ordersPageTabsForType(orderType);
+  const showAnalytics = pageTabs.includes("analytics");
+  const activeTab = parseOrdersPageTab(params.tab, pageTabs);
   const page = Number(params.page) || 1;
   const limit = parseTablePageSize(params.limit);
   const viewerRoleSlugs = session.user.roleSlugs ?? [];
@@ -116,6 +121,7 @@ export async function OrdersTypePage({
         <OrdersPageTabs
           activeTab={activeTab}
           basePath={basePath}
+          tabs={pageTabs}
           ordersContent={
             ordersResult ? (
               <div className="space-y-4">
@@ -134,7 +140,7 @@ export async function OrdersTypePage({
             ) : null
           }
           analyticsContent={
-            activeTab === "analytics" ? (
+            showAnalytics && activeTab === "analytics" ? (
               <OrderAnalyticsPanel key={orderType} orderType={orderType} />
             ) : null
           }

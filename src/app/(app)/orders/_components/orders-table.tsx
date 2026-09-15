@@ -152,6 +152,7 @@ export function OrdersTable({
   viewerRoleSlugs,
   canEdit = false,
   canAccessSuggestedOrders = false,
+  fixedOrderType,
   basePath = "/orders",
   initialSort = "",
   initialSortDir = "desc",
@@ -276,7 +277,7 @@ export function OrdersTable({
                 <a href="/planning/suggested-orders">Suggested orders</a>
               </Button>
             ) : null}
-            {canEdit ? (
+            {canEdit && fixedOrderType !== "auto_replenish" ? (
               <Button onClick={() => createWorkspace.openCreate()}>Create order</Button>
             ) : null}
           </>

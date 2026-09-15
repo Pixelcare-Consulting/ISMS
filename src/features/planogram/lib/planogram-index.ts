@@ -13,8 +13,14 @@ export interface PlanogramIndexBranch {
   id: string;
   name: string;
   sapCode: string;
+  /** Planogram shelf rows — used by KPI cards (With planogram / SKU rows). */
   skuCount: number;
+  /** Allowed-model SKU codes for the index chips column. */
+  allowedSkuCodes: string[];
 }
+
+/** Visible SKU chips before the green "+N MORE..." overflow pill. */
+export const ALLOWED_MODEL_CHIP_LIMIT = 10;
 
 export function parsePlanogramIndexView(
   value: string | undefined,
