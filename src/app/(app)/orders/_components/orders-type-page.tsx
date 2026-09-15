@@ -44,11 +44,11 @@ interface OrdersTypePageProps {
 function ordersTypePageDescription(orderType: BranchOrderType): string {
   switch (orderType) {
     case "auto_replenish":
-      return "Showing auto replenish orders only. Suggestions are generated under Settings → Planning.";
+      return "Showing auto replenish requests waiting for your role. Approved orders are in Order History. Suggestions are generated under Settings → Planning.";
     case "manual":
-      return "Showing manual orders only. Review path: Product Specialist → Team Leader → Supply Planning.";
+      return "Showing manual requests waiting for your role. Approved orders are in Order History. Review path: Product Specialist → Team Leader → Supply Planning.";
     case "special":
-      return "Showing special orders only. Team Leaders create these requests; Supply Planning gives final approval.";
+      return "Showing special requests waiting for your role. Approved orders are in Order History. Team Leaders create these requests; Supply Planning gives final approval.";
     default: {
       const _exhaustive: never = orderType;
       return _exhaustive;

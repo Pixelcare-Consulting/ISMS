@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import type { CreateOrderPrefill } from "@/app/(app)/orders/_components/orders-create-workspace-context";
 import { InventoryStatusChips } from "@/app/(app)/orders/_components/inventory-status-chips";
 import { Button } from "@/components/ui/button";
+import { LoadingModal } from "@/components/ui/loading-modal";
 import {
   Dialog,
   DialogContent,
@@ -57,6 +58,12 @@ function orderTypeLabel(orderType: BranchOrderType): string {
       return _exhaustive;
     }
   }
+}
+
+const CREATE_ORDER_MIN_LOADING_MS = 2000;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function extraPickerPlaceholder(orderType: BranchOrderType): string {
@@ -336,6 +343,7 @@ export function CreateOrderDialog({
 
   function submit() {
     startTransition(async () => {
+      const started = Date.now();
       const result = await createOrderAction({
         branchId,
         orderType,
@@ -347,6 +355,8 @@ export function CreateOrderDialog({
           remarks: line.remarks.trim() || null,
         })),
       });
+      const waitMs = CREATE_ORDER_MIN_LOADING_MS - (Date.now() - started);
+      if (waitMs > 0) await delay(waitMs);
       if (result.error) {
         toast.error(result.error);
         return;
@@ -364,7 +374,13 @@ export function CreateOrderDialog({
   }
 
   return (
-    <Dialog open onOpenChange={(next) => { if (!next) onClose(); }}>
+    <>
+      <Dialog
+        open
+        onOpenChange={(next) => {
+          if (!next && !pending) onClose();
+        }}
+      >
       <DialogContent
         showCloseButton
         className="flex max-h-[calc(100svh-2rem)] w-[calc(100%-2rem)] max-w-6xl flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl"
@@ -604,7 +620,7 @@ export function CreateOrderDialog({
         </div>
 
         <DialogFooter className="shrink-0 border-t px-4 py-4 sm:px-6">
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" disabled={pending} onClick={onClose}>
             Cancel
           </Button>
           <Button
@@ -622,7 +638,14 @@ export function CreateOrderDialog({
           </Button>
         </DialogFooter>
       </DialogContent>
-    </Dialog>
+      </Dialog>
+      <LoadingModal
+        open={pending}
+        variant="minimal"
+        title="Processing order"
+        description="Please wait while we process the order."
+      />
+    </>
   );
 }
 

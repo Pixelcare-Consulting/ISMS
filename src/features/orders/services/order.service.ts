@@ -128,7 +128,12 @@ export const orderService = {
     tenantId: string,
     userId: string,
     hasFullAccess: boolean,
-    pagination?: { page?: number; limit?: number; orderType?: BranchOrderType },
+    pagination?: {
+      page?: number;
+      limit?: number;
+      orderType?: BranchOrderType;
+      statuses?: BranchOrderStatus[];
+    },
     sort?: { field?: OrderListSort; dir?: OrderListSortDir },
   ) {
     const branchIds = hasFullAccess ? null : await getUserBranchIds(tenantId, userId);
@@ -140,8 +145,10 @@ export const orderService = {
     userId: string,
     hasFullAccess: boolean,
     orderType?: BranchOrderType,
+    statuses?: BranchOrderStatus[],
   ): Promise<OrderKpis> {
-    const emptyStatuses = ORDER_STATUS_ORDER.map((status) => ({
+    const statusKeys = statuses ?? ORDER_STATUS_ORDER;
+    const emptyStatuses = statusKeys.map((status) => ({
       code: status,
       name: BRANCH_ORDER_STATUS_LABELS[status],
       count: 0,
@@ -154,8 +161,8 @@ export const orderService = {
     }
 
     const [statusGroups, totalOrders] = await Promise.all([
-      orderRepository.countByStatus(tenantId, branchIds, orderType),
-      orderRepository.countAll(tenantId, branchIds, orderType),
+      orderRepository.countByStatus(tenantId, branchIds, orderType, statuses),
+      orderRepository.countAll(tenantId, branchIds, orderType, statuses),
     ]);
 
     const countByStatus = new Map(
@@ -164,7 +171,7 @@ export const orderService = {
 
     return {
       totalOrders,
-      statuses: ORDER_STATUS_ORDER.map((status) => ({
+      statuses: statusKeys.map((status) => ({
         code: status,
         name: BRANCH_ORDER_STATUS_LABELS[status],
         count: countByStatus.get(status) ?? 0,

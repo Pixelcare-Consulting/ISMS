@@ -116,6 +116,47 @@ export function isOrderPendingApproval(status: BranchOrderStatus): boolean {
   return ["pending_ps", "pending_tl", "pending_sp", "pending_logistics"].includes(status);
 }
 
+/** Live work-queue statuses — finished requests belong in Order History. */
+export const ORDER_QUEUE_STATUSES = [
+  "draft",
+  "pending_ps",
+  "pending_tl",
+  "pending_sp",
+  "pending_logistics",
+] as const satisfies readonly BranchOrderStatus[];
+
+export const ORDER_HISTORY_ONLY_STATUSES = [
+  "approved",
+  "rejected",
+  "cancelled",
+] as const satisfies readonly BranchOrderStatus[];
+
+const ORDER_QUEUE_OVERSIGHT_ROLE_SLUGS = ["super_admin", "tenant_admin"] as const;
+
+export function isOrderQueueOversightRole(roleSlugs: string[]): boolean {
+  return ORDER_QUEUE_OVERSIGHT_ROLE_SLUGS.some((slug) => roleSlugs.includes(slug));
+}
+
+/**
+ * Statuses shown on the Orders tab for this viewer.
+ * Workflow roles only see the step they can review (plus drafts if they can create).
+ * Tenant / Super Admin see the full live pipeline. Approved / rejected / cancelled stay in History.
+ */
+export function getOrderQueueStatuses(
+  orderType: BranchOrderType,
+  roleSlugs: string[],
+  options?: { includeDraft?: boolean },
+): BranchOrderStatus[] {
+  if (isOrderQueueOversightRole(roleSlugs)) {
+    return [...ORDER_QUEUE_STATUSES];
+  }
+
+  return ORDER_QUEUE_STATUSES.filter((status) => {
+    if (status === "draft") return Boolean(options?.includeDraft);
+    return canApproveOrder(status, orderType, roleSlugs);
+  });
+}
+
 /**
  * Whether a branch may still edit an order's lines. Editable while under review
  * (before final SP approval); frozen once approved, in logistics, rejected, or

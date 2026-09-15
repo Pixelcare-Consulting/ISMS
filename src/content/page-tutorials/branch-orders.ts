@@ -12,12 +12,12 @@ export const BRANCH_ORDERS_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "What this page is for",
       description:
-        "Manual and Special have Orders, Order Analytics, and Order History. Auto replenish shows Orders and Order History only — suggestions stay in Planning. Order counts sit under the Orders tab. Logistics fulfills only after final Supply Planning approval.",
+        "Manual and Special have Orders, Order Analytics, and Order History. Auto replenish shows Orders and Order History only — suggestions stay in Planning. Order counts sit under the Orders tab for your current work queue. Logistics fulfills only after final Supply Planning approval.",
     },
     {
       title: "Orders, Analytics, and History",
       bullets: [
-        "Orders — live requests you can Review, Edit, or View, with a compact count summary above the list.",
+        "Orders — requests waiting for your role so you can Review or Edit. Approved, rejected, and cancelled SO#s stay in Order History.",
         "Order Analytics (Manual and Special) — use Change to pick a branch, then a brand, in one dialog. A large heading shows what you chose. DII, inventory, this month’s sales, and suggested quantities stay hidden until both are set. Long lists use pages. Proceed to order opens the create workspace with that branch and brand filled in.",
         "Order History — past SO#s with ordered and approved quantities and amounts, date, and who last updated the request.",
       ],

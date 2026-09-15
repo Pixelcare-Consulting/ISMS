@@ -28,12 +28,14 @@ function orderScopeWhere(
   tenantId: string,
   branchIds: string[] | null,
   orderType?: BranchOrderType,
+  statuses?: BranchOrderStatus[],
 ): Prisma.BranchOrderWhereInput {
   // null = unrestricted (full access / no AOR). [] = scoped with no branches → match none.
   return {
     tenantId,
     ...(branchIds === null ? {} : { branchId: { in: branchIds } }),
     ...(orderType ? { orderType } : {}),
+    ...(statuses ? { status: { in: statuses } } : {}),
   };
 }
 
@@ -71,11 +73,24 @@ export const orderRepository = {
   async listForTenant(
     tenantId: string,
     branchIds: string[] | null,
-    pagination?: { page?: number; limit?: number; orderType?: BranchOrderType },
+    pagination?: {
+      page?: number;
+      limit?: number;
+      orderType?: BranchOrderType;
+      statuses?: BranchOrderStatus[];
+    },
     sort?: { field?: OrderListSort; dir?: OrderListSortDir },
   ) {
     const { limit, page, skip } = resolvePagination(pagination);
-    const where = orderScopeWhere(tenantId, branchIds, pagination?.orderType);
+    if (pagination?.statuses && pagination.statuses.length === 0) {
+      return toPaginatedResult([], 0, page, limit);
+    }
+    const where = orderScopeWhere(
+      tenantId,
+      branchIds,
+      pagination?.orderType,
+      pagination?.statuses,
+    );
     const orderBy = sort?.field
       ? orderPrismaOrderBy(sort.field, sort.dir ?? "desc")
       : { createdAt: "desc" as const };
@@ -98,9 +113,11 @@ export const orderRepository = {
     tenantId: string,
     branchIds: string[] | null,
     orderType?: BranchOrderType,
+    statuses?: BranchOrderStatus[],
   ) {
+    if (statuses && statuses.length === 0) return Promise.resolve(0);
     return prisma.branchOrder.count({
-      where: orderScopeWhere(tenantId, branchIds, orderType),
+      where: orderScopeWhere(tenantId, branchIds, orderType, statuses),
     });
   },
 
@@ -108,10 +125,12 @@ export const orderRepository = {
     tenantId: string,
     branchIds: string[] | null,
     orderType?: BranchOrderType,
+    statuses?: BranchOrderStatus[],
   ) {
+    if (statuses && statuses.length === 0) return Promise.resolve([]);
     return prisma.branchOrder.groupBy({
       by: ["status"],
-      where: orderScopeWhere(tenantId, branchIds, orderType),
+      where: orderScopeWhere(tenantId, branchIds, orderType, statuses),
       _count: { id: true },
     });
   },

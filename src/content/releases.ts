@@ -52,6 +52,29 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.39.7",
+    date: "2026-09-15",
+    releasedAt: "2026-09-15T11:50:00+08:00",
+    title: "Orders list shows your work queue",
+    highlights: [
+      "The Orders tab now lists only requests waiting for your role, so you are not scanning steps meant for someone else",
+      "Approved, rejected, and cancelled SO#s stay in Order History instead of repeating on the live list",
+      "The count cards above the list match that queue, so totals stay in sync with what you can act on",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Orders is now your work queue — Product Specialists, Team Leaders, Supply Planning, and Logistics each see the step that needs them",
+      },
+      {
+        type: "improvement",
+        description:
+          "Finished requests (approved, rejected, or cancelled) no longer appear on the Orders tab; look them up in Order History",
+      },
+    ],
+  },
+  {
     version: "0.39.6",
     date: "2026-09-15",
     releasedAt: "2026-09-15T11:40:00+08:00",
@@ -59,6 +82,7 @@ export const RELEASES: ReleaseNote[] = [
     highlights: [
       "Auto replenish now shows Orders and Order History only — Order Analytics stays on Manual and Special",
       "Manual, Special, and Auto replenish each have their own module guide",
+      "Creating an order now shows a please-wait screen while the request is saved",
     ],
     changes: [
       {
@@ -70,6 +94,11 @@ export const RELEASES: ReleaseNote[] = [
         type: "improvement",
         description:
           "Each order type explains itself in its own module guide — Manual, Special, and Auto replenish no longer share one mixed description",
+      },
+      {
+        type: "improvement",
+        description:
+          "After you submit a new branch order, a please-wait screen stays up until the request is saved",
       },
     ],
   },

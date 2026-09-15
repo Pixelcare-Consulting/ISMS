@@ -4,11 +4,11 @@ import type { BranchOrderType } from "@prisma/client";
 export const MANUAL_ORDERS_MODULE_GUIDE: ModuleGuideContent = {
   title: "Manual orders",
   description:
-    "Create a live branch request, then send it through Product Specialist → Team Leader → Supply Planning. Use Orders for open requests, Order Analytics to check stock and suggested quantities, and Order History for past SO#s. Logistics fulfills only after Supply Planning’s final approval.",
+    "Create a live branch request, then send it through Product Specialist → Team Leader → Supply Planning. Orders shows only requests waiting for your role. Use Order Analytics to check stock and suggested quantities, and Order History for approved and past SO#s. Logistics fulfills only after Supply Planning’s final approval.",
   tips: [
     { label: "Open Order Analytics, pick a branch and brand, then Proceed to order — or use Create order" },
     { label: "Enter a quantity of 1 or more per model; extras come from other planogram models at the branch" },
-    { label: "Review when it is your role’s turn — check status badges or hover if disabled" },
+    { label: "Review when it is your role’s turn — finished approvals live in Order History" },
     { label: "After SP approval, logistics schedules delivery; accept stock in Operations" },
   ],
   storageKey: "module-guide.orders.manual",
@@ -17,7 +17,7 @@ export const MANUAL_ORDERS_MODULE_GUIDE: ModuleGuideContent = {
 export const SPECIAL_ORDERS_MODULE_GUIDE: ModuleGuideContent = {
   title: "Special orders",
   description:
-    "Team Leaders create these requests; Supply Planning gives final approval. Use Orders for open requests, Order Analytics to check stock before you create, and Order History for past SO#s. You can add an extra item that is not on the branch planogram. Logistics fulfills only after Supply Planning’s final approval.",
+    "Team Leaders create these requests; Supply Planning gives final approval. Orders shows only requests waiting for your role. Use Order Analytics to check stock before you create, and Order History for approved and past SO#s. You can add an extra item that is not on the branch planogram. Logistics fulfills only after Supply Planning’s final approval.",
   tips: [
     { label: "Open Order Analytics, pick a branch and brand, then Proceed to order — or use Create order" },
     { label: "Leave brand empty to see every model, or pick a brand to narrow the list; extras can be off the planogram" },
@@ -33,7 +33,7 @@ export const AUTO_REPLENISH_ORDERS_MODULE_GUIDE: ModuleGuideContent = {
     "Review suggested restock from Settings → Planning. This page shows Orders and Order History only — there is no Create order or Order Analytics here. Approval is Team Leader → Supply Planning. Logistics fulfills only after Supply Planning’s final approval.",
   tips: [
     { label: "Start from Planning & suggestions or Suggested orders — drafts land here for review" },
-    { label: "Use Orders for live requests and Order History for past SO#s" },
+    { label: "Use Orders for requests waiting for your role, and Order History for approved and past SO#s" },
     { label: "Review when it is your role’s turn — Supply Planning can adjust quantities or a delivery date" },
     { label: "After SP approval, logistics schedules delivery; accept stock in Operations" },
   ],

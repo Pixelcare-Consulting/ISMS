@@ -76,10 +76,12 @@ export function LoadingModal({
   return (
     <Dialog open={open}>
       <DialogContent
+        showCloseButton={false}
         className={cn(
-          "[&>button]:hidden",
+          "z-100 [&>button]:hidden",
           resolvedVariant === "minimal" ? "max-w-sm gap-0 p-0 sm:rounded-xl" : "max-w-md",
         )}
+        overlayClassName="z-[100]"
         onEscapeKeyDown={(event) => event.preventDefault()}
         onPointerDownOutside={(event) => event.preventDefault()}
       >

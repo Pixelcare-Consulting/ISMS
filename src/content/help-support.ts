@@ -60,7 +60,7 @@ export const HELP_QUICK_LINKS: HelpQuickLink[] = [
   {
     id: "orders",
     title: "Orders",
-    description: "Create and approve branch orders.",
+    description: "Review requests waiting for your role, or look up past SO#s.",
     href: "/orders",
     group: "daily",
   },
@@ -536,6 +536,12 @@ export const HELP_FAQ_CATEGORIES: HelpFaqCategory[] = [
         question: "What are auto-replenish, manual, and special orders?",
         answer:
           "Auto-replenish is system-suggested replenishment. Manual adds a Product Specialist review step. Special is initiated by the Team Leader for non-standard requests.",
+      },
+      {
+        id: "orders-6",
+        question: "Why don’t I see every order on the Orders tab?",
+        answer:
+          "Orders only lists requests waiting for your role. Approved, rejected, and cancelled SO#s are in Order History so the live list stays as your work queue.",
       },
     ],
   },

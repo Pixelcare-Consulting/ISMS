@@ -22,7 +22,10 @@ import {
   orderPermissionCandidates,
   orderTypeAccessPermissions,
 } from "@/features/orders/constants/order-permissions";
-import { canApproveOrder } from "@/features/orders/constants/order-workflow";
+import {
+  canApproveOrder,
+  getOrderQueueStatuses,
+} from "@/features/orders/constants/order-workflow";
 import {
   hasPermission,
   requireAnyPermission,
@@ -93,6 +96,17 @@ function parseOrderSortDir(value?: string): OrderListSortDir | undefined {
   return undefined;
 }
 
+function resolveOrderQueueStatuses(
+  orderType: BranchOrderType | undefined,
+  roleSlugs: string[],
+  permissions: string[] | undefined,
+) {
+  if (!orderType) return undefined;
+  return getOrderQueueStatuses(orderType, roleSlugs, {
+    includeDraft: hasOrderPermission(permissions, orderType, "create"),
+  });
+}
+
 export async function listOrdersAction(input?: {
   page?: number;
   limit?: number;
@@ -104,11 +118,16 @@ export async function listOrdersAction(input?: {
     ? await requireOrderTypePageAccess(input.orderType)
     : await requireAnyPermission(anyOrderTypePermissions("view"));
   const limit = parseTablePageSize(input?.limit);
+  const queueStatuses = resolveOrderQueueStatuses(
+    input?.orderType,
+    session.user.roleSlugs ?? [],
+    session.user.permissions,
+  );
   const result = await orderService.list(
     session.user.tenantId,
     session.user.id,
     hasFullOrderAccess(session.user.permissions),
-    { page: input?.page, limit, orderType: input?.orderType },
+    { page: input?.page, limit, orderType: input?.orderType, statuses: queueStatuses },
     { field: parseOrderSort(input?.sort), dir: parseOrderSortDir(input?.sortDir) },
   );
   return {
@@ -131,11 +150,17 @@ export async function getOrdersKpisAction(orderType?: BranchOrderType) {
   const session = orderType
     ? await requireOrderTypePageAccess(orderType)
     : await requireAnyPermission(anyOrderTypePermissions("view"));
+  const queueStatuses = resolveOrderQueueStatuses(
+    orderType,
+    session.user.roleSlugs ?? [],
+    session.user.permissions,
+  );
   return orderService.getKpis(
     session.user.tenantId,
     session.user.id,
     hasFullOrderAccess(session.user.permissions),
     orderType,
+    queueStatuses,
   );
 }
 
