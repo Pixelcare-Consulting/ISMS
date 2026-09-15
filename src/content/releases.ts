@@ -52,6 +52,28 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.39.6",
+    date: "2026-09-15",
+    releasedAt: "2026-09-15T11:40:00+08:00",
+    title: "Auto replenish without Order Analytics",
+    highlights: [
+      "Auto replenish now shows Orders and Order History only — Order Analytics stays on Manual and Special",
+      "Manual, Special, and Auto replenish each have their own module guide",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Auto replenish no longer includes Order Analytics, so review happens on the order list and past SO#s instead of a stock workspace",
+      },
+      {
+        type: "improvement",
+        description:
+          "Each order type explains itself in its own module guide — Manual, Special, and Auto replenish no longer share one mixed description",
+      },
+    ],
+  },
+  {
     version: "0.39.5",
     date: "2026-09-15",
     releasedAt: "2026-09-15T11:35:00+08:00",
@@ -70,22 +92,16 @@ export const RELEASES: ReleaseNote[] = [
   {
     version: "0.39.4",
     date: "2026-09-15",
-    releasedAt: "2026-09-15T11:30:00+08:00",
+    releasedAt: "2026-09-15T11:20:00+08:00",
     title: "Auto replenish uses suggested orders",
     highlights: [
       "Auto replenish no longer shows Create order — start from Suggested orders instead",
-      "Auto replenish now shows Orders and Order History only — Order Analytics stays on Manual and Special",
     ],
     changes: [
       {
         type: "improvement",
         description:
           "Auto replenish hides Create order so you use Suggested orders from Planning, instead of starting a blank request",
-      },
-      {
-        type: "improvement",
-        description:
-          "Auto replenish no longer includes Order Analytics, so review happens on the order list and past SO#s instead of a stock workspace",
       },
     ],
   },

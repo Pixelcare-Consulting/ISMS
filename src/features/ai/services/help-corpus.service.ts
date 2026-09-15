@@ -11,7 +11,11 @@ import {
   PULLOUTS_MODULE_GUIDE,
   TRANSFERS_MODULE_GUIDE,
 } from "@/content/module-guides/logistics";
-import { ORDERS_MODULE_GUIDE } from "@/content/module-guides/orders";
+import {
+  AUTO_REPLENISH_ORDERS_MODULE_GUIDE,
+  MANUAL_ORDERS_MODULE_GUIDE,
+  SPECIAL_ORDERS_MODULE_GUIDE,
+} from "@/content/module-guides/orders";
 import {
   BRANCH_PLANOGRAM_MODULE_GUIDE,
   PLANOGRAM_MODULE_GUIDE,
@@ -244,7 +248,13 @@ function buildCorpus(): HelpChunk[] {
     moduleGuideChunk("deliveries", DELIVERIES_MODULE_GUIDE, "/logistics/deliveries"),
     moduleGuideChunk("transfers", TRANSFERS_MODULE_GUIDE, "/logistics/transfers"),
     moduleGuideChunk("pullouts", PULLOUTS_MODULE_GUIDE, "/logistics/pickups"),
-    moduleGuideChunk("orders", ORDERS_MODULE_GUIDE, "/orders"),
+    moduleGuideChunk("orders-manual", MANUAL_ORDERS_MODULE_GUIDE, "/orders/manual"),
+    moduleGuideChunk("orders-special", SPECIAL_ORDERS_MODULE_GUIDE, "/orders/special"),
+    moduleGuideChunk(
+      "orders-auto-replenish",
+      AUTO_REPLENISH_ORDERS_MODULE_GUIDE,
+      "/orders/auto-replenish",
+    ),
     moduleGuideChunk("sales", SALES_MODULE_GUIDE, "/sales"),
     moduleGuideChunk("returns", RETURNS_MODULE_GUIDE, "/returns"),
     moduleGuideChunk("roles", ROLES_MODULE_GUIDE, "/settings/roles"),

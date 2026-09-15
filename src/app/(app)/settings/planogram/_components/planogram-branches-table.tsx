@@ -63,8 +63,12 @@ function AllowedModelChips({ skuCodes }: { skuCodes: string[] }) {
 
   return (
     <div className="flex flex-wrap items-center gap-1">
-      {visible.map((sku) => (
-        <Badge key={sku} variant="secondary" className="font-mono text-[11px]">
+      {visible.map((sku, index) => (
+        <Badge
+          key={`${sku}-${index}`}
+          variant="secondary"
+          className="font-mono text-[11px]"
+        >
           {sku}
         </Badge>
       ))}
@@ -192,9 +196,13 @@ export function PlanogramBranchesTable({
           <TableHeader>
             <TableRow className="bg-muted/30 hover:bg-muted/30">
               <TableIndexHead />
-              <GlobalTableHead {...sort.sortProps("sapCode")}>SAP code</GlobalTableHead>
-              <GlobalTableHead {...sort.sortProps("name")}>Branch</GlobalTableHead>
-              <GlobalTableHead {...sort.sortProps("allowedModels")}>
+              <GlobalTableHead className="whitespace-nowrap" {...sort.sortProps("sapCode")}>
+                SAP code
+              </GlobalTableHead>
+              <GlobalTableHead className="whitespace-nowrap" {...sort.sortProps("name")}>
+                Branch
+              </GlobalTableHead>
+              <GlobalTableHead className="min-w-[24rem]" {...sort.sortProps("allowedModels")}>
                 Allowed Models
               </GlobalTableHead>
               <GlobalTableHead className="text-right"> </GlobalTableHead>
@@ -218,7 +226,7 @@ export function PlanogramBranchesTable({
                     {branch.sapCode}
                   </TableCell>
                   <TableCell className="font-medium">{branch.name}</TableCell>
-                  <TableCell className="min-w-[16rem] py-2">
+                  <TableCell className="min-w-[24rem] py-2">
                     <AllowedModelChips skuCodes={branch.allowedSkuCodes} />
                   </TableCell>
                   <TableRowActions>

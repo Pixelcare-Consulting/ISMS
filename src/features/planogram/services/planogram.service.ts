@@ -97,11 +97,12 @@ export const planogramService = {
   },
 
   async listPlanogram(tenantId: string, branchId: string): Promise<PlanogramRow[]> {
-    let [entries, milSettings, ditCode] = await Promise.all([
+    const [initialEntries, milSettings, ditCode] = await Promise.all([
       planogramRepository.listByBranch(tenantId, branchId),
       planogramRepository.listMilByBranch(tenantId, branchId),
       reasonStatusRepository.findCodeId(tenantId, "inventory_system", "DIT"),
     ]);
+    let entries = initialEntries;
 
     const unlinkedModelIds = entries
       .filter((entry: { model: { series: { name: string } | null } }) => entry.model.series == null)

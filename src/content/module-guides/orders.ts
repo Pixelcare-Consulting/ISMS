@@ -1,14 +1,58 @@
 import type { ModuleGuideContent } from "@/content/module-guides/types";
+import type { BranchOrderType } from "@prisma/client";
 
-export const ORDERS_MODULE_GUIDE: ModuleGuideContent = {
-  title: "Branch orders",
+export const MANUAL_ORDERS_MODULE_GUIDE: ModuleGuideContent = {
+  title: "Manual orders",
   description:
-    "Use Orders for live requests and Order History for past SO#s. Manual and Special also have Order Analytics for stock and suggested quantities before you create. Auto replenish starts from Settings → Planning. Approval path: Manual (PS → TL → SP), Special (TL creates → SP), Auto replenish (TL → SP). Logistics fulfills only after Supply Planning’s final approval.",
+    "Create a live branch request, then send it through Product Specialist → Team Leader → Supply Planning. Use Orders for open requests, Order Analytics to check stock and suggested quantities, and Order History for past SO#s. Logistics fulfills only after Supply Planning’s final approval.",
   tips: [
-    { label: "On Manual or Special, open Order Analytics, pick a branch and brand, then Proceed to order" },
-    { label: "Create fills a branch workspace — enter quantities (1+) per model; Auto replenish starts from Suggested orders in Planning" },
+    { label: "Open Order Analytics, pick a branch and brand, then Proceed to order — or use Create order" },
+    { label: "Enter a quantity of 1 or more per model; extras come from other planogram models at the branch" },
     { label: "Review when it is your role’s turn — check status badges or hover if disabled" },
     { label: "After SP approval, logistics schedules delivery; accept stock in Operations" },
   ],
-  storageKey: "module-guide.orders",
+  storageKey: "module-guide.orders.manual",
 };
+
+export const SPECIAL_ORDERS_MODULE_GUIDE: ModuleGuideContent = {
+  title: "Special orders",
+  description:
+    "Team Leaders create these requests; Supply Planning gives final approval. Use Orders for open requests, Order Analytics to check stock before you create, and Order History for past SO#s. You can add an extra item that is not on the branch planogram. Logistics fulfills only after Supply Planning’s final approval.",
+  tips: [
+    { label: "Open Order Analytics, pick a branch and brand, then Proceed to order — or use Create order" },
+    { label: "Leave brand empty to see every model, or pick a brand to narrow the list; extras can be off the planogram" },
+    { label: "Review when it is your role’s turn — Supply Planning can adjust quantities or a delivery date" },
+    { label: "After SP approval, logistics schedules delivery; accept stock in Operations" },
+  ],
+  storageKey: "module-guide.orders.special",
+};
+
+export const AUTO_REPLENISH_ORDERS_MODULE_GUIDE: ModuleGuideContent = {
+  title: "Auto replenish orders",
+  description:
+    "Review suggested restock from Settings → Planning. This page shows Orders and Order History only — there is no Create order or Order Analytics here. Approval is Team Leader → Supply Planning. Logistics fulfills only after Supply Planning’s final approval.",
+  tips: [
+    { label: "Start from Planning & suggestions or Suggested orders — drafts land here for review" },
+    { label: "Use Orders for live requests and Order History for past SO#s" },
+    { label: "Review when it is your role’s turn — Supply Planning can adjust quantities or a delivery date" },
+    { label: "After SP approval, logistics schedules delivery; accept stock in Operations" },
+  ],
+  storageKey: "module-guide.orders.auto-replenish",
+};
+
+export function ordersModuleGuideForType(
+  orderType: BranchOrderType,
+): ModuleGuideContent {
+  switch (orderType) {
+    case "manual":
+      return MANUAL_ORDERS_MODULE_GUIDE;
+    case "special":
+      return SPECIAL_ORDERS_MODULE_GUIDE;
+    case "auto_replenish":
+      return AUTO_REPLENISH_ORDERS_MODULE_GUIDE;
+    default: {
+      const _exhaustive: never = orderType;
+      return _exhaustive;
+    }
+  }
+}
