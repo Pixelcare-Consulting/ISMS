@@ -52,6 +52,34 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.39.3",
+    date: "2026-09-15",
+    releasedAt: "2026-09-15T10:00:00+08:00",
+    title: "Planogram open wait and latest price",
+    highlights: [
+      "Opening a branch from Planogram now shows a wait message while that branch loads",
+      "Planogram and Allowed models show the current model price when it is in effect, or the latest started price if it is not",
+      "Series still comes from the SKU — assign a series on Models if that column is blank",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Opening a branch from Planogram shows a wait message so the list does not sit still while the branch page loads",
+      },
+      {
+        type: "improvement",
+        description:
+          "Planogram and Allowed models show the current model price and the date it started, or the latest started price when none is current — including prices tied to a package type",
+      },
+      {
+        type: "fix",
+        description:
+          "A saved model price no longer stays blank on Planogram just because the period is not today",
+      },
+    ],
+  },
+  {
     version: "0.39.2",
     date: "2026-09-15",
     releasedAt: "2026-09-15T09:30:00+08:00",

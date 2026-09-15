@@ -1,22 +1,40 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 import { toast, Toaster } from "sonner";
 
 import {
   consumePendingAuthToast,
   messageForPendingAuthToast,
+  SIGNED_OUT_NOTICE_PARAM,
+  SIGNED_OUT_NOTICE_VALUE,
 } from "@/lib/auth/pending-auth-toast";
 
 const toastBase =
   "group !rounded-lg !border !border-border !bg-card !text-card-foreground !shadow-md !gap-3 !py-3.5 !pl-4 !pr-10";
 
 export function AppToaster() {
+  const pathname = usePathname();
+
   useEffect(() => {
     const pending = consumePendingAuthToast();
-    if (!pending) return;
-    toast.success(messageForPendingAuthToast(pending));
-  }, []);
+    const url = new URL(window.location.href);
+    const signedOutNotice =
+      url.searchParams.get(SIGNED_OUT_NOTICE_PARAM) === SIGNED_OUT_NOTICE_VALUE;
+
+    if (pending) {
+      toast.success(messageForPendingAuthToast(pending));
+    } else if (signedOutNotice) {
+      toast.success(messageForPendingAuthToast({ kind: "signed-out" }));
+    }
+
+    if (signedOutNotice) {
+      url.searchParams.delete(SIGNED_OUT_NOTICE_PARAM);
+      const next = `${url.pathname}${url.search}${url.hash}`;
+      window.history.replaceState(window.history.state, "", next);
+    }
+  }, [pathname]);
 
   return (
     <Toaster

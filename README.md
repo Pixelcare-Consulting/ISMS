@@ -2,7 +2,7 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.39.2`
+**Current version:** `0.39.3`
 
 ## Stack
 
@@ -20,7 +20,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | **Competitors** | Market observations with master Competitor + Competitor brand/model lookups, AOR-bound branch, optional promotion; KPIs + CRUD (`/competitors`) |
 | **Settings** | Company, users, departments, roles, permissions catalog (`roles.manage`; assign via Roles), branches, warehouses, dealers, service centers, AORs (branches / warehouses / service centers assign + sync), master data (incl. Series / Categories, Competitors / Competitor brands), status codes (per-module tabs + badge colors); collapsible Module guides on complex settings/ops pages |
 | **Planning** | Period switcher + clickable cards; in-page Add/Edit/Remove branch revenue targets; official Forecast template download + import (bulk); allocation; suggested auto-replenish (`/settings/planning`, `/planning/suggested-orders`) |
-| **Planogram** | Clickable cards filter branches with a planogram or none yet; per-branch SKU assignment; current price and date from the model price list; editable max qty; Allowed models uses the same table; official Excel template download + import (branch SAP + SKU); Add model requires Allowed models first |
+| **Planogram** | Clickable cards filter branches with a planogram or none yet; Open a branch shows a wait message; per-branch SKU assignment; current or latest model price and date; editable max qty; Allowed models uses the same table; official Excel template download + import (branch SAP + SKU); Add model requires Allowed models first |
 | **Policies** | Full document control (ISO track) |
 | **Inventory** | Serialized stock (STK on Stock units), **warehouse stock** SN list (`/inventory/warehouse-stock`; also Settings → Warehouses →image.png Stock), AOR-scoped lists, series QTY/VALUE + DR#/date/aging, **physical stock count / P-Count** (`/inventory/stock-count`) |
 | **Orders** | Nav group: Manual / Special / Auto replenish (`/orders/manual` etc.); tabs **Orders \| Order Analytics \| Order History** (`?tab=`); pipeline counts sit under Orders as KPI cards; Analytics filter card (search for a branch, then brand on the card; assigned branch is selected for you; Clear; DII / inventory KPI cards after both are set); Create optional brand (cleared = all SKUs), extras below the table with multi-add, row numbers, delete a wrong line; per-branch create workspace (multi-line); per-type `orders.manual`, `orders.special`, `orders.auto_replenish` with view/create/approve; PS → TL → SP; SO#, processed orders, delivery-due auto-reschedule |

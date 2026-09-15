@@ -14,7 +14,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { LoadingModal } from "@/components/ui/loading-modal";
 import { authClient } from "@/lib/auth/client";
-import { queuePendingAuthToast } from "@/lib/auth/pending-auth-toast";
+import {
+  consumePendingAuthToast,
+  queuePendingAuthToast,
+  signedOutLoginHref,
+} from "@/lib/auth/pending-auth-toast";
 import { cn } from "@/utils/cn";
 
 type NavItem = {
@@ -46,10 +50,11 @@ export function ProviderShell({ user, children }: ProviderShellProps) {
     if (isSigningOut) return;
     setIsSigningOut(true);
     try {
-      await authClient.signOut();
       queuePendingAuthToast({ kind: "signed-out" });
-      window.location.assign("/");
+      await authClient.signOut();
+      window.location.assign(signedOutLoginHref());
     } catch {
+      consumePendingAuthToast();
       setIsSigningOut(false);
     }
   }

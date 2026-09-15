@@ -1,7 +1,7 @@
 import { auditService } from "@/features/audit/services/audit.service";
 import { masterDataRepository } from "@/features/master-data/repositories/master-data.repository";
 import { formatPeriodDate } from "@/features/master-data/types/client-price-list";
-import { pickActivePriceListRow } from "@/features/master-data/utils/resolve-price-list";
+import { pickDisplayPriceListRow } from "@/features/master-data/utils/resolve-price-list";
 import type {
   PlanogramIndexBranch,
   PlanogramIndexKpis,
@@ -72,17 +72,17 @@ type PriceListPeriodRow = {
   packageTypeId: string | null;
 };
 
-function resolveActivePriceList(priceLists: PriceListPeriodRow[] | undefined) {
+function resolveDisplayPriceList(priceLists: PriceListPeriodRow[] | undefined) {
   const rows = (priceLists ?? []).map((row) => ({
     amount: formatSrp(row.amount),
     periodStart: formatPeriodDate(row.periodStart),
     periodEnd: formatPeriodDate(row.periodEnd),
     packageTypeId: row.packageTypeId,
   }));
-  const active = pickActivePriceListRow(rows, (row) => row);
+  const selected = pickDisplayPriceListRow(rows, (row) => row);
   return {
-    srp: active?.amount ?? null,
-    effectiveFrom: active?.periodStart ?? null,
+    srp: selected?.amount ?? null,
+    effectiveFrom: selected?.periodStart ?? null,
   };
 }
 
@@ -97,11 +97,24 @@ export const planogramService = {
   },
 
   async listPlanogram(tenantId: string, branchId: string): Promise<PlanogramRow[]> {
-    const [entries, milSettings, ditCode] = await Promise.all([
+    let [entries, milSettings, ditCode] = await Promise.all([
       planogramRepository.listByBranch(tenantId, branchId),
       planogramRepository.listMilByBranch(tenantId, branchId),
       reasonStatusRepository.findCodeId(tenantId, "inventory_system", "DIT"),
     ]);
+
+    const unlinkedModelIds = entries
+      .filter((entry: { model: { series: { name: string } | null } }) => entry.model.series == null)
+      .map((entry: { modelId: string }) => entry.modelId);
+    if (unlinkedModelIds.length > 0) {
+      const linked = await masterDataRepository.linkUnassignedModelsToSeriesByCode(
+        tenantId,
+        { modelIds: unlinkedModelIds },
+      );
+      if (linked > 0) {
+        entries = await planogramRepository.listByBranch(tenantId, branchId);
+      }
+    }
 
     const milByModel = new Map(
       milSettings.map((m: { modelId: string; daysThreshold: number }) => [
@@ -143,7 +156,7 @@ export const planogramService = {
           priceLists?: PriceListPeriodRow[];
         };
       }) => {
-        const price = resolveActivePriceList(entry.model.priceLists);
+        const price = resolveDisplayPriceList(entry.model.priceLists);
         return {
           id: entry.id,
           branchId: entry.branchId,
@@ -379,9 +392,21 @@ export const planogramService = {
   },
 
   async listAllowedModelsForBranch(tenantId: string, branchId: string) {
-    const rows = await planogramRepository.listAllowedModelsForBranch(tenantId, branchId);
+    let rows = await planogramRepository.listAllowedModelsForBranch(tenantId, branchId);
+    const unlinkedModelIds = rows
+      .filter((row: { model: { series: { name: string } | null } }) => row.model.series == null)
+      .map((row: { modelId: string }) => row.modelId);
+    if (unlinkedModelIds.length > 0) {
+      const linked = await masterDataRepository.linkUnassignedModelsToSeriesByCode(
+        tenantId,
+        { modelIds: unlinkedModelIds },
+      );
+      if (linked > 0) {
+        rows = await planogramRepository.listAllowedModelsForBranch(tenantId, branchId);
+      }
+    }
     return rows.map((r) => {
-      const price = resolveActivePriceList(r.model.priceLists);
+      const price = resolveDisplayPriceList(r.model.priceLists);
       return {
         id: r.id,
         modelId: r.modelId,

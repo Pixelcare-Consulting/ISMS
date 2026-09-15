@@ -16,7 +16,6 @@ export const planogramRepository = {
             brand: { select: { name: true } },
             series: { select: { name: true } },
             priceLists: {
-              where: { packageTypeId: null },
               select: {
                 amount: true,
                 periodStart: true,
@@ -482,7 +481,6 @@ export const planogramRepository = {
             brand: { select: { name: true } },
             series: { select: { name: true } },
             priceLists: {
-              where: { packageTypeId: null },
               select: {
                 amount: true,
                 periodStart: true,

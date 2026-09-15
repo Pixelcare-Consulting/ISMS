@@ -12,6 +12,7 @@ import {
   lookupWriteSchema,
   type LookupWriteInput,
 } from "@/features/lookups/schemas/lookup.schema";
+import { masterDataRepository } from "@/features/master-data/repositories/master-data.repository";
 
 interface LookupActorContext {
   tenantId: string;
@@ -105,6 +106,9 @@ export const lookupService = {
 
     try {
       const row = await lookupRepository.create(entity, ctx.tenantId, data);
+      if (entity === "series" && typeof row.code === "string" && row.code.trim()) {
+        await masterDataRepository.linkUnassignedModelsToSeriesByCode(ctx.tenantId);
+      }
       await auditService.log({
         tenantId: ctx.tenantId,
         userId: ctx.actorUserId,
@@ -144,6 +148,9 @@ export const lookupService = {
 
     try {
       const row = await lookupRepository.update(entity, ctx.tenantId, id, data);
+      if (entity === "series" && typeof row.code === "string" && row.code.trim()) {
+        await masterDataRepository.linkUnassignedModelsToSeriesByCode(ctx.tenantId);
+      }
       await auditService.log({
         tenantId: ctx.tenantId,
         userId: ctx.actorUserId,

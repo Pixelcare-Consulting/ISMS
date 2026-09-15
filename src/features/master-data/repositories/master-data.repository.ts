@@ -1,12 +1,49 @@
 import { prisma } from "@/lib/database/client";
 import { createInChunks, updateEach } from "@/features/sap/services/sap-sync-writer";
 import type { SapSyncApplyResult } from "@/features/sap/types/sap-sync-entity";
-import { CACHE_TTL, cacheKey, getOrSet } from "@/lib/cache/redis";
+import { CACHE_TTL, cacheKey, deleteCache, getOrSet } from "@/lib/cache/redis";
 import type { SkuStatus } from "@/lib/database/generated/prisma/client";
 
 /** Case-insensitive brand matching, the same key the Excel model import matches on. */
 function brandKey(value: string): string {
   return value.trim().toLowerCase();
+}
+
+/** Case-insensitive series code / SKU matching for ProductModel.seriesId repair. */
+function seriesCodeKey(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function uniqueSeriesIdByCode(
+  rows: { id: string; code: string | null }[],
+): Map<string, string> {
+  const byCode = new Map<string, string>();
+  const ambiguous = new Set<string>();
+  for (const row of rows) {
+    const code = row.code?.trim();
+    if (!code) continue;
+    const key = seriesCodeKey(code);
+    if (ambiguous.has(key)) continue;
+    if (byCode.has(key)) {
+      byCode.delete(key);
+      ambiguous.add(key);
+      continue;
+    }
+    byCode.set(key, row.id);
+  }
+  return byCode;
+}
+
+async function loadUniqueSeriesIdByCode(tenantId: string): Promise<Map<string, string>> {
+  const rows = await prisma.series.findMany({
+    where: { tenantId, recordStatus: "active" },
+    select: { id: true, code: true },
+  });
+  return uniqueSeriesIdByCode(rows);
+}
+
+async function invalidateModelsCache(tenantId: string) {
+  await deleteCache(cacheKey("tenant", tenantId, "master-data", "models", "all"));
 }
 
 /**
@@ -127,17 +164,70 @@ export const masterDataRepository = {
     return prisma.brand.create({ data: { tenantId, name: data.name, code: data.code } });
   },
 
-  createSeries(tenantId: string, data: { name: string; code?: string }) {
-    return prisma.series.create({
+  /**
+   * Assign Series to models that have no seriesId when the SKU equals a unique
+   * active series code in the same tenant. Does not overwrite an existing FK.
+   */
+  async linkUnassignedModelsToSeriesByCode(
+    tenantId: string,
+    options?: { modelIds?: string[] },
+  ): Promise<number> {
+    const modelIds = options?.modelIds?.filter(Boolean) ?? [];
+    if (options?.modelIds && modelIds.length === 0) return 0;
+
+    const seriesIdByCode = await loadUniqueSeriesIdByCode(tenantId);
+    if (seriesIdByCode.size === 0) return 0;
+
+    const models = await prisma.productModel.findMany({
+      where: {
+        tenantId,
+        seriesId: null,
+        ...(modelIds.length > 0 ? { id: { in: modelIds } } : {}),
+      },
+      select: { id: true, skuCode: true },
+    });
+
+    const idsBySeries = new Map<string, string[]>();
+    for (const model of models) {
+      const seriesId = seriesIdByCode.get(seriesCodeKey(model.skuCode));
+      if (!seriesId) continue;
+      const bucket = idsBySeries.get(seriesId);
+      if (bucket) bucket.push(model.id);
+      else idsBySeries.set(seriesId, [model.id]);
+    }
+
+    if (idsBySeries.size === 0) return 0;
+
+    let linked = 0;
+    for (const [seriesId, ids] of idsBySeries) {
+      const result = await prisma.productModel.updateMany({
+        where: { tenantId, seriesId: null, id: { in: ids } },
+        data: { seriesId },
+      });
+      linked += result.count;
+    }
+
+    if (linked > 0) {
+      await invalidateModelsCache(tenantId);
+    }
+    return linked;
+  },
+
+  async createSeries(tenantId: string, data: { name: string; code?: string }) {
+    const series = await prisma.series.create({
       data: {
         tenantId,
         name: data.name,
         code: data.code,
       },
     });
+    if (data.code?.trim()) {
+      await masterDataRepository.linkUnassignedModelsToSeriesByCode(tenantId);
+    }
+    return series;
   },
 
-  createModel(
+  async createModel(
     tenantId: string,
     data: {
       brandId?: string | null;
@@ -150,11 +240,16 @@ export const masterDataRepository = {
       status?: "active" | "hold" | "retired";
     },
   ) {
+    let seriesId = data.seriesId ?? null;
+    if (!seriesId) {
+      const seriesIdByCode = await loadUniqueSeriesIdByCode(tenantId);
+      seriesId = seriesIdByCode.get(seriesCodeKey(data.skuCode)) ?? null;
+    }
     return prisma.productModel.create({
       data: {
         tenantId,
         brandId: data.brandId ?? null,
-        seriesId: data.seriesId ?? null,
+        seriesId,
         featureId: data.featureId ?? null,
         resolutionId: data.resolutionId ?? null,
         actualSizeId: data.actualSizeId ?? null,
@@ -173,7 +268,7 @@ export const masterDataRepository = {
     // Paged by ItemCode, so a repeat within a page would be a SAP anomaly; first wins.
     const rows = [...new Map(records.map((row) => [row.skuCode, row])).values()];
 
-    const [existing, brandIdByKey] = await Promise.all([
+    const [existing, brandIdByKey, seriesIdByCode] = await Promise.all([
       prisma.productModel.findMany({
         where: { tenantId, skuCode: { in: rows.map((row) => row.skuCode) } },
         select: {
@@ -183,9 +278,11 @@ export const masterDataRepository = {
           description: true,
           status: true,
           brandId: true,
+          seriesId: true,
         },
       }),
       resolveSyncBrandIds(tenantId, rows.map((row) => row.brandName)),
+      loadUniqueSeriesIdByCode(tenantId),
     ]);
     const bySkuCode = new Map(existing.map((model) => [model.skuCode, model]));
 
@@ -195,6 +292,7 @@ export const masterDataRepository = {
       description: string;
       status: SkuStatus;
       brandId: string;
+      seriesId: string | null;
     }
     const toCreate: ModelFields[] = [];
     const toUpdate: (ModelFields & { id: string })[] = [];
@@ -214,12 +312,14 @@ export const masterDataRepository = {
       // Both columns track ItemName. `description` is the mapped target; `name` carries
       // it too because the column is NOT NULL and, with manual creation disabled, SAP is
       // the only thing that ever names a model.
+      const seriesId = seriesIdByCode.get(seriesCodeKey(row.skuCode)) ?? null;
       const fields = {
         skuCode: row.skuCode,
         name: row.name,
         description: row.name,
         status: row.status,
         brandId,
+        seriesId,
       };
       const match = bySkuCode.get(row.skuCode);
 
@@ -227,16 +327,18 @@ export const masterDataRepository = {
         toCreate.push(fields);
         continue;
       }
+      const nextSeriesId = match.seriesId ?? seriesId;
       if (
         match.name === fields.name &&
         match.description === fields.description &&
         match.status === fields.status &&
-        match.brandId === fields.brandId
+        match.brandId === fields.brandId &&
+        match.seriesId === nextSeriesId
       ) {
         unchanged += 1;
         continue;
       }
-      toUpdate.push({ id: match.id, ...fields });
+      toUpdate.push({ id: match.id, ...fields, seriesId: nextSeriesId });
     }
 
     const inserted = await createInChunks(toCreate, {
@@ -261,6 +363,7 @@ export const masterDataRepository = {
             description: row.description,
             status: row.status,
             brandId: row.brandId,
+            seriesId: row.seriesId,
           },
         });
       },

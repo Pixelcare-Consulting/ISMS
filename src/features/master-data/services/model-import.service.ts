@@ -1,5 +1,6 @@
 import type { CreateAuditLogInput } from "@/features/audit/repositories/audit-log.repository";
 import { auditService } from "@/features/audit/services/audit.service";
+import { masterDataRepository } from "@/features/master-data/repositories/master-data.repository";
 import type {
   ModelImportChunkProgress,
   ModelImportFieldChange,
@@ -204,11 +205,19 @@ async function resolveBrandSeriesIdsForChunk(
       ? prisma.brand.findMany({ where: { tenantId }, select: { id: true, name: true } })
       : Promise.resolve([]),
     wantedSeries.size > 0
-      ? prisma.series.findMany({ where: { tenantId }, select: { id: true, name: true } })
+      ? prisma.series.findMany({
+          where: { tenantId },
+          select: { id: true, name: true, code: true },
+        })
       : Promise.resolve([]),
   ]);
   for (const brand of brands) brandIdByKey.set(lookupKey(brand.name), brand.id);
-  for (const series of seriesRows) seriesIdByKey.set(lookupKey(series.name), series.id);
+  for (const series of seriesRows) {
+    seriesIdByKey.set(lookupKey(series.name), series.id);
+    if (series.code?.trim() && !seriesIdByKey.has(lookupKey(series.code))) {
+      seriesIdByKey.set(lookupKey(series.code), series.id);
+    }
+  }
 
   const missingBrands = [...wantedBrands].filter(([key]) => !brandIdByKey.has(key));
   const missingSeries = [...wantedSeries].filter(([key]) => !seriesIdByKey.has(key));
@@ -254,11 +263,19 @@ async function resolveBrandSeriesIdsForChunk(
         ? prisma.brand.findMany({ where: { tenantId }, select: { id: true, name: true } })
         : Promise.resolve([]),
       stillMissingSeries
-        ? prisma.series.findMany({ where: { tenantId }, select: { id: true, name: true } })
+        ? prisma.series.findMany({
+            where: { tenantId },
+            select: { id: true, name: true, code: true },
+          })
         : Promise.resolve([]),
     ]);
     for (const brand of brandsAfter) brandIdByKey.set(lookupKey(brand.name), brand.id);
-    for (const series of seriesAfter) seriesIdByKey.set(lookupKey(series.name), series.id);
+    for (const series of seriesAfter) {
+      seriesIdByKey.set(lookupKey(series.name), series.id);
+      if (series.code?.trim() && !seriesIdByKey.has(lookupKey(series.code))) {
+        seriesIdByKey.set(lookupKey(series.code), series.id);
+      }
+    }
   }
 
   return { brandIdByKey, seriesIdByKey, brandsCreated, seriesCreated };
@@ -291,7 +308,10 @@ async function buildPlan(tenantId: string, sheet: SheetRows): Promise<ImportPlan
         },
       }),
       prisma.brand.findMany({ where: { tenantId }, select: { id: true, name: true } }),
-      prisma.series.findMany({ where: { tenantId }, select: { id: true, name: true } }),
+      prisma.series.findMany({
+        where: { tenantId },
+        select: { id: true, name: true, code: true },
+      }),
       prisma.feature.findMany({ where: { tenantId }, select: { id: true, name: true } }),
       prisma.resolution.findMany({ where: { tenantId }, select: { id: true, name: true } }),
       prisma.actualSize.findMany({ where: { tenantId }, select: { id: true, name: true } }),
@@ -307,6 +327,12 @@ async function buildPlan(tenantId: string, sheet: SheetRows): Promise<ImportPlan
   // this import is what creates it.
   const brandLabelByName = new Map(brands.map((b) => [lookupKey(b.name), b.name]));
   const seriesByName = new Map(seriesList.map((s) => [lookupKey(s.name), s.id]));
+  const seriesByCode = new Map<string, string>();
+  for (const series of seriesList) {
+    if (series.code?.trim() && !seriesByCode.has(lookupKey(series.code))) {
+      seriesByCode.set(lookupKey(series.code), series.id);
+    }
+  }
   const featureByName = new Map(features.map((f) => [lookupKey(f.name), f.id]));
   const resolutionByName = new Map(resolutions.map((r) => [lookupKey(r.name), r.id]));
   const actualSizeByName = new Map(actualSizes.map((a) => [lookupKey(a.name), a.id]));
@@ -421,7 +447,11 @@ async function buildPlan(tenantId: string, sheet: SheetRows): Promise<ImportPlan
 
     const existing = existingBySku.get(skuKey) ?? null;
     const brandId = brandByName.get(lookupKey(brand)) ?? null;
-    const seriesId = seriesByName.get(lookupKey(series)) ?? null;
+    const seriesId =
+      seriesByName.get(lookupKey(series)) ??
+      seriesByCode.get(lookupKey(series)) ??
+      seriesByCode.get(lookupKey(sku)) ??
+      null;
     const featureLabel = featureProvided ? featureRaw!.trim() : null;
     const resolutionLabel = resolutionProvided ? resolutionRaw!.trim() : null;
     const actualSizeLabel = actualSizeProvided ? actualSizeRaw!.trim() : null;
@@ -578,7 +608,11 @@ async function applyWriteSlice(
 
   const resolveIds = (row: RowPlanInternal) => ({
     brandId: row.brandId ?? brandIdByKey.get(lookupKey(row.brandName)) ?? null,
-    seriesId: row.seriesId ?? seriesIdByKey.get(lookupKey(row.seriesName)) ?? null,
+    seriesId:
+      row.seriesId ??
+      seriesIdByKey.get(lookupKey(row.seriesName)) ??
+      seriesIdByKey.get(lookupKey(row.sku)) ??
+      null,
   });
 
   // One existence check for the whole chunk. Re-running Apply after a failure must
@@ -600,6 +634,7 @@ async function applyWriteSlice(
   );
 
   const auditRows: CreateAuditLogInput[] = [];
+  const writtenIds: string[] = [];
 
   let modelsCreated = 0;
   if (toCreate.length > 0) {
@@ -622,6 +657,7 @@ async function applyWriteSlice(
       select: { id: true, skuCode: true },
     });
     modelsCreated = created.length;
+    writtenIds.push(...created.map((model) => model.id));
     for (const model of created) {
       auditRows.push({
         tenantId,
@@ -652,6 +688,7 @@ async function applyWriteSlice(
       });
     });
     modelsUpdated = toUpdate.length;
+    writtenIds.push(...toUpdate.map((row) => row.modelId));
     for (const row of toUpdate) {
       auditRows.push({
         tenantId,
@@ -670,6 +707,12 @@ async function applyWriteSlice(
 
   if (auditRows.length > 0) {
     await auditService.logMany(auditRows);
+  }
+
+  if (writtenIds.length > 0) {
+    await masterDataRepository.linkUnassignedModelsToSeriesByCode(tenantId, {
+      modelIds: writtenIds,
+    });
   }
 
   return { modelsCreated, modelsUpdated, brandsCreated, seriesCreated };

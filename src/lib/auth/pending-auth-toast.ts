@@ -1,4 +1,10 @@
 const STORAGE_KEY = "isms.pending-auth-toast";
+export const SIGNED_OUT_NOTICE_PARAM = "notice";
+export const SIGNED_OUT_NOTICE_VALUE = "signed-out";
+
+export function signedOutLoginHref(): string {
+  return `/login?${SIGNED_OUT_NOTICE_PARAM}=${SIGNED_OUT_NOTICE_VALUE}`;
+}
 
 export type PendingAuthToast =
   | { kind: "welcome"; name?: string | null }

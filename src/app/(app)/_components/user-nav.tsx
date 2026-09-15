@@ -25,7 +25,11 @@ import {
 } from "@/components/ui/sidebar";
 import { isNavItemActive } from "@/config/app-navigation";
 import { authClient } from "@/lib/auth/client";
-import { queuePendingAuthToast } from "@/lib/auth/pending-auth-toast";
+import {
+  consumePendingAuthToast,
+  queuePendingAuthToast,
+  signedOutLoginHref,
+} from "@/lib/auth/pending-auth-toast";
 import { getInitials } from "@/utils/get-initials";
 import { cn } from "@/utils/cn";
 
@@ -51,11 +55,12 @@ export function UserNav({ name, email, image }: UserNavProps) {
     if (isSigningOut) return;
     setIsSigningOut(true);
     try {
-      await authClient.signOut();
       queuePendingAuthToast({ kind: "signed-out" });
+      await authClient.signOut();
       // Hard navigation keeps the modal up until the document unloads.
-      window.location.assign("/");
+      window.location.assign(signedOutLoginHref());
     } catch {
+      consumePendingAuthToast();
       setIsSigningOut(false);
     }
   }

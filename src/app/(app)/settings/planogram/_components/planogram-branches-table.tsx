@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { ChevronRight, Upload } from "lucide-react";
 
@@ -16,6 +16,7 @@ import {
 } from "@/components/data-table";
 import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
+import { LoadingModal } from "@/components/ui/loading-modal";
 import {
   TableBody,
   TableCell,
@@ -56,7 +57,15 @@ export function PlanogramBranchesTable({
   onQueryChange,
   canManage = false,
 }: PlanogramBranchesTableProps) {
+  const router = useRouter();
   const [importing, setImporting] = useState(false);
+  const [opening, setOpening] = useState(false);
+
+  function openBranch(branchId: string) {
+    if (opening) return;
+    setOpening(true);
+    router.push(buildBranchPlanogramHref(branchId, { view, q: query }));
+  }
 
   const viewFiltered = useMemo(
     () => branches.filter((branch) => matchesPlanogramIndexView(branch, view)),
@@ -144,7 +153,7 @@ export function PlanogramBranchesTable({
           itemLabel: "branches",
           onPageChange: setPage,
         }}
-      > 
+      >
           <TableHeader>
             <TableRow className="bg-muted/30 hover:bg-muted/30">
               <TableIndexHead />
@@ -163,7 +172,11 @@ export function PlanogramBranchesTable({
               pageItems.map((branch, index) => (
                 <TableRow
                   key={branch.id}
-                  className={cn(index % 2 === 1 && "bg-table-stripe")}
+                  className={cn(
+                    "cursor-pointer",
+                    index % 2 === 1 && "bg-table-stripe",
+                  )}
+                  onClick={() => openBranch(branch.id)}
                 >
                   <TableIndexCell index={indexOffset + index + 1} />
                   <TableCell className="font-mono text-sm text-muted-foreground">
@@ -174,11 +187,17 @@ export function PlanogramBranchesTable({
                     {branch.skuCount}
                   </TableCell>
                   <TableRowActions>
-                    <Button variant="outline" size="sm" asChild>
-                      <Link href={buildBranchPlanogramHref(branch.id, { view, q: query })}>
-                        Open
-                        <ChevronRight className="size-4" />
-                      </Link>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openBranch(branch.id);
+                      }}
+                    >
+                      Open
+                      <ChevronRight className="size-4" />
                     </Button>
                   </TableRowActions>
                 </TableRow>
@@ -189,6 +208,12 @@ export function PlanogramBranchesTable({
       {canManage ? (
         <ImportPlanogramDialog open={importing} onOpenChange={setImporting} />
       ) : null}
+      <LoadingModal
+        open={opening}
+        variant="minimal"
+        title="Opening planogram"
+        description="Please wait while we load this branch."
+      />
     </div>
   );
 }

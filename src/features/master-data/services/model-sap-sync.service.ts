@@ -14,9 +14,11 @@ import type { SkuStatus } from "@/lib/database/generated/prisma/client";
  * simply stops coming back, exactly like an inactive dealer.
  *
  * Syncs `description` (and `name`, which carries the same ItemName because the column is
- * NOT NULL), `status` (SAP Active → `active`, Inactive → `retired`) and `brand`. Series,
- * feature, resolution, size, SRP and CBM are ISMS-only classifications with no SAP
- * counterpart and are never touched — models created by a sync land with them unset.
+ * NOT NULL), `status` (SAP Active → `active`, Inactive → `retired`) and `brand`. Feature,
+ * resolution, size, SRP and CBM are ISMS-only and are never touched. Series is also
+ * ISMS-only: a sync does not create series rows, but a new or unlinked model is attached
+ * to an existing series when the SKU matches that series code. An already-set series is
+ * left alone.
  *
  * Runs before serial numbers in the sync registry: a serial cannot be stored without its
  * model, so syncing items first is what lets the same cron pass link them.
