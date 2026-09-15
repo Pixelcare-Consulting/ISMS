@@ -45,14 +45,14 @@ export function KpiCard({
           <span className="shrink-0 text-muted-foreground [&_svg]:size-4">{icon}</span>
         ) : null}
       </div>
-      <p
+      <div
         className={cn(
           "mt-1 text-2xl font-semibold tabular-nums",
           toneValueClass[tone],
         )}
       >
         {value}
-      </p>
+      </div>
       {hint ? (
         <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
       ) : null}

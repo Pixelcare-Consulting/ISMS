@@ -52,6 +52,63 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.39.2",
+    date: "2026-09-15",
+    releasedAt: "2026-09-15T09:30:00+08:00",
+    title: "Planogram prices and max qty",
+    highlights: [
+      "Planogram now shows the current model price and the date that price started",
+      "You can see and change max qty on each planogram row, including when you add a model",
+      "Allowed models uses the same table layout as Planogram so SKU, series, brand, price, and date are easier to scan",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Planogram and Allowed models show the current model price and the date it took effect, from the price you already set on Models",
+      },
+      {
+        type: "feature",
+        description:
+          "Max qty is visible on the planogram table and can be edited when you manage the branch, including a qty field when you add a model",
+      },
+      {
+        type: "improvement",
+        description:
+          "Allowed models uses the same table as Planogram, with search, sort, and striped rows",
+      },
+    ],
+  },
+  {
+    version: "0.39.1",
+    date: "2026-09-15",
+    releasedAt: "2026-09-15T09:01:00+08:00",
+    title: "Clearer Order Analytics filters",
+    highlights: [
+      "Order Analytics now uses a solid filter card for the branch, brand, Clear, and Proceed to order",
+      "Search to find a branch instead of scrolling a long list, then pick the brand on the card",
+      "If you only have one assigned branch, it is selected for you",
+      "Clear resets the brand (and the branch when you have more than one) so you can start over",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Order Analytics puts branch and brand on a filter card, with search to find a branch and Clear to start over",
+      },
+      {
+        type: "improvement",
+        description:
+          "Your assigned branch is selected automatically when you only have one, and stock figures appear as the same style of cards used on Orders",
+      },
+      {
+        type: "fix",
+        description:
+          "The branch picker no longer lists every branch before you type, so finding the right store is faster",
+      },
+    ],
+  },
+  {
     version: "0.39.0",
     date: "2026-09-14",
     releasedAt: "2026-09-14T13:30:00+08:00",

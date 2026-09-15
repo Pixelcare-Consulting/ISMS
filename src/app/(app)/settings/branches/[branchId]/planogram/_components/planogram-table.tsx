@@ -9,6 +9,7 @@ import {
   addPlanogramModelAction,
   listActiveModelsForPlanogramAction,
   removePlanogramModelAction,
+  updatePlanogramMaxQtyAction,
 } from "@/features/planogram/actions/planogram.actions";
 import type { PlanogramAddEmptyReason } from "@/features/planogram/services/planogram.service";
 import {
@@ -34,6 +35,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Table,
@@ -127,6 +130,7 @@ export function PlanogramTable({
     srp: (row) => row.model.srp,
     brand: (row) => row.model.brand?.name ?? null,
     effective: (row) => row.effectiveFrom ?? null,
+    maxQty: (row) => row.maxQty,
     stock: (row) => row.stockCount,
   });
 
@@ -141,7 +145,7 @@ export function PlanogramTable({
     [rows],
   );
 
-  const colCount = canManage ? 9 : 8;
+  const colCount = canManage ? 11 : 10;
 
   function handleRemove() {
     if (!deleting) return;
@@ -204,6 +208,7 @@ export function PlanogramTable({
                 <GlobalTableHead {...sort.sortProps("srp")}>SRP</GlobalTableHead>
                 <GlobalTableHead {...sort.sortProps("brand")}>Brand</GlobalTableHead>
                 <GlobalTableHead {...sort.sortProps("effective")}>Effective</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("maxQty")}>Max qty</GlobalTableHead>
                 <GlobalTableHead {...sort.sortProps("stock")}>Stock</GlobalTableHead>
                 <TableHead className="w-28">Units</TableHead>
                 {canManage ? <TableHead className="w-24" /> : null}
@@ -297,6 +302,15 @@ function PlanogramRowEditor({
         {row.effectiveFrom ?? "—"}
       </TableCell>
       <TableCell>
+        <MaxQtyCell
+          key={`${row.id}:${row.maxQty}`}
+          branchId={branchId}
+          planogramId={row.id}
+          maxQty={row.maxQty}
+          canManage={canManage}
+        />
+      </TableCell>
+      <TableCell>
         STK {row.stockCount} · DIT {row.ditCount}
       </TableCell>
       <TableCell>
@@ -312,6 +326,69 @@ function PlanogramRowEditor({
         />
       ) : null}
     </TableRow>
+  );
+}
+
+function MaxQtyCell({
+  branchId,
+  planogramId,
+  maxQty,
+  canManage,
+}: {
+  branchId: string;
+  planogramId: string;
+  maxQty: number;
+  canManage: boolean;
+}) {
+  const router = useRouter();
+  const [value, setValue] = useState(String(maxQty));
+  const [pending, startTransition] = useTransition();
+
+  function save() {
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isInteger(parsed) || parsed < 1) {
+      setValue(String(maxQty));
+      toast.error("Max quantity must be at least 1");
+      return;
+    }
+    if (parsed === maxQty) return;
+
+    startTransition(async () => {
+      const result = await updatePlanogramMaxQtyAction({
+        planogramId,
+        branchId,
+        maxQty: parsed,
+      });
+      if (result.error) {
+        toast.error(result.error);
+        setValue(String(maxQty));
+        return;
+      }
+      router.refresh();
+    });
+  }
+
+  if (!canManage) {
+    return <span className="tabular-nums">{maxQty}</span>;
+  }
+
+  return (
+    <Input
+      type="number"
+      min={1}
+      step={1}
+      className="h-8 w-16 tabular-nums"
+      value={value}
+      disabled={pending}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={save}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.currentTarget.blur();
+        }
+      }}
+      aria-label="Max qty"
+    />
   );
 }
 
@@ -332,6 +409,7 @@ function AddPlanogramDialog({
     { id: string; skuCode: string; name: string }[]
   >([]);
   const [modelId, setModelId] = useState("");
+  const [maxQty, setMaxQty] = useState("1");
   const [emptyReason, setEmptyReason] = useState<PlanogramAddEmptyReason | null>(
     null,
   );
@@ -363,11 +441,17 @@ function AddPlanogramDialog({
   }, [branchId]);
 
   function submit() {
+    const parsedQty = Number.parseInt(maxQty, 10);
+    if (!Number.isInteger(parsedQty) || parsedQty < 1) {
+      toast.error("Max quantity must be at least 1");
+      return;
+    }
+
     startTransition(async () => {
       const result = await addPlanogramModelAction({
         branchId,
         modelId,
-        maxQty: 1,
+        maxQty: parsedQty,
         daysThreshold: 30,
       });
       if ("emptyReason" in result && result.emptyReason) {
@@ -403,6 +487,18 @@ function AddPlanogramDialog({
                 placeholder="Select model…"
                 searchPlaceholder="Search models…"
               />
+              <div className="space-y-2">
+                <Label htmlFor="add-planogram-max-qty">Max qty</Label>
+                <Input
+                  id="add-planogram-max-qty"
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={maxQty}
+                  onChange={(e) => setMaxQty(e.target.value)}
+                  disabled={pending}
+                />
+              </div>
             </>
           ) : (
             <p className="text-sm text-muted-foreground">

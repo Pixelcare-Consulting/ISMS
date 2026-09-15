@@ -35,11 +35,11 @@ import {
   getOrderAnalyticsAction,
   listOrderAnalyticsBranchesAction,
 } from "@/features/orders/actions/order-analytics.actions";
-import { OrderSummaryTable } from "@/features/orders/components/order-summary-table";
 import type {
   OrderAnalyticsBrand,
   OrderAnalyticsPayload,
 } from "@/features/orders/types/order-analytics";
+import { GlobalKpiCards } from "@/lib/kpi-cards";
 import { formatPeso } from "@/utils/format-currency";
 import { cn } from "@/utils/cn";
 
@@ -67,6 +67,18 @@ function resolveBrandId(
   return "";
 }
 
+function persistBranch(orderType: BranchOrderType, nextBranchId: string) {
+  sessionStorage.setItem(analyticsBranchStorageKey(orderType), nextBranchId);
+}
+
+function persistBrand(orderType: BranchOrderType, nextBrandId: string) {
+  if (!nextBrandId) {
+    sessionStorage.removeItem(analyticsBrandStorageKey(orderType));
+    return;
+  }
+  sessionStorage.setItem(analyticsBrandStorageKey(orderType), nextBrandId);
+}
+
 export function OrderAnalyticsPanel({ orderType }: { orderType: BranchOrderType }) {
   const { canEdit, openCreate } = useOrdersCreateWorkspace();
   const [branches, setBranches] = useState<
@@ -79,61 +91,84 @@ export function OrderAnalyticsPanel({ orderType }: { orderType: BranchOrderType 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [branchQuery, setBranchQuery] = useState("");
   const [pendingBranchId, setPendingBranchId] = useState("");
-  const [pendingBrandId, setPendingBrandId] = useState("");
-  const [dialogBrands, setDialogBrands] = useState<OrderAnalyticsBrand[]>([]);
-  const [dialogBrandsLoading, setDialogBrandsLoading] = useState(false);
+  const [cardBrands, setCardBrands] = useState<OrderAnalyticsBrand[]>([]);
+  const [cardBrandsLoading, setCardBrandsLoading] = useState(false);
   const brandsRequestId = useRef(0);
 
-  function persistSelection(nextBranchId: string, nextBrandId: string) {
-    sessionStorage.setItem(analyticsBranchStorageKey(orderType), nextBranchId);
-    sessionStorage.setItem(analyticsBrandStorageKey(orderType), nextBrandId);
-  }
+  const hasMultipleBranches = branches.length > 1;
+  const hasSingleAssignedBranch = branches.length === 1;
 
-  function applySelection(nextBranchId: string, nextBrandId: string) {
-    if (nextBranchId !== branchId || nextBrandId !== brandId) {
+  function assignBrand(nextBrandId: string) {
+    if (nextBrandId !== brandId) {
       setData(null);
     }
-    setBranchId(nextBranchId);
     setBrandId(nextBrandId);
-    persistSelection(nextBranchId, nextBrandId);
-    setPickerOpen(false);
-    setBranchQuery("");
+    persistBrand(orderType, nextBrandId);
   }
 
-  async function loadDialogBrands(nextBranchId: string, preferredBrandId: string) {
+  async function loadCardBrands(nextBranchId: string, preferredBrandId: string | null) {
     const requestId = ++brandsRequestId.current;
-    setDialogBrandsLoading(true);
+    setCardBrandsLoading(true);
     const result = await getOrderAnalyticsAction({
       branchId: nextBranchId,
       brandId: null,
       orderType,
     });
     if (requestId !== brandsRequestId.current) return;
-    setDialogBrandsLoading(false);
+    setCardBrandsLoading(false);
     if (result.error || !result.data) {
       toast.error(result.error ?? "Failed to load brands");
-      setDialogBrands([]);
-      setPendingBrandId("");
+      setCardBrands([]);
+      assignBrand("");
       return;
     }
     const brands = result.data.brands;
-    setDialogBrands(brands);
-    setPendingBrandId(resolveBrandId(brands, preferredBrandId || null));
+    setCardBrands(brands);
+    assignBrand(resolveBrandId(brands, preferredBrandId));
+  }
+
+  function applyPendingBranch() {
+    if (!pendingBranchId) return;
+    if (pendingBranchId !== branchId) {
+      setData(null);
+      setBrandId("");
+      persistBrand(orderType, "");
+      setCardBrands([]);
+      setBranchId(pendingBranchId);
+      persistBranch(orderType, pendingBranchId);
+      void loadCardBrands(pendingBranchId, null);
+    }
+    setPickerOpen(false);
+    setBranchQuery("");
+  }
+
+  function closePicker() {
+    setPickerOpen(false);
+    setBranchQuery("");
+    setPendingBranchId(branchId);
   }
 
   function openPicker() {
     setPendingBranchId(branchId);
-    setPendingBrandId(brandId);
     setBranchQuery("");
     setPickerOpen(true);
-    if (data && data.branchId === branchId) {
-      setDialogBrands(data.brands);
+  }
+
+  function clearFilters() {
+    setData(null);
+    setBrandId("");
+    persistBrand(orderType, "");
+    if (hasMultipleBranches) {
+      setBranchId("");
+      setPendingBranchId("");
+      setCardBrands([]);
+      sessionStorage.removeItem(analyticsBranchStorageKey(orderType));
       return;
     }
-    if (branchId) {
-      void loadDialogBrands(branchId, brandId);
+    if (hasSingleAssignedBranch) {
+      void loadCardBrands(branches[0].id, null);
     } else {
-      setDialogBrands([]);
+      setCardBrands([]);
     }
   }
 
@@ -154,23 +189,28 @@ export function OrderAnalyticsPanel({ orderType }: { orderType: BranchOrderType 
       const storedBranchValid = storedBranch
         ? rows.some((row) => row.id === storedBranch)
         : false;
+
+      if (rows.length === 0) {
+        setBranchesReady(true);
+        return;
+      }
+
       const initialBranch =
-        rows.length === 1 ? rows[0].id : storedBranchValid && storedBranch ? storedBranch : "";
+        rows.length === 1
+          ? rows[0].id
+          : storedBranchValid && storedBranch
+            ? storedBranch
+            : "";
 
       if (!initialBranch) {
-        if (rows.length > 1) setPickerOpen(true);
+        setPickerOpen(true);
         setBranchesReady(true);
         return;
       }
 
-      if (storedBrand) {
-        setBranchId(initialBranch);
-        setBrandId(storedBrand);
-        setPendingBranchId(initialBranch);
-        setPendingBrandId(storedBrand);
-        setBranchesReady(true);
-        return;
-      }
+      setBranchId(initialBranch);
+      setPendingBranchId(initialBranch);
+      persistBranch(orderType, initialBranch);
 
       const result = await getOrderAnalyticsAction({
         branchId: initialBranch,
@@ -178,20 +218,18 @@ export function OrderAnalyticsPanel({ orderType }: { orderType: BranchOrderType 
         orderType,
       });
       if (cancelled) return;
-      const brands = result.data?.brands ?? [];
-      const initialBrand = resolveBrandId(brands, null);
-      setDialogBrands(brands);
-      setPendingBranchId(initialBranch);
-      if (initialBrand) {
-        setBranchId(initialBranch);
-        setBrandId(initialBrand);
-        setPendingBrandId(initialBrand);
-        sessionStorage.setItem(analyticsBranchStorageKey(orderType), initialBranch);
-        sessionStorage.setItem(analyticsBrandStorageKey(orderType), initialBrand);
-      } else {
-        setPendingBrandId("");
-        setPickerOpen(true);
+      if (result.error || !result.data) {
+        toast.error(result.error ?? "Failed to load brands");
+        setCardBrands([]);
+        setBranchesReady(true);
+        return;
       }
+
+      const brands = result.data.brands;
+      setCardBrands(brands);
+      const initialBrand = resolveBrandId(brands, storedBrand);
+      setBrandId(initialBrand);
+      persistBrand(orderType, initialBrand);
       setBranchesReady(true);
     });
 
@@ -219,20 +257,18 @@ export function OrderAnalyticsPanel({ orderType }: { orderType: BranchOrderType 
       if (!resolvedBrandId) {
         setData(null);
         setBrandId("");
-        setPendingBranchId(branchId);
-        setPendingBrandId("");
-        setDialogBrands(result.data.brands);
-        sessionStorage.removeItem(analyticsBrandStorageKey(orderType));
-        setPickerOpen(true);
+        persistBrand(orderType, "");
+        setCardBrands(result.data.brands);
         return;
       }
       if (resolvedBrandId !== brandId) {
         setBrandId(resolvedBrandId);
-        sessionStorage.setItem(analyticsBranchStorageKey(orderType), branchId);
-        sessionStorage.setItem(analyticsBrandStorageKey(orderType), resolvedBrandId);
+        persistBranch(orderType, branchId);
+        persistBrand(orderType, resolvedBrandId);
         return;
       }
 
+      setCardBrands(result.data.brands);
       setData(result.data);
     });
     return () => {
@@ -240,29 +276,28 @@ export function OrderAnalyticsPanel({ orderType }: { orderType: BranchOrderType 
     };
   }, [branchId, brandId, orderType]);
 
-  const loading =
-    !branchesReady ||
-    Boolean(
-      branchId &&
-        brandId &&
-        (data == null || data.branchId !== branchId || data.brandId !== brandId),
-    );
+  const analyticsLoading = Boolean(
+    branchId &&
+      brandId &&
+      (data == null || data.branchId !== branchId || data.brandId !== brandId),
+  );
 
   const selectedBranch = branches.find((b) => b.id === branchId);
   const selectedBrandName =
     data?.brands.find((brand) => brand.id === brandId)?.name ??
-    dialogBrands.find((brand) => brand.id === brandId)?.name ??
+    cardBrands.find((brand) => brand.id === brandId)?.name ??
     null;
 
+  const searchQuery = branchQuery.trim();
   const filteredBranches = useMemo(() => {
-    const query = branchQuery.trim().toLowerCase();
-    if (!query) return branches;
+    const query = searchQuery.toLowerCase();
+    if (!query) return [];
     return branches.filter((branch) => branch.name.toLowerCase().includes(query));
-  }, [branches, branchQuery]);
+  }, [branches, searchQuery]);
 
   const brandOptions = useMemo(
-    () => dialogBrands.map((brand) => ({ id: brand.id, label: brand.name })),
-    [dialogBrands],
+    () => cardBrands.map((brand) => ({ id: brand.id, label: brand.name })),
+    [cardBrands],
   );
 
   const analyticsLines = data?.lines ?? [];
@@ -292,84 +327,96 @@ export function OrderAnalyticsPanel({ orderType }: { orderType: BranchOrderType 
     );
   }, [data]);
 
-  function selectPendingBranch(nextId: string) {
-    if (nextId === pendingBranchId) return;
-    setPendingBranchId(nextId);
-    setPendingBrandId("");
-    setDialogBrands([]);
-    void loadDialogBrands(nextId, "");
-  }
-
   const selectionApplied = Boolean(branchId && brandId);
+  const canClear = Boolean(brandId || (branchId && hasMultipleBranches));
+
+  const heading = (() => {
+    if (branchesReady && branches.length === 0) {
+      return "No branch in your area of responsibility";
+    }
+    if (branchId) {
+      return selectedBranch?.name ?? data?.branchName ?? "Select a branch";
+    }
+    return "Select a branch";
+  })();
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 space-y-1">
-          {selectionApplied ? (
-            <>
-              <div className="flex flex-wrap items-baseline gap-2">
-                <h2 className="truncate text-2xl font-semibold tracking-tight sm:text-3xl">
-                  {selectedBranch?.name ?? data?.branchName}
-                </h2>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 shrink-0 px-2 text-muted-foreground"
-                  onClick={openPicker}
-                >
-                  Change
-                </Button>
-              </div>
-              {selectedBrandName ? (
-                <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
-                  {selectedBrandName}
-                </p>
-              ) : null}
-            </>
-          ) : (
-            <div className="flex flex-wrap items-baseline gap-2">
-              <h2 className="text-xl font-semibold text-muted-foreground">
-                Select a branch and brand
-              </h2>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-8 shrink-0 px-2"
-                onClick={openPicker}
-              >
+      <div className="rounded-xl border bg-card p-4 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 space-y-1">
+            <h2
+              className={cn(
+                "truncate text-2xl font-semibold tracking-tight sm:text-3xl",
+                !branchId && "text-muted-foreground",
+              )}
+            >
+              {heading}
+            </h2>
+            {selectedBrandName ? (
+              <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+                {selectedBrandName}
+              </p>
+            ) : null}
+          </div>
+          <div className="flex min-w-0 flex-wrap items-end gap-2">
+            <div className="w-56 min-w-44">
+              <SearchableSelect
+                label="Brand"
+                options={brandOptions}
+                value={brandId}
+                onChange={assignBrand}
+                placeholder={
+                  !branchId
+                    ? "Choose a branch first"
+                    : cardBrandsLoading
+                      ? "Loading brands…"
+                      : "Select brand…"
+                }
+                searchPlaceholder="Search brands…"
+                emptyMessage="No brands on this planogram."
+                disabled={!branchId || cardBrandsLoading}
+              />
+            </div>
+            {hasMultipleBranches ? (
+              <Button type="button" variant="outline" onClick={openPicker}>
                 Change
               </Button>
-            </div>
-          )}
+            ) : null}
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!canClear}
+              onClick={clearFilters}
+            >
+              Clear
+            </Button>
+            {canEdit ? (
+              <Button
+                disabled={!selectionApplied}
+                onClick={() =>
+                  openCreate({
+                    dealerId: selectedBranch?.dealerId ?? data?.dealerId ?? undefined,
+                    branchId,
+                    brandId: brandId || undefined,
+                  })
+                }
+              >
+                Proceed to order
+              </Button>
+            ) : null}
+          </div>
         </div>
-        {canEdit ? (
-          <Button
-            disabled={!selectionApplied}
-            onClick={() =>
-              openCreate({
-                dealerId: selectedBranch?.dealerId ?? data?.dealerId ?? undefined,
-                branchId,
-                brandId: brandId || undefined,
-              })
-            }
-          >
-            Proceed to order
-          </Button>
-        ) : null}
       </div>
 
       <Dialog
         open={pickerOpen}
         onOpenChange={(open) => {
-          setPickerOpen(open);
-          if (!open) {
-            setBranchQuery("");
-            setPendingBranchId(branchId);
-            setPendingBrandId(brandId);
+          if (open) {
+            openPicker();
+            return;
           }
+          closePicker();
         }}
       >
         <DialogContent className="flex max-h-[min(36rem,calc(100svh-2rem))] flex-col gap-0 overflow-hidden p-0">
@@ -384,9 +431,13 @@ export function OrderAnalyticsPanel({ orderType }: { orderType: BranchOrderType 
               aria-label="Search branches"
             />
             <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border">
-              {filteredBranches.length === 0 ? (
+              {!searchQuery ? (
                 <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-                  No branches in your area.
+                  Type to search branches
+                </p>
+              ) : filteredBranches.length === 0 ? (
+                <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+                  No branches match your search.
                 </p>
               ) : (
                 <ul className="divide-y">
@@ -398,7 +449,7 @@ export function OrderAnalyticsPanel({ orderType }: { orderType: BranchOrderType 
                           "flex w-full px-3 py-2.5 text-left text-sm hover:bg-muted/60",
                           branch.id === pendingBranchId && "bg-muted font-medium",
                         )}
-                        onClick={() => selectPendingBranch(branch.id)}
+                        onClick={() => setPendingBranchId(branch.id)}
                       >
                         {branch.name}
                       </button>
@@ -407,42 +458,12 @@ export function OrderAnalyticsPanel({ orderType }: { orderType: BranchOrderType 
                 </ul>
               )}
             </div>
-            <SearchableSelect
-              label="Brand"
-              options={brandOptions}
-              value={pendingBrandId}
-              onChange={setPendingBrandId}
-              placeholder={
-                !pendingBranchId
-                  ? "Choose a branch first"
-                  : dialogBrandsLoading
-                    ? "Loading brands…"
-                    : "Select brand…"
-              }
-              searchPlaceholder="Search brands…"
-              emptyMessage="No brands on this planogram."
-              disabled={!pendingBranchId || dialogBrandsLoading}
-              popoverClassName="z-70"
-            />
           </div>
           <DialogFooter className="shrink-0 border-t px-4 py-3 sm:px-6">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setPickerOpen(false);
-                setBranchQuery("");
-                setPendingBranchId(branchId);
-                setPendingBrandId(brandId);
-              }}
-            >
+            <Button type="button" variant="outline" onClick={closePicker}>
               Cancel
             </Button>
-            <Button
-              type="button"
-              disabled={!pendingBranchId || !pendingBrandId || dialogBrandsLoading}
-              onClick={() => applySelection(pendingBranchId, pendingBrandId)}
-            >
+            <Button type="button" disabled={!pendingBranchId} onClick={applyPendingBranch}>
               Apply
             </Button>
           </DialogFooter>
@@ -450,34 +471,47 @@ export function OrderAnalyticsPanel({ orderType }: { orderType: BranchOrderType 
       </Dialog>
 
       {data && brandId ? (
-        <OrderSummaryTable
-          className="max-w-none"
-          rows={[
-            { label: "DII", value: formatDiiValue(data.summary.computedDii) },
+        <GlobalKpiCards
+          items={[
             {
-              label: "INVENTORY",
+              key: "dii",
+              label: "DII",
+              value: formatDiiValue(data.summary.computedDii),
+            },
+            {
+              key: "inventory",
+              label: "Inventory",
               value: (
-                <InventoryStatusChips
-                  inventory={[
-                    { code: "STK", count: data.summary.stkCount },
-                    { code: "DIT", count: data.summary.ditCount },
-                  ]}
-                />
+                <span className="inline-flex text-sm font-medium">
+                  <InventoryStatusChips
+                    inventory={[
+                      { code: "STK", count: data.summary.stkCount },
+                      { code: "DIT", count: data.summary.ditCount },
+                    ]}
+                  />
+                </span>
               ),
             },
             {
-              label: "INVENTORY AMT.",
+              key: "inventory-amt",
+              label: "Inventory Amt.",
               value: formatPeso(data.summary.inventoryAmount),
             },
           ]}
         />
       ) : null}
 
-      {loading ? (
+      {!branchesReady || analyticsLoading ? (
         <p className="text-sm text-muted-foreground">Loading analytics…</p>
-      ) : !selectionApplied ? (
+      ) : !branchId ? (
         <p className="text-sm text-muted-foreground">
-          Choose a branch and brand to see stock, sales, and suggested quantities.
+          {branches.length === 0
+            ? "No branch in your area. Assign an AOR before reviewing analytics."
+            : "Search for a branch, then choose a brand to see stock, sales, and suggested quantities."}
+        </p>
+      ) : !brandId ? (
+        <p className="text-sm text-muted-foreground">
+          Select a brand to see stock, sales, and suggested quantities.
         </p>
       ) : !data || data.lines.length === 0 ? (
         <p className="text-sm text-muted-foreground">

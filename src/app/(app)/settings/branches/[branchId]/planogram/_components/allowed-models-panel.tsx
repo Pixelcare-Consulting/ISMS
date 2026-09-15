@@ -3,29 +3,64 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { ChevronsUpDown } from "lucide-react";
 
 import {
   addAllowedModelAction,
   listModelCandidatesForAllowedListAction,
   removeAllowedModelAction,
 } from "@/features/planogram/actions/planogram.actions";
-import { ChevronsUpDown } from "lucide-react";
-
-import { DeleteConfirmDialog, TableEmptyRow } from "@/components/data-table";
+import {
+  AppDataTable,
+  AppDataTableBody,
+  DeleteConfirmDialog,
+  TableEmptyRow,
+  TableIndexCell,
+  TableIndexHead,
+  TableRowActions,
+  TableSearchBar,
+  TableStatusBadge,
+  uniqueSearchSuggestions,
+} from "@/components/data-table";
 import { GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { matchesTableSearch } from "@/utils/match-table-search";
 import { cn } from "@/utils/cn";
 
 interface AllowedModelRow {
   id: string;
   modelId: string;
-  model: { id: string; skuCode: string; name: string; status: string };
+  effectiveFrom?: string | null;
+  model: {
+    id: string;
+    skuCode: string;
+    name: string;
+    status: string;
+    srp: number | null;
+    series: string | null;
+    brand: { name: string } | null;
+  };
+}
+
+function formatPeso(value: number | null) {
+  if (value == null) return "—";
+  return new Intl.NumberFormat("en-PH", {
+    style: "currency",
+    currency: "PHP",
+    maximumFractionDigits: 0,
+  }).format(value);
 }
 
 export function AllowedModelsPanel({
@@ -52,7 +87,12 @@ export function AllowedModelsPanel({
   const filtered = useMemo(
     () =>
       rows.filter((row) =>
-        matchesTableSearch(query, [row.model.skuCode, row.model.name]),
+        matchesTableSearch(query, [
+          row.model.skuCode,
+          row.model.name,
+          row.model.series,
+          row.model.brand?.name,
+        ]),
       ),
     [rows, query],
   );
@@ -60,8 +100,23 @@ export function AllowedModelsPanel({
   const sort = useClientTableSort(filtered, {
     sku: (row) => row.model.skuCode,
     model: (row) => row.model.name,
+    series: (row) => row.model.series,
+    srp: (row) => row.model.srp,
+    brand: (row) => row.model.brand?.name ?? null,
+    effective: (row) => row.effectiveFrom ?? null,
     status: (row) => row.model.status,
   });
+
+  const suggestions = useMemo(
+    () =>
+      uniqueSearchSuggestions(
+        rows.map((row) => row.model.skuCode),
+        rows.map((row) => row.model.name),
+        rows.map((row) => row.model.series),
+        rows.map((row) => row.model.brand?.name),
+      ),
+    [rows],
+  );
 
   const filteredCandidates = useMemo(
     () =>
@@ -72,6 +127,8 @@ export function AllowedModelsPanel({
   const allFilteredSelected =
     filteredCandidates.length > 0 &&
     filteredCandidates.every((c) => selectedIds.has(c.id));
+
+  const colCount = canManage ? 9 : 8;
 
   async function loadCandidates() {
     setLoadingCandidates(true);
@@ -146,156 +203,183 @@ export function AllowedModelsPanel({
         not affected.
       </p>
 
-      {canManage ? (
-        <div className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center">
-          {candidates.length === 0 ? (
-            <Button
-              variant="outline"
-              type="button"
-              disabled={loadingCandidates}
-              onClick={loadCandidates}
-            >
-              Load models
-            </Button>
-          ) : (
-            <>
-              <Popover
-                modal
-                open={dropdownOpen}
-                onOpenChange={(next) => {
-                  setDropdownOpen(next);
-                  if (!next) setCandidateQuery("");
-                }}
-              >
-                <PopoverTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={dropdownOpen}
-                    className="h-9 w-full justify-between border-input bg-background font-normal shadow-sm sm:max-w-sm"
-                  >
-                    <span
-                      className={cn(
-                        "truncate text-left",
-                        selectedIds.size === 0 && "text-muted-foreground",
-                      )}
-                    >
-                      {selectedIds.size > 0
-                        ? `${selectedIds.size} model${selectedIds.size === 1 ? "" : "s"} selected`
-                        : "Select models…"}
-                    </span>
-                    <ChevronsUpDown className="size-4 shrink-0 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent
-                  className="w-(--radix-popover-trigger-width) p-0"
-                  align="start"
-                >
-                  <div className="border-b p-2">
-                    <Input
-                      placeholder="Search models…"
-                      value={candidateQuery}
-                      onChange={(e) => setCandidateQuery(e.target.value)}
-                      className="h-8"
-                    />
-                  </div>
-                  <div className="flex items-center gap-2 border-b bg-muted/30 px-3 py-2">
-                    <Checkbox
-                      checked={allFilteredSelected}
-                      onCheckedChange={(checked) => toggleSelectAllFiltered(Boolean(checked))}
-                      aria-label="Select all filtered models"
-                    />
-                    <Label className="text-xs text-muted-foreground">
-                      Select all ({filteredCandidates.length})
-                    </Label>
-                  </div>
-                  <div className="max-h-64 overflow-y-auto">
-                    {filteredCandidates.length === 0 ? (
-                      <p className="px-3 py-4 text-sm text-muted-foreground">
-                        No matching models.
-                      </p>
-                    ) : (
-                      filteredCandidates.map((c) => (
-                        <label
-                          key={c.id}
-                          className="flex cursor-pointer items-center gap-2 border-b px-3 py-2 text-sm last:border-b-0 hover:bg-muted/40"
-                        >
-                          <Checkbox
-                            checked={selectedIds.has(c.id)}
-                            onCheckedChange={(checked) => toggleCandidate(c.id, Boolean(checked))}
-                            aria-label={`Select ${c.skuCode}`}
-                          />
-                          <span className="min-w-0 flex-1 truncate">
-                            <span className="font-mono">{c.skuCode}</span> — {c.name}
-                          </span>
-                        </label>
-                      ))
-                    )}
-                  </div>
-                </PopoverContent>
-              </Popover>
-
-              <Button disabled={pending || selectedIds.size === 0} onClick={handleAdd}>
-                Add {selectedIds.size > 0 ? selectedIds.size : ""} to allow-list
-              </Button>
-            </>
-          )}
-        </div>
-      ) : null}
-
-      <div className="max-w-sm">
-        <Input
-          placeholder="Search by SKU or model name…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-      </div>
-
-      <Table>
-        <TableHeader>
-          <TableRow className="bg-muted/30 hover:bg-muted/30">
-            <GlobalTableHead {...sort.sortProps("sku")}>SKU</GlobalTableHead>
-            <GlobalTableHead {...sort.sortProps("model")}>Model</GlobalTableHead>
-            <GlobalTableHead {...sort.sortProps("status")}>Status</GlobalTableHead>
-            {canManage ? <TableHead className="w-24" /> : null}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {sort.sorted.length === 0 ? (
-            <TableEmptyRow
-              colSpan={canManage ? 4 : 3}
-              message={
-                rows.length === 0
-                  ? "No allowed models configured for this branch yet."
-                  : "No models match your search."
-              }
+      <AppDataTable
+        title="Allowed models"
+        shellHeader={
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <TableSearchBar
+              value={query}
+              onChange={setQuery}
+              placeholder="Search by SKU, model, series…"
+              suggestions={suggestions}
+              className="sm:max-w-sm"
             />
-          ) : (
-            sort.sorted.map((row) => (
-              <TableRow key={row.id}>
-                <TableCell className="font-mono text-sm">{row.model.skuCode}</TableCell>
-                <TableCell>{row.model.name}</TableCell>
-                <TableCell className="text-sm text-muted-foreground">
-                  {row.model.status}
-                </TableCell>
-                {canManage ? (
-                  <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={pending}
-                      onClick={() => setRemoving(row)}
+            {canManage ? (
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                {candidates.length === 0 ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    type="button"
+                    disabled={loadingCandidates}
+                    onClick={loadCandidates}
+                  >
+                    Load models
+                  </Button>
+                ) : (
+                  <>
+                    <Popover
+                      modal
+                      open={dropdownOpen}
+                      onOpenChange={(next) => {
+                        setDropdownOpen(next);
+                        if (!next) setCandidateQuery("");
+                      }}
                     >
-                      Remove
+                      <PopoverTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          role="combobox"
+                          aria-expanded={dropdownOpen}
+                          className="h-8 justify-between border-input bg-background font-normal shadow-sm sm:min-w-56"
+                        >
+                          <span
+                            className={cn(
+                              "truncate text-left",
+                              selectedIds.size === 0 && "text-muted-foreground",
+                            )}
+                          >
+                            {selectedIds.size > 0
+                              ? `${selectedIds.size} model${selectedIds.size === 1 ? "" : "s"} selected`
+                              : "Select models…"}
+                          </span>
+                          <ChevronsUpDown className="size-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent
+                        className="w-(--radix-popover-trigger-width) p-0"
+                        align="start"
+                      >
+                        <div className="border-b p-2">
+                          <Input
+                            placeholder="Search models…"
+                            value={candidateQuery}
+                            onChange={(e) => setCandidateQuery(e.target.value)}
+                            className="h-8"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2 border-b bg-muted/30 px-3 py-2">
+                          <Checkbox
+                            checked={allFilteredSelected}
+                            onCheckedChange={(checked) =>
+                              toggleSelectAllFiltered(Boolean(checked))
+                            }
+                            aria-label="Select all filtered models"
+                          />
+                          <Label className="text-xs text-muted-foreground">
+                            Select all ({filteredCandidates.length})
+                          </Label>
+                        </div>
+                        <div className="max-h-64 overflow-y-auto">
+                          {filteredCandidates.length === 0 ? (
+                            <p className="px-3 py-4 text-sm text-muted-foreground">
+                              No matching models.
+                            </p>
+                          ) : (
+                            filteredCandidates.map((c) => (
+                              <label
+                                key={c.id}
+                                className="flex cursor-pointer items-center gap-2 border-b px-3 py-2 text-sm last:border-b-0 hover:bg-muted/40"
+                              >
+                                <Checkbox
+                                  checked={selectedIds.has(c.id)}
+                                  onCheckedChange={(checked) =>
+                                    toggleCandidate(c.id, Boolean(checked))
+                                  }
+                                  aria-label={`Select ${c.skuCode}`}
+                                />
+                                <span className="min-w-0 flex-1 truncate">
+                                  <span className="font-mono">{c.skuCode}</span> — {c.name}
+                                </span>
+                              </label>
+                            ))
+                          )}
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                    <Button
+                      size="sm"
+                      disabled={pending || selectedIds.size === 0}
+                      onClick={handleAdd}
+                    >
+                      Add {selectedIds.size > 0 ? selectedIds.size : ""} to allow-list
                     </Button>
-                  </TableCell>
-                ) : null}
+                  </>
+                )}
+              </div>
+            ) : null}
+          </div>
+        }
+      >
+        <AppDataTableBody>
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/30 hover:bg-muted/30">
+                <TableIndexHead />
+                <GlobalTableHead {...sort.sortProps("sku")}>SKU</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("model")}>Model</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("series")}>Series</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("srp")}>SRP</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("brand")}>Brand</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("effective")}>Effective</GlobalTableHead>
+                <GlobalTableHead {...sort.sortProps("status")}>Status</GlobalTableHead>
+                {canManage ? <TableHead className="w-24" /> : null}
               </TableRow>
-            ))
-          )}
-        </TableBody>
-      </Table>
+            </TableHeader>
+            <TableBody>
+              {sort.sorted.length === 0 ? (
+                <TableEmptyRow
+                  colSpan={colCount}
+                  message={
+                    rows.length === 0
+                      ? "No allowed models configured for this branch yet."
+                      : "No models match your search."
+                  }
+                />
+              ) : (
+                sort.sorted.map((row, index) => (
+                  <TableRow
+                    key={row.id}
+                    className={cn(index % 2 === 1 && "bg-table-stripe")}
+                  >
+                    <TableIndexCell index={index + 1} />
+                    <TableCell className="font-mono text-sm">{row.model.skuCode}</TableCell>
+                    <TableCell>{row.model.name}</TableCell>
+                    <TableCell>{row.model.series ?? "—"}</TableCell>
+                    <TableCell className="tabular-nums">{formatPeso(row.model.srp)}</TableCell>
+                    <TableCell>{row.model.brand?.name ?? "—"}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {row.effectiveFrom ?? "—"}
+                    </TableCell>
+                    <TableCell>
+                      <TableStatusBadge status={row.model.status} />
+                    </TableCell>
+                    {canManage ? (
+                      <TableRowActions
+                        onDelete={() => setRemoving(row)}
+                        deleteDisabled={pending}
+                        deleteTitle="Remove from allow-list"
+                      />
+                    ) : null}
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </AppDataTableBody>
+      </AppDataTable>
 
       <DeleteConfirmDialog
         open={Boolean(removing)}

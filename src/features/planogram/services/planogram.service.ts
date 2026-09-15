@@ -1,5 +1,7 @@
 import { auditService } from "@/features/audit/services/audit.service";
 import { masterDataRepository } from "@/features/master-data/repositories/master-data.repository";
+import { formatPeriodDate } from "@/features/master-data/types/client-price-list";
+import { pickActivePriceListRow } from "@/features/master-data/utils/resolve-price-list";
 import type {
   PlanogramIndexBranch,
   PlanogramIndexKpis,
@@ -63,6 +65,27 @@ function formatSrp(value: { toNumber?: () => number } | number | null | undefine
   return Number.isFinite(num) ? num : null;
 }
 
+type PriceListPeriodRow = {
+  amount: { toNumber?: () => number } | number;
+  periodStart: Date | string;
+  periodEnd: Date | string;
+  packageTypeId: string | null;
+};
+
+function resolveActivePriceList(priceLists: PriceListPeriodRow[] | undefined) {
+  const rows = (priceLists ?? []).map((row) => ({
+    amount: formatSrp(row.amount),
+    periodStart: formatPeriodDate(row.periodStart),
+    periodEnd: formatPeriodDate(row.periodEnd),
+    packageTypeId: row.packageTypeId,
+  }));
+  const active = pickActivePriceListRow(rows, (row) => row);
+  return {
+    srp: active?.amount ?? null,
+    effectiveFrom: active?.periodStart ?? null,
+  };
+}
+
 export const planogramService = {
   async getBranchSummary(
     tenantId: string,
@@ -110,37 +133,37 @@ export const planogramService = {
         branchId: string;
         modelId: string;
         maxQty: number;
-        effectiveFrom: Date | null;
         model: {
           id: string;
           skuCode: string;
           name: string;
           status: string;
-          srp: { toNumber?: () => number } | null;
           brand: { name: string } | null;
           series: { name: string } | null;
+          priceLists?: PriceListPeriodRow[];
         };
-      }) => ({
-        id: entry.id,
-        branchId: entry.branchId,
-        modelId: entry.modelId,
-        maxQty: entry.maxQty,
-        effectiveFrom: entry.effectiveFrom
-          ? entry.effectiveFrom.toISOString().slice(0, 10)
-          : null,
-        stockCount: stockByModel.get(entry.modelId) ?? 0,
-        ditCount: ditByModel.get(entry.modelId) ?? 0,
-        daysThreshold: milByModel.get(entry.modelId) ?? null,
-        model: {
-          id: entry.model.id,
-          skuCode: entry.model.skuCode,
-          name: entry.model.name,
-          status: entry.model.status,
-          srp: formatSrp(entry.model.srp),
-          series: entry.model.series?.name ?? null,
-          brand: entry.model.brand,
-        },
-      }),
+      }) => {
+        const price = resolveActivePriceList(entry.model.priceLists);
+        return {
+          id: entry.id,
+          branchId: entry.branchId,
+          modelId: entry.modelId,
+          maxQty: entry.maxQty,
+          effectiveFrom: price.effectiveFrom,
+          stockCount: stockByModel.get(entry.modelId) ?? 0,
+          ditCount: ditByModel.get(entry.modelId) ?? 0,
+          daysThreshold: milByModel.get(entry.modelId) ?? null,
+          model: {
+            id: entry.model.id,
+            skuCode: entry.model.skuCode,
+            name: entry.model.name,
+            status: entry.model.status,
+            srp: price.srp,
+            series: entry.model.series?.name ?? null,
+            brand: entry.model.brand,
+          },
+        };
+      },
     );
   },
 
@@ -357,11 +380,23 @@ export const planogramService = {
 
   async listAllowedModelsForBranch(tenantId: string, branchId: string) {
     const rows = await planogramRepository.listAllowedModelsForBranch(tenantId, branchId);
-    return rows.map((r) => ({
-      id: r.id,
-      modelId: r.modelId,
-      model: r.model,
-    }));
+    return rows.map((r) => {
+      const price = resolveActivePriceList(r.model.priceLists);
+      return {
+        id: r.id,
+        modelId: r.modelId,
+        effectiveFrom: price.effectiveFrom,
+        model: {
+          id: r.model.id,
+          skuCode: r.model.skuCode,
+          name: r.model.name,
+          status: r.model.status,
+          srp: price.srp,
+          series: r.model.series?.name ?? null,
+          brand: r.model.brand,
+        },
+      };
+    });
   },
 
   async addAllowedModel(input: {

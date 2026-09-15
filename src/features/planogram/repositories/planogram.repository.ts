@@ -15,6 +15,15 @@ export const planogramRepository = {
             srp: true,
             brand: { select: { name: true } },
             series: { select: { name: true } },
+            priceLists: {
+              where: { packageTypeId: null },
+              select: {
+                amount: true,
+                periodStart: true,
+                periodEnd: true,
+                packageTypeId: true,
+              },
+            },
           },
         },
       },
@@ -465,7 +474,23 @@ export const planogramRepository = {
       where: { tenantId, branchId },
       include: {
         model: {
-          select: { id: true, skuCode: true, name: true, status: true },
+          select: {
+            id: true,
+            skuCode: true,
+            name: true,
+            status: true,
+            brand: { select: { name: true } },
+            series: { select: { name: true } },
+            priceLists: {
+              where: { packageTypeId: null },
+              select: {
+                amount: true,
+                periodStart: true,
+                periodEnd: true,
+                packageTypeId: true,
+              },
+            },
+          },
         },
       },
       orderBy: { model: { skuCode: "asc" } },
