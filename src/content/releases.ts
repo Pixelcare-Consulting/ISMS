@@ -52,6 +52,38 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.39.10",
+    date: "2026-09-15",
+    releasedAt: "2026-09-15T12:25:00+08:00",
+    title: "Sign-in opens your workspace after a quick sign-out",
+    highlights: [
+      "Signing back in right after you sign out now opens your workspace instead of asking you to try again",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Signing back in immediately after signing out now opens your workspace instead of showing a try-again message",
+      },
+    ],
+  },
+  {
+    version: "0.39.9",
+    date: "2026-09-15",
+    releasedAt: "2026-09-15T12:15:00+08:00",
+    title: "Create order shows a loading grid",
+    highlights: [
+      "When you create a branch order, the SKU list now shows a placeholder grid while models load instead of a wait message",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Create branch order now shows a placeholder SKU grid while planogram models load, so the layout stays in place until the list is ready",
+      },
+    ],
+  },
+  {
     version: "0.39.8",
     date: "2026-09-15",
     releasedAt: "2026-09-15T12:05:00+08:00",

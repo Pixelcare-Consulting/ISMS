@@ -51,7 +51,9 @@ export function ProviderShell({ user, children }: ProviderShellProps) {
     setIsSigningOut(true);
     try {
       queuePendingAuthToast({ kind: "signed-out" });
-      await authClient.signOut();
+      await authClient.signOut({
+        fetchOptions: { credentials: "include" },
+      });
       window.location.assign(signedOutLoginHref());
     } catch {
       consumePendingAuthToast();

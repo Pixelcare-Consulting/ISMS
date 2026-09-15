@@ -6,8 +6,11 @@ import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 
-import { getPostLoginRedirectAction } from "@/features/auth/actions/post-login-redirect.action";
 import { loginSchema, type LoginInput } from "@/features/auth/schemas/auth.schema";
+import {
+  resolvePostLoginDestination,
+  waitForValue,
+} from "@/features/auth/lib/post-login-destination";
 import { AppVersion } from "@/app/(auth)/_components/app-version";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,13 +34,30 @@ const inputClassName = cn(
   "focus-visible:bg-background focus-visible:ring-primary/30",
 );
 
+type PostLoginUser = {
+  name?: string | null;
+  isPlatformOperator?: boolean;
+};
+
 /**
  * Full document navigation after sign-in.
  * Soft App Router transitions (router.push + refresh) can hang when leaving
  * `(auth)` for `(provider)` / `(app)`, leaving the signing-in modal stuck.
+ *
+ * Do not read the new session through a Server Action here: that request can
+ * still carry the pre-sign-in cookie snapshot (empty right after a fast
+ * sign-out), which looks like "signed in but no workspace".
  */
 function navigateAfterLogin(destination: string) {
   window.location.assign(destination);
+}
+
+async function readPostLoginUser(): Promise<PostLoginUser | null> {
+  const session = await authClient.getSession({
+    query: { disableCookieCache: true },
+  });
+  const user = session.data?.user as PostLoginUser | undefined;
+  return user ?? null;
 }
 
 export function LoginForm() {
@@ -69,6 +89,7 @@ export function LoginForm() {
     const result = await authClient.signIn.email({
       email: values.email,
       password: values.password,
+      fetchOptions: { credentials: "include" },
     });
 
     if (result.error) {
@@ -82,23 +103,31 @@ export function LoginForm() {
     }
 
     try {
-      const destination = await getPostLoginRedirectAction(callbackUrl);
-      if (destination === "/login") {
-        setIsRedirecting(false);
-        setError("Signed in, but we could not open your workspace. Try again.");
-        return;
-      }
+      const signedInUser = (result.data as { user?: PostLoginUser } | undefined)?.user;
+      const sessionUser = await waitForValue(readPostLoginUser);
+      const user = sessionUser ?? signedInUser ?? null;
 
-      const session = await authClient.getSession();
       queuePendingAuthToast({
         kind: "welcome",
-        name: session.data?.user?.name,
+        name: user?.name,
       });
-      // Keep modal open until the document unloads; hard nav clears this page.
-      navigateAfterLogin(destination);
+
+      // Sign-in already succeeded. Always open the workspace with a full page
+      // load so newly set cookies are sent, even if getSession raced.
+      navigateAfterLogin(
+        resolvePostLoginDestination({
+          isPlatformOperator: Boolean(user?.isPlatformOperator),
+          callbackUrl,
+        }),
+      );
     } catch {
-      setIsRedirecting(false);
-      setError("Signed in, but we could not open your workspace. Try again.");
+      queuePendingAuthToast({ kind: "welcome" });
+      navigateAfterLogin(
+        resolvePostLoginDestination({
+          isPlatformOperator: false,
+          callbackUrl,
+        }),
+      );
     }
   }
 

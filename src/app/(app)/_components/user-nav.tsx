@@ -56,7 +56,9 @@ export function UserNav({ name, email, image }: UserNavProps) {
     setIsSigningOut(true);
     try {
       queuePendingAuthToast({ kind: "signed-out" });
-      await authClient.signOut();
+      await authClient.signOut({
+        fetchOptions: { credentials: "include" },
+      });
       // Hard navigation keeps the modal up until the document unloads.
       window.location.assign(signedOutLoginHref());
     } catch {

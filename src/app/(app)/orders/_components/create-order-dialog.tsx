@@ -10,6 +10,7 @@ import type { CreateOrderPrefill } from "@/app/(app)/orders/_components/orders-c
 import { InventoryStatusChips } from "@/app/(app)/orders/_components/inventory-status-chips";
 import { Button } from "@/components/ui/button";
 import { LoadingModal } from "@/components/ui/loading-modal";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
@@ -491,7 +492,7 @@ export function CreateOrderDialog({
 
           <div className="min-w-0 p-4 sm:p-6">
             {loadingWorkspace ? (
-              <p className="text-sm text-muted-foreground">Loading planogram SKUs…</p>
+              <CreateOrderSkuTableSkeleton />
             ) : !branchId ? (
               <p className="text-sm text-muted-foreground">
                 Select a dealer and branch to load models.
@@ -654,6 +655,76 @@ function KpiTile({ label, value }: { label: string; value: string }) {
     <div className="rounded-md border bg-muted/30 px-2.5 py-2">
       <p className="text-[11px] text-muted-foreground">{label}</p>
       <p className="font-medium tabular-nums">{value}</p>
+    </div>
+  );
+}
+
+const SKU_SKELETON_ROW_COUNT = 8;
+
+function CreateOrderSkuTableSkeleton() {
+  return (
+    <div aria-busy="true" aria-live="polite" aria-label="Loading planogram SKUs">
+      <table className="w-full table-fixed border-collapse text-sm">
+        <thead>
+          <tr className="border-b text-left text-xs text-muted-foreground">
+            <th className="w-[4%] py-2 pr-2 font-medium">#</th>
+            <th className="w-[20%] py-2 pr-2 font-medium">Model</th>
+            <th className="w-[10%] py-2 pr-2 font-medium">INV</th>
+            <th className="w-[7%] py-2 pr-2 font-medium">SALES</th>
+            <th className="w-[7%] py-2 pr-2 font-medium">SUG</th>
+            <th className="w-[8%] py-2 pr-2 font-medium">CBM</th>
+            <th className="w-[12%] py-2 pr-2 font-medium">BRANCH ORD</th>
+            <th className="w-[26%] py-2 pr-2 font-medium">REMARKS</th>
+            <th className="w-[6%] py-2 font-medium">
+              <span className="sr-only">Remove</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {Array.from({ length: SKU_SKELETON_ROW_COUNT }, (_, rowIndex) => (
+            <tr key={rowIndex} className="border-b align-top">
+              <td className="py-2 pr-2">
+                <Skeleton className="h-4 w-4" />
+              </td>
+              <td className="min-w-0 py-2 pr-2">
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="mt-1.5 h-3 w-36 max-w-full" />
+              </td>
+              <td className="min-w-0 py-2 pr-2">
+                <div className="flex gap-1">
+                  <Skeleton className="h-5 w-10 rounded-full" />
+                  <Skeleton className="h-5 w-10 rounded-full" />
+                </div>
+              </td>
+              <td className="py-2 pr-2">
+                <Skeleton className="h-4 w-8" />
+              </td>
+              <td className="py-2 pr-2">
+                <Skeleton className="h-4 w-8" />
+              </td>
+              <td className="py-2 pr-2">
+                <Skeleton className="h-4 w-12" />
+              </td>
+              <td className="min-w-0 py-2 pr-2">
+                <Skeleton className="h-8 w-full" />
+              </td>
+              <td className="min-w-0 py-2 pr-2">
+                <Skeleton className="h-8 w-full" />
+              </td>
+              <td className="py-2">
+                <Skeleton className="size-8 rounded-md" />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="mt-4 space-y-2">
+        <Skeleton className="h-4 w-28" />
+        <div className="flex gap-2">
+          <Skeleton className="h-9 min-w-0 flex-1" />
+          <Skeleton className="h-9 w-36 shrink-0" />
+        </div>
+      </div>
     </div>
   );
 }
