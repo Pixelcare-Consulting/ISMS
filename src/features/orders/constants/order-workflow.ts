@@ -131,6 +131,21 @@ export const ORDER_HISTORY_ONLY_STATUSES = [
   "cancelled",
 ] as const satisfies readonly BranchOrderStatus[];
 
+type OrderLifecycleStatus =
+  | (typeof ORDER_QUEUE_STATUSES)[number]
+  | (typeof ORDER_HISTORY_ONLY_STATUSES)[number];
+const _allStatusesPartitioned: Record<BranchOrderStatus, OrderLifecycleStatus> = {
+  draft: "draft",
+  pending_ps: "pending_ps",
+  pending_tl: "pending_tl",
+  pending_sp: "pending_sp",
+  pending_logistics: "pending_logistics",
+  approved: "approved",
+  rejected: "rejected",
+  cancelled: "cancelled",
+};
+void _allStatusesPartitioned;
+
 const ORDER_QUEUE_OVERSIGHT_ROLE_SLUGS = ["super_admin", "tenant_admin"] as const;
 
 export function isOrderQueueOversightRole(roleSlugs: string[]): boolean {
