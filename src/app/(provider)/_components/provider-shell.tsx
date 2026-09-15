@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
+import { useState } from "react";
 import {
   Building2,
   KeyRound,
@@ -11,7 +12,9 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { LoadingModal } from "@/components/ui/loading-modal";
 import { authClient } from "@/lib/auth/client";
+import { queuePendingAuthToast } from "@/lib/auth/pending-auth-toast";
 import { cn } from "@/utils/cn";
 
 type NavItem = {
@@ -37,12 +40,18 @@ interface ProviderShellProps {
 
 export function ProviderShell({ user, children }: ProviderShellProps) {
   const pathname = usePathname();
-  const router = useRouter();
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
   async function handleSignOut() {
-    await authClient.signOut();
-    router.push("/");
-    router.refresh();
+    if (isSigningOut) return;
+    setIsSigningOut(true);
+    try {
+      await authClient.signOut();
+      queuePendingAuthToast({ kind: "signed-out" });
+      window.location.assign("/");
+    } catch {
+      setIsSigningOut(false);
+    }
   }
 
   return (
@@ -87,6 +96,7 @@ export function ProviderShell({ user, children }: ProviderShellProps) {
             variant="ghost"
             size="sm"
             className="shrink-0 gap-1.5"
+            disabled={isSigningOut}
             onClick={() => void handleSignOut()}
           >
             <LogOut className="size-3.5" />
@@ -94,6 +104,12 @@ export function ProviderShell({ user, children }: ProviderShellProps) {
           </Button>
         </div>
       </header>
+      <LoadingModal
+        open={isSigningOut}
+        variant="minimal"
+        title="Signing out"
+        description="Please wait while we sign you out and clear this session."
+      />
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6">
         {children}

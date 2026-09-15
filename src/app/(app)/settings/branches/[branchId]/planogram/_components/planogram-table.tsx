@@ -364,6 +364,7 @@ function MaxQtyCell({
         setValue(String(maxQty));
         return;
       }
+      toast.success("Max qty updated");
       router.refresh();
     });
   }

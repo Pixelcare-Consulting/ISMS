@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 
 import { ChevronsUpDown, CircleHelp, LogOut, UserCircle } from "lucide-react";
-import { useRouter } from "next/navigation";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -16,6 +16,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { LoadingModal } from "@/components/ui/loading-modal";
 import {
   SidebarMenu,
   SidebarMenuButton,
@@ -24,6 +25,7 @@ import {
 } from "@/components/ui/sidebar";
 import { isNavItemActive } from "@/config/app-navigation";
 import { authClient } from "@/lib/auth/client";
+import { queuePendingAuthToast } from "@/lib/auth/pending-auth-toast";
 import { getInitials } from "@/utils/get-initials";
 import { cn } from "@/utils/cn";
 
@@ -38,17 +40,24 @@ interface UserNavProps {
 
 export function UserNav({ name, email, image }: UserNavProps) {
   const pathname = usePathname();
-  const router = useRouter();
   const { isMobile } = useSidebar();
   const isProfileActive = isNavItemActive(pathname, PROFILE_HREF);
   const isHelpActive = isNavItemActive(pathname, HELP_HREF);
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
   const displayName = name ?? "User";
 
   async function handleSignOut() {
-    await authClient.signOut();
-    router.push("/");
-    router.refresh();
+    if (isSigningOut) return;
+    setIsSigningOut(true);
+    try {
+      await authClient.signOut();
+      queuePendingAuthToast({ kind: "signed-out" });
+      // Hard navigation keeps the modal up until the document unloads.
+      window.location.assign("/");
+    } catch {
+      setIsSigningOut(false);
+    }
   }
 
   return (
@@ -124,6 +133,7 @@ export function UserNav({ name, email, image }: UserNavProps) {
             <DropdownMenuSeparator />
             <DropdownMenuItem
               variant="destructive"
+              disabled={isSigningOut}
               onSelect={() => {
                 void handleSignOut();
               }}
@@ -133,6 +143,12 @@ export function UserNav({ name, email, image }: UserNavProps) {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        <LoadingModal
+          open={isSigningOut}
+          variant="minimal"
+          title="Signing out"
+          description="Please wait while we sign you out and clear this session."
+        />
       </SidebarMenuItem>
     </SidebarMenu>
   );

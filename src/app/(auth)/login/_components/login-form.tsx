@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { LoadingModal } from "@/components/ui/loading-modal";
 import { PasswordInput } from "@/components/ui/password-input";
 import { authClient } from "@/lib/auth/client";
+import { queuePendingAuthToast } from "@/lib/auth/pending-auth-toast";
 import { cn } from "@/utils/cn";
 
 const inputClassName = cn(
@@ -82,6 +83,17 @@ export function LoginForm() {
 
     try {
       const destination = await getPostLoginRedirectAction(callbackUrl);
+      if (destination === "/login") {
+        setIsRedirecting(false);
+        setError("Signed in, but we could not open your workspace. Try again.");
+        return;
+      }
+
+      const session = await authClient.getSession();
+      queuePendingAuthToast({
+        kind: "welcome",
+        name: session.data?.user?.name,
+      });
       // Keep modal open until the document unloads; hard nav clears this page.
       navigateAfterLogin(destination);
     } catch {

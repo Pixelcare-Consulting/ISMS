@@ -1,11 +1,23 @@
 "use client";
 
-import { Toaster } from "sonner";
+import { useEffect } from "react";
+import { toast, Toaster } from "sonner";
+
+import {
+  consumePendingAuthToast,
+  messageForPendingAuthToast,
+} from "@/lib/auth/pending-auth-toast";
 
 const toastBase =
   "group !rounded-lg !border !border-border !bg-card !text-card-foreground !shadow-md !gap-3 !py-3.5 !pl-4 !pr-10";
 
 export function AppToaster() {
+  useEffect(() => {
+    const pending = consumePendingAuthToast();
+    if (!pending) return;
+    toast.success(messageForPendingAuthToast(pending));
+  }, []);
+
   return (
     <Toaster
       closeButton

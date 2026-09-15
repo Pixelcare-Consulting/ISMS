@@ -77,6 +77,21 @@ export const RELEASES: ReleaseNote[] = [
         description:
           "Allowed models uses the same table as Planogram, with search, sort, and striped rows",
       },
+      {
+        type: "improvement",
+        description:
+          "You get a confirmation when max qty is saved on a planogram row",
+      },
+      {
+        type: "improvement",
+        description:
+          "When you sign out, a please-wait screen stays up until you are signed out",
+      },
+      {
+        type: "improvement",
+        description:
+          "A short confirmation appears when you sign in and when you sign out",
+      },
     ],
   },
   {
