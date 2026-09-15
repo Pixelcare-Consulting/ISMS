@@ -52,6 +52,22 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.39.8",
+    date: "2026-09-15",
+    releasedAt: "2026-09-15T12:05:00+08:00",
+    title: "Planogram wait names the branch",
+    highlights: [
+      "When you open a branch from Planogram, the wait message now includes that branch name",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Opening a branch from Planogram now says which branch is loading, so you can confirm you picked the right one",
+      },
+    ],
+  },
+  {
     version: "0.39.7",
     date: "2026-09-15",
     releasedAt: "2026-09-15T11:50:00+08:00",

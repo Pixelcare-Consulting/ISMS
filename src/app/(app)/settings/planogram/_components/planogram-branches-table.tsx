@@ -93,11 +93,11 @@ export function PlanogramBranchesTable({
 }: PlanogramBranchesTableProps) {
   const router = useRouter();
   const [importing, setImporting] = useState(false);
-  const [opening, setOpening] = useState(false);
+  const [openingBranchName, setOpeningBranchName] = useState<string | null>(null);
 
-  function openBranch(branchId: string) {
-    if (opening) return;
-    setOpening(true);
+  function openBranch(branchId: string, branchName: string) {
+    if (openingBranchName) return;
+    setOpeningBranchName(branchName);
     router.push(buildBranchPlanogramHref(branchId, { view, q: query }));
   }
 
@@ -219,7 +219,7 @@ export function PlanogramBranchesTable({
                     "cursor-pointer",
                     index % 2 === 1 && "bg-table-stripe",
                   )}
-                  onClick={() => openBranch(branch.id)}
+                  onClick={() => openBranch(branch.id, branch.name)}
                 >
                   <TableIndexCell index={indexOffset + index + 1} />
                   <TableCell className="font-mono text-sm text-muted-foreground">
@@ -236,7 +236,7 @@ export function PlanogramBranchesTable({
                       type="button"
                       onClick={(event) => {
                         event.stopPropagation();
-                        openBranch(branch.id);
+                        openBranch(branch.id, branch.name);
                       }}
                     >
                       Open
@@ -252,9 +252,13 @@ export function PlanogramBranchesTable({
         <ImportPlanogramDialog open={importing} onOpenChange={setImporting} />
       ) : null}
       <LoadingModal
-        open={opening}
+        open={openingBranchName != null}
         variant="minimal"
-        title="Opening planogram"
+        title={
+          openingBranchName
+            ? `Opening ${openingBranchName} planogram`
+            : "Opening planogram"
+        }
         description="Please wait while we load this branch."
       />
     </div>
