@@ -10,7 +10,12 @@ const EXTRA_ROUTE_TITLES: Record<string, string> = {
   "/returns": "Returns / Replacement",
   "/policies/new": "New policy",
   "/operations": "Operations",
-  "/planning/suggested-orders": "Suggested orders",
+  "/planning": "Demand Planning",
+  "/planning/runs/new": "New demand planning run",
+  "/planning/replenishment": "Replenishment",
+  "/planning/suggested-orders": "Demand Planning",
+  "/settings/planning/runs": "Demand Planning",
+  "/settings/planning/runs/new": "New demand planning run",
   "/help": "Help",
   "/settings/profile": "Profile",
   "/settings/roles/matrix": "Role matrix",
@@ -18,6 +23,7 @@ const EXTRA_ROUTE_TITLES: Record<string, string> = {
   "/logistics": "Logistics",
   "/orders": "Orders",
   "/reports": "Reports",
+  "/reports/demand-planning": "Demand Planning",
   "/login": "Sign in",
   "/register": "Register",
   "/provider": "Provider overview",
@@ -113,6 +119,15 @@ export function resolveRouteTitle(pathname: string): string | null {
   }
   if (path.startsWith("/inventory/stock-count/")) {
     return "P-Count session";
+  }
+  if (path.startsWith("/planning/runs/") && path !== "/planning/runs/new") {
+    return "Demand planning run";
+  }
+  if (
+    path.startsWith("/settings/planning/runs/") &&
+    path !== "/settings/planning/runs/new"
+  ) {
+    return "Demand planning run";
   }
   if (path.startsWith("/settings/planogram/")) {
     return "Branch planogram";

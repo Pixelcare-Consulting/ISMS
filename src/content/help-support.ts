@@ -176,7 +176,7 @@ export const HELP_WORKFLOW_GUIDES: HelpWorkflowGuide[] = [
     summary:
       "Supply Planning refreshes forecast data, reviews suggestions, and creates auto-replenish drafts for Team Leader review.",
     audience: "Supply Planning · Team Leader",
-    href: "/planning/suggested-orders",
+    href: "/settings/planning/runs",
     steps: [
       { label: "Open Planning settings and import or refresh forecast data for the period." },
       { label: "Allocate demand to branches and review suggested quantities." },

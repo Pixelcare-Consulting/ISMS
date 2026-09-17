@@ -17,6 +17,7 @@ export interface DashboardKpis {
   milBreaches: number;
   allocationGapCount: number;
   draftSuggestedOrders: number;
+  demandPlanningRunCount: number;
 }
 
 export interface DashboardPeriodSnapshot {
@@ -34,6 +35,14 @@ export interface DashboardAnalytics {
 function startOfCurrentMonth(): Date {
   const now = new Date();
   return new Date(now.getFullYear(), now.getMonth(), 1);
+}
+
+async function countDemandPlanningRuns(tenantId: string): Promise<number> {
+  try {
+    return await prisma.demandPlanningRun.count({ where: { tenantId } });
+  } catch {
+    return 0;
+  }
 }
 
 async function computeDashboardKpis(
@@ -58,6 +67,7 @@ async function computeDashboardKpis(
     planogramAlerts,
     allocationGapCount,
     draftSuggestedOrders,
+    demandPlanningRunCount,
   ] = await Promise.all([
     orderService.countPendingApprovals(tenantId),
     ditCode
@@ -78,6 +88,7 @@ async function computeDashboardKpis(
       ? forecastRepository.countGapsForPeriod(tenantId, activePeriod.id)
       : Promise.resolve(0),
     forecastRepository.countDraftAutoReplenishOrders(tenantId),
+    countDemandPlanningRuns(tenantId),
   ]);
 
   return {
@@ -89,6 +100,7 @@ async function computeDashboardKpis(
     milBreaches: planogramAlerts.milBreaches,
     allocationGapCount,
     draftSuggestedOrders,
+    demandPlanningRunCount,
   };
 }
 

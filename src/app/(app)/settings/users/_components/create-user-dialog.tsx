@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
+import { filterTenantVisibleRoles } from "@/features/roles/constants/role.constants";
 import { createUserAction } from "@/features/users/actions/user.actions";
 import { useSettingsUi } from "@/hooks/use-settings-ui";
 import { Button } from "@/components/ui/button";
@@ -49,14 +50,18 @@ export function CreateUserDialog({
   onCreated,
 }: CreateUserDialogProps) {
   const { isUserDialogOpen, setUserDialogOpen } = useSettingsUi();
+  const tenantRoles = useMemo(
+    () => filterTenantVisibleRoles(roles),
+    [roles],
+  );
   const [error, setError] = useState<string | null>(null);
-  const [roleSlug, setRoleSlug] = useState(roles[0]?.slug ?? "");
+  const [roleSlug, setRoleSlug] = useState(tenantRoles[0]?.slug ?? "");
   const [departmentId, setDepartmentId] = useState<string>("none");
   const [pending, startTransition] = useTransition();
 
   const roleOptions = useMemo(
-    () => roles.map((role) => ({ id: role.slug, label: role.name })),
-    [roles],
+    () => tenantRoles.map((role) => ({ id: role.slug, label: role.name })),
+    [tenantRoles],
   );
 
   const departmentOptions = useMemo(
@@ -77,7 +82,7 @@ export function CreateUserDialog({
   function resetForm() {
     setError(null);
     setDepartmentId("none");
-    setRoleSlug(roles[0]?.slug ?? "");
+    setRoleSlug(tenantRoles[0]?.slug ?? "");
   }
 
   function onOpenChange(open: boolean) {

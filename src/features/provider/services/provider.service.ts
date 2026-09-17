@@ -56,6 +56,28 @@ function assertTenantWritable(tenant: { deletedAt: Date | null }) {
   }
 }
 
+async function ensureCustomerSuperAdminRole(tenantId: string) {
+  const existing = await roleRepository.findBySlug(tenantId, "super_admin");
+  if (existing) {
+    return;
+  }
+
+  const role = await roleRepository.create({
+    tenantId,
+    slug: "super_admin",
+    name: "Super Admin",
+    description: "Elevated organization administrator",
+    isSystem: true,
+  });
+
+  const permissions = await roleRepository.listPermissions();
+  await Promise.all(
+    permissions.map((permission) =>
+      roleRepository.grantPermission(role.id, permission.id),
+    ),
+  );
+}
+
 export const providerService = {
   getSummary() {
     return tenantService.getSummaryCounts();
@@ -183,10 +205,11 @@ export const providerService = {
 
   async listCustomerUsers(tenantId: string) {
     await assertCustomerTenant(tenantId);
+    await ensureCustomerSuperAdminRole(tenantId);
 
     const [users, roles, departments] = await Promise.all([
-      userService.listUsers(tenantId, false),
-      userService.listRoles(tenantId),
+      userService.listUsers(tenantId, true),
+      userService.listRoles(tenantId, true),
       userService.listDepartments(tenantId),
     ]);
 
@@ -223,6 +246,9 @@ export const providerService = {
   ) {
     const tenant = await assertCustomerTenant(input.tenantId);
     assertTenantWritable(tenant);
+    if (input.roleSlug === "super_admin") {
+      await ensureCustomerSuperAdminRole(input.tenantId);
+    }
 
     return userService.createUser({
       tenantId: input.tenantId,
@@ -232,6 +258,7 @@ export const providerService = {
       password: input.password,
       roleSlug: input.roleSlug,
       departmentId: input.departmentId ?? null,
+      allowProviderOnlyRoles: true,
     });
   },
 
@@ -241,6 +268,9 @@ export const providerService = {
   ) {
     const tenant = await assertCustomerTenant(input.tenantId);
     assertTenantWritable(tenant);
+    if (input.roleSlug === "super_admin") {
+      await ensureCustomerSuperAdminRole(input.tenantId);
+    }
 
     return userService.updateUser({
       tenantId: input.tenantId,
@@ -250,6 +280,7 @@ export const providerService = {
       roleSlug: input.roleSlug,
       departmentId: input.departmentId ?? null,
       password: input.password,
+      allowProviderOnlyRoles: true,
     });
   },
 
@@ -264,6 +295,7 @@ export const providerService = {
       tenantId: input.tenantId,
       actorUserId,
       userId: input.userId,
+      allowProviderOnlyRoles: true,
     });
   },
 };

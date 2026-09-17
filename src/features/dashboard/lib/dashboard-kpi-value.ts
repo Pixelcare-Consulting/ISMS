@@ -1,6 +1,14 @@
 import type { DashboardKpiKey } from "@/features/dashboard/constants/dashboard-permissions";
 import type { DashboardKpis } from "@/features/dashboard/services/dashboard-kpi.service";
 
+export function hasDemandPlanningRuns(kpis: DashboardKpis): boolean {
+  return (kpis.demandPlanningRunCount ?? 0) > 0;
+}
+
+export function dashboardPlanningAlertLabel(kpis: DashboardKpis): string {
+  return hasDemandPlanningRuns(kpis) ? "Demand Planning runs" : "Allocation gaps";
+}
+
 /** Map a dashboard KPI key to its numeric value on the KPI payload. */
 export function dashboardKpiValue(
   key: DashboardKpiKey,
@@ -20,7 +28,9 @@ export function dashboardKpiValue(
     case "milBreaches":
       return kpis.milBreaches;
     case "allocationGaps":
-      return kpis.allocationGapCount;
+      return hasDemandPlanningRuns(kpis)
+        ? kpis.demandPlanningRunCount
+        : kpis.allocationGapCount;
     case "draftSuggestedOrders":
       return kpis.draftSuggestedOrders;
     default: {

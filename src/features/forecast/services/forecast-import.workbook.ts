@@ -6,6 +6,11 @@ import {
   FORECAST_IMPORT_REQUIRED_COLUMNS,
   FORECAST_SHEET_HEADERS,
   FORECAST_SHEET_NAME,
+  SFE_IMPORT_ALIAS_MAP,
+  SFE_IMPORT_COLUMN_LABELS,
+  SFE_IMPORT_REQUIRED_COLUMNS,
+  SFE_SHEET_HEADERS,
+  SFE_SHEET_NAME,
 } from "@/features/forecast/schemas/forecast-import.schema";
 import { normalizeHeader, parseCsvTable } from "@/lib/shared/parse-csv";
 
@@ -22,13 +27,25 @@ export interface ForecastTemplateRow {
   branchName: string;
 }
 
+export interface SfeTemplateRow {
+  period: string;
+  sapCode: string;
+  sku: string;
+  forecastQty: number;
+}
+
+export interface ForecastImportSheets {
+  quota: SheetRows;
+  sfe: SheetRows;
+}
+
 const EMPTY_SHEET: SheetRows = { present: false, columns: new Set(), rows: [] };
 
 const BRS_LAYOUT_ERROR =
-  "This file is the old BRS forecast/planogram layout, not the Forecast template. Download the template (period, branch_sap_code, revenue_target). Use Planogram for shelf max and MIL days.";
+  "This file is the old BRS forecast/planogram layout, not the Forecast template. Download the template (SFE: period, branch_sap_code, sku, forecast_qty). Use Planogram for shelf max.";
 
 const PLANOGRAM_FILE_ERROR =
-  "This file looks like the Planogram template, not Forecast. Download the Forecast template (period, branch_sap_code, revenue_target). Shelf max belongs under Planogram.";
+  "This file looks like the Planogram template, not Forecast. Download the Forecast template. Shelf max belongs under Planogram.";
 
 /** Headers that appear on the wide Dealer 1 BRS sheet (Brand / SKU / Model / Series / SRP + Y/N pairs). */
 const BRS_WIDE_HEADER_HINTS = new Set([
@@ -116,7 +133,10 @@ function periodCellToLabel(cell: ExcelJS.Cell): string {
   return periodValueToLabel(cell.value, cell.text);
 }
 
-function readSheet(sheet: ExcelJS.Worksheet | undefined): {
+function readSheet(
+  sheet: ExcelJS.Worksheet | undefined,
+  aliasMap: Record<string, string>,
+): {
   sheet: SheetRows;
   rawHeaders: string[];
 } {
@@ -139,7 +159,7 @@ function readSheet(sheet: ExcelJS.Worksheet | undefined): {
         rawHeaders.push(normalizeHeader(cellToString(cell.value)));
       }
       keys = cells.map(
-        (cell) => FORECAST_IMPORT_ALIAS_MAP[normalizeHeader(cellToString(cell.value))] ?? null,
+        (cell) => aliasMap[normalizeHeader(cellToString(cell.value))] ?? null,
       );
       for (const key of keys) if (key) columns.add(key);
       return;
@@ -183,10 +203,11 @@ function styleHeader(sheet: ExcelJS.Worksheet, widths: number[]) {
 function looksLikeBrsWideLayout(columns: Set<string>, rawHeaders: string[]): boolean {
   const brsHits = rawHeaders.filter((header) => BRS_WIDE_HEADER_HINTS.has(header));
   const ynPairs = rawHeaders.filter((header) => header === "y" || header === "n").length;
-  const missingTemplateKeys =
-    !columns.has("sap_code") || !columns.has("revenue_target") || !columns.has("period");
+  const hasQuota = columns.has("sap_code") && columns.has("revenue_target") && columns.has("period");
+  const hasSfe =
+    columns.has("sap_code") && columns.has("sku") && columns.has("forecast_qty") && columns.has("period");
 
-  if (!missingTemplateKeys) return false;
+  if (hasQuota || hasSfe) return false;
   if (brsHits.length >= 2) return true;
   if (ynPairs >= 2) return true;
   if (rawHeaders[0] === "period" && !columns.has("sap_code")) return true;
@@ -195,126 +216,232 @@ function looksLikeBrsWideLayout(columns: Set<string>, rawHeaders: string[]): boo
 
 function looksLikePlanogramTemplate(columns: Set<string>, rawHeaders: string[]): boolean {
   const hasPlanogramCols = rawHeaders.includes("sku") && rawHeaders.includes("maxqty");
-  const missingForecast = !columns.has("period") || !columns.has("revenue_target");
+  const missingForecast =
+    !columns.has("period") || (!columns.has("revenue_target") && !columns.has("forecast_qty"));
   return hasPlanogramCols && missingForecast;
 }
 
-function assertOurTemplate(columns: Set<string>, rawHeaders: string[]): void {
+function missingRequired(
+  columns: Set<string>,
+  required: readonly string[],
+  labels: Record<string, string>,
+  sheetName: string,
+): string | null {
+  const missing = required.filter((col) => !columns.has(col));
+  if (missing.length === 0) return null;
+  const requiredLabels = required.map((col) => labels[col] ?? col);
+  const missingLabels = missing.map((col) => labels[col] ?? col);
+  return `The ${sheetName} sheet needs columns: ${requiredLabels.join(", ")}. Missing: ${missingLabels.join(", ")}. Download the template.`;
+}
+
+function assertNotForeignLayout(columns: Set<string>, rawHeaders: string[]): void {
   if (looksLikeBrsWideLayout(columns, rawHeaders)) {
     throw new Error(BRS_LAYOUT_ERROR);
   }
   if (looksLikePlanogramTemplate(columns, rawHeaders)) {
     throw new Error(PLANOGRAM_FILE_ERROR);
   }
-
-  const missing = FORECAST_IMPORT_REQUIRED_COLUMNS.filter((col) => !columns.has(col));
-  if (missing.length > 0) {
-    const requiredLabels = FORECAST_IMPORT_REQUIRED_COLUMNS.map(
-      (col) => FORECAST_IMPORT_COLUMN_LABELS[col] ?? col,
-    );
-    const missingLabels = missing.map((col) => FORECAST_IMPORT_COLUMN_LABELS[col] ?? col);
-    throw new Error(
-      `The Forecast sheet needs columns: ${requiredLabels.join(", ")}. Missing: ${missingLabels.join(", ")}. Download the template.`,
-    );
-  }
 }
 
-/** Build the downloadable Forecast template (sample row when empty). */
+function isSfeColumns(columns: Set<string>): boolean {
+  return SFE_IMPORT_REQUIRED_COLUMNS.every((col) => columns.has(col));
+}
+
+function isQuotaColumns(columns: Set<string>): boolean {
+  return FORECAST_IMPORT_REQUIRED_COLUMNS.every((col) => columns.has(col));
+}
+
+function csvSheetFromTable(
+  table: ReturnType<typeof parseCsvTable>,
+  aliasMap: Record<string, string>,
+): SheetRows {
+  const columns = new Set<string>();
+  for (const header of table.headers) {
+    const key = aliasMap[normalizeHeader(header)];
+    if (key) columns.add(key);
+  }
+  const rows: SheetRows["rows"] = table.records.map((record) => {
+    const values: Record<string, string> = {};
+    for (const [rawKey, value] of Object.entries(record.values)) {
+      const canonical = aliasMap[rawKey];
+      if (canonical) {
+        values[canonical] = canonical === "period" ? periodValueToLabel(value) : value;
+      }
+    }
+    return { rowNumber: record.rowNumber, values };
+  });
+  return { present: true, columns, rows };
+}
+
+function worksheetByName(workbook: ExcelJS.Workbook, name: string) {
+  return workbook.worksheets.find(
+    (candidate) => candidate.name.trim().toLowerCase() === name.toLowerCase(),
+  );
+}
+
+/** Build the downloadable Forecast template (SFE + optional quota sheet). */
 export async function buildForecastTemplateWorkbook(
-  rows: ForecastTemplateRow[],
+  quotaRows: ForecastTemplateRow[],
+  sfeRows: SfeTemplateRow[] = [],
 ): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "ISMS";
   workbook.created = new Date();
 
-  const sheet = workbook.addWorksheet(FORECAST_SHEET_NAME);
-  sheet.addRow([...FORECAST_SHEET_HEADERS]);
-  sheet.getColumn(1).numFmt = "@";
-
-  const writeDataRow = (
-    period: string,
-    sapCode: string,
-    revenueTarget: number,
-    branchName: string,
-  ) => {
-    const dataRow = sheet.addRow([String(period), sapCode, revenueTarget, branchName]);
-    const periodCell = dataRow.getCell(1);
-    periodCell.value = String(period);
-    periodCell.numFmt = "@";
-  };
-
-  for (const row of rows) {
-    writeDataRow(row.period, row.sapCode, row.revenueTarget, row.branchName);
+  const sfeSheet = workbook.addWorksheet(SFE_SHEET_NAME);
+  sfeSheet.addRow([...SFE_SHEET_HEADERS]);
+  sfeSheet.getColumn(1).numFmt = "@";
+  const sfeData = sfeRows.length > 0
+    ? sfeRows
+    : [{ period: "Dec-25", sapCode: "WMK-001", sku: "32STW101", forecastQty: 20 }];
+  for (const row of sfeData) {
+    const dataRow = sfeSheet.addRow([String(row.period), row.sapCode, row.sku, row.forecastQty]);
+    dataRow.getCell(1).value = String(row.period);
+    dataRow.getCell(1).numFmt = "@";
   }
-  if (rows.length === 0) {
-    writeDataRow("Dec-25", "WMK-001", 1000000, "");
+  styleHeader(sfeSheet, [14, 18, 16, 14]);
+  sfeSheet.getColumn(1).numFmt = "@";
+
+  const quotaSheet = workbook.addWorksheet(FORECAST_SHEET_NAME);
+  quotaSheet.addRow([...FORECAST_SHEET_HEADERS]);
+  quotaSheet.getColumn(1).numFmt = "@";
+  const quotaData = quotaRows.length > 0
+    ? quotaRows
+    : [{ period: "Dec-25", sapCode: "WMK-001", revenueTarget: 1_000_000, branchName: "" }];
+  for (const row of quotaData) {
+    const dataRow = quotaSheet.addRow([
+      String(row.period),
+      row.sapCode,
+      row.revenueTarget,
+      row.branchName,
+    ]);
+    dataRow.getCell(1).value = String(row.period);
+    dataRow.getCell(1).numFmt = "@";
   }
-  styleHeader(sheet, [14, 18, 16, 28]);
-  sheet.getColumn(1).numFmt = "@";
+  styleHeader(quotaSheet, [14, 18, 16, 28]);
+  quotaSheet.getColumn(1).numFmt = "@";
 
   const buffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(buffer);
 }
 
 /**
- * Read an .xlsx or .csv upload. Accepts only our Forecast template columns.
- * `branch_name` is ignored even if present.
+ * Read an .xlsx or .csv upload. SFE sheet is the SKU forecast; Forecast sheet is
+ * an optional branch quota override. CSV is one sheet — detected by headers.
  */
-export async function readForecastImportWorkbook(file: Buffer): Promise<SheetRows> {
+export async function readForecastImportWorkbook(file: Buffer): Promise<ForecastImportSheets> {
   if (!looksLikeXlsx(file)) {
     const table = parseCsvTable(file.toString("utf8"));
     if (table.headers.length === 0) {
       throw new Error("The CSV file has no header row. Download the template.");
     }
-    const columns = new Set<string>();
     const rawHeaders = table.headers.map((header) => normalizeHeader(header));
-    for (const header of table.headers) {
-      const key = FORECAST_IMPORT_ALIAS_MAP[normalizeHeader(header)];
-      if (key) columns.add(key);
+    const sfeProbe = csvSheetFromTable(table, SFE_IMPORT_ALIAS_MAP);
+    const quotaProbe = csvSheetFromTable(table, FORECAST_IMPORT_ALIAS_MAP);
+    assertNotForeignLayout(
+      new Set([...sfeProbe.columns, ...quotaProbe.columns]),
+      rawHeaders,
+    );
+
+    if (isSfeColumns(sfeProbe.columns) && !quotaProbe.columns.has("revenue_target")) {
+      return { sfe: sfeProbe, quota: EMPTY_SHEET };
     }
-    assertOurTemplate(columns, rawHeaders);
+    if (isQuotaColumns(quotaProbe.columns) && !sfeProbe.columns.has("forecast_qty")) {
+      return { sfe: EMPTY_SHEET, quota: quotaProbe };
+    }
+    if (isSfeColumns(sfeProbe.columns) && isQuotaColumns(quotaProbe.columns)) {
+      throw new Error(
+        "CSV can hold either the SFE columns or the Forecast quota columns, not both. Use the Excel template for a combined file.",
+      );
+    }
 
-    const rows: SheetRows["rows"] = table.records.map((record) => {
-      const values: Record<string, string> = {};
-      for (const [rawKey, value] of Object.entries(record.values)) {
-        const canonical = FORECAST_IMPORT_ALIAS_MAP[rawKey];
-        if (canonical) {
-          values[canonical] = canonical === "period" ? periodValueToLabel(value) : value;
-        }
-      }
-      return { rowNumber: record.rowNumber, values };
-    });
-
-    return { present: true, columns, rows };
+    const sfeError = missingRequired(
+      sfeProbe.columns,
+      SFE_IMPORT_REQUIRED_COLUMNS,
+      SFE_IMPORT_COLUMN_LABELS,
+      SFE_SHEET_NAME,
+    );
+    throw new Error(
+      sfeError ??
+        `Add SFE columns (${SFE_IMPORT_REQUIRED_COLUMNS.map((col) => SFE_IMPORT_COLUMN_LABELS[col]).join(", ")}) or a Forecast quota sheet. Download the template.`,
+    );
   }
 
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(file as unknown as ArrayBuffer);
 
-  const byName = (name: string) =>
-    workbook.worksheets.find(
-      (candidate) => candidate.name.trim().toLowerCase() === name.toLowerCase(),
-    );
+  const namedSfe = worksheetByName(workbook, SFE_SHEET_NAME);
+  const namedQuota = worksheetByName(workbook, FORECAST_SHEET_NAME);
 
-  const named = byName(FORECAST_SHEET_NAME);
-  if (named) {
-    const { sheet, rawHeaders } = readSheet(named);
-    assertOurTemplate(sheet.columns, rawHeaders);
-    return sheet;
+  let sfe = EMPTY_SHEET;
+  let quota = EMPTY_SHEET;
+
+  if (namedSfe) {
+    const parsed = readSheet(namedSfe, SFE_IMPORT_ALIAS_MAP);
+    assertNotForeignLayout(parsed.sheet.columns, parsed.rawHeaders);
+    const error = missingRequired(
+      parsed.sheet.columns,
+      SFE_IMPORT_REQUIRED_COLUMNS,
+      SFE_IMPORT_COLUMN_LABELS,
+      SFE_SHEET_NAME,
+    );
+    if (error) throw new Error(error);
+    sfe = parsed.sheet;
+  }
+
+  if (namedQuota) {
+    const parsed = readSheet(namedQuota, FORECAST_IMPORT_ALIAS_MAP);
+    assertNotForeignLayout(parsed.sheet.columns, parsed.rawHeaders);
+    const error = missingRequired(
+      parsed.sheet.columns,
+      FORECAST_IMPORT_REQUIRED_COLUMNS,
+      FORECAST_IMPORT_COLUMN_LABELS,
+      FORECAST_SHEET_NAME,
+    );
+    if (error) throw new Error(error);
+    quota = parsed.sheet;
+  }
+
+  if (sfe.present || quota.present) {
+    return { sfe, quota };
   }
 
   for (const candidate of workbook.worksheets) {
-    const { sheet, rawHeaders } = readSheet(candidate);
-    if (FORECAST_IMPORT_REQUIRED_COLUMNS.every((col) => sheet.columns.has(col))) {
-      assertOurTemplate(sheet.columns, rawHeaders);
-      return sheet;
+    const sfeParsed = readSheet(candidate, SFE_IMPORT_ALIAS_MAP);
+    if (isSfeColumns(sfeParsed.sheet.columns)) {
+      assertNotForeignLayout(sfeParsed.sheet.columns, sfeParsed.rawHeaders);
+      sfe = sfeParsed.sheet;
+      break;
+    }
+  }
+  for (const candidate of workbook.worksheets) {
+    const quotaParsed = readSheet(candidate, FORECAST_IMPORT_ALIAS_MAP);
+    if (isQuotaColumns(quotaParsed.sheet.columns)) {
+      assertNotForeignLayout(quotaParsed.sheet.columns, quotaParsed.rawHeaders);
+      quota = quotaParsed.sheet;
+      break;
     }
   }
 
-  const first = readSheet(workbook.worksheets[0]);
-  if (!first.sheet.present) {
-    throw new Error(`Add a sheet named "${FORECAST_SHEET_NAME}" with the template columns.`);
+  if (sfe.present || quota.present) {
+    return { sfe, quota };
   }
-  assertOurTemplate(first.sheet.columns, first.rawHeaders);
-  return first.sheet;
+
+  const first = readSheet(workbook.worksheets[0], SFE_IMPORT_ALIAS_MAP);
+  if (!first.sheet.present) {
+    throw new Error(
+      `Add a sheet named "${SFE_SHEET_NAME}" (period, branch_sap_code, sku, forecast_qty). Optional "${FORECAST_SHEET_NAME}" is the branch quota override.`,
+    );
+  }
+  assertNotForeignLayout(first.sheet.columns, first.rawHeaders);
+  const error = missingRequired(
+    first.sheet.columns,
+    SFE_IMPORT_REQUIRED_COLUMNS,
+    SFE_IMPORT_COLUMN_LABELS,
+    SFE_SHEET_NAME,
+  );
+  throw new Error(
+    error ??
+      `Add a sheet named "${SFE_SHEET_NAME}" with the template columns.`,
+  );
 }

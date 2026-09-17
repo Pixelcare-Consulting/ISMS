@@ -5,11 +5,7 @@ import { z } from "zod";
 
 import { userService } from "@/features/users/services/user.service";
 import { updateUserSchema } from "@/features/users/schemas/update-user.schema";
-import {
-  requireAuth,
-  requirePermission,
-  resolveSessionPlatformOperator,
-} from "@/lib/auth/permissions";
+import { requireAuth, requirePermission } from "@/lib/auth/permissions";
 
 const createUserSchema = z.object({
   email: z.string().email(),
@@ -21,8 +17,7 @@ const createUserSchema = z.object({
 
 export async function listUsersAction() {
   const session = await requirePermission("users.manage");
-  const isPlatformOperator = await resolveSessionPlatformOperator(session.user);
-  return userService.listUsers(session.user.tenantId, isPlatformOperator);
+  return userService.listUsers(session.user.tenantId, false);
 }
 
 export async function listRolesAction() {

@@ -40,6 +40,19 @@ enum DeliveryFrequency {
   thrice_monthly  // three times a month
 }
 
+enum DemandPlanningRunStatus {
+  draft
+  generated
+  released
+  superseded
+}
+
+enum DemandPlanningPlanStatus {
+  planned
+  no_history
+  awaiting
+}
+
 enum ReasonStatusCategory {
   inventory_system
   pullout_reason
@@ -226,7 +239,12 @@ model Tenant {
   reasonStatusCodes   ReasonStatusCode[]
   planningPeriods     PlanningPeriod[]
   branchForecastTargets BranchForecastTarget[]
+  skuForecastTargets  SkuForecastTarget[]
   branchAllocations   BranchAllocation[]
+  demandPlanningRuns  DemandPlanningRun[]
+  demandPlanningRunBranches DemandPlanningRunBranch[]
+  demandPlanningLines DemandPlanningLine[]
+  demandPlanningOverrides DemandPlanningOverride[]
   stockCountSessions  StockCountSession[]
   stockVariances      StockVariance[]
   sapIntegrationJobs  SapIntegrationJob[]
@@ -293,6 +311,8 @@ model User {
   announcementsCreated      Announcement[]        @relation("AnnouncementCreatedBy")
   competitorObservationsCreated CompetitorObservation[] @relation("CompetitorObservationCreatedBy")
   officialSalesImportBatchesUploaded OfficialSalesImportBatch[] @relation("OfficialSalesImportBatchUploadedBy")
+  demandPlanningRunsCreated DemandPlanningRun[] @relation("DemandPlanningRunCreatedBy")
+  demandPlanningOverrides   DemandPlanningOverride[] @relation("DemandPlanningOverrideActor")
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -603,6 +623,8 @@ model ProductModel {
   branchAllowedModels BranchAllowedModel[]
   branchOrderDetails BranchOrderDetail[]
   branchAllocations  BranchAllocation[]
+  skuForecastTargets SkuForecastTarget[]
+  demandPlanningLines DemandPlanningLine[]
   stockCountLines    StockCountLine[]
   priceLists         PriceList[]
   salesTransactionDetails BranchSalesTransactionDetail[]
@@ -1193,7 +1215,9 @@ model Branch {
   branchSales           BranchSalesTransaction[]
   stockSourceSales      BranchSalesTransaction[] @relation("SalesStockSourceBranch")
   branchForecastTargets BranchForecastTarget[]
+  skuForecastTargets    SkuForecastTarget[]
   branchAllocations     BranchAllocation[]
+  demandPlanningRunBranches DemandPlanningRunBranch[]
   stockCountSessions    StockCountSession[]
   branchBackloads       BranchBackload[]
   branchQuotas          BranchQuota[]
@@ -1593,7 +1617,9 @@ model PlanningPeriod {
 
   tenant         Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branchTargets  BranchForecastTarget[]
+  skuForecastTargets SkuForecastTarget[]
   allocations    BranchAllocation[]
+  demandPlanningRuns DemandPlanningRun[]
 
   @@unique([tenantId, label])
   @@index([tenantId])
@@ -1639,6 +1665,191 @@ model BranchAllocation {
   @@unique([periodId, branchId, modelId])
   @@index([tenantId, periodId])
   @@map("branch_allocations")
+}
+
+/// Per-SKU SFE monthly forecast qty. Unique on period + branch + model.
+model SkuForecastTarget {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  periodId  String   @map("period_id")
+  branchId  String   @map("branch_id")
+  modelId   String   @map("model_id")
+  qty       Int
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  period PlanningPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  branch Branch         @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  model  ProductModel   @relation(fields: [modelId], references: [id], onDelete: Cascade)
+
+  @@unique([periodId, branchId, modelId])
+  @@index([tenantId, periodId])
+  @@index([tenantId, branchId])
+  @@map("sku_forecast_targets")
+}
+
+/// Versioned Demand Planning document (DP-YYYYMM-nnn). Re-runs create a new version.
+model DemandPlanningRun {
+  id               String                   @id @default(cuid())
+  tenantId         String                   @map("tenant_id")
+  periodId         String                   @map("period_id")
+  documentNumber   String                   @map("document_number")
+  version          Int                      @default(1)
+  status           DemandPlanningRunStatus  @default(draft)
+  name             String?
+  /// Dealers / branches in this run.
+  scope            Json
+  /// monthBasisDays, roundUpToOne, floorAllocationAtZero, quotaMode, frequencyOverride.
+  parameters       Json
+  historyFrom      DateTime?                @map("history_from")
+  historyTo        DateTime?                @map("history_to")
+  historySkuCount  Int?                     @map("history_sku_count")
+  historyPeso      Decimal?                 @map("history_peso") @db.Decimal(14, 2)
+  planogramYCount  Int?                     @map("planogram_y_count")
+  planogramSkuCount Int?                    @map("planogram_sku_count")
+  forecastUnitCount Int?                    @map("forecast_unit_count")
+  forecastPeso     Decimal?                 @map("forecast_peso") @db.Decimal(14, 2)
+  onHandUnitCount  Int?                     @map("on_hand_unit_count")
+  onHandPeso       Decimal?                 @map("on_hand_peso") @db.Decimal(14, 2)
+  onHandAsAt       DateTime?                @map("on_hand_as_at")
+  displayUnitsCount Int?                    @map("display_units_count")
+  releasedAt       DateTime?                @map("released_at")
+  supersedesRunId  String?                  @map("supersedes_run_id")
+  createdById      String                   @map("created_by_id")
+  createdAt        DateTime                 @default(now()) @map("created_at")
+  updatedAt        DateTime                 @updatedAt @map("updated_at")
+
+  tenant        Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  period        PlanningPeriod           @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  createdBy     User                     @relation("DemandPlanningRunCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  supersedes    DemandPlanningRun?       @relation("DemandPlanningRunSupersedes", fields: [supersedesRunId], references: [id], onDelete: SetNull)
+  supersededBy  DemandPlanningRun[]      @relation("DemandPlanningRunSupersedes")
+  branches      DemandPlanningRunBranch[]
+  lines         DemandPlanningLine[]
+  overrides     DemandPlanningOverride[]
+
+  @@unique([tenantId, documentNumber])
+  @@index([tenantId, periodId])
+  @@index([tenantId, status])
+  @@index([createdById])
+  @@index([supersedesRunId])
+  @@map("demand_planning_runs")
+}
+
+model DemandPlanningRunBranch {
+  id                String                   @id @default(cuid())
+  tenantId          String                   @map("tenant_id")
+  runId             String                   @map("run_id")
+  branchId          String                   @map("branch_id")
+  planStatus        DemandPlanningPlanStatus @default(awaiting) @map("plan_status")
+  quotaPeso         Decimal                  @map("quota_peso") @db.Decimal(14, 2)
+  minLevelDays      Decimal                  @map("min_level_days") @db.Decimal(8, 4)
+  minLevelPeso      Decimal                  @map("min_level_peso") @db.Decimal(14, 2)
+  dropsPerMonth     Decimal                  @map("drops_per_month") @db.Decimal(8, 4)
+  historyQty        Decimal                  @default(0) @map("history_qty") @db.Decimal(14, 4)
+  historyPeso       Decimal                  @default(0) @map("history_peso") @db.Decimal(14, 2)
+  milQty            Int                      @default(0) @map("mil_qty")
+  milPeso           Decimal                  @default(0) @map("mil_peso") @db.Decimal(14, 2)
+  displayUnits      Int                      @default(0) @map("display_units")
+  onHandQty         Int                      @default(0) @map("on_hand_qty")
+  forecastQty       Int                      @default(0) @map("forecast_qty")
+  forecastPeso      Decimal                  @default(0) @map("forecast_peso") @db.Decimal(14, 2)
+  allocQty          Int                      @default(0) @map("alloc_qty")
+  allocPeso         Decimal                  @default(0) @map("alloc_peso") @db.Decimal(14, 2)
+  drop1Qty          Int                      @default(0) @map("drop1_qty")
+  drop1Peso         Decimal                  @default(0) @map("drop1_peso") @db.Decimal(14, 2)
+  cycleQty          Int                      @default(0) @map("cycle_qty")
+  planogramSkuCount Int                      @default(0) @map("planogram_sku_count")
+  coverageDays      Decimal?                 @map("coverage_days") @db.Decimal(8, 4)
+  createdAt         DateTime                 @default(now()) @map("created_at")
+  updatedAt         DateTime                 @updatedAt @map("updated_at")
+
+  tenant Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  run    DemandPlanningRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  branch Branch            @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  lines  DemandPlanningLine[]
+  overrides DemandPlanningOverride[]
+
+  @@unique([runId, branchId])
+  @@index([tenantId, runId])
+  @@index([branchId])
+  @@map("demand_planning_run_branches")
+}
+
+/// One SKU row on a run branch — grid columns plus computed vs released Drop 1.
+model DemandPlanningLine {
+  id                    String   @id @default(cuid())
+  tenantId              String   @map("tenant_id")
+  runId                 String   @map("run_id")
+  runBranchId           String   @map("run_branch_id")
+  modelId               String   @map("model_id")
+  skuCode               String   @map("sku_code")
+  seriesCode            String   @map("series_code")
+  srp                   Decimal  @db.Decimal(12, 2)
+  /// Y | blank | free
+  planogramFlag         String   @map("planogram_flag")
+  historyQty            Decimal  @map("history_qty") @db.Decimal(14, 4)
+  historyPeso           Decimal  @map("history_peso") @db.Decimal(14, 2)
+  hmix                  Decimal  @db.Decimal(18, 10)
+  adjHmix               Decimal  @map("adj_hmix") @db.Decimal(18, 10)
+  milQty                Int      @map("mil_qty")
+  milPeso               Decimal  @map("mil_peso") @db.Decimal(14, 2)
+  computedDisplayUnits  Int      @map("computed_display_units")
+  displayUnits          Int      @map("display_units")
+  onHandQty             Int      @map("on_hand_qty")
+  computedForecastQty   Int      @map("computed_forecast_qty")
+  forecastQty           Int      @map("forecast_qty")
+  forecastPeso          Decimal  @map("forecast_peso") @db.Decimal(14, 2)
+  allocQty              Int      @map("alloc_qty")
+  allocPeso             Decimal  @map("alloc_peso") @db.Decimal(14, 2)
+  cycleQty              Int      @map("cycle_qty")
+  computedDrop1Qty      Int      @map("computed_drop1_qty")
+  releasedDrop1Qty      Int?     @map("released_drop1_qty")
+  drop1Peso             Decimal  @map("drop1_peso") @db.Decimal(14, 2)
+  totalInventoryQty     Int      @map("total_inventory_qty")
+  totalInventoryPeso    Decimal  @map("total_inventory_peso") @db.Decimal(14, 2)
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  run       DemandPlanningRun        @relation(fields: [runId], references: [id], onDelete: Cascade)
+  runBranch DemandPlanningRunBranch  @relation(fields: [runBranchId], references: [id], onDelete: Cascade)
+  model     ProductModel             @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  overrides DemandPlanningOverride[]
+
+  @@unique([runBranchId, modelId])
+  @@index([tenantId, runId])
+  @@index([runId])
+  @@index([modelId])
+  @@map("demand_planning_lines")
+}
+
+/// Audit of draft / workbench edits (DU, FC, and later send overrides).
+model DemandPlanningOverride {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+  runId       String   @map("run_id")
+  runBranchId String?  @map("run_branch_id")
+  lineId      String?  @map("line_id")
+  userId      String   @map("user_id")
+  field       String
+  beforeValue String   @map("before_value")
+  afterValue  String   @map("after_value")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  run       DemandPlanningRun       @relation(fields: [runId], references: [id], onDelete: Cascade)
+  runBranch DemandPlanningRunBranch? @relation(fields: [runBranchId], references: [id], onDelete: SetNull)
+  line      DemandPlanningLine?     @relation(fields: [lineId], references: [id], onDelete: SetNull)
+  user      User                    @relation("DemandPlanningOverrideActor", fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, runId])
+  @@index([runBranchId])
+  @@index([lineId])
+  @@index([userId])
+  @@map("demand_planning_overrides")
 }
 
 // --- BRS orders ---

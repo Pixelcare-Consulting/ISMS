@@ -2,7 +2,7 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.39.10`
+**Current version:** `0.41.1`
 
 ## Stack
 
@@ -19,7 +19,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | **Announcements** | Tenant posts (title, body, publish/expiry); list + CRUD (`/announcements`) |
 | **Competitors** | Market observations with master Competitor + Competitor brand/model lookups, AOR-bound branch, optional promotion; KPIs + CRUD (`/competitors`) |
 | **Settings** | Company, users, departments, roles, permissions catalog (`roles.manage`; assign via Roles), branches, warehouses, dealers, service centers, AORs (branches / warehouses / service centers assign + sync), master data (incl. Series / Categories, Competitors / Competitor brands), status codes (per-module tabs + badge colors); collapsible Module guides on complex settings/ops pages |
-| **Planning** | Period switcher + clickable cards; in-page Add/Edit/Remove branch revenue targets; official Forecast template download + import (bulk); allocation; suggested auto-replenish (`/settings/planning`, `/planning/suggested-orders`) |
+| **Planning** | Period switcher + clickable cards; in-page Add/Edit/Remove branch revenue targets; official Forecast template download + import (bulk); allocation; Demand Planning runs (`/settings/planning`, `/settings/planning/runs`) |
 | **Planogram** | Clickable cards filter branches with a planogram or none yet; branch list shows allowed SKUs as tags; Open a branch shows a wait message with the branch name; per-branch SKU assignment; current or latest model price and date; editable max qty; Allowed models uses the same table; official Excel template download + import (branch SAP + SKU); Add model requires Allowed models first |
 | **Policies** | Full document control (ISO track) |
 | **Inventory** | Serialized stock (STK on Stock units), **warehouse stock** SN list (`/inventory/warehouse-stock`; also Settings → Warehouses →image.png Stock), AOR-scoped lists, series QTY/VALUE + DR#/date/aging, **physical stock count / P-Count** (`/inventory/stock-count`) |
@@ -53,7 +53,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/orders/manual` | `orders.manual.view` / `create` / `approve` (or legacy `orders.*`); tabs `?tab=orders` \| `analytics` \| `history` |
 | `/orders/special` | `orders.special.view` / `create` / `approve` (or legacy `orders.*`); tabs `?tab=orders` \| `analytics` \| `history` |
 | `/orders/auto-replenish` | `orders.auto_replenish.view` / `create` / `approve` (or legacy `orders.*`); tabs `?tab=orders` \| `history` (no Analytics) |
-| `/planning/suggested-orders` | `forecast.manage` / `planogram.manage` |
+| `/settings/planning/runs` | `forecast.view` / `forecast.manage` — Demand Planning runs (legacy `/planning` and `/planning/suggested-orders` redirect here) |
 | `/logistics/deliveries`, `/transfers`, `/pickups` | `logistics.view` / `create` / `manage` (legacy `orders.*` aliases for list) |
 | `/operations` | `inventory.view` (combined ops view) |
 | `/sales` | `sales.view` / `sales.create` / `sales.update` (New transaction needs `sales.create`; header Edit needs `sales.update`; `?tab=returns` redirects to `/returns?tab=branch`) |
@@ -75,7 +75,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/settings/dealers` | `dealers.manage` |
 | `/settings/service-centers` | `service_centers.manage` |
 | `/settings/aors` | `aors.manage` |
-| `/settings/planning`, `/settings/planogram`, `/settings/planogram/[branchId]` | `forecast.manage` / `planogram.*` (Planning: Forecast template — period, branch_sap_code, revenue_target; Planogram: Download template + upload — branch SAP + SKU; SKUs/branches must already exist; Add model needs Allowed models; Open a branch stays under Planogram) |
+| `/settings/planning`, `/settings/planning/runs`, `/settings/planogram`, `/settings/planogram/[branchId]` | `forecast.manage` / `planogram.*` (Planning: Forecast template — period, branch_sap_code, revenue_target; Demand Planning runs under Settings → Planning; Planogram: Download template + upload — branch SAP + SKU; SKUs/branches must already exist; Add model needs Allowed models; Open a branch stays under Planogram) |
 | `/settings/master-data/*` | `master_data.manage` (Models: Import template + upload; creates new SKUs / updates existing; our template only. Price lists: Import template + upload; SKUs/package types must already exist; matching periods update amount) |
 | `/settings/sap-integration` | `sap.manage` (queue) |
 | `/settings/sap-integration/service-layer` | `sap.manage` (B1 Service Layer config) |

@@ -20,9 +20,11 @@ export const userService = {
     return isPlatformOperator ? users : filterTenantVisibleUsers(users);
   },
 
-  async listRoles(tenantId: string) {
+  async listRoles(tenantId: string, includeProviderOnlyRoles = false) {
     const roles = await roleRepository.listByTenant(tenantId);
-    return filterTenantVisibleRoles(roles);
+    return includeProviderOnlyRoles
+      ? roles
+      : filterTenantVisibleRoles(roles);
   },
 
   async listDepartments(tenantId: string) {
@@ -37,6 +39,7 @@ export const userService = {
     password: string;
     roleSlug?: string;
     departmentId?: string | null;
+    allowProviderOnlyRoles?: boolean;
   }) {
     const existing = await userRepository.findByEmail(
       input.tenantId,
@@ -67,7 +70,7 @@ export const userService = {
     await syncCredentialAccountPassword(user.id, passwordHash);
 
     const roleSlug = input.roleSlug ?? "employee";
-    if (isProviderOnlyRole(roleSlug)) {
+    if (!input.allowProviderOnlyRoles && isProviderOnlyRole(roleSlug)) {
       throw new Error("This role cannot be assigned");
     }
     const role = await roleRepository.findBySlug(input.tenantId, roleSlug);
@@ -95,6 +98,7 @@ export const userService = {
     roleSlug: string;
     departmentId?: string | null;
     password?: string;
+    allowProviderOnlyRoles?: boolean;
   }) {
     const parsed = updateUserSchema.safeParse({
       userId: input.userId,
@@ -113,7 +117,10 @@ export const userService = {
       throw new Error("User not found");
     }
 
-    if (userHasProviderOnlyRole(user.userRoles)) {
+    if (
+      !input.allowProviderOnlyRoles &&
+      userHasProviderOnlyRole(user.userRoles)
+    ) {
       throw new Error("This user cannot be modified");
     }
 
@@ -127,7 +134,7 @@ export const userService = {
       }
     }
 
-    if (isProviderOnlyRole(input.roleSlug)) {
+    if (!input.allowProviderOnlyRoles && isProviderOnlyRole(input.roleSlug)) {
       throw new Error("This role cannot be assigned");
     }
 
@@ -169,6 +176,7 @@ export const userService = {
     tenantId: string;
     actorUserId: string;
     userId: string;
+    allowProviderOnlyRoles?: boolean;
   }) {
     if (input.actorUserId === input.userId) {
       throw new Error("You cannot delete your own account");
@@ -179,7 +187,10 @@ export const userService = {
       throw new Error("User not found");
     }
 
-    if (userHasProviderOnlyRole(user.userRoles)) {
+    if (
+      !input.allowProviderOnlyRoles &&
+      userHasProviderOnlyRole(user.userRoles)
+    ) {
       throw new Error("This user cannot be deleted");
     }
 

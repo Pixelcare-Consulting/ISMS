@@ -26,6 +26,30 @@ const nextConfig: NextConfig = {
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
+  async redirects() {
+    return [
+      {
+        source: "/planning",
+        destination: "/settings/planning/runs",
+        permanent: false,
+      },
+      {
+        source: "/planning/runs/new",
+        destination: "/settings/planning/runs?new=1",
+        permanent: false,
+      },
+      {
+        source: "/planning/runs/:runId",
+        destination: "/settings/planning/runs?run=:runId",
+        permanent: false,
+      },
+      {
+        source: "/planning/suggested-orders",
+        destination: "/settings/planning/runs",
+        permanent: false,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

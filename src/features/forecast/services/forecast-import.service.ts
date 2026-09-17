@@ -1,19 +1,24 @@
 import type { CreateAuditLogInput } from "@/features/audit/repositories/audit-log.repository";
 import { auditService } from "@/features/audit/services/audit.service";
+import { periodDateFieldsFromLabel } from "@/features/demand-planning/lib/planning-period-dates";
 import {
   FORECAST_IMPORT_FIELD_LABELS,
   FORECAST_SHEET_NAME,
+  SFE_IMPORT_FIELD_LABELS,
+  SFE_SHEET_NAME,
   type ForecastImportChunkProgress,
   type ForecastImportFieldChange,
   type ForecastImportPreview,
   type ForecastImportResult,
   type ForecastImportRowError,
   type ForecastImportRowPlan,
+  type SfeImportRowPlan,
 } from "@/features/forecast/schemas/forecast-import.schema";
 import {
   buildForecastTemplateWorkbook,
   readForecastImportWorkbook,
   type ForecastTemplateRow,
+  type SfeTemplateRow,
   type SheetRows,
 } from "@/features/forecast/services/forecast-import.workbook";
 import { getUserBranchIds } from "@/lib/aor/scope";
@@ -34,15 +39,26 @@ const PLAN_NAMESPACE = "forecast-import";
 const SAMPLE_PERIOD = "Dec-25";
 const SAMPLE_SAP_CODE = "WMK-001";
 const SAMPLE_REVENUE = 1_000_000;
+const SAMPLE_SKU = "32STW101";
+const SAMPLE_FORECAST_QTY = 20;
 
-interface RowPlanInternal extends ForecastImportRowPlan {
+interface QuotaWrite extends ForecastImportRowPlan {
+  kind: "quota";
   branchId: string;
 }
+
+interface SfeWrite extends SfeImportRowPlan {
+  kind: "sfe";
+  branchId: string;
+  modelId: string;
+}
+
+type ImportWrite = QuotaWrite | SfeWrite;
 
 interface ImportPlan {
   preview: ForecastImportPreview;
   periodLabel: string;
-  writes: RowPlanInternal[];
+  writes: ImportWrite[];
 }
 
 export interface ForecastImportActor {
@@ -73,19 +89,15 @@ function formatMoney(value: number): string {
 
 function pushChange(
   changes: ForecastImportFieldChange[],
-  field: keyof typeof FORECAST_IMPORT_FIELD_LABELS,
+  field: string,
+  label: string,
   from: string | number | null | undefined,
   to: string | number | null | undefined,
 ) {
   const fromDisplay = display(from);
   const toDisplay = display(to);
   if (fromDisplay === toDisplay) return;
-  changes.push({
-    field,
-    label: FORECAST_IMPORT_FIELD_LABELS[field] ?? field,
-    from: fromDisplay,
-    to: toDisplay,
-  });
+  changes.push({ field, label, from: fromDisplay, to: toDisplay });
 }
 
 function parsePositiveMoney(raw: string | undefined): number | { error: string } {
@@ -98,6 +110,18 @@ function parsePositiveMoney(raw: string | undefined): number | { error: string }
     return { error: "revenue_target must be a number greater than 0." };
   }
   return Math.round(parsed * 100) / 100;
+}
+
+function parseNonNegativeInt(raw: string | undefined): number | { error: string } {
+  if (raw == null || isBlankOrDash(raw)) {
+    return { error: "forecast_qty is required." };
+  }
+  const normalized = raw.replace(/,/g, "").trim();
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed) || parsed < 0 || !Number.isInteger(parsed)) {
+    return { error: "forecast_qty must be a whole number of 0 or more." };
+  }
+  return parsed;
 }
 
 function moneyEquals(a: number, b: number): boolean {
@@ -114,95 +138,174 @@ async function resolveScopedBranchIds(actor: ForecastImportActor): Promise<strin
   return branchIds && branchIds.length > 0 ? branchIds : [];
 }
 
-async function loadTemplateRows(actor: ForecastImportActor): Promise<ForecastTemplateRow[]> {
+async function loadTemplateRows(actor: ForecastImportActor): Promise<{
+  quota: ForecastTemplateRow[];
+  sfe: SfeTemplateRow[];
+}> {
   const scopedBranchIds = await resolveScopedBranchIds(actor);
-  if (scopedBranchIds && scopedBranchIds.length === 0) return [];
+  if (scopedBranchIds && scopedBranchIds.length === 0) return { quota: [], sfe: [] };
 
   const period = await prisma.planningPeriod.findFirst({
     where: { tenantId: actor.tenantId, isActive: true },
     orderBy: { updatedAt: "desc" },
     select: { id: true, label: true },
   });
-  if (!period) return [];
+  if (!period) return { quota: [], sfe: [] };
 
   const branchFilter =
     scopedBranchIds && scopedBranchIds.length > 0 ? { branchId: { in: scopedBranchIds } } : {};
 
-  const targets = await prisma.branchForecastTarget.findMany({
-    where: { tenantId: actor.tenantId, periodId: period.id, ...branchFilter },
-    select: {
-      revenueTarget: true,
-      branch: { select: { sapCode: true, name: true } },
-    },
-    orderBy: { branch: { sapCode: "asc" } },
-  });
+  const [targets, skuTargets] = await Promise.all([
+    prisma.branchForecastTarget.findMany({
+      where: { tenantId: actor.tenantId, periodId: period.id, ...branchFilter },
+      select: {
+        revenueTarget: true,
+        branch: { select: { sapCode: true, name: true } },
+      },
+      orderBy: { branch: { sapCode: "asc" } },
+    }),
+    prisma.skuForecastTarget.findMany({
+      where: { tenantId: actor.tenantId, periodId: period.id, ...branchFilter },
+      select: {
+        qty: true,
+        branch: { select: { sapCode: true } },
+        model: { select: { skuCode: true } },
+      },
+      orderBy: [{ branch: { sapCode: "asc" } }, { model: { skuCode: "asc" } }],
+    }),
+  ]);
 
-  return targets.map((target) => ({
-    period: period.label,
-    sapCode: target.branch.sapCode,
-    revenueTarget: Number(target.revenueTarget.toString()),
-    branchName: target.branch.name,
-  }));
+  return {
+    quota: targets.map((target) => ({
+      period: period.label,
+      sapCode: target.branch.sapCode,
+      revenueTarget: Number(target.revenueTarget.toString()),
+      branchName: target.branch.name,
+    })),
+    sfe: skuTargets.map((target) => ({
+      period: period.label,
+      sapCode: target.branch.sapCode,
+      sku: target.model.skuCode,
+      forecastQty: target.qty,
+    })),
+  };
 }
 
-async function buildPlan(
-  actor: ForecastImportActor,
+function collectPeriodLabel(
   sheet: SheetRows,
-): Promise<ImportPlan> {
-  const errors: ForecastImportRowError[] = [];
-  const scopedBranchIds = await resolveScopedBranchIds(actor);
-  const scopedSet = scopedBranchIds ? new Set(scopedBranchIds) : null;
-
-  if (sheet.rows.length > MAX_ROWS) {
-    throw new Error(`This file has more than ${MAX_ROWS.toLocaleString()} rows. Split it and import in parts.`);
-  }
-
-  const seenSap = new Map<string, number>();
-  let periodLabel = "";
-
+  sheetName: string,
+  errors: ForecastImportRowError[],
+  fields: string[],
+  current: string,
+): string {
+  let periodLabel = current;
   for (const row of sheet.rows) {
     const sapCode = row.values.sap_code?.trim() ?? "";
     const period = row.values.period?.trim() ?? "";
-    if (
-      isBlankOrDash(sapCode) &&
-      isBlankOrDash(period) &&
-      isBlankOrDash(row.values.revenue_target)
-    ) {
-      continue;
-    }
+    if (fields.every((field) => isBlankOrDash(row.values[field]))) continue;
 
     if (!isBlankOrDash(period)) {
       if (!periodLabel) periodLabel = period;
       else if (lookupKey(period) !== lookupKey(periodLabel)) {
         errors.push({
-          sheet: FORECAST_SHEET_NAME,
+          sheet: sheetName,
           rowNumber: row.rowNumber,
           sapCode: sapCode || "—",
           period,
+          sku: row.values.sku?.trim() || undefined,
           message: `All rows must use the same period. This file already uses "${periodLabel}".`,
+        });
+      }
+    }
+  }
+  return periodLabel;
+}
+
+async function buildPlan(
+  actor: ForecastImportActor,
+  sheets: { quota: SheetRows; sfe: SheetRows },
+): Promise<ImportPlan> {
+  const errors: ForecastImportRowError[] = [];
+  const scopedBranchIds = await resolveScopedBranchIds(actor);
+  const scopedSet = scopedBranchIds ? new Set(scopedBranchIds) : null;
+
+  const quotaRowCount = sheets.quota.present ? sheets.quota.rows.length : 0;
+  const sfeRowCount = sheets.sfe.present ? sheets.sfe.rows.length : 0;
+  if (quotaRowCount + sfeRowCount > MAX_ROWS) {
+    throw new Error(`This file has more than ${MAX_ROWS.toLocaleString()} rows. Split it and import in parts.`);
+  }
+
+  let periodLabel = "";
+  if (sheets.sfe.present) {
+    periodLabel = collectPeriodLabel(
+      sheets.sfe,
+      SFE_SHEET_NAME,
+      errors,
+      ["sap_code", "period", "sku", "forecast_qty"],
+      periodLabel,
+    );
+  }
+  if (sheets.quota.present) {
+    periodLabel = collectPeriodLabel(
+      sheets.quota,
+      FORECAST_SHEET_NAME,
+      errors,
+      ["sap_code", "period", "revenue_target"],
+      periodLabel,
+    );
+  }
+
+  const seenSap = new Map<string, number>();
+  const seenSfe = new Map<string, number>();
+
+  if (sheets.quota.present) {
+    for (const row of sheets.quota.rows) {
+      const sapCode = row.values.sap_code?.trim() ?? "";
+      if (isBlankOrDash(sapCode)) continue;
+      const sapKey = lookupKey(sapCode);
+      if (seenSap.has(sapKey)) {
+        errors.push({
+          sheet: FORECAST_SHEET_NAME,
+          rowNumber: row.rowNumber,
+          sapCode,
+          period: row.values.period?.trim() || periodLabel || "—",
+          message: `Duplicate of row ${seenSap.get(sapKey)} (${sapCode}). Keep one quota row per branch.`,
         });
         continue;
       }
+      seenSap.set(sapKey, row.rowNumber);
     }
-
-    const sapKey = lookupKey(sapCode);
-    if (seenSap.has(sapKey) && sapCode) {
-      errors.push({
-        sheet: FORECAST_SHEET_NAME,
-        rowNumber: row.rowNumber,
-        sapCode,
-        period: period || periodLabel || "—",
-        message: `Duplicate of row ${seenSap.get(sapKey)} (${sapCode}). Keep one row per branch.`,
-      });
-      continue;
-    }
-    if (sapCode) seenSap.set(sapKey, row.rowNumber);
   }
 
-  const [branches, existingPeriod] = await Promise.all([
+  if (sheets.sfe.present) {
+    for (const row of sheets.sfe.rows) {
+      const sapCode = row.values.sap_code?.trim() ?? "";
+      const sku = row.values.sku?.trim() ?? "";
+      if (isBlankOrDash(sapCode) || isBlankOrDash(sku)) continue;
+      const key = `${lookupKey(sapCode)}::${lookupKey(sku)}`;
+      if (seenSfe.has(key)) {
+        errors.push({
+          sheet: SFE_SHEET_NAME,
+          rowNumber: row.rowNumber,
+          sapCode,
+          period: row.values.period?.trim() || periodLabel || "—",
+          sku,
+          message: `Duplicate of row ${seenSfe.get(key)} (${sapCode} / ${sku}). Keep one SFE row per branch and SKU.`,
+        });
+        continue;
+      }
+      seenSfe.set(key, row.rowNumber);
+    }
+  }
+
+  const [branches, models, existingPeriod] = await Promise.all([
     prisma.branch.findMany({
       where: { tenantId: actor.tenantId },
       select: { id: true, name: true, sapCode: true, status: true },
+    }),
+    prisma.productModel.findMany({
+      where: { tenantId: actor.tenantId },
+      select: { id: true, skuCode: true, status: true },
     }),
     periodLabel
       ? prisma.planningPeriod.findUnique({
@@ -213,6 +316,8 @@ async function buildPlan(
   ]);
 
   const branchBySap = new Map(branches.map((branch) => [lookupKey(branch.sapCode), branch]));
+  const modelBySku = new Map(models.map((model) => [lookupKey(model.skuCode), model]));
+
   const existingTargets =
     existingPeriod == null
       ? []
@@ -224,106 +329,231 @@ async function buildPlan(
     existingTargets.map((target) => [target.branchId, Number(target.revenueTarget.toString())]),
   );
 
+  const existingSkuTargets =
+    existingPeriod == null
+      ? []
+      : await prisma.skuForecastTarget.findMany({
+          where: { tenantId: actor.tenantId, periodId: existingPeriod.id },
+          select: { branchId: true, modelId: true, qty: true },
+        });
+  const skuTargetKey = (branchId: string, modelId: string) => `${branchId}::${modelId}`;
+  const skuQtyByPair = new Map(
+    existingSkuTargets.map((target) => [skuTargetKey(target.branchId, target.modelId), target.qty]),
+  );
+
   const previewRows: ForecastImportRowPlan[] = [];
-  const writes: RowPlanInternal[] = [];
+  const sfePreviewRows: SfeImportRowPlan[] = [];
+  const writes: ImportWrite[] = [];
 
-  for (const row of sheet.rows) {
-    const sapCode = row.values.sap_code?.trim() ?? "";
-    const period = row.values.period?.trim() ?? "";
-    if (
-      isBlankOrDash(sapCode) &&
-      isBlankOrDash(period) &&
-      isBlankOrDash(row.values.revenue_target)
-    ) {
-      continue;
-    }
+  if (sheets.quota.present) {
+    for (const row of sheets.quota.rows) {
+      const sapCode = row.values.sap_code?.trim() ?? "";
+      const period = row.values.period?.trim() ?? "";
+      if (
+        isBlankOrDash(sapCode) &&
+        isBlankOrDash(period) &&
+        isBlankOrDash(row.values.revenue_target)
+      ) {
+        continue;
+      }
 
-    const pushError = (message: string) => {
-      errors.push({
-        sheet: FORECAST_SHEET_NAME,
+      const pushError = (message: string) => {
+        errors.push({
+          sheet: FORECAST_SHEET_NAME,
+          rowNumber: row.rowNumber,
+          sapCode: sapCode || "—",
+          period: period || periodLabel || "—",
+          message,
+        });
+      };
+
+      if (isBlankOrDash(period)) {
+        pushError("period is empty.");
+        continue;
+      }
+      if (lookupKey(period) !== lookupKey(periodLabel)) continue;
+      if (isBlankOrDash(sapCode)) {
+        pushError("branch_sap_code is empty.");
+        continue;
+      }
+      if (seenSap.get(lookupKey(sapCode)) !== row.rowNumber) continue;
+
+      const revenueTarget = parsePositiveMoney(row.values.revenue_target);
+      if (typeof revenueTarget !== "number") {
+        pushError(revenueTarget.error);
+        continue;
+      }
+
+      const branch = branchBySap.get(lookupKey(sapCode));
+      if (!branch) {
+        pushError(
+          `Branch "${sapCode}" was not found. Import or sync branches first — this file does not create branches.`,
+        );
+        continue;
+      }
+      if (branch.status !== "active") {
+        pushError(`Branch "${sapCode}" is not active.`);
+        continue;
+      }
+      if (scopedSet && !scopedSet.has(branch.id)) {
+        pushError(`Branch "${sapCode}" is outside your area of responsibility.`);
+        continue;
+      }
+
+      const existingRevenue = targetByBranch.get(branch.id);
+      const changes: ForecastImportFieldChange[] = [];
+      if (existingRevenue == null) {
+        pushChange(changes, "revenueTarget", FORECAST_IMPORT_FIELD_LABELS.revenueTarget, null, formatMoney(revenueTarget));
+      } else if (!moneyEquals(existingRevenue, revenueTarget)) {
+        pushChange(
+          changes,
+          "revenueTarget",
+          FORECAST_IMPORT_FIELD_LABELS.revenueTarget,
+          formatMoney(existingRevenue),
+          formatMoney(revenueTarget),
+        );
+      }
+
+      const action = existingRevenue == null ? "create" : changes.length > 0 ? "update" : "skip";
+      const planned: QuotaWrite = {
+        kind: "quota",
         rowNumber: row.rowNumber,
-        sapCode: sapCode || "—",
-        period: period || periodLabel || "—",
-        message,
-      });
-    };
-
-    if (isBlankOrDash(period)) {
-      pushError("period is empty.");
-      continue;
+        period: periodLabel,
+        sapCode: branch.sapCode,
+        branchName: branch.name,
+        revenueTarget,
+        action,
+        changes,
+        branchId: branch.id,
+      };
+      previewRows.push(planned);
+      if (action !== "skip") writes.push(planned);
     }
-    if (lookupKey(period) !== lookupKey(periodLabel)) {
-      continue;
-    }
-    if (isBlankOrDash(sapCode)) {
-      pushError("branch_sap_code is empty.");
-      continue;
-    }
-
-    const sapFileKey = lookupKey(sapCode);
-    if (seenSap.get(sapFileKey) !== row.rowNumber) {
-      continue;
-    }
-
-    const revenueTarget = parsePositiveMoney(row.values.revenue_target);
-    if (typeof revenueTarget !== "number") {
-      pushError(revenueTarget.error);
-      continue;
-    }
-
-    const branch = branchBySap.get(lookupKey(sapCode));
-    if (!branch) {
-      pushError(
-        `Branch "${sapCode}" was not found. Import or sync branches first — this file does not create branches.`,
-      );
-      continue;
-    }
-    if (branch.status !== "active") {
-      pushError(`Branch "${sapCode}" is not active.`);
-      continue;
-    }
-    if (scopedSet && !scopedSet.has(branch.id)) {
-      pushError(`Branch "${sapCode}" is outside your area of responsibility.`);
-      continue;
-    }
-
-    const existingRevenue = targetByBranch.get(branch.id);
-    const changes: ForecastImportFieldChange[] = [];
-    if (existingRevenue == null) {
-      pushChange(changes, "revenueTarget", null, formatMoney(revenueTarget));
-    } else if (!moneyEquals(existingRevenue, revenueTarget)) {
-      pushChange(changes, "revenueTarget", formatMoney(existingRevenue), formatMoney(revenueTarget));
-    }
-
-    const action = existingRevenue == null ? "create" : changes.length > 0 ? "update" : "skip";
-    const planned: RowPlanInternal = {
-      rowNumber: row.rowNumber,
-      period: periodLabel,
-      sapCode: branch.sapCode,
-      branchName: branch.name,
-      revenueTarget,
-      action,
-      changes,
-      branchId: branch.id,
-    };
-
-    previewRows.push(planned);
-    if (action !== "skip") writes.push(planned);
   }
 
-  if (!periodLabel && errors.length === 0 && previewRows.length === 0) {
+  if (sheets.sfe.present) {
+    for (const row of sheets.sfe.rows) {
+      const sapCode = row.values.sap_code?.trim() ?? "";
+      const period = row.values.period?.trim() ?? "";
+      const sku = row.values.sku?.trim() ?? "";
+      if (
+        isBlankOrDash(sapCode) &&
+        isBlankOrDash(period) &&
+        isBlankOrDash(sku) &&
+        isBlankOrDash(row.values.forecast_qty)
+      ) {
+        continue;
+      }
+
+      const pushError = (message: string) => {
+        errors.push({
+          sheet: SFE_SHEET_NAME,
+          rowNumber: row.rowNumber,
+          sapCode: sapCode || "—",
+          period: period || periodLabel || "—",
+          sku: sku || undefined,
+          message,
+        });
+      };
+
+      if (isBlankOrDash(period)) {
+        pushError("period is empty.");
+        continue;
+      }
+      if (lookupKey(period) !== lookupKey(periodLabel)) continue;
+      if (isBlankOrDash(sapCode)) {
+        pushError("branch_sap_code is empty.");
+        continue;
+      }
+      if (isBlankOrDash(sku)) {
+        pushError("sku is empty.");
+        continue;
+      }
+      if (seenSfe.get(`${lookupKey(sapCode)}::${lookupKey(sku)}`) !== row.rowNumber) continue;
+
+      const forecastQty = parseNonNegativeInt(row.values.forecast_qty);
+      if (typeof forecastQty !== "number") {
+        pushError(forecastQty.error);
+        continue;
+      }
+
+      const branch = branchBySap.get(lookupKey(sapCode));
+      if (!branch) {
+        pushError(
+          `Branch "${sapCode}" was not found. Import or sync branches first — this file does not create branches.`,
+        );
+        continue;
+      }
+      if (branch.status !== "active") {
+        pushError(`Branch "${sapCode}" is not active.`);
+        continue;
+      }
+      if (scopedSet && !scopedSet.has(branch.id)) {
+        pushError(`Branch "${sapCode}" is outside your area of responsibility.`);
+        continue;
+      }
+
+      const model = modelBySku.get(lookupKey(sku));
+      if (!model) {
+        pushError(
+          `SKU "${sku}" was not found. Import or sync models first — this file does not create SKUs.`,
+        );
+        continue;
+      }
+      if (model.status !== "active") {
+        pushError(`SKU "${sku}" is not active.`);
+        continue;
+      }
+
+      const existingQty = skuQtyByPair.get(skuTargetKey(branch.id, model.id));
+      const changes: ForecastImportFieldChange[] = [];
+      if (existingQty == null) {
+        pushChange(changes, "forecastQty", SFE_IMPORT_FIELD_LABELS.forecastQty, null, forecastQty);
+      } else if (existingQty !== forecastQty) {
+        pushChange(changes, "forecastQty", SFE_IMPORT_FIELD_LABELS.forecastQty, existingQty, forecastQty);
+      }
+
+      const action = existingQty == null ? "create" : changes.length > 0 ? "update" : "skip";
+      const planned: SfeWrite = {
+        kind: "sfe",
+        rowNumber: row.rowNumber,
+        period: periodLabel,
+        sapCode: branch.sapCode,
+        branchName: branch.name,
+        sku: model.skuCode,
+        forecastQty,
+        action,
+        changes,
+        branchId: branch.id,
+        modelId: model.id,
+      };
+      sfePreviewRows.push(planned);
+      if (action !== "skip") writes.push(planned);
+    }
+  }
+
+  if (
+    !periodLabel &&
+    errors.length === 0 &&
+    previewRows.length === 0 &&
+    sfePreviewRows.length === 0
+  ) {
     errors.push({
-      sheet: FORECAST_SHEET_NAME,
+      sheet: SFE_SHEET_NAME,
       rowNumber: 2,
       sapCode: "—",
       period: "—",
-      message: "Add at least one row with period, branch_sap_code, and revenue_target.",
+      message:
+        "Add at least one SFE row (period, branch_sap_code, sku, forecast_qty) or a Forecast quota row.",
     });
   }
 
   const createCount = previewRows.filter((row) => row.action === "create").length;
   const updateCount = previewRows.filter((row) => row.action === "update").length;
   const unchangedCount = previewRows.filter((row) => row.action === "skip").length;
+  const sfeCreateCount = sfePreviewRows.filter((row) => row.action === "create").length;
+  const sfeUpdateCount = sfePreviewRows.filter((row) => row.action === "update").length;
+  const sfeUnchangedCount = sfePreviewRows.filter((row) => row.action === "skip").length;
   const periodWillActivate = Boolean(periodLabel) && (!existingPeriod || !existingPeriod.isActive);
 
   return {
@@ -334,9 +564,17 @@ async function buildPlan(
       createCount,
       updateCount,
       unchangedCount,
-      canApply: errors.length === 0 && Boolean(periodLabel) && (writes.length > 0 || periodWillActivate),
+      sfeRowCount: sfePreviewRows.length,
+      sfeCreateCount,
+      sfeUpdateCount,
+      sfeUnchangedCount,
+      canApply:
+        errors.length === 0 &&
+        Boolean(periodLabel) &&
+        (writes.length > 0 || periodWillActivate),
       errors,
       rows: previewRows.slice(0, 200),
+      sfeRows: sfePreviewRows.slice(0, 200),
     },
     periodLabel,
     writes,
@@ -344,14 +582,15 @@ async function buildPlan(
 }
 
 async function upsertActivePeriod(tenantId: string, periodLabel: string) {
+  const dates = periodDateFieldsFromLabel(periodLabel);
   await prisma.planningPeriod.updateMany({
     where: { tenantId, isActive: true },
     data: { isActive: false },
   });
   return prisma.planningPeriod.upsert({
     where: { tenantId_label: { tenantId, label: periodLabel } },
-    create: { tenantId, label: periodLabel, isActive: true },
-    update: { isActive: true },
+    create: { tenantId, label: periodLabel, isActive: true, ...dates },
+    update: { isActive: true, ...dates },
   });
 }
 
@@ -360,46 +599,84 @@ async function applyWriteSlice(
   actorUserId: string,
   periodId: string,
   periodLabel: string,
-  writes: RowPlanInternal[],
-): Promise<Pick<ForecastImportResult, "created" | "updated">> {
+  writes: ImportWrite[],
+): Promise<Pick<ForecastImportResult, "created" | "updated" | "sfeCreated" | "sfeUpdated">> {
   if (writes.length === 0) {
-    return { created: 0, updated: 0 };
+    return { created: 0, updated: 0, sfeCreated: 0, sfeUpdated: 0 };
   }
 
   const outcomes = await mapWithConcurrency(writes, WRITE_CONCURRENCY, async (row) => {
-    const target = await prisma.branchForecastTarget.upsert({
-      where: { periodId_branchId: { periodId, branchId: row.branchId } },
+    if (row.kind === "quota") {
+      const target = await prisma.branchForecastTarget.upsert({
+        where: { periodId_branchId: { periodId, branchId: row.branchId } },
+        create: {
+          tenantId,
+          periodId,
+          branchId: row.branchId,
+          revenueTarget: row.revenueTarget,
+        },
+        update: { revenueTarget: row.revenueTarget },
+      });
+      const audits: CreateAuditLogInput[] = [
+        {
+          tenantId,
+          userId: actorUserId,
+          action: row.action === "create" ? "forecast.target_created" : "forecast.target_updated",
+          entityType: "BranchForecastTarget",
+          entityId: target.id,
+          metadata: {
+            periodId,
+            periodLabel,
+            branchId: row.branchId,
+            sapCode: row.sapCode,
+            revenueTarget: row.revenueTarget,
+            source: "forecast-import",
+          },
+        },
+      ];
+      return row.action === "create"
+        ? { created: 1, updated: 0, sfeCreated: 0, sfeUpdated: 0, audits }
+        : { created: 0, updated: 1, sfeCreated: 0, sfeUpdated: 0, audits };
+    }
+
+    const target = await prisma.skuForecastTarget.upsert({
+      where: {
+        periodId_branchId_modelId: {
+          periodId,
+          branchId: row.branchId,
+          modelId: row.modelId,
+        },
+      },
       create: {
         tenantId,
         periodId,
         branchId: row.branchId,
-        revenueTarget: row.revenueTarget,
+        modelId: row.modelId,
+        qty: row.forecastQty,
       },
-      update: { revenueTarget: row.revenueTarget },
+      update: { qty: row.forecastQty },
     });
-
     const audits: CreateAuditLogInput[] = [
       {
         tenantId,
         userId: actorUserId,
-        action: row.action === "create" ? "forecast.target_created" : "forecast.target_updated",
-        entityType: "BranchForecastTarget",
+        action: row.action === "create" ? "forecast.sku_target_created" : "forecast.sku_target_updated",
+        entityType: "SkuForecastTarget",
         entityId: target.id,
         metadata: {
           periodId,
           periodLabel,
           branchId: row.branchId,
           sapCode: row.sapCode,
-          revenueTarget: row.revenueTarget,
+          sku: row.sku,
+          forecastQty: row.forecastQty,
           source: "forecast-import",
         },
       },
     ];
-
-    if (row.action === "create") {
-      return { created: 1, updated: 0, audits };
-    }
-    return { created: 0, updated: 1, audits };
+    return row.action === "create"
+      ? { created: 0, updated: 0, sfeCreated: 1, sfeUpdated: 0, audits }
+      : { created: 0, updated: 0, sfeCreated: 0, sfeUpdated: 1, audits };
   });
 
   const auditRows = outcomes.flatMap((outcome) => outcome.audits);
@@ -411,8 +688,10 @@ async function applyWriteSlice(
     (sum, outcome) => ({
       created: sum.created + outcome.created,
       updated: sum.updated + outcome.updated,
+      sfeCreated: sum.sfeCreated + outcome.sfeCreated,
+      sfeUpdated: sum.sfeUpdated + outcome.sfeUpdated,
     }),
-    { created: 0, updated: 0 },
+    { created: 0, updated: 0, sfeCreated: 0, sfeUpdated: 0 },
   );
 }
 
@@ -420,6 +699,7 @@ function emptyChunkProgress(
   total: number,
   planKey: string | undefined,
   unchangedCount: number,
+  sfeUnchangedCount: number,
   periodLabel: string,
 ): ForecastImportChunkProgress {
   return {
@@ -429,7 +709,10 @@ function emptyChunkProgress(
     done: true,
     created: 0,
     updated: 0,
+    sfeCreated: 0,
+    sfeUpdated: 0,
     unchanged: unchangedCount,
+    sfeUnchanged: sfeUnchangedCount,
     periodLabel,
     planKey,
     result: {
@@ -437,6 +720,9 @@ function emptyChunkProgress(
       created: 0,
       updated: 0,
       unchanged: unchangedCount,
+      sfeCreated: 0,
+      sfeUpdated: 0,
+      sfeUnchanged: sfeUnchangedCount,
     },
   };
 }
@@ -449,6 +735,8 @@ function planExpiredProgress(offset: number): ForecastImportChunkProgress {
     done: false,
     created: 0,
     updated: 0,
+    sfeCreated: 0,
+    sfeUpdated: 0,
     planExpired: true,
   };
 }
@@ -456,17 +744,27 @@ function planExpiredProgress(offset: number): ForecastImportChunkProgress {
 export const forecastImportService = {
   async buildTemplate(actor: ForecastImportActor): Promise<Buffer> {
     const rows = await loadTemplateRows(actor);
-    if (rows.length === 0) {
-      return buildForecastTemplateWorkbook([
-        {
-          period: SAMPLE_PERIOD,
-          sapCode: SAMPLE_SAP_CODE,
-          revenueTarget: SAMPLE_REVENUE,
-          branchName: "",
-        },
-      ]);
+    if (rows.quota.length === 0 && rows.sfe.length === 0) {
+      return buildForecastTemplateWorkbook(
+        [
+          {
+            period: SAMPLE_PERIOD,
+            sapCode: SAMPLE_SAP_CODE,
+            revenueTarget: SAMPLE_REVENUE,
+            branchName: "",
+          },
+        ],
+        [
+          {
+            period: SAMPLE_PERIOD,
+            sapCode: SAMPLE_SAP_CODE,
+            sku: SAMPLE_SKU,
+            forecastQty: SAMPLE_FORECAST_QTY,
+          },
+        ],
+      );
     }
-    return buildForecastTemplateWorkbook(rows);
+    return buildForecastTemplateWorkbook(rows.quota, rows.sfe);
   },
 
   async resolvePlan(input: {
@@ -484,8 +782,8 @@ export const forecastImportService = {
     const cached = getCachedPlan<ImportPlan>(planKey);
     if (cached) return { plan: cached, planKey };
 
-    const sheet = await readForecastImportWorkbook(input.file);
-    const plan = await buildPlan(input.actor, sheet);
+    const sheets = await readForecastImportWorkbook(input.file);
+    const plan = await buildPlan(input.actor, sheets);
     setCachedPlan(planKey, plan);
     return { plan, planKey };
   },
@@ -519,6 +817,7 @@ export const forecastImportService = {
     const writes = plan.writes;
     const total = writes.length;
     const unchangedCount = plan.preview.unchangedCount;
+    const sfeUnchangedCount = plan.preview.sfeUnchangedCount;
     const periodLabel = plan.periodLabel;
 
     const period = await upsertActivePeriod(input.actor.tenantId, periodLabel);
@@ -533,13 +832,14 @@ export const forecastImportService = {
           label: periodLabel,
           source: "forecast-import",
           rowCount: plan.preview.rowCount,
+          sfeRowCount: plan.preview.sfeRowCount,
         },
       });
     }
 
     if (total === 0 || input.offset >= total) {
       invalidatePlan(planKey);
-      return emptyChunkProgress(total, planKey, unchangedCount, periodLabel);
+      return emptyChunkProgress(total, planKey, unchangedCount, sfeUnchangedCount, periodLabel);
     }
 
     const chunk = writes.slice(input.offset, input.offset + APPLY_CHUNK_SIZE);
@@ -561,7 +861,10 @@ export const forecastImportService = {
       done,
       created: written.created,
       updated: written.updated,
+      sfeCreated: written.sfeCreated,
+      sfeUpdated: written.sfeUpdated,
       unchanged: unchangedCount,
+      sfeUnchanged: sfeUnchangedCount,
       periodLabel,
       planKey,
       result: done
@@ -570,6 +873,9 @@ export const forecastImportService = {
             created: written.created,
             updated: written.updated,
             unchanged: unchangedCount,
+            sfeCreated: written.sfeCreated,
+            sfeUpdated: written.sfeUpdated,
+            sfeUnchanged: sfeUnchangedCount,
           }
         : undefined,
     };
@@ -584,6 +890,9 @@ export const forecastImportService = {
     let created = 0;
     let updated = 0;
     let unchanged = 0;
+    let sfeCreated = 0;
+    let sfeUpdated = 0;
+    let sfeUnchanged = 0;
     let periodLabel = "";
 
     for (;;) {
@@ -595,11 +904,22 @@ export const forecastImportService = {
       });
       if (progress.planKey) planKey = progress.planKey;
       if (progress.unchanged != null) unchanged = progress.unchanged;
+      if (progress.sfeUnchanged != null) sfeUnchanged = progress.sfeUnchanged;
       if (progress.periodLabel) periodLabel = progress.periodLabel;
       created += progress.created;
       updated += progress.updated;
+      sfeCreated += progress.sfeCreated;
+      sfeUpdated += progress.sfeUpdated;
       if (progress.done) {
-        return { periodLabel, created, updated, unchanged };
+        return {
+          periodLabel,
+          created,
+          updated,
+          unchanged,
+          sfeCreated,
+          sfeUpdated,
+          sfeUnchanged,
+        };
       }
       offset = progress.nextOffset;
     }

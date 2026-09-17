@@ -12,7 +12,10 @@ import { CreateRoleWizard } from "@/features/roles/components/create-role-wizard
 import { EditRoleDialog } from "@/features/roles/components/edit-role-dialog";
 import { RoleCard } from "@/features/roles/components/role-card";
 import { RolePermissionsDrawer } from "@/features/roles/components/role-permissions-drawer";
-import { isProviderOnlyRole } from "@/features/roles/constants/role.constants";
+import {
+  filterTenantVisibleRoles,
+  isProviderOnlyRole,
+} from "@/features/roles/constants/role.constants";
 import {
   countAssignedInGroups,
   groupPermissionsByModule,
@@ -41,7 +44,8 @@ export function RolesSimpleView({
   canManageSystemRoleAccess = false,
 }: RolesSimpleViewProps) {
   const router = useRouter();
-  const { roles, permissions } = matrix;
+  const roles = filterTenantVisibleRoles(matrix.roles);
+  const { permissions } = matrix;
   const [query, setQuery] = useState("");
   const [activeRoleId, setActiveRoleId] = useState<string | null>(null);
   const [editingRole, setEditingRole] = useState<RolePermissionRow | null>(

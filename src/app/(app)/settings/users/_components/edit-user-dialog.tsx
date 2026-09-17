@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 
 import { toast } from "sonner";
 
+import { filterTenantVisibleRoles } from "@/features/roles/constants/role.constants";
 import { updateUserAction } from "@/features/users/actions/user.actions";
 import { Button } from "@/components/ui/button";
 import {
@@ -69,7 +70,11 @@ export function EditUserDialog({
   const [pending, startTransition] = useTransition();
 
   const roleOptions = useMemo(
-    () => roles.map((role) => ({ id: role.slug, label: role.name })),
+    () =>
+      filterTenantVisibleRoles(roles).map((role) => ({
+        id: role.slug,
+        label: role.name,
+      })),
     [roles],
   );
 

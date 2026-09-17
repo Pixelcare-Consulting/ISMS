@@ -321,10 +321,11 @@ export const appModules: AppModule[] = [
   {
     id: "forecast",
     name: "Planning & Forecast",
-    route: "/settings/planning",
+    route: "/settings/planning/runs",
     slugPrefix: "forecast",
-    navPermission: "forecast.manage",
-    description: "Forecast upload, allocation, and suggested orders",
+    navPermission: "forecast.view",
+    description:
+      "Demand Planning runs and coverage (view) plus forecast import and quota overrides (manage)",
     actions: permissionActions("view", "manage"),
   },
   {

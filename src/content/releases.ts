@@ -52,6 +52,124 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.41.1",
+    date: "2026-09-17",
+    releasedAt: "2026-09-17T10:30:00+08:00",
+    title: "Demand Planning review and versions",
+    highlights: [
+      "After a new Demand Planning run, Review is the last step. Open the document or close to return to the list — the plan stays Generated until you release it from the document.",
+      "Recalculated plans show Recalculated instead of Superseded, and the original DP# so you can see which plan a version came from.",
+      "After you release a Demand Planning document to ordering, the full-screen popup closes so you are back on the runs list.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "After a new Demand Planning run, Review is the last step. Open the document or close to return to the list. The plan stays Generated until you release it from the document.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Recalculated Demand Planning documents show Recalculated instead of Superseded, with the original DP# next to the new number.",
+      },
+      {
+        type: "improvement",
+        description:
+          "After you release a Demand Planning document to ordering, the popup closes and you return to the runs list.",
+      },
+    ],
+  },
+  {
+    version: "0.41.0",
+    date: "2026-09-17",
+    releasedAt: "2026-09-17T10:15:00+08:00",
+    title: "Demand Planning under Settings",
+    highlights: [
+      "Demand Planning now lives under Settings → Operations & Planning, next to Planning & Forecast",
+      "Saved links to the old Demand Planning page still open the same runs list",
+      "After a new run, Review shows the totals only. Open the document to see or adjust SKU lines, then Release to Ordering.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Demand Planning now lives under Settings → Operations & Planning, alongside Planning & Forecast, instead of under Orders",
+      },
+      {
+        type: "improvement",
+        description:
+          "Saved links to the previous Demand Planning page still take you to the same runs",
+      },
+      {
+        type: "improvement",
+        description:
+          "The new-run Review step now shows totals only. Open the document to review or adjust SKU lines before you release.",
+      },
+    ],
+  },
+  {
+    version: "0.40.1",
+    date: "2026-09-17",
+    releasedAt: "2026-09-17T09:45:00+08:00",
+    title: "Demand Planning document popup",
+    highlights: [
+      "Opening a Demand Planning document now stays on the list as a full-screen popup. Close with X or Escape to return to your runs.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Opening a Demand Planning document now stays on the list as a full-screen popup. Close it to return to your runs.",
+      },
+    ],
+  },
+  {
+    version: "0.40.0",
+    date: "2026-09-16",
+    releasedAt: "2026-09-17T09:15:00+08:00",
+    title: "Super Admin on Provider Console",
+    highlights: [
+      "On an organization’s people list in the Provider Console, you can see Super Admins and assign that role when adding or editing someone",
+      "Inside the organization app, Super Admin does not appear in people lists, role menus, or role settings",
+      "Starting a Demand Planning run now opens as a popup on the list. Confirm sources, review the summary tiles, then open a plan table that matches the printed Run",
+      "The close (X) on the Demand Planning new-run popup is now clearly visible on the dark header",
+      "Picking dealers and branches for a new run now uses the same searchable list as the rest of the app — filter, Select all, and Clear",
+      "After a run is generated, review shows large totals, the plan lines you can adjust, and Release on the left",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Provider Console organization people list now shows Super Admins and lets you assign that role when adding or editing a person",
+      },
+      {
+        type: "improvement",
+        description:
+          "People inside an organization no longer see Super Admin in user lists, role menus, or role settings",
+      },
+      {
+        type: "improvement",
+        description:
+          "Demand Planning runs now start in a popup. Source confirm, review tiles, and the plan table match the printed Run",
+      },
+      {
+        type: "improvement",
+        description:
+          "Picking dealers and branches for a new Demand Planning run now uses the same searchable list as elsewhere: filter as you type, Select all, and Clear",
+      },
+      {
+        type: "improvement",
+        description:
+          "The Demand Planning review step now shows large totals, plan lines you can adjust before release, and the Release button on the left",
+      },
+      {
+        type: "fix",
+        description:
+          "The close button on the Demand Planning new-run popup is now easy to see on the dark header",
+      },
+    ],
+  },
+  {
     version: "0.39.10",
     date: "2026-09-15",
     releasedAt: "2026-09-15T12:25:00+08:00",

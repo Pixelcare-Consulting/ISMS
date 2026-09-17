@@ -134,6 +134,13 @@ export const appNavigation: NavEntry[] = [
         ],
         badge: "new",
       },
+      {
+        href: "/planning/replenishment",
+        label: "Replenishment",
+        icon: LayoutGrid,
+        anyPermissions: ["forecast.view", "forecast.manage"],
+        badge: "new",
+      },
     ],
   },
   {
@@ -324,7 +331,12 @@ export const appNavigation: NavEntry[] = [
         label: "DII",
         icon: CalendarDays,
         anyPermissions: ["reports.view", "inventory.view"],
-     
+      },
+      {
+        href: "/reports/demand-planning",
+        label: "Demand Planning",
+        icon: ChartColumn,
+        anyPermissions: ["forecast.view", "forecast.manage"],
       },
       {
         href: "/reports/aging",
@@ -478,8 +490,16 @@ export const appNavigation: NavEntry[] = [
             label: "Planning & Forecast",
             icon: LayoutGrid,
             anyPermissions: ["forecast.manage", "planogram.manage"],
+            exact: true,
             badge: "new",
           },
+          // DO NOT UNCOMMENT THIS, NO NEED TO SHOW IN THE NAVIGATION {
+          //   href: "/settings/planning/runs",
+          //   label: "Demand Planning",
+          //   icon: CalendarDays,
+          //   anyPermissions: ["forecast.view", "forecast.manage"],
+          //   badge: "new",
+          // },
           {
             href: "/settings/planogram",
             label: "Planogram",

@@ -231,7 +231,7 @@ function buildCorpus(): HelpChunk[] {
     moduleGuideChunk(
       "suggested-orders",
       SUGGESTED_ORDERS_MODULE_GUIDE,
-      "/planning/suggested-orders",
+      "/settings/planning/runs",
     ),
     moduleGuideChunk("planogram", PLANOGRAM_MODULE_GUIDE, "/settings/planogram"),
     moduleGuideChunk(

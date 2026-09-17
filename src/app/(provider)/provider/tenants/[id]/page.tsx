@@ -143,7 +143,7 @@ export default async function ProviderTenantDetailPage({
         <div>
           <h2 className="text-base font-semibold">Users</h2>
           <p className="text-sm text-muted-foreground">
-            Manage people and Tenant Admins for this organization.
+            Manage people, Tenant Admins, and Super Admins for this organization.
           </p>
         </div>
         <ProviderUsersTable

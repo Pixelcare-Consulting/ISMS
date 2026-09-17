@@ -84,7 +84,7 @@ interface OrdersTableProps {
   };
   viewerRoleSlugs: string[];
   canEdit?: boolean;
-  /** Same gate as `/planning/suggested-orders` (`forecast.manage` / `planogram.manage`). */
+  /** Same gate as Demand Planning (`forecast.manage` / `planogram.manage`). */
   canAccessSuggestedOrders?: boolean;
   /** When set, list is type-scoped and create dialog locks this type. */
   fixedOrderType?: BranchOrderType;
@@ -274,7 +274,7 @@ export function OrdersTable({
             ) : null}
             {canAccessSuggestedOrders ? (
               <Button variant="outline" asChild>
-                <a href="/planning/suggested-orders">Suggested orders</a>
+                <a href="/settings/planning/runs">Suggested orders</a>
               </Button>
             ) : null}
             {canEdit && fixedOrderType !== "auto_replenish" ? (

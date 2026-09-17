@@ -11,7 +11,7 @@ import {
   resolveDashboardCapabilities,
   type DashboardKpiKey,
 } from "@/features/dashboard/constants/dashboard-permissions";
-import { dashboardKpiValue } from "@/features/dashboard/lib/dashboard-kpi-value";
+import { dashboardKpiValue, dashboardPlanningAlertLabel } from "@/features/dashboard/lib/dashboard-kpi-value";
 import {
   getDashboardAnalytics,
   getDashboardKpis,
@@ -22,7 +22,7 @@ import { hasAnyOrderPermission } from "@/features/orders/constants/order-permiss
 import { hasPermission } from "@/lib/auth/permissions";
 import type { AppSession } from "@/lib/auth/session";
 
-function kpiLabel(key: DashboardKpiKey): string {
+function kpiLabel(key: DashboardKpiKey, kpis: DashboardKpis): string {
   switch (key) {
     case "pendingOrderApprovals":
       return "Orders waiting for review";
@@ -37,7 +37,7 @@ function kpiLabel(key: DashboardKpiKey): string {
     case "milBreaches":
       return "MIL alerts";
     case "allocationGaps":
-      return "Allocation gaps";
+      return dashboardPlanningAlertLabel(kpis);
     case "draftSuggestedOrders":
       return "Draft suggested orders";
     default: {
@@ -57,7 +57,7 @@ function resolveFullAccess(permissions: string[] | undefined) {
 function visibleKpiSummary(kpis: DashboardKpis, permissions: string[] | undefined) {
   const caps = resolveDashboardCapabilities(permissions);
   return DASHBOARD_KPI_KEYS.filter((key) => kpiKeyVisible(key, caps)).map((key) => ({
-    label: kpiLabel(key),
+    label: kpiLabel(key, kpis),
     value: dashboardKpiValue(key, kpis),
   }));
 }

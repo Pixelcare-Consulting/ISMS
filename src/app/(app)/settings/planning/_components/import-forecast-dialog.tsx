@@ -120,6 +120,7 @@ export function ImportForecastDialog({
 
     const startedAtMs = Date.now();
     const unchangedCount = preview.unchangedCount;
+    const sfeUnchangedCount = preview.sfeUnchangedCount;
 
     startTransition(async () => {
       let offset = 0;
@@ -127,6 +128,8 @@ export function ImportForecastDialog({
       let lastTotal = 0;
       let created = 0;
       let updated = 0;
+      let sfeCreated = 0;
+      let sfeUpdated = 0;
 
       setApplyProgress({ processed: 0, total: 0, elapsedMs: 0 });
 
@@ -166,6 +169,8 @@ export function ImportForecastDialog({
 
           created += progress.created;
           updated += progress.updated;
+          sfeCreated += progress.sfeCreated;
+          sfeUpdated += progress.sfeUpdated;
           lastProcessed = progress.processed;
           lastTotal = progress.total;
 
@@ -179,9 +184,12 @@ export function ImportForecastDialog({
             const period = progress.periodLabel || preview.periodLabel;
             const parts = [
               `Period ${period}`,
-              `${created} created`,
-              `${updated} updated`,
-              `${unchangedCount} unchanged`,
+              `${sfeCreated} SFE created`,
+              `${sfeUpdated} SFE updated`,
+              `${sfeUnchangedCount} SFE unchanged`,
+              `${created} quota created`,
+              `${updated} quota updated`,
+              `${unchangedCount} quota unchanged`,
             ];
             toast.success(parts.join(" · "));
             setApplyProgress(null);
@@ -204,6 +212,9 @@ export function ImportForecastDialog({
   const hasErrors = (preview?.errors.length ?? 0) > 0;
   const showChangesColumn =
     preview?.rows.some((row) => row.action === "update" && row.changes.length > 0) ?? false;
+  const showSfeChangesColumn =
+    preview?.sfeRows.some((row) => row.action === "update" && row.changes.length > 0) ?? false;
+  const hasPreviewRows = (preview?.rows.length ?? 0) > 0 || (preview?.sfeRows.length ?? 0) > 0;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -224,17 +235,18 @@ export function ImportForecastDialog({
         <div className="space-y-4">
           <div className="text-muted-foreground space-y-2 text-sm">
             <p>
-              Download the <strong>Forecast</strong> template, fill in period, branch SAP
-              code, and revenue target, then upload that same file. The old BRS wide
-              spreadsheet is not accepted here.
+              Download the template. The <strong>SFE</strong> sheet is the SKU forecast
+              (period, branch SAP code, SKU, forecast qty). The <strong>Forecast</strong>{" "}
+              sheet is optional — use it only when you want a branch revenue quota
+              instead of deriving quota from the SFE total.
             </p>
             <p>
-              Branches must already exist — this import does not create branches, SKUs, or
-              planogram rows. Shelf max stays on Planogram. Rows left out of the file are
-              not removed.
+              Branches and SKUs must already exist — this import does not create
+              branches, SKUs, or planogram rows. Shelf max stays on Planogram. Rows left
+              out of the file are not removed.
             </p>
             <p>
-              Keep Forecast period as text (<strong>Dec-25</strong>), not an Excel date.
+              Keep period as text (<strong>Dec-25</strong>), not an Excel date.
             </p>
           </div>
 
@@ -285,16 +297,28 @@ export function ImportForecastDialog({
                   {preview.periodWillActivate ? " (will be set active)" : ""}
                 </span>
                 <span>
-                  <strong>{preview.rowCount}</strong> rows
+                  <strong>{preview.sfeRowCount}</strong> SFE rows
                 </span>
                 <span>
-                  <strong>{preview.createCount}</strong> to create
+                  <strong>{preview.sfeCreateCount}</strong> SFE create
                 </span>
                 <span>
-                  <strong>{preview.updateCount}</strong> to update
+                  <strong>{preview.sfeUpdateCount}</strong> SFE update
                 </span>
                 <span className="text-muted-foreground">
-                  {preview.unchangedCount} unchanged (skipped)
+                  {preview.sfeUnchangedCount} SFE unchanged
+                </span>
+                <span>
+                  <strong>{preview.rowCount}</strong> quota rows
+                </span>
+                <span>
+                  <strong>{preview.createCount}</strong> quota create
+                </span>
+                <span>
+                  <strong>{preview.updateCount}</strong> quota update
+                </span>
+                <span className="text-muted-foreground">
+                  {preview.unchangedCount} quota unchanged
                 </span>
               </div>
 
@@ -311,6 +335,7 @@ export function ImportForecastDialog({
                         <span className="text-muted-foreground">
                           {error.sheet} · row {error.rowNumber}
                           {error.sapCode !== "—" ? ` · ${error.sapCode}` : ""}
+                          {error.sku ? ` · ${error.sku}` : ""}
                         </span>{" "}
                         {error.message}
                       </li>
@@ -324,6 +349,48 @@ export function ImportForecastDialog({
                 </div>
               ) : null}
 
+              {preview.sfeRows.length > 0 ? (
+                <div className="max-h-72 overflow-y-auto rounded-lg border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Branch SAP</TableHead>
+                        <TableHead>SKU</TableHead>
+                        <TableHead className="text-right">Forecast qty</TableHead>
+                        <TableHead>Action</TableHead>
+                        {showSfeChangesColumn ? <TableHead>Changes</TableHead> : null}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {preview.sfeRows.map((row) => (
+                        <TableRow key={`sfe-${row.sapCode}-${row.sku}-${row.rowNumber}`}>
+                          <TableCell className="font-mono text-xs">{row.sapCode}</TableCell>
+                          <TableCell className="font-mono text-xs">{row.sku}</TableCell>
+                          <TableCell className="text-right tabular-nums text-sm">
+                            {row.forecastQty.toLocaleString("en-PH")}
+                          </TableCell>
+                          <TableCell className="text-sm">{actionLabel(row.action)}</TableCell>
+                          {showSfeChangesColumn ? (
+                            <TableCell className="text-sm">
+                              {row.changes.length === 0 ? (
+                                <span className="text-muted-foreground">No field changes</span>
+                              ) : (
+                                row.changes.map((change) => (
+                                  <div key={`${change.field}-${change.to}`}>
+                                    {change.label}: {change.from} →{" "}
+                                    <strong>{change.to}</strong>
+                                  </div>
+                                ))
+                              )}
+                            </TableCell>
+                          ) : null}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : null}
+
               {preview.rows.length > 0 ? (
                 <div className="max-h-72 overflow-y-auto rounded-lg border">
                   <Table>
@@ -331,7 +398,7 @@ export function ImportForecastDialog({
                       <TableRow>
                         <TableHead>Branch SAP code</TableHead>
                         <TableHead>Branch</TableHead>
-                        <TableHead className="text-right">Target</TableHead>
+                        <TableHead className="text-right">Quota</TableHead>
                         <TableHead>Action</TableHead>
                         {showChangesColumn ? <TableHead>Changes</TableHead> : null}
                       </TableRow>
@@ -364,7 +431,9 @@ export function ImportForecastDialog({
                     </TableBody>
                   </Table>
                 </div>
-              ) : !hasErrors ? (
+              ) : null}
+
+              {!hasErrors && !hasPreviewRows ? (
                 <p className="text-muted-foreground text-sm">
                   Everything in this file already matches the system. Nothing to import.
                 </p>

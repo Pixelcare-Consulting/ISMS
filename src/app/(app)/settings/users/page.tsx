@@ -3,6 +3,10 @@ import {
   listRolesAction,
   listUsersAction,
 } from "@/features/users/actions/user.actions";
+import {
+  filterTenantVisibleRoles,
+  filterTenantVisibleUsers,
+} from "@/features/roles/constants/role.constants";
 import { requirePermission } from "@/lib/auth/permissions";
 import { USERS_PAGE_TUTORIAL } from "@/content/page-tutorials/users";
 import { PageHeader } from "@/app/(app)/_components/page-header";
@@ -16,7 +20,11 @@ export default async function SettingsUsersPage() {
     listDepartmentsAction(),
   ]);
 
-  const roleOptions = roles.map((role) => ({ slug: role.slug, name: role.name }));
+  const roleOptions = filterTenantVisibleRoles(roles).map((role) => ({
+    slug: role.slug,
+    name: role.name,
+  }));
+  const visibleUsers = filterTenantVisibleUsers(users);
   const departmentOptions = departments.map((department) => ({
     id: department.id,
     name: department.name,
@@ -31,7 +39,7 @@ export default async function SettingsUsersPage() {
         sticky={false}
       />
       <UsersTable
-        users={users}
+        users={visibleUsers}
         roles={roleOptions}
         departments={departmentOptions}
         currentUserId={session.user.id}

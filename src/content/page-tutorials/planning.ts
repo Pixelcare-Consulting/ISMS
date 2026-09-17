@@ -28,7 +28,7 @@ export const PLANNING_PAGE_TUTORIAL: PageTutorialContent = {
       title: "Related pages",
       bullets: [
         "Planogram — authorized SKUs and MIL thresholds per branch.",
-        "Suggested orders — bulk review of auto-replenish drafts.",
+        "Demand Planning — generate and release runs from Settings → Planning.",
         "Branch orders — approval and logistics handoff.",
       ],
     },
