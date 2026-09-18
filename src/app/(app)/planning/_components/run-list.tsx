@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { NewRunDialog } from "@/app/(app)/planning/_components/new-run-dialog";
 import { RunDocumentDialog } from "@/app/(app)/planning/_components/run-document-dialog";
+import { TableIndexCell, TableIndexHead } from "@/components/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SearchableSelect } from "@/components/ui/searchable-select";
@@ -31,6 +32,7 @@ export function DemandPlanningRunList({
   items,
   total,
   page,
+  limit,
   totalPages,
   periods,
   selectedPeriodId,
@@ -44,6 +46,7 @@ export function DemandPlanningRunList({
   items: DemandPlanningClientRunListItem[];
   total: number;
   page: number;
+  limit: number;
   totalPages: number;
   periods: Array<{ id: string; label: string; isActive: boolean }>;
   selectedPeriodId?: string;
@@ -159,6 +162,7 @@ export function DemandPlanningRunList({
       >
         <TableHeader>
           <TableRow>
+            <TableIndexHead />
             <TableHead>Document</TableHead>
             <TableHead>Period</TableHead>
             <TableHead>Status</TableHead>
@@ -169,8 +173,9 @@ export function DemandPlanningRunList({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {items.map((item) => (
+          {items.map((item, rowIndex) => (
             <TableRow key={item.id}>
+              <TableIndexCell index={(page - 1) * limit + rowIndex + 1} />
               <TableCell>
                 <button
                   type="button"

@@ -52,6 +52,28 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.41.2",
+    date: "2026-09-18",
+    releasedAt: "2026-09-18T10:15:00+08:00",
+    title: "Clearer planogram and run lists",
+    highlights: [
+      "Branch planogram lists show only the essentials — SKU, model, series, and a link to units — so the table is easier to scan.",
+      "Demand Planning runs now include row numbers so you can find a plan faster as you move through pages.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Branch planogram lists are simpler: SKU, model, series, and units — without the extra price, brand, date, max qty, and stock columns.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Demand Planning runs show a row number on each page so you can track where you are in the list.",
+      },
+    ],
+  },
+  {
     version: "0.41.1",
     date: "2026-09-17",
     releasedAt: "2026-09-17T10:30:00+08:00",

@@ -217,9 +217,6 @@ export function BranchRevenueTargetsTable({
         }
         toolbarActions={
           <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" variant="outline" asChild>
-              <Link href="/settings/planning/runs">Demand Planning</Link>
-            </Button>
             {selection.selectedCount > 0 ? (
               <Button
                 variant="destructive"

@@ -56,6 +56,7 @@ export default async function DemandPlanningRunsPage({
         items={runs.items}
         total={runs.total}
         page={runs.page}
+        limit={limit}
         totalPages={runs.totalPages}
         periods={periods}
         selectedPeriodId={params.period}
