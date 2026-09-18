@@ -115,7 +115,7 @@ export function DemandPlanningWizardShell({
                   </button>
                   {index < STEPS.length - 1 ? (
                     <span
-                      className="ml-[0.8125rem] block h-4 w-px bg-border"
+                      className="ml-0.8125rem block h-4 w-px bg-border"
                       aria-hidden
                     />
                   ) : null}
