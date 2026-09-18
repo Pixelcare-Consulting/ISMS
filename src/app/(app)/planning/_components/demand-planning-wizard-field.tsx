@@ -12,14 +12,16 @@ export function WizardField({
   htmlFor,
   hint,
   children,
+  className,
 }: {
   label: string;
   htmlFor?: string;
   hint?: ReactNode;
   children: ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="min-w-0 space-y-1.5">
+    <div className={cn("min-w-0 space-y-1.5", className)}>
       <Label htmlFor={htmlFor} className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
         {label}
       </Label>

@@ -12,12 +12,21 @@ import { WizardStepReview } from "@/app/(app)/planning/_components/wizard-step-r
 import { WizardStepScope } from "@/app/(app)/planning/_components/wizard-step-scope";
 import { WizardStepSources } from "@/app/(app)/planning/_components/wizard-step-sources";
 import { Button } from "@/components/ui/button";
-import { DEFAULT_DEMAND_PLAN_PARAMETERS, type DemandPlanQuotaMode } from "@/features/demand-planning";
+import {
+  DEFAULT_DEMAND_PLAN_PARAMETERS,
+  MONTH_BASIS_DAYS,
+  type DemandPlanQuotaMode,
+} from "@/features/demand-planning";
 import {
   generateDemandPlanRunAction,
   getDemandPlanningRunAction,
   previewDemandPlanSourcesAction,
 } from "@/features/demand-planning/actions/demand-planning.actions";
+import {
+  threeMonthHistoryWindow,
+  toDateInputValue,
+} from "@/features/demand-planning/lib/history-window";
+import { calendarMonthBoundsFromLabel } from "@/features/demand-planning/lib/planning-period-dates";
 import type {
   DemandPlanningClientRun,
   DemandPlanningSourcePreview,
@@ -47,6 +56,28 @@ const STEP_COPY: Record<DemandPlanningWizardStep, { title: string; description: 
   },
 };
 
+function periodStartDate(period: DemandPlanningWizardPeriod | undefined): Date | null {
+  if (!period) return null;
+  if (period.startDate) {
+    const parsed = new Date(period.startDate);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  return calendarMonthBoundsFromLabel(period.label)?.startDate ?? null;
+}
+
+function defaultHistoryDates(period: DemandPlanningWizardPeriod | undefined): {
+  historyFrom: string;
+  historyTo: string;
+} {
+  const start = periodStartDate(period);
+  if (!start) return { historyFrom: "", historyTo: "" };
+  const window = threeMonthHistoryWindow(start);
+  return {
+    historyFrom: toDateInputValue(window.historyFrom),
+    historyTo: toDateInputValue(window.historyTo),
+  };
+}
+
 export function NewRunWizard({
   actorName,
   periods,
@@ -64,18 +95,29 @@ export function NewRunWizard({
   onClose?: () => void;
   onOpenDocument?: (runId: string) => void;
 }) {
+  const initialPeriodId =
+    periods.find((period) => period.isActive)?.id ?? periods[0]?.id ?? "";
+  const initialHistory = defaultHistoryDates(
+    periods.find((period) => period.id === initialPeriodId) ?? periods[0],
+  );
+
   const [step, setStep] = useState<DemandPlanningWizardStep>(1);
   const [maxReached, setMaxReached] = useState<DemandPlanningWizardStep>(1);
   const [pending, startTransition] = useTransition();
-  const [periodId, setPeriodId] = useState(periods.find((period) => period.isActive)?.id ?? periods[0]?.id ?? "");
+  const [periodId, setPeriodId] = useState(initialPeriodId);
   const [name, setName] = useState("");
   const [dealerIds, setDealerIds] = useState<string[]>(() => dealers.map((dealer) => dealer.id));
   const [branchIds, setBranchIds] = useState<string[]>(() => branches.map((branch) => branch.id));
+  const [historyFrom, setHistoryFrom] = useState(initialHistory.historyFrom);
+  const [historyTo, setHistoryTo] = useState(initialHistory.historyTo);
   const [elapsedMs, setElapsedMs] = useState<number | null>(null);
   const [quotaMode, setQuotaMode] = useState<DemandPlanQuotaMode>(
     DEFAULT_DEMAND_PLAN_PARAMETERS.quotaMode,
   );
   const [frequencyOverride, setFrequencyOverride] = useState<number | null>(null);
+  const [monthBasisDays, setMonthBasisDays] = useState(
+    DEFAULT_DEMAND_PLAN_PARAMETERS.monthBasisDays || MONTH_BASIS_DAYS,
+  );
   const [roundUpToOne, setRoundUpToOne] = useState(DEFAULT_DEMAND_PLAN_PARAMETERS.roundUpToOne);
   const [floorAllocationAtZero, setFloorAllocationAtZero] = useState(
     DEFAULT_DEMAND_PLAN_PARAMETERS.floorAllocationAtZero,
@@ -83,27 +125,37 @@ export function NewRunWizard({
   const [preview, setPreview] = useState<DemandPlanningSourcePreview | null>(null);
   const [run, setRun] = useState<DemandPlanningClientRun | null>(null);
 
+  const historyDatesValid =
+    Boolean(historyFrom) &&
+    Boolean(historyTo) &&
+    historyFrom < historyTo;
+
   const payload = useMemo(
     () => ({
       periodId,
       name: name.trim() || null,
       dealerIds,
       branchIds,
-      monthBasisDays: DEFAULT_DEMAND_PLAN_PARAMETERS.monthBasisDays,
+      monthBasisDays,
       roundUpToOne,
       floorAllocationAtZero,
       quotaMode,
       frequencyOverride,
+      historyFrom: historyFrom || null,
+      historyTo: historyTo || null,
     }),
     [
       periodId,
       name,
       dealerIds,
       branchIds,
+      monthBasisDays,
       roundUpToOne,
       floorAllocationAtZero,
       quotaMode,
       frequencyOverride,
+      historyFrom,
+      historyTo,
     ],
   );
 
@@ -123,9 +175,19 @@ export function NewRunWizard({
     setMaxReached((current) => (next > current ? next : current));
   }
 
+  function handlePeriodId(next: string) {
+    setPeriodId(next);
+    const period = periods.find((item) => item.id === next);
+    const dates = defaultHistoryDates(period);
+    setHistoryFrom(dates.historyFrom);
+    setHistoryTo(dates.historyTo);
+  }
+
   function canGoNext() {
-    if (step === 1) return Boolean(periodId) && branchIds.length > 0;
-    if (step === 2) return true;
+    if (step === 1) {
+      return Boolean(periodId) && branchIds.length > 0 && historyDatesValid;
+    }
+    if (step === 2) return Number.isFinite(monthBasisDays) && monthBasisDays > 0;
     if (step === 3) return Boolean(preview);
     return Boolean(run);
   }
@@ -142,6 +204,10 @@ export function NewRunWizard({
   }
 
   function goNext() {
+    if (step === 1 && !historyDatesValid) {
+      toast.error("Date from must be before Date to");
+      return;
+    }
     if (step === 2) {
       goTo(3);
       loadPreview();
@@ -230,22 +296,28 @@ export function NewRunWizard({
           dealerIds={dealerIds}
           branchIds={branchIds}
           frequencyOverride={frequencyOverride}
+          historyFrom={historyFrom}
+          historyTo={historyTo}
           branchCaption={historyCaption}
-          onPeriodId={setPeriodId}
+          onPeriodId={handlePeriodId}
           onName={setName}
           onDealerIds={setDealerIds}
           onBranchIds={setBranchIds}
           onFrequencyOverride={setFrequencyOverride}
+          onHistoryFrom={setHistoryFrom}
+          onHistoryTo={setHistoryTo}
         />
       ) : null}
       {step === 2 ? (
         <WizardStepParameters
           quotaMode={quotaMode}
           frequencyOverride={frequencyOverride}
+          monthBasisDays={monthBasisDays}
           roundUpToOne={roundUpToOne}
           floorAllocationAtZero={floorAllocationAtZero}
           minLevelPeso={minLevelPeso}
           onQuotaMode={setQuotaMode}
+          onMonthBasisDays={setMonthBasisDays}
           onRoundUpToOne={setRoundUpToOne}
           onFloorAllocationAtZero={setFloorAllocationAtZero}
         />

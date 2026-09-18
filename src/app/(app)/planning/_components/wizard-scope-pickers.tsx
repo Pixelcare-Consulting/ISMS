@@ -45,6 +45,7 @@ export function WizardDealerPicker({
       emptyMessage="No dealers"
       ariaLabel="Dealers in scope"
       showSelectedBadges={false}
+      truncateLabels={false}
       popoverClassName={WIZARD_POPOVER_CLASS}
     />
   );
@@ -72,6 +73,7 @@ export function WizardBranchPicker({
       emptyMessage="No branches"
       ariaLabel="Branches in scope"
       showSelectedBadges={false}
+      truncateLabels={false}
       popoverClassName={WIZARD_POPOVER_CLASS}
     />
   );

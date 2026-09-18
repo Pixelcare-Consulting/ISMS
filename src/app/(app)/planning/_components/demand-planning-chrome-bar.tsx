@@ -37,7 +37,7 @@ function statusClassName(status: DemandPlanningRunStatus): string {
     case "released":
       return "bg-emerald-400 text-zinc-900";
     case "superseded":
-      return "bg-white/20 text-white";
+      return "bg-amber-400 text-zinc-900";
     default: {
       const _exhaustive: never = status;
       throw new Error(`Unhandled run status: ${_exhaustive}`);

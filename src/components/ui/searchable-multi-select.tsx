@@ -45,6 +45,11 @@ type SearchableMultiSelectProps = {
   popoverClassName?: string;
   /** Accessible name when the visible label is rendered by a parent field. */
   ariaLabel?: string;
+  /**
+   * When false, option labels wrap instead of truncating and the popover can grow
+   * wider than the trigger (still capped to the viewport). Default true.
+   */
+  truncateLabels?: boolean;
 };
 
 export function SearchableMultiSelect({
@@ -61,6 +66,7 @@ export function SearchableMultiSelect({
   showSelectedBadges = true,
   popoverClassName,
   ariaLabel,
+  truncateLabels = true,
 }: SearchableMultiSelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -186,7 +192,9 @@ export function SearchableMultiSelect({
                 align="start"
                 collisionPadding={12}
                 className={cn(
-                  "w-(--radix-popover-trigger-width) max-w-[min(100%,calc(100vw-2rem))] p-0",
+                  truncateLabels
+                    ? "w-(--radix-popover-trigger-width) max-w-[min(100%,calc(100vw-2rem))] p-0"
+                    : "w-auto min-w-(--radix-popover-trigger-width) max-w-[min(42rem,calc(100vw-2rem))] p-0",
                   popoverClassName,
                 )}
               >
@@ -236,10 +244,31 @@ export function SearchableMultiSelect({
                                 isSelected ? "opacity-100" : "opacity-0",
                               )}
                             />
-                            <span className="min-w-0 flex-1 truncate">
-                              <span className="block truncate">{option.label}</span>
+                            <span
+                              className={cn(
+                                "min-w-0 flex-1",
+                                truncateLabels ? "truncate" : undefined,
+                              )}
+                            >
+                              <span
+                                className={cn(
+                                  "block",
+                                  truncateLabels
+                                    ? "truncate"
+                                    : "wrap-break-word whitespace-normal",
+                                )}
+                              >
+                                {option.label}
+                              </span>
                               {option.description ? (
-                                <span className="block truncate text-xs text-muted-foreground">
+                                <span
+                                  className={cn(
+                                    "block text-xs text-muted-foreground",
+                                    truncateLabels
+                                      ? "truncate"
+                                      : "wrap-break-word whitespace-normal",
+                                  )}
+                                >
                                   {option.description}
                                 </span>
                               ) : null}

@@ -3,6 +3,7 @@ import type { DemandPlanningRunStatus, Prisma } from "@prisma/client";
 import { periodDateFieldsFromLabel } from "@/features/demand-planning/lib/planning-period-dates";
 import { formatDemandPlanningDocumentNumber } from "@/features/demand-planning/lib/document-number";
 import type { PersistableRunBranch } from "@/features/demand-planning/lib/line-mapper";
+import { ORDER_QUEUE_STATUSES } from "@/features/orders/constants/order-workflow";
 import {
   resolvePagination,
   toPaginatedResult,
@@ -145,6 +146,7 @@ export const demandPlanningRepository = {
         where,
         include: {
           period: { select: { label: true } },
+          createdBy: { select: { name: true, email: true } },
           branches: {
             select: {
               planStatus: true,
@@ -217,15 +219,38 @@ export const demandPlanningRepository = {
     });
   },
 
-  findExistingAutoReplenishDraft(tenantId: string, branchId: string) {
+  /**
+   * Open Auto Replenish for the branch scoped to the same planning period.
+   * Matches notes that include `(periodLabel)` (DP release convention) or the run
+   * `documentNumber`. Manual Auto Replenish without period notes do not match.
+   */
+  findExistingOpenAutoReplenish(
+    tenantId: string,
+    branchId: string,
+    periodLabel: string | null | undefined,
+    documentNumber?: string | null,
+  ) {
+    const label = periodLabel?.trim() ?? "";
+    if (!label) return Promise.resolve(null);
+
+    const periodToken = `(${label})`;
+    const notesFilters: Prisma.BranchOrderWhereInput[] = [
+      { notes: { contains: periodToken, mode: "insensitive" } },
+    ];
+    const doc = documentNumber?.trim() ?? "";
+    if (doc) {
+      notesFilters.push({ notes: { contains: doc, mode: "insensitive" } });
+    }
+
     return prisma.branchOrder.findFirst({
       where: {
         tenantId,
         branchId,
         orderType: "auto_replenish",
-        status: "draft",
+        status: { in: [...ORDER_QUEUE_STATUSES] },
+        OR: notesFilters,
       },
-      select: { id: true, orderNumber: true },
+      select: { id: true, orderNumber: true, status: true, notes: true },
     });
   },
 
@@ -495,7 +520,8 @@ export const demandPlanningRepository = {
       ...new Set(
         runs
           .map((run) => run.supersedesRunId)
-          .filter((id): id is string => Boolean(id) && !byId.has(id)),
+          .filter((id): id is string => id != null)
+          .filter((id) => !byId.has(id)),
       ),
     ];
 
@@ -509,7 +535,8 @@ export const demandPlanningRepository = {
         ...new Set(
           found
             .map((row) => row.supersedesRunId)
-            .filter((id): id is string => Boolean(id) && !byId.has(id)),
+            .filter((id): id is string => id != null)
+            .filter((id) => !byId.has(id)),
         ),
       ];
     }

@@ -1,5 +1,6 @@
 /**
  * Demand Planning document numbers: DP-YYYYMM-nnn (sequence is 1-based).
+ * Legacy DP-YYYYMMDD-nnn numbers stay unchanged.
  */
 export function formatDemandPlanningDocumentNumber(
   periodStart: Date,

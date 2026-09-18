@@ -134,13 +134,6 @@ export const appNavigation: NavEntry[] = [
         ],
         badge: "new",
       },
-      {
-        href: "/planning/replenishment",
-        label: "Replenishment",
-        icon: LayoutGrid,
-        anyPermissions: ["forecast.view", "forecast.manage"],
-        badge: "new",
-      },
     ],
   },
   {

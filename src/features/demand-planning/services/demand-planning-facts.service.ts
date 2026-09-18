@@ -8,6 +8,7 @@ import type {
   DemandPlanQuotaMode,
   DemandPlanSkuInput,
 } from "@/features/demand-planning/engine/demand-planning.types";
+import { historyMonthSpan } from "@/features/demand-planning/lib/history-window";
 import {
   buildBranchSkuFacts,
   collectUniverseModelIds,
@@ -175,6 +176,7 @@ export const demandPlanningFactsService = {
 
     const stamps = emptyStamps();
     const assembled: AssembledBranch[] = [];
+    const historyMonths = historyMonthSpan(input.historyFrom, input.historyTo);
 
     for (const branch of branches) {
       const planogramIds = planogramByBranch.get(branch.id) ?? new Set<string>();
@@ -186,6 +188,7 @@ export const demandPlanningFactsService = {
         onHandQty: onHandByBranch.get(branch.id) ?? new Map(),
         forecastQty: forecastByBranch.get(branch.id) ?? new Map(),
         displayUnits: new Map(),
+        historyMonths,
       });
 
       const sfeBySku = new Map(facts.map((fact) => [fact.skuCode, fact.forecastQty]));

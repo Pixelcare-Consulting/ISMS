@@ -2,16 +2,16 @@
  * Workbook contract for bulk forecast import (Settings → Planning).
  *
  * Sheet "SFE" — one row per branch + SKU forecast qty (Demand Planning input).
- * Sheet "Forecast" — optional branch revenue quota override (BranchForecastTarget).
+ * Target Quota (BranchForecastTarget) is derived on import as
+ * Σ(forecast_qty × model SRP) per branch — there is no Forecast quota sheet.
  *
  * Branch SAP codes and SKUs must already exist. This import does not create
  * branches, SKUs, or planogram rows. Targets left out of the file are not deleted.
- *
- * `branch_name` is download-only for reading; upload ignores it.
  */
 
 export const FORECAST_SHEET_NAME = "Forecast";
 export const SFE_SHEET_NAME = "SFE";
+export const FOCUS_SHEET_NAME = "Focus";
 
 export const FORECAST_SHEET_HEADERS = [
   "period",
@@ -41,7 +41,7 @@ export const SFE_IMPORT_COLUMN_LABELS: Record<string, string> = {
   forecast_qty: "forecast_qty",
 };
 
-/** Normalized header → canonical key for our template columns only. */
+/** Normalized header → canonical key for legacy Forecast sheet detection only. */
 export const FORECAST_IMPORT_ALIAS_MAP: Record<string, string> = {
   period: "period",
   periodlabel: "period",
@@ -75,7 +75,7 @@ export const FORECAST_IMPORT_REQUIRED_COLUMNS = ["period", "sap_code", "revenue_
 export const SFE_IMPORT_REQUIRED_COLUMNS = ["period", "sap_code", "sku", "forecast_qty"] as const;
 
 export const FORECAST_IMPORT_FIELD_LABELS: Record<string, string> = {
-  revenueTarget: "Revenue target",
+  revenueTarget: "Target Quota",
 };
 
 export const SFE_IMPORT_FIELD_LABELS: Record<string, string> = {
@@ -140,6 +140,8 @@ export interface ForecastImportPreview {
   sfeUnchangedCount: number;
   canApply: boolean;
   errors: ForecastImportRowError[];
+  /** Non-blocking notices (e.g. ignored legacy Forecast sheet). */
+  warnings: string[];
   rows: ForecastImportRowPlan[];
   sfeRows: SfeImportRowPlan[];
 }

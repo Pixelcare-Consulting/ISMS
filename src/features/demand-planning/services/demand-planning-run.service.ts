@@ -1,6 +1,6 @@
 import { auditService } from "@/features/audit/services/audit.service";
 import { calendarMonthBoundsFromLabel } from "@/features/demand-planning/lib/planning-period-dates";
-import { threeMonthHistoryWindow } from "@/features/demand-planning/lib/history-window";
+import { resolveHistoryWindow, toDateInputValue } from "@/features/demand-planning/lib/history-window";
 import { parseRunParameters, parseRunScope } from "@/features/demand-planning/lib/run-snapshot";
 import {
   skuInputFromPersistableLine,
@@ -180,7 +180,11 @@ export const demandPlanningRunService = {
     if (!period) throw new Error("Planning period not found");
     await demandPlanningRepository.applyPeriodCalendarDates(tenantId, period.id, period.label);
     const start = periodStartDate(period);
-    const { historyFrom, historyTo } = threeMonthHistoryWindow(start);
+    const { historyFrom, historyTo } = resolveHistoryWindow(
+      start,
+      input.historyFrom,
+      input.historyTo,
+    );
     const { assembled, stamps, onHandAsAt } = await demandPlanningFactsService.assembleBranches({
       tenantId,
       periodId: period.id,
@@ -231,7 +235,11 @@ export const demandPlanningRunService = {
     }
 
     const start = periodStartDate(period);
-    const { historyFrom, historyTo } = threeMonthHistoryWindow(start);
+    const { historyFrom, historyTo } = resolveHistoryWindow(
+      start,
+      input.historyFrom,
+      input.historyTo,
+    );
     const documentNumber = await demandPlanningRepository.nextDocumentNumber(tenantId, start);
     const parameters = toRunParameters(input);
     const scope = {
@@ -308,6 +316,8 @@ export const demandPlanningRunService = {
         floorAllocationAtZero: parameters.floorAllocationAtZero,
         quotaMode: parameters.quotaMode,
         frequencyOverride: parameters.frequencyOverride,
+        historyFrom: run.historyFrom ? toDateInputValue(run.historyFrom) : null,
+        historyTo: run.historyTo ? toDateInputValue(run.historyTo) : null,
         supersedesRunId: run.id,
       });
     }
@@ -332,7 +342,10 @@ export const demandPlanningRunService = {
     }
 
     const start = periodStartDate(run.period);
-    const { historyFrom, historyTo } = threeMonthHistoryWindow(start);
+    const { historyFrom, historyTo } =
+      run.historyFrom && run.historyTo
+        ? { historyFrom: run.historyFrom, historyTo: run.historyTo }
+        : resolveHistoryWindow(start);
     const { assembled, stamps, onHandAsAt } = await demandPlanningFactsService.assembleBranches({
       tenantId,
       periodId: run.periodId,

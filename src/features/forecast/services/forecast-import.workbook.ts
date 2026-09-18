@@ -1,10 +1,13 @@
 import ExcelJS from "exceljs";
 
 import {
+  formatPeriodLabelFromDate,
+  normalizePeriodLabel,
+} from "@/features/demand-planning/lib/planning-period-dates";
+import {
+  FOCUS_SHEET_NAME,
   FORECAST_IMPORT_ALIAS_MAP,
-  FORECAST_IMPORT_COLUMN_LABELS,
   FORECAST_IMPORT_REQUIRED_COLUMNS,
-  FORECAST_SHEET_HEADERS,
   FORECAST_SHEET_NAME,
   SFE_IMPORT_ALIAS_MAP,
   SFE_IMPORT_COLUMN_LABELS,
@@ -20,13 +23,6 @@ export interface SheetRows {
   rows: { rowNumber: number; values: Record<string, string> }[];
 }
 
-export interface ForecastTemplateRow {
-  period: string;
-  sapCode: string;
-  revenueTarget: number;
-  branchName: string;
-}
-
 export interface SfeTemplateRow {
   period: string;
   sapCode: string;
@@ -35,8 +31,9 @@ export interface SfeTemplateRow {
 }
 
 export interface ForecastImportSheets {
-  quota: SheetRows;
   sfe: SheetRows;
+  /** True when a legacy Forecast sheet was present and ignored. */
+  ignoredForecastSheet: boolean;
 }
 
 const EMPTY_SHEET: SheetRows = { present: false, columns: new Set(), rows: [] };
@@ -46,6 +43,9 @@ const BRS_LAYOUT_ERROR =
 
 const PLANOGRAM_FILE_ERROR =
   "This file looks like the Planogram template, not Forecast. Download the Forecast template. Shelf max belongs under Planogram.";
+
+const FOCUS_SHEET_ERROR =
+  `A "${FOCUS_SHEET_NAME}" sheet is not supported. Remove it and use the SFE sheet only (period, branch_sap_code, sku, forecast_qty).`;
 
 /** Headers that appear on the wide Dealer 1 BRS sheet (Brand / SKU / Model / Series / SRP + Y/N pairs). */
 const BRS_WIDE_HEADER_HINTS = new Set([
@@ -61,7 +61,8 @@ const BRS_WIDE_HEADER_HINTS = new Set([
 ]);
 
 const MANILA_TZ = "Asia/Manila";
-const PERIOD_LABEL_RE = /^[A-Za-z]{3}[-/\s]\d{2,4}$/;
+const LEGACY_PERIOD_LABEL_RE = /^[A-Za-z]{3}[-/\s]\d{2,4}$/;
+const YYYYMMDD_RE = /^\d{8}$/;
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}(?:T[\d:.]+(?:Z|[+-]\d{2}:\d{2})?)?$/;
 
 function cellToString(value: ExcelJS.CellValue): string {
@@ -80,38 +81,57 @@ function cellToString(value: ExcelJS.CellValue): string {
 }
 
 function looksLikePeriodLabel(text: string): boolean {
-  return PERIOD_LABEL_RE.test(text.trim());
+  const trimmed = text.trim();
+  return (
+    YYYYMMDD_RE.test(trimmed) ||
+    LEGACY_PERIOD_LABEL_RE.test(trimmed) ||
+    /^\d{4}[-/]\d{1,2}$/.test(trimmed) ||
+    /^\d{4}[-/]\d{1,2}[-/]\d{1,2}$/.test(trimmed)
+  );
 }
 
-function formatManilaMonthYear(date: Date): string {
+/** Convert a Date to canonical MMM-YY using Asia/Manila calendar month. */
+function formatManilaPeriodLabel(date: Date): string {
   if (Number.isNaN(date.getTime())) return "";
-  const parts = new Intl.DateTimeFormat("en-US", {
+  const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: MANILA_TZ,
-    month: "short",
-    year: "2-digit",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
   }).formatToParts(date);
-  const month = parts.find((part) => part.type === "month")?.value ?? "";
-  const year = parts.find((part) => part.type === "year")?.value ?? "";
-  return month && year ? `${month}-${year}` : "";
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  if (!year || !month) return "";
+  return formatPeriodLabelFromDate(
+    new Date(Date.UTC(Number.parseInt(year, 10), Number.parseInt(month, 10) - 1, 1)),
+  );
 }
 
-/** Period column only: keep Dec-25 text; convert Excel Date / ISO to MMM-yy (Asia/Manila). */
+function asCanonicalPeriodLabel(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+  return normalizePeriodLabel(trimmed) ?? trimmed;
+}
+
+/** Period column: normalize to MMM-YY; convert Excel Date / ISO via Asia/Manila. */
 function periodValueToLabel(value: ExcelJS.CellValue, displayedText?: string): string {
   const displayed = displayedText?.trim() ?? "";
-  if (displayed && looksLikePeriodLabel(displayed)) return displayed;
+  if (displayed && looksLikePeriodLabel(displayed)) {
+    return asCanonicalPeriodLabel(displayed);
+  }
 
   if (value instanceof Date) {
-    return formatManilaMonthYear(value);
+    return formatManilaPeriodLabel(value);
   }
 
   if (typeof value === "string") {
     const trimmed = value.trim();
-    if (looksLikePeriodLabel(trimmed)) return trimmed;
+    if (looksLikePeriodLabel(trimmed)) return asCanonicalPeriodLabel(trimmed);
     if (ISO_DATE_RE.test(trimmed)) {
-      const labeled = formatManilaMonthYear(new Date(trimmed));
+      const labeled = formatManilaPeriodLabel(new Date(trimmed));
       if (labeled) return labeled;
     }
-    return trimmed;
+    return asCanonicalPeriodLabel(trimmed) || trimmed;
   }
 
   if (typeof value === "object" && value) {
@@ -126,7 +146,7 @@ function periodValueToLabel(value: ExcelJS.CellValue, displayedText?: string): s
     }
   }
 
-  return cellToString(value);
+  return asCanonicalPeriodLabel(cellToString(value)) || cellToString(value);
 }
 
 function periodCellToLabel(cell: ExcelJS.Cell): string {
@@ -279,9 +299,14 @@ function worksheetByName(workbook: ExcelJS.Workbook, name: string) {
   );
 }
 
-/** Build the downloadable Forecast template (SFE + optional quota sheet). */
+function assertNoFocusSheet(workbook: ExcelJS.Workbook): void {
+  if (worksheetByName(workbook, FOCUS_SHEET_NAME)) {
+    throw new Error(FOCUS_SHEET_ERROR);
+  }
+}
+
+/** Build the downloadable Forecast template (SFE sheet only). */
 export async function buildForecastTemplateWorkbook(
-  quotaRows: ForecastTemplateRow[],
   sfeRows: SfeTemplateRow[] = [],
 ): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
@@ -291,9 +316,10 @@ export async function buildForecastTemplateWorkbook(
   const sfeSheet = workbook.addWorksheet(SFE_SHEET_NAME);
   sfeSheet.addRow([...SFE_SHEET_HEADERS]);
   sfeSheet.getColumn(1).numFmt = "@";
-  const sfeData = sfeRows.length > 0
-    ? sfeRows
-    : [{ period: "Dec-25", sapCode: "WMK-001", sku: "32STW101", forecastQty: 20 }];
+  const sfeData =
+    sfeRows.length > 0
+      ? sfeRows
+      : [{ period: "Dec-25", sapCode: "WMK-001", sku: "32STW101", forecastQty: 20 }];
   for (const row of sfeData) {
     const dataRow = sfeSheet.addRow([String(row.period), row.sapCode, row.sku, row.forecastQty]);
     dataRow.getCell(1).value = String(row.period);
@@ -302,32 +328,13 @@ export async function buildForecastTemplateWorkbook(
   styleHeader(sfeSheet, [14, 18, 16, 14]);
   sfeSheet.getColumn(1).numFmt = "@";
 
-  const quotaSheet = workbook.addWorksheet(FORECAST_SHEET_NAME);
-  quotaSheet.addRow([...FORECAST_SHEET_HEADERS]);
-  quotaSheet.getColumn(1).numFmt = "@";
-  const quotaData = quotaRows.length > 0
-    ? quotaRows
-    : [{ period: "Dec-25", sapCode: "WMK-001", revenueTarget: 1_000_000, branchName: "" }];
-  for (const row of quotaData) {
-    const dataRow = quotaSheet.addRow([
-      String(row.period),
-      row.sapCode,
-      row.revenueTarget,
-      row.branchName,
-    ]);
-    dataRow.getCell(1).value = String(row.period);
-    dataRow.getCell(1).numFmt = "@";
-  }
-  styleHeader(quotaSheet, [14, 18, 16, 28]);
-  quotaSheet.getColumn(1).numFmt = "@";
-
   const buffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(buffer);
 }
 
 /**
- * Read an .xlsx or .csv upload. SFE sheet is the SKU forecast; Forecast sheet is
- * an optional branch quota override. CSV is one sheet — detected by headers.
+ * Read an .xlsx or .csv upload. Requires the SFE sheet (SKU forecast).
+ * A legacy Forecast sheet is ignored. A Focus sheet is rejected.
  */
 export async function readForecastImportWorkbook(file: Buffer): Promise<ForecastImportSheets> {
   if (!looksLikeXlsx(file)) {
@@ -343,15 +350,15 @@ export async function readForecastImportWorkbook(file: Buffer): Promise<Forecast
       rawHeaders,
     );
 
-    if (isSfeColumns(sfeProbe.columns) && !quotaProbe.columns.has("revenue_target")) {
-      return { sfe: sfeProbe, quota: EMPTY_SHEET };
+    if (isSfeColumns(sfeProbe.columns)) {
+      return {
+        sfe: sfeProbe,
+        ignoredForecastSheet: isQuotaColumns(quotaProbe.columns),
+      };
     }
-    if (isQuotaColumns(quotaProbe.columns) && !sfeProbe.columns.has("forecast_qty")) {
-      return { sfe: EMPTY_SHEET, quota: quotaProbe };
-    }
-    if (isSfeColumns(sfeProbe.columns) && isQuotaColumns(quotaProbe.columns)) {
+    if (isQuotaColumns(quotaProbe.columns)) {
       throw new Error(
-        "CSV can hold either the SFE columns or the Forecast quota columns, not both. Use the Excel template for a combined file.",
+        `CSV must use the SFE columns (${SFE_IMPORT_REQUIRED_COLUMNS.map((col) => SFE_IMPORT_COLUMN_LABELS[col]).join(", ")}). Target Quota is calculated from forecast qty × SRP — do not upload a Forecast quota file.`,
       );
     }
 
@@ -363,18 +370,19 @@ export async function readForecastImportWorkbook(file: Buffer): Promise<Forecast
     );
     throw new Error(
       sfeError ??
-        `Add SFE columns (${SFE_IMPORT_REQUIRED_COLUMNS.map((col) => SFE_IMPORT_COLUMN_LABELS[col]).join(", ")}) or a Forecast quota sheet. Download the template.`,
+        `Add SFE columns (${SFE_IMPORT_REQUIRED_COLUMNS.map((col) => SFE_IMPORT_COLUMN_LABELS[col]).join(", ")}). Download the template.`,
     );
   }
 
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(file as unknown as ArrayBuffer);
+  assertNoFocusSheet(workbook);
 
   const namedSfe = worksheetByName(workbook, SFE_SHEET_NAME);
   const namedQuota = worksheetByName(workbook, FORECAST_SHEET_NAME);
+  const ignoredForecastSheet = Boolean(namedQuota);
 
   let sfe = EMPTY_SHEET;
-  let quota = EMPTY_SHEET;
 
   if (namedSfe) {
     const parsed = readSheet(namedSfe, SFE_IMPORT_ALIAS_MAP);
@@ -389,24 +397,12 @@ export async function readForecastImportWorkbook(file: Buffer): Promise<Forecast
     sfe = parsed.sheet;
   }
 
-  if (namedQuota) {
-    const parsed = readSheet(namedQuota, FORECAST_IMPORT_ALIAS_MAP);
-    assertNotForeignLayout(parsed.sheet.columns, parsed.rawHeaders);
-    const error = missingRequired(
-      parsed.sheet.columns,
-      FORECAST_IMPORT_REQUIRED_COLUMNS,
-      FORECAST_IMPORT_COLUMN_LABELS,
-      FORECAST_SHEET_NAME,
-    );
-    if (error) throw new Error(error);
-    quota = parsed.sheet;
-  }
-
-  if (sfe.present || quota.present) {
-    return { sfe, quota };
+  if (sfe.present) {
+    return { sfe, ignoredForecastSheet };
   }
 
   for (const candidate of workbook.worksheets) {
+    if (candidate.name.trim().toLowerCase() === FORECAST_SHEET_NAME.toLowerCase()) continue;
     const sfeParsed = readSheet(candidate, SFE_IMPORT_ALIAS_MAP);
     if (isSfeColumns(sfeParsed.sheet.columns)) {
       assertNotForeignLayout(sfeParsed.sheet.columns, sfeParsed.rawHeaders);
@@ -414,23 +410,21 @@ export async function readForecastImportWorkbook(file: Buffer): Promise<Forecast
       break;
     }
   }
-  for (const candidate of workbook.worksheets) {
-    const quotaParsed = readSheet(candidate, FORECAST_IMPORT_ALIAS_MAP);
-    if (isQuotaColumns(quotaParsed.sheet.columns)) {
-      assertNotForeignLayout(quotaParsed.sheet.columns, quotaParsed.rawHeaders);
-      quota = quotaParsed.sheet;
-      break;
-    }
+
+  if (sfe.present) {
+    return { sfe, ignoredForecastSheet };
   }
 
-  if (sfe.present || quota.present) {
-    return { sfe, quota };
+  if (ignoredForecastSheet) {
+    throw new Error(
+      `Add a sheet named "${SFE_SHEET_NAME}" (period, branch_sap_code, sku, forecast_qty). The "${FORECAST_SHEET_NAME}" sheet is no longer used — Target Quota is calculated from SFE × price list.`,
+    );
   }
 
   const first = readSheet(workbook.worksheets[0], SFE_IMPORT_ALIAS_MAP);
   if (!first.sheet.present) {
     throw new Error(
-      `Add a sheet named "${SFE_SHEET_NAME}" (period, branch_sap_code, sku, forecast_qty). Optional "${FORECAST_SHEET_NAME}" is the branch quota override.`,
+      `Add a sheet named "${SFE_SHEET_NAME}" (period, branch_sap_code, sku, forecast_qty).`,
     );
   }
   assertNotForeignLayout(first.sheet.columns, first.rawHeaders);
@@ -441,7 +435,6 @@ export async function readForecastImportWorkbook(file: Buffer): Promise<Forecast
     SFE_SHEET_NAME,
   );
   throw new Error(
-    error ??
-      `Add a sheet named "${SFE_SHEET_NAME}" with the template columns.`,
+    error ?? `Add a sheet named "${SFE_SHEET_NAME}" with the template columns.`,
   );
 }

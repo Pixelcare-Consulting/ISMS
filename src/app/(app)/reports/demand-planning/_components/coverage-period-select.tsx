@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { displayPeriodLabel } from "@/features/demand-planning/lib/planning-period-dates";
 import type { CoveragePeriodOption } from "@/features/demand-planning/services/coverage.service";
 
 interface CoveragePeriodSelectProps {
@@ -32,10 +33,13 @@ export function CoveragePeriodSelect({
     <SearchableSelect
       id="coverage-period"
       className="w-full"
-      options={periods.map((period) => ({
-        id: period.id,
-        label: period.isActive ? `${period.label} (active)` : period.label,
-      }))}
+      options={periods.map((period) => {
+        const label = displayPeriodLabel(period.label);
+        return {
+          id: period.id,
+          label: period.isActive ? `${label} (active)` : label,
+        };
+      })}
       value={selectedPeriodId}
       onChange={handleChange}
       placeholder={periods.length === 0 ? "No periods" : "Select period…"}

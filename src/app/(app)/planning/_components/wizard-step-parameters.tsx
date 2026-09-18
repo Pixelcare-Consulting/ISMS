@@ -9,7 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { MONTH_BASIS_DAYS, type DemandPlanQuotaMode } from "@/features/demand-planning";
+import { type DemandPlanQuotaMode } from "@/features/demand-planning";
 import { formatDemandPeso } from "@/features/demand-planning/lib/format-demand-plan";
 
 import { WizardField, WizardFieldGrid, WizardReadonlyValue } from "./demand-planning-wizard-field";
@@ -17,25 +17,31 @@ import { WizardField, WizardFieldGrid, WizardReadonlyValue } from "./demand-plan
 export function WizardStepParameters({
   quotaMode,
   frequencyOverride,
+  monthBasisDays,
   roundUpToOne,
   floorAllocationAtZero,
   minLevelPeso,
   onQuotaMode,
+  onMonthBasisDays,
   onRoundUpToOne,
   onFloorAllocationAtZero,
 }: {
   quotaMode: DemandPlanQuotaMode;
   frequencyOverride: number | null;
+  monthBasisDays: number;
   roundUpToOne: boolean;
   floorAllocationAtZero: boolean;
   minLevelPeso: number | null;
   onQuotaMode: (value: DemandPlanQuotaMode) => void;
+  onMonthBasisDays: (value: number) => void;
   onRoundUpToOne: (value: boolean) => void;
   onFloorAllocationAtZero: (value: boolean) => void;
 }) {
   const deriveFromForecast = quotaMode === "derive_from_forecast";
   const drops = frequencyOverride;
-  const minDays = drops && drops > 0 ? MONTH_BASIS_DAYS / drops : null;
+  const basis =
+    Number.isFinite(monthBasisDays) && monthBasisDays > 0 ? monthBasisDays : 30.5;
+  const minDays = drops && drops > 0 ? basis / drops : null;
 
   return (
     <div className="space-y-5">
@@ -59,7 +65,7 @@ export function WizardStepParameters({
 
         <WizardField
           label="Min level (days)"
-          hint={drops ? `${MONTH_BASIS_DAYS} ÷ ${drops}` : "30.5 ÷ each branch frequency"}
+          hint={drops ? `${basis} ÷ ${drops}` : `${basis} ÷ each branch frequency`}
         >
           <WizardReadonlyValue>
             {minDays != null ? minDays.toFixed(1) : "Per branch schedule"}
@@ -72,8 +78,22 @@ export function WizardStepParameters({
           </WizardReadonlyValue>
         </WizardField>
 
-        <WizardField label="Month basis (days)">
-          <WizardReadonlyValue>{String(MONTH_BASIS_DAYS)}</WizardReadonlyValue>
+        <WizardField
+          label="Month basis (days)"
+          htmlFor="month-basis-days"
+          hint="Used for min level and days-of-inventory math"
+        >
+          <Input
+            id="month-basis-days"
+            type="number"
+            min={1}
+            step={0.1}
+            value={Number.isFinite(monthBasisDays) ? monthBasisDays : ""}
+            onChange={(event) => {
+              const next = Number(event.target.value);
+              if (Number.isFinite(next) && next > 0) onMonthBasisDays(next);
+            }}
+          />
         </WizardField>
 
         <WizardField label="Rounding on slow movers">

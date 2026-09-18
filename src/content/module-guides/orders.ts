@@ -32,7 +32,8 @@ export const AUTO_REPLENISH_ORDERS_MODULE_GUIDE: ModuleGuideContent = {
   description:
     "Review suggested restock from Settings → Planning. This page shows Orders and Order History only — there is no Create order or Order Analytics here. Approval is Team Leader → Supply Planning. Logistics fulfills only after Supply Planning’s final approval.",
   tips: [
-    { label: "Start from Planning & suggestions or Suggested orders — drafts land here for review" },
+    { label: "Orders from Demand Planning Release land here already waiting for Team Leader" },
+    { label: "Release confirmation lists branches with no sales history, no Drop 1, or an open Auto Replenish before you proceed" },
     { label: "Use Orders for requests waiting for your role, and Order History for approved and past SO#s" },
     { label: "Review when it is your role’s turn — Supply Planning can adjust quantities or a delivery date" },
     { label: "After SP approval, logistics schedules delivery; accept stock in Operations" },

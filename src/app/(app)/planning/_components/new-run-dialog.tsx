@@ -34,7 +34,7 @@ export function NewRunDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         showCloseButton={false}
-        className="flex max-h-[90vh] max-w-5xl flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl"
+        className="flex max-h-[90vh] w-[calc(100%-2rem)] max-w-7xl flex-col gap-0 overflow-hidden p-0 sm:max-w-7xl"
       >
         <DialogTitle className="sr-only">New demand planning run</DialogTitle>
         <DialogDescription className="sr-only">

@@ -1,6 +1,7 @@
 import type { DemandPlanningPlanStatus, DemandPlanningRunStatus } from "@prisma/client";
 
 import { decimalToNumber, decimalToNumberOrNull } from "@/lib/database/decimal";
+import { displayPeriodLabel } from "@/features/demand-planning/lib/planning-period-dates";
 import { parseRunParameters } from "@/features/demand-planning/lib/run-snapshot";
 import type {
   DemandPlanningClientRun,
@@ -213,6 +214,7 @@ export function toClientRunListItem(row: {
   createdAt: Date;
   releasedAt: Date | null;
   period: { label: string };
+  createdBy?: { name: string | null; email: string } | null;
   branches: Array<{ planStatus: DemandPlanningPlanStatus; drop1Qty: number; drop1Peso: Decimalish }>;
   originalDocumentNumber?: string | null;
 }): DemandPlanningClientRunListItem {
@@ -222,8 +224,9 @@ export function toClientRunListItem(row: {
     version: row.version,
     status: row.status,
     name: row.name,
-    periodLabel: row.period.label,
+    periodLabel: displayPeriodLabel(row.period.label),
     createdAt: row.createdAt.toISOString(),
+    createdByName: row.createdBy?.name?.trim() || row.createdBy?.email || null,
     releasedAt: asIso(row.releasedAt),
     branchCount: row.branches.length,
     plannedBranchCount: row.branches.filter((branch) => branch.planStatus === "planned").length,
@@ -268,7 +271,7 @@ export function toClientRun(row: {
     status: row.status,
     name: row.name,
     periodId: row.periodId,
-    periodLabel: row.period.label,
+    periodLabel: displayPeriodLabel(row.period.label),
     historyFrom: asIso(row.historyFrom),
     historyTo: asIso(row.historyTo),
     onHandAsAt: asIso(row.onHandAsAt),

@@ -8,6 +8,7 @@ import { useOrdersCreateWorkspace } from "@/app/(app)/orders/_components/orders-
 import {
   approveOrderAction,
   rejectOrderAction,
+  submitDraftOrderAction,
 } from "@/features/orders/actions/order.actions";
 import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
 import {
@@ -379,6 +380,29 @@ export function OrdersTable({
                       viewerRoleSlugs={viewerRoleSlugs}
                       onReview={() => setWorkflowOrder(o)}
                     />
+                  ) : null}
+                  {canEdit &&
+                  o.status === "draft" &&
+                  o.orderType === "auto_replenish" ? (
+                    <Button
+                      size="sm"
+                      disabled={pending}
+                      onClick={() => {
+                        startTransition(async () => {
+                          const result = await submitDraftOrderAction(o.id);
+                          if ("error" in result && result.error) {
+                            toast.error(result.error);
+                            return;
+                          }
+                          toast.success("Submitted for review", {
+                            description: "Team Leader can review this order now.",
+                          });
+                          router.refresh();
+                        });
+                      }}
+                    >
+                      Submit for review
+                    </Button>
                   ) : null}
                   {canEdit && isOrderEditable(o.status as BranchOrderStatus) ? (
                     <Button

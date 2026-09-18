@@ -187,9 +187,9 @@ export function ImportForecastDialog({
               `${sfeCreated} SFE created`,
               `${sfeUpdated} SFE updated`,
               `${sfeUnchangedCount} SFE unchanged`,
-              `${created} quota created`,
-              `${updated} quota updated`,
-              `${unchangedCount} quota unchanged`,
+              `${created} Target Quota created`,
+              `${updated} Target Quota updated`,
+              `${unchangedCount} Target Quota unchanged`,
             ];
             toast.success(parts.join(" · "));
             setApplyProgress(null);
@@ -235,18 +235,23 @@ export function ImportForecastDialog({
         <div className="space-y-4">
           <div className="text-muted-foreground space-y-2 text-sm">
             <p>
-              Download the template. The <strong>SFE</strong> sheet is the SKU forecast
-              (period, branch SAP code, SKU, forecast qty). The <strong>Forecast</strong>{" "}
-              sheet is optional — use it only when you want a branch revenue quota
-              instead of deriving quota from the SFE total.
+              Download the template — it pre-fills one row per active branch × that
+              branch’s planogram SKUs (period and SAP code filled; forecast qty starts at 0
+              or your current SFE value). Branches without planogram SKUs are omitted.
+              The <strong>SFE</strong> sheet is required (period, branch SAP code, SKU,
+              forecast qty). <strong>Target Quota</strong> for each branch is calculated
+              automatically as forecast qty × price list SRP — there is no separate quota
+              sheet. <strong>0 SRP means FREE</strong>; Target Quota may be ₱0 and import
+              still continues (you will see a warning in the preview).
             </p>
             <p>
-              Branches and SKUs must already exist — this import does not create
-              branches, SKUs, or planogram rows. Shelf max stays on Planogram. Rows left
-              out of the file are not removed.
+              Branches, SKUs, and a price list row must already exist — this import does
+              not create branches, SKUs, or planogram rows. Shelf max stays on Planogram.
+              Rows left out of the file are not removed.
             </p>
             <p>
               Keep period as text (<strong>Dec-25</strong>), not an Excel date.
+              Other formats like YYYYMMDD still import and are stored as MMM-YY.
             </p>
           </div>
 
@@ -309,7 +314,7 @@ export function ImportForecastDialog({
                   {preview.sfeUnchangedCount} SFE unchanged
                 </span>
                 <span>
-                  <strong>{preview.rowCount}</strong> quota rows
+                  <strong>{preview.rowCount}</strong> Target Quota
                 </span>
                 <span>
                   <strong>{preview.createCount}</strong> quota create
@@ -321,6 +326,14 @@ export function ImportForecastDialog({
                   {preview.unchangedCount} quota unchanged
                 </span>
               </div>
+
+              {(preview.warnings?.length ?? 0) > 0 ? (
+                <div className="space-y-1 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
+                  {preview.warnings.map((warning) => (
+                    <p key={warning}>{warning}</p>
+                  ))}
+                </div>
+              ) : null}
 
               {hasErrors ? (
                 <div className="space-y-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3">
@@ -398,7 +411,7 @@ export function ImportForecastDialog({
                       <TableRow>
                         <TableHead>Branch SAP code</TableHead>
                         <TableHead>Branch</TableHead>
-                        <TableHead className="text-right">Quota</TableHead>
+                        <TableHead className="text-right">Target Quota</TableHead>
                         <TableHead>Action</TableHead>
                         {showChangesColumn ? <TableHead>Changes</TableHead> : null}
                       </TableRow>

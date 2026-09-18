@@ -15,24 +15,23 @@ const PLAN_STATUS_LABEL: Record<DemandPlanningPlanStatus, string> = {
   awaiting: "Awaiting",
 };
 
-const REPLENISHMENT_STATUS_LABEL = {
-  generated: "Generated",
-  awaiting_history: "Awaiting history",
-} as const;
-
 export function DemandPlanningRunStatusBadge({
   status,
 }: {
   status: DemandPlanningRunStatus;
 }) {
+  if (status === "superseded") {
+    return (
+      <Badge
+        variant="outline"
+        className="border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+      >
+        {RUN_STATUS_LABEL[status]}
+      </Badge>
+    );
+  }
   const variant =
-    status === "released"
-      ? "default"
-      : status === "generated"
-        ? "secondary"
-        : status === "superseded"
-          ? "outline"
-          : "outline";
+    status === "released" ? "default" : status === "generated" ? "secondary" : "outline";
   return <Badge variant={variant}>{RUN_STATUS_LABEL[status]}</Badge>;
 }
 
@@ -44,16 +43,4 @@ export function DemandPlanningPlanStatusBadge({
   const variant =
     status === "planned" ? "secondary" : status === "no_history" ? "outline" : "outline";
   return <Badge variant={variant}>{PLAN_STATUS_LABEL[status]}</Badge>;
-}
-
-export function ReplenishmentPlanStatusBadge({
-  status,
-}: {
-  status: "generated" | "awaiting_history";
-}) {
-  return (
-    <Badge variant={status === "generated" ? "secondary" : "outline"}>
-      {REPLENISHMENT_STATUS_LABEL[status]}
-    </Badge>
-  );
 }

@@ -22,6 +22,9 @@ export type {
 } from "./engine/demand-planning.types";
 export {
   calendarMonthBoundsFromLabel,
+  displayPeriodLabel,
+  formatPeriodLabelFromDate,
+  normalizePeriodLabel,
   periodDateFieldsFromLabel,
 } from "./lib/planning-period-dates";
 export {
@@ -38,7 +41,6 @@ export type {
 export {
   DemandPlanningPlanStatusBadge,
   DemandPlanningRunStatusBadge,
-  ReplenishmentPlanStatusBadge,
 } from "./components/demand-planning-status-badge";
 export { sumGridLineTotals } from "./lib/client-mappers";
 export type {
@@ -51,9 +53,6 @@ export type {
   DemandPlanningWizardPeriod,
 } from "./types/run.types";
 export type {
-  ReplenishmentMatrixRow,
-  ReplenishmentMatrixView,
-  ReplenishmentPlanStatus,
   WorkbenchBranchSnapshot,
   WorkbenchSkuFact,
 } from "./types/workbench.types";

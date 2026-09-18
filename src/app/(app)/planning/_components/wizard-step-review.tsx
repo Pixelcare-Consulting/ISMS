@@ -62,7 +62,8 @@ export function WizardStepReview({ run }: { run: DemandPlanningClientRun }) {
       <p className="text-sm text-muted-foreground">
         This plan is Generated as {run.documentNumber} v{run.version}. Open the document if you
         need to review or adjust display units and forecast. Release to Ordering from the document
-        when you are ready — that freezes the plan and raises one auto-replenish per planned branch.
+        when you are ready — that freezes the plan and sends Auto Replenish orders with Drop 1
+        quantity straight to Team Leader.
       </p>
     </div>
   );

@@ -39,37 +39,52 @@ export function RunDocumentDialog({
   actorName: string;
 }) {
   const open = Boolean(runId);
-  const [payload, setPayload] = useState<RunDocumentPayload | null>(null);
+  const [loaded, setLoaded] = useState<{
+    runId: string;
+    payload: RunDocumentPayload;
+  } | null>(null);
   const onOpenChangeRef = useRef(onOpenChange);
-  onOpenChangeRef.current = onOpenChange;
 
   useEffect(() => {
-    if (!runId) {
-      setPayload(null);
-      return;
-    }
+    onOpenChangeRef.current = onOpenChange;
+  });
+
+  const payload = loaded?.runId === runId ? loaded.payload : null;
+
+  useEffect(() => {
+    if (!runId) return;
 
     let cancelled = false;
-    setPayload(null);
 
     void (async () => {
-      const result = await getDemandPlanningRunGridAction(runId);
-      if (cancelled) return;
-      if ("error" in result) {
-        toast.error(result.error || "Demand planning run not found");
+      try {
+        const result = await getDemandPlanningRunGridAction(runId);
+        if (cancelled) return;
+        if ("error" in result) {
+          toast.error(result.error || "Demand planning run not found");
+          onOpenChangeRef.current(false);
+          return;
+        }
+        if (!result.run) {
+          toast.error("Demand planning run not found");
+          onOpenChangeRef.current(false);
+          return;
+        }
+        setLoaded({
+          runId,
+          payload: {
+            run: result.run,
+            branchId: result.branchId ?? null,
+            lines: result.lines,
+          },
+        });
+      } catch (error) {
+        if (cancelled) return;
+        toast.error(
+          error instanceof Error ? error.message : "Failed to load demand planning run",
+        );
         onOpenChangeRef.current(false);
-        return;
       }
-      if (!result.run) {
-        toast.error("Demand planning run not found");
-        onOpenChangeRef.current(false);
-        return;
-      }
-      setPayload({
-        run: result.run,
-        branchId: result.branchId ?? null,
-        lines: result.lines,
-      });
     })();
 
     return () => {

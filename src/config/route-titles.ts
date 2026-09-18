@@ -12,7 +12,6 @@ const EXTRA_ROUTE_TITLES: Record<string, string> = {
   "/operations": "Operations",
   "/planning": "Demand Planning",
   "/planning/runs/new": "New demand planning run",
-  "/planning/replenishment": "Replenishment",
   "/planning/suggested-orders": "Demand Planning",
   "/settings/planning/runs": "Demand Planning",
   "/settings/planning/runs/new": "New demand planning run",

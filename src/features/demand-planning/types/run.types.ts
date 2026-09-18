@@ -112,6 +112,7 @@ export type DemandPlanningClientRunListItem = {
   name: string | null;
   periodLabel: string;
   createdAt: string;
+  createdByName: string | null;
   releasedAt: string | null;
   branchCount: number;
   plannedBranchCount: number;
@@ -158,4 +159,17 @@ export type DemandPlanningSourcePreview = {
   onHandPeso: number;
   displayUnitsCount: number;
   onHandAsAt: string;
+};
+
+export type ReleasePreviewBranch = {
+  branchName: string;
+  /** Present for open-order skips (order number, optionally with period). */
+  detail?: string;
+};
+
+export type DemandPlanReleasePreview = {
+  willRelease: ReleasePreviewBranch[];
+  noHistory: ReleasePreviewBranch[];
+  noDrop1: ReleasePreviewBranch[];
+  openOrder: ReleasePreviewBranch[];
 };

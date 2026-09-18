@@ -364,12 +364,12 @@ export function DemandPlanningGrid({
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border">
+      <div className="overflow-x-auto rounded-xl border bg-card">
         <Table scrollContainer={false} className="min-w-[960px]">
           <TableHeader>
-            <TableRow>
+            <TableRow className="bg-muted/30 hover:bg-muted/30">
               {selectable ? (
-                <TableHead className="w-10 px-2">
+                <TableHead className="w-10 border-b px-2">
                   <Checkbox
                     aria-label="Select all visible SKUs"
                     checked={
@@ -384,48 +384,48 @@ export function DemandPlanningGrid({
                   />
                 </TableHead>
               ) : null}
-              <TableHead className="sticky left-0 z-10 bg-card px-2">SKU</TableHead>
-              <TableHead className="px-2">Series</TableHead>
-              <TableHead className="px-2 text-right">SRP</TableHead>
-              <TableHead className="px-2">PM</TableHead>
+              <TableHead className="sticky left-0 z-10 border-b bg-muted/30 px-2">SKU</TableHead>
+              <TableHead className="border-b px-2">Series</TableHead>
+              <TableHead className="border-b px-2 text-right">SRP</TableHead>
+              <TableHead className="border-b px-2">PM</TableHead>
               {open("history") ? (
                 <>
-                  <TableHead className="px-2 text-right">Hist qty</TableHead>
-                  <TableHead className="px-2 text-right">Hist ₱</TableHead>
-                  <TableHead className="px-2 text-right">HMIX</TableHead>
-                  <TableHead className="px-2 text-right">Adj</TableHead>
+                  <TableHead className="border-b px-2 text-right">Hist qty</TableHead>
+                  <TableHead className="border-b px-2 text-right">Hist ₱</TableHead>
+                  <TableHead className="border-b px-2 text-right">HMIX</TableHead>
+                  <TableHead className="border-b px-2 text-right">Adj</TableHead>
                 </>
               ) : null}
               {open("mil") ? (
                 <>
-                  <TableHead className="px-2 text-right">MIL qty</TableHead>
-                  <TableHead className="px-2 text-right">MIL ₱</TableHead>
+                  <TableHead className="border-b px-2 text-right">MIL qty</TableHead>
+                  <TableHead className="border-b px-2 text-right">MIL ₱</TableHead>
                 </>
               ) : null}
               {open("onHand") ? (
                 <>
-                  <TableHead className="px-2 text-right">DU</TableHead>
-                  <TableHead className="px-2 text-right">On hand</TableHead>
+                  <TableHead className="border-b px-2 text-right">DU</TableHead>
+                  <TableHead className="border-b px-2 text-right">On hand</TableHead>
                 </>
               ) : null}
               {open("forecast") ? (
                 <>
-                  <TableHead className="px-2 text-right">FC</TableHead>
-                  <TableHead className="px-2 text-right">FC ₱</TableHead>
+                  <TableHead className="border-b px-2 text-right">FC</TableHead>
+                  <TableHead className="border-b px-2 text-right">FC ₱</TableHead>
                 </>
               ) : null}
               {open("allocation") ? (
                 <>
-                  <TableHead className="px-2 text-right">Alloc qty</TableHead>
-                  <TableHead className="px-2 text-right">Alloc ₱</TableHead>
-                  <TableHead className="px-2 text-right">Cycle</TableHead>
+                  <TableHead className="border-b px-2 text-right">Alloc qty</TableHead>
+                  <TableHead className="border-b px-2 text-right">Alloc ₱</TableHead>
+                  <TableHead className="border-b px-2 text-right">Cycle</TableHead>
                 </>
               ) : null}
               {open("delivery") ? (
                 <>
-                  <TableHead className="px-2 text-right">Drop 1</TableHead>
-                  <TableHead className="px-2 text-right">Drop 1 ₱</TableHead>
-                  <TableHead className="px-2 text-right">Total inv ₱</TableHead>
+                  <TableHead className="border-b px-2 text-right">Drop 1</TableHead>
+                  <TableHead className="border-b px-2 text-right">Drop 1 ₱</TableHead>
+                  <TableHead className="border-b px-2 text-right">Total inv ₱</TableHead>
                 </>
               ) : null}
             </TableRow>
@@ -438,12 +438,17 @@ export function DemandPlanningGrid({
                 </TableCell>
               </TableRow>
             ) : (
-              visible.map((line) => {
+              visible.map((line, rowIndex) => {
                 const drop1 = line.releasedDrop1Qty ?? line.computedDrop1Qty;
+                const stripe = rowIndex % 2 === 1;
+                const stickyBg = stripe ? "bg-table-stripe" : "bg-card";
                 return (
-                  <TableRow key={line.id}>
+                  <TableRow
+                    key={line.id}
+                    className={cn(stripe && "bg-table-stripe")}
+                  >
                     {selectable ? (
-                      <TableCell className="px-2">
+                      <TableCell className="border-b px-2">
                         <Checkbox
                           aria-label={`Select ${line.skuCode}`}
                           checked={selected.has(line.id)}
@@ -452,41 +457,46 @@ export function DemandPlanningGrid({
                         />
                       </TableCell>
                     ) : null}
-                    <TableCell className="sticky left-0 z-10 bg-card px-2 font-medium">
+                    <TableCell
+                      className={cn(
+                        "sticky left-0 z-10 border-b px-2 font-medium",
+                        stickyBg,
+                      )}
+                    >
                       {line.skuCode}
                     </TableCell>
-                    <TableCell className="px-2">{line.seriesCode}</TableCell>
-                    <TableCell className="px-2 text-right tabular-nums">
+                    <TableCell className="border-b px-2">{line.seriesCode}</TableCell>
+                    <TableCell className="border-b px-2 text-right tabular-nums">
                       {formatDemandPeso(line.srp)}
                     </TableCell>
-                    <TableCell className="px-2 uppercase">{line.planogramFlag === "blank" ? "—" : line.planogramFlag}</TableCell>
+                    <TableCell className="border-b px-2 uppercase">{line.planogramFlag === "blank" ? "—" : line.planogramFlag}</TableCell>
                     {open("history") ? (
                       <>
-                        <TableCell className="px-2 text-right tabular-nums">
+                        <TableCell className="border-b px-2 text-right tabular-nums">
                           {formatDemandQty(line.historyQty)}
                         </TableCell>
-                        <TableCell className="px-2 text-right tabular-nums">
+                        <TableCell className="border-b px-2 text-right tabular-nums">
                           {formatDemandPeso(line.historyPeso)}
                         </TableCell>
-                        <TableCell className="px-2 text-right tabular-nums">
+                        <TableCell className="border-b px-2 text-right tabular-nums">
                           {formatDemandShare(line.hmix)}
                         </TableCell>
-                        <TableCell className="px-2 text-right tabular-nums">
+                        <TableCell className="border-b px-2 text-right tabular-nums">
                           {formatDemandShare(line.adjHmix)}
                         </TableCell>
                       </>
                     ) : null}
                     {open("mil") ? (
                       <>
-                        <TableCell className="px-2 text-right tabular-nums">{line.milQty}</TableCell>
-                        <TableCell className="px-2 text-right tabular-nums">
+                        <TableCell className="border-b px-2 text-right tabular-nums">{line.milQty}</TableCell>
+                        <TableCell className="border-b px-2 text-right tabular-nums">
                           {formatDemandPeso(line.milPeso)}
                         </TableCell>
                       </>
                     ) : null}
                     {open("onHand") ? (
                       <>
-                        <TableCell className="px-2">
+                        <TableCell className="border-b px-2">
                           {readOnly || !onSaveOverride ? (
                             <span className="block text-right tabular-nums">{line.displayUnits}</span>
                           ) : (
@@ -505,12 +515,12 @@ export function DemandPlanningGrid({
                             />
                           )}
                         </TableCell>
-                        <TableCell className="px-2 text-right tabular-nums">{line.onHandQty}</TableCell>
+                        <TableCell className="border-b px-2 text-right tabular-nums">{line.onHandQty}</TableCell>
                       </>
                     ) : null}
                     {open("forecast") ? (
                       <>
-                        <TableCell className="px-2">
+                        <TableCell className="border-b px-2">
                           {readOnly || !onSaveOverride ? (
                             <span className="block text-right tabular-nums">{line.forecastQty}</span>
                           ) : (
@@ -529,27 +539,27 @@ export function DemandPlanningGrid({
                             />
                           )}
                         </TableCell>
-                        <TableCell className="px-2 text-right tabular-nums">
+                        <TableCell className="border-b px-2 text-right tabular-nums">
                           {formatDemandPeso(line.forecastPeso)}
                         </TableCell>
                       </>
                     ) : null}
                     {open("allocation") ? (
                       <>
-                        <TableCell className="px-2 text-right tabular-nums">{line.allocQty}</TableCell>
-                        <TableCell className="px-2 text-right tabular-nums">
+                        <TableCell className="border-b px-2 text-right tabular-nums">{line.allocQty}</TableCell>
+                        <TableCell className="border-b px-2 text-right tabular-nums">
                           {formatDemandPeso(line.allocPeso)}
                         </TableCell>
-                        <TableCell className="px-2 text-right tabular-nums">{line.cycleQty}</TableCell>
+                        <TableCell className="border-b px-2 text-right tabular-nums">{line.cycleQty}</TableCell>
                       </>
                     ) : null}
                     {open("delivery") ? (
                       <>
-                        <TableCell className="px-2 text-right tabular-nums font-medium">{drop1}</TableCell>
-                        <TableCell className="px-2 text-right tabular-nums">
+                        <TableCell className="border-b px-2 text-right tabular-nums font-medium">{drop1}</TableCell>
+                        <TableCell className="border-b px-2 text-right tabular-nums">
                           {formatDemandPeso(line.drop1Peso)}
                         </TableCell>
-                        <TableCell className="px-2 text-right tabular-nums">
+                        <TableCell className="border-b px-2 text-right tabular-nums">
                           {formatDemandPeso(line.totalInventoryPeso)}
                         </TableCell>
                       </>

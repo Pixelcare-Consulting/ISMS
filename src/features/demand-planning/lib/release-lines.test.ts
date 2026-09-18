@@ -9,10 +9,10 @@ import {
 } from "./release-lines";
 
 describe("release to ordering", () => {
-  it("skips no_history and awaiting branches", () => {
+  it("does not skip branches by plan status alone", () => {
     assert.equal(shouldSkipBranchForRelease("planned"), false);
-    assert.equal(shouldSkipBranchForRelease("no_history"), true);
-    assert.equal(shouldSkipBranchForRelease("awaiting"), true);
+    assert.equal(shouldSkipBranchForRelease("no_history"), false);
+    assert.equal(shouldSkipBranchForRelease("awaiting"), false);
   });
 
   it("drops zero Drop 1 lines and freezes computed qty", () => {

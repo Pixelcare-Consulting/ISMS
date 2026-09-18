@@ -5,17 +5,20 @@ export function drop1QtyForRelease(computedDrop1Qty: number): number {
   return Math.max(0, Math.trunc(computedDrop1Qty));
 }
 
+/**
+ * Plan status alone no longer blocks release — Drop 1 qty and open-order
+ * checks decide. Kept for callers/tests that still pass planStatus.
+ */
 export function shouldSkipBranchForRelease(planStatus: DemandPlanningPlanStatus): boolean {
   switch (planStatus) {
     case "planned":
-      return false;
     case "no_history":
     case "awaiting":
-      return true;
+      return false;
     default: {
       const _exhaustive: never = planStatus;
       void _exhaustive;
-      return true;
+      return false;
     }
   }
 }

@@ -10,7 +10,7 @@ export const PLANOGRAM_MODULE_GUIDE: ModuleGuideContent = {
     { label: "Use Import for many branches at once: download the template, then upload the same file to preview and apply" },
     { label: "Each import row is a branch SAP code plus a SKU" },
     { label: "SKUs must already exist — this file does not create products" },
-    { label: "Use Planning to set period and revenue targets, not this page" },
+    { label: "Use Planning → Import forecast (SFE) for period and Target Quota, not this page" },
     { label: "Add model on a branch needs Allowed models first" },
     { label: "Off-planogram badges on Stock units follow this list" },
   ],

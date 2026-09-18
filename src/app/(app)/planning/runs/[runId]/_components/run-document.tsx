@@ -77,6 +77,16 @@ export function DemandPlanningRunDocument({
     () => run.branches.find((branch) => branch.id === activeBranchId) ?? run.branches[0] ?? null,
     [run.branches, activeBranchId],
   );
+  const releaseBranchHints = useMemo(
+    () =>
+      run.branches.map((branch) => ({
+        sapCode: branch.sapCode,
+        name: branch.name,
+        planStatus: branch.planStatus,
+        drop1Qty: branch.totals.drop1Qty,
+      })),
+    [run.branches],
+  );
   const totals = sumGridLineTotals(lines);
 
   async function loadBranch(runBranchId: string) {
@@ -234,6 +244,7 @@ export function DemandPlanningRunDocument({
             runId={run.id}
             documentNumber={run.documentNumber}
             disabled={pending}
+            branches={releaseBranchHints}
             onReleased={() => {
               if (onClose) {
                 onClose();
@@ -243,7 +254,7 @@ export function DemandPlanningRunDocument({
             }}
           />
         ) : null}
-        {canManage ? (
+        {canManage && run.status !== "superseded" ? (
           <Button
             type="button"
             variant="outline"

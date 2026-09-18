@@ -58,7 +58,10 @@ export function buildBranchSkuFacts(input: {
   onHandQty: Map<string, number>;
   forecastQty: Map<string, number>;
   displayUnits: Map<string, number>;
+  /** Calendar months in the history window (defaults to 3). */
+  historyMonths?: number;
 }): BranchSkuFact[] {
+  const months = input.historyMonths;
   const facts: BranchSkuFact[] = [];
   for (const modelId of input.universeModelIds) {
     const model = input.models.get(modelId);
@@ -67,8 +70,8 @@ export function buildBranchSkuFacts(input: {
     facts.push({
       ...model,
       hasPlanogram: input.planogramModelIds.has(modelId),
-      historyQty: averageOverHistoryMonths(history?.qty ?? 0),
-      historyPeso: averageOverHistoryMonths(history?.peso ?? 0),
+      historyQty: averageOverHistoryMonths(history?.qty ?? 0, months),
+      historyPeso: averageOverHistoryMonths(history?.peso ?? 0, months),
       onHandQty: input.onHandQty.get(modelId) ?? 0,
       forecastQty: input.forecastQty.get(modelId) ?? 0,
       displayUnits: input.displayUnits.get(modelId) ?? 0,

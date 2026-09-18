@@ -7,7 +7,6 @@ import { Upload } from "lucide-react";
 import { ImportForecastDialog } from "@/app/(app)/settings/planning/_components/import-forecast-dialog";
 import {
   BranchRevenueTargetsTable,
-  type PlanningBranchOption,
   type PlanningTargetRow,
 } from "@/app/(app)/settings/planning/_components/branch-revenue-targets-table";
 import { PlanningKpiStrip } from "@/app/(app)/settings/planning/_components/planning-kpi-strip";
@@ -24,7 +23,6 @@ interface PlanningPanelProps {
   targetBranchCount: number;
   tenantBranchCount: number;
   targets: PlanningTargetRow[];
-  branches: PlanningBranchOption[];
 }
 
 export function PlanningPanel({
@@ -33,7 +31,6 @@ export function PlanningPanel({
   targetBranchCount,
   tenantBranchCount,
   targets,
-  branches,
 }: PlanningPanelProps) {
   const [importing, setImporting] = useState(false);
 
@@ -64,16 +61,11 @@ export function PlanningPanel({
       </div>
 
       {period ? (
-        <BranchRevenueTargetsTable
-          periodId={period.id}
-          targets={targets}
-          branches={branches}
-        />
+        <BranchRevenueTargetsTable targets={targets} />
       ) : (
         <p className="text-sm text-muted-foreground">
-          No planning period yet. Import forecast to set the period and each
-          branch&apos;s revenue target (quota override), or add a target after a
-          period exists.
+          No planning period yet. Import forecast with the SFE sheet to set the period
+          and Target Quota (forecast qty × price list) for each branch.
         </p>
       )}
 

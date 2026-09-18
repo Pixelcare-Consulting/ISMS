@@ -2,10 +2,10 @@ import Link from "next/link";
 
 import {
   getPlanningDashboardAction,
-  listBranchesForPlanningAction,
   listPlanningPeriodsAction,
   listPlanningTargetsAction,
 } from "@/features/forecast/actions/forecast.actions";
+import { displayPeriodLabel } from "@/features/demand-planning/lib/planning-period-dates";
 import { ModuleGuide } from "@/components/module-guide";
 import { requireAnyPermission } from "@/lib/auth/permissions";
 import { PLANNING_MODULE_GUIDE } from "@/content/module-guides/planning";
@@ -25,10 +25,9 @@ export default async function PlanningPage({ searchParams }: PlanningPageProps) 
 
   const params = await searchParams;
 
-  const [periods, dashboard, branches] = await Promise.all([
+  const [periods, dashboard] = await Promise.all([
     listPlanningPeriodsAction(),
     getPlanningDashboardAction(params.period),
-    listBranchesForPlanningAction(),
   ]);
 
   const period = dashboard.period;
@@ -36,7 +35,11 @@ export default async function PlanningPage({ searchParams }: PlanningPageProps) 
   const targets = period ? await listPlanningTargetsAction(period.id) : [];
 
   const clientPeriod = period
-    ? { id: period.id, label: period.label, isActive: period.isActive }
+    ? {
+        id: period.id,
+        label: displayPeriodLabel(period.label),
+        isActive: period.isActive,
+      }
     : null;
 
   return (
@@ -44,7 +47,7 @@ export default async function PlanningPage({ searchParams }: PlanningPageProps) 
       <PageHeader
         title="Planning & Forecast"
         tutorial={PLANNING_PAGE_TUTORIAL}
-        description="Import SFE forecast and branch quota, then switch the active period. Demand Planning runs live under Settings → Planning."
+        description="Import the SFE forecast to set Target Quota automatically, then switch the active period. Demand Planning runs live under Settings → Planning."
         sticky={false}
         actions={
           <Button variant="outline" asChild>
@@ -59,7 +62,6 @@ export default async function PlanningPage({ searchParams }: PlanningPageProps) 
         targetBranchCount={dashboard.targetBranchCount}
         tenantBranchCount={dashboard.tenantBranchCount}
         targets={targets}
-        branches={branches}
       />
     </div>
   );

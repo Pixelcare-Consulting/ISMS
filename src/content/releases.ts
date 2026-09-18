@@ -52,6 +52,184 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.44.2",
+    date: "2026-09-18",
+    releasedAt: "2026-09-18T13:45:00+08:00",
+    title: "Release open orders by period",
+    highlights: [
+      "Demand Planning Release only skips a branch when it already has an open Auto Replenish for the same planning period — an August order no longer blocks October.",
+      "Release confirmation and skip messages say when the open order is for this period.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Release confirmation lists open Auto Replenish skips as for this period, so it is clearer why a branch was skipped.",
+      },
+      {
+        type: "fix",
+        description:
+          "Release to Ordering no longer treats an open Auto Replenish from another month as a blocker for the period you are releasing.",
+      },
+    ],
+  },
+  {
+    version: "0.44.1",
+    date: "2026-09-18",
+    releasedAt: "2026-09-18T13:30:00+08:00",
+    title: "FREE forecast import and Release warnings",
+    highlights: [
+      "Import forecast accepts FREE items (0 SRP) — Target Quota can be ₱0 with a warning, not a hard stop.",
+      "Release asks you to confirm and lists branches with no sales history, no Drop 1, or an open Auto Replenish.",
+      "Planning guide spells out what you need before Demand Planning and Release.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Demand Planning Release confirmation shows how many branches go to Team Leader, which are skipped, and which have no sales history before you proceed.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Planning module guide covers the checklist for forecast, planogram, history, and Release.",
+      },
+      {
+        type: "fix",
+        description:
+          "Import forecast no longer blocks when Target Quota is ₱0 because SRP is FREE or forecast qty is zero — you see a warning and can still apply.",
+      },
+    ],
+  },
+  {
+    version: "0.44.0",
+    date: "2026-09-18",
+    releasedAt: "2026-09-18T13:15:00+08:00",
+    title: "Forecast template and Release to Team Leader",
+    highlights: [
+      "Forecast Download template pre-fills every active branch and its planogram SKUs so you can fill quantities faster.",
+      "Demand Planning New run shows Date from and Date to side by side.",
+      "Release sends Auto Replenish straight to Team Leader whenever Drop 1 has quantity — even without sales history.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Demand Planning Release creates Auto Replenish orders already waiting for Team Leader when Drop 1 quantity is above zero, including branches with no sales history.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Forecast Download template lists active branches × planogram SKUs, with known forecast quantities filled in when available.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Demand Planning New run places Date from and Date to next to each other for easier history range setup.",
+      },
+    ],
+  },
+  {
+    version: "0.43.1",
+    date: "2026-09-18",
+    releasedAt: "2026-09-18T13:00:00+08:00",
+    title: "Demand Planning wizard and Release clarity",
+    highlights: [
+      "New run lets you set Date from / Date to for sales history and edit Month basis days.",
+      "Open document after generate opens the plan reliably instead of staying on Loading.",
+      "Release warns and stays on the plan when no Auto Replenish drafts are created, with a short skip summary.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Demand Planning New run: choose Date from and Date to for history, and edit Month basis days on Parameters.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Release to Ordering explains when nothing was drafted (no history, no Drop 1, or an existing draft) and does not jump to Auto Replenish empty-handed.",
+      },
+      {
+        type: "fix",
+        description:
+          "Open document after generating a run no longer gets stuck on Loading plan.",
+      },
+    ],
+  },
+  {
+    version: "0.43.0",
+    date: "2026-09-18",
+    releasedAt: "2026-09-18T12:30:00+08:00",
+    title: "SFE Target Quota and Auto Replenish path",
+    highlights: [
+      "Import forecast now uses the SFE sheet only — Target Quota for each branch is calculated from forecast qty × price list.",
+      "Planning Target Quota is view-only; update it by importing SFE, not by hand.",
+      "Replenishment is removed from Orders. After Demand Planning Release, go to Auto Replenish to Submit for review.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Forecast import is SFE-only. Target Quota per branch is set automatically from forecast quantities and the price list.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Planning & Forecast shows Target Quota as read-only, with Import forecast as the way to refresh it.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Demand Planning Release opens Auto Replenish drafts. The old Replenishment menu and workbench are gone; old links redirect to Auto Replenish.",
+      },
+    ],
+  },
+  {
+    version: "0.42.0",
+    date: "2026-09-18",
+    releasedAt: "2026-09-18T11:00:00+08:00",
+    title: "Clearer planning periods and Auto Replenish review",
+    highlights: [
+      "Forecast periods use a short month label (for example Dec-25), so months stay consistent across import, plans, and documents.",
+      "Demand Planning runs show who created each plan, and recalculated plans are easier to spot.",
+      "The Replenishment grid matches other tables, and Auto Replenish drafts have a clear Submit for review step before Team Leader sees them.",
+      "Orders can only be edited while still Draft — once submitted for review, Edit is hidden.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Planning periods use MMM-YY labels (for example Dec-25). New Demand Planning documents are numbered like DP-202512-001.",
+      },
+      {
+        type: "feature",
+        description:
+          "Auto Replenish drafts from Planning or Replenishment stay as Draft until you choose Submit for review — then Team Leader can approve.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Demand Planning runs list shows Created by, and Recalculated plans use a warning badge. Recalculate is hidden on superseded plans.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The branch Replenishment workbench table uses the same header, stripes, and card look as other lists so rows are easier to scan.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Edit on the Orders list is only available for Draft orders. Pending review rows no longer show Edit.",
+      },
+      {
+        type: "fix",
+        description:
+          "Forecast import still accepts older period formats and stores them as MMM-YY so periods stay aligned.",
+      },
+    ],
+  },
+  {
     version: "0.41.2",
     date: "2026-09-18",
     releasedAt: "2026-09-18T10:15:00+08:00",
@@ -59,6 +237,7 @@ export const RELEASES: ReleaseNote[] = [
     highlights: [
       "Branch planogram lists show only the essentials — SKU, model, series, and a link to units — so the table is easier to scan.",
       "Demand Planning runs now include row numbers so you can find a plan faster as you move through pages.",
+      "When starting a new Demand Planning run, dealer and branch names are easier to read in the picker.",
     ],
     changes: [
       {
@@ -70,6 +249,11 @@ export const RELEASES: ReleaseNote[] = [
         type: "improvement",
         description:
           "Demand Planning runs show a row number on each page so you can track where you are in the list.",
+      },
+      {
+        type: "improvement",
+        description:
+          "New Demand Planning run dealer and branch names are easier to read in the picker.",
       },
     ],
   },

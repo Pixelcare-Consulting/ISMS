@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { NewRunDialog } from "@/app/(app)/planning/_components/new-run-dialog";
@@ -12,6 +12,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { DemandPlanningRunStatusBadge } from "@/features/demand-planning/components/demand-planning-status-badge";
 import { formatDemandPeso } from "@/features/demand-planning/lib/format-demand-plan";
 import { demandPlanningRunsHref } from "@/features/demand-planning/lib/paths";
+import { displayPeriodLabel } from "@/features/demand-planning/lib/planning-period-dates";
 import type {
   DemandPlanningClientRunListItem,
   DemandPlanningWizardBranch,
@@ -64,6 +65,7 @@ export function DemandPlanningRunList({
   const router = useRouter();
   const [newRunOpen, setNewRunOpen] = useState(initialNewRunOpen && !initialRunId);
   const [activeRunId, setActiveRunId] = useState<string | null>(initialRunId);
+  const skipNewRunCloseRefreshRef = useRef(false);
   const released = items.filter((item) => item.status === "released").length;
   const drop1Qty = items.reduce((sum, item) => sum + item.drop1Qty, 0);
   const drop1Peso = items.reduce((sum, item) => sum + item.drop1Peso, 0);
@@ -85,6 +87,7 @@ export function DemandPlanningRunList({
   }, [initialNewRunOpen, page, hrefFor, router]);
 
   function openDocument(runId: string) {
+    skipNewRunCloseRefreshRef.current = true;
     setNewRunOpen(false);
     setActiveRunId(runId);
     router.replace(hrefFor(page, selectedPeriodId, runId), { scroll: false });
@@ -93,8 +96,14 @@ export function DemandPlanningRunList({
   function handleNewRunOpenChange(open: boolean) {
     setNewRunOpen(open);
     if (open) {
+      skipNewRunCloseRefreshRef.current = false;
       setActiveRunId(null);
       router.replace(hrefFor(page), { scroll: false });
+      return;
+    }
+    // Closing New run after Open document — keep ?run= and skip refresh (avoids stuck loading).
+    if (skipNewRunCloseRefreshRef.current) {
+      skipNewRunCloseRefreshRef.current = false;
       return;
     }
     router.refresh();
@@ -128,10 +137,13 @@ export function DemandPlanningRunList({
         toolbarLeading={
           <SearchableSelect
             className="w-56"
-            options={periods.map((period) => ({
-              id: period.id,
-              label: period.isActive ? `${period.label} (active)` : period.label,
-            }))}
+            options={periods.map((period) => {
+              const label = displayPeriodLabel(period.label);
+              return {
+                id: period.id,
+                label: period.isActive ? `${label} (active)` : label,
+              };
+            })}
             value={selectedPeriodId ?? ""}
             onChange={(periodId) => router.push(hrefFor(1, periodId || undefined))}
             placeholder="All periods"
@@ -143,6 +155,7 @@ export function DemandPlanningRunList({
             <Button
               type="button"
               onClick={() => {
+                skipNewRunCloseRefreshRef.current = false;
                 setActiveRunId(null);
                 setNewRunOpen(true);
                 router.replace(hrefFor(page), { scroll: false });
@@ -170,6 +183,7 @@ export function DemandPlanningRunList({
             <TableHead className="text-right">Drop 1</TableHead>
             <TableHead className="text-right">Drop 1 ₱</TableHead>
             <TableHead>Created</TableHead>
+            <TableHead>Created by</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -212,6 +226,9 @@ export function DemandPlanningRunList({
               <TableCell className="text-muted-foreground">
                 {new Date(item.createdAt).toLocaleString("en-PH", { dateStyle: "medium" })}
               </TableCell>
+              <TableCell className="text-muted-foreground">
+                {item.createdByName ?? "—"}
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -225,10 +242,7 @@ export function DemandPlanningRunList({
           periods={wizardOptions.periods}
           dealers={wizardOptions.dealers}
           branches={wizardOptions.branches}
-          onOpenDocument={(runId) => {
-            router.refresh();
-            openDocument(runId);
-          }}
+          onOpenDocument={openDocument}
         />
       ) : null}
 

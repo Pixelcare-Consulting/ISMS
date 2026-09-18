@@ -173,13 +173,13 @@ export function getOrderQueueStatuses(
 }
 
 /**
- * Whether a branch may still edit an order's lines. Editable while under review
- * (before final SP approval); frozen once approved, in logistics, rejected, or
- * cancelled. Editing also requires the branch to be within its ordering window
- * (enforced separately in the order service).
+ * Whether a branch may still edit an order's lines. Only drafts are editable;
+ * once submitted for review the order is frozen until approval workflow finishes
+ * (or the order is rejected/cancelled). Editing also requires the branch to be
+ * within its ordering window (enforced separately in the order service).
  */
 export function isOrderEditable(status: BranchOrderStatus): boolean {
-  return ["draft", "pending_ps", "pending_tl", "pending_sp"].includes(status);
+  return status === "draft";
 }
 
 export const ORDER_WORKFLOW_DESCRIPTION =

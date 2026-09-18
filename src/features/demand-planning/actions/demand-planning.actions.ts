@@ -23,7 +23,6 @@ import { hasPermission, requireAuth } from "@/lib/auth/permissions";
 function revalidateDemandPlanning(runId?: string) {
   revalidatePath(DEMAND_PLANNING_RUNS_PATH);
   revalidatePath("/settings/planning");
-  revalidatePath("/planning/replenishment");
   if (runId) revalidatePath(`${DEMAND_PLANNING_RUNS_PATH}/${runId}`);
   revalidatePath("/orders/auto-replenish");
 }
@@ -169,6 +168,24 @@ export async function saveDemandPlanOverrideAction(input: unknown) {
     return { success: true as const, lines };
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Failed to save override" };
+  }
+}
+
+export async function previewDemandPlanReleaseAction(runId: string) {
+  const session = await requireAuth();
+  if (!canReleaseDemandPlanning(session.user.permissions)) {
+    return { error: "You need forecast manage and auto-replenish create access to release" };
+  }
+  const parsed = demandPlanRunIdSchema.safeParse({ runId });
+  if (!parsed.success) return { error: "Invalid run" };
+  try {
+    const preview = await demandPlanningReleaseService.previewRelease(
+      session.user.tenantId,
+      parsed.data.runId,
+    );
+    return { success: true as const, preview };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Release preview failed" };
   }
 }
 
