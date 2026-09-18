@@ -241,13 +241,11 @@ export function ImportForecastDialog({
               The <strong>SFE</strong> sheet is required (period, branch SAP code, SKU,
               forecast qty). <strong>Target Quota</strong> for each branch is calculated
               automatically as forecast qty × price list SRP — there is no separate quota
-              sheet. <strong>0 SRP means FREE</strong>; Target Quota may be ₱0 and import
-              still continues (you will see a warning in the preview).
+              sheet. 
             </p>
             <p>
-              Branches, SKUs, and a price list row must already exist — this import does
-              not create branches, SKUs, or planogram rows. Shelf max stays on Planogram.
-              Rows left out of the file are not removed.
+              NOTE: <strong>0 SRP means FREE</strong>. Target Quota may be ₱0 and import
+              still continues. You will see a warning in the preview.
             </p>
             <p>
               Keep period as text (<strong>Dec-25</strong>), not an Excel date.
