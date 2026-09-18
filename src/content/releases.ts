@@ -52,6 +52,23 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.44.3",
+    date: "2026-09-18",
+    releasedAt: "2026-09-18T14:35:00+08:00",
+    title: "Clearer Import forecast tips",
+    highlights: [
+      "Import forecast shows a clear how-to banner (template, SFE sheet, auto Target Quota, period as text).",
+      "A separate note highlights that 0 SRP means FREE — Target Quota may be ₱0, with a preview warning, and import can still continue.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Import forecast tips are easier to scan: a how-to banner for the template and SFE sheet, plus a distinct note that FREE (0 SRP) can make Target Quota ₱0 without stopping the import.",
+      },
+    ],
+  },
+  {
     version: "0.44.2",
     date: "2026-09-18",
     releasedAt: "2026-09-18T13:45:00+08:00",

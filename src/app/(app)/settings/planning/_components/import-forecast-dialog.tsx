@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Download, Upload } from "lucide-react";
+import { AlertTriangle, Download, Info, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -233,24 +233,47 @@ export function ImportForecastDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="text-muted-foreground space-y-2 text-sm">
-            <p>
-              Download the template — it pre-fills one row per active branch × that
-              branch’s planogram SKUs (period and SAP code filled; forecast qty starts at 0
-              or your current SFE value). Branches without planogram SKUs are omitted.
-              The <strong>SFE</strong> sheet is required (period, branch SAP code, SKU,
-              forecast qty). <strong>Target Quota</strong> for each branch is calculated
-              automatically as forecast qty × price list SRP — there is no separate quota
-              sheet. 
-            </p>
-            <p>
-              NOTE: <strong>0 SRP means FREE</strong>. Target Quota may be ₱0 and import
-              still continues. You will see a warning in the preview.
-            </p>
-            <p>
-              Keep period as text (<strong>Dec-25</strong>), not an Excel date.
-              Other formats like YYYYMMDD still import and are stored as MMM-YY.
-            </p>
+          <div
+            role="status"
+            className="flex gap-3 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-100"
+          >
+            <Info className="mt-0.5 size-4 shrink-0 text-sky-700 dark:text-sky-300" aria-hidden />
+            <div className="space-y-2 leading-relaxed">
+              <p>
+                Download the template — it pre-fills one row per active branch and that
+                branch’s planogram models (period and SAP code ready; forecast qty starts
+                at 0 or your current SFE value). Branches without planogram models are
+                skipped.
+              </p>
+              <p>
+                The <strong>SFE</strong> sheet is required (period, branch SAP code, SKU,
+                forecast qty). <strong>Target Quota</strong> for each branch is calculated
+                automatically as forecast qty × price list SRP — there is no separate
+                quota sheet.
+              </p>
+              <p>
+                Keep the period as text (for example <strong>Dec-25</strong>), not as an
+                Excel date. Other formats like YYYYMMDD still import and are stored as
+                MMM-YY.
+              </p>
+            </div>
+          </div>
+
+          <div
+            role="note"
+            className="flex gap-3 rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200"
+          >
+            <AlertTriangle
+              className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-400"
+              aria-hidden
+            />
+            <div className="space-y-1 leading-relaxed">
+              <p className="font-medium">Note: 0 SRP means FREE</p>
+              <p>
+                Target Quota may be ₱0. You will see a warning in the preview, and the
+                import can still continue.
+              </p>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
