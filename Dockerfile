@@ -25,7 +25,7 @@ COPY package.json pnpm-lock.yaml ./
 # COPY pnpm-workspace.yaml ./
 
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
-    pnpm install --frozen-lockfile --dangerously-allow-all-builds
+    pnpm install --dangerously-allow-all-builds
 
 ############################
 # Development
@@ -57,6 +57,7 @@ COPY prisma ./prisma
 COPY prisma.config.ts ./
 
 # Generate Prisma Client
+# ENV DATABASE_URL="postgresql://postgres:postgres@localhost:5432/murni_portal"
 
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm prisma generate
