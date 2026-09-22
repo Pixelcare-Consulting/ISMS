@@ -1,122 +1,67 @@
-# syntax=docker/dockerfile:1.7
+# syntax=docker/dockerfile:1
 
-############################
-# Base
-############################
-FROM node:24-alpine AS base
-
-RUN apk add --no-cache libc6-compat dumb-init
-
-ENV PNPM_HOME="/pnpm"
-ENV PATH="$PNPM_HOME:$PATH"
-
-RUN corepack enable
-
+# FINDEN ISMS — multi-stage production image (Next.js standalone)
+FROM node:22-bookworm-slim AS base
 WORKDIR /app
-
-############################
-# Dependencies
-############################
-FROM base AS deps
-
-# Copy dependency manifests first
-COPY package.json pnpm-lock.yaml ./
-# COPY .npmrc ./
-# COPY pnpm-workspace.yaml ./
-
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
-    pnpm install --dangerously-allow-all-builds
-
-############################
-# Development
-############################
-FROM base AS dev
-
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
-
-EXPOSE 3000
-
-CMD ["pnpm", "run", "dev:docker"]
-
-############################
-# Builder
-############################
-FROM base AS builder
-
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Reuse installed dependencies
-COPY --from=deps /app/node_modules ./node_modules
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openssl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+RUN corepack enable && corepack prepare pnpm@10.33.3 --activate
+FROM base AS deps
 
-# pnpm requires package.json
-COPY package.json pnpm-lock.yaml ./
-
-# Copy Prisma first for better cache utilization
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY prisma ./prisma
 COPY prisma.config.ts ./
 
-# Generate Prisma Client
-# ENV DATABASE_URL="postgresql://postgres:postgres@localhost:5432/murni_portal"
+# Dummy URLs so prisma generate / postinstall never need a live DB
+ENV DATABASE_URL="postgresql://isms:isms@127.0.0.1:5432/isms"
+ENV DIRECT_URL="postgresql://isms:isms@127.0.0.1:5432/isms"
 
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
-    pnpm prisma generate
+RUN pnpm install --frozen-lockfile
 
-# Copy application source
+FROM base AS builder
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Build Next.js standalone output
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
-    pnpm build
+ENV DATABASE_URL="postgresql://isms:isms@127.0.0.1:5432/isms"
+ENV DIRECT_URL="postgresql://isms:isms@127.0.0.1:5432/isms"
+ENV NEXT_PUBLIC_APP_URL="http://localhost:3000"
 
-############################
-# Production (app + migrator)
-############################
-FROM node:24-alpine AS runner
+RUN pnpm exec prisma generate
+RUN pnpm run build
 
-RUN apk add --no-cache libc6-compat dumb-init
-
-ENV PNPM_HOME="/pnpm"
-ENV PATH="$PNPM_HOME:$PATH"
-
-RUN corepack enable
-
+FROM base AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
+ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
-ENV NEXT_TELEMETRY_DISABLED=1
+ENV STORAGE_ROOT=/app/data/uploads
 
-# Create non-root user
-RUN addgroup -S nodejs && \
-    adduser -S nextjs -G nodejs
+RUN groupadd --system --gid 1001 nodejs \
+    && useradd --system --uid 1001 --gid nodejs nextjs \
+    && mkdir -p /app/data/uploads \
+    && chown -R nextjs:nodejs /app/data
 
-# Standalone server
-COPY --from=builder /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-# Static assets
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/public ./public
+# Full node_modules so ⁠ prisma migrate deploy ⁠ works with pnpm's .pnpm store layout
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
+COPY --from=builder --chown=nextjs:nodejs /app/prisma.config.ts ./prisma.config.ts
+COPY --from=builder --chown=nextjs:nodejs /app/database ./database
+COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
+COPY --from=builder --chown=nextjs:nodejs /app/deploy/entrypoint.sh ./deploy/entrypoint.sh
 
-# Prisma migrate tooling (same image; Compose overrides CMD for one-shot migrator)
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/pnpm-lock.yaml ./pnpm-lock.yaml
-COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/tsconfig.json ./tsconfig.json
-COPY --from=builder /app/lib ./lib
-COPY --from=builder /app/constants ./constants
-
-RUN chown -R nextjs:nodejs /app
+RUN chmod +x /app/deploy/entrypoint.sh
 
 USER nextjs
-
 EXPOSE 3000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-    CMD wget --spider -q http://127.0.0.1:3000/api/health || exit 1
-
-ENTRYPOINT ["dumb-init", "--"]
+ENTRYPOINT ["/app/deploy/entrypoint.sh"]
 
 CMD ["node", "server.js"]
