@@ -164,6 +164,8 @@ Public `/register` is closed by default. Set `ALLOW_PUBLIC_REGISTER=true` in `.e
 | `pnpm run build` | Production build |
 | `pnpm run lint` | ESLint |
 | `pnpm run typecheck` | `tsc --noEmit` |
+| `pnpm run test` | Unit tests (Jest) — `test:watch`, `test:coverage` |
+| `pnpm run test:e2e` | End-to-end tests (Playwright) — `test:e2e:ui`, `test:e2e:report` |
 | `pnpm run db:generate` | Prisma client |
 | `pnpm run db:migrate` | Dev migrations |
 | `pnpm run db:deploy` | Deploy migrations |
@@ -177,6 +179,40 @@ Public `/register` is closed by default. Set `ALLOW_PUBLIC_REGISTER=true` in `.e
 | `pnpm run docs:modules-matrix` | Regenerate `docs/ISMS_App_Modules_vs_Workflow.xlsx` |
 | `pnpm run docs:end-user-process-flow` | Regenerate end-user Process Flow Word + Excel under `docs/` |
 | `pnpm run docs:sap-b1-proposal` | Regenerate SAP B1 automation proposal Word + module matrix Excel under `docs/` |
+
+## Testing
+
+All tests live under `tests/`, never inside `src/`:
+
+```
+tests/
+  jest.setup.ts              jest-dom matchers (runs before every unit test file)
+  unit/                      Jest — mirrors src/ one-to-one
+    lib/shared/env.test.ts   ↔ src/lib/shared/env.ts
+    app/(app)/_components/page-header.test.tsx   (jsdom + Testing Library example)
+  e2e/                       Playwright — Page Object Model + fixtures
+    fixtures/test.ts         test.extend() — injects page objects into every spec
+    fixtures/users.ts        seeded accounts (see database/seed-users.md)
+    pages/*.page.ts          LoginPage, DashboardPage, …  (locators + actions only)
+    auth.setup.ts            signs in once, saves tests/e2e/.auth/user.json (storageState)
+    specs/*.spec.ts          specs import { test, expect } from "../fixtures/test"
+```
+
+**Unit — Jest** (`jest.config.mjs`, via `next/jest`). Import the code under test
+through the `@/` alias. Default environment is Node; component tests opt into
+the DOM with `/** @jest-environment jsdom */`.
+
+**E2E — Playwright** (`playwright.config.ts`).
+
+Locally it targets `E2E_BASE_URL` (default `http://localhost:3000`; starts
+`pnpm dev` if nothing is listening) and needs a seeded database
+(`pnpm run db:seed`). `pnpm exec playwright install chromium` once.
+Sign-in is rate-limited per IP + email, so each spec that logs in uses a
+different seeded user; specs that only need to be signed in reuse the stored
+session instead of logging in again.
+
+In CI (`.github/workflows/ci.yml`) the same suite runs against the Docker image
+built from the commit, inside the `develop` Compose stack.
 
 ## Optional env
 

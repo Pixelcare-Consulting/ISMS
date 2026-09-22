@@ -197,6 +197,16 @@ export const auth = betterAuth({
     nextCookies(),
   ],
   trustedOrigins: resolveTrustedOrigins,
+  rateLimit: {
+    // Better Auth's built-in per-IP limiter (e.g. 3 sign-ins / 10 s), on in
+    // production by default. Only the E2E stack sets AUTH_RATE_LIMIT_ENABLED=false
+    // so parallel browser workers can sign in; the app's own per-email login
+    // throttle in databaseHooks above stays active regardless.
+    enabled:
+      process.env.AUTH_RATE_LIMIT_ENABLED === "false"
+        ? false
+        : process.env.NODE_ENV === "production",
+  },
 });
 
 export type AuthSession = typeof auth.$Infer.Session;

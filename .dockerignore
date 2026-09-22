@@ -23,3 +23,8 @@ docker-compose*.yml
 Dockerfile
 traefik
 backups
+tests
+jest.config.mjs
+playwright.config.ts
+playwright-report
+test-results

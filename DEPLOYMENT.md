@@ -32,7 +32,7 @@ It selects `.env.<env>` and layers `docker-compose.<env>.yml` over the shared
 ```
 feature/* ──PR──▶ develop ──PR/merge──▶ staging ──PR/merge──▶ production
 
-PR → any of the three ─ lint · typecheck · prisma checks · image build (not pushed)
+PR → any of the three ─ lint · typecheck · unit tests · prisma checks · image build (not pushed) · e2e against that image
 push develop ────┐
 push staging ────┼─ same checks ─ push image to GHCR ─┬─ (develop)    done — pull it locally
 push production ─┘                                    ├─ (staging)    deploy → staging
@@ -120,7 +120,7 @@ passes the file both as `--env-file` (Compose `${VAR}` interpolation) and
 `env_file:` (into the containers). Variables the stack reads:
 
 - Compose: `APP_IMAGE` (required on staging/production), `APP_DOMAIN` (staging/production), `APP_HOST_PORT` (develop), `POSTGRES_HOST_PORT` (unique per env on a shared server)
-- App URL / auth: `APP_URL`, `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `AUTH_SECRET`, `BETTER_AUTH_API_KEY`, `ALLOW_PUBLIC_REGISTER`
+- App URL / auth: `APP_URL`, `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `AUTH_SECRET`, `BETTER_AUTH_API_KEY`, `ALLOW_PUBLIC_REGISTER`, `AUTH_RATE_LIMIT_ENABLED` (only ever `false` in the CI e2e stack)
 - Database: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `DATABASE_URL`, `DIRECT_URL` (host is the compose service `postgres`)
 - Integrations: `CRON_SECRET`, `SAP_ENCRYPTION_KEY`, `SAP_*` tuning, `RESEND_API_KEY`, `EMAIL_FROM`, `OPENAI_API_KEY`, `AI_MODEL`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`
 - Operations: `MAINTENANCE_MODE`, `LOG_LEVEL`, `SENTRY_DSN`, `SLOW_QUERY_MS`, `PRISMA_LOG_QUERIES`, `AUDIT_LOG_HOT_DAYS`, `BACKUP_*` (production)

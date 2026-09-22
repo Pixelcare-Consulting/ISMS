@@ -1,6 +1,6 @@
 # ISMS CI/CD — one pipeline, three environments, one branch each.
 #
-#   event                             checks   image                        deploy
+#   event                             checks*  image                        deploy
 #   ────────────────────────────────  ──────   ───────────────────────────  ──────────────────────────
 #   PR → develop/staging/production   ✔        build only (not pushed)      —
 #   push develop                      ✔        :develop    :sha-…           —  (develop = local)   
@@ -9,6 +9,9 @@
 #                                                                             approval on the GitHub env)
 #   workflow_dispatch                 —        —                            chosen env ← chosen tag
 #                                                                             (manual promote / rollback)
+#
+# * checks = lint · typecheck · unit tests (Jest) · prisma · e2e (Playwright
+#   against the freshly built image running in the develop Compose stack).
 #
 # Promotion is a merge: develop → staging → production. The image built from a
 # commit is identified by its sha-… tag, and nothing environment-specific is
@@ -108,6 +111,31 @@ jobs:
           --shadow-database-url "$SHADOW_DATABASE_URL"
           --exit-code
 
+  unit:
+    name: Unit tests (Jest)
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: postgresql://isms:isms@127.0.0.1:5432/isms
+      DIRECT_URL: postgresql://isms:isms@127.0.0.1:5432/isms
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec prisma generate
+      - run: pnpm test:coverage -- --ci
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: coverage
+          path: coverage/lcov.info
+          retention-days: 14
+
   actionlint:
     name: Lint workflows
     if: github.event_name != 'workflow_dispatch'
@@ -124,7 +152,7 @@ jobs:
   image:
     name: Build image${{ github.event_name == 'push' && ' & publish to GHCR' || '' }}
     if: github.event_name != 'workflow_dispatch'
-    needs: [quality, prisma]
+    needs: [quality, prisma, unit]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -166,12 +194,94 @@ jobs:
           provenance: mode=max
           sbom: true
 
+  # ───────────────────────────────────────────────────────── e2e
+  # Runs Playwright against the exact image this commit produced, inside the
+  # same Compose stack developers use (deploy/stack.sh develop). The build is a
+  # cache hit from the `image` job, so this is seconds, not a second build.
+  e2e:
+    name: E2E tests (Playwright)
+    if: github.event_name != 'workflow_dispatch'
+    needs: [image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      E2E_BASE_URL: http://localhost:3000
+      # host-side Prisma commands (seed) talk to the stack's loopback port
+      DATABASE_URL: postgresql://isms:isms@127.0.0.1:5432/isms
+      DIRECT_URL: postgresql://isms:isms@127.0.0.1:5432/isms
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - name: Load image from build cache
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          target: runner
+          load: true
+          tags: isms:ci
+          provenance: false
+          build-args: |
+            NEXT_PUBLIC_SUPPORT_EMAIL=${{ vars.NEXT_PUBLIC_SUPPORT_EMAIL }}
+          cache-from: type=gha
+      - name: Write CI env file for the develop stack
+        # Throwaway values for a throwaway database on a CI runner — nothing here
+        # is a real secret. AUTH_RATE_LIMIT_ENABLED=false lets parallel browser
+        # workers sign in (see src/lib/auth/auth.ts).
+        run: |
+          cat > .env.develop <<'EOF'
+          APP_IMAGE=isms:ci
+          APP_HOST_PORT=3000
+          POSTGRES_HOST_PORT=5432
+          APP_URL=http://localhost:3000
+          BETTER_AUTH_URL=http://localhost:3000
+          BETTER_AUTH_SECRET=ci-only-secret-0123456789abcdefghijklmnopqrstuv
+          AUTH_SECRET=ci-only-secret-0123456789abcdefghijklmnopqrstuv
+          AUTH_RATE_LIMIT_ENABLED=false
+          POSTGRES_USER=isms
+          POSTGRES_PASSWORD=isms
+          POSTGRES_DB=isms
+          DATABASE_URL=postgresql://isms:isms@postgres:5432/isms
+          DIRECT_URL=postgresql://isms:isms@postgres:5432/isms
+          CRON_SECRET=ci
+          LOG_LEVEL=info
+          EOF
+      - name: Start stack (postgres → migrator → app healthy)
+        run: deploy/stack.sh develop up -d --wait postgres migrator app
+      - name: Seed demo users
+        env:
+          SEED_BCRYPT_ROUNDS: "4"
+        run: pnpm exec prisma db seed
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run Playwright
+        run: pnpm test:e2e
+      - name: App logs (on failure)
+        if: failure()
+        run: deploy/stack.sh develop logs --no-color --tail=200 app migrator
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            playwright-report
+            test-results
+          retention-days: 14
+      - name: Tear down
+        if: always()
+        run: deploy/stack.sh develop down -v --remove-orphans
+
   # ───────────────────────────────────────────────────────── deploy
   # Which environment + image this run should deploy, if any.
   target:
     name: Resolve deploy target
-    needs: [image]
-    if: always() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && needs.image.result == 'success'))
+    needs: [image, e2e]
+    if: always() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && needs.image.result == 'success' && needs.e2e.result == 'success'))
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:
@@ -267,7 +377,7 @@ jobs:
   ci-success:
     name: CI success
     if: always() && github.event_name != 'workflow_dispatch'
-    needs: [quality, prisma, actionlint, image]
+    needs: [quality, prisma, unit, actionlint, image, e2e]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
