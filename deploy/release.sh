@@ -4,14 +4,14 @@
 # hand on the server:
 #
 #   deploy/release.sh staging ghcr.io/pixelcare-consulting/isms:sha-<40 hex>
-#   deploy/release.sh prod    ghcr.io/pixelcare-consulting/isms:v1.4.0
+#   deploy/release.sh production    ghcr.io/pixelcare-consulting/isms:production
 #
 # Steps: pull image → ensure postgres up → run migrator → recreate app →
 # wait for the Docker HEALTHCHECK → on failure, restore the previous image.
 set -euo pipefail
 
-ENV_NAME="${1:?usage: deploy/release.sh <staging|prod|dev> <image>}"
-NEW_IMAGE="${2:?usage: deploy/release.sh <staging|prod|dev> <image>}"
+ENV_NAME="${1:?usage: deploy/release.sh <develop|staging|production> <image>}"
+NEW_IMAGE="${2:?usage: deploy/release.sh <develop|staging|production> <image>}"
 HEALTH_ATTEMPTS="${HEALTH_ATTEMPTS:-45}"   # × 2s
 
 cd "$(dirname "$0")/.."

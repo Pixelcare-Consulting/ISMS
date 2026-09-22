@@ -2,9 +2,9 @@
 #
 # Never run this file on its own. Pair it with exactly one override:
 #
-#   deploy/stack.sh dev      up -d        # == docker compose --env-file .env.dev \
+#   deploy/stack.sh develop      up -d        # == docker compose --env-file .env.develop \
 #   deploy/stack.sh staging  up -d        #      -f docker-compose.yml -f docker-compose.<env>.yml …
-#   deploy/stack.sh prod     up -d
+#   deploy/stack.sh production     up -d
 #
 # The env file does two jobs: `--env-file` feeds ${VAR} interpolation in these
 # YAML files (APP_IMAGE, APP_DOMAIN, POSTGRES_*), and `env_file:` in the
@@ -33,7 +33,7 @@ services:
     ports:
       # Loopback only: reachable from the host for psql / pg_dump / Prisma
       # Studio, never from the network. Each environment on a shared server
-      # gets its own POSTGRES_HOST_PORT (dev 5432, staging 5433, prod 5434).
+      # gets its own POSTGRES_HOST_PORT (develop 5432, staging 5433, production 5434).
       - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data

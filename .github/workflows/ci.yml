@@ -1,25 +1,25 @@
-# ISMS CI/CD — one pipeline, three environments.
+# ISMS CI/CD — one pipeline, three environments, one branch each.
 #
-#   event                      quality+prisma   image            deploy
-#   ─────────────────────────  ──────────────   ───────────────  ─────────────────────────
-#   PR → develop / main        ✔                build only       —
-#   push develop               ✔                :develop :sha-…  —  (development = pull it locally)
-#   push main                  ✔                :main    :sha-…  staging   (automatic)
-#   tag vX.Y.Z                 ✔                :vX.Y.Z :latest  production (needs approval
-#                                                :sha-…              on the GitHub environment)
-#   workflow_dispatch          —                —                chosen env ← chosen image
-#                                                                  (manual promote / rollback)
+#   event                             checks   image                        deploy
+#   ────────────────────────────────  ──────   ───────────────────────────  ──────────────────────────
+#   PR → develop/staging/production   ✔        build only (not pushed)      —
+#   push develop                      ✔        :develop    :sha-…           —  (develop = local)   
+#   push staging                      ✔        :staging    :sha-…           staging    (automatic)
+#   push production                   ✔        :production :latest :sha-…   production (waits for
+#                                                                             approval on the GitHub env)
+#   workflow_dispatch                 —        —                            chosen env ← chosen tag
+#                                                                             (manual promote / rollback)
 #
-# The SAME image (by sha tag) moves develop → staging → production; nothing
-# environment-specific is baked in (see Dockerfile / APP_URL).
+# Promotion is a merge: develop → staging → production. The image built from a
+# commit is identified by its sha-… tag, and nothing environment-specific is
+# baked in (see Dockerfile / APP_URL), so what staging ran is what production gets.
 name: CI/CD
 
 on:
   pull_request:
-    branches: [develop, main]
+    branches: [develop, staging, production]
   push:
-    branches: [develop, main]
-    tags: ['v*']
+    branches: [develop, staging, production]
   workflow_dispatch:
     inputs:
       environment:
@@ -28,7 +28,7 @@ on:
         options: [staging, production]
         required: true
       image_tag:
-        description: Image tag to deploy (e.g. sha-<40 hex>, v1.4.0, main)
+        description: Image tag to deploy (e.g. sha-<40 hex>, staging, production)
         type: string
         required: true
 
@@ -118,7 +118,7 @@ jobs:
       - run: docker run --rm -v "$PWD:/repo" --workdir /repo rhysd/actionlint:1.7.7 -color
 
   # TODO(e2e): add a `e2e` job here that starts the freshly built image with
-  # `deploy/stack.sh dev up -d` and runs Playwright against http://localhost:3000.
+  # `deploy/stack.sh develop up -d` and runs Playwright against http://localhost:3000.
 
   # ───────────────────────────────────────────────────────── image
   image:
@@ -150,8 +150,7 @@ jobs:
           tags: |
             type=raw,value=sha-${{ github.sha }}
             type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/production' }}
       - name: Build${{ github.event_name == 'push' && ' and push' || '' }}
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
@@ -191,10 +190,10 @@ jobs:
           if [ "$EVENT" = workflow_dispatch ]; then
             echo "environment=$IN_ENV" >> "$GITHUB_OUTPUT"
             echo "image_tag=$IN_TAG"   >> "$GITHUB_OUTPUT"
-          elif [ "$REF" = refs/heads/main ]; then
+          elif [ "$REF" = refs/heads/staging ]; then
             echo "environment=staging" >> "$GITHUB_OUTPUT"
             echo "image_tag=sha-$SHA"  >> "$GITHUB_OUTPUT"
-          elif [[ "$REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
+          elif [ "$REF" = refs/heads/production ]; then
             echo "environment=production" >> "$GITHUB_OUTPUT"
             echo "image_tag=sha-$SHA"     >> "$GITHUB_OUTPUT"
           else
@@ -209,7 +208,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # `production` should have "Required reviewers" enabled in GitHub → Settings →
-    # Environments so a tag push pauses here for approval.
+    # Environments so a push to the production branch pauses here for approval.
     environment:
       name: ${{ needs.target.outputs.environment }}
       url: ${{ vars.PUBLIC_APP_URL }}
@@ -217,7 +216,8 @@ jobs:
       group: deploy-${{ needs.target.outputs.environment }}
       cancel-in-progress: false
     env:
-      STACK_ENV: ${{ needs.target.outputs.environment == 'production' && 'prod' || 'staging' }}
+      # environment == git branch == compose override == env file (staging | production)
+      STACK_ENV: ${{ needs.target.outputs.environment }}
       APP_IMAGE: ghcr.io/pixelcare-consulting/isms:${{ needs.target.outputs.image_tag }}
     steps:
       - name: Guard
@@ -250,7 +250,7 @@ jobs:
             cd "$DEPLOY_PATH"
             # Compose files + scripts on the server track the deployed commit
             git fetch --quiet --tags origin
-            git checkout --quiet --detach "$GIT_SHA" 2>/dev/null || git checkout --quiet --detach origin/main
+            git checkout --quiet --detach "$GIT_SHA" 2>/dev/null || git checkout --quiet --detach "origin/$STACK_ENV"
             printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GHCR_USERNAME" --password-stdin
             deploy/release.sh "$STACK_ENV" "$APP_IMAGE"
 

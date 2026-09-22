@@ -1,28 +1,28 @@
 # PRODUCTION override — Finden server, behind the shared Traefik.
 #
-#   deploy/stack.sh prod up -d
+#   deploy/stack.sh production up -d
 #
 # Same topology as staging plus nightly Postgres dumps into ./backups/postgres.
-# Image: only `vX.Y.Z`-tagged builds promoted by the deploy workflow.
-name: isms-prod
+# Image: only builds of the `production` branch, promoted by the deploy workflow.
+name: isms-production
 
-x-env-file: &env-file .env.prod
+x-env-file: &env-file .env.production
 
 services:
   migrator:
-    image: ${APP_IMAGE:?APP_IMAGE must be a published image, e.g. ghcr.io/pixelcare-consulting/isms:v1.2.3}
+    image: ${APP_IMAGE:?APP_IMAGE must be a published image, e.g. ghcr.io/pixelcare-consulting/isms:sha-…}
     env_file: [*env-file]
 
   app:
-    image: ${APP_IMAGE:?APP_IMAGE must be a published image, e.g. ghcr.io/pixelcare-consulting/isms:v1.2.3}
+    image: ${APP_IMAGE:?APP_IMAGE must be a published image, e.g. ghcr.io/pixelcare-consulting/isms:sha-…}
     env_file: [*env-file]
     labels:
       - traefik.enable=true
       - traefik.docker.network=traefik-public
-      - traefik.http.routers.isms-prod.rule=Host(`${APP_DOMAIN:?set APP_DOMAIN in .env.prod}`)
-      - traefik.http.routers.isms-prod.entrypoints=websecure
-      - traefik.http.routers.isms-prod.tls.certresolver=letsencrypt
-      - traefik.http.services.isms-prod.loadbalancer.server.port=3000
+      - traefik.http.routers.isms-production.rule=Host(`${APP_DOMAIN:?set APP_DOMAIN in .env.production}`)
+      - traefik.http.routers.isms-production.entrypoints=websecure
+      - traefik.http.routers.isms-production.tls.certresolver=letsencrypt
+      - traefik.http.services.isms-production.loadbalancer.server.port=3000
     networks:
       - internal
       - traefik-public

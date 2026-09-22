@@ -2,7 +2,7 @@
 #
 #   deploy/stack.sh staging up -d
 #
-# Image: always a published GHCR tag (built by CI from `main`), never built here.
+# Image: always a published GHCR tag (built by CI from the `staging` branch), never built here.
 # Ingress: joins the external `traefik-public` network created by
 # docker-compose.traefik.yml; TLS via Let's Encrypt on ${APP_DOMAIN}.
 name: isms-staging

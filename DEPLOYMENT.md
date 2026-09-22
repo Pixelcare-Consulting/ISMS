@@ -1,42 +1,47 @@
-# ISMS deployment — development, staging, production
+# ISMS deployment — develop, staging, production
 
 Self-hosted Docker setup replacing Vercel. **One image, three environments**: the
-image built from a commit is promoted unchanged from development → staging →
+image built from a commit is promoted unchanged from develop → staging →
 production; only the env file differs.
 
 ## The three environments
 
-| | **development** | **staging** (pre-prod) | **production** |
+| | **develop** | **staging** (pre-production) | **production** |
 |---|---|---|---|
 | Purpose | Build & run the container exactly as it will ship; day-to-day dev DB | Client acceptance / UAT on real-shaped data; last stop before prod | Live system |
 | Where | Your laptop (or any dev box) | Finden server | Finden server |
-| Git source | `develop` branch (and your working tree) | `main` branch | `vX.Y.Z` tag on `main` |
-| Image | Built locally (`--build`) or pulled `ghcr.io/…/isms:develop` | `ghcr.io/…/isms:sha-<commit>` published by CI | Same `sha-<commit>` image, also tagged `vX.Y.Z` + `latest` |
-| Deploy trigger | Manual (`deploy/stack.sh dev up -d --build`) | **Automatic** on every push to `main` | **Approval-gated** on tag push (GitHub environment reviewers) |
+| Git branch | `develop` (and your working tree) | `staging` | `production` |
+| Image | Built locally (`--build`) or pulled `ghcr.io/…/isms:develop` | `ghcr.io/…/isms:sha-<commit>` published by CI (alias `:staging`) | Same `sha-<commit>` image after the merge (aliases `:production`, `:latest`) |
+| Deploy trigger | Manual (`deploy/stack.sh develop up -d --build`) | **Automatic** on every push to `staging` | **Approval-gated** on push to `production` (GitHub environment reviewers) |
 | Ingress | `http://localhost:3000`, no TLS | Traefik + Let's Encrypt on `APP_DOMAIN` | Traefik + Let's Encrypt on `APP_DOMAIN` |
 | Database | `postgres` container, host port 5432 (reuses old `isms_pg_data` volume) | `postgres` container, host port 5433 | `postgres` container, host port 5434 + nightly dumps |
 | SAP cron | Off (opt-in `--profile cron`) | On | On |
-| Files | `docker-compose.yml` + `docker-compose.dev.yml`, `.env.dev` | `… + docker-compose.staging.yml`, `.env.staging` | `… + docker-compose.prod.yml`, `.env.prod` |
+| Files | `docker-compose.yml` + `docker-compose.develop.yml`, `.env.develop` | `… + docker-compose.staging.yml`, `.env.staging` | `… + docker-compose.production.yml`, `.env.production` |
 
 Everything is driven through one wrapper:
 
 ```bash
-deploy/stack.sh <dev|staging|prod> <any docker compose args>
+deploy/stack.sh <develop|staging|production> <any docker compose args>
 ```
 
 It selects `.env.<env>` and layers `docker-compose.<env>.yml` over the shared
-`docker-compose.yml`. `deploy/stack.sh prod config` prints the merged result.
+`docker-compose.yml`. `deploy/stack.sh production config` prints the merged result.
 
 ## Pipeline (`.github/workflows/ci.yml`)
 
 ```
-PR → develop/main ─ lint · typecheck · prisma checks · image build (not pushed)
-push develop ──────┐
-push main ─────────┼─ same checks ─ push image to GHCR ─┬─ (develop) done
-tag vX.Y.Z ────────┘                                    ├─ (main)    deploy → staging
-                                                         └─ (tag)     wait for approval → deploy → production
+feature/* ──PR──▶ develop ──PR/merge──▶ staging ──PR/merge──▶ production
+
+PR → any of the three ─ lint · typecheck · prisma checks · image build (not pushed)
+push develop ────┐
+push staging ────┼─ same checks ─ push image to GHCR ─┬─ (develop)    done — pull it locally
+push production ─┘                                    ├─ (staging)    deploy → staging
+                                                       └─ (production) wait for approval → deploy → production
 workflow_dispatch ── deploy any published tag to staging or production (promote / rollback)
 ```
+
+Branch protection worth turning on: PRs required into `staging` and
+`production`, and `production` only accepts merges from `staging`.
 
 Deploy = SSH to the server → `git checkout <commit>` (so compose files match) →
 `docker login ghcr.io` → `deploy/release.sh <env> <image>` → public `/api/health`.
@@ -46,7 +51,8 @@ HEALTHCHECK, and restores the previous image if the new one never becomes health
 ### One-time GitHub setup
 
 Settings → Environments → create **`staging`** and **`production`** (production:
-tick *Required reviewers*). On each, set:
+tick *Required reviewers*; optionally restrict each environment to its own
+branch under *Deployment branches*). On each, set:
 
 | Kind | Name | Value |
 |---|---|---|
@@ -65,7 +71,7 @@ baked into the image at build time.
 # Docker Engine 24+ with compose plugin, ports 80/443 open, DNS A records → server
 sudo git clone https://github.com/Pixelcare-Consulting/ISMS.git /srv/isms && cd /srv/isms
 
-# 1. Shared proxy (serves both staging and prod)
+# 1. Shared proxy (serves both staging and production)
 cp .env.traefik.example .env.traefik              # LETSENCRYPT_EMAIL
 touch traefik/acme.json && chmod 600 traefik/acme.json
 docker compose --env-file .env.traefik -f docker-compose.traefik.yml up -d
@@ -75,74 +81,79 @@ docker compose -f docker-compose.portainer.yml up -d
 
 # 3. Environment files — fill every empty value
 cp .env.staging.example .env.staging
-cp .env.prod.example    .env.prod
+cp .env.production.example    .env.production
 
 # 4. Registry access for pulls
 docker login ghcr.io -u <github-user>            # PAT with read:packages
 
 # 5. First rollout (then CI takes over)
-deploy/release.sh staging ghcr.io/pixelcare-consulting/isms:main
-deploy/release.sh prod    ghcr.io/pixelcare-consulting/isms:latest
+deploy/release.sh staging ghcr.io/pixelcare-consulting/isms:staging
+deploy/release.sh production    ghcr.io/pixelcare-consulting/isms:production
 
 # 6. Seed core data (tenant, roles, permissions) — once per fresh database
 deploy/stack.sh staging run --rm app ./node_modules/.bin/prisma db seed
 ```
 
 Both stacks share the server safely: distinct project names (`isms-staging`,
-`isms-prod`), volumes, internal networks and Postgres host ports; only Traefik
+`isms-production`), volumes, internal networks and Postgres host ports; only Traefik
 is shared, and it routes by `APP_DOMAIN`.
 
-## Local development
+## Local development (the `develop` environment)
 
 ```bash
-cp .env.dev.example .env.dev
-deploy/stack.sh dev up -d --build         # whole stack → http://localhost:3000
-deploy/stack.sh dev up -d postgres        # DB only, then `pnpm dev` on the host (.env.local)
-APP_IMAGE=ghcr.io/pixelcare-consulting/isms:develop deploy/stack.sh dev up -d --pull always
-deploy/stack.sh dev --profile cron up -d  # also run the SAP sync sidecar
+cp .env.develop.example .env.develop
+deploy/stack.sh develop up -d --build         # whole stack → http://localhost:3000
+deploy/stack.sh develop up -d postgres        # DB only, then `pnpm dev` on the host (.env.local)
+APP_IMAGE=ghcr.io/pixelcare-consulting/isms:develop deploy/stack.sh develop up -d --pull always
+deploy/stack.sh develop --profile cron up -d  # also run the SAP sync sidecar
 ```
 
-`.env.dev` is intentionally *not* named `.env.development`: Next.js auto-loads
+`.env.develop` is intentionally *not* named `.env.development`: Next.js auto-loads
 that name into `next dev`/`next build`, which would pull container hostnames
 like `postgres:5432` into your host run. Use `.env.local` for `pnpm dev`.
 
 ## Day-to-day operations
 
 ```bash
-deploy/stack.sh prod ps
-deploy/stack.sh prod logs -f app
-deploy/stack.sh prod logs cron                       # sap-sync failures
+deploy/stack.sh production ps
+deploy/stack.sh production logs -f app
+deploy/stack.sh production logs cron                       # sap-sync failures
 curl -s https://$APP_DOMAIN/api/health               # {"status":"ok"} or 503
 
-deploy/stack.sh prod run --rm migrator               # re-run migrations
-deploy/stack.sh prod run --rm app ./node_modules/.bin/prisma migrate status
-deploy/stack.sh prod exec postgres psql -U isms -d isms
+deploy/stack.sh production run --rm migrator               # re-run migrations
+deploy/stack.sh production run --rm app ./node_modules/.bin/prisma migrate status
+deploy/stack.sh production exec postgres psql -U isms -d isms
 
-# manual backup / restore (prod also dumps nightly to ./backups/postgres)
-deploy/stack.sh prod exec postgres pg_dump -U isms isms | gzip > isms-$(date +%F).sql.gz
-gunzip -c isms-YYYY-MM-DD.sql.gz | deploy/stack.sh prod exec -T postgres psql -U isms -d isms
+# manual backup / restore (production also dumps nightly to ./backups/postgres)
+deploy/stack.sh production exec postgres pg_dump -U isms isms | gzip > isms-$(date +%F).sql.gz
+gunzip -c isms-YYYY-MM-DD.sql.gz | deploy/stack.sh production exec -T postgres psql -U isms -d isms
 
 # roll back / promote a specific image without CI
-deploy/release.sh prod ghcr.io/pixelcare-consulting/isms:v1.3.0
+deploy/release.sh production ghcr.io/pixelcare-consulting/isms:sha-<previous commit>
 ```
 
-Persistent data per environment: volumes `isms-<env>_postgres-data` and
-`isms-<env>_uploads-data` (policy attachments, audit archives — `STORAGE_ROOT=/app/data/uploads`).
+Persistent data per environment: volumes `isms-<develop|staging|production>_postgres-data` and
+`isms-<develop|staging|production>_uploads-data` (policy attachments, audit archives — `STORAGE_ROOT=/app/data/uploads`).
 Back up both.
 
 Config changes: edit `.env.<env>`, then `deploy/stack.sh <env> up -d` (recreates
 `app`). `MAINTENANCE_MODE=true` is a runtime switch. Nothing needs a rebuild
 except `NEXT_PUBLIC_SUPPORT_EMAIL`.
 
-## Releasing to production
+## Promoting
 
 ```bash
-git checkout main && git pull
-git tag v1.4.0 && git push origin v1.4.0     # CI builds, publishes, then waits for approval
+# develop → staging (auto-deploys staging)
+gh pr create --base staging --head develop --title "Promote to staging"      # or merge in GitHub
+
+# staging → production (CI builds, publishes, then waits for approval)
+gh pr create --base production --head staging --title "Release to production"
 ```
 
-Approve the `production` deployment in the Actions run. The deployed image is
-the `sha-<commit>` build of that tag — identical bytes to what staging ran.
+Approve the `production` deployment in the Actions run. Because the merge is a
+fast-forward of what staging already ran, the `sha-…` image is byte-identical
+to the one that passed UAT. If you also tag the release (`git tag v0.45.0` on
+`production`), that is bookkeeping only — the pipeline is branch-driven.
 
 ## Differences from Vercel
 

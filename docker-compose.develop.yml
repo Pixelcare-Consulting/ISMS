@@ -1,19 +1,19 @@
-# DEVELOPMENT override — your laptop (or a throwaway dev box).
+# DEVELOP override — your laptop (or a throwaway dev box). Tracks the `develop` branch.
 #
-#   deploy/stack.sh dev up -d --build          # full stack, app on http://localhost:3000
-#   deploy/stack.sh dev up -d postgres         # DB only, then `pnpm dev` on the host
-#   APP_IMAGE=ghcr.io/pixelcare-consulting/isms:develop deploy/stack.sh dev up -d --pull always
+#   deploy/stack.sh develop up -d --build          # full stack, app on http://localhost:3000
+#   deploy/stack.sh develop up -d postgres         # DB only, then `pnpm dev` on the host
+#   APP_IMAGE=ghcr.io/pixelcare-consulting/isms:develop deploy/stack.sh develop up -d --pull always
 #
-# Differences from staging/prod: builds the image from the working tree by
+# Differences from staging/production: builds the image from the working tree by
 # default, no Traefik/TLS (port 3000 published directly), cron is opt-in
 # (`--profile cron`) so a laptop never hammers SAP by accident.
-name: isms-dev
+name: isms-develop
 
-x-env-file: &env-file .env.dev
+x-env-file: &env-file .env.develop
 
 services:
   migrator:
-    image: ${APP_IMAGE:-isms:dev}
+    image: ${APP_IMAGE:-isms:develop}
     build: &app-build
       context: .
       dockerfile: Dockerfile
@@ -22,7 +22,7 @@ services:
     env_file: [*env-file]
 
   app:
-    image: ${APP_IMAGE:-isms:dev}
+    image: ${APP_IMAGE:-isms:develop}
     build: *app-build
     env_file: [*env-file]
     ports:
