@@ -1,21 +1,111 @@
+# ISMS — base Compose stack shared by every environment.
+#
+# Never run this file on its own. Pair it with exactly one override:
+#
+#   deploy/stack.sh dev      up -d        # == docker compose --env-file .env.dev \
+#   deploy/stack.sh staging  up -d        #      -f docker-compose.yml -f docker-compose.<env>.yml …
+#   deploy/stack.sh prod     up -d
+#
+# The env file does two jobs: `--env-file` feeds ${VAR} interpolation in these
+# YAML files (APP_IMAGE, APP_DOMAIN, POSTGRES_*), and `env_file:` in the
+# override injects the same file into the app containers at runtime.
+#
+# Services
+#   postgres  Postgres 16, data in a named volume, loopback-only host port
+#   migrator  one-shot: extensions + `prisma migrate deploy`, then exits
+#   app       Next.js standalone server (:3000), starts after migrator succeeds
+#   cron      calls /api/cron/sap-sync every 5 min (replaces the Vercel cron)
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   postgres:
-    image: postgres:16
-    container_name: isms-postgres
+    image: postgres:16-alpine
     restart: unless-stopped
-    ports:
-      - "5432:5432"
     environment:
-      POSTGRES_USER: isms
-      POSTGRES_PASSWORD: isms
-      POSTGRES_DB: isms
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in the env file}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in the env file}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in the env file}
+    ports:
+      # Loopback only: reachable from the host for psql / pg_dump / Prisma
+      # Studio, never from the network. Each environment on a shared server
+      # gets its own POSTGRES_HOST_PORT (dev 5432, staging 5433, prod 5434).
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
-      - isms_pg_data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U isms -d isms"]
-      interval: 5s
+      test: ["CMD-SHELL", 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 5
+    logging: *default-logging
+    networks:
+      - internal
+
+  migrator:
+    image: ${APP_IMAGE:-isms:local}
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        ./node_modules/.bin/prisma db execute --file ./database/extensions.sql
+        ./node_modules/.bin/prisma migrate deploy
+    logging: *default-logging
+    networks:
+      - internal
+
+  app:
+    image: ${APP_IMAGE:-isms:local}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+    volumes:
+      # Policy attachments + audit archives. STORAGE_ROOT is fixed in the image.
+      - uploads-data:/app/data/uploads
+    # HEALTHCHECK comes from the Dockerfile (Node fetch against /api/health).
+    logging: *default-logging
+    networks:
+      - internal
+
+  cron:
+    image: curlimages/curl:8.10.1
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          sleep 300
+          curl -fsS -m 290 \
+            -H "Authorization: Bearer $$CRON_SECRET" \
+            http://app:3000/api/cron/sap-sync \
+            || echo "[cron] sap-sync failed ($(date -u +%FT%TZ))"
+        done
+    logging: *default-logging
+    networks:
+      - internal
 
 volumes:
-  isms_pg_data:
+  postgres-data:
+  uploads-data:
+
+networks:
+  internal:
+    driver: bridge

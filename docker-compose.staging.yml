@@ -1,107 +1,36 @@
+# STAGING (pre-production) override — Finden server, behind the shared Traefik.
+#
+#   deploy/stack.sh staging up -d
+#
+# Image: always a published GHCR tag (built by CI from `main`), never built here.
+# Ingress: joins the external `traefik-public` network created by
+# docker-compose.traefik.yml; TLS via Let's Encrypt on ${APP_DOMAIN}.
 name: isms-staging
 
+x-env-file: &env-file .env.staging
+
 services:
-  traefik:
-    image: traefik:v3.1
-    container_name: isms-traefik-staging
-    restart: unless-stopped
-    command:
-      - --providers.docker=true
-      - --providers.docker.exposedbydefault=false
-      - --entrypoints.web.address=:80
-      - --entrypoints.websecure.address=:443
-      - --certificatesresolvers.letsencrypt.acme.email=${LETSENCRYPT_EMAIL}
-      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
-      - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
-      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./traefik/acme.json:/letsencrypt/acme.json
-    networks:
-      - staging-network
-
-  postgres:
-    image: postgres:16-alpine
-    container_name: isms-postgres-staging
-    restart: unless-stopped
-    env_file:
-      - .env.staging
-    ports:
-      # this ports should be different from the prod
-      - "127.0.0.1:5432:5432"
-    volumes:
-      - staging-postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - staging-network
-
-  redis:
-    image: redis:8-alpine
-    container_name: isms-redis-staging
-    restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
-    volumes:
-      - staging-redis-data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - staging-network
-
   migrator:
-    image: ${APP_IMAGE:?Set APP_IMAGE to the immutable application image}
-    restart: "no"
-    env_file:
-      - .env.staging
-    depends_on:
-      postgres:
-        condition: service_healthy
-    command: ["pnpm", "exec", "prisma", "migrate", "deploy"]
-    networks:
-      - staging-network
+    image: ${APP_IMAGE:?APP_IMAGE must be a published image, e.g. ghcr.io/pixelcare-consulting/isms:sha-…}
+    env_file: [*env-file]
 
   app:
-    image: ${APP_IMAGE:?Set APP_IMAGE to the immutable application image}
-    container_name: isms-portal-staging
-    restart: unless-stopped
-    env_file:
-      - .env.staging
-    environment:
-      NODE_ENV: production
-      NEXT_TELEMETRY_DISABLED: 1
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test:
-        ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000/api/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
+    image: ${APP_IMAGE:?APP_IMAGE must be a published image, e.g. ghcr.io/pixelcare-consulting/isms:sha-…}
+    env_file: [*env-file]
     labels:
       - traefik.enable=true
-      - traefik.http.routers.isms-staging.rule=Host(`${APP_DOMAIN}`)
-      - traefik.http.routers.isms-staging.entrypoints=web
+      - traefik.docker.network=traefik-public
+      - traefik.http.routers.isms-staging.rule=Host(`${APP_DOMAIN:?set APP_DOMAIN in .env.staging}`)
+      - traefik.http.routers.isms-staging.entrypoints=websecure
+      - traefik.http.routers.isms-staging.tls.certresolver=letsencrypt
       - traefik.http.services.isms-staging.loadbalancer.server.port=3000
     networks:
-      - staging-network
+      - internal
+      - traefik-public
 
-volumes:
-  staging-postgres-data:
-  staging-redis-data:
+  cron:
+    env_file: [*env-file]
 
 networks:
-  staging-network:
-    driver: bridge
+  traefik-public:
+    external: true

@@ -90,6 +90,7 @@ const staticTrustedOrigins = [
   ...new Set(
     [
       configuredAuthUrl,
+      process.env.APP_URL,
       process.env.NEXT_PUBLIC_APP_URL,
       process.env.VERCEL_PROJECT_PRODUCTION_URL,
       process.env.VERCEL_BRANCH_URL,

@@ -1,0 +1,46 @@
+# Shared edge proxy — deployed ONCE per server, outside the app stacks, so that
+# staging and production can share ports 80/443 and redeploying either app
+# never restarts the proxy (same idea as docker-compose.portainer.yml).
+#
+#   touch traefik/acme.json && chmod 600 traefik/acme.json
+#   docker compose --env-file .env.traefik -f docker-compose.traefik.yml up -d
+#
+# Creates the `traefik-public` network that the staging/prod overrides join.
+name: traefik
+
+services:
+  traefik:
+    image: traefik:v3.1
+    container_name: traefik
+    restart: always
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=traefik-public
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --certificatesresolvers.letsencrypt.acme.email=${LETSENCRYPT_EMAIL:?set LETSENCRYPT_EMAIL in .env.traefik}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+      - --log.level=INFO
+      - --accesslog=true
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/acme.json:/letsencrypt/acme.json
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    networks:
+      - traefik-public
+
+networks:
+  traefik-public:
+    name: traefik-public

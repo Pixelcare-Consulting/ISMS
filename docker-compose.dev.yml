@@ -1,0 +1,39 @@
+# DEVELOPMENT override — your laptop (or a throwaway dev box).
+#
+#   deploy/stack.sh dev up -d --build          # full stack, app on http://localhost:3000
+#   deploy/stack.sh dev up -d postgres         # DB only, then `pnpm dev` on the host
+#   APP_IMAGE=ghcr.io/pixelcare-consulting/isms:develop deploy/stack.sh dev up -d --pull always
+#
+# Differences from staging/prod: builds the image from the working tree by
+# default, no Traefik/TLS (port 3000 published directly), cron is opt-in
+# (`--profile cron`) so a laptop never hammers SAP by accident.
+name: isms-dev
+
+x-env-file: &env-file .env.dev
+
+services:
+  migrator:
+    image: ${APP_IMAGE:-isms:dev}
+    build: &app-build
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_SUPPORT_EMAIL: ${NEXT_PUBLIC_SUPPORT_EMAIL:-}
+    env_file: [*env-file]
+
+  app:
+    image: ${APP_IMAGE:-isms:dev}
+    build: *app-build
+    env_file: [*env-file]
+    ports:
+      - "${APP_HOST_PORT:-3000}:3000"
+
+  cron:
+    profiles: ["cron"]
+    env_file: [*env-file]
+
+volumes:
+  postgres-data:
+    # Adopt the volume the old docker-compose.yml created (isms/isms/isms) so
+    # existing local data survives the switch.
+    name: isms_pg_data
