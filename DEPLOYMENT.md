@@ -72,16 +72,16 @@ baked into the image at build time.
 sudo git clone https://github.com/Pixelcare-Consulting/ISMS.git /srv/isms && cd /srv/isms
 
 # 1. Shared proxy (serves both staging and production)
-cp .env.traefik.example .env.traefik              # LETSENCRYPT_EMAIL
+nano .env.traefik                                 # LETSENCRYPT_EMAIL=…
 touch traefik/acme.json && chmod 600 traefik/acme.json
 docker compose --env-file .env.traefik -f docker-compose.traefik.yml up -d
 
 # 2. Portainer (optional management UI)
 docker compose -f docker-compose.portainer.yml up -d
 
-# 3. Environment files — fill every empty value
-cp .env.staging.example .env.staging
-cp .env.production.example    .env.production
+# 3. Environment files — create .env.staging and .env.production from the
+#    variable list below (values are kept outside the repo)
+nano .env.staging && nano .env.production && chmod 600 .env.*
 
 # 4. Registry access for pulls
 docker login ghcr.io -u <github-user>            # PAT with read:packages
@@ -101,7 +101,7 @@ is shared, and it routes by `APP_DOMAIN`.
 ## Local development (the `develop` environment)
 
 ```bash
-cp .env.develop.example .env.develop
+# create .env.develop (variable list below; values kept outside the repo)
 deploy/stack.sh develop up -d --build         # whole stack → http://localhost:3000
 deploy/stack.sh develop up -d postgres        # DB only, then `pnpm dev` on the host (.env.local)
 APP_IMAGE=ghcr.io/pixelcare-consulting/isms:develop deploy/stack.sh develop up -d --pull always
@@ -111,6 +111,23 @@ deploy/stack.sh develop --profile cron up -d  # also run the SAP sync sidecar
 `.env.develop` is intentionally *not* named `.env.development`: Next.js auto-loads
 that name into `next dev`/`next build`, which would pull container hostnames
 like `postgres:5432` into your host run. Use `.env.local` for `pnpm dev`.
+
+## Environment variables
+
+Env files (`.env.develop`, `.env.staging`, `.env.production`, `.env.traefik`) are
+**never committed** and hold no example values in this repo. `deploy/stack.sh`
+passes the file both as `--env-file` (Compose `${VAR}` interpolation) and
+`env_file:` (into the containers). Variables the stack reads:
+
+- Compose: `APP_IMAGE` (required on staging/production), `APP_DOMAIN` (staging/production), `APP_HOST_PORT` (develop), `POSTGRES_HOST_PORT` (unique per env on a shared server)
+- App URL / auth: `APP_URL`, `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `AUTH_SECRET`, `BETTER_AUTH_API_KEY`, `ALLOW_PUBLIC_REGISTER`
+- Database: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `DATABASE_URL`, `DIRECT_URL` (host is the compose service `postgres`)
+- Integrations: `CRON_SECRET`, `SAP_ENCRYPTION_KEY`, `SAP_*` tuning, `RESEND_API_KEY`, `EMAIL_FROM`, `OPENAI_API_KEY`, `AI_MODEL`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`
+- Operations: `MAINTENANCE_MODE`, `LOG_LEVEL`, `SENTRY_DSN`, `SLOW_QUERY_MS`, `PRISMA_LOG_QUERIES`, `AUDIT_LOG_HOT_DAYS`, `BACKUP_*` (production)
+- Traefik: `LETSENCRYPT_EMAIL`
+
+Values, defaults and per-environment differences live outside the repo (ask the
+maintainer). `grep -rhoE 'process\.env\.[A-Z0-9_]+' src` is the source of truth.
 
 ## Day-to-day operations
 

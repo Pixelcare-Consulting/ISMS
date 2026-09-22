@@ -25,7 +25,7 @@ cd "$(dirname "$0")/.."
 
 ENV_FILE=".env.${ENV_NAME}"
 if [ ! -f "$ENV_FILE" ]; then
-  echo "missing ${ENV_FILE} — copy ${ENV_FILE}.example and fill it in" >&2
+  echo "missing ${ENV_FILE} — create it from the \"Environment variables\" table in DEPLOYMENT.md" >&2
   exit 66
 fi
 
