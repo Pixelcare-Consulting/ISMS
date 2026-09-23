@@ -1,20 +1,21 @@
-# ISMS CI/CD — one pipeline, two environments, one branch each.
+# ISMS CI/CD — one pipeline, two deployed environments, one branch each.
 #
-#   event                     checks*  image                  deploy
-#   ────────────────────────  ──────   ─────────────────────  ────────────────────
+#   event                     checks*  image                    deploy
+#   ────────────────────────  ──────   ───────────────────────  ─────────────────────
 #   PR → develop/staging      ✔        build only (not pushed)  —
-#   push develop              ✔        :develop :sha-…          —  (develop = local)
-#   push staging              ✔        :staging :sha-…          staging (automatic)
-#   workflow_dispatch         —        —                        staging ← chosen tag
+#   push develop              ✔        :develop :sha-…          develop (internal testing)
+#   push staging              ✔        :staging :sha-…          staging (client QA)
+#   workflow_dispatch         —        —                        chosen env ← chosen tag
 #                                                                 (promote / rollback)
 #
 # * checks = lint · typecheck · unit tests (Jest) · prisma · e2e (Playwright
-#   against the freshly built image running in the develop Compose stack).
+#   against the freshly built image running in the sandbox Compose stack — the
+#   laptop/CI stack, which is never deployed anywhere).
 #
 # Promotion is a merge: develop → staging. The image built from a commit is
 # identified by its sha-… tag and nothing environment-specific is baked in
-# (see Dockerfile / APP_URL), so the image staging runs is the same one a
-# future production environment would get.
+# (see Dockerfile / APP_URL), so the image staging runs is byte-identical to
+# the one the team already tried on develop.
 #
 # PRODUCTION IS NOT WIRED UP YET. To add it: create a `production` branch and a
 # GitHub environment of the same name, restore docker-compose.production.yml
@@ -29,8 +30,13 @@ on:
     branches: [develop, staging]
   workflow_dispatch:
     inputs:
+      environment:
+        description: Target environment
+        type: choice
+        options: [develop, staging]
+        required: true
       image_tag:
-        description: Image tag to deploy to staging (e.g. sha-<40 hex>, staging)
+        description: Image tag to deploy (e.g. sha-<40 hex>, develop, staging)
         type: string
         required: true
 
@@ -144,9 +150,6 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - run: docker run --rm -v "$PWD:/repo" --workdir /repo rhysd/actionlint:1.7.7 -color
 
-  # TODO(e2e): add a `e2e` job here that starts the freshly built image with
-  # `deploy/stack.sh develop up -d` and runs Playwright against http://localhost:3000.
-
   # ───────────────────────────────────────────────────────── image
   image:
     name: Build image${{ github.event_name == 'push' && ' & publish to GHCR' || '' }}
@@ -194,8 +197,9 @@ jobs:
 
   # ───────────────────────────────────────────────────────── e2e
   # Runs Playwright against the exact image this commit produced, inside the
-  # same Compose stack developers use (deploy/stack.sh develop). The build is a
-  # cache hit from the `image` job, so this is seconds, not a second build.
+  # sandbox Compose stack (deploy/stack.sh sandbox) — the same one developers
+  # use locally. The build is a cache hit from the `image` job, so this is
+  # seconds, not a second build.
   e2e:
     name: E2E tests (Playwright)
     if: github.event_name != 'workflow_dispatch'
@@ -227,12 +231,12 @@ jobs:
           build-args: |
             NEXT_PUBLIC_SUPPORT_EMAIL=${{ vars.NEXT_PUBLIC_SUPPORT_EMAIL }}
           cache-from: type=gha
-      - name: Write CI env file for the develop stack
+      - name: Write CI env file for the sandbox stack
         # Throwaway values for a throwaway database on a CI runner — nothing here
         # is a real secret. AUTH_RATE_LIMIT_ENABLED=false lets parallel browser
         # workers sign in (see src/lib/auth/auth.ts).
         run: |
-          cat > .env.develop <<'EOF'
+          cat > .env.sandbox <<'EOF'
           APP_IMAGE=isms:ci
           APP_HOST_PORT=3000
           POSTGRES_HOST_PORT=5432
@@ -250,7 +254,7 @@ jobs:
           LOG_LEVEL=info
           EOF
       - name: Start stack (postgres → migrator → app healthy)
-        run: deploy/stack.sh develop up -d --wait postgres migrator app
+        run: deploy/stack.sh sandbox up -d --wait postgres migrator app
       - name: Seed demo users
         env:
           SEED_BCRYPT_ROUNDS: "4"
@@ -261,7 +265,7 @@ jobs:
         run: pnpm test:e2e
       - name: App logs (on failure)
         if: failure()
-        run: deploy/stack.sh develop logs --no-color --tail=200 app migrator
+        run: deploy/stack.sh sandbox logs --no-color --tail=200 app migrator
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: failure()
         with:
@@ -272,7 +276,7 @@ jobs:
           retention-days: 14
       - name: Tear down
         if: always()
-        run: deploy/stack.sh develop down -v --remove-orphans
+        run: deploy/stack.sh sandbox down -v --remove-orphans
 
   # ───────────────────────────────────────────────────────── deploy
   # Which environment + image this run should deploy, if any.
@@ -291,17 +295,21 @@ jobs:
           EVENT: ${{ github.event_name }}
           REF: ${{ github.ref }}
           SHA: ${{ github.sha }}
+          IN_ENV: ${{ inputs.environment }}
           IN_TAG: ${{ inputs.image_tag }}
         run: |
           set -euo pipefail
           if [ "$EVENT" = workflow_dispatch ]; then
-            echo "environment=staging" >> "$GITHUB_OUTPUT"
+            echo "environment=$IN_ENV" >> "$GITHUB_OUTPUT"
             echo "image_tag=$IN_TAG"   >> "$GITHUB_OUTPUT"
+          elif [ "$REF" = refs/heads/develop ]; then
+            echo "environment=develop" >> "$GITHUB_OUTPUT"
+            echo "image_tag=sha-$SHA"  >> "$GITHUB_OUTPUT"
           elif [ "$REF" = refs/heads/staging ]; then
             echo "environment=staging" >> "$GITHUB_OUTPUT"
             echo "image_tag=sha-$SHA"  >> "$GITHUB_OUTPUT"
           else
-            echo "environment=" >> "$GITHUB_OUTPUT"   # develop: image only
+            echo "environment=" >> "$GITHUB_OUTPUT"
             echo "image_tag="   >> "$GITHUB_OUTPUT"
           fi
 
@@ -311,8 +319,8 @@ jobs:
     if: needs.target.outputs.environment != ''
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # Tick "Required reviewers" on this GitHub environment if you want a merge
-    # to staging to pause here for approval.
+    # Tick "Required reviewers" on the `staging` GitHub environment if you want
+    # a merge into staging (client QA) to pause here for approval.
     environment:
       name: ${{ needs.target.outputs.environment }}
       url: ${{ vars.PUBLIC_APP_URL }}

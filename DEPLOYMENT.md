@@ -1,48 +1,58 @@
 # ISMS deployment — develop & staging
 
-Self-hosted Docker setup replacing Vercel. **One image, three environments**: the
-image built from a commit is promoted unchanged from develop → staging →
-staging (and later production); only the env file differs.
+Self-hosted Docker setup replacing Vercel. **Two deployed environments on the
+Finden server**, both live and both fed by the same pipeline: the image built
+from a commit is promoted unchanged from develop → staging; only the env file
+differs.
 
-> **Production is not set up yet.** Everything below covers `develop` and
-> `staging`. See [Adding production later](#adding-production-later).
+> **Production is not set up yet.** See [Adding production later](#adding-production-later).
 
-## The three environments
+## Environments
 
-| | **develop** | **staging** (pre-production) |
+| | **develop** | **staging** | **sandbox** |
 |---|---|---|---|
-| Purpose | Build & run the container exactly as it will ship; day-to-day dev DB | Client acceptance / UAT on real-shaped data; last stop before prod | Live system |
-| Where | Your laptop (or any dev box) | Finden server | Finden server |
-| Git branch | `develop` (and your working tree) | `staging` |
-| Image | Built locally (`--build`) or pulled `ghcr.io/…/isms:develop` | `ghcr.io/…/isms:sha-<commit>` published by CI (alias `:staging`) |
-| Deploy trigger | Manual (`deploy/stack.sh develop up -d --build`) | **Automatic** on every push to `staging` |
-| Ingress | `http://localhost:3000`, no TLS | Traefik + Let's Encrypt on `APP_DOMAIN` | Traefik + Let's Encrypt on `APP_DOMAIN` |
-| Database | `postgres` container, host port 5432 (reuses old `isms_pg_data` volume) | `postgres` container, host port 5433 | `postgres` container, host port 5434 + nightly dumps |
-| SAP cron | Off (opt-in `--profile cron`) | On | On |
-| Files | `docker-compose.yml` + `docker-compose.develop.yml`, `.env.develop` | `… + docker-compose.staging.yml`, `.env.staging` |
+| Purpose | **Internal testing** — the team tries merged work on a real URL | **Client QA / UAT** — what the client is shown | Not deployed: the stack in containers on a laptop or CI runner |
+| Where | Finden server | Finden server | Your machine / GitHub Actions |
+| Git branch | `develop` | `staging` | none — your working tree |
+| Image | `ghcr.io/…/isms:sha-<commit>` published by CI (alias `:develop`) | the same `sha-<commit>` image after the merge (alias `:staging`) | built locally, or any tag you pull |
+| Deploy trigger | **Automatic** on every push to `develop` | **Automatic** on every push to `staging` | Manual (`deploy/stack.sh sandbox up -d --build`) |
+| Ingress | Traefik + Let's Encrypt on `APP_DOMAIN` | Traefik + Let's Encrypt on `APP_DOMAIN` | `http://localhost:3000`, no TLS |
+| Postgres host port | 5433 | 5434 | 5432 |
+| SAP cron | On | On | Off (opt-in `--profile cron`) |
+| Override file | `docker-compose.develop.yml`, `.env.develop` | `docker-compose.staging.yml`, `.env.staging` | `docker-compose.sandbox.yml`, `.env.sandbox` |
+
+`develop` and `staging` are identical in shape — same services, same Traefik,
+same health-gated rollout. They differ only in domain, database and secrets, so
+a change that works on develop behaves the same way for the client on staging.
 
 Everything is driven through one wrapper:
 
 ```bash
-deploy/stack.sh <develop|staging> <any docker compose args>
+deploy/stack.sh <sandbox|develop|staging> <any docker compose args>
 ```
 
 It selects `.env.<env>` and layers `docker-compose.<env>.yml` over the shared
 `docker-compose.yml`. `deploy/stack.sh staging config` prints the merged result.
 
+> `.env.sandbox`, not `.env.local`: Next.js reserves `.env.local` for `pnpm dev`
+> on the host, and container hostnames like `postgres:5432` must not leak into it.
+
 ## Pipeline (`.github/workflows/ci.yml`)
 
 ```
 feature/* ──PR──▶ develop ──PR/merge──▶ staging
+                    │                      │
+                    ▼                      ▼
+             internal testing          client QA
 
 PR → either branch ─ lint · typecheck · unit tests · prisma checks · image build (not pushed) · e2e against that image
 push develop ──┐
-push staging ──┴─ same checks ─ push image to GHCR ─┬─ (develop) done — pull it locally
+push staging ──┴─ same checks ─ push image to GHCR ─┬─ (develop) deploy → develop
                                                      └─ (staging) deploy → staging
-workflow_dispatch ── deploy any published tag to staging (promote / rollback)
+workflow_dispatch ── deploy any published tag to develop or staging (promote / rollback)
 ```
 
-Branch protection worth turning on: PRs required into `staging`.
+Branch protection worth turning on: PRs required into `develop` and `staging`.
 
 Deploy = SSH to the server → `git checkout <commit>` (so compose files match) →
 `docker login ghcr.io` → `deploy/release.sh <env> <image>` → public `/api/health`.
@@ -51,14 +61,16 @@ HEALTHCHECK, and restores the previous image if the new one never becomes health
 
 ### One-time GitHub setup
 
-Settings → Environments → create **`staging`** (optionally restrict it to the
-`staging` branch under *Deployment branches*, and tick *Required reviewers* if
-you want deploys to pause for approval). On it, set:
+Settings → Environments → create **`develop`** and **`staging`**. Restrict each
+to its own branch under *Deployment branches*, and tick *Required reviewers* on
+`staging` if you want client-facing deploys to pause for approval.
+
+Set the following on **each** environment — same names, different values:
 
 | Kind | Name | Value |
 |---|---|---|
 | Variable | `DEPLOY_ENABLED` | `true` (flip to anything else to freeze deploys) |
-| Variable | `PUBLIC_APP_URL` | `https://<APP_DOMAIN>` |
+| Variable | `PUBLIC_APP_URL` | `https://<that environment's APP_DOMAIN>` |
 | Secret | `SSH_HOST`, `SSH_PORT`, `SSH_USER`, `SSH_PRIVATE_KEY`, `SSH_HOST_FINGERPRINT` | Server access (`ssh-keyscan -t ed25519 host` → SHA256 fingerprint) |
 | Secret | `DEPLOY_PATH` | e.g. `/srv/isms` — the clone on the server |
 | Secret | `GHCR_USERNAME`, `GHCR_PULL_TOKEN` | A PAT with `read:packages` so the server can pull the private image |
@@ -72,7 +84,7 @@ baked into the image at build time.
 # Docker Engine 24+ with compose plugin, ports 80/443 open, DNS A records → server
 sudo git clone https://github.com/Pixelcare-Consulting/ISMS.git /srv/isms && cd /srv/isms
 
-# 1. Shared proxy (later also serves production)
+# 1. Shared proxy (serves both app stacks, and later production)
 nano .env.traefik                                 # LETSENCRYPT_EMAIL=…
 touch traefik/acme.json && chmod 600 traefik/acme.json
 docker compose --env-file .env.traefik -f docker-compose.traefik.yml up -d
@@ -80,46 +92,50 @@ docker compose --env-file .env.traefik -f docker-compose.traefik.yml up -d
 # 2. Portainer (optional management UI)
 docker compose -f docker-compose.portainer.yml up -d
 
-# 3. Environment file — create .env.staging from the variable list below
-#    (values are kept outside the repo)
-nano .env.staging && chmod 600 .env.staging
+# 3. Environment files — create .env.develop and .env.staging from the
+#    variable list below (values are kept outside the repo).
+#    Give each its own APP_DOMAIN, POSTGRES_HOST_PORT, database and secrets.
+nano .env.develop && nano .env.staging && chmod 600 .env.develop .env.staging
 
 # 4. Registry access for pulls
 docker login ghcr.io -u <github-user>            # PAT with read:packages
 
 # 5. First rollout (then CI takes over)
+deploy/release.sh develop ghcr.io/pixelcare-consulting/isms:develop
 deploy/release.sh staging ghcr.io/pixelcare-consulting/isms:staging
 
-# 6. Seed core data (tenant, roles, permissions) — once per fresh database
+# 6. Seed core data (tenant, roles, permissions) — once per fresh database, per env
+deploy/stack.sh develop run --rm app ./node_modules/.bin/prisma db seed
 deploy/stack.sh staging run --rm app ./node_modules/.bin/prisma db seed
 ```
 
-Stacks share a server safely: distinct project names (`isms-staging`, and later
-`isms-production`), volumes, internal networks and Postgres host ports; only
+Both stacks share the server safely: distinct project names (`isms-develop`,
+`isms-staging`), volumes, internal networks and Postgres host ports; only
 Traefik is shared, and it routes by `APP_DOMAIN`.
 
-## Local development (the `develop` environment)
+## Local development (the `sandbox` stack)
 
 ```bash
-# create .env.develop (variable list below; values kept outside the repo)
-deploy/stack.sh develop up -d --build         # whole stack → http://localhost:3000
-deploy/stack.sh develop up -d postgres        # DB only, then `pnpm dev` on the host (.env.local)
-APP_IMAGE=ghcr.io/pixelcare-consulting/isms:develop deploy/stack.sh develop up -d --pull always
-deploy/stack.sh develop --profile cron up -d  # also run the SAP sync sidecar
+# create .env.sandbox (variable list below; values kept outside the repo)
+deploy/stack.sh sandbox up -d --build         # whole stack → http://localhost:3000
+deploy/stack.sh sandbox up -d postgres        # DB only, then `pnpm dev` on the host (.env.local)
+APP_IMAGE=ghcr.io/pixelcare-consulting/isms:develop deploy/stack.sh sandbox up -d --pull always
+deploy/stack.sh sandbox --profile cron up -d  # also run the SAP sync sidecar
 ```
 
-`.env.develop` is intentionally *not* named `.env.development`: Next.js auto-loads
-that name into `next dev`/`next build`, which would pull container hostnames
-like `postgres:5432` into your host run. Use `.env.local` for `pnpm dev`.
+Nothing here is deployed — it is the same stack CI uses for the e2e suite.
+`.env.sandbox` is deliberately not `.env.local` or `.env.development`: Next.js
+auto-loads those into `next dev` / `next build`, which would pull container
+hostnames like `postgres:5432` into your host run. Keep `.env.local` for `pnpm dev`.
 
 ## Environment variables
 
-Env files (`.env.develop`, `.env.staging`, `.env.traefik`) are
+Env files (`.env.sandbox`, `.env.develop`, `.env.staging`, `.env.traefik`) are
 **never committed** and hold no example values in this repo. `deploy/stack.sh`
 passes the file both as `--env-file` (Compose `${VAR}` interpolation) and
 `env_file:` (into the containers). Variables the stack reads:
 
-- Compose: `APP_IMAGE` (required on staging), `APP_DOMAIN` (staging), `APP_HOST_PORT` (develop), `POSTGRES_HOST_PORT` (unique per env on a shared server)
+- Compose: `APP_IMAGE` (required on develop/staging), `APP_DOMAIN` (develop/staging), `APP_HOST_PORT` (sandbox), `POSTGRES_HOST_PORT` (unique per env on a shared server)
 - App URL / auth: `APP_URL`, `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `AUTH_SECRET`, `BETTER_AUTH_API_KEY`, `ALLOW_PUBLIC_REGISTER`, `AUTH_RATE_LIMIT_ENABLED` (only ever `false` in the CI e2e stack)
 - Database: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `DATABASE_URL`, `DIRECT_URL` (host is the compose service `postgres`)
 - Integrations: `CRON_SECRET`, `SAP_ENCRYPTION_KEY`, `SAP_*` tuning, `RESEND_API_KEY`, `EMAIL_FROM`, `OPENAI_API_KEY`, `AI_MODEL`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`
@@ -160,9 +176,16 @@ except `NEXT_PUBLIC_SUPPORT_EMAIL`.
 ## Promoting
 
 ```bash
-# develop → staging (auto-deploys staging)
-gh pr create --base staging --head develop --title "Promote to staging"   # or merge in GitHub
+# feature → develop (auto-deploys the internal environment)
+gh pr create --base develop --head feature/my-change
+
+# develop → staging (auto-deploys the client QA environment)
+gh pr create --base staging --head develop --title "Promote to staging"
 ```
+
+The staging deploy reuses the exact `sha-…` image the team already exercised on
+develop — it is not rebuilt, so there is nothing new to go wrong between the
+two environments.
 
 ## Adding production later
 

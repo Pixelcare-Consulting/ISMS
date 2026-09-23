@@ -1,39 +1,37 @@
-# DEVELOP override — your laptop (or a throwaway dev box). Tracks the `develop` branch.
+# DEVELOP override — Finden server, behind the shared Traefik.
 #
-#   deploy/stack.sh develop up -d --build          # full stack, app on http://localhost:3000
-#   deploy/stack.sh develop up -d postgres         # DB only, then `pnpm dev` on the host
-#   APP_IMAGE=ghcr.io/pixelcare-consulting/isms:develop deploy/stack.sh develop up -d --pull always
+#   deploy/stack.sh develop up -d
 #
-# Differences from staging: builds the image from the working tree by
-# default, no Traefik/TLS (port 3000 published directly), cron is opt-in
-# (`--profile cron`) so a laptop never hammers SAP by accident.
+# The internal-testing environment: every merge into the `develop` branch is
+# deployed here automatically so the team can try changes on a real URL.
+# Image: always a published GHCR tag (built by CI from `develop`), never built
+# here. To run the stack on your own machine instead, use the sandbox override.
 name: isms-develop
 
 x-env-file: &env-file .env.develop
 
 services:
   migrator:
-    image: ${APP_IMAGE:-isms:develop}
-    build: &app-build
-      context: .
-      dockerfile: Dockerfile
-      args:
-        NEXT_PUBLIC_SUPPORT_EMAIL: ${NEXT_PUBLIC_SUPPORT_EMAIL:-}
+    image: ${APP_IMAGE:?APP_IMAGE must be a published image, e.g. ghcr.io/pixelcare-consulting/isms:sha-…}
     env_file: [*env-file]
 
   app:
-    image: ${APP_IMAGE:-isms:develop}
-    build: *app-build
+    image: ${APP_IMAGE:?APP_IMAGE must be a published image, e.g. ghcr.io/pixelcare-consulting/isms:sha-…}
     env_file: [*env-file]
-    ports:
-      - "${APP_HOST_PORT:-3000}:3000"
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik-public
+      - traefik.http.routers.isms-develop.rule=Host(`${APP_DOMAIN:?set APP_DOMAIN in .env.develop}`)
+      - traefik.http.routers.isms-develop.entrypoints=websecure
+      - traefik.http.routers.isms-develop.tls.certresolver=letsencrypt
+      - traefik.http.services.isms-develop.loadbalancer.server.port=3000
+    networks:
+      - internal
+      - traefik-public
 
   cron:
-    profiles: ["cron"]
     env_file: [*env-file]
 
-volumes:
-  postgres-data:
-    # Adopt the volume the old docker-compose.yml created (isms/isms/isms) so
-    # existing local data survives the switch.
-    name: isms_pg_data
+networks:
+  traefik-public:
+    external: true

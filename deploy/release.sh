@@ -3,7 +3,8 @@
 # rollback. Used by .github/workflows/deploy.yml over SSH, and safe to run by
 # hand on the server:
 #
-#   deploy/release.sh staging ghcr.io/pixelcare-consulting/isms:sha-<40 hex>
+#   deploy/release.sh develop ghcr.io/pixelcare-consulting/isms:sha-<40 hex>
+#   deploy/release.sh staging ghcr.io/pixelcare-consulting/isms:staging
 #
 # Steps: pull image → ensure postgres up → run migrator → recreate app →
 # wait for the Docker HEALTHCHECK → on failure, restore the previous image.

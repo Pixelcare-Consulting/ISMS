@@ -99,7 +99,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | [`docs/sales-nav-revalidation.md`](docs/sales-nav-revalidation.md) | PS/TL `/sales` nav + `sales.create` revalidation |
 | [`database/seed-users.md`](database/seed-users.md) | Demo accounts and seed profiles |
 | [`database/postgres.example.md`](database/postgres.example.md) | Docker Postgres, env, migrate, storage |
-| [`DEPLOYMENT.md`](DEPLOYMENT.md) | Self-hosted deployment with Docker Compose — develop & staging (Traefik, Postgres, cron) |
+| [`DEPLOYMENT.md`](DEPLOYMENT.md) | Self-hosted deployment with Docker Compose — develop (internal) & staging (client QA) |
 | [`docs/release-notes.md`](docs/release-notes.md) | Release workflow |
 | [`src/content/releases.ts`](src/content/releases.ts) | In-app What's New |
 
@@ -206,13 +206,14 @@ the DOM with `/** @jest-environment jsdom */`.
 
 Locally it targets `E2E_BASE_URL` (default `http://localhost:3000`; starts
 `pnpm dev` if nothing is listening) and needs a seeded database
-(`pnpm run db:seed`). `pnpm exec playwright install chromium` once.
+(`pnpm run db:seed`). To run against the real image instead, bring up the
+sandbox stack: `deploy/stack.sh sandbox up -d --build`. `pnpm exec playwright install chromium` once.
 Sign-in is rate-limited per IP + email, so each spec that logs in uses a
 different seeded user; specs that only need to be signed in reuse the stored
 session instead of logging in again.
 
 In CI (`.github/workflows/ci.yml`) the same suite runs against the Docker image
-built from the commit, inside the `develop` Compose stack.
+built from the commit, inside the `sandbox` Compose stack.
 
 ## Optional env
 

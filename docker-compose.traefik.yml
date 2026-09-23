@@ -5,7 +5,7 @@
 #   touch traefik/acme.json && chmod 600 traefik/acme.json
 #   docker compose --env-file .env.traefik -f docker-compose.traefik.yml up -d
 #
-# Creates the `traefik-public` network that the staging override joins.
+# Creates the `traefik-public` network that the develop/staging overrides join.
 name: traefik
 
 services:
