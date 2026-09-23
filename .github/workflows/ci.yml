@@ -108,12 +108,13 @@ jobs:
       - run: pnpm exec prisma validate
       - name: Migrations apply cleanly
         run: pnpm exec prisma migrate deploy
+      # Prisma 7 takes the shadow database from prisma.config.ts
+      # (datasource.shadowDatabaseUrl ← $SHADOW_DATABASE_URL), not from a flag.
       - name: Migrations match schema.prisma
         run: >-
           pnpm exec prisma migrate diff
           --from-migrations prisma/migrations
           --to-schema prisma/schema.prisma
-          --shadow-database-url "$SHADOW_DATABASE_URL"
           --exit-code
 
   unit:
@@ -133,7 +134,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec prisma generate
-      - run: pnpm test:coverage -- --ci
+      # Jest picks up CI=true from the runner; passing `-- --ci` through pnpm
+      # makes Jest read "--ci" as a test path pattern and match nothing.
+      - run: pnpm test:coverage
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
