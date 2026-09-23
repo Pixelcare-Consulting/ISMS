@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 
 import type { DashboardKpiKey } from "@/features/dashboard/constants/dashboard-permissions";
+import { hasDemandPlanningRuns, dashboardPlanningAlertLabel } from "@/features/dashboard/lib/dashboard-kpi-value";
 import type { DashboardKpis } from "@/features/dashboard/services/dashboard-kpi.service";
 import { GlobalKpiCards } from "@/lib/kpi-cards";
 import type { KpiCardItem, KpiCardTone } from "@/lib/kpi-cards";
@@ -89,21 +90,27 @@ export function buildDashboardKpiItem(
         tone: alertTone(kpis.milBreaches, "danger"),
         hint: kpis.milBreaches > 0 ? "Below minimum" : undefined,
       };
-    case "allocationGaps":
+    case "allocationGaps": {
+      const usesRuns = hasDemandPlanningRuns(kpis);
+      const value = usesRuns
+        ? kpis.demandPlanningRunCount
+        : kpis.allocationGapCount;
       return {
         key,
-        label: "Allocation gaps",
-        value: kpis.allocationGapCount,
-        href: "/settings/planning",
+        label: dashboardPlanningAlertLabel(kpis),
+        value,
+        href: "/settings/planning/runs",
         icon: <Package />,
-        tone: alertTone(kpis.allocationGapCount, "warning"),
+        tone: alertTone(value, usesRuns ? "info" : "warning"),
+        hint: usesRuns ? "Open Demand Planning" : undefined,
       };
+    }
     case "draftSuggestedOrders":
       return {
         key,
         label: "Draft suggested orders",
         value: kpis.draftSuggestedOrders,
-        href: "/planning/suggested-orders",
+        href: "/settings/planning/runs",
         icon: <ShoppingCart />,
         tone: alertTone(kpis.draftSuggestedOrders, "info"),
       };

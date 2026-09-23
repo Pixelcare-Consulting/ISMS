@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, ShieldPlus } from "lucide-react";
+import { Plus, ShieldCheck, ShieldPlus } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
@@ -42,9 +42,24 @@ interface CreateProviderUserDialogProps {
   tenantId: string;
   roles: RoleOption[];
   departments: DepartmentOption[];
-  mode: "user" | "admin";
+  mode: "user" | "admin" | "superadmin";
   disabled?: boolean;
   onCreated?: (user: ProviderUserRow) => void;
+}
+
+function lockedRoleSlugForMode(mode: CreateProviderUserDialogProps["mode"]) {
+  switch (mode) {
+    case "admin":
+      return "tenant_admin";
+    case "superadmin":
+      return "super_admin";
+    case "user":
+      return null;
+    default: {
+      const _exhaustive: never = mode;
+      return _exhaustive;
+    }
+  }
 }
 
 export function CreateProviderUserDialog({
@@ -55,11 +70,15 @@ export function CreateProviderUserDialog({
   disabled = false,
   onCreated,
 }: CreateProviderUserDialogProps) {
-  const isAdmin = mode === "admin";
+  const lockedRoleSlug = lockedRoleSlugForMode(mode);
+  const isLockedRole = lockedRoleSlug !== null;
+  const lockedRoleName =
+    roles.find((role) => role.slug === lockedRoleSlug)?.name ??
+    (mode === "superadmin" ? "Super Admin" : "Tenant Admin");
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [roleSlug, setRoleSlug] = useState(
-    isAdmin ? "tenant_admin" : (roles[0]?.slug ?? ""),
+    lockedRoleSlug ?? roles[0]?.slug ?? "",
   );
   const [departmentId, setDepartmentId] = useState("none");
   const [pending, startTransition] = useTransition();
@@ -83,7 +102,7 @@ export function CreateProviderUserDialog({
   function resetForm() {
     setError(null);
     setDepartmentId("none");
-    setRoleSlug(isAdmin ? "tenant_admin" : (roles[0]?.slug ?? ""));
+    setRoleSlug(lockedRoleSlug ?? roles[0]?.slug ?? "");
   }
 
   function onOpenChange(next: boolean) {
@@ -104,7 +123,7 @@ export function CreateProviderUserDialog({
         name: String(formData.get("name") ?? ""),
         email: String(formData.get("email") ?? ""),
         password: String(formData.get("password") ?? ""),
-        roleSlug: isAdmin ? "tenant_admin" : roleSlug,
+        roleSlug: lockedRoleSlug ?? roleSlug,
         departmentId: departmentId === "none" ? null : departmentId,
       });
 
@@ -114,7 +133,13 @@ export function CreateProviderUserDialog({
         return;
       }
 
-      toast.success(isAdmin ? "Tenant Admin created" : "User created");
+      toast.success(
+        mode === "admin"
+          ? "Tenant Admin created"
+          : mode === "superadmin"
+            ? "Super Admin created"
+            : "User created",
+      );
       if (result.user) {
         onCreated?.(result.user);
       }
@@ -126,28 +151,40 @@ export function CreateProviderUserDialog({
     <>
       <Button
         type="button"
-        variant={isAdmin ? "outline" : "default"}
+        variant={isLockedRole ? "outline" : "default"}
         disabled={disabled}
         onClick={() => setOpen(true)}
       >
-        {isAdmin ? (
+        {mode === "admin" ? (
           <ShieldPlus className="size-4" />
+        ) : mode === "superadmin" ? (
+          <ShieldCheck className="size-4" />
         ) : (
           <Plus className="size-4" />
         )}
-        {isAdmin ? "Add Tenant Admin" : "Add user"}
+        {mode === "admin"
+          ? "Add Tenant Admin"
+          : mode === "superadmin"
+            ? "Add Super Admin"
+            : "Add user"}
       </Button>
 
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>
-              {isAdmin ? "Add Tenant Admin" : "Add user"}
+              {mode === "admin"
+                ? "Add Tenant Admin"
+                : mode === "superadmin"
+                  ? "Add Super Admin"
+                  : "Add user"}
             </DialogTitle>
             <DialogDescription>
-              {isAdmin
+              {mode === "admin"
                 ? "Create a Tenant Admin who can manage this organization."
-                : "Create a team member and assign their role."}
+                : mode === "superadmin"
+                  ? "Create a Super Admin for this organization. This role is only assigned from the Provider Console."
+                  : "Create a team member and assign their role."}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={onSubmit} className="space-y-4">
@@ -181,10 +218,10 @@ export function CreateProviderUserDialog({
               />
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
-              {isAdmin ? (
+              {isLockedRole ? (
                 <div className="space-y-2">
                   <Label>Role</Label>
-                  <Input value="Tenant Admin" disabled readOnly />
+                  <Input value={lockedRoleName} disabled readOnly />
                 </div>
               ) : (
                 <SearchableSelect
@@ -220,7 +257,7 @@ export function CreateProviderUserDialog({
               </Button>
               <Button
                 type="submit"
-                disabled={pending || (!isAdmin && !roleSlug)}
+                disabled={pending || (!isLockedRole && !roleSlug)}
               >
                 {pending ? "Saving…" : "Create"}
               </Button>

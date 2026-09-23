@@ -246,6 +246,42 @@ export const orderRepository = {
     });
   },
 
+  /** Move a draft into the first approval step without changing lines. */
+  async submitDraft(
+    tenantId: string,
+    orderId: string,
+    orderType: BranchOrderType,
+  ) {
+    const approvalChain = getOrderApprovalChain(orderType);
+    const initialStatus = getInitialOrderStatus(orderType);
+
+    return prisma.$transaction(async (tx) => {
+      await tx.branchOrderApprovalLevel.deleteMany({ where: { orderId } });
+
+      return tx.branchOrder.update({
+        where: { id: orderId, tenantId },
+        data: {
+          status: initialStatus,
+          approvedById: null,
+          processedAt: null,
+          spaRemarks: null,
+          deliveryDueDate: null,
+          approvalLevels: {
+            create: approvalChain.map((step) => ({
+              level: step.level,
+              roleSlug: step.roleSlug,
+            })),
+          },
+        },
+        include: {
+          branch: { select: { name: true } },
+          details: { include: { model: { select: { skuCode: true } } } },
+          approvalLevels: true,
+        },
+      });
+    });
+  },
+
   updateStatus(
     tenantId: string,
     id: string,

@@ -10,13 +10,6 @@ interface PlanningKpiStripProps {
   isActivePeriod: boolean;
   targetBranchCount: number;
   tenantBranchCount: number;
-  gapCount: number;
-  allocationRowCount: number;
-  draftOrders: number;
-  totalBranchesHref: string;
-  gapsHref: string;
-  draftsHref: string;
-  periodPreserveParams?: Record<string, string>;
 }
 
 export function PlanningKpiStrip({
@@ -26,13 +19,6 @@ export function PlanningKpiStrip({
   isActivePeriod,
   targetBranchCount,
   tenantBranchCount,
-  gapCount,
-  allocationRowCount,
-  draftOrders,
-  totalBranchesHref,
-  gapsHref,
-  draftsHref,
-  periodPreserveParams,
 }: PlanningKpiStripProps) {
   return (
     <div className="responsive-card-grid">
@@ -42,7 +28,6 @@ export function PlanningKpiStrip({
           <PlanningPeriodSelect
             periods={periods}
             selectedPeriodId={selectedPeriodId}
-            preserveParams={periodPreserveParams}
           />
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
@@ -57,25 +42,14 @@ export function PlanningKpiStrip({
         label="Total branches"
         value={String(targetBranchCount)}
         hint={`of ${tenantBranchCount} branches`}
-        href={totalBranchesHref}
+        href="#branch-targets"
         className="h-full"
       />
       <KpiCard
-        label="Allocation gaps"
-        value={String(gapCount)}
-        href={gapsHref}
-        className="h-full"
-      />
-      <KpiCard
-        label="Allocation rows"
-        value={String(allocationRowCount)}
-        href={gapsHref}
-        className="h-full"
-      />
-      <KpiCard
-        label="Draft suggestions"
-        value={String(draftOrders)}
-        href={draftsHref}
+        label="Demand Planning"
+        value="Open"
+        hint="Runs, Drop 1, release"
+        href="/settings/planning/runs"
         className="h-full"
       />
     </div>

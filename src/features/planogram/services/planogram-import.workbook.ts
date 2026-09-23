@@ -23,7 +23,7 @@ export interface PlanogramTemplateRow {
 const EMPTY_SHEET: SheetRows = { present: false, columns: new Set(), rows: [] };
 
 const BRS_LAYOUT_ERROR =
-  "This file is the old BRS forecast/planogram layout, not the Planogram template. Download the template (branch_sap_code, sku). Branch revenue belongs on Planning with the Forecast template.";
+  "This file is the old BRS forecast/planogram layout, not the Planogram template. Download the template (branch_sap_code, sku). Branch Target Quota belongs on Planning via the SFE Forecast template.";
 
 /** Headers that appear on the wide Dealer 1 BRS sheet (Brand / SKU / Model / Series / SRP + Y/N pairs). */
 const BRS_WIDE_HEADER_HINTS = new Set([

@@ -41,6 +41,9 @@ function resolveReportsDescription(pathname: string): string {
   if (pathname.startsWith("/reports/aging")) {
     return "Inventory aging by branch, stock age buckets, and serial number details.";
   }
+  if (pathname.startsWith("/reports/demand-planning")) {
+    return "Network coverage for the latest generated or released demand plan — KPIs, DII by stage, mix, and branch roll-up.";
+  }
   if (pathname.startsWith("/reports/dii")) {
     return "Days in inventory (DII) by branch, stock age, and serial number details.";
   }

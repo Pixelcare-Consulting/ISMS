@@ -52,6 +52,347 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.44.3",
+    date: "2026-09-18",
+    releasedAt: "2026-09-18T14:35:00+08:00",
+    title: "Clearer Import forecast tips",
+    highlights: [
+      "Import forecast shows a clear how-to banner (template, SFE sheet, auto Target Quota, period as text).",
+      "A separate note highlights that 0 SRP means FREE — Target Quota may be ₱0, with a preview warning, and import can still continue.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Import forecast tips are easier to scan: a how-to banner for the template and SFE sheet, plus a distinct note that FREE (0 SRP) can make Target Quota ₱0 without stopping the import.",
+      },
+    ],
+  },
+  {
+    version: "0.44.2",
+    date: "2026-09-18",
+    releasedAt: "2026-09-18T13:45:00+08:00",
+    title: "Release open orders by period",
+    highlights: [
+      "Demand Planning Release only skips a branch when it already has an open Auto Replenish for the same planning period — an August order no longer blocks October.",
+      "Release confirmation and skip messages say when the open order is for this period.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Release confirmation lists open Auto Replenish skips as for this period, so it is clearer why a branch was skipped.",
+      },
+      {
+        type: "fix",
+        description:
+          "Release to Ordering no longer treats an open Auto Replenish from another month as a blocker for the period you are releasing.",
+      },
+    ],
+  },
+  {
+    version: "0.44.1",
+    date: "2026-09-18",
+    releasedAt: "2026-09-18T13:30:00+08:00",
+    title: "FREE forecast import and Release warnings",
+    highlights: [
+      "Import forecast accepts FREE items (0 SRP) — Target Quota can be ₱0 with a warning, not a hard stop.",
+      "Release asks you to confirm and lists branches with no sales history, no Drop 1, or an open Auto Replenish.",
+      "Planning guide spells out what you need before Demand Planning and Release.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Demand Planning Release confirmation shows how many branches go to Team Leader, which are skipped, and which have no sales history before you proceed.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Planning module guide covers the checklist for forecast, planogram, history, and Release.",
+      },
+      {
+        type: "fix",
+        description:
+          "Import forecast no longer blocks when Target Quota is ₱0 because SRP is FREE or forecast qty is zero — you see a warning and can still apply.",
+      },
+    ],
+  },
+  {
+    version: "0.44.0",
+    date: "2026-09-18",
+    releasedAt: "2026-09-18T13:15:00+08:00",
+    title: "Forecast template and Release to Team Leader",
+    highlights: [
+      "Forecast Download template pre-fills every active branch and its planogram SKUs so you can fill quantities faster.",
+      "Demand Planning New run shows Date from and Date to side by side.",
+      "Release sends Auto Replenish straight to Team Leader whenever Drop 1 has quantity — even without sales history.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Demand Planning Release creates Auto Replenish orders already waiting for Team Leader when Drop 1 quantity is above zero, including branches with no sales history.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Forecast Download template lists active branches × planogram SKUs, with known forecast quantities filled in when available.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Demand Planning New run places Date from and Date to next to each other for easier history range setup.",
+      },
+    ],
+  },
+  {
+    version: "0.43.1",
+    date: "2026-09-18",
+    releasedAt: "2026-09-18T13:00:00+08:00",
+    title: "Demand Planning wizard and Release clarity",
+    highlights: [
+      "New run lets you set Date from / Date to for sales history and edit Month basis days.",
+      "Open document after generate opens the plan reliably instead of staying on Loading.",
+      "Release warns and stays on the plan when no Auto Replenish drafts are created, with a short skip summary.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Demand Planning New run: choose Date from and Date to for history, and edit Month basis days on Parameters.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Release to Ordering explains when nothing was drafted (no history, no Drop 1, or an existing draft) and does not jump to Auto Replenish empty-handed.",
+      },
+      {
+        type: "fix",
+        description:
+          "Open document after generating a run no longer gets stuck on Loading plan.",
+      },
+    ],
+  },
+  {
+    version: "0.43.0",
+    date: "2026-09-18",
+    releasedAt: "2026-09-18T12:30:00+08:00",
+    title: "SFE Target Quota and Auto Replenish path",
+    highlights: [
+      "Import forecast now uses the SFE sheet only — Target Quota for each branch is calculated from forecast qty × price list.",
+      "Planning Target Quota is view-only; update it by importing SFE, not by hand.",
+      "Replenishment is removed from Orders. After Demand Planning Release, go to Auto Replenish to Submit for review.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Forecast import is SFE-only. Target Quota per branch is set automatically from forecast quantities and the price list.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Planning & Forecast shows Target Quota as read-only, with Import forecast as the way to refresh it.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Demand Planning Release opens Auto Replenish drafts. The old Replenishment menu and workbench are gone; old links redirect to Auto Replenish.",
+      },
+    ],
+  },
+  {
+    version: "0.42.0",
+    date: "2026-09-18",
+    releasedAt: "2026-09-18T11:00:00+08:00",
+    title: "Clearer planning periods and Auto Replenish review",
+    highlights: [
+      "Forecast periods use a short month label (for example Dec-25), so months stay consistent across import, plans, and documents.",
+      "Demand Planning runs show who created each plan, and recalculated plans are easier to spot.",
+      "The Replenishment grid matches other tables, and Auto Replenish drafts have a clear Submit for review step before Team Leader sees them.",
+      "Orders can only be edited while still Draft — once submitted for review, Edit is hidden.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Planning periods use MMM-YY labels (for example Dec-25). New Demand Planning documents are numbered like DP-202512-001.",
+      },
+      {
+        type: "feature",
+        description:
+          "Auto Replenish drafts from Planning or Replenishment stay as Draft until you choose Submit for review — then Team Leader can approve.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Demand Planning runs list shows Created by, and Recalculated plans use a warning badge. Recalculate is hidden on superseded plans.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The branch Replenishment workbench table uses the same header, stripes, and card look as other lists so rows are easier to scan.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Edit on the Orders list is only available for Draft orders. Pending review rows no longer show Edit.",
+      },
+      {
+        type: "fix",
+        description:
+          "Forecast import still accepts older period formats and stores them as MMM-YY so periods stay aligned.",
+      },
+    ],
+  },
+  {
+    version: "0.41.2",
+    date: "2026-09-18",
+    releasedAt: "2026-09-18T10:15:00+08:00",
+    title: "Clearer planogram and run lists",
+    highlights: [
+      "Branch planogram lists show only the essentials — SKU, model, series, and a link to units — so the table is easier to scan.",
+      "Demand Planning runs now include row numbers so you can find a plan faster as you move through pages.",
+      "When starting a new Demand Planning run, dealer and branch names are easier to read in the picker.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Branch planogram lists are simpler: SKU, model, series, and units — without the extra price, brand, date, max qty, and stock columns.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Demand Planning runs show a row number on each page so you can track where you are in the list.",
+      },
+      {
+        type: "improvement",
+        description:
+          "New Demand Planning run dealer and branch names are easier to read in the picker.",
+      },
+    ],
+  },
+  {
+    version: "0.41.1",
+    date: "2026-09-17",
+    releasedAt: "2026-09-17T10:30:00+08:00",
+    title: "Demand Planning review and versions",
+    highlights: [
+      "After a new Demand Planning run, Review is the last step. Open the document or close to return to the list — the plan stays Generated until you release it from the document.",
+      "Recalculated plans show Recalculated instead of Superseded, and the original DP# so you can see which plan a version came from.",
+      "After you release a Demand Planning document to ordering, the full-screen popup closes so you are back on the runs list.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "After a new Demand Planning run, Review is the last step. Open the document or close to return to the list. The plan stays Generated until you release it from the document.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Recalculated Demand Planning documents show Recalculated instead of Superseded, with the original DP# next to the new number.",
+      },
+      {
+        type: "improvement",
+        description:
+          "After you release a Demand Planning document to ordering, the popup closes and you return to the runs list.",
+      },
+    ],
+  },
+  {
+    version: "0.41.0",
+    date: "2026-09-17",
+    releasedAt: "2026-09-17T10:15:00+08:00",
+    title: "Demand Planning under Settings",
+    highlights: [
+      "Demand Planning now lives under Settings → Operations & Planning, next to Planning & Forecast",
+      "Saved links to the old Demand Planning page still open the same runs list",
+      "After a new run, Review shows the totals only. Open the document to see or adjust SKU lines, then Release to Ordering.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Demand Planning now lives under Settings → Operations & Planning, alongside Planning & Forecast, instead of under Orders",
+      },
+      {
+        type: "improvement",
+        description:
+          "Saved links to the previous Demand Planning page still take you to the same runs",
+      },
+      {
+        type: "improvement",
+        description:
+          "The new-run Review step now shows totals only. Open the document to review or adjust SKU lines before you release.",
+      },
+    ],
+  },
+  {
+    version: "0.40.1",
+    date: "2026-09-17",
+    releasedAt: "2026-09-17T09:45:00+08:00",
+    title: "Demand Planning document popup",
+    highlights: [
+      "Opening a Demand Planning document now stays on the list as a full-screen popup. Close with X or Escape to return to your runs.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Opening a Demand Planning document now stays on the list as a full-screen popup. Close it to return to your runs.",
+      },
+    ],
+  },
+  {
+    version: "0.40.0",
+    date: "2026-09-16",
+    releasedAt: "2026-09-17T09:15:00+08:00",
+    title: "Super Admin on Provider Console",
+    highlights: [
+      "On an organization’s people list in the Provider Console, you can see Super Admins and assign that role when adding or editing someone",
+      "Inside the organization app, Super Admin does not appear in people lists, role menus, or role settings",
+      "Starting a Demand Planning run now opens as a popup on the list. Confirm sources, review the summary tiles, then open a plan table that matches the printed Run",
+      "The close (X) on the Demand Planning new-run popup is now clearly visible on the dark header",
+      "Picking dealers and branches for a new run now uses the same searchable list as the rest of the app — filter, Select all, and Clear",
+      "After a run is generated, review shows large totals, the plan lines you can adjust, and Release on the left",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Provider Console organization people list now shows Super Admins and lets you assign that role when adding or editing a person",
+      },
+      {
+        type: "improvement",
+        description:
+          "People inside an organization no longer see Super Admin in user lists, role menus, or role settings",
+      },
+      {
+        type: "improvement",
+        description:
+          "Demand Planning runs now start in a popup. Source confirm, review tiles, and the plan table match the printed Run",
+      },
+      {
+        type: "improvement",
+        description:
+          "Picking dealers and branches for a new Demand Planning run now uses the same searchable list as elsewhere: filter as you type, Select all, and Clear",
+      },
+      {
+        type: "improvement",
+        description:
+          "The Demand Planning review step now shows large totals, plan lines you can adjust before release, and the Release button on the left",
+      },
+      {
+        type: "fix",
+        description:
+          "The close button on the Demand Planning new-run popup is now easy to see on the dark header",
+      },
+    ],
+  },
+  {
     version: "0.39.10",
     date: "2026-09-15",
     releasedAt: "2026-09-15T12:25:00+08:00",

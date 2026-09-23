@@ -60,7 +60,7 @@ function parseSortDir(
 
 function revalidatePlanning() {
   revalidatePath("/settings/planning");
-  revalidatePath("/planning/suggested-orders");
+  revalidatePath("/settings/planning/runs");
   revalidatePath("/orders");
   revalidatePath("/dashboard");
   revalidatePath("/settings/planogram");

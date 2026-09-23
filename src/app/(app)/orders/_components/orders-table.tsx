@@ -8,6 +8,7 @@ import { useOrdersCreateWorkspace } from "@/app/(app)/orders/_components/orders-
 import {
   approveOrderAction,
   rejectOrderAction,
+  submitDraftOrderAction,
 } from "@/features/orders/actions/order.actions";
 import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
 import {
@@ -84,7 +85,7 @@ interface OrdersTableProps {
   };
   viewerRoleSlugs: string[];
   canEdit?: boolean;
-  /** Same gate as `/planning/suggested-orders` (`forecast.manage` / `planogram.manage`). */
+  /** Same gate as Demand Planning (`forecast.manage` / `planogram.manage`). */
   canAccessSuggestedOrders?: boolean;
   /** When set, list is type-scoped and create dialog locks this type. */
   fixedOrderType?: BranchOrderType;
@@ -274,7 +275,7 @@ export function OrdersTable({
             ) : null}
             {canAccessSuggestedOrders ? (
               <Button variant="outline" asChild>
-                <a href="/planning/suggested-orders">Suggested orders</a>
+                <a href="/settings/planning/runs">Suggested orders</a>
               </Button>
             ) : null}
             {canEdit && fixedOrderType !== "auto_replenish" ? (
@@ -379,6 +380,29 @@ export function OrdersTable({
                       viewerRoleSlugs={viewerRoleSlugs}
                       onReview={() => setWorkflowOrder(o)}
                     />
+                  ) : null}
+                  {canEdit &&
+                  o.status === "draft" &&
+                  o.orderType === "auto_replenish" ? (
+                    <Button
+                      size="sm"
+                      disabled={pending}
+                      onClick={() => {
+                        startTransition(async () => {
+                          const result = await submitDraftOrderAction(o.id);
+                          if ("error" in result && result.error) {
+                            toast.error(result.error);
+                            return;
+                          }
+                          toast.success("Submitted for review", {
+                            description: "Team Leader can review this order now.",
+                          });
+                          router.refresh();
+                        });
+                      }}
+                    >
+                      Submit for review
+                    </Button>
                   ) : null}
                   {canEdit && isOrderEditable(o.status as BranchOrderStatus) ? (
                     <Button

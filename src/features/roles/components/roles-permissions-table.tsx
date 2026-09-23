@@ -7,7 +7,10 @@ import { Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { deleteRoleAction, toggleRolePermissionAction } from "@/features/roles/actions/role.actions";
-import { isProviderOnlyRole } from "@/features/roles/constants/role.constants";
+import {
+  filterTenantVisibleRoles,
+  isProviderOnlyRole,
+} from "@/features/roles/constants/role.constants";
 import { CreateRoleDialog } from "@/features/roles/components/create-role-dialog";
 import { EditRoleDialog } from "@/features/roles/components/edit-role-dialog";
 import { RoleUserCountBadge } from "@/features/roles/components/role-user-count-badge";
@@ -70,7 +73,8 @@ export function RolesPermissionsTable({
 }: RolesPermissionsTableProps) {
   const addRoleAction = toolbarActions ?? <CreateRoleDialog />;
   const router = useRouter();
-  const { roles, permissions } = matrix;
+  const roles = filterTenantVisibleRoles(matrix.roles);
+  const { permissions } = matrix;
   const [query, setQuery] = useState("");
   const [editingRole, setEditingRole] = useState<(typeof roles)[number] | null>(
     null,

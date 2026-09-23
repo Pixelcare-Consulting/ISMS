@@ -11,7 +11,12 @@ import {
 import { toast } from "sonner";
 
 import { deleteUserAction } from "@/features/users/actions/user.actions";
-import { userHasProviderOnlyRole } from "@/features/roles/constants/role.constants";
+import {
+  filterTenantVisibleRoles,
+  filterTenantVisibleUsers,
+  isProviderOnlyRole,
+  userHasProviderOnlyRole,
+} from "@/features/roles/constants/role.constants";
 import { CreateUserDialog } from "@/app/(app)/settings/users/_components/create-user-dialog";
 import { EditUserDialog } from "@/app/(app)/settings/users/_components/edit-user-dialog";
 import {
@@ -71,6 +76,12 @@ function isProtectedUser(user: UserRow, currentUserId: string): boolean {
   return user.id === currentUserId || userHasProviderOnlyRole(user.userRoles);
 }
 
+function tenantVisibleRoleNames(user: UserRow) {
+  return user.userRoles
+    .filter((userRole) => !isProviderOnlyRole(userRole.role.slug))
+    .map((userRole) => userRole.role.name);
+}
+
 export function UsersTable({
   users,
   roles,
@@ -96,10 +107,13 @@ export function UsersTable({
   const [deletingUser, setDeletingUser] = useState<UserRow | null>(null);
   const [pending, startTransition] = useTransition();
 
+  const visibleRows = useMemo(() => filterTenantVisibleUsers(rows), [rows]);
+  const visibleRoles = useMemo(() => filterTenantVisibleRoles(roles), [roles]);
+
   const addUserAction =
     toolbarActions ?? (
       <CreateUserDialog
-        roles={roles}
+        roles={visibleRoles}
         departments={departments}
         onCreated={(user) => {
           setRows((currentRows) => [user, ...currentRows]);
@@ -110,33 +124,33 @@ export function UsersTable({
 
   const filteredUsers = useMemo(
     () =>
-      rows.filter((user) =>
+      visibleRows.filter((user) =>
         matchesTableSearch(query, [
           user.name,
           user.email,
           user.department?.name,
-          ...user.userRoles.map((userRole) => userRole.role.name),
+          ...tenantVisibleRoleNames(user),
         ]),
       ),
-    [query, rows],
+    [query, visibleRows],
   );
 
   const suggestions = useMemo(
     () =>
       uniqueSearchSuggestions(
-        rows.map((user) => user.name),
-        rows.map((user) => user.email),
-        rows.map((user) => user.department?.name),
-        rows.flatMap((user) => user.userRoles.map((userRole) => userRole.role.name)),
+        visibleRows.map((user) => user.name),
+        visibleRows.map((user) => user.email),
+        visibleRows.map((user) => user.department?.name),
+        visibleRows.flatMap((user) => tenantVisibleRoleNames(user)),
       ),
-    [rows],
+    [visibleRows],
   );
 
   const selection = useTableSelection(filteredUsers.map((user) => user.id));
   const sort = useClientTableSort(filteredUsers, {
     name: (user) => user.name,
     email: (user) => user.email,
-    roles: (user) => user.userRoles.map((userRole) => userRole.role.name).join(", "),
+    roles: (user) => tenantVisibleRoleNames(user).join(", "),
     department: (user) => user.department?.name,
   });
   const {
@@ -173,7 +187,7 @@ export function UsersTable({
     });
   }
 
-  if (rows.length === 0) {
+  if (visibleRows.length === 0) {
     return (
       <GlobalDataTable
         stickyHeader
@@ -287,15 +301,20 @@ export function UsersTable({
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
-                          {user.userRoles.length > 0 ? (
-                            user.userRoles.map((userRole) => (
-                              <span
-                                key={userRole.role.slug}
-                                className="rounded-md bg-accent px-2 py-0.5 text-xs font-medium"
-                              >
-                                {userRole.role.name}
-                              </span>
-                            ))
+                          {tenantVisibleRoleNames(user).length > 0 ? (
+                            user.userRoles
+                              .filter(
+                                (userRole) =>
+                                  !isProviderOnlyRole(userRole.role.slug),
+                              )
+                              .map((userRole) => (
+                                <span
+                                  key={userRole.role.slug}
+                                  className="rounded-md bg-accent px-2 py-0.5 text-xs font-medium"
+                                >
+                                  {userRole.role.name}
+                                </span>
+                              ))
                           ) : (
                             <span className="text-muted-foreground">—</span>
                           )}
@@ -335,7 +354,7 @@ export function UsersTable({
             }
           }}
           user={editingUser}
-          roles={roles}
+          roles={visibleRoles}
           departments={departments}
           onUpdated={(user) => {
             setRows((currentRows) =>

@@ -24,7 +24,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { deleteProviderCustomerUserAction } from "@/features/provider/actions/provider.actions";
-import { userHasProviderOnlyRole } from "@/features/roles/constants/role.constants";
 import {
   GlobalDataTable,
   GlobalTableHead,
@@ -167,6 +166,16 @@ export function ProviderUsersTable({
         disabled={orgDisabled}
         onCreated={handleCreated}
       />
+      <CreateProviderUserDialog
+        tenantId={tenantId}
+        roles={roles}
+        departments={departments}
+        mode="superadmin"
+        disabled={
+          orgDisabled || !roles.some((role) => role.slug === "super_admin")
+        }
+        onCreated={handleCreated}
+      />
     </div>
   );
 
@@ -235,8 +244,7 @@ export function ProviderUsersTable({
             />
           ) : (
             pageItems.map((user, index) => {
-              const isProtected = userHasProviderOnlyRole(user.userRoles);
-              const actionsDisabled = orgDisabled || isProtected;
+              const actionsDisabled = orgDisabled;
 
               return (
                 <TableRow
@@ -282,16 +290,12 @@ export function ProviderUsersTable({
                     editTitle={
                       orgDisabled
                         ? "Restore the organization to edit users"
-                        : isProtected
-                          ? "This user cannot be edited"
-                          : "Edit user"
+                        : "Edit user"
                     }
                     deleteTitle={
                       orgDisabled
                         ? "Restore the organization to delete users"
-                        : isProtected
-                          ? "This user cannot be deleted"
-                          : "Delete user"
+                        : "Delete user"
                     }
                   />
                 </TableRow>

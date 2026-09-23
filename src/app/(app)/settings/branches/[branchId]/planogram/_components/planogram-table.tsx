@@ -9,7 +9,6 @@ import {
   addPlanogramModelAction,
   listActiveModelsForPlanogramAction,
   removePlanogramModelAction,
-  updatePlanogramMaxQtyAction,
 } from "@/features/planogram/actions/planogram.actions";
 import type { PlanogramAddEmptyReason } from "@/features/planogram/services/planogram.service";
 import {
@@ -67,15 +66,6 @@ interface PlanogramRow {
   };
 }
 
-function formatPeso(value: number | null) {
-  if (value == null) return "—";
-  return new Intl.NumberFormat("en-PH", {
-    style: "currency",
-    currency: "PHP",
-    maximumFractionDigits: 0,
-  }).format(value);
-}
-
 function messageForAddEmptyReason(reason: PlanogramAddEmptyReason): string {
   switch (reason) {
     case "no_allowed_models":
@@ -127,11 +117,6 @@ export function PlanogramTable({
     sku: (row) => row.model.skuCode,
     model: (row) => row.model.name,
     series: (row) => row.model.series,
-    srp: (row) => row.model.srp,
-    brand: (row) => row.model.brand?.name ?? null,
-    effective: (row) => row.effectiveFrom ?? null,
-    maxQty: (row) => row.maxQty,
-    stock: (row) => row.stockCount,
   });
 
   const suggestions = useMemo(
@@ -145,7 +130,7 @@ export function PlanogramTable({
     [rows],
   );
 
-  const colCount = canManage ? 11 : 10;
+  const colCount = canManage ? 6 : 5;
 
   function handleRemove() {
     if (!deleting) return;
@@ -204,11 +189,6 @@ export function PlanogramTable({
                 <GlobalTableHead {...sort.sortProps("sku")}>SKU</GlobalTableHead>
                 <GlobalTableHead {...sort.sortProps("model")}>Model</GlobalTableHead>
                 <GlobalTableHead {...sort.sortProps("series")}>Series</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("srp")}>SRP</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("brand")}>Brand</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("effective")}>Effective</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("maxQty")}>Max qty</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("stock")}>Stock</GlobalTableHead>
                 <TableHead className="w-28">Units</TableHead>
                 {canManage ? <TableHead className="w-24" /> : null}
               </TableRow>
@@ -295,23 +275,6 @@ function PlanogramRowEditor({
       <TableCell className="font-mono text-sm">{row.model.skuCode}</TableCell>
       <TableCell>{row.model.name}</TableCell>
       <TableCell>{row.model.series ?? "—"}</TableCell>
-      <TableCell className="tabular-nums">{formatPeso(row.model.srp)}</TableCell>
-      <TableCell>{row.model.brand?.name ?? "—"}</TableCell>
-      <TableCell className="text-sm text-muted-foreground">
-        {row.effectiveFrom ?? "—"}
-      </TableCell>
-      <TableCell>
-        <MaxQtyCell
-          key={`${row.id}:${row.maxQty}`}
-          branchId={branchId}
-          planogramId={row.id}
-          maxQty={row.maxQty}
-          canManage={canManage}
-        />
-      </TableCell>
-      <TableCell>
-        STK {row.stockCount} · DIT {row.ditCount}
-      </TableCell>
       <TableCell>
         <Button variant="link" size="sm" className="h-auto p-0" asChild>
           <Link href={inventoryHref}>View units</Link>
@@ -325,70 +288,6 @@ function PlanogramRowEditor({
         />
       ) : null}
     </TableRow>
-  );
-}
-
-function MaxQtyCell({
-  branchId,
-  planogramId,
-  maxQty,
-  canManage,
-}: {
-  branchId: string;
-  planogramId: string;
-  maxQty: number;
-  canManage: boolean;
-}) {
-  const router = useRouter();
-  const [value, setValue] = useState(String(maxQty));
-  const [pending, startTransition] = useTransition();
-
-  function save() {
-    const parsed = Number.parseInt(value, 10);
-    if (!Number.isInteger(parsed) || parsed < 1) {
-      setValue(String(maxQty));
-      toast.error("Max quantity must be at least 1");
-      return;
-    }
-    if (parsed === maxQty) return;
-
-    startTransition(async () => {
-      const result = await updatePlanogramMaxQtyAction({
-        planogramId,
-        branchId,
-        maxQty: parsed,
-      });
-      if (result.error) {
-        toast.error(result.error);
-        setValue(String(maxQty));
-        return;
-      }
-      toast.success("Max qty updated");
-      router.refresh();
-    });
-  }
-
-  if (!canManage) {
-    return <span className="tabular-nums">{maxQty}</span>;
-  }
-
-  return (
-    <Input
-      type="number"
-      min={1}
-      step={1}
-      className="h-8 w-16 tabular-nums"
-      value={value}
-      disabled={pending}
-      onChange={(e) => setValue(e.target.value)}
-      onBlur={save}
-      onKeyDown={(event) => {
-        if (event.key === "Enter") {
-          event.currentTarget.blur();
-        }
-      }}
-      aria-label="Max qty"
-    />
   );
 }
 

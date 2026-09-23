@@ -388,6 +388,66 @@ export const orderService = {
     return updated;
   },
 
+  async submitDraft(
+    tenantId: string,
+    userId: string,
+    orderId: string,
+    opts: { hasFullAccess: boolean },
+  ) {
+    const order = await orderRepository.findById(tenantId, orderId);
+    if (!order) throw new Error("Order not found");
+    if (order.status !== "draft") {
+      throw new Error("Only draft orders can be submitted for review.");
+    }
+    if (order.details.length === 0) {
+      throw new Error("Add at least one line before submitting for review.");
+    }
+
+    if (!opts.hasFullAccess) {
+      const branchIds = await getUserBranchIds(tenantId, userId);
+      if (branchIds && !branchIds.includes(order.branchId)) {
+        throw new Error("You can only submit orders for your own branch.");
+      }
+    }
+
+    const [policy, scheduleCtx] = await Promise.all([
+      orderingPolicyService.getPolicy(tenantId),
+      branchRepository.findScheduleContext(tenantId, order.branchId),
+    ]);
+    assertOrderingAllowed({
+      action: "create",
+      orderType: order.orderType,
+      policy,
+      branchName: scheduleCtx?.name,
+      schedule: scheduleCtx?.deliveryScheduleConfig
+        ? { orderDays: scheduleCtx.deliveryScheduleConfig.orderDays }
+        : null,
+    });
+
+    const nextStatus = getInitialOrderStatus(order.orderType);
+    const updated = await orderRepository.submitDraft(tenantId, orderId, order.orderType);
+
+    await auditService.log({
+      tenantId,
+      userId,
+      action: "order.submitted",
+      entityType: "BranchOrder",
+      entityId: orderId,
+      metadata: {
+        ...orderAuditMetadata(updated),
+        from: order.status,
+        to: nextStatus,
+      },
+    });
+
+    await sendWorkflowEmail({
+      subject: `Branch order ${order.orderNumber} submitted for review`,
+      body: pendingApprovalEmail(nextStatus, order.orderType),
+    });
+
+    return updated;
+  },
+
   async approve(
     tenantId: string,
     userId: string,

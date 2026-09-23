@@ -6,7 +6,7 @@
  *
  * SKUs and branch SAP codes must already exist. Rows not in the file are not
  * deleted. Extra columns (including leftover max_qty / mil_days) are ignored.
- * Branch revenue uses the Forecast template on Planning.
+ * Branch Target Quota uses the SFE Forecast template on Planning.
  */
 
 export const PLANOGRAM_SHEET_NAME = "Planogram";

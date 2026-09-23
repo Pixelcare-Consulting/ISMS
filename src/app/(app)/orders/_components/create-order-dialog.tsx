@@ -483,7 +483,7 @@ export function CreateOrderDialog({
                 </div>
                 {orderType === "auto_replenish" && canAccessSuggestedOrders ? (
                   <Button variant="outline" size="sm" asChild>
-                    <Link href="/planning/suggested-orders">View suggested orders</Link>
+                    <Link href="/settings/planning/runs">View suggested orders</Link>
                   </Button>
                 ) : null}
               </>

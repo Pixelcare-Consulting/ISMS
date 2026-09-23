@@ -60,7 +60,7 @@ async function requireForecastManage() {
 
 function revalidateForecastPaths() {
   revalidatePath("/settings/planning");
-  revalidatePath("/planning/suggested-orders");
+  revalidatePath("/settings/planning/runs");
   revalidatePath("/orders");
   revalidatePath("/dashboard");
 }

@@ -1,3 +1,4 @@
+import { periodDateFieldsFromLabel } from "@/features/demand-planning/lib/planning-period-dates";
 import { prisma } from "@/lib/database/client";
 import {
   resolvePagination,
@@ -104,7 +105,7 @@ export const forecastRepository = {
 
       return tx.planningPeriod.update({
         where: { id: periodId },
-        data: { isActive: true },
+        data: { isActive: true, ...periodDateFieldsFromLabel(period.label) },
       });
     });
   },

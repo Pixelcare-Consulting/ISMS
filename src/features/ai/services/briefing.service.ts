@@ -14,10 +14,11 @@ import {
   resolveDashboardPersona,
   type DashboardKpiKey,
 } from "@/features/dashboard/constants/dashboard-permissions";
-import { dashboardKpiValue } from "@/features/dashboard/lib/dashboard-kpi-value";
+import { dashboardKpiValue, dashboardPlanningAlertLabel } from "@/features/dashboard/lib/dashboard-kpi-value";
 import {
   getDashboardAnalytics,
   getDashboardKpis,
+  type DashboardKpis,
 } from "@/features/dashboard/services/dashboard-kpi.service";
 import { getDashboardSalesAnalytics } from "@/features/dashboard/services/dashboard-sales.service";
 import { hasAnyOrderPermission } from "@/features/orders/constants/order-permissions";
@@ -54,7 +55,7 @@ function manilaDayKey(): string {
   }).format(new Date());
 }
 
-function kpiLabel(key: DashboardKpiKey): string {
+function kpiLabel(key: DashboardKpiKey, kpis: DashboardKpis): string {
   switch (key) {
     case "pendingOrderApprovals":
       return "Orders waiting for review";
@@ -69,7 +70,7 @@ function kpiLabel(key: DashboardKpiKey): string {
     case "milBreaches":
       return "MIL alerts";
     case "allocationGaps":
-      return "Allocation gaps";
+      return dashboardPlanningAlertLabel(kpis);
     case "draftSuggestedOrders":
       return "Draft suggested orders";
     default: {
@@ -167,7 +168,7 @@ export async function generateDashboardBriefing(
 
     const kpiLines = kpis
       ? DASHBOARD_KPI_KEYS.filter((item) => kpiKeyVisible(item, caps)).map((item) => ({
-          label: kpiLabel(item),
+          label: kpiLabel(item, kpis),
           value: dashboardKpiValue(item, kpis),
         }))
       : [];

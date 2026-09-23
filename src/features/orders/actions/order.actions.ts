@@ -310,6 +310,26 @@ export async function updateOrderAction(
   }
 }
 
+export async function submitDraftOrderAction(orderId: string) {
+  const session = await requireAuth();
+  const existing = await orderRepository.findById(session.user.tenantId, orderId);
+  if (!existing) {
+    return { error: "Order not found" };
+  }
+  if (!hasOrderPermission(session.user.permissions, existing.orderType, "create")) {
+    redirect("/dashboard?error=forbidden");
+  }
+  try {
+    await orderService.submitDraft(session.user.tenantId, session.user.id, orderId, {
+      hasFullAccess: hasFullOrderAccess(session.user.permissions),
+    });
+    revalidateOrderPaths(existing.orderType);
+    return { success: true as const };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to submit order for review" };
+  }
+}
+
 export async function approveOrderAction(
   orderId: string,
   input?: {

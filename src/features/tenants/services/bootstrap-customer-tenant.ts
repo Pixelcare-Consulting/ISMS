@@ -3,6 +3,11 @@ import { departmentService } from "@/features/users/services/department.service"
 import { prisma } from "@/lib/database/client";
 
 const SYSTEM_ROLES = [
+  {
+    slug: "super_admin",
+    name: "Super Admin",
+    description: "Elevated organization administrator",
+  },
   { slug: "tenant_admin", name: "Tenant Admin", description: "Tenant administrator" },
   { slug: "isms_manager", name: "ISMS Manager", description: "ISMS program manager" },
   { slug: "auditor", name: "Auditor", description: "Internal auditor" },
@@ -79,7 +84,10 @@ async function seedTenantRoles(tenantId: string) {
       update: {},
     });
 
-    const slugs = ROLE_PERMISSION_MATRIX[roleDef.slug] ?? [];
+    const slugs =
+      roleDef.slug === "super_admin"
+        ? permissions.map((permission) => permission.slug)
+        : (ROLE_PERMISSION_MATRIX[roleDef.slug] ?? []);
     await prisma.rolePermission.deleteMany({ where: { roleId: role.id } });
     for (const slug of slugs) {
       const permission = permissionBySlug[slug];

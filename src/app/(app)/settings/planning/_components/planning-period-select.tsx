@@ -5,6 +5,7 @@ import { useTransition } from "react";
 import { toast } from "sonner";
 
 import { activatePlanningPeriodAction } from "@/features/forecast/actions/forecast.actions";
+import { displayPeriodLabel } from "@/features/demand-planning/lib/planning-period-dates";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 
 export interface PlanningPeriodOption {
@@ -52,10 +53,13 @@ export function PlanningPeriodSelect({
     <SearchableSelect
       id="planning-period"
       className="w-full"
-      options={periods.map((period) => ({
-        id: period.id,
-        label: period.isActive ? `${period.label} (active)` : period.label,
-      }))}
+      options={periods.map((period) => {
+        const label = displayPeriodLabel(period.label);
+        return {
+          id: period.id,
+          label: period.isActive ? `${label} (active)` : label,
+        };
+      })}
       value={selectedPeriodId}
       onChange={handleChange}
       placeholder={periods.length === 0 ? "No periods" : "Select period…"}

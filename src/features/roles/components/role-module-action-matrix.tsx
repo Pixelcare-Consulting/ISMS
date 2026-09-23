@@ -11,7 +11,10 @@ import {
   matrixActionColumns,
 } from "@/config/permission-actions";
 import { toggleRolePermissionAction } from "@/features/roles/actions/role.actions";
-import { isProviderOnlyRole } from "@/features/roles/constants/role.constants";
+import {
+  filterTenantVisibleRoles,
+  isProviderOnlyRole,
+} from "@/features/roles/constants/role.constants";
 import { PermissionChangeDialog } from "@/features/roles/components/permission-change-dialog";
 import {
   showPermissionChangeError,
@@ -226,7 +229,8 @@ export function RoleModuleActionMatrix({
   canManageSystemRoleAccess = false,
 }: RoleModuleActionMatrixProps) {
   const router = useRouter();
-  const { roles, permissions } = matrix;
+  const roles = filterTenantVisibleRoles(matrix.roles);
+  const { permissions } = matrix;
   const [selectedRoleId, setSelectedRoleId] = useState(roles[0]?.id ?? "");
   const [moduleQuery, setModuleQuery] = useState("");
   const [bulkPending, setBulkPending] = useState<BulkPending>(null);
