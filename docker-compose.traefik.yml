@@ -1,11 +1,11 @@
-# Shared edge proxy — deployed ONCE per server, outside the app stacks, so that
-# staging and production can share ports 80/443 and redeploying either app
-# never restarts the proxy (same idea as docker-compose.portainer.yml).
+# Shared edge proxy — deployed ONCE per server, outside the app stacks, so the
+# app stacks can share ports 80/443 and redeploying one never restarts the
+# proxy (same idea as docker-compose.portainer.yml).
 #
 #   touch traefik/acme.json && chmod 600 traefik/acme.json
 #   docker compose --env-file .env.traefik -f docker-compose.traefik.yml up -d
 #
-# Creates the `traefik-public` network that the staging/production overrides join.
+# Creates the `traefik-public` network that the staging override joins.
 name: traefik
 
 services:

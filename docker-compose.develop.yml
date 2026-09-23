@@ -4,7 +4,7 @@
 #   deploy/stack.sh develop up -d postgres         # DB only, then `pnpm dev` on the host
 #   APP_IMAGE=ghcr.io/pixelcare-consulting/isms:develop deploy/stack.sh develop up -d --pull always
 #
-# Differences from staging/production: builds the image from the working tree by
+# Differences from staging: builds the image from the working tree by
 # default, no Traefik/TLS (port 3000 published directly), cron is opt-in
 # (`--profile cron`) so a laptop never hammers SAP by accident.
 name: isms-develop

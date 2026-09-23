@@ -1,37 +1,36 @@
-# ISMS CI/CD — one pipeline, three environments, one branch each.
+# ISMS CI/CD — one pipeline, two environments, one branch each.
 #
-#   event                             checks*  image                        deploy
-#   ────────────────────────────────  ──────   ───────────────────────────  ──────────────────────────
-#   PR → develop/staging/production   ✔        build only (not pushed)      —
-#   push develop                      ✔        :develop    :sha-…           —  (develop = local)   
-#   push staging                      ✔        :staging    :sha-…           staging    (automatic)
-#   push production                   ✔        :production :latest :sha-…   production (waits for
-#                                                                             approval on the GitHub env)
-#   workflow_dispatch                 —        —                            chosen env ← chosen tag
-#                                                                             (manual promote / rollback)
+#   event                     checks*  image                  deploy
+#   ────────────────────────  ──────   ─────────────────────  ────────────────────
+#   PR → develop/staging      ✔        build only (not pushed)  —
+#   push develop              ✔        :develop :sha-…          —  (develop = local)
+#   push staging              ✔        :staging :sha-…          staging (automatic)
+#   workflow_dispatch         —        —                        staging ← chosen tag
+#                                                                 (promote / rollback)
 #
 # * checks = lint · typecheck · unit tests (Jest) · prisma · e2e (Playwright
 #   against the freshly built image running in the develop Compose stack).
 #
-# Promotion is a merge: develop → staging → production. The image built from a
-# commit is identified by its sha-… tag, and nothing environment-specific is
-# baked in (see Dockerfile / APP_URL), so what staging ran is what production gets.
+# Promotion is a merge: develop → staging. The image built from a commit is
+# identified by its sha-… tag and nothing environment-specific is baked in
+# (see Dockerfile / APP_URL), so the image staging runs is the same one a
+# future production environment would get.
+#
+# PRODUCTION IS NOT WIRED UP YET. To add it: create a `production` branch and a
+# GitHub environment of the same name, restore docker-compose.production.yml
+# (`git show <commit>:docker-compose.production.yml`), add `production` to the
+# trigger/choice lists and `deploy/stack.sh`, and add a branch case in `target`.
 name: CI/CD
 
 on:
   pull_request:
-    branches: [develop, staging, production]
+    branches: [develop, staging]
   push:
-    branches: [develop, staging, production]
+    branches: [develop, staging]
   workflow_dispatch:
     inputs:
-      environment:
-        description: Target environment
-        type: choice
-        options: [staging, production]
-        required: true
       image_tag:
-        description: Image tag to deploy (e.g. sha-<40 hex>, staging, production)
+        description: Image tag to deploy to staging (e.g. sha-<40 hex>, staging)
         type: string
         required: true
 
@@ -178,7 +177,6 @@ jobs:
           tags: |
             type=raw,value=sha-${{ github.sha }}
             type=ref,event=branch
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/production' }}
       - name: Build${{ github.event_name == 'push' && ' and push' || '' }}
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
@@ -293,19 +291,15 @@ jobs:
           EVENT: ${{ github.event_name }}
           REF: ${{ github.ref }}
           SHA: ${{ github.sha }}
-          IN_ENV: ${{ inputs.environment }}
           IN_TAG: ${{ inputs.image_tag }}
         run: |
           set -euo pipefail
           if [ "$EVENT" = workflow_dispatch ]; then
-            echo "environment=$IN_ENV" >> "$GITHUB_OUTPUT"
+            echo "environment=staging" >> "$GITHUB_OUTPUT"
             echo "image_tag=$IN_TAG"   >> "$GITHUB_OUTPUT"
           elif [ "$REF" = refs/heads/staging ]; then
             echo "environment=staging" >> "$GITHUB_OUTPUT"
             echo "image_tag=sha-$SHA"  >> "$GITHUB_OUTPUT"
-          elif [ "$REF" = refs/heads/production ]; then
-            echo "environment=production" >> "$GITHUB_OUTPUT"
-            echo "image_tag=sha-$SHA"     >> "$GITHUB_OUTPUT"
           else
             echo "environment=" >> "$GITHUB_OUTPUT"   # develop: image only
             echo "image_tag="   >> "$GITHUB_OUTPUT"
@@ -317,8 +311,8 @@ jobs:
     if: needs.target.outputs.environment != ''
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # `production` should have "Required reviewers" enabled in GitHub → Settings →
-    # Environments so a push to the production branch pauses here for approval.
+    # Tick "Required reviewers" on this GitHub environment if you want a merge
+    # to staging to pause here for approval.
     environment:
       name: ${{ needs.target.outputs.environment }}
       url: ${{ vars.PUBLIC_APP_URL }}
@@ -326,7 +320,7 @@ jobs:
       group: deploy-${{ needs.target.outputs.environment }}
       cancel-in-progress: false
     env:
-      # environment == git branch == compose override == env file (staging | production)
+      # environment == git branch == compose override == env file
       STACK_ENV: ${{ needs.target.outputs.environment }}
       APP_IMAGE: ghcr.io/pixelcare-consulting/isms:${{ needs.target.outputs.image_tag }}
     steps:
