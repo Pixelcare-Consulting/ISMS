@@ -325,7 +325,7 @@ export const appModules: AppModule[] = [
     slugPrefix: "forecast",
     navPermission: "forecast.view",
     description:
-      "Demand Planning runs and coverage (view) plus forecast import and quota overrides (manage)",
+      "Supply Planning runs and coverage (view) plus forecast import and quota overrides (manage)",
     actions: permissionActions("view", "manage"),
   },
   {

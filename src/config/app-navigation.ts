@@ -74,11 +74,39 @@ export function isNavSubGroup(child: NavGroupChild): child is NavSubGroupItem {
 
 export const appNavigation: NavEntry[] = [
   {
-    type: "link",
-    href: "/dashboard",
+    type: "group",
     label: "Dashboard",
     icon: LayoutDashboard,
-    permission: getModuleNavPermission("dashboard"),
+    defaultOpen: true,
+    items: [
+      {
+        href: "/dashboard",
+        label: "Overview",
+        icon: LayoutDashboard,
+        exact: true,
+        permission: getModuleNavPermission("dashboard"),
+      },
+      {
+        href: "/dashboard/pcount",
+        label: "P-Count Dashboard",
+        icon: ClipboardList,
+        anyPermissions: ["inventory.view", "reports.view"],
+        badge: "new",
+      },
+      {
+        href: "/dashboard/site-traffic",
+        label: "Site Traffic",
+        icon: Users,
+        anyPermissions: ["users.manage", "audit_logs.view"],
+        badge: "new",
+      },
+      {
+        href: "/competitors",
+        label: "Market Survey",
+        icon: ChartColumn,
+        permission: "competitors.view",
+      },
+    ],
   },
   {
     type: "link",
@@ -327,7 +355,7 @@ export const appNavigation: NavEntry[] = [
       },
       {
         href: "/reports/demand-planning",
-        label: "Demand Planning",
+        label: "Supply Planning",
         icon: ChartColumn,
         anyPermissions: ["forecast.view", "forecast.manage"],
       },
@@ -365,13 +393,6 @@ export const appNavigation: NavEntry[] = [
         permission: "serial_logs.view",
       },
     ],
-  },
-  {
-    type: "link",
-    href: "/competitors",
-    label: "Competitors",
-    icon: ChartColumn,
-    permission: "competitors.view",
   },
   {
     type: "link",
@@ -488,7 +509,7 @@ export const appNavigation: NavEntry[] = [
           },
           // DO NOT UNCOMMENT THIS, NO NEED TO SHOW IN THE NAVIGATION {
           //   href: "/settings/planning/runs",
-          //   label: "Demand Planning",
+          //   label: "Supply Planning",
           //   icon: CalendarDays,
           //   anyPermissions: ["forecast.view", "forecast.manage"],
           //   badge: "new",

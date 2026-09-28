@@ -14,6 +14,56 @@ export const announcementService = {
     return announcementRepository.listActiveForBanner(tenantId);
   },
 
+  listFeedForUser(tenantId: string, userId: string) {
+    return announcementRepository.listFeedForUser(tenantId, userId);
+  },
+
+  listReaders(tenantId: string, announcementId: string) {
+    return announcementRepository.listReaders(tenantId, announcementId);
+  },
+
+  async markRead(input: {
+    tenantId: string;
+    actorUserId: string;
+    announcementId: string;
+  }) {
+    await announcementRepository.markRead(
+      input.tenantId,
+      input.announcementId,
+      input.actorUserId,
+    );
+  },
+
+  async toggleLike(input: {
+    tenantId: string;
+    actorUserId: string;
+    announcementId: string;
+  }) {
+    return announcementRepository.toggleLike(
+      input.tenantId,
+      input.announcementId,
+      input.actorUserId,
+    );
+  },
+
+  async addComment(input: {
+    tenantId: string;
+    actorUserId: string;
+    announcementId: string;
+    body: string;
+  }) {
+    const body = input.body.trim();
+    if (!body) throw new Error("Comment cannot be empty");
+    if (body.length > 2000) throw new Error("Comment is too long");
+
+    return announcementRepository.addComment(
+      input.tenantId,
+      input.announcementId,
+      input.actorUserId,
+      body,
+    );
+  },
+
   async createAnnouncement(input: {
     tenantId: string;
     actorUserId: string;

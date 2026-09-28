@@ -301,7 +301,7 @@ export const demandPlanningRunService = {
 
   async recalculateRun(tenantId: string, actorUserId: string, runId: string) {
     const run = await demandPlanningRepository.findRunById(tenantId, runId);
-    if (!run) throw new Error("Demand planning run not found");
+    if (!run) throw new Error("Supply planning run not found");
 
     if (run.status === "released") {
       const scope = parseRunScope(run.scope);
@@ -483,7 +483,7 @@ export const demandPlanningRunService = {
 
   async exportRunCsv(tenantId: string, runId: string) {
     const run = await demandPlanningRepository.findRunById(tenantId, runId);
-    if (!run) throw new Error("Demand planning run not found");
+    if (!run) throw new Error("Supply planning run not found");
     const lines = await demandPlanningRepository.listLinesForRun(tenantId, runId);
     const branchLabel = new Map(
       run.branches.map((branch) => [branch.id, `${branch.branch.sapCode} ${branch.branch.name}`]),

@@ -133,7 +133,7 @@ export const HELP_WORKFLOW_GUIDES: HelpWorkflowGuide[] = [
     steps: [
       {
         label:
-          "Sign in and land on Dashboard for a role-based snapshot of what needs attention.",
+          "Sign in and land on Dashboard → Overview for announcements and a role-based snapshot of what needs attention. Use P-Count Dashboard and Site Traffic under the same Dashboard menu when you have access.",
       },
       {
         label:

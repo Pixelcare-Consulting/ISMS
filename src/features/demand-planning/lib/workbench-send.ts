@@ -7,7 +7,7 @@ export type WorkbenchSendLine = {
 
 /**
  * Phase 2 send: only the caller-selected SKUs, and never a 0-qty order line.
- * Unlike Release, this does not freeze a Demand Planning document.
+ * Unlike Release, this does not freeze a Supply Planning document.
  */
 export function orderDetailsFromSelectedDrop1(
   lines: WorkbenchSendLine[],

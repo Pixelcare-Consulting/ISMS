@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 import { announcementService } from "@/features/announcements/services/announcement.service";
 import {
@@ -29,6 +30,82 @@ export async function listAnnouncementsAction() {
 export async function listActiveAnnouncementsAction() {
   const session = await requireAuth();
   return announcementService.listActiveForBanner(session.user.tenantId);
+}
+
+export async function listAnnouncementFeedAction() {
+  const session = await requireAuth();
+  return announcementService.listFeedForUser(
+    session.user.tenantId,
+    session.user.id,
+  );
+}
+
+export async function listAnnouncementReadersAction(announcementId: string) {
+  const session = await requireAuth();
+  if (!announcementId) return [];
+  return announcementService.listReaders(session.user.tenantId, announcementId);
+}
+
+export async function markAnnouncementReadAction(announcementId: string) {
+  const session = await requireAuth();
+  try {
+    await announcementService.markRead({
+      tenantId: session.user.tenantId,
+      actorUserId: session.user.id,
+      announcementId,
+    });
+    revalidateAnnouncements();
+    return { success: true as const };
+  } catch (e) {
+    return {
+      error: e instanceof Error ? e.message : "Failed to mark as read",
+    };
+  }
+}
+
+export async function toggleAnnouncementLikeAction(announcementId: string) {
+  const session = await requireAuth();
+  try {
+    const result = await announcementService.toggleLike({
+      tenantId: session.user.tenantId,
+      actorUserId: session.user.id,
+      announcementId,
+    });
+    revalidateAnnouncements();
+    return { success: true as const, ...result };
+  } catch (e) {
+    return {
+      error: e instanceof Error ? e.message : "Failed to update like",
+    };
+  }
+}
+
+const commentSchema = z.object({
+  announcementId: z.string().min(1),
+  body: z.string().min(1).max(2000),
+});
+
+export async function addAnnouncementCommentAction(input: unknown) {
+  const session = await requireAuth();
+  const parsed = commentSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid comment" };
+  }
+
+  try {
+    const comment = await announcementService.addComment({
+      tenantId: session.user.tenantId,
+      actorUserId: session.user.id,
+      announcementId: parsed.data.announcementId,
+      body: parsed.data.body,
+    });
+    revalidateAnnouncements();
+    return { success: true as const, comment };
+  } catch (e) {
+    return {
+      error: e instanceof Error ? e.message : "Failed to add comment",
+    };
+  }
 }
 
 export async function createAnnouncementAction(input: unknown) {

@@ -61,12 +61,12 @@ export function RunDocumentDialog({
         const result = await getDemandPlanningRunGridAction(runId);
         if (cancelled) return;
         if ("error" in result) {
-          toast.error(result.error || "Demand planning run not found");
+          toast.error(result.error || "Supply planning run not found");
           onOpenChangeRef.current(false);
           return;
         }
         if (!result.run) {
-          toast.error("Demand planning run not found");
+          toast.error("Supply planning run not found");
           onOpenChangeRef.current(false);
           return;
         }
@@ -81,7 +81,7 @@ export function RunDocumentDialog({
       } catch (error) {
         if (cancelled) return;
         toast.error(
-          error instanceof Error ? error.message : "Failed to load demand planning run",
+          error instanceof Error ? error.message : "Failed to load supply planning run",
         );
         onOpenChangeRef.current(false);
       }
@@ -98,7 +98,7 @@ export function RunDocumentDialog({
         showCloseButton={false}
         className="flex h-[calc(100svh-1rem)] w-[calc(100%-1rem)] max-h-[calc(100svh-1rem)] max-w-none flex-col gap-0 overflow-hidden overflow-y-hidden p-0 sm:max-w-none"
       >
-        <DialogTitle className="sr-only">Demand planning run</DialogTitle>
+        <DialogTitle className="sr-only">Supply planning run</DialogTitle>
         <DialogDescription className="sr-only">
           Review the Drop 1 grid, then release, recalculate, or export.
         </DialogDescription>
@@ -119,7 +119,7 @@ export function RunDocumentDialog({
             <DemandPlanningChromeBar
               crumbs={[
                 { label: "Settings" },
-                { label: "Demand Planning" },
+                { label: "Supply Planning" },
                 { label: "Loading…" },
               ]}
               actorName={actorName}

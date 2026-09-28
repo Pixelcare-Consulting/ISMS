@@ -2,28 +2,32 @@ import type { PageTutorialContent } from "@/components/page-tutorial/types";
 
 export const DASHBOARD_PAGE_TUTORIAL: PageTutorialContent = {
   id: "dashboard-home",
-  triggerLabel: "Open dashboard tutorial",
-  dialogTitle: "Dashboard — quick guide",
+  triggerLabel: "Open overview tutorial",
+  dialogTitle: "Overview — quick guide",
   dialogDescription:
-    "Your home screen shows activity cards for your role, inventory mix, planning alerts, a monthly snapshot, the order pipeline, and a Sales overview when you can access Sales.",
+    "Your Dashboard Overview starts with the company announcement feed, then shows role-based activity cards and ops numbers when you have access.",
   helpHref: "/help",
   helpLinkLabel: "Full Help & Support portal",
   sections: [
     {
       title: "What this page is for",
       description:
-        "After sign-in, the dashboard shows the numbers that matter for your role — not every module at once.",
+        "After sign-in, Overview is your home for announcements and a snapshot of work that needs attention for your role.",
     },
     {
-      title: "How to use it",
+      title: "Announcements feed",
       bullets: [
-        "Tap an activity card to jump to Orders, Inventory, Logistics, Sales, Planogram, or Suggested orders — only tiles you can use appear (up to four).",
-        "Inventory summary shows stock mix as a chart plus status counts; Planning & alerts lists extra signals that did not fit the top four (hidden when nothing is outstanding).",
-        "This month (with icons) sits beside Order pipeline — orders, sales, and in-transit counts for the current month next to workflow stages.",
-        "Sales overview (when you have Sales access) shows this month’s sales and amount, open ATR, returns in progress, sale status mix, return pipeline, and top branches and models — sales cards link to Sales; open returns and the return pipeline link to Returns / Replacement.",
-        "Compliance roles see Policies, Reports, Announcements, and Competitors when those modules are available.",
-        "Read the announcement banner for tenant-wide notices.",
-        "If a module is missing from the menu, ask your admin for the right role permission.",
+        "Read each post, mark it as read, and open the reader list to see who has acknowledged it.",
+        "Like or comment to acknowledge updates without leaving Overview.",
+        "Managers still create and edit posts under Announcements in the menu.",
+      ],
+    },
+    {
+      title: "Ops snapshot",
+      bullets: [
+        "Below the feed, tap an activity card to jump to Orders, Inventory, Logistics, Sales, or other modules you can use.",
+        "Inventory, planning alerts, This month, Order pipeline, and Sales overview appear when your role has access.",
+        "Use Dashboard → P-Count Dashboard for month progress, Site Traffic for who is online, and Market Survey for competitor notes.",
       ],
     },
     {

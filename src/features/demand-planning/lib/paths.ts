@@ -1,4 +1,4 @@
-/** Canonical Demand Planning runs list (Settings → Operations & Planning). */
+/** Canonical Supply Planning runs list (Settings → Operations & Planning). */
 export const DEMAND_PLANNING_RUNS_PATH = "/settings/planning/runs";
 
 export function demandPlanningRunsHref(query?: {

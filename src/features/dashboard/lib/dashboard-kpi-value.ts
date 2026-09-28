@@ -6,7 +6,7 @@ export function hasDemandPlanningRuns(kpis: DashboardKpis): boolean {
 }
 
 export function dashboardPlanningAlertLabel(kpis: DashboardKpis): string {
-  return hasDemandPlanningRuns(kpis) ? "Demand Planning runs" : "Allocation gaps";
+  return hasDemandPlanningRuns(kpis) ? "Supply Planning runs" : "Allocation gaps";
 }
 
 /** Map a dashboard KPI key to its numeric value on the KPI payload. */

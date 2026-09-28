@@ -2,7 +2,7 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.45.0`
+**Current version:** `0.46.0`
 
 ## Stack
 
@@ -15,11 +15,11 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | **Auth** | Email/password (Better Auth), tenant-scoped sessions, demo seed users; public `/register` off unless `ALLOW_PUBLIC_REGISTER=true` |
 | **Help** | Workflow guides, FAQs, page tutorials; **ISMS Assist** (ask in plain language over Help content; sources shown) |
 | **Provider** | Platform console at `/provider/*` for platform operators only (provider role on the `isPlatform` Pixelcare tenant): customer summaries, create org + first Tenant Admin, org branding edit, full user/admin management, soft-disable/restore, global permissions |
-| **Dashboard** | Role-aware activity cards (top 4); Inventory summary + Planning & alerts; This month (icons) beside Order pipeline; **Sales overview** (month KPIs, status mix, return pipeline, top branches/models) when you can access Sales; compliance overview when no ops access; active announcement banner; optional **daily briefing** (ISMS Assist) |
-| **Announcements** | Tenant posts (title, body, publish/expiry); list + CRUD (`/announcements`) |
+| **Dashboard** | Nav group: **Overview** (announcement feed with mark-as-read, likes, comments + role ops cards), **P-Count Dashboard** (dealer/branch month progress), **Site Traffic** (session/user KPIs + Recent users / Pages / Top PS), **Market Survey** → Competitors; Inventory summary + Planning & alerts; This month beside Order pipeline; **Sales overview** when you can access Sales; compliance overview when no ops access; active announcement banner; optional **daily briefing** (ISMS Assist) |
+| **Announcements** | Tenant posts (title, body, publish/expiry); list + CRUD (`/announcements`); Overview feed supports mark-as-read, likes, and comments |
 | **Competitors** | Market observations with master Competitor + Competitor brand/model lookups, AOR-bound branch, optional promotion; KPIs + CRUD (`/competitors`) |
 | **Settings** | Company, users, departments, roles, permissions catalog (`roles.manage`; assign via Roles), branches, warehouses, dealers, service centers, AORs (branches / warehouses / service centers assign + sync), master data (incl. Series / Categories, Competitors / Competitor brands), status codes (per-module tabs + badge colors); collapsible Module guides on complex settings/ops pages |
-| **Planning** | Period switcher + clickable cards; in-page Add/Edit/Remove branch revenue targets; official Forecast template download + import (bulk; period as MMM-YY e.g. Dec-25); allocation; Demand Planning runs (`/settings/planning`, `/settings/planning/runs`) |
+| **Planning** | Period switcher + clickable cards; in-page Add/Edit/Remove branch revenue targets; official Forecast template download + import (bulk; period as MMM-YY e.g. Dec-25); allocation; Supply Planning runs (`/settings/planning`, `/settings/planning/runs`) |
 | **Planogram** | Clickable cards filter branches with a planogram or none yet; branch list shows allowed SKUs as tags; Open a branch shows a wait message with the branch name; per-branch SKU assignment; current or latest model price and date; editable max qty; Allowed models uses the same table; official Excel template download + import (branch SAP + SKU); Add model requires Allowed models first |
 | **Policies** | Full document control (ISO track) |
 | **Inventory** | Serialized stock (STK on Stock units), **warehouse stock** SN list (`/inventory/warehouse-stock`; also Settings → Warehouses →image.png Stock), AOR-scoped lists, series QTY/VALUE + DR#/date/aging, **physical stock count / P-Count** (`/inventory/stock-count`) — scan serials, surplus/missing variances, Post differences (local STK + SAP Inventory Posting when SL connected) |
@@ -43,7 +43,9 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/provider/tenants` | Platform operator — customer list (status filters) / create / detail (org branding + users) / disable / restore |
 | `/provider/permissions` | Platform operator — global permissions catalog |
 | `/help` | Authenticated — Help & Support; Assist when `ai.assist` |
-| `/dashboard` | Authenticated tenant app (platform operators redirect to `/provider`) |
+| `/dashboard` | Authenticated tenant app — Overview announcement feed + ops snapshot (platform operators redirect to `/provider`) |
+| `/dashboard/pcount` | `inventory.view` or `reports.view` — P-Count Dashboard (dealer/branch month progress) |
+| `/dashboard/site-traffic` | `users.manage` or `audit_logs.view` — Site Traffic KPIs and activity tabs |
 | `/announcements` | `announcements.view` / `announcements.manage` |
 | `/competitors` | `competitors.view` / `competitors.manage` |
 | `/inventory` | `inventory.view` (Stock units: STK only, series summary, DR#/date/aging; Sold etc. in Sales) |
@@ -53,7 +55,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/orders/manual` | `orders.manual.view` / `create` / `approve` (or legacy `orders.*`); tabs `?tab=orders` \| `analytics` \| `history` |
 | `/orders/special` | `orders.special.view` / `create` / `approve` (or legacy `orders.*`); tabs `?tab=orders` \| `analytics` \| `history` |
 | `/orders/auto-replenish` | `orders.auto_replenish.view` / `create` / `approve` (or legacy `orders.*`); tabs `?tab=orders` \| `history` (no Analytics) |
-| `/settings/planning/runs` | `forecast.view` / `forecast.manage` — Demand Planning runs (legacy `/planning` and `/planning/suggested-orders` redirect here) |
+| `/settings/planning/runs` | `forecast.view` / `forecast.manage` — Supply Planning runs (legacy `/planning` and `/planning/suggested-orders` redirect here) |
 | `/logistics/deliveries`, `/transfers`, `/pickups` | `logistics.view` / `create` / `manage` (legacy `orders.*` aliases for list) |
 | `/operations` | `inventory.view` (combined ops view) |
 | `/sales` | `sales.view` / `sales.create` / `sales.update` (New transaction needs `sales.create`; header Edit needs `sales.update`; `?tab=returns` redirects to `/returns?tab=branch`) |
@@ -75,7 +77,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/settings/dealers` | `dealers.manage` |
 | `/settings/service-centers` | `service_centers.manage` |
 | `/settings/aors` | `aors.manage` |
-| `/settings/planning`, `/settings/planning/runs`, `/settings/planogram`, `/settings/planogram/[branchId]` | `forecast.manage` / `planogram.*` (Planning: Forecast template — period, branch_sap_code, revenue_target; Demand Planning runs under Settings → Planning; Planogram: Download template + upload — branch SAP + SKU; SKUs/branches must already exist; Add model needs Allowed models; Open a branch stays under Planogram) |
+| `/settings/planning`, `/settings/planning/runs`, `/settings/planogram`, `/settings/planogram/[branchId]` | `forecast.manage` / `planogram.*` (Planning: Forecast template — period, branch_sap_code, revenue_target; Supply Planning runs under Settings → Planning; Planogram: Download template + upload — branch SAP + SKU; SKUs/branches must already exist; Add model needs Allowed models; Open a branch stays under Planogram) |
 | `/settings/master-data/*` | `master_data.manage` (Models: Import template + upload; creates new SKUs / updates existing; our template only. Price lists: Import template + upload; SKUs/package types must already exist; matching periods update amount) |
 | `/settings/sap-integration` | `sap.manage` (queue) |
 | `/settings/sap-integration/service-layer` | `sap.manage` (B1 Service Layer config) |

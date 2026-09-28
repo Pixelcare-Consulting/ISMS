@@ -56,7 +56,7 @@ export function PlanningPanel({
           Import forecast
         </Button>
         <Button size="sm" className="rounded-lg" asChild>
-          <Link href="/settings/planning/runs">Open Demand Planning</Link>
+          <Link href="/settings/planning/runs">Open Supply Planning</Link>
         </Button>
       </div>
 

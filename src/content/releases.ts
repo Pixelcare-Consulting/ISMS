@@ -52,6 +52,30 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.46.0",
+    date: "2026-09-28",
+    releasedAt: "2026-09-28T18:40:00+08:00",
+    title: "Dashboard hub: Overview feed, P-Count progress, Site Traffic",
+    highlights: [
+      "Dashboard is now a menu with Overview, P-Count Dashboard, Site Traffic, and Market Survey.",
+      "Overview shows company announcements you can mark as read, like, and comment on.",
+      "P-Count Dashboard tracks this month’s branch progress by dealer, with Excel export and session links.",
+      "Site Traffic shows who is signed in, recent activity, and top PS sales for the month.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Dashboard menu groups Overview (announcement feed with read receipts, likes, and comments), P-Count Dashboard (dealer cards and month progress), Site Traffic (users online and sales leaders), and Market Survey (Competitors).",
+      },
+      {
+        type: "improvement",
+        description:
+          "Inventory → P-Count still runs counting sessions, and Reports → P-Count still lists closed history — the new dashboard is for overview and progress, not a replacement for those screens.",
+      },
+    ],
+  },
+  {
     version: "0.45.0",
     date: "2026-09-28",
     releasedAt: "2026-09-28T17:30:00+08:00",
@@ -102,7 +126,7 @@ export const RELEASES: ReleaseNote[] = [
     releasedAt: "2026-09-18T13:45:00+08:00",
     title: "Release open orders by period",
     highlights: [
-      "Demand Planning Release only skips a branch when it already has an open Auto Replenish for the same planning period — an August order no longer blocks October.",
+      "Supply Planning Release only skips a branch when it already has an open Auto Replenish for the same planning period — an August order no longer blocks October.",
       "Release confirmation and skip messages say when the open order is for this period.",
     ],
     changes: [
@@ -126,13 +150,13 @@ export const RELEASES: ReleaseNote[] = [
     highlights: [
       "Import forecast accepts FREE items (0 SRP) — Target Quota can be ₱0 with a warning, not a hard stop.",
       "Release asks you to confirm and lists branches with no sales history, no Drop 1, or an open Auto Replenish.",
-      "Planning guide spells out what you need before Demand Planning and Release.",
+      "Planning guide spells out what you need before Supply Planning and Release.",
     ],
     changes: [
       {
         type: "improvement",
         description:
-          "Demand Planning Release confirmation shows how many branches go to Team Leader, which are skipped, and which have no sales history before you proceed.",
+          "Supply Planning Release confirmation shows how many branches go to Team Leader, which are skipped, and which have no sales history before you proceed.",
       },
       {
         type: "improvement",
@@ -153,14 +177,14 @@ export const RELEASES: ReleaseNote[] = [
     title: "Forecast template and Release to Team Leader",
     highlights: [
       "Forecast Download template pre-fills every active branch and its planogram SKUs so you can fill quantities faster.",
-      "Demand Planning New run shows Date from and Date to side by side.",
+      "Supply Planning New run shows Date from and Date to side by side.",
       "Release sends Auto Replenish straight to Team Leader whenever Drop 1 has quantity — even without sales history.",
     ],
     changes: [
       {
         type: "feature",
         description:
-          "Demand Planning Release creates Auto Replenish orders already waiting for Team Leader when Drop 1 quantity is above zero, including branches with no sales history.",
+          "Supply Planning Release creates Auto Replenish orders already waiting for Team Leader when Drop 1 quantity is above zero, including branches with no sales history.",
       },
       {
         type: "improvement",
@@ -170,7 +194,7 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "improvement",
         description:
-          "Demand Planning New run places Date from and Date to next to each other for easier history range setup.",
+          "Supply Planning New run places Date from and Date to next to each other for easier history range setup.",
       },
     ],
   },

@@ -45,6 +45,7 @@ import { INVENTORY_PAGE_TUTORIAL } from "@/content/page-tutorials/inventory";
 import { MASTER_DATA_PAGE_TUTORIAL } from "@/content/page-tutorials/master-data";
 import { OFFICIAL_SALES_PAGE_TUTORIAL } from "@/content/page-tutorials/official-sales";
 import { OPERATIONS_PAGE_TUTORIAL } from "@/content/page-tutorials/operations";
+import { PCOUNT_DASHBOARD_PAGE_TUTORIAL } from "@/content/page-tutorials/pcount-dashboard";
 import { PERMISSIONS_PAGE_TUTORIAL } from "@/content/page-tutorials/permissions";
 import { PLANNING_PAGE_TUTORIAL } from "@/content/page-tutorials/planning";
 import { PLANOGRAM_PAGE_TUTORIAL } from "@/content/page-tutorials/planogram";
@@ -61,6 +62,7 @@ import {
   SC_SALES_PAGE_TUTORIAL,
 } from "@/content/page-tutorials/service-center-ops";
 import { SERVICE_CENTERS_PAGE_TUTORIAL } from "@/content/page-tutorials/service-centers";
+import { SITE_TRAFFIC_PAGE_TUTORIAL } from "@/content/page-tutorials/site-traffic";
 import { STATUS_SETTINGS_PAGE_TUTORIAL } from "@/content/page-tutorials/status";
 import { STOCK_COUNT_PAGE_TUTORIAL } from "@/content/page-tutorials/stock-count";
 import { SUGGESTED_ORDERS_PAGE_TUTORIAL } from "@/content/page-tutorials/suggested-orders";
@@ -145,6 +147,8 @@ function moduleGuideChunk(
 
 const TUTORIALS: PageTutorialContent[] = [
   DASHBOARD_PAGE_TUTORIAL,
+  PCOUNT_DASHBOARD_PAGE_TUTORIAL,
+  SITE_TRAFFIC_PAGE_TUTORIAL,
   USERS_PAGE_TUTORIAL,
   ROLES_PAGE_TUTORIAL,
   PERMISSIONS_PAGE_TUTORIAL,

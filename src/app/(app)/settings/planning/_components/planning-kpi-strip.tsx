@@ -46,7 +46,7 @@ export function PlanningKpiStrip({
         className="h-full"
       />
       <KpiCard
-        label="Demand Planning"
+        label="Supply Planning"
         value="Open"
         hint="Runs, Drop 1, release"
         href="/settings/planning/runs"

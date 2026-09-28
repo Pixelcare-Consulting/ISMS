@@ -16,19 +16,23 @@ import {
   getDashboardSalesAnalyticsAction,
 } from "@/features/dashboard/actions/dashboard-kpi.actions";
 import { buildDashboardViewModel } from "@/features/dashboard/lib/build-dashboard-view-model";
-import { listActiveAnnouncementsAction } from "@/features/announcements/actions/announcement.actions";
+import {
+  listActiveAnnouncementsAction,
+  listAnnouncementFeedAction,
+} from "@/features/announcements/actions/announcement.actions";
 import { getCachedDashboardBriefingAction } from "@/features/ai/actions/ai.actions";
 import { DashboardBriefingStrip } from "@/features/ai/components/dashboard-briefing-strip";
 import { canUseAiAssist } from "@/features/ai/constants/ai-permissions";
 import { isAiConfigured } from "@/features/ai/lib/provider";
 import { ActiveAnnouncementBanner } from "@/features/announcements/components/active-announcement-banner";
+import { OverviewAnnouncementFeed } from "@/app/(app)/dashboard/_components/overview-announcement-feed";
 import { DashboardOpsKpis } from "@/app/(app)/dashboard/_components/dashboard-ops-kpis";
 import { DashboardAnalyticsCharts } from "@/app/(app)/dashboard/_components/dashboard-analytics-charts";
 import { DashboardSalesSection } from "@/app/(app)/dashboard/_components/dashboard-sales-section";
 import { DashboardComplianceCards } from "@/app/(app)/dashboard/_components/dashboard-compliance-cards";
 import { DashboardRecentUsers } from "@/app/(app)/dashboard/_components/dashboard-recent-users";
 
-export const metadata = pageMetadata("Dashboard");
+export const metadata = pageMetadata("Overview");
 
 export default async function DashboardPage() {
   const dashboardPermission = getModuleNavPermission("dashboard");
@@ -45,16 +49,23 @@ export default async function DashboardPage() {
 
   const canAssist = canUseAiAssist(permissions);
 
-  const [opsKpis, analytics, salesAnalytics, activeAnnouncements, briefingResult] =
-    await Promise.all([
-      getDashboardKpisAction(),
-      getDashboardAnalyticsAction(),
-      getDashboardSalesAnalyticsAction(),
-      listActiveAnnouncementsAction(),
-      canAssist
-        ? getCachedDashboardBriefingAction()
-        : Promise.resolve({ ok: false as const, briefing: null, configured: false }),
-    ]);
+  const [
+    opsKpis,
+    analytics,
+    salesAnalytics,
+    activeAnnouncements,
+    feed,
+    briefingResult,
+  ] = await Promise.all([
+    getDashboardKpisAction(),
+    getDashboardAnalyticsAction(),
+    getDashboardSalesAnalyticsAction(),
+    listActiveAnnouncementsAction(),
+    listAnnouncementFeedAction(),
+    canAssist
+      ? getCachedDashboardBriefingAction()
+      : Promise.resolve({ ok: false as const, briefing: null, configured: false }),
+  ]);
 
   const view = buildDashboardViewModel({
     permissions,
@@ -74,7 +85,7 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-5">
       <PageHeader
-        title="Dashboard"
+        title="Overview"
         tutorial={DASHBOARD_PAGE_TUTORIAL}
         description={`Welcome back, ${displayName} · ${view.personaLabel}`}
       />
@@ -87,6 +98,13 @@ export default async function DashboardPage() {
           initial={briefingResult.ok ? briefingResult.briefing : null}
         />
       ) : null}
+
+      <section className="space-y-3">
+        <div className="flex items-end justify-between gap-2">
+          <h2 className="text-base font-semibold tracking-tight">Announcements</h2>
+        </div>
+        <OverviewAnnouncementFeed items={feed} />
+      </section>
 
       {opsKpis && view.kpiKeys.length > 0 ? (
         <DashboardOpsKpis kpis={opsKpis} visibleKeys={view.kpiKeys} />

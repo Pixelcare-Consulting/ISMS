@@ -133,7 +133,7 @@ export function DemandPlanningRunList({
 
       <GlobalDataTable
         empty={items.length === 0}
-        emptyMessage="No demand planning runs yet. Start a new run after the SFE forecast is in."
+        emptyMessage="No supply planning runs yet. Start a new run after the SFE forecast is in."
         toolbarLeading={
           <SearchableSelect
             className="w-56"

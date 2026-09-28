@@ -58,6 +58,7 @@ async function requireStockCountManage() {
 function revalidateStockCountPaths(sessionId?: string) {
   revalidatePath("/inventory/stock-count");
   revalidatePath("/reports/pcount");
+  revalidatePath("/dashboard/pcount");
   revalidatePath("/inventory");
   if (sessionId) {
     revalidatePath(`/inventory/stock-count/${sessionId}`);

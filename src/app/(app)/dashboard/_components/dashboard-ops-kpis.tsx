@@ -102,7 +102,7 @@ export function buildDashboardKpiItem(
         href: "/settings/planning/runs",
         icon: <Package />,
         tone: alertTone(value, usesRuns ? "info" : "warning"),
-        hint: usesRuns ? "Open Demand Planning" : undefined,
+        hint: usesRuns ? "Open Supply Planning" : undefined,
       };
     }
     case "draftSuggestedOrders":

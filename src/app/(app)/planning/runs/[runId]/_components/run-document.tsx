@@ -106,7 +106,7 @@ export function DemandPlanningRunDocument({
       <DemandPlanningChromeBar
         crumbs={[
           { label: "Settings" },
-          { label: "Demand Planning" },
+          { label: "Supply Planning" },
           { label: `${run.documentNumber} · v${run.version}` },
         ]}
         status={run.status}

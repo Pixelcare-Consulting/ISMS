@@ -1,7 +1,7 @@
 /**
  * Workbook contract for bulk forecast import (Settings → Planning).
  *
- * Sheet "SFE" — one row per branch + SKU forecast qty (Demand Planning input).
+ * Sheet "SFE" — one row per branch + SKU forecast qty (Supply Planning input).
  * Target Quota (BranchForecastTarget) is derived on import as
  * Σ(forecast_qty × model SRP) per branch — there is no Forecast quota sheet.
  *

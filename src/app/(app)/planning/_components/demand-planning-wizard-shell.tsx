@@ -61,7 +61,7 @@ export function DemandPlanningWizardShell({
       <DemandPlanningChromeBar
         crumbs={[
           { label: "Settings", href: "/settings/planning" },
-          { label: "Demand Planning", href: DEMAND_PLANNING_RUNS_PATH },
+          { label: "Supply Planning", href: DEMAND_PLANNING_RUNS_PATH },
           { label: "New run" },
         ]}
         status={status}

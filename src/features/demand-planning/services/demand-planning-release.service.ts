@@ -53,7 +53,7 @@ async function classifyBranchesForRelease(
   runId: string,
 ): Promise<ClassifiedReleaseRun> {
   const run = await demandPlanningRepository.findRunById(tenantId, runId);
-  if (!run) throw new Error("Demand planning run not found");
+  if (!run) throw new Error("Supply planning run not found");
   if (run.status === "released") {
     throw new Error("This plan is already released");
   }
@@ -215,7 +215,7 @@ export const demandPlanningReleaseService = {
           orderNumber,
           status: initialStatus,
           createdById: actorUserId,
-          notes: `Demand Planning ${run.documentNumber} Drop 1 (${run.period.label})`,
+          notes: `Supply Planning ${run.documentNumber} Drop 1 (${run.period.label})`,
           details: {
             create: row.details.map((detail) => ({
               modelId: detail.modelId,

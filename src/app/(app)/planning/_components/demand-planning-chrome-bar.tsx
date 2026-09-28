@@ -65,7 +65,7 @@ export function DemandPlanningChromeBar({
         className,
       )}
     >
-      <nav aria-label="Demand Planning location" className="flex min-w-0 flex-wrap items-center gap-1.5 text-sm">
+      <nav aria-label="Supply Planning location" className="flex min-w-0 flex-wrap items-center gap-1.5 text-sm">
         {crumbs.map((crumb, index) => {
           const last = index === crumbs.length - 1;
           return (

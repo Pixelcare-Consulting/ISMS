@@ -82,7 +82,7 @@ export async function getDemandPlanningRunAction(runId: string) {
   const parsed = demandPlanRunIdSchema.safeParse({ runId });
   if (!parsed.success) return { error: "Invalid run" };
   const run = await demandPlanningRunService.getRun(session.user.tenantId, parsed.data.runId);
-  if (!run) return { error: "Demand planning run not found" };
+  if (!run) return { error: "Supply planning run not found" };
   return { run };
 }
 
@@ -95,7 +95,7 @@ export async function getDemandPlanningRunGridAction(runId: string, runBranchId?
     parsed.data.runId,
     runBranchId ?? "",
   );
-  if (!result) return { error: "Demand planning run not found" };
+  if (!result) return { error: "Supply planning run not found" };
   return result;
 }
 

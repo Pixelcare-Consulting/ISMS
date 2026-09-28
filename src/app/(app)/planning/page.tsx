@@ -6,7 +6,7 @@ interface LegacyDemandPlanningRedirectProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-/** Bookmarks to `/planning` land on Settings → Planning → Demand Planning. */
+/** Bookmarks to `/planning` land on Settings → Planning → Supply Planning. */
 export default async function LegacyDemandPlanningRedirect({
   searchParams,
 }: LegacyDemandPlanningRedirectProps) {
