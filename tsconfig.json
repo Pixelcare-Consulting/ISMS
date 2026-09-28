@@ -20,8 +20,10 @@
     ],
     "paths": {
       "@/*": ["./src/*"],
-      "@prisma/client": ["./src/lib/database/generated/prisma/client"],
-      "@prisma/client/*": ["./src/lib/database/generated/prisma/*"]
+      // Exact package root only — do NOT map `@prisma/client/*`.
+      // Generated client imports `@prisma/client/runtime/client` from node_modules;
+      // a wildcard alias would shadow that and break `next build` (module-not-found).
+      "@prisma/client": ["./src/lib/database/generated/prisma/client"]
     }
   },
   "include": [
