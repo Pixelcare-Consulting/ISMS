@@ -424,7 +424,8 @@ export const WORKFLOW_SWIMLANE_CHARTS: WorkflowChart[] = [
     id: "pcount",
     title: "P-Count (stock count)",
     tabLabel: "P-Count",
-    summary: "Align physical shelf counts with system records and lock the session for audit.",
+    summary:
+      "Count shelf serials like SAP B1 Inventory Counting, then post differences like Inventory Posting.",
     kind: "swimlane",
     lanes: [
       {
@@ -435,21 +436,26 @@ export const WORKFLOW_SWIMLANE_CHARTS: WorkflowChart[] = [
       {
         id: "inv",
         role: "Inventory / approver",
-        nodeIds: ["review", "finalize"],
+        nodeIds: ["review", "post", "finalize"],
       },
     ],
     nodes: [
       { id: "session", label: "Open count session" },
-      { id: "count", label: "Enter counts & notes" },
+      { id: "count", label: "Scan / mark counted" },
       { id: "review", label: "Review variances" },
-      { id: "finalize", label: "Finalize & close" },
+      { id: "post", label: "Post differences" },
+      { id: "finalize", label: "Close session" },
     ],
     edges: [
       { from: "session", to: "count" },
       { from: "count", to: "review" },
-      { from: "review", to: "finalize" },
+      { from: "review", to: "post" },
+      { from: "post", to: "finalize" },
     ],
-    callouts: ["Closed sessions stay locked — start a new session for recounts."],
+    callouts: [
+      "Soft freeze while counting — finish or post before moving those serials.",
+      "Closed sessions stay locked — start a new session for recounts.",
+    ],
   },
   {
     id: "policies",

@@ -6,6 +6,9 @@ import {
   type SapJobListSort,
   type SapJobListSortDir,
 } from "@/features/sap/repositories/sap-integration.repository";
+import { sapServiceLayerClient } from "@/features/sap/services/sap-service-layer-client";
+import { sapServiceLayerService } from "@/features/sap/services/sap-service-layer.service";
+import { sapErrorMessage } from "@/features/sap/services/sap-master-data";
 import { prisma } from "@/lib/database/client";
 import type { Prisma, SapIntegrationJob } from "@prisma/client";
 
@@ -14,6 +17,31 @@ const RETRY_DELAY_MS = 30_000;
 function mockSapDocRef(jobType: string, referenceId: string) {
   return `SAP-${jobType.toUpperCase().slice(0, 3)}-${referenceId.slice(-8).toUpperCase()}`;
 }
+
+export interface InventoryPostingLinePayload {
+  varianceId: string;
+  varianceType: string;
+  serialNo: string;
+  itemCode: string;
+  serialNumberId: string;
+  countedQuantity: number;
+  inWarehouseQuantity: number;
+}
+
+export interface InventoryPostingEmitInput {
+  sessionId: string;
+  sessionNo: string;
+  branchId: string;
+  warehouseCode: string;
+  lines: InventoryPostingLinePayload[];
+}
+
+export type InventoryPostingEmitResult = {
+  mode: "posted" | "queued";
+  sapDocRef: string | null;
+  jobId?: string;
+  message: string;
+};
 
 async function enqueueJob(input: {
   tenantId: string;
@@ -37,6 +65,94 @@ async function enqueueJob(input: {
     referenceType: input.referenceType,
     referenceId: input.referenceId,
   });
+}
+
+function buildInventoryPostingBody(input: InventoryPostingEmitInput) {
+  const countDate = new Date().toISOString().slice(0, 10);
+  const byItem = new Map<
+    string,
+    {
+      itemCode: string;
+      countedQuantity: number;
+      inWarehouseQuantity: number;
+      serials: { manufacturerSerialNumber: string; quantity: number }[];
+    }
+  >();
+
+  for (const line of input.lines) {
+    if (!line.itemCode || !line.serialNo) continue;
+    const key = line.itemCode;
+    const entry = byItem.get(key) ?? {
+      itemCode: line.itemCode,
+      countedQuantity: 0,
+      inWarehouseQuantity: 0,
+      serials: [],
+    };
+    entry.countedQuantity += line.countedQuantity;
+    entry.inWarehouseQuantity += line.inWarehouseQuantity;
+    entry.serials.push({
+      manufacturerSerialNumber: line.serialNo,
+      quantity: 1,
+    });
+    byItem.set(key, entry);
+  }
+
+  return {
+    CountDate: countDate,
+    PostingDate: countDate,
+    Remarks: `ISMS P-Count ${input.sessionNo}`,
+    InventoryPostingLines: [...byItem.values()].map((entry) => ({
+      ItemCode: entry.itemCode,
+      WarehouseCode: input.warehouseCode,
+      CountedQuantity: entry.countedQuantity,
+      InWarehouseQuantity: entry.inWarehouseQuantity,
+      InventoryPostingSerialNumbers: entry.serials.map((s) => ({
+        ManufacturerSerialNumber: s.manufacturerSerialNumber,
+        Quantity: s.quantity,
+      })),
+    })),
+  };
+}
+
+async function postInventoryPostingViaServiceLayer(
+  tenantId: string,
+  input: InventoryPostingEmitInput,
+): Promise<string> {
+  const creds = await sapServiceLayerService.getCredentials(tenantId);
+  if (!creds) {
+    throw new Error("SAP Service Layer is not configured");
+  }
+
+  const body = buildInventoryPostingBody(input);
+  if (body.InventoryPostingLines.length === 0) {
+    throw new Error("No inventory posting lines to send");
+  }
+
+  const response = await sapServiceLayerClient.request<{
+    DocumentEntry?: number;
+    DocEntry?: number;
+    DocumentNumber?: number;
+  }>({
+    creds,
+    method: "POST",
+    path: "/InventoryPostings",
+    body,
+  });
+
+  if (response.statusCode >= 400) {
+    throw new Error(
+      sapErrorMessage(response.statusCode, response.rawBody, "InventoryPostings"),
+    );
+  }
+
+  const docEntry =
+    response.data?.DocumentEntry ??
+    response.data?.DocEntry ??
+    response.data?.DocumentNumber;
+  if (docEntry == null) {
+    throw new Error("SAP Inventory Posting succeeded but returned no document reference");
+  }
+  return `IP-${docEntry}`;
 }
 
 async function processApprovedOrderJob(
@@ -106,26 +222,64 @@ async function processApprovedOrderJob(
   return sapDocRef;
 }
 
-async function processInventoryAdjustmentJob(tenantId: string, userId: string | undefined, job: SapIntegrationJob) {
-  const varianceId = job.referenceId;
-  if (!varianceId) throw new Error("Missing variance reference");
+/**
+ * Process a queued Inventory Posting only when Service Layer is live.
+ * Never fabricates a success doc ref.
+ */
+async function processInventoryPostingJob(
+  tenantId: string,
+  userId: string | undefined,
+  job: SapIntegrationJob,
+) {
+  const payload = job.payload as unknown as InventoryPostingEmitInput;
+  if (!payload?.sessionId || !Array.isArray(payload.lines)) {
+    throw new Error("Invalid inventory posting payload");
+  }
 
-  const sapDocRef = mockSapDocRef("inventory_adjustment", varianceId);
+  const creds = await sapServiceLayerService.getCredentials(tenantId);
+  if (!creds) {
+    throw new Error(
+      "SAP Service Layer is not configured — inventory posting remains pending until live credentials are available",
+    );
+  }
 
-  await prisma.stockVariance.update({
-    where: { id: varianceId, tenantId },
-    data: { sapDocRef, status: "closed" },
+  const sapDocRef = await postInventoryPostingViaServiceLayer(tenantId, payload);
+
+  const varianceIds = payload.lines.map((l) => l.varianceId).filter(Boolean);
+  if (varianceIds.length > 0) {
+    await prisma.stockVariance.updateMany({
+      where: { id: { in: varianceIds }, tenantId },
+      data: { sapDocRef, status: "closed" },
+    });
+  }
+
+  const openLeft = await prisma.stockVariance.count({
+    where: {
+      tenantId,
+      sessionId: payload.sessionId,
+      status: { notIn: ["closed", "rejected"] },
+    },
   });
+  if (openLeft === 0) {
+    await prisma.stockCountSession.updateMany({
+      where: {
+        id: payload.sessionId,
+        tenantId,
+        status: "adjustment_requested",
+      },
+      data: { status: "counting_complete" },
+    });
+  }
 
   await sapIntegrationRepository.markCompleted(job.id, sapDocRef);
 
   await auditService.log({
     tenantId,
     userId,
-    action: "sap.inventory_adjustment_processed",
-    entityType: "StockVariance",
-    entityId: varianceId,
-    metadata: { sapDocRef, jobId: job.id },
+    action: "sap.inventory_posting_processed",
+    entityType: "StockCountSession",
+    entityId: payload.sessionId,
+    metadata: { sapDocRef, jobId: job.id, varianceCount: varianceIds.length },
   });
 
   return sapDocRef;
@@ -238,7 +392,10 @@ export const sapService = {
     });
   },
 
-  /** CSV step 41 — inventory adjustment handoff. */
+  /**
+   * Legacy per-variance adjustment enqueue (kept for older jobs).
+   * Prefer emitInventoryPosting for new P-Count posts.
+   */
   async emitInventoryAdjustment(
     tenantId: string,
     input: {
@@ -258,14 +415,66 @@ export const sapService = {
     });
   },
 
-  /** Process pending/failed jobs with retry handling (mock local processor). */
+  /**
+   * B1-shaped Inventory Posting for a P-Count session.
+   * Posts live via Service Layer when configured; otherwise queues honestly (no mock success).
+   */
+  async emitInventoryPosting(
+    tenantId: string,
+    input: InventoryPostingEmitInput,
+  ): Promise<InventoryPostingEmitResult> {
+    const creds = await sapServiceLayerService.getCredentials(tenantId);
+    if (creds) {
+      try {
+        const sapDocRef = await postInventoryPostingViaServiceLayer(tenantId, input);
+        return {
+          mode: "posted",
+          sapDocRef,
+          message: `Posted to SAP Inventory Posting (${sapDocRef})`,
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "SAP posting failed";
+        const job = await enqueueJob({
+          tenantId,
+          jobType: "inventory_posting",
+          idempotencyKey: `inventory_posting:${input.sessionId}`,
+          referenceType: SAP_REFERENCE_TYPES.StockCountSession,
+          referenceId: input.sessionId,
+          payload: { ...input, lastError: message } as Record<string, unknown>,
+        });
+        return {
+          mode: "queued",
+          sapDocRef: null,
+          jobId: job.id,
+          message: `Local stock updated. SAP posting queued for retry: ${message}`,
+        };
+      }
+    }
+
+    const job = await enqueueJob({
+      tenantId,
+      jobType: "inventory_posting",
+      idempotencyKey: `inventory_posting:${input.sessionId}`,
+      referenceType: SAP_REFERENCE_TYPES.StockCountSession,
+      referenceId: input.sessionId,
+      payload: { ...input } as Record<string, unknown>,
+    });
+
+    return {
+      mode: "queued",
+      sapDocRef: null,
+      jobId: job.id,
+      message:
+        "Local stock updated. SAP Inventory Posting is pending — connect Service Layer to complete live posting (no mock document created).",
+    };
+  },
+
+  /** Process pending/failed jobs with retry handling. */
   async processPendingJobs(tenantId: string, userId?: string, limit = 10) {
     const jobs = await sapIntegrationRepository.claimPendingJobsSafe(tenantId, limit);
     const results: { jobId: string; status: string; sapDocRef?: string; error?: string }[] = [];
 
     for (const job of jobs) {
-      // Job is already claimed (status=processing, attemptCount incremented) by
-      // claimPendingJobsSafe — no separate markProcessing step.
       const updated = job;
       try {
         let sapDocRef: string;
@@ -273,9 +482,13 @@ export const sapService = {
           case "approved_order":
             sapDocRef = await processApprovedOrderJob(tenantId, userId, updated);
             break;
-          case "inventory_adjustment":
-            sapDocRef = await processInventoryAdjustmentJob(tenantId, userId, updated);
+          case "inventory_posting":
+            sapDocRef = await processInventoryPostingJob(tenantId, userId, updated);
             break;
+          case "inventory_adjustment":
+            throw new Error(
+              "Legacy inventory_adjustment jobs no longer auto-complete with a mock SAP document. Re-post the count session or process via inventory_posting once Service Layer is connected.",
+            );
           case "pullout_itr":
             sapDocRef = await processStubJob(
               tenantId,
@@ -289,8 +502,10 @@ export const sapService = {
           case "delivery_sync_inbound":
             sapDocRef = await processStubJob(tenantId, userId, updated, updated.jobType);
             break;
-          default:
-            throw new Error(`Unsupported job type: ${updated.jobType}`);
+          default: {
+            const _exhaustive: never = updated.jobType;
+            throw new Error(`Unsupported job type: ${_exhaustive}`);
+          }
         }
         results.push({ jobId: job.id, status: "completed", sapDocRef });
       } catch (error) {
@@ -311,7 +526,11 @@ export const sapService = {
           metadata: { jobType: job.jobType, error: message, attemptCount: updated.attemptCount },
         });
 
-        results.push({ jobId: job.id, status: deadLetter ? "dead_letter" : "failed", error: message });
+        results.push({
+          jobId: job.id,
+          status: deadLetter ? "dead_letter" : "failed",
+          error: message,
+        });
       }
     }
 

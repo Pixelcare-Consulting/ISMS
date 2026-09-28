@@ -2,7 +2,7 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.44.3`
+**Current version:** `0.45.0`
 
 ## Stack
 
@@ -22,7 +22,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | **Planning** | Period switcher + clickable cards; in-page Add/Edit/Remove branch revenue targets; official Forecast template download + import (bulk; period as MMM-YY e.g. Dec-25); allocation; Demand Planning runs (`/settings/planning`, `/settings/planning/runs`) |
 | **Planogram** | Clickable cards filter branches with a planogram or none yet; branch list shows allowed SKUs as tags; Open a branch shows a wait message with the branch name; per-branch SKU assignment; current or latest model price and date; editable max qty; Allowed models uses the same table; official Excel template download + import (branch SAP + SKU); Add model requires Allowed models first |
 | **Policies** | Full document control (ISO track) |
-| **Inventory** | Serialized stock (STK on Stock units), **warehouse stock** SN list (`/inventory/warehouse-stock`; also Settings → Warehouses →image.png Stock), AOR-scoped lists, series QTY/VALUE + DR#/date/aging, **physical stock count / P-Count** (`/inventory/stock-count`) |
+| **Inventory** | Serialized stock (STK on Stock units), **warehouse stock** SN list (`/inventory/warehouse-stock`; also Settings → Warehouses →image.png Stock), AOR-scoped lists, series QTY/VALUE + DR#/date/aging, **physical stock count / P-Count** (`/inventory/stock-count`) — scan serials, surplus/missing variances, Post differences (local STK + SAP Inventory Posting when SL connected) |
 | **Orders** | Nav group: Manual / Special / Auto replenish (`/orders/manual` etc.); per-type Module guide; Manual/Special tabs **Orders \| Order Analytics \| Order History** (`?tab=`); Auto replenish **Orders \| Order History** (no Analytics); Orders tab is a role work queue (PS / TL / SP / Logistics see their step; admins see the live pipeline) and omits approved / rejected / cancelled (those stay in Order History); pipeline counts sit under Orders as KPI cards for the queue; Analytics filter card (search for a branch, then brand on the card; assigned branch is selected for you; Clear; DII / inventory KPI cards after both are set); Create optional brand (cleared = all SKUs), extras below the table with multi-add, row numbers, delete a wrong line; per-branch create workspace (multi-line); Create shows a placeholder SKU grid while models load; Create submit shows a please-wait overlay; Auto replenish has no Create — use Suggested orders / Replenishment; drafts use **Submit for review** before TL; per-type `orders.manual`, `orders.special`, `orders.auto_replenish` with view/create/approve; PS → TL → SP; SO#, processed orders, delivery-due auto-reschedule |
 | **Logistics** | Deliveries (accept/reject), transfers, pull-outs with SN movement; gated by `logistics.view` / `create` / `manage` |
 | **Sales** | Encode at `/sales/new` (CTA from `/sales`); PS auto-branch; TL `sales.create` + branch picker; package detail modal (qty → N sets), reserved (RSV) sales; list + KPIs show Sold / Official Sold / TO FOLLOW only (return workflow on Returns); line Edit only for TO-FOLLOW; Accounting `sales.update` edits transaction headers; Process Return per serial line from Sale details (document type, STK/DEF, problems, Return or Replacement) |

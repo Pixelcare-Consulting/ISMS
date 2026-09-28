@@ -17,6 +17,7 @@ import type {
   TransferListSort,
 } from "@/features/logistics/repositories/logistics.repository";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
+import { assertSerialsNotFrozenInStockCount } from "@/features/stock-audit/services/stock-count-freeze";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/database/client";
@@ -124,6 +125,8 @@ async function updateInventoryStatusForSerials(input: {
   userId: string;
   requiredCurrentCodeId?: string;
 }) {
+  await assertSerialsNotFrozenInStockCount(input.tenantId, input.serialNumberIds);
+
   const where = {
     tenantId: input.tenantId,
     branchId: input.branchId,
@@ -857,11 +860,13 @@ export async function completePulloutAction(id: string) {
   if (!pullout) return { error: "Pull-out not found" };
 
   if (pullout.lines.length > 0) {
+    const serialNumberIds = pullout.lines.map((l) => l.serialNumberId);
+    await assertSerialsNotFrozenInStockCount(session.user.tenantId, serialNumberIds);
     await prisma.branchInventory.deleteMany({
       where: {
         tenantId: session.user.tenantId,
         branchId: pullout.branchId,
-        serialNumberId: { in: pullout.lines.map((l) => l.serialNumberId) },
+        serialNumberId: { in: serialNumberIds },
       },
     });
   }

@@ -10,6 +10,7 @@ import type {
   StockCountListSortDir,
 } from "@/features/stock-audit/repositories/stock-audit.repository";
 import {
+  POSTABLE_VARIANCE_STATUSES,
   STOCK_COUNT_SESSION_LABELS,
   VARIANCE_TYPES,
 } from "@/features/stock-audit/constants/stock-count-workflow";
@@ -33,6 +34,12 @@ export interface StockCountKpis {
 const SESSION_STATUS_ORDER = Object.keys(
   STOCK_COUNT_SESSION_LABELS,
 ) as StockCountSessionStatus[];
+
+const REVIEW_STATUSES: StockCountSessionStatus[] = [
+  "counting_complete",
+  "variances_under_investigation",
+  "pending_adjustment",
+];
 
 export const stockAuditService = {
   async listForUser(
@@ -95,7 +102,7 @@ export const stockAuditService = {
     return stockAuditRepository.findSessionById(tenantId, sessionId);
   },
 
-  /** Generate count list from branch STK inventory (CSV step 37). */
+  /** Generate count list from branch STK inventory (B1 Inventory Counting — Open). */
   async createSession(input: {
     tenantId: string;
     userId: string;
@@ -180,7 +187,7 @@ export const stockAuditService = {
     });
   },
 
-  /** PS scan/record (CSV step 38). */
+  /** Mark an expected line as counted (button or after SN match). */
   async recordCount(tenantId: string, userId: string, sessionId: string, lineId: string) {
     const session = await stockAuditRepository.findSessionById(tenantId, sessionId);
     if (!session) throw new Error("Count session not found");
@@ -206,7 +213,131 @@ export const stockAuditService = {
     });
   },
 
-  /** Complete counting and generate variance report (CSV step 39). */
+  /**
+   * Scan a serial number: match expected line, or add unexpected serial as surplus candidate.
+   */
+  async scanSerial(
+    tenantId: string,
+    userId: string,
+    sessionId: string,
+    serialNoRaw: string,
+  ): Promise<{ kind: "counted" | "surplus"; lineId: string; serialNo: string }> {
+    const serialNo = serialNoRaw.trim();
+    if (!serialNo) throw new Error("Serial number is required");
+
+    const session = await stockAuditRepository.findSessionById(tenantId, sessionId);
+    if (!session) throw new Error("Count session not found");
+    if (session.status !== "in_progress") {
+      throw new Error("Session is not in counting mode");
+    }
+
+    const serial = await prisma.serialNumber.findFirst({
+      where: { tenantId, serialNo: { equals: serialNo, mode: "insensitive" } },
+      select: { id: true, serialNo: true, modelId: true },
+    });
+    if (!serial) {
+      throw new Error(`Serial ${serialNo} is not registered in the catalog`);
+    }
+
+    const existingLine = await stockAuditRepository.findLineBySerial(sessionId, serial.id);
+    if (existingLine) {
+      if (existingLine.status === "pending") {
+        await stockAuditRepository.markLineCounted(existingLine.id, userId);
+        await auditService.log({
+          tenantId,
+          userId,
+          action: "stock_count.line_scanned",
+          entityType: "StockCountLine",
+          entityId: existingLine.id,
+          metadata: { sessionId, sessionNo: session.sessionNo, serialNo: serial.serialNo },
+        });
+        return { kind: "counted", lineId: existingLine.id, serialNo: serial.serialNo };
+      }
+      throw new Error(`Serial ${serial.serialNo} is already recorded on this count`);
+    }
+
+    const stkCode = await reasonStatusRepository.findCodeId(tenantId, "inventory_system", "STK");
+    if (!stkCode) throw new Error("STK inventory status code is not configured");
+
+    const branchInv = await prisma.branchInventory.findFirst({
+      where: {
+        tenantId,
+        branchId: session.branchId,
+        serialNumberId: serial.id,
+      },
+      select: { id: true, statusCodeId: true },
+    });
+
+    const line = await stockAuditRepository.createLine({
+      sessionId,
+      branchInventoryId: branchInv?.id ?? null,
+      serialNumberId: serial.id,
+      modelId: serial.modelId,
+      systemStatusCodeId: branchInv?.statusCodeId ?? stkCode.id,
+      expectedInCount: false,
+      status: "counted",
+      countedAt: new Date(),
+      countedById: userId,
+      notes: "Unexpected serial scanned during count",
+    });
+
+    await auditService.log({
+      tenantId,
+      userId,
+      action: "stock_count.surplus_scanned",
+      entityType: "StockCountLine",
+      entityId: line.id,
+      metadata: { sessionId, sessionNo: session.sessionNo, serialNo: serial.serialNo },
+    });
+
+    return { kind: "surplus", lineId: line.id, serialNo: serial.serialNo };
+  },
+
+  /** Clear Counted flag and reopen for recount (before posting). */
+  async recountLine(tenantId: string, userId: string, sessionId: string, lineId: string) {
+    const session = await stockAuditRepository.findSessionById(tenantId, sessionId);
+    if (!session) throw new Error("Count session not found");
+
+    const allowed: StockCountSessionStatus[] = [
+      "in_progress",
+      ...REVIEW_STATUSES,
+    ];
+    if (!allowed.includes(session.status)) {
+      throw new Error("Line cannot be recounted in the current session status");
+    }
+
+    const line = await stockAuditRepository.findLine(sessionId, lineId);
+    if (!line) throw new Error("Count line not found");
+
+    if (line.variance) {
+      if (!["open", "investigating", "rejected"].includes(line.variance.status)) {
+        throw new Error("Posted or SAP-handed variances cannot be recounted here");
+      }
+      await stockAuditRepository.deleteVariance(tenantId, line.variance.id);
+    }
+
+    if (line.expectedInCount) {
+      await stockAuditRepository.clearLineCounted(lineId);
+    } else {
+      // Unexpected surplus line — remove from session so it can be re-scanned
+      await prisma.stockCountLine.delete({ where: { id: lineId } });
+    }
+
+    if (session.status !== "in_progress") {
+      await stockAuditRepository.updateSessionStatus(tenantId, sessionId, "in_progress");
+    }
+
+    await auditService.log({
+      tenantId,
+      userId,
+      action: "stock_count.line_recount",
+      entityType: "StockCountLine",
+      entityId: lineId,
+      metadata: { sessionId, sessionNo: session.sessionNo },
+    });
+  },
+
+  /** Complete counting and generate missing + surplus variances. */
   async completeCounting(tenantId: string, userId: string, sessionId: string) {
     const session = await stockAuditRepository.findSessionById(tenantId, sessionId);
     if (!session) throw new Error("Count session not found");
@@ -214,21 +345,21 @@ export const stockAuditService = {
       throw new Error("Session is not in counting mode");
     }
 
-    const pendingLines = session.lines.filter((l) => l.status === "pending");
-    const nextStatus =
-      pendingLines.length > 0 ? "variances_under_investigation" : "counting_complete";
+    const missingLines = session.lines.filter(
+      (l) => l.status === "pending" && l.expectedInCount,
+    );
+    const surplusLines = session.lines.filter(
+      (l) => l.status === "counted" && !l.expectedInCount,
+    );
+    const varianceCount = missingLines.length + surplusLines.length;
+    const nextStatus: StockCountSessionStatus =
+      varianceCount > 0 ? "variances_under_investigation" : "counting_complete";
 
     await stockAuditRepository.completeCountingTx(
       tenantId,
       sessionId,
-      pendingLines.map((l) => l.id),
-      {
-        tenantId,
-        sessionId,
-        varianceType: VARIANCE_TYPES.missing,
-        status: "open",
-        description: "Expected unit not scanned during physical count",
-      },
+      missingLines.map((l) => l.id),
+      surplusLines.map((l) => l.id),
       nextStatus,
     );
 
@@ -240,12 +371,13 @@ export const stockAuditService = {
       entityId: sessionId,
       metadata: {
         sessionNo: session.sessionNo,
-        varianceCount: pendingLines.length,
+        missingCount: missingLines.length,
+        surplusCount: surplusLines.length,
       },
     });
   },
 
-  /** TL investigation (CSV step 40). */
+  /** TL investigation notes. */
   async investigateVariance(
     tenantId: string,
     userId: string,
@@ -281,56 +413,217 @@ export const stockAuditService = {
     });
   },
 
-  /** Admin adjustment request (CSV step 41 — SAP handoff stub). */
-  async requestAdjustment(tenantId: string, userId: string, varianceId: string) {
+  /** Reject a variance without SAP / stock effect. */
+  async rejectVariance(
+    tenantId: string,
+    userId: string,
+    varianceId: string,
+    notes?: string,
+  ) {
     const variance = await stockAuditRepository.findVariance(tenantId, varianceId);
     if (!variance) throw new Error("Variance not found");
-    if (variance.status !== "investigating") {
-      throw new Error("Variance must be under investigation before adjustment request");
+    if (!["open", "investigating"].includes(variance.status)) {
+      throw new Error("Only open or investigating variances can be rejected");
     }
 
     await stockAuditRepository.updateVariance(tenantId, varianceId, {
-      status: "approved_adjustment",
-      adjustmentRequestedById: userId,
-      adjustmentRequestedAt: new Date(),
+      status: "rejected",
+      investigatedById: userId,
+      investigatedAt: new Date(),
+      investigationNotes: notes?.trim()
+        ? notes.trim()
+        : variance.investigationNotes ?? "Rejected without posting",
     });
 
-    await stockAuditRepository.updateSessionStatus(
-      tenantId,
-      variance.sessionId,
-      "pending_adjustment",
-    );
-
-    const job = await sapService.emitInventoryAdjustment(tenantId, {
-      varianceId,
-      sessionId: variance.sessionId,
-      varianceType: variance.varianceType,
-      description: variance.description,
-    });
-
-    await stockAuditRepository.updateVariance(tenantId, varianceId, {
-      status: "sap_handoff",
-    });
-
-    await stockAuditRepository.updateSessionStatus(
-      tenantId,
-      variance.sessionId,
-      "adjustment_requested",
-    );
+    if (variance.lineId) {
+      await prisma.stockCountLine.update({
+        where: { id: variance.lineId },
+        data: { status: "resolved" },
+      });
+    }
 
     await auditService.log({
       tenantId,
       userId,
-      action: "stock_count.adjustment_requested",
+      action: "stock_count.variance_rejected",
       entityType: "StockVariance",
       entityId: varianceId,
+      metadata: { sessionId: variance.sessionId },
+    });
+  },
+
+  /**
+   * Session-level Post differences (B1 Inventory Posting):
+   * apply local STK corrections, then emit SL InventoryPostings or an honest pending queue.
+   */
+  async postDifferences(tenantId: string, userId: string, sessionId: string) {
+    const session = await stockAuditRepository.findSessionById(tenantId, sessionId);
+    if (!session) throw new Error("Count session not found");
+
+    if (
+      ![
+        "counting_complete",
+        "variances_under_investigation",
+        "pending_adjustment",
+      ].includes(session.status)
+    ) {
+      throw new Error("Session is not ready to post differences");
+    }
+
+    const variances = await stockAuditRepository.findVariancesForPosting(
+      tenantId,
+      sessionId,
+      POSTABLE_VARIANCE_STATUSES,
+    );
+
+    if (variances.length === 0) {
+      // No differences left — mark ready to close
+      await stockAuditRepository.updateSessionStatus(
+        tenantId,
+        sessionId,
+        "counting_complete",
+      );
+      return {
+        postedCount: 0,
+        sapMode: "none" as const,
+        sapDocRef: null as string | null,
+        message: "No open differences to post",
+      };
+    }
+
+    const stkCode = await reasonStatusRepository.findCodeId(
+      tenantId,
+      "inventory_system",
+      "STK",
+    );
+    if (!stkCode) throw new Error("STK inventory status code is not configured");
+
+    await stockAuditRepository.updateSessionStatus(tenantId, sessionId, "posting");
+
+    // Local STK corrections first (portal stock effect)
+    await prisma.$transaction(async (tx) => {
+      for (const variance of variances) {
+        const line = variance.line;
+        if (!line) continue;
+
+        if (variance.varianceType === VARIANCE_TYPES.missing) {
+          await tx.branchInventory.deleteMany({
+            where: {
+              tenantId,
+              branchId: session.branchId,
+              serialNumberId: line.serialNumberId,
+              statusCodeId: stkCode.id,
+            },
+          });
+        } else if (variance.varianceType === VARIANCE_TYPES.surplus) {
+          const existing = await tx.branchInventory.findFirst({
+            where: {
+              tenantId,
+              branchId: session.branchId,
+              serialNumberId: line.serialNumberId,
+            },
+          });
+          if (existing) {
+            if (existing.statusCodeId !== stkCode.id) {
+              await tx.branchInventory.update({
+                where: { id: existing.id },
+                data: { statusCodeId: stkCode.id, updatedById: userId },
+              });
+            }
+          } else {
+            await tx.branchInventory.create({
+              data: {
+                tenantId,
+                branchId: session.branchId,
+                serialNumberId: line.serialNumberId,
+                statusCodeId: stkCode.id,
+                updatedById: userId,
+              },
+            });
+          }
+        }
+
+        await tx.stockCountLine.update({
+          where: { id: line.id },
+          data: { status: "resolved" },
+        });
+      }
+    });
+
+    const postingLines = variances.map((v) => ({
+      varianceId: v.id,
+      varianceType: v.varianceType,
+      serialNo: v.line?.serialNumber.serialNo ?? "",
+      itemCode: v.line?.model.skuCode ?? "",
+      serialNumberId: v.line?.serialNumberId ?? "",
+      countedQuantity: v.varianceType === VARIANCE_TYPES.surplus ? 1 : 0,
+      inWarehouseQuantity: v.varianceType === VARIANCE_TYPES.missing ? 1 : 0,
+    }));
+
+    const result = await sapService.emitInventoryPosting(tenantId, {
+      sessionId,
+      sessionNo: session.sessionNo,
+      branchId: session.branchId,
+      warehouseCode: session.branch.sapCode,
+      lines: postingLines,
+    });
+
+    const varianceIds = variances.map((v) => v.id);
+
+    if (result.mode === "posted" && result.sapDocRef) {
+      await prisma.stockVariance.updateMany({
+        where: { id: { in: varianceIds }, tenantId },
+        data: {
+          status: "closed",
+          sapDocRef: result.sapDocRef,
+          adjustmentRequestedAt: new Date(),
+          adjustmentRequestedById: userId,
+        },
+      });
+      await stockAuditRepository.updateSessionStatus(
+        tenantId,
+        sessionId,
+        "counting_complete",
+      );
+    } else {
+      // Honest pending — local stock corrected; SAP doc not fabricated
+      await prisma.stockVariance.updateMany({
+        where: { id: { in: varianceIds }, tenantId },
+        data: {
+          status: "sap_handoff",
+          sapDocRef: null,
+          adjustmentRequestedAt: new Date(),
+          adjustmentRequestedById: userId,
+        },
+      });
+      await stockAuditRepository.updateSessionStatus(
+        tenantId,
+        sessionId,
+        "adjustment_requested",
+      );
+    }
+
+    await auditService.log({
+      tenantId,
+      userId,
+      action: "stock_count.differences_posted",
+      entityType: "StockCountSession",
+      entityId: sessionId,
       metadata: {
-        sessionId: variance.sessionId,
-        sapJobId: job.id,
+        sessionNo: session.sessionNo,
+        postedCount: variances.length,
+        sapMode: result.mode,
+        sapDocRef: result.sapDocRef,
+        sapJobId: result.jobId,
       },
     });
 
-    await sapService.processPendingJobs(tenantId, userId);
+    return {
+      postedCount: variances.length,
+      sapMode: result.mode,
+      sapDocRef: result.sapDocRef,
+      message: result.message,
+    };
   },
 
   async closeSession(tenantId: string, userId: string, sessionId: string) {
@@ -344,7 +637,9 @@ export const stockAuditService = {
       (v) => !["closed", "rejected"].includes(v.status),
     );
     if (openVariances.length > 0) {
-      throw new Error("All variances must be resolved before closing");
+      throw new Error(
+        "All variances must be closed or rejected before closing (pending SAP handoffs must finish first)",
+      );
     }
 
     const closedAt = new Date();

@@ -79,6 +79,7 @@ enum StockCountSessionStatus {
   counting_complete
   variances_under_investigation
   pending_adjustment
+  posting
   adjustment_requested
   closed
 }
@@ -113,6 +114,7 @@ enum SapIntegrationJobType {
   sales_summary
   inventory_sync_inbound
   inventory_adjustment
+  inventory_posting
   delivery_sync_inbound
 }
 

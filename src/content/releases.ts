@@ -52,6 +52,34 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.45.0",
+    date: "2026-09-28",
+    releasedAt: "2026-09-28T17:30:00+08:00",
+    title: "P-Count posts like SAP Business One",
+    highlights: [
+      "Stock count follows the B1 flow: open a count, scan serials, review differences, then Post differences.",
+      "Unexpected serials count as surplus; you can reject or recount before posting.",
+      "Post differences corrects local shelf stock and sends a live SAP Inventory Posting when connected — otherwise it stays honestly pending (no fake SAP document).",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "P-Count sessions now support serial scan, surplus finds, soft freeze while counting, reject/recount, and session-level Post differences that update shelf stock and post to SAP when Service Layer is ready.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Help, tutorials, and workflow guides describe the Open → Count → Review → Post → Close path in plain language.",
+      },
+      {
+        type: "fix",
+        description:
+          "Stock count no longer invents a successful SAP document when Service Layer is not connected.",
+      },
+    ],
+  },
+  {
     version: "0.44.3",
     date: "2026-09-18",
     releasedAt: "2026-09-18T14:35:00+08:00",

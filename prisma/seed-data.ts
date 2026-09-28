@@ -221,6 +221,7 @@ export const ROLES = [
       "ordering_settings.manage",
       "aors.manage",
       "inventory.view",
+      "inventory.manage",
       ...ORDERS_VIEW_ALL,
       ...ORDERS_CREATE_ALL,
       ...ORDERS_APPROVE_ALL,

@@ -8,7 +8,8 @@ export const SAP_JOB_TYPE_LABELS: Record<SapIntegrationJobType, string> = {
   pullout_itr: "Pull-out ITR",
   sales_summary: "Sales summary export",
   inventory_sync_inbound: "Inventory sync from SAP",
-  inventory_adjustment: "Inventory adjustment",
+  inventory_adjustment: "Inventory adjustment (legacy)",
+  inventory_posting: "Inventory posting (P-Count)",
   delivery_sync_inbound: "Delivery sync from SAP",
 };
 
@@ -25,4 +26,5 @@ export const SAP_REFERENCE_TYPES = {
   BranchDelivery: "BranchDelivery",
   BranchPullout: "BranchPullout",
   StockVariance: "StockVariance",
+  StockCountSession: "StockCountSession",
 } as const;

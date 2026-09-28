@@ -68,7 +68,7 @@ async function executeWithCookies(
 
 /**
  * Public SAP B1 Service Layer client: session-aware request + login/logout.
- * Live document posting is not wired yet — queue still uses the mock processor.
+ * Inventory Postings (P-Count) post live when credentials exist; other outbound docs still use the queue.
  */
 export const sapServiceLayerClient = {
   /**
