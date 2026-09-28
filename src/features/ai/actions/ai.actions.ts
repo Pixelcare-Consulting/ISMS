@@ -6,6 +6,7 @@ import { askCopilotSchema } from "@/features/ai/schemas/ai.schema";
 import {
   generateDashboardBriefing,
   getCachedDashboardBriefing,
+  type DashboardBriefingSurface,
 } from "@/features/ai/services/briefing.service";
 import { answerCopilotQuestion } from "@/features/ai/services/copilot.service";
 import { requireAuth } from "@/lib/auth/permissions";
@@ -16,6 +17,12 @@ async function requireAssist() {
     return { ok: false as const, session: null };
   }
   return { ok: true as const, session };
+}
+
+function normalizeSurface(
+  surface?: DashboardBriefingSurface,
+): DashboardBriefingSurface {
+  return surface === "sales" ? "sales" : "operations";
 }
 
 export async function getAiStatusAction() {
@@ -57,17 +64,25 @@ export async function askCopilotAction(input: unknown) {
   return { ok: true as const, answer: result.answer };
 }
 
-export async function getCachedDashboardBriefingAction() {
+export async function getCachedDashboardBriefingAction(
+  surface?: DashboardBriefingSurface,
+) {
   const gate = await requireAssist();
   if (!gate.ok || !gate.session) {
     return { ok: false as const, briefing: null, configured: isAiConfigured() };
   }
 
-  const briefing = await getCachedDashboardBriefing(gate.session);
+  const briefing = await getCachedDashboardBriefing(
+    gate.session,
+    normalizeSurface(surface),
+  );
   return { ok: true as const, briefing, configured: isAiConfigured() };
 }
 
-export async function generateDashboardBriefingAction(force = false) {
+export async function generateDashboardBriefingAction(
+  force = false,
+  surface?: DashboardBriefingSurface,
+) {
   const gate = await requireAssist();
   if (!gate.ok || !gate.session) {
     return { ok: false as const, error: "You do not have access to ISMS Assist." };
@@ -81,6 +96,9 @@ export async function generateDashboardBriefingAction(force = false) {
     };
   }
 
-  const briefing = await generateDashboardBriefing(gate.session, { force });
+  const briefing = await generateDashboardBriefing(gate.session, {
+    force,
+    surface: normalizeSurface(surface),
+  });
   return { ok: true as const, briefing };
 }

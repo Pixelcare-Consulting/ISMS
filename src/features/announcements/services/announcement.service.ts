@@ -1,9 +1,19 @@
 import { auditService } from "@/features/audit/services/audit.service";
 import { announcementRepository } from "@/features/announcements/repositories/announcement.repository";
+import { sanitizeAnnouncementHtml } from "@/features/announcements/lib/sanitize-announcement-html";
 import {
   createAnnouncementSchema,
   updateAnnouncementSchema,
 } from "@/features/announcements/schemas/announcement.schema";
+
+function prepareAnnouncementBody(raw: string): string {
+  const sanitized = sanitizeAnnouncementHtml(raw);
+  const plain = sanitized.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim();
+  if (!plain && !/<img\b/i.test(sanitized)) {
+    throw new Error("Body is required");
+  }
+  return sanitized;
+}
 
 export const announcementService = {
   listAnnouncements(tenantId: string) {
@@ -18,8 +28,16 @@ export const announcementService = {
     return announcementRepository.listFeedForUser(tenantId, userId);
   },
 
+  countUnreadForUser(tenantId: string, userId: string) {
+    return announcementRepository.countUnreadForUser(tenantId, userId);
+  },
+
   listReaders(tenantId: string, announcementId: string) {
     return announcementRepository.listReaders(tenantId, announcementId);
+  },
+
+  listComments(tenantId: string, announcementId: string) {
+    return announcementRepository.listComments(tenantId, announcementId);
   },
 
   async markRead(input: {
@@ -64,6 +82,58 @@ export const announcementService = {
     );
   },
 
+  async updateComment(input: {
+    tenantId: string;
+    actorUserId: string;
+    commentId: string;
+    body: string;
+  }) {
+    const body = input.body.trim();
+    if (!body) throw new Error("Comment cannot be empty");
+    if (body.length > 2000) throw new Error("Comment is too long");
+
+    const existing = await announcementRepository.findComment(
+      input.tenantId,
+      input.commentId,
+    );
+    if (!existing) throw new Error("Comment not found");
+    if (existing.userId !== input.actorUserId) {
+      throw new Error("You can only edit your own comments");
+    }
+
+    return announcementRepository.updateComment(
+      input.tenantId,
+      input.commentId,
+      body,
+      input.actorUserId,
+    );
+  },
+
+  listCommentRevisions(tenantId: string, commentId: string) {
+    return announcementRepository.listCommentRevisions(tenantId, commentId);
+  },
+
+  async deleteComment(input: {
+    tenantId: string;
+    actorUserId: string;
+    commentId: string;
+    canManage: boolean;
+  }) {
+    const existing = await announcementRepository.findComment(
+      input.tenantId,
+      input.commentId,
+    );
+    if (!existing) throw new Error("Comment not found");
+    if (existing.userId !== input.actorUserId && !input.canManage) {
+      throw new Error("You can only delete your own comments");
+    }
+
+    await announcementRepository.deleteComment(
+      input.tenantId,
+      input.commentId,
+    );
+  },
+
   async createAnnouncement(input: {
     tenantId: string;
     actorUserId: string;
@@ -73,7 +143,10 @@ export const announcementService = {
     expiresAt?: Date | null;
     isActive: boolean;
   }) {
-    const parsed = createAnnouncementSchema.safeParse(input);
+    const parsed = createAnnouncementSchema.safeParse({
+      ...input,
+      body: prepareAnnouncementBody(input.body),
+    });
     if (!parsed.success) {
       throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
     }
@@ -112,7 +185,10 @@ export const announcementService = {
     expiresAt?: Date | null;
     isActive: boolean;
   }) {
-    const parsed = updateAnnouncementSchema.safeParse(input);
+    const parsed = updateAnnouncementSchema.safeParse({
+      ...input,
+      body: prepareAnnouncementBody(input.body),
+    });
     if (!parsed.success) {
       throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
     }

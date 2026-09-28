@@ -21,9 +21,14 @@ interface AppSidebarProps {
     permissions: string[];
     isPlatformOperator: boolean;
   };
+  unreadAnnouncementCount?: number;
 }
 
-export function AppSidebar({ branding, user }: AppSidebarProps) {
+export function AppSidebar({
+  branding,
+  user,
+  unreadAnnouncementCount = 0,
+}: AppSidebarProps) {
   return (
     <Sidebar collapsible="icon" className="app-sidebar">
       <SidebarHeader className="h-14 justify-center border-b border-sidebar-border">
@@ -38,6 +43,7 @@ export function AppSidebar({ branding, user }: AppSidebarProps) {
         <SidebarNav
           permissions={user.permissions}
           isPlatformOperator={user.isPlatformOperator}
+          countBadges={{ unreadAnnouncements: unreadAnnouncementCount }}
         />
       </SidebarContent>
 

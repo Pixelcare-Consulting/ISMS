@@ -7,9 +7,10 @@ const optionalExpiresAt = z
     return value;
   });
 
+/** Rich HTML body from TipTap (images are uploaded URLs, not base64). */
 export const announcementFormSchema = z.object({
   title: z.string().trim().min(1, "Title is required").max(200),
-  body: z.string().trim().min(1, "Body is required").max(10_000),
+  body: z.string().trim().min(1, "Body is required").max(50_000),
   publishedAt: z.coerce.date(),
   expiresAt: optionalExpiresAt,
   isActive: z.boolean().default(true),

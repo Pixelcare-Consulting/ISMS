@@ -74,14 +74,19 @@ export const announcementRepository = {
           select: { id: true },
           take: 1,
         },
+        /** First 5 readers for avatar stack (newest first). */
         reads: {
-          where: { userId },
-          select: { id: true, readAt: true },
-          take: 1,
+          orderBy: { readAt: "desc" },
+          take: 5,
+          select: {
+            user: {
+              select: { id: true, name: true, email: true, image: true },
+            },
+          },
         },
         comments: {
-          orderBy: { createdAt: "asc" },
-          take: 8,
+          orderBy: { createdAt: "desc" },
+          take: 50,
           include: {
             user: { select: { id: true, name: true, email: true, image: true } },
           },
@@ -91,25 +96,42 @@ export const announcementRepository = {
       take: limit,
     });
 
-    return rows.map((row) => ({
-      id: row.id,
-      title: row.title,
-      body: row.body,
-      publishedAt: row.publishedAt,
-      expiresAt: row.expiresAt,
-      createdBy: row.createdBy,
-      readCount: row._count.reads,
-      likeCount: row._count.likes,
-      commentCount: row._count.comments,
-      likedByMe: row.likes.length > 0,
-      readByMe: row.reads.length > 0,
-      comments: row.comments.map((c) => ({
-        id: c.id,
-        body: c.body,
-        createdAt: c.createdAt,
-        user: c.user,
-      })),
-    }));
+    const myReads =
+      rows.length === 0
+        ? []
+        : await prisma.announcementRead.findMany({
+            where: {
+              userId,
+              announcementId: { in: rows.map((row) => row.id) },
+            },
+            select: { announcementId: true },
+          });
+    const readByMeIds = new Set(myReads.map((row) => row.announcementId));
+
+    return rows.map((row) => {
+      const commentsChronological = [...row.comments].reverse();
+      return {
+        id: row.id,
+        title: row.title,
+        body: row.body,
+        publishedAt: row.publishedAt,
+        expiresAt: row.expiresAt,
+        createdBy: row.createdBy,
+        readCount: row._count.reads,
+        likeCount: row._count.likes,
+        commentCount: row._count.comments,
+        likedByMe: row.likes.length > 0,
+        readByMe: readByMeIds.has(row.id),
+        readerPreviews: row.reads.map((read) => read.user),
+        comments: commentsChronological.map((c) => ({
+          id: c.id,
+          body: c.body,
+          createdAt: c.createdAt,
+          updatedAt: c.updatedAt,
+          user: c.user,
+        })),
+      };
+    });
   },
 
   listReaders(tenantId: string, announcementId: string) {
@@ -121,6 +143,20 @@ export const announcementRepository = {
       orderBy: { readAt: "desc" },
       include: {
         user: { select: feedUserSelect },
+      },
+    });
+  },
+
+  /** Active published announcements the user has not marked as read. */
+  countUnreadForUser(tenantId: string, userId: string) {
+    const now = new Date();
+    return prisma.announcement.count({
+      where: {
+        tenantId,
+        isActive: true,
+        publishedAt: { lte: now },
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        reads: { none: { userId } },
       },
     });
   },
@@ -243,5 +279,88 @@ export const announcementRepository = {
         user: { select: { id: true, name: true, email: true, image: true } },
       },
     });
+  },
+
+  listComments(tenantId: string, announcementId: string) {
+    return prisma.announcementComment.findMany({
+      where: {
+        announcementId,
+        announcement: { tenantId },
+      },
+      orderBy: { createdAt: "asc" },
+      include: {
+        user: { select: { id: true, name: true, email: true, image: true } },
+      },
+    });
+  },
+
+  findComment(tenantId: string, commentId: string) {
+    return prisma.announcementComment.findFirst({
+      where: {
+        id: commentId,
+        announcement: { tenantId },
+      },
+      include: {
+        user: { select: { id: true, name: true, email: true, image: true } },
+      },
+    });
+  },
+
+  async updateComment(
+    tenantId: string,
+    commentId: string,
+    body: string,
+    editedById: string,
+  ) {
+    const existing = await this.findComment(tenantId, commentId);
+    if (!existing) throw new Error("Comment not found");
+
+    if (existing.body === body) {
+      return existing;
+    }
+
+    return prisma.$transaction(async (tx) => {
+      await tx.announcementCommentRevision.create({
+        data: {
+          commentId,
+          body: existing.body,
+          editedById,
+        },
+      });
+
+      return tx.announcementComment.update({
+        where: { id: commentId },
+        data: { body },
+        include: {
+          user: { select: { id: true, name: true, email: true, image: true } },
+        },
+      });
+    });
+  },
+
+  listCommentRevisions(tenantId: string, commentId: string) {
+    return prisma.announcementCommentRevision.findMany({
+      where: {
+        commentId,
+        comment: { announcement: { tenantId } },
+      },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        body: true,
+        createdAt: true,
+        editedBy: {
+          select: { id: true, name: true, email: true },
+        },
+      },
+    });
+  },
+
+  async deleteComment(tenantId: string, commentId: string) {
+    const existing = await this.findComment(tenantId, commentId);
+    if (!existing) throw new Error("Comment not found");
+
+    await prisma.announcementComment.delete({ where: { id: commentId } });
+    return existing;
   },
 };

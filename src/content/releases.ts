@@ -52,6 +52,91 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.47.0",
+    date: "2026-09-28",
+    releasedAt: "2026-09-28T19:35:00+08:00",
+    title: "Dashboard split: announcements Overview, Operations & Sales homes",
+    highlights: [
+      "Overview is now announcements only — New (unread) and Earlier (read), with solid section badges and a red unread count on the menu.",
+      "See who already read a post at a glance — up to five reader avatars beside the read count, with a +N when there are more.",
+      "Filter Overview to All, New, or Earlier, or search announcements by title.",
+      "Write announcements with formatting, links, images, and pasted tables; the create/edit window keeps title and actions visible while you scroll.",
+      "Operations and Sales each have today’s briefing and role cards — no announcement banners there.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Dashboard menu adds Operations and Sales pages beside Overview, P-Count Dashboard, Site Traffic, and Market Survey — each role only sees the homes they can use.",
+      },
+      {
+        type: "feature",
+        description:
+          "Overview shows unread announcements first, then ones you already read, and the Overview menu badge counts what you have not marked as read yet.",
+      },
+      {
+        type: "feature",
+        description:
+          "Announcements support rich formatting, links, image uploads, and tables (including paste from Excel or Word); on Overview you can edit or delete your comments, and announcement managers can delete any comment.",
+      },
+      {
+        type: "feature",
+        description:
+          "Each Overview announcement shows overlapping reader avatars (up to five) next to the read count; click the stack or count to open the full readers list.",
+      },
+      {
+        type: "feature",
+        description:
+          "Overview lets you filter announcements to All, New (unread), or Earlier (read), and search by title.",
+      },
+      {
+        type: "feature",
+        description:
+          "Edited comments on Overview show a clickable Edited mark — open it to see earlier versions of the comment.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Overview comment threads show the latest few by default with Show all comments when there are more; company announcements stay on Overview while Operations and Sales focus on work cards.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Overview announcements read more like a blog list — flat sharp-corner posts on solid panels instead of rounded cards.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The Announcements admin list uses the same solid white panels and sharp Live/Scheduled badges as Overview, on a light slate page background.",
+      },
+      {
+        type: "improvement",
+        description:
+          "New and Earlier on Overview use solid square badges so unread vs read sections are easy to spot at a glance.",
+      },
+      {
+        type: "improvement",
+        description:
+          "When creating or editing an announcement, the title and Cancel/Save buttons stay visible while the body scrolls.",
+      },
+      {
+        type: "fix",
+        description:
+          "On Overview, the comment count opens the thread and comment box, and edited comments show an Edited mark beside the time.",
+      },
+      {
+        type: "fix",
+        description:
+          "Pasting a table into an announcement keeps the real grid instead of flattening it into a list of cell words.",
+      },
+      {
+        type: "fix",
+        description:
+          "Overview announcement posts, comments, and the comment box sit on solid backgrounds so they no longer blend into the page.",
+      },
+    ],
+  },
+  {
     version: "0.46.0",
     date: "2026-09-28",
     releasedAt: "2026-09-28T18:40:00+08:00",

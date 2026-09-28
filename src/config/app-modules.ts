@@ -24,7 +24,7 @@ export const appModules: AppModule[] = [
     name: "Dashboard",
     route: "/dashboard",
     slugPrefix: "dashboard",
-    description: "Main overview and module launcher",
+    description: "Main overview, role dashboards, and module launcher",
     actions: permissionActions("manage", "view"),
   },
   {
@@ -33,7 +33,7 @@ export const appModules: AppModule[] = [
     route: "/help",
     slugPrefix: "ai",
     navPermission: "ai.assist",
-    description: "Ask ISMS for help and a daily Dashboard briefing",
+    description: "Ask ISMS for help and a daily briefing on Operations or Sales",
     actions: permissionActions("assist"),
   },
   {

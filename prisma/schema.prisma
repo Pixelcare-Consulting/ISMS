@@ -314,6 +314,7 @@ model User {
   announcementReads         AnnouncementRead[]
   announcementLikes         AnnouncementLike[]
   announcementComments      AnnouncementComment[]
+  announcementCommentRevisions AnnouncementCommentRevision[] @relation("AnnouncementCommentRevisionEditedBy")
   competitorObservationsCreated CompetitorObservation[] @relation("CompetitorObservationCreatedBy")
   officialSalesImportBatchesUploaded OfficialSalesImportBatch[] @relation("OfficialSalesImportBatchUploadedBy")
   demandPlanningRunsCreated DemandPlanningRun[] @relation("DemandPlanningRunCreatedBy")
@@ -2230,10 +2231,27 @@ model AnnouncementComment {
 
   announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  revisions    AnnouncementCommentRevision[]
 
   @@index([announcementId, createdAt])
   @@index([userId])
   @@map("announcement_comments")
+}
+
+/// Snapshot of a comment body before an edit (newest revision = most recent previous body).
+model AnnouncementCommentRevision {
+  id         String   @id @default(cuid())
+  commentId  String   @map("comment_id")
+  body       String   @db.Text
+  editedById String   @map("edited_by_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  comment  AnnouncementComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  editedBy User                @relation("AnnouncementCommentRevisionEditedBy", fields: [editedById], references: [id], onDelete: Cascade)
+
+  @@index([commentId, createdAt])
+  @@index([editedById])
+  @@map("announcement_comment_revisions")
 }
 
 model CompetitorObservation {

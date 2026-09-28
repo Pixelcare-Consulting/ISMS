@@ -53,7 +53,7 @@ export const HELP_QUICK_LINKS: HelpQuickLink[] = [
   {
     id: "dashboard",
     title: "Dashboard",
-    description: "Start here for your daily overview.",
+    description: "Announcements home; open Operations or Sales for role cards.",
     href: "/dashboard",
     group: "daily",
   },
@@ -133,7 +133,7 @@ export const HELP_WORKFLOW_GUIDES: HelpWorkflowGuide[] = [
     steps: [
       {
         label:
-          "Sign in and land on Dashboard → Overview for announcements and a role-based snapshot of what needs attention. Use P-Count Dashboard and Site Traffic under the same Dashboard menu when you have access.",
+          "Sign in and land on Dashboard → Overview for company announcements (New vs Earlier). Open Operations or Sales under the same menu for role cards and today’s briefing when you have access. Use P-Count Dashboard and Site Traffic when available.",
       },
       {
         label:

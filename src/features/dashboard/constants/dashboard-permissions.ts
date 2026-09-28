@@ -146,13 +146,35 @@ const PERSONA_KPI_ORDER: Record<DashboardPersona, DashboardKpiKey[]> = {
   ],
 };
 
+/** Ops / inventory / orders / logistics / planning — Operations dashboard nav + page. */
+export function canAccessOperationsDashboard(
+  permissions: string[] | undefined,
+): boolean {
+  const perms = permissions ?? [];
+  return (
+    hasPermission(perms, "inventory.view") ||
+    hasAnyOrderPermission(perms, "view") ||
+    canAccessLogistics(perms) ||
+    hasPermission(perms, "forecast.view") ||
+    hasPermission(perms, "forecast.manage") ||
+    hasPermission(perms, "planogram.view") ||
+    hasPermission(perms, "planogram.manage")
+  );
+}
+
+/** Sales overview dashboard nav + page. */
+export function canAccessSalesDashboard(
+  permissions: string[] | undefined,
+): boolean {
+  return canAccessSales(permissions) || canAccessReturns(permissions);
+}
+
 export function resolveDashboardCapabilities(
   permissions: string[] | undefined,
 ): DashboardCapabilities {
   const perms = permissions ?? [];
   const hasOps =
-    hasPermission(perms, "inventory.view") ||
-    hasAnyOrderPermission(perms, "view") ||
+    canAccessOperationsDashboard(perms) ||
     hasPermission(perms, "sales.create");
 
   const canApproveOrders = hasAnyOrderPermission(perms, "approve");

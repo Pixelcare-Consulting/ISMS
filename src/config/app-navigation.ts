@@ -1,4 +1,5 @@
 import {
+  Activity,
   ArrowLeftRight,
   ArrowUpToLine,
   Barcode,
@@ -42,6 +43,11 @@ export interface NavLinkItem {
   platformOperatorOnly?: boolean;
   /** Compact sidebar badge (e.g. recently added menus) */
   badge?: "new";
+  /**
+   * When set, sidebar can show a live numeric count badge for this href
+   * (e.g. unread announcements on Overview).
+   */
+  countBadgeKey?: "unreadAnnouncements";
 }
 
 export interface NavLinkEntry extends NavLinkItem {
@@ -85,6 +91,43 @@ export const appNavigation: NavEntry[] = [
         icon: LayoutDashboard,
         exact: true,
         permission: getModuleNavPermission("dashboard"),
+        countBadgeKey: "unreadAnnouncements",
+      },
+      {
+        href: "/dashboard/operations",
+        label: "Operations",
+        icon: Activity,
+        anyPermissions: [
+          "inventory.view",
+          "orders.view",
+          "orders.manual.view",
+          "orders.special.view",
+          "orders.auto_replenish.view",
+          "logistics.view",
+          "logistics.create",
+          "logistics.manage",
+          "forecast.view",
+          "forecast.manage",
+          "planogram.view",
+          "planogram.manage",
+        ],
+      },
+      {
+        href: "/dashboard/sales",
+        label: "Sales",
+        icon: Store,
+        anyPermissions: [
+          "sales.view",
+          "sales.create",
+          "sales.update",
+          "returns.view",
+          "returns.branch.view",
+          "returns.service.view",
+          "returns.request",
+          "returns.evaluate",
+          "returns.approve",
+          "returns.complete",
+        ],
       },
       {
         href: "/dashboard/pcount",

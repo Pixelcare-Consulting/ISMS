@@ -2,11 +2,11 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.46.0`
+**Current version:** `0.47.0`
 
 ## Stack
 
-Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand · Better Auth · Prisma 7 · PostgreSQL (Docker / self-hosted) · Pino · Resend · Local filesystem storage · React PDF · Vercel AI SDK
+Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand · Better Auth · Prisma 7 · PostgreSQL (Docker / self-hosted) · Pino · Resend · Local filesystem storage · TipTap · React PDF · Vercel AI SDK
 
 ## What's shipped
 
@@ -15,8 +15,8 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | **Auth** | Email/password (Better Auth), tenant-scoped sessions, demo seed users; public `/register` off unless `ALLOW_PUBLIC_REGISTER=true` |
 | **Help** | Workflow guides, FAQs, page tutorials; **ISMS Assist** (ask in plain language over Help content; sources shown) |
 | **Provider** | Platform console at `/provider/*` for platform operators only (provider role on the `isPlatform` Pixelcare tenant): customer summaries, create org + first Tenant Admin, org branding edit, full user/admin management, soft-disable/restore, global permissions |
-| **Dashboard** | Nav group: **Overview** (announcement feed with mark-as-read, likes, comments + role ops cards), **P-Count Dashboard** (dealer/branch month progress), **Site Traffic** (session/user KPIs + Recent users / Pages / Top PS), **Market Survey** → Competitors; Inventory summary + Planning & alerts; This month beside Order pipeline; **Sales overview** when you can access Sales; compliance overview when no ops access; active announcement banner; optional **daily briefing** (ISMS Assist) |
-| **Announcements** | Tenant posts (title, body, publish/expiry); list + CRUD (`/announcements`); Overview feed supports mark-as-read, likes, and comments |
+| **Dashboard** | Nav group: **Overview** (announcements only — New vs Earlier; unread count badge in the menu), **Operations** (Today’s briefing + ops KPI cards / inventory / planning / order pipeline; role-gated), **Sales** (Today’s briefing + sales overview; role-gated), **P-Count Dashboard**, **Site Traffic**, **Market Survey** → Competitors. Announcement CRUD stays under Announcements. |
+| **Announcements** | Tenant posts with rich body (formatting, links, images, tables); list + CRUD (`/announcements`); Overview feed supports mark-as-read, likes, comments (latest 3 + show all; edit own / managers delete any), reader avatar stack (max 5), and All / New / Earlier + title search filters |
 | **Competitors** | Market observations with master Competitor + Competitor brand/model lookups, AOR-bound branch, optional promotion; KPIs + CRUD (`/competitors`) |
 | **Settings** | Company, users, departments, roles, permissions catalog (`roles.manage`; assign via Roles), branches, warehouses, dealers, service centers, AORs (branches / warehouses / service centers assign + sync), master data (incl. Series / Categories, Competitors / Competitor brands), status codes (per-module tabs + badge colors); collapsible Module guides on complex settings/ops pages |
 | **Planning** | Period switcher + clickable cards; in-page Add/Edit/Remove branch revenue targets; official Forecast template download + import (bulk; period as MMM-YY e.g. Dec-25); allocation; Supply Planning runs (`/settings/planning`, `/settings/planning/runs`) |
@@ -43,7 +43,9 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/provider/tenants` | Platform operator — customer list (status filters) / create / detail (org branding + users) / disable / restore |
 | `/provider/permissions` | Platform operator — global permissions catalog |
 | `/help` | Authenticated — Help & Support; Assist when `ai.assist` |
-| `/dashboard` | Authenticated tenant app — Overview announcement feed + ops snapshot (platform operators redirect to `/provider`) |
+| `/dashboard` | Authenticated tenant app — Overview announcement feed only (platform operators redirect to `/provider`) |
+| `/dashboard/operations` | Inventory / orders / logistics / planning access — ops cards + Today’s briefing (no announcements) |
+| `/dashboard/sales` | `sales.*` / returns access — Sales overview + Today’s briefing (no announcements) |
 | `/dashboard/pcount` | `inventory.view` or `reports.view` — P-Count Dashboard (dealer/branch month progress) |
 | `/dashboard/site-traffic` | `users.manage` or `audit_logs.view` — Site Traffic KPIs and activity tabs |
 | `/announcements` | `announcements.view` / `announcements.manage` |
