@@ -32,6 +32,7 @@ export default async function AnnouncementsPage() {
           expiresAt: row.expiresAt?.toISOString() ?? null,
           isActive: row.isActive,
           createdAt: row.createdAt.toISOString(),
+          updatedAt: row.updatedAt.toISOString(),
           createdBy: row.createdBy,
         }))}
       />

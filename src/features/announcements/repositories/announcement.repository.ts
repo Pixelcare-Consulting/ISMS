@@ -116,6 +116,8 @@ export const announcementRepository = {
         body: row.body,
         publishedAt: row.publishedAt,
         expiresAt: row.expiresAt,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
         createdBy: row.createdBy,
         readCount: row._count.reads,
         likeCount: row._count.likes,
@@ -196,25 +198,78 @@ export const announcementRepository = {
       expiresAt?: Date | null;
       isActive: boolean;
     },
+    editedById?: string,
   ) {
-    const result = await prisma.announcement.updateMany({
-      where: { id, tenantId },
-      data: {
-        title: data.title,
-        body: data.body,
-        publishedAt: data.publishedAt,
-        expiresAt: data.expiresAt ?? null,
-        isActive: data.isActive,
-      },
-    });
-    if (result.count === 0) {
+    const existing = await this.findById(tenantId, id);
+    if (!existing) {
       throw new Error("Announcement not found");
     }
+
+    const contentChanged =
+      existing.title !== data.title || existing.body !== data.body;
+
+    if (contentChanged && editedById) {
+      await prisma.$transaction(async (tx) => {
+        await tx.announcementRevision.create({
+          data: {
+            announcementId: id,
+            title: existing.title,
+            body: existing.body,
+            editedById,
+          },
+        });
+
+        await tx.announcement.update({
+          where: { id },
+          data: {
+            title: data.title,
+            body: data.body,
+            publishedAt: data.publishedAt,
+            expiresAt: data.expiresAt ?? null,
+            isActive: data.isActive,
+          },
+        });
+      });
+    } else {
+      const result = await prisma.announcement.updateMany({
+        where: { id, tenantId },
+        data: {
+          title: data.title,
+          body: data.body,
+          publishedAt: data.publishedAt,
+          expiresAt: data.expiresAt ?? null,
+          isActive: data.isActive,
+        },
+      });
+      if (result.count === 0) {
+        throw new Error("Announcement not found");
+      }
+    }
+
     const updated = await this.findById(tenantId, id);
     if (!updated) {
       throw new Error("Announcement not found");
     }
     return updated;
+  },
+
+  listRevisions(tenantId: string, announcementId: string) {
+    return prisma.announcementRevision.findMany({
+      where: {
+        announcementId,
+        announcement: { tenantId },
+      },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        title: true,
+        body: true,
+        createdAt: true,
+        editedBy: {
+          select: { id: true, name: true, email: true },
+        },
+      },
+    });
   },
 
   delete(tenantId: string, id: string) {

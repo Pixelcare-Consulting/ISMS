@@ -15,6 +15,11 @@ import {
   updateAnnouncementCommentAction,
 } from "@/features/announcements/actions/announcement.actions";
 import { AnnouncementBody } from "@/features/announcements/components/announcement-body";
+import {
+  AnnouncementEditedMark,
+  announcementDisplayDate,
+  wasAnnouncementContentEdited,
+} from "@/features/announcements/components/announcement-edited-mark";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -66,6 +71,8 @@ export interface OverviewFeedItem {
   title: string;
   body: string;
   publishedAt: Date | string;
+  createdAt?: Date | string;
+  updatedAt?: Date | string;
   createdBy: { id: string; name: string | null; email: string };
   readCount: number;
   likeCount: number;
@@ -125,6 +132,14 @@ function wasCommentEdited(
     return false;
   }
   return updated.getTime() - created.getTime() > EDITED_TOLERANCE_MS;
+}
+
+/** Visible time: latest edit when Edited, otherwise create time. */
+function commentDisplayAt(comment: OverviewFeedComment): Date | string {
+  if (wasCommentEdited(comment.createdAt, comment.updatedAt) && comment.updatedAt) {
+    return comment.updatedAt;
+  }
+  return comment.createdAt;
 }
 
 interface CommentRevisionRow {
@@ -573,7 +588,7 @@ export function OverviewAnnouncementFeed({
                           {comment.user.name || comment.user.email}
                         </span>
                         <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                          <span>{formatRelative(comment.createdAt)}</span>
+                          <span>{formatRelative(commentDisplayAt(comment))}</span>
                           {wasCommentEdited(comment.createdAt, comment.updatedAt) ? (
                             <CommentEditedMark commentId={comment.id} />
                           ) : null}
@@ -678,7 +693,18 @@ export function OverviewAnnouncementFeed({
               {item.title}
             </h2>
             <p className="text-xs uppercase tracking-wide text-muted-foreground">
-              {formatPublished(item.publishedAt)}
+              {formatPublished(announcementDisplayDate(item))}
+              {wasAnnouncementContentEdited(
+                item.createdAt,
+                item.updatedAt,
+                item.publishedAt,
+              ) ? (
+                <AnnouncementEditedMark
+                  announcementId={item.id}
+                  currentTitle={item.title}
+                  className="normal-case tracking-normal text-xs text-muted-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:underline"
+                />
+              ) : null}
               <span className="mx-1.5 text-border">·</span>
               <span className="normal-case tracking-normal">
                 Created by {author}

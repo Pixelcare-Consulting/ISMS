@@ -113,6 +113,10 @@ export const announcementService = {
     return announcementRepository.listCommentRevisions(tenantId, commentId);
   },
 
+  listRevisions(tenantId: string, announcementId: string) {
+    return announcementRepository.listRevisions(tenantId, announcementId);
+  },
+
   async deleteComment(input: {
     tenantId: string;
     actorUserId: string;
@@ -218,6 +222,7 @@ export const announcementService = {
         expiresAt: parsed.data.expiresAt,
         isActive: parsed.data.isActive,
       },
+      input.actorUserId,
     );
 
     await auditService.log({

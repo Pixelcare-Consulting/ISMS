@@ -14,7 +14,6 @@ const config = {
   testMatch: ["<rootDir>/tests/unit/**/*.test.{ts,tsx}"],
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
-    // Exact package root only — keep `@prisma/client/runtime/*` on node_modules.
     "^@prisma/client$": "<rootDir>/src/lib/database/generated/prisma/client",
   },
   clearMocks: true,

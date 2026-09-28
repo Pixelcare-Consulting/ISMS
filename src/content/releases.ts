@@ -54,13 +54,14 @@ export const RELEASES: ReleaseNote[] = [
   {
     version: "0.47.0",
     date: "2026-09-28",
-    releasedAt: "2026-09-28T19:35:00+08:00",
+    releasedAt: "2026-09-28T19:55:00+08:00",
     title: "Dashboard split: announcements Overview, Operations & Sales homes",
     highlights: [
       "Overview is now announcements only — New (unread) and Earlier (read), with solid section badges and a red unread count on the menu.",
       "See who already read a post at a glance — up to five reader avatars beside the read count, with a +N when there are more.",
       "Filter Overview to All, New, or Earlier, or search announcements by title.",
       "Write announcements with formatting, links, images, and pasted tables; the create/edit window keeps title and actions visible while you scroll.",
+      "Edited announcements and comments show an Edited mark you can open to review earlier versions.",
       "Operations and Sales each have today’s briefing and role cards — no announcement banners there.",
     ],
     changes: [
@@ -95,6 +96,11 @@ export const RELEASES: ReleaseNote[] = [
           "Edited comments on Overview show a clickable Edited mark — open it to see earlier versions of the comment.",
       },
       {
+        type: "feature",
+        description:
+          "Edited announcements show a clickable Edited mark on Overview and in Announcements — open it to see earlier title and body versions.",
+      },
+      {
         type: "improvement",
         description:
           "Overview comment threads show the latest few by default with Show all comments when there are more; company announcements stay on Overview while Operations and Sales focus on work cards.",
@@ -123,6 +129,11 @@ export const RELEASES: ReleaseNote[] = [
         type: "fix",
         description:
           "On Overview, the comment count opens the thread and comment box, and edited comments show an Edited mark beside the time.",
+      },
+      {
+        type: "fix",
+        description:
+          "Edited comments on Overview show the time of the latest edit, not the original post time.",
       },
       {
         type: "fix",

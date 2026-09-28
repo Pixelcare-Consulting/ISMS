@@ -8,6 +8,11 @@ import { toast } from "sonner";
 import { deleteAnnouncementAction } from "@/features/announcements/actions/announcement.actions";
 import { AnnouncementBody } from "@/features/announcements/components/announcement-body";
 import {
+  AnnouncementEditedMark,
+  announcementDisplayDate,
+  wasAnnouncementContentEdited,
+} from "@/features/announcements/components/announcement-edited-mark";
+import {
   AnnouncementFormDialog,
   type AnnouncementDialogRow,
 } from "@/features/announcements/components/announcement-form-dialog";
@@ -21,6 +26,7 @@ import { Input } from "@/components/ui/input";
 export type AnnouncementCard = AnnouncementDialogRow & {
   createdBy: { id: string; name: string | null; email: string };
   createdAt: string | Date;
+  updatedAt?: string | Date;
 };
 
 function formatDateTime(value: string | Date | null | undefined): string {
@@ -135,6 +141,11 @@ export function AnnouncementsPanel({
         <div className="space-y-4">
           {filtered.map((row) => {
             const live = isCurrentlyLive(row, now);
+            const edited = wasAnnouncementContentEdited(
+              row.createdAt,
+              row.updatedAt,
+              row.publishedAt,
+            );
             return (
               <article
                 key={row.id}
@@ -161,7 +172,14 @@ export function AnnouncementsPanel({
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Published {formatDateTime(row.publishedAt)}
+                      Published{" "}
+                      {formatDateTime(announcementDisplayDate(row))}
+                      {edited ? (
+                        <AnnouncementEditedMark
+                          announcementId={row.id}
+                          currentTitle={row.title}
+                        />
+                      ) : null}
                       {row.expiresAt
                         ? ` · Expires ${formatDateTime(row.expiresAt)}`
                         : ""}

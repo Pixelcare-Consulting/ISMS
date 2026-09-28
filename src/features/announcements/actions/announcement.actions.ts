@@ -179,6 +179,15 @@ export async function listAnnouncementCommentRevisionsAction(
   );
 }
 
+export async function listAnnouncementRevisionsAction(announcementId: string) {
+  const session = await requireAuth();
+  if (!announcementId) return [];
+  return announcementService.listRevisions(
+    session.user.tenantId,
+    announcementId,
+  );
+}
+
 export async function deleteAnnouncementCommentAction(commentId: string) {
   const session = await requireAuth();
   if (!commentId) return { error: "Comment not found" };
