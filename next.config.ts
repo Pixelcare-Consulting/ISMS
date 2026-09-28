@@ -15,7 +15,12 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   // Self-contained server bundle for the Docker image (see Dockerfile runner
   // stage). Harmless on Vercel, which ignores it.
-  output: "standalone",
+  // On Windows, standalone finalization needs symlink privileges (Developer
+  // Mode or admin); skip locally so `pnpm run build` can succeed. Docker/Linux
+  // builds always keep standalone. Set NEXT_STANDALONE=1 to force it on Windows.
+  ...(process.platform !== "win32" || process.env.NEXT_STANDALONE === "1"
+    ? { output: "standalone" as const }
+    : {}),
   // Let Node resolve @better-auth/infra's own Zod 4 dep (z.url) instead of
   // Turbopack bundling the app's Zod 3 into the plugin.
   serverExternalPackages: ["@better-auth/infra", "isomorphic-dompurify", "jsdom"],
