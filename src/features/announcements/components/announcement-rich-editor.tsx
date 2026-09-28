@@ -51,6 +51,8 @@ export function AnnouncementRichEditor({
     extensions: [
       StarterKit.configure({
         heading: { levels: [2, 3] },
+        // TipTap v3 StarterKit ships Link; keep our standalone Link config instead.
+        link: false,
       }),
       Link.configure({
         openOnClick: false,

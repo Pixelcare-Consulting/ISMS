@@ -164,7 +164,7 @@ function CommentEditedMark({ commentId }: { commentId: string }) {
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (next && revisions === null && !loading) {
+        if (next) {
           void loadRevisions();
         }
       }}
