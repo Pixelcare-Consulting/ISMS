@@ -342,7 +342,6 @@ async function buildPlan(tenantId: string, sheet: SheetRows): Promise<ImportPlan
   const writes: RowPlanInternal[] = [];
   const sapPushes: BrandPushRow[] = [];
   const seenInFile = new Set<string>();
-  let createCount = 0;
   let updateCount = 0;
   let unchangedCount = 0;
 
@@ -436,6 +435,15 @@ async function buildPlan(tenantId: string, sheet: SheetRows): Promise<ImportPlan
 
     if (!rowOk) continue;
 
+    // Import only updates: models are created by the SAP sync, never from a file.
+    const existing = existingBySku.get(skuKey) ?? null;
+    if (!existing) {
+      pushError(
+        `Model "${sku}" does not exist. Import only updates existing models — sync new ones from SAP.`,
+      );
+      continue;
+    }
+
     // Every row the file keeps carries its brand to SAP, including ones ISMS is
     // about to skip: "unchanged" is measured against ISMS, and says nothing about
     // what SAP holds. Re-uploading the file is how a stale or blank `U_Brand` gets
@@ -445,7 +453,6 @@ async function buildPlan(tenantId: string, sheet: SheetRows): Promise<ImportPlan
       brand: brandLabelByName.get(lookupKey(brand)) ?? brand,
     });
 
-    const existing = existingBySku.get(skuKey) ?? null;
     const brandId = brandByName.get(lookupKey(brand)) ?? null;
     const seriesId =
       seriesByName.get(lookupKey(series)) ??
@@ -455,35 +462,6 @@ async function buildPlan(tenantId: string, sheet: SheetRows): Promise<ImportPlan
     const featureLabel = featureProvided ? featureRaw!.trim() : null;
     const resolutionLabel = resolutionProvided ? resolutionRaw!.trim() : null;
     const actualSizeLabel = actualSizeProvided ? actualSizeRaw!.trim() : null;
-
-    if (!existing) {
-      const plan: RowPlanInternal = {
-        rowNumber: row.rowNumber,
-        sku,
-        name,
-        brand,
-        series,
-        feature: featureLabel,
-        resolution: resolutionLabel,
-        actualSize: actualSizeLabel,
-        status,
-        action: "create",
-        changes: [],
-        modelId: null,
-        brandId,
-        seriesId,
-        featureId,
-        resolutionId,
-        actualSizeId,
-        brandName: brand,
-        seriesName: series,
-        statusProvided: true,
-      };
-      createCount += 1;
-      writes.push(plan);
-      previewRows.push(plan);
-      continue;
-    }
 
     // Update path — blank optional cells leave existing values untouched.
     const nextStatus = statusProvided ? status : existing.status;
@@ -568,12 +546,13 @@ async function buildPlan(tenantId: string, sheet: SheetRows): Promise<ImportPlan
     previewRows.push(plan);
   }
 
-  const canApply = (createCount > 0 || updateCount > 0) && errors.length === 0;
+  const canApply = updateCount > 0 && errors.length === 0;
 
   return {
     preview: {
       rowCount: sheet.rows.length,
-      createCount,
+      // Update-only import; kept on the preview shape for the dialog.
+      createCount: 0,
       updateCount,
       unchangedCount,
       canApply,

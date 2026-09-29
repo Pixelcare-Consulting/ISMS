@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
-import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import type { LookupRecordStatus } from "@prisma/client";
@@ -186,12 +185,13 @@ export function SerialNumberTable({
     router.push("/inventory/serial-numbers");
   }
 
-  function openCreate() {
-    setEditing(null);
-    setFormSerialNo("");
-    setFormModelId("");
-    setOpen(true);
-  }
+  // DO NOT DELETE - backs the commented-out "Add serial" button below.
+  // function openCreate() {
+  //   setEditing(null);
+  //   setFormSerialNo("");
+  //   setFormModelId("");
+  //   setOpen(true);
+  // }
 
   function openEdit(row: SerialNumberRow) {
     setEditing(row);
@@ -271,11 +271,15 @@ export function SerialNumberTable({
                 Apply
               </Button>
             </div>
+            {/* DO NOT DELETE - SAP is the source of truth for serial numbers, so they
+                are created only by the sync above. Restoring this also needs the `Plus`
+                icon import (lucide-react) and the `openCreate` handler
+                uncommented.
             {canManage ? (
               <Button onClick={openCreate}>
                 <Plus className="size-4" /> Add serial
               </Button>
-            ) : null}
+            ) : null} */}
           </>
         }
         pageSize={{ value: pageSize, onChange: handlePageSizeChange }}

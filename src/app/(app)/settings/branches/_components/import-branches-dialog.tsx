@@ -200,7 +200,7 @@ export function ImportBranchesDialog({
           if (progress.done) {
             const result = progress.result ?? plannedResult;
             toast.success(
-              `${result.branchesCreated} created · ${result.branchesUpdated} updated · ${result.allowedModelsAdded} allowed model${result.allowedModelsAdded === 1 ? "" : "s"} added`,
+              `${result.branchesUpdated} updated · ${result.allowedModelsAdded} allowed model${result.allowedModelsAdded === 1 ? "" : "s"} added`,
             );
             setApplyProgress(null);
             handleClose(false);
@@ -244,6 +244,10 @@ export function ImportBranchesDialog({
               The download template is a single <strong>Branches</strong> sheet with columns for
               branch SAP code, name, status, dealer, warehouse, geo, alternate branches, and delivery
               schedule — pre-filled from your active branches.
+            </p>
+            <p className="mt-2">
+              Import only updates existing branches — unknown SAP codes are rejected (new
+              branches come from the SAP sync).
             </p>
           </div>
 
@@ -297,9 +301,6 @@ export function ImportBranchesDialog({
                       · <strong>{preview.allowedModelRowCount}</strong> model rows
                     </>
                   ) : null}
-                </span>
-                <span>
-                  <strong>{preview.branchCreateCount}</strong> branches to create
                 </span>
                 <span>
                   <strong>{preview.branchUpdateCount}</strong> branches to update

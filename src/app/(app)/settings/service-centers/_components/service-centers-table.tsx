@@ -2,7 +2,6 @@
 
 import { Fragment, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -236,10 +235,13 @@ export function ServiceCentersTable({ centers }: { centers: CenterRow[] }) {
               noun={{ one: "service centre", many: "service centres" }}
               onSync={syncServiceCentersFromSapAction}
             />
+            {/* DO NOT DELETE - SAP is the source of truth for service centers, so they
+                are created only by the sync above. Restoring this also needs the `Plus`
+                icon import (lucide-react).
             <Button type="button" size="sm" onClick={() => onAddOpenChange(true)}>
               <Plus className="size-3.5" />
               Add center
-            </Button>
+            </Button> */}
           </>
         }
         pageSize={{ value: pageSize, onChange: setPageSize }}

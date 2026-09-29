@@ -3,11 +3,10 @@
 import { Fragment, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Package, Plus, Trash2 } from "lucide-react";
+import { Package, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
-  createWarehouseAction,
   addWarehouseLocationAction,
   deleteWarehouseAction,
   deleteWarehousesAction,
@@ -31,7 +30,6 @@ import {
 import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   TableBody,
   TableCell,
@@ -76,8 +74,6 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
     warehouseId: string;
     location: LocationRow;
   } | null>(null);
-  const [newCode, setNewCode] = useState("");
-  const [newName, setNewName] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [locCode, setLocCode] = useState("");
   const [locName, setLocName] = useState("");
@@ -120,30 +116,6 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
   } = useClientTablePagination(sort.sorted, {
     resetKey: `${query}:${sort.sortKey}:${sort.sortDir}`,
   });
-
-  function createWarehouse() {
-    startTransition(async () => {
-      const result = await createWarehouseAction({ code: newCode, name: newName });
-      if (result.error) {
-        toast.error(String(result.error));
-        return;
-      }
-      toast.success("Warehouse created");
-      if (result.warehouse) {
-        setRows((currentRows) => [
-          {
-            ...result.warehouse,
-            locations: [],
-            _count: { aors: 0, pulloutsDestination: 0 },
-          },
-          ...currentRows,
-        ]);
-      }
-      setNewCode("");
-      setNewName("");
-      router.refresh();
-    });
-  }
 
   function handleDelete() {
     if (!deleting) return;
@@ -318,6 +290,12 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
                 noun={{ one: "warehouse", many: "warehouses" }}
                 onSync={syncWarehousesFromSapAction}
               />
+              {/* DO NOT DELETE - SAP is the source of truth for warehouses, so they are
+                  created only by the sync above. Restoring this also needs the `Plus`
+                  icon, `Input`, and `createWarehouseAction` imports, the `newCode`/`newName`
+                  state, and the `createWarehouse` handler (kept at the end of this comment;
+                  it goes back after the `useClientTablePagination` call).
+
               <Input
                 placeholder="Code"
                 value={newCode}
@@ -338,6 +316,30 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
                 <Plus className="mr-1 h-4 w-4" />
                 Add warehouse
               </Button>
+
+  function createWarehouse() {
+    startTransition(async () => {
+      const result = await createWarehouseAction({ code: newCode, name: newName });
+      if (result.error) {
+        toast.error(String(result.error));
+        return;
+      }
+      toast.success("Warehouse created");
+      if (result.warehouse) {
+        setRows((currentRows) => [
+          {
+            ...result.warehouse,
+            locations: [],
+            _count: { aors: 0, pulloutsDestination: 0 },
+          },
+          ...currentRows,
+        ]);
+      }
+      setNewCode("");
+      setNewName("");
+      router.refresh();
+    });
+  } */}
           </>
         }
         pageSize={{ value: pageSize, onChange: setPageSize }}
