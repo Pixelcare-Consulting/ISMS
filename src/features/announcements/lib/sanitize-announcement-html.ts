@@ -1,4 +1,5 @@
 import sanitizeHtml from "sanitize-html";
+import type { IOptions as SanitizeHtmlOptions } from "sanitize-html";
 
 const ALLOWED_TAGS = [
   "p",
@@ -49,7 +50,7 @@ const ALLOWED_ATTR: Record<string, string[]> = {
   ],
 };
 
-const SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
+const SANITIZE_OPTIONS: SanitizeHtmlOptions = {
   allowedTags: ALLOWED_TAGS,
   allowedAttributes: ALLOWED_ATTR,
   allowedSchemes: ["http", "https", "mailto"],
