@@ -272,12 +272,6 @@ export const appNavigation: NavEntry[] = [
         permission: "inventory.view",
       },
       {
-        href: "/inventory/warehouse-stock",
-        label: "Warehouse stock",
-        icon: Warehouse,
-        anyPermissions: ["inventory.view", "warehouses.manage"],
-      },
-      {
         href: "/inventory/stock-count",
         label: "P-Count",
         icon: ClipboardList,
@@ -384,11 +378,16 @@ export const appNavigation: NavEntry[] = [
       
       },
       {
-        href: "/reports/inventory",
         label: "Inventory",
         icon: Package,
-        anyPermissions: ["reports.view", "inventory.view"],
-     
+        items: [
+          {
+            href: "/inventory/warehouse-stock",
+            label: "Warehouse stock",
+            icon: Warehouse,
+            anyPermissions: ["inventory.view", "warehouses.manage"],
+          },
+        ],
       },
       {
         href: "/reports/dii",
