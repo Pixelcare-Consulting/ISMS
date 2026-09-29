@@ -23,7 +23,10 @@ const nextConfig: NextConfig = {
     : {}),
   // Let Node resolve @better-auth/infra's own Zod 4 dep (z.url) instead of
   // Turbopack bundling the app's Zod 3 into the plugin.
-  serverExternalPackages: ["@better-auth/infra", "isomorphic-dompurify", "jsdom"],
+  // Do NOT externalize isomorphic-dompurify/jsdom: Vercel Node hits
+  // ERR_REQUIRE_ESM on html-encoding-sniffer → @exodus/bytes. Announcement
+  // HTML is sanitized with sanitize-html instead (no jsdom).
+  serverExternalPackages: ["@better-auth/infra"],
   experimental: {
     serverActions: {
       // Must be >= POLICY_ATTACHMENT_MAX_BYTES (10 MB) or valid uploads are

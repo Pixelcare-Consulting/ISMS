@@ -52,6 +52,22 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.47.1",
+    date: "2026-09-29",
+    releasedAt: "2026-09-29T13:00:00+08:00",
+    title: "Overview loads reliably on the develop site",
+    highlights: [
+      "The Overview announcements page opens again on the develop site after a server error blocked it.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Overview and announcement pages no longer hit a server error when opening the feed on the develop deployment.",
+      },
+    ],
+  },
+  {
     version: "0.47.0",
     date: "2026-09-28",
     releasedAt: "2026-09-28T19:55:00+08:00",

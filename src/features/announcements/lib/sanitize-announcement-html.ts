@@ -1,4 +1,4 @@
-import DOMPurify from "isomorphic-dompurify";
+import sanitizeHtml from "sanitize-html";
 
 const ALLOWED_TAGS = [
   "p",
@@ -34,21 +34,27 @@ const ALLOWED_TAGS = [
   "col",
 ];
 
-const ALLOWED_ATTR = [
-  "href",
-  "target",
-  "rel",
-  "src",
-  "alt",
-  "title",
-  "class",
-  "width",
-  "height",
-  "colspan",
-  "rowspan",
-  "scope",
-  "span",
-];
+const ALLOWED_ATTR: Record<string, string[]> = {
+  a: ["href", "target", "rel", "title", "class"],
+  img: ["src", "alt", "title", "class", "width", "height"],
+  "*": [
+    "class",
+    "title",
+    "colspan",
+    "rowspan",
+    "scope",
+    "span",
+    "width",
+    "height",
+  ],
+};
+
+const SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
+  allowedTags: ALLOWED_TAGS,
+  allowedAttributes: ALLOWED_ATTR,
+  allowedSchemes: ["http", "https", "mailto"],
+  allowProtocolRelative: false,
+};
 
 /** True when body looks like HTML from the rich editor (vs legacy plain text). */
 export function looksLikeHtml(value: string): boolean {
@@ -57,17 +63,13 @@ export function looksLikeHtml(value: string): boolean {
 
 /** Sanitize announcement HTML for storage and safe client render. */
 export function sanitizeAnnouncementHtml(dirty: string): string {
-  return DOMPurify.sanitize(dirty, {
-    ALLOWED_TAGS,
-    ALLOWED_ATTR,
-    ALLOW_DATA_ATTR: false,
-  }).trim();
+  return sanitizeHtml(dirty, SANITIZE_OPTIONS).trim();
 }
 
 /** Plain-text excerpt for search / list cards. */
 export function stripAnnouncementHtml(value: string): string {
   if (!looksLikeHtml(value)) return value;
-  return DOMPurify.sanitize(value, { ALLOWED_TAGS: [] })
+  return sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} })
     .replace(/\s+/g, " ")
     .trim();
 }
