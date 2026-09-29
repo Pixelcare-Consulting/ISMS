@@ -9,7 +9,6 @@ import {
   Megaphone,
   Shield,
   User,
-  type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -50,33 +49,36 @@ function formatRelativeTime(date: Date) {
   return value.toLocaleDateString();
 }
 
-function notificationTypeIcon(
-  item: Pick<NotificationInboxItem, "type" | "audience">,
-): LucideIcon {
+function NotificationTypeIcon({
+  item,
+  className,
+}: {
+  item: Pick<NotificationInboxItem, "type" | "audience">;
+  className?: string;
+}) {
   const type = item.type.toLowerCase();
 
   if (type === "announcement" || type.startsWith("announcement.")) {
-    return Megaphone;
+    return <Megaphone className={className} />;
   }
   if (type.includes("role") || item.audience === "ROLE") {
-    return Shield;
+    return <Shield className={className} />;
   }
   if (
     type.includes("user") ||
     type.includes("personal") ||
     item.audience === "USER"
   ) {
-    return User;
+    return <User className={className} />;
   }
   if (type.includes("system") || type.includes("info")) {
-    return Info;
+    return <Info className={className} />;
   }
-  return Bell;
+  return <Bell className={className} />;
 }
 
 function NotificationRowContent({ item }: { item: NotificationInboxItem }) {
   const unread = !item.readAt;
-  const Icon = notificationTypeIcon(item);
 
   return (
     <div className="flex items-start gap-3">
@@ -89,7 +91,7 @@ function NotificationRowContent({ item }: { item: NotificationInboxItem }) {
         )}
         aria-hidden
       >
-        <Icon className="size-3.5" />
+        <NotificationTypeIcon item={item} className="size-3.5" />
       </span>
 
       <div className="min-w-0 flex-1">

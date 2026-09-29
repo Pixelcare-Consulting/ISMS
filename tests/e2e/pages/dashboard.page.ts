@@ -6,7 +6,7 @@ export class DashboardPage {
   readonly quickGuide: Locator;
 
   constructor(readonly page: Page) {
-    this.heading = page.getByRole("heading", { level: 1, name: "Dashboard" });
+    this.heading = page.getByRole("heading", { level: 1, name: "Overview" });
     this.quickGuide = page.getByRole("dialog", { name: /quick guide/i });
   }
 
