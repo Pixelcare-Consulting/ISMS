@@ -54,12 +54,30 @@ export const RELEASES: ReleaseNote[] = [
   {
     version: "0.47.1",
     date: "2026-09-29",
-    releasedAt: "2026-09-29T13:00:00+08:00",
-    title: "Overview loads reliably on the develop site",
+    releasedAt: "2026-09-29T13:20:00+08:00",
+    title: "Overview filters sit with announcements",
     highlights: [
+      "Overview filters stay with the announcement list — pick All, New, or Earlier, search by title, and narrow by date from and date to while you scroll.",
+      "Hide or show those Overview filters with one click so the list has more room when you do not need them.",
+      "Announcement cards are clearer to scan — title and details sit above a clean line before the message body.",
       "The Overview announcements page opens again on the develop site after a server error blocked it.",
     ],
     changes: [
+      {
+        type: "improvement",
+        description:
+          "Overview announcement filters (All / New / Earlier, title search, and date from / date to) sit inside the announcement list section and stay visible while you scroll the cards.",
+      },
+      {
+        type: "improvement",
+        description:
+          "You can collapse Overview announcement filters to free space, and reopen them anytime — a small cue shows when filters are still applied.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Overview and Announcements cards separate the title block from the body with a clear line, so posts are easier to scan.",
+      },
       {
         type: "fix",
         description:

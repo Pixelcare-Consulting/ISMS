@@ -1,7 +1,16 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
-import { Heart, MessageCircle, Pencil, Search, Trash2, Users } from "lucide-react";
+import { useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
+import {
+  ChevronDown,
+  Heart,
+  ListFilter,
+  MessageCircle,
+  Pencil,
+  Search,
+  Trash2,
+  Users,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -30,6 +39,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Popover,
   PopoverContent,
@@ -43,6 +53,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { usePersistedBoolean } from "@/hooks/use-persisted-boolean";
 import { getInitials } from "@/utils/get-initials";
 import { cn } from "@/utils/cn";
 
@@ -50,6 +61,7 @@ const VISIBLE_COMMENT_LIMIT = 3;
 const READER_AVATAR_LIMIT = 5;
 /** Ignore sub-second clock skew between create and Prisma @updatedAt. */
 const EDITED_TOLERANCE_MS = 1000;
+const FILTERS_EXPANDED_KEY = "overview.announcementFeed.filtersExpanded";
 
 export interface OverviewFeedReaderPreview {
   id: string;
@@ -106,6 +118,18 @@ function formatPublished(value: Date | string): string {
     month: "long",
     day: "numeric",
     year: "numeric",
+  }).format(d);
+}
+
+/** Calendar YYYY-MM-DD in Asia/Manila (matches feed display dates). */
+function manilaCalendarYmd(value: Date | string): string | null {
+  const d = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(d.getTime())) return null;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
   }).format(d);
 }
 
@@ -311,6 +335,12 @@ export function OverviewAnnouncementFeed({
   const [pending, startTransition] = useTransition();
   const [filter, setFilter] = useState<FeedFilter>("all");
   const [titleQuery, setTitleQuery] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [filtersExpanded, setFiltersExpanded] = usePersistedBoolean(
+    FILTERS_EXPANDED_KEY,
+    true,
+  );
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>(
     {},
@@ -320,9 +350,25 @@ export function OverviewAnnouncementFeed({
   const [readersOpen, setReadersOpen] = useState(false);
   const [readers, setReaders] = useState<ReaderRow[]>([]);
   const [readersTitle, setReadersTitle] = useState("");
+  /** Sit below sticky PageHeader (sibling) without overlapping. */
+  const [filterStickyTop, setFilterStickyTop] = useState(76);
+  const feedSectionRef = useRef<HTMLDivElement>(null);
   const commentInputRefs = useRef<Record<string, HTMLTextAreaElement | null>>(
     {},
   );
+
+  useLayoutEffect(() => {
+    const pageHeader = feedSectionRef.current?.previousElementSibling;
+    if (!(pageHeader instanceof HTMLElement)) return;
+
+    const update = () => {
+      setFilterStickyTop(Math.ceil(pageHeader.getBoundingClientRect().height));
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(pageHeader);
+    return () => observer.disconnect();
+  }, []);
 
   const filteredFeed = useMemo(() => {
     const q = titleQuery.trim().toLowerCase();
@@ -330,9 +376,15 @@ export function OverviewAnnouncementFeed({
       if (filter === "new" && item.readByMe) return false;
       if (filter === "earlier" && !item.readByMe) return false;
       if (q && !item.title.toLowerCase().includes(q)) return false;
+      if (dateFrom || dateTo) {
+        const ymd = manilaCalendarYmd(announcementDisplayDate(item));
+        if (!ymd) return false;
+        if (dateFrom && ymd < dateFrom) return false;
+        if (dateTo && ymd > dateTo) return false;
+      }
       return true;
     });
-  }, [feed, filter, titleQuery]);
+  }, [feed, filter, titleQuery, dateFrom, dateTo]);
 
   const { unreadItems, readItems } = useMemo(() => {
     const unread: OverviewFeedItem[] = [];
@@ -346,6 +398,11 @@ export function OverviewAnnouncementFeed({
 
   const emptyFeed = feed.length === 0;
   const emptyFiltered = filteredFeed.length === 0;
+  const filtersActive =
+    filter !== "all" ||
+    titleQuery.trim().length > 0 ||
+    dateFrom.length > 0 ||
+    dateTo.length > 0;
 
   const handleMarkRead = (id: string) => {
     startTransition(async () => {
@@ -687,12 +744,12 @@ export function OverviewAnnouncementFeed({
         key={item.id}
         className="rounded-none border border-border bg-white px-5 py-5 dark:bg-card"
       >
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div className="min-w-0 space-y-1">
-            <h2 className="text-lg font-semibold tracking-tight text-foreground">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-4">
+          <div className="min-w-0 space-y-1.5">
+            <h2 className="text-lg font-semibold leading-snug tracking-tight text-foreground">
               {item.title}
             </h2>
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+            <p className="text-xs leading-relaxed text-muted-foreground">
               {formatPublished(announcementDisplayDate(item))}
               {wasAnnouncementContentEdited(
                 item.createdAt,
@@ -702,27 +759,32 @@ export function OverviewAnnouncementFeed({
                 <AnnouncementEditedMark
                   announcementId={item.id}
                   currentTitle={item.title}
-                  className="normal-case tracking-normal text-xs text-muted-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:underline"
+                  className="text-xs text-muted-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:underline"
                 />
               ) : null}
-              <span className="mx-1.5 text-border">·</span>
-              <span className="normal-case tracking-normal">
-                Created by {author}
+              <span className="mx-1.5 text-border" aria-hidden>
+                ·
               </span>
+              <span>Created by {author}</span>
             </p>
           </div>
           {!item.readByMe ? (
             <Button
               type="button"
               variant="link"
-              className="h-auto p-0 text-sm"
+              className="h-auto shrink-0 p-0 text-sm"
               disabled={pending}
               onClick={() => handleMarkRead(item.id)}
             >
               Mark as read
             </Button>
           ) : (
-            <span className="text-xs text-muted-foreground">Read</span>
+            <Badge
+              variant="secondary"
+              className="rounded-none px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
+            >
+              Read
+            </Badge>
           )}
         </div>
 
@@ -798,101 +860,192 @@ export function OverviewAnnouncementFeed({
     );
   }
 
-  function renderFilterBar() {
+  function renderStickyFilter() {
     return (
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <Select
-          value={filter}
-          onValueChange={(value) => setFilter(value as FeedFilter)}
-        >
-          <SelectTrigger className="h-9 w-full rounded-none border-border bg-white shadow-none sm:w-44 dark:bg-card">
-            <SelectValue placeholder="Filter" />
-          </SelectTrigger>
-          <SelectContent className="rounded-none">
-            <SelectItem value="all">All</SelectItem>
-            <SelectItem value="new">New (unread)</SelectItem>
-            <SelectItem value="earlier">Earlier (read)</SelectItem>
-          </SelectContent>
-        </Select>
-        <div className="relative min-w-0 flex-1">
-          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={titleQuery}
-            onChange={(e) => setTitleQuery(e.target.value)}
-            placeholder="Search by title…"
-            className="h-9 rounded-none border-border bg-white pl-9 shadow-none dark:bg-card"
-            aria-label="Search announcements by title"
-          />
+      <div
+        style={{ top: `${filterStickyTop}px` }}
+        className={cn(
+          "sticky z-10 shrink-0 border-b border-border/60 bg-slate-100 px-4 py-2 shadow-sm",
+          "dark:bg-muted",
+        )}
+      >
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-none border-border bg-white shadow-none dark:bg-card"
+              aria-expanded={filtersExpanded}
+              aria-controls="overview-feed-filters"
+              onClick={() => setFiltersExpanded((open) => !open)}
+            >
+              <ListFilter className="size-4" aria-hidden />
+              Filters
+              {filtersActive ? (
+                <span
+                  className="size-1.5 shrink-0 rounded-full bg-primary"
+                  aria-label="Filters applied"
+                />
+              ) : null}
+              <ChevronDown
+                className={cn(
+                  "size-4 text-muted-foreground transition-transform",
+                  filtersExpanded && "rotate-180",
+                )}
+                aria-hidden
+              />
+            </Button>
+            {!filtersExpanded && filtersActive ? (
+              <Badge
+                variant="secondary"
+                className="rounded-none px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide"
+              >
+                Applied
+              </Badge>
+            ) : null}
+          </div>
+          {filtersExpanded ? (
+            <div id="overview-feed-filters" className="flex flex-col gap-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                <div className="w-full space-y-1.5 sm:w-44">
+                  <Label htmlFor="overview-feed-filter" className="text-xs">
+                    Show
+                  </Label>
+                  <Select
+                    value={filter}
+                    onValueChange={(value) => setFilter(value as FeedFilter)}
+                  >
+                    <SelectTrigger
+                      id="overview-feed-filter"
+                      className="h-9 w-full rounded-none border-border bg-white shadow-none dark:bg-card"
+                    >
+                      <SelectValue placeholder="Filter" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-none">
+                      <SelectItem value="all">All</SelectItem>
+                      <SelectItem value="new">New (unread)</SelectItem>
+                      <SelectItem value="earlier">Earlier (read)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="relative min-w-0 flex-1 space-y-1.5">
+                  <Label htmlFor="overview-feed-search" className="text-xs">
+                    Search
+                  </Label>
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      id="overview-feed-search"
+                      value={titleQuery}
+                      onChange={(e) => setTitleQuery(e.target.value)}
+                      placeholder="Search by title…"
+                      className="h-9 rounded-none border-border bg-white pl-9 shadow-none dark:bg-card"
+                      aria-label="Search announcements by title"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="overview-date-from" className="text-xs">
+                    Date from
+                  </Label>
+                  <Input
+                    id="overview-date-from"
+                    type="date"
+                    value={dateFrom}
+                    max={dateTo || undefined}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                    className="h-9 rounded-none border-border bg-white shadow-none dark:bg-card"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="overview-date-to" className="text-xs">
+                    Date to
+                  </Label>
+                  <Input
+                    id="overview-date-to"
+                    type="date"
+                    value={dateTo}
+                    min={dateFrom || undefined}
+                    onChange={(e) => setDateTo(e.target.value)}
+                    className="h-9 rounded-none border-border bg-white shadow-none dark:bg-card"
+                  />
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
     );
   }
 
-  if (emptyFeed) {
-    return (
-      <div className="space-y-4">
-        {renderFilterBar()}
+  function renderFeedBody() {
+    if (emptyFeed) {
+      return (
         <div className="rounded-none border border-dashed border-border bg-white px-6 py-12 text-center dark:bg-card">
           <p className="text-sm text-muted-foreground">
             No published announcements yet. When your team posts updates, they will
             appear here.
           </p>
         </div>
+      );
+    }
+
+    if (emptyFiltered) {
+      return (
+        <div className="rounded-none border border-dashed border-border bg-white px-6 py-12 text-center dark:bg-card">
+          <p className="text-sm text-muted-foreground">
+            No announcements match this filter.
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-8">
+        {(filter === "all" || filter === "new") && unreadItems.length > 0 ? (
+          <section>
+            <div className="mb-3">
+              <h2>
+                <Badge className="rounded-none bg-primary px-2 py-0.5 text-xs font-semibold tracking-wide text-primary-foreground">
+                  New
+                </Badge>
+              </h2>
+            </div>
+            <div className="space-y-4">
+              {unreadItems.map((item) => renderItem(item))}
+            </div>
+          </section>
+        ) : null}
+
+        {(filter === "all" || filter === "earlier") && readItems.length > 0 ? (
+          <section>
+            <div className="mb-3">
+              <h2>
+                <Badge className="rounded-none border-transparent bg-slate-200 px-2 py-0.5 text-xs font-semibold tracking-wide text-slate-800 dark:bg-slate-700 dark:text-slate-100">
+                  Earlier
+                </Badge>
+              </h2>
+            </div>
+            <div className="space-y-4">
+              {readItems.map((item) => renderItem(item))}
+            </div>
+          </section>
+        ) : null}
       </div>
     );
   }
 
   return (
     <>
-      <div className="space-y-4">
-        {renderFilterBar()}
-
-        {emptyFiltered ? (
-          <div className="rounded-none border border-dashed border-border bg-white px-6 py-12 text-center dark:bg-card">
-            <p className="text-sm text-muted-foreground">
-              No announcements match this filter.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-10">
-            {(filter === "all" || filter === "new") && unreadItems.length > 0 ? (
-              <section className="rounded-none border border-border bg-slate-100 p-4 dark:bg-muted">
-                <div className="mb-3 flex items-center justify-between gap-2">
-                  <h2>
-                    <Badge className="rounded-none bg-primary px-2 py-0.5 text-xs font-semibold tracking-wide text-primary-foreground">
-                      New
-                    </Badge>
-                  </h2>
-                  <span className="text-xs text-muted-foreground">
-                    {unreadItems.length} unread
-                  </span>
-                </div>
-                <div className="space-y-4">
-                  {unreadItems.map((item) => renderItem(item))}
-                </div>
-              </section>
-            ) : null}
-
-            {(filter === "all" || filter === "earlier") &&
-            readItems.length > 0 ? (
-              <section className="rounded-none border border-border bg-slate-100 p-4 dark:bg-muted">
-                <div className="mb-3 flex items-center justify-between gap-2">
-                  <h2>
-                    <Badge className="rounded-none border-transparent bg-slate-200 px-2 py-0.5 text-xs font-semibold tracking-wide text-slate-800 dark:bg-slate-700 dark:text-slate-100">
-                      Earlier
-                    </Badge>
-                  </h2>
-                  <span className="text-xs text-muted-foreground">
-                    {readItems.length} read
-                  </span>
-                </div>
-                <div className="space-y-4">
-                  {readItems.map((item) => renderItem(item))}
-                </div>
-              </section>
-            ) : null}
-          </div>
-        )}
+      <div
+        ref={feedSectionRef}
+        className="flex flex-col gap-5 rounded-none border border-border bg-slate-100 dark:bg-muted"
+      >
+        {renderStickyFilter()}
+        <div className="min-w-0 px-4 pb-4">{renderFeedBody()}</div>
       </div>
 
       <Dialog open={readersOpen} onOpenChange={setReadersOpen}>

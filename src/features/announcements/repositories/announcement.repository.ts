@@ -57,87 +57,44 @@ export const announcementRepository = {
   /** Published feed for Dashboard Overview (with engagement counts). */
   async listFeedForUser(tenantId: string, userId: string, limit = 40) {
     const now = new Date();
-    let rows;
-    try {
-      rows = await prisma.announcement.findMany({
-        where: {
-          tenantId,
-          isActive: true,
-          publishedAt: { lte: now },
-          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+    const rows = await prisma.announcement.findMany({
+      where: {
+        tenantId,
+        isActive: true,
+        publishedAt: { lte: now },
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+      include: {
+        createdBy: { select: { id: true, name: true, email: true } },
+        _count: {
+          select: { reads: true, likes: true, comments: true },
         },
-        include: {
-          createdBy: { select: { id: true, name: true, email: true } },
-          _count: {
-            select: { reads: true, likes: true, comments: true },
-          },
-          likes: {
-            where: { userId },
-            select: { id: true },
-            take: 1,
-          },
-          /** First 5 readers for avatar stack (newest first). */
-          reads: {
-            orderBy: { readAt: "desc" },
-            take: 5,
-            select: {
-              user: {
-                select: { id: true, name: true, email: true, image: true },
-              },
-            },
-          },
-          comments: {
-            orderBy: { createdAt: "desc" },
-            take: 50,
-            include: {
-              user: {
-                select: { id: true, name: true, email: true, image: true },
-              },
+        likes: {
+          where: { userId },
+          select: { id: true },
+          take: 1,
+        },
+        /** First 5 readers for avatar stack (newest first). */
+        reads: {
+          orderBy: { readAt: "desc" },
+          take: 5,
+          select: {
+            user: {
+              select: { id: true, name: true, email: true, image: true },
             },
           },
         },
-        orderBy: { publishedAt: "desc" },
-        take: limit,
-      });
-    } catch (err) {
-      const prismaCode =
-        err && typeof err === "object" && "code" in err
-          ? String((err as { code: unknown }).code)
-          : undefined;
-      const meta =
-        err && typeof err === "object" && "meta" in err
-          ? (err as { meta: unknown }).meta
-          : undefined;
-      // #region agent log
-      fetch("http://127.0.0.1:7904/ingest/90072bc3-ed3d-4cdb-89b5-6031621ce6d7", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Debug-Session-Id": "f1e4c9",
-        },
-        body: JSON.stringify({
-          sessionId: "f1e4c9",
-          runId: "pre-fix",
-          hypothesisId: "A",
-          location: "announcement.repository.ts:listFeedForUser",
-          message: "Prisma findMany failed",
-          data: {
-            name: err instanceof Error ? err.name : typeof err,
-            message: err instanceof Error ? err.message : String(err),
-            prismaCode,
-            meta,
+        comments: {
+          orderBy: { createdAt: "desc" },
+          take: 50,
+          include: {
+            user: { select: { id: true, name: true, email: true, image: true } },
           },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
-      console.error("[debug-f1e4c9] listFeedForUser prisma error", {
-        prismaCode,
-        meta,
-        message: err instanceof Error ? err.message : String(err),
-      });
-      throw err;
-    }
+        },
+      },
+      orderBy: { publishedAt: "desc" },
+      take: limit,
+    });
 
     const myReads =
       rows.length === 0

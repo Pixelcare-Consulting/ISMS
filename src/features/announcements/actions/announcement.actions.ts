@@ -49,82 +49,10 @@ export async function listActiveAnnouncementsAction() {
 
 export async function listAnnouncementFeedAction() {
   const session = await requireAuth();
-  // #region agent log
-  fetch("http://127.0.0.1:7904/ingest/90072bc3-ed3d-4cdb-89b5-6031621ce6d7", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Debug-Session-Id": "f1e4c9",
-    },
-    body: JSON.stringify({
-      sessionId: "f1e4c9",
-      runId: "pre-fix",
-      hypothesisId: "A",
-      location: "announcement.actions.ts:listAnnouncementFeedAction",
-      message: "listFeed start",
-      data: { hasTenant: Boolean(session.user.tenantId) },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
-  try {
-    const rows = await announcementService.listFeedForUser(
-      session.user.tenantId,
-      session.user.id,
-    );
-    // #region agent log
-    fetch("http://127.0.0.1:7904/ingest/90072bc3-ed3d-4cdb-89b5-6031621ce6d7", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "f1e4c9",
-      },
-      body: JSON.stringify({
-        sessionId: "f1e4c9",
-        runId: "pre-fix",
-        hypothesisId: "C",
-        location: "announcement.actions.ts:listAnnouncementFeedAction:ok",
-        message: "listFeed ok",
-        data: { count: rows.length },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-    return rows;
-  } catch (err) {
-    const prismaCode =
-      err && typeof err === "object" && "code" in err
-        ? String((err as { code: unknown }).code)
-        : undefined;
-    const meta =
-      err && typeof err === "object" && "meta" in err
-        ? (err as { meta: unknown }).meta
-        : undefined;
-    // #region agent log
-    fetch("http://127.0.0.1:7904/ingest/90072bc3-ed3d-4cdb-89b5-6031621ce6d7", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "f1e4c9",
-      },
-      body: JSON.stringify({
-        sessionId: "f1e4c9",
-        runId: "pre-fix",
-        hypothesisId: "A",
-        location: "announcement.actions.ts:listAnnouncementFeedAction:err",
-        message: "listFeed failed",
-        data: {
-          name: err instanceof Error ? err.name : typeof err,
-          message: err instanceof Error ? err.message : String(err),
-          prismaCode,
-          meta,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-    throw err;
-  }
+  return announcementService.listFeedForUser(
+    session.user.tenantId,
+    session.user.id,
+  );
 }
 
 export async function countUnreadAnnouncementsAction() {

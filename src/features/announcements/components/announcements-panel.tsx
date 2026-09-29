@@ -151,10 +151,10 @@ export function AnnouncementsPanel({
                 key={row.id}
                 className="rounded-none border border-border bg-white px-5 py-5 dark:bg-card"
               >
-                <div className="flex flex-row items-start justify-between gap-4">
+                <div className="flex flex-row items-start justify-between gap-4 border-b border-border pb-4">
                   <div className="min-w-0 space-y-1.5">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-base font-semibold tracking-tight text-foreground">
+                      <h2 className="text-base font-semibold leading-snug tracking-tight text-foreground">
                         {row.title}
                       </h2>
                       {live ? (
@@ -171,7 +171,7 @@ export function AnnouncementsPanel({
                         </Badge>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs leading-relaxed text-muted-foreground">
                       Published{" "}
                       {formatDateTime(announcementDisplayDate(row))}
                       {edited ? (

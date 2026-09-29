@@ -1,1 +1,0 @@
-{"sessionId":"f1e4c9","runId":"post-fix-local","hypothesisId":"F","location":"sanitize-smoke","message":"sanitize-html strips script/onerror; no isomorphic-dompurify","data":{"clean":"<p>Hi<img src=\"x\" /></p>","vercelErrorWas":"ERR_REQUIRE_ESM isomorphic-dompurify"},"timestamp":1790658195600}
