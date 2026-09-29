@@ -86,7 +86,7 @@ export function AnnouncementRichEditor({
       attributes: {
         class: cn(
           ANNOUNCEMENT_PROSE_CLASS,
-          "min-h-[160px] px-3 py-2 focus:outline-none",
+          "min-h-[160px] cursor-text bg-card px-3 py-2 text-foreground focus:outline-none",
         ),
       },
     },
@@ -159,7 +159,7 @@ export function AnnouncementRichEditor({
     return (
       <div
         className={cn(
-          "min-h-50 rounded-md border border-input bg-muted/30 px-3 py-2 text-sm text-muted-foreground",
+          "min-h-50 rounded-md border border-input bg-card px-3 py-2 text-sm text-muted-foreground shadow-sm",
           className,
         )}
       >
@@ -171,7 +171,7 @@ export function AnnouncementRichEditor({
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-md border border-input bg-background shadow-xs",
+        "overflow-hidden rounded-md border border-input bg-card shadow-sm",
         disabled && "opacity-60",
         className,
       )}

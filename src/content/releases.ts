@@ -52,6 +52,121 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.49.4",
+    date: "2026-09-29",
+    releasedAt: "2026-09-29T14:55:00+08:00",
+    title: "Announcement dates easier to spot",
+    highlights: [
+      "Each announcement on Overview and in the Announcements list now shows a clear calendar date box beside the title so you can see when it was posted at a glance.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Announcement cards show a compact month–day–year date box next to the title, with the author line kept free of the full date string.",
+      },
+    ],
+  },
+  {
+    version: "0.49.3",
+    date: "2026-09-29",
+    releasedAt: "2026-09-29T14:05:00+08:00",
+    title: "Notifications list easier to scan",
+    highlights: [
+      "The header notifications list now shows a clear icon for each kind of update, stronger unread styling, and cleaner spacing so you can spot what matters faster.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Notifications in the header bell use type icons, clearer unread vs read styling, and a friendlier empty state.",
+      },
+    ],
+  },
+  {
+    version: "0.49.2",
+    date: "2026-09-29",
+    releasedAt: "2026-09-29T14:00:00+08:00",
+    title: "Announcement body editor looks editable",
+    highlights: [
+      "The Body field when creating or editing an announcement now matches the white input style of Title and dates, so it no longer looks locked or read-only.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "The announcement Body rich-text area uses the same white editable surface as other form fields, while the formatting toolbar stays visually distinct.",
+      },
+    ],
+  },
+  {
+    version: "0.49.1",
+    date: "2026-09-29",
+    releasedAt: "2026-09-29T13:55:00+08:00",
+    title: "Optional announcement expiry works again",
+    highlights: [
+      "You can leave Expires at blank when creating or editing an announcement — it is truly optional and no longer blocks Create with a false expiry error.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Leaving Expires at empty on a new or edited announcement no longer shows “Expiry must be after the publish date” and lets you create or save without setting an end date.",
+      },
+    ],
+  },
+  {
+    version: "0.49.0",
+    date: "2026-09-29",
+    releasedAt: "2026-09-29T13:50:00+08:00",
+    title: "Announcements reach your notifications bell",
+    highlights: [
+      "When a company announcement goes live, everyone gets a notification in the header bell — open it to jump straight to Overview.",
+      "The bell shows five notifications at a time with simple previous/next paging so you can browse older alerts without scrolling forever.",
+      "Overview opens on New announcements first; once you’ve read them all, it shows everything so the page never looks empty.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Publishing a live announcement creates a company-wide in-app notification that opens Overview from the header bell.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The notifications popover lists five items per page with previous/next controls and a page indicator.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Overview focuses on unread announcements by default and switches to all posts when nothing new remains.",
+      },
+    ],
+  },
+  {
+    version: "0.48.0",
+    date: "2026-09-29",
+    releasedAt: "2026-09-29T13:35:00+08:00",
+    title: "In-app notifications in the header",
+    highlights: [
+      "A notifications bell sits on the right of the header so updates can find you without leaving your page.",
+      "What’s new and the version label now sit next to the sidebar drawer, keeping release notes one click away on the left.",
+      "Open the bell for your inbox — mark one or all as read when you are caught up (nothing to show yet until alerts start arriving).",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "New notifications bell in the header opens your in-app inbox, shows an unread count, and lets you mark items as read.",
+      },
+      {
+        type: "improvement",
+        description:
+          "What’s new and the build version sit beside the sidebar drawer so the right side of the header stays clear for notifications.",
+      },
+    ],
+  },
+  {
     version: "0.47.1",
     date: "2026-09-29",
     releasedAt: "2026-09-29T13:20:00+08:00",

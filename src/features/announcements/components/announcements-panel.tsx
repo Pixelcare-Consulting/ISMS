@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { deleteAnnouncementAction } from "@/features/announcements/actions/announcement.actions";
 import { AnnouncementBody } from "@/features/announcements/components/announcement-body";
+import { AnnouncementDateBox } from "@/features/announcements/components/announcement-date-box";
 import {
   AnnouncementEditedMark,
   announcementDisplayDate,
@@ -152,40 +153,40 @@ export function AnnouncementsPanel({
                 className="rounded-none border border-border bg-white px-5 py-5 dark:bg-card"
               >
                 <div className="flex flex-row items-start justify-between gap-4 border-b border-border pb-4">
-                  <div className="min-w-0 space-y-1.5">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-base font-semibold leading-snug tracking-tight text-foreground">
-                        {row.title}
-                      </h2>
-                      {live ? (
-                        <Badge className="rounded-none border-transparent bg-primary px-2 py-0.5 text-xs font-semibold tracking-wide text-primary-foreground">
-                          Live
-                        </Badge>
-                      ) : row.isActive ? (
-                        <Badge className="rounded-none border-transparent bg-slate-200 px-2 py-0.5 text-xs font-semibold tracking-wide text-slate-800 dark:bg-slate-700 dark:text-slate-100">
-                          Scheduled
-                        </Badge>
-                      ) : (
-                        <Badge className="rounded-none border-transparent bg-muted px-2 py-0.5 text-xs font-semibold tracking-wide text-muted-foreground">
-                          Inactive
-                        </Badge>
-                      )}
+                  <div className="flex min-w-0 flex-1 items-start gap-3">
+                    <AnnouncementDateBox date={announcementDisplayDate(row)} />
+                    <div className="min-w-0 space-y-1.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="text-base font-semibold leading-snug tracking-tight text-foreground">
+                          {row.title}
+                        </h2>
+                        {live ? (
+                          <Badge className="rounded-none border-transparent bg-primary px-2 py-0.5 text-xs font-semibold tracking-wide text-primary-foreground">
+                            Live
+                          </Badge>
+                        ) : row.isActive ? (
+                          <Badge className="rounded-none border-transparent bg-slate-200 px-2 py-0.5 text-xs font-semibold tracking-wide text-slate-800 dark:bg-slate-700 dark:text-slate-100">
+                            Scheduled
+                          </Badge>
+                        ) : (
+                          <Badge className="rounded-none border-transparent bg-muted px-2 py-0.5 text-xs font-semibold tracking-wide text-muted-foreground">
+                            Inactive
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        Created by {row.createdBy.name ?? row.createdBy.email}
+                        {edited ? (
+                          <AnnouncementEditedMark
+                            announcementId={row.id}
+                            currentTitle={row.title}
+                          />
+                        ) : null}
+                        {row.expiresAt
+                          ? ` · Expires ${formatDateTime(row.expiresAt)}`
+                          : ""}
+                      </p>
                     </div>
-                    <p className="text-xs leading-relaxed text-muted-foreground">
-                      Published{" "}
-                      {formatDateTime(announcementDisplayDate(row))}
-                      {edited ? (
-                        <AnnouncementEditedMark
-                          announcementId={row.id}
-                          currentTitle={row.title}
-                        />
-                      ) : null}
-                      {row.expiresAt
-                        ? ` · Expires ${formatDateTime(row.expiresAt)}`
-                        : ""}
-                      {" · "}
-                      {row.createdBy.name ?? row.createdBy.email}
-                    </p>
                   </div>
                   {canManage ? (
                     <div className="flex shrink-0 gap-1">

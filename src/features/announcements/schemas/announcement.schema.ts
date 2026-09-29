@@ -1,11 +1,14 @@
 import { z } from "zod";
 
-const optionalExpiresAt = z
-  .union([z.coerce.date(), z.literal(""), z.null(), z.undefined()])
-  .transform((value) => {
-    if (value === "" || value == null) return null;
-    return value;
-  });
+/**
+ * Empty / cleared expiry must stay optional.
+ * Do not lead with `z.coerce.date()`: `new Date(null)` is epoch (1970), which then
+ * falsely fails the "after publish date" check.
+ */
+const optionalExpiresAt = z.preprocess((value) => {
+  if (value === "" || value == null) return null;
+  return value;
+}, z.coerce.date().nullable());
 
 /** Rich HTML body from TipTap (images are uploaded URLs, not base64). */
 export const announcementFormSchema = z.object({

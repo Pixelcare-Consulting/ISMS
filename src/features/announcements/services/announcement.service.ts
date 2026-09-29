@@ -5,6 +5,9 @@ import {
   createAnnouncementSchema,
   updateAnnouncementSchema,
 } from "@/features/announcements/schemas/announcement.schema";
+import { notificationService } from "@/features/notifications/services/notification.service";
+
+const ANNOUNCEMENT_NOTIFY_EXCERPT_MAX = 200;
 
 function prepareAnnouncementBody(raw: string): string {
   const sanitized = sanitizeAnnouncementHtml(raw);
@@ -13,6 +16,61 @@ function prepareAnnouncementBody(raw: string): string {
     throw new Error("Body is required");
   }
   return sanitized;
+}
+
+function stripAnnouncementHtmlToPlain(html: string): string {
+  return html
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function announcementPlainExcerpt(html: string, max = ANNOUNCEMENT_NOTIFY_EXCERPT_MAX): string {
+  const plain = stripAnnouncementHtmlToPlain(html);
+  if (plain.length <= max) return plain;
+  return `${plain.slice(0, max - 1).trimEnd()}…`;
+}
+
+function isAnnouncementLive(row: {
+  isActive: boolean;
+  publishedAt: Date;
+  expiresAt?: Date | null;
+}): boolean {
+  if (!row.isActive) return false;
+  const now = Date.now();
+  if (row.publishedAt.getTime() > now) return false;
+  if (row.expiresAt && row.expiresAt.getTime() <= now) return false;
+  return true;
+}
+
+async function notifyAnnouncementPublished(input: {
+  tenantId: string;
+  actorUserId: string;
+  announcement: {
+    id: string;
+    title: string;
+    body: string;
+  };
+}) {
+  const body = announcementPlainExcerpt(input.announcement.body);
+  await notificationService.createNotification({
+    tenantId: input.tenantId,
+    actorUserId: input.actorUserId,
+    data: {
+      audience: "TENANT",
+      type: "announcement",
+      title: input.announcement.title,
+      body: body || null,
+      href: "/dashboard",
+      metadata: { announcementId: input.announcement.id },
+    },
+  });
 }
 
 export const announcementService = {
@@ -176,6 +234,14 @@ export const announcementService = {
       metadata: { title: announcement.title },
     });
 
+    if (isAnnouncementLive(announcement)) {
+      await notifyAnnouncementPublished({
+        tenantId: input.tenantId,
+        actorUserId: input.actorUserId,
+        announcement,
+      });
+    }
+
     return announcement;
   },
 
@@ -212,6 +278,8 @@ export const announcementService = {
       throw new Error("Announcement not found");
     }
 
+    const wasLive = isAnnouncementLive(existing);
+
     const announcement = await announcementRepository.update(
       input.tenantId,
       parsed.data.announcementId,
@@ -233,6 +301,15 @@ export const announcementService = {
       entityId: announcement.id,
       metadata: { title: announcement.title },
     });
+
+    // Notify once when a draft/scheduled/inactive post becomes live for the team.
+    if (!wasLive && isAnnouncementLive(announcement)) {
+      await notifyAnnouncementPublished({
+        tenantId: input.tenantId,
+        actorUserId: input.actorUserId,
+        announcement,
+      });
+    }
 
     return announcement;
   },

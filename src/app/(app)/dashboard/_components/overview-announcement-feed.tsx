@@ -24,6 +24,7 @@ import {
   updateAnnouncementCommentAction,
 } from "@/features/announcements/actions/announcement.actions";
 import { AnnouncementBody } from "@/features/announcements/components/announcement-body";
+import { AnnouncementDateBox } from "@/features/announcements/components/announcement-date-box";
 import {
   AnnouncementEditedMark,
   announcementDisplayDate,
@@ -108,17 +109,6 @@ interface OverviewAnnouncementFeedProps {
   items: OverviewFeedItem[];
   currentUser: OverviewFeedCurrentUser;
   canManageAnnouncements: boolean;
-}
-
-function formatPublished(value: Date | string): string {
-  const d = typeof value === "string" ? new Date(value) : value;
-  if (Number.isNaN(d.getTime())) return "—";
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Manila",
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  }).format(d);
 }
 
 /** Calendar YYYY-MM-DD in Asia/Manila (matches feed display dates). */
@@ -333,7 +323,9 @@ export function OverviewAnnouncementFeed({
 }: OverviewAnnouncementFeedProps) {
   const [feed, setFeed] = useState(items);
   const [pending, startTransition] = useTransition();
-  const [filter, setFilter] = useState<FeedFilter>("all");
+  const [filterPreference, setFilterPreference] = useState<FeedFilter>(() =>
+    items.some((item) => !item.readByMe) ? "new" : "all",
+  );
   const [titleQuery, setTitleQuery] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -356,6 +348,15 @@ export function OverviewAnnouncementFeed({
   const commentInputRefs = useRef<Record<string, HTMLTextAreaElement | null>>(
     {},
   );
+
+  const hasUnread = useMemo(
+    () => feed.some((item) => !item.readByMe),
+    [feed],
+  );
+
+  // Prefer New when unread exist; fall back to All so the feed is never empty of posts.
+  const filter: FeedFilter =
+    filterPreference === "new" && !hasUnread ? "all" : filterPreference;
 
   useLayoutEffect(() => {
     const pageHeader = feedSectionRef.current?.previousElementSibling;
@@ -398,8 +399,9 @@ export function OverviewAnnouncementFeed({
 
   const emptyFeed = feed.length === 0;
   const emptyFiltered = filteredFeed.length === 0;
+  const defaultFilter: FeedFilter = hasUnread ? "new" : "all";
   const filtersActive =
-    filter !== "all" ||
+    filter !== defaultFilter ||
     titleQuery.trim().length > 0 ||
     dateFrom.length > 0 ||
     dateTo.length > 0;
@@ -745,28 +747,27 @@ export function OverviewAnnouncementFeed({
         className="rounded-none border border-border bg-white px-5 py-5 dark:bg-card"
       >
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-4">
-          <div className="min-w-0 space-y-1.5">
-            <h2 className="text-lg font-semibold leading-snug tracking-tight text-foreground">
-              {item.title}
-            </h2>
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              {formatPublished(announcementDisplayDate(item))}
-              {wasAnnouncementContentEdited(
-                item.createdAt,
-                item.updatedAt,
-                item.publishedAt,
-              ) ? (
-                <AnnouncementEditedMark
-                  announcementId={item.id}
-                  currentTitle={item.title}
-                  className="text-xs text-muted-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:underline"
-                />
-              ) : null}
-              <span className="mx-1.5 text-border" aria-hidden>
-                ·
-              </span>
-              <span>Created by {author}</span>
-            </p>
+          <div className="flex min-w-0 flex-1 items-start gap-3">
+            <AnnouncementDateBox date={announcementDisplayDate(item)} />
+            <div className="min-w-0 space-y-1.5">
+              <h2 className="text-lg font-semibold leading-snug tracking-tight text-foreground">
+                {item.title}
+              </h2>
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                <span>Created by {author}</span>
+                {wasAnnouncementContentEdited(
+                  item.createdAt,
+                  item.updatedAt,
+                  item.publishedAt,
+                ) ? (
+                  <AnnouncementEditedMark
+                    announcementId={item.id}
+                    currentTitle={item.title}
+                    className="text-xs text-muted-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:underline"
+                  />
+                ) : null}
+              </p>
+            </div>
           </div>
           {!item.readByMe ? (
             <Button
@@ -914,7 +915,9 @@ export function OverviewAnnouncementFeed({
                   </Label>
                   <Select
                     value={filter}
-                    onValueChange={(value) => setFilter(value as FeedFilter)}
+                    onValueChange={(value) =>
+                      setFilterPreference(value as FeedFilter)
+                    }
                   >
                     <SelectTrigger
                       id="overview-feed-filter"
