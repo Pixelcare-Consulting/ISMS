@@ -50,17 +50,25 @@ function ProgressBar({
   );
 }
 
-function statusTone(counting: string, posting: string): string {
+/** Solid row surfaces — low-opacity tints looked see-through on white cards. */
+function statusTone(counting: string, posting: string, index: number): string {
   if (counting === "Closed" || posting === "Posted / N/A") {
-    return "bg-emerald-50/60 dark:bg-emerald-950/20";
+    return "bg-emerald-50 dark:bg-emerald-950/50";
   }
-  if (posting === "Ready to post" || posting === "Posted · pending SAP") {
-    return "bg-amber-50/50 dark:bg-amber-950/15";
+  if (
+    posting === "Ready to post" ||
+    posting === "Posted · pending SAP" ||
+    posting === "Under investigation"
+  ) {
+    return "bg-amber-50 dark:bg-amber-950/50";
   }
   if (counting === "Counting (open)" || counting === "Open (draft)") {
-    return "bg-sky-50/50 dark:bg-sky-950/15";
+    return "bg-sky-50 dark:bg-sky-950/50";
   }
-  return "";
+  if (counting === "Counted") {
+    return "bg-emerald-50 dark:bg-emerald-950/40";
+  }
+  return index % 2 === 1 ? "bg-table-stripe" : "bg-card";
 }
 
 export function PcountDealerGroupCard({
@@ -99,13 +107,13 @@ export function PcountDealerGroupCard({
         </div>
       </CardHeader>
       <CardContent className="min-h-0 flex-1 overflow-y-auto px-0 pb-2 pt-0">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-10 pl-4">#</TableHead>
-              <TableHead>Branch</TableHead>
-              <TableHead>Counting</TableHead>
-              <TableHead className="pr-4">Posting</TableHead>
+        <Table scrollContainer={false}>
+          <TableHeader className="sticky top-0 z-10 bg-muted [&_tr]:border-border">
+            <TableRow className="border-b bg-muted hover:bg-muted">
+              <TableHead className="w-10 bg-muted pl-4">#</TableHead>
+              <TableHead className="bg-muted">Branch</TableHead>
+              <TableHead className="bg-muted">Counting</TableHead>
+              <TableHead className="bg-muted pr-4">Posting</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -113,8 +121,8 @@ export function PcountDealerGroupCard({
               <TableRow
                 key={branch.branchId}
                 className={cn(
-                  "cursor-pointer",
-                  statusTone(branch.counting, branch.posting),
+                  "cursor-pointer border-border",
+                  statusTone(branch.counting, branch.posting, index),
                 )}
                 onClick={() => onSelectBranch(branch.branchId)}
               >
