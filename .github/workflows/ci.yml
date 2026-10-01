@@ -316,12 +316,16 @@ jobs:
             echo "image_tag="   >> "$GITHUB_OUTPUT"
           fi
 
+  # Runs ON the server: a self-hosted runner there (labelled isms-<env>) polls
+  # GitHub, so the server needs no inbound SSH. See DEPLOYMENT.md.
   deploy:
     name: Deploy → ${{ needs.target.outputs.environment }}
     needs: [target]
     if: needs.target.outputs.environment != ''
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, "isms-${{ needs.target.outputs.environment }}"]
     timeout-minutes: 20
+    outputs:
+      url: ${{ steps.url.outputs.url }}
     # Tick "Required reviewers" on the `staging` GitHub environment if you want
     # a merge into staging (client QA) to pause here for approval.
     environment:
@@ -344,34 +348,40 @@ jobs:
             exit 1
           fi
 
-      - name: Release over SSH
-        uses: appleboy/ssh-action@2ead5e36573f08b82fbfce1504f1a4b05a647c6f
+      - name: Release
         env:
-          STACK_ENV: ${{ env.STACK_ENV }}
-          APP_IMAGE: ${{ env.APP_IMAGE }}
           GIT_SHA: ${{ github.sha }}
+          GIT_TOKEN: ${{ github.token }}
           GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
           GHCR_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          port: ${{ secrets.SSH_PORT }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          fingerprint: ${{ secrets.SSH_HOST_FINGERPRINT }}
-          envs: STACK_ENV,APP_IMAGE,GIT_SHA,GHCR_USERNAME,GHCR_TOKEN,DEPLOY_PATH
-          script: |
-            set -euo pipefail
-            cd "$DEPLOY_PATH"
-            # Compose files + scripts on the server track the deployed commit
-            git fetch --quiet --tags origin
-            git checkout --quiet --detach "$GIT_SHA" 2>/dev/null || git checkout --quiet --detach "origin/$STACK_ENV"
-            printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GHCR_USERNAME" --password-stdin
-            deploy/release.sh "$STACK_ENV" "$APP_IMAGE"
+        run: |
+          set -euo pipefail
+          cd "$DEPLOY_PATH"
+          # Compose files + scripts on the server track the deployed commit.
+          # The job token authenticates the fetch, so this keeps working if the repo goes private.
+          git -c http.extraheader="AUTHORIZATION: bearer $GIT_TOKEN" fetch --quiet --tags origin
+          git checkout --quiet --detach "$GIT_SHA" 2>/dev/null || git checkout --quiet --detach "origin/$STACK_ENV"
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GHCR_USERNAME" --password-stdin
+          deploy/release.sh "$STACK_ENV" "$APP_IMAGE"
 
-      - name: Public health check
+      - name: Hand the public URL to the verify job
+        id: url
         env:
           URL: ${{ vars.PUBLIC_APP_URL }}
+        run: echo "url=$URL" >> "$GITHUB_OUTPUT"
+
+  # From GitHub's cloud, not the server: proves the site is reachable from the
+  # internet (the server itself may not reach its own public IP — no NAT loopback).
+  verify:
+    name: Public health check → ${{ needs.target.outputs.environment }}
+    needs: [target, deploy]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Public health check
+        env:
+          URL: ${{ needs.deploy.outputs.url }}
         run: |
           set -euo pipefail
           curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
