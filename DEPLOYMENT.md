@@ -51,10 +51,10 @@ push staging ─ same checks ─ push image to GHCR ─ deploy → staging ─ p
 workflow_dispatch ── deploy any published tag to staging (rollback / redeploy)
 ```
 
-Only merge into `staging` through a PR, once **CI success** is green. Every
-push to `staging` deploys to the client. On GitHub Free, private repos can't
-enforce this with branch protection (that needs GitHub Team), so it's a team
-rule.
+`staging` is branch-protected: changes land only through a PR, and only once
+**CI success** passes (admins can bypass in an emergency). Every push to
+`staging` deploys to the client. Promote with **"Create a merge commit"**, not
+squash, so `develop` and `staging` keep the same history.
 
 Deploy runs **on the server**, through a GitHub self-hosted runner installed
 there (label `isms-staging`). The runner polls GitHub over
@@ -89,11 +89,12 @@ Set the following on it:
 Repo-level variable (optional): `NEXT_PUBLIC_SUPPORT_EMAIL` — the only value
 baked into the image at build time.
 
-**Keep the repo private.** Self-hosted runners run whatever a workflow tells
-them to, so on a public repo a stranger's fork PR could run code on the
-client's server. If it ever goes public again, set *Settings → Actions →
-General → Fork pull request workflows* to **"Require approval for all external
-contributors"**.
+**The repo is public, and self-hosted runners run whatever a workflow tells
+them to.** Keep *Settings → Actions → General → Fork pull request workflows* on
+**"Require approval for all external contributors"**, and never approve a fork
+PR's workflow run without reading its changes. (It stays public because the
+Vercel team can't deploy a private org repo. Branch protection on `staging`
+also needs the repo public on GitHub Free.)
 
 ## Server setup (Finden) — once per server
 
