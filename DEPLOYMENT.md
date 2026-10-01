@@ -105,8 +105,13 @@ deploy/release.sh develop ghcr.io/pixelcare-consulting/isms:develop
 deploy/release.sh staging ghcr.io/pixelcare-consulting/isms:staging
 
 # 6. Seed core data (tenant, roles, permissions) — once per fresh database, per env
-deploy/stack.sh develop run --rm app ./node_modules/.bin/prisma db seed
-deploy/stack.sh staging run --rm app ./node_modules/.bin/prisma db seed
+#    The runtime image has no src/ (the seed imports it), so run it from the
+#    checkout in a throwaway Node container on the stack's internal network.
+#    Swap develop → staging for the other env; SEED_PROFILE=full adds demo data.
+docker run --rm --network isms-develop_internal --env-file .env.develop \
+  -v "$PWD":/src:ro node:22-bookworm \
+  bash -c 'cp -r /src /work && cd /work && npm i -g pnpm@11.6.0 >/dev/null \
+    && pnpm install --frozen-lockfile && pnpm exec prisma db seed'
 ```
 
 Both stacks share the server safely: distinct project names (`isms-develop`,
