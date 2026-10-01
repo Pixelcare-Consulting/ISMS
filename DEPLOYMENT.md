@@ -12,7 +12,7 @@ differs.
 | | **develop** | **staging** | **sandbox** |
 |---|---|---|---|
 | Purpose | **Internal testing** — the team tries merged work on a real URL | **Client QA / UAT** — what the client is shown | Not deployed: the stack in containers on a laptop or CI runner |
-| Where | Finden server | Finden server | Your machine / GitHub Actions |
+| Where | Finden server (`ismsv2`) | Finden server (`ismsv2`) | Your machine / GitHub Actions |
 | Git branch | `develop` | `staging` | none — your working tree |
 | Image | `ghcr.io/…/isms:sha-<commit>` published by CI (alias `:develop`) | the same `sha-<commit>` image after the merge (alias `:staging`) | built locally, or any tag you pull |
 | Deploy trigger | **Automatic** on every push to `develop` | **Automatic** on every push to `staging` | Manual (`deploy/stack.sh sandbox up -d --build`) |
@@ -54,10 +54,20 @@ workflow_dispatch ── deploy any published tag to develop or staging (promote
 
 Branch protection worth turning on: PRs required into `develop` and `staging`.
 
-Deploy = SSH to the server → `git checkout <commit>` (so compose files match) →
-`docker login ghcr.io` → `deploy/release.sh <env> <image>` → public `/api/health`.
-`release.sh` pulls, runs the `migrator`, recreates `app`, waits for the Docker
-HEALTHCHECK, and restores the previous image if the new one never becomes healthy.
+Deploy runs **on the server**, through a GitHub self-hosted runner installed
+there (labels `isms-develop`, `isms-staging`). The runner polls GitHub over
+outbound HTTPS, so the server needs **no inbound SSH**. The client's network
+keeps port 22 closed.
+
+1. **`deploy` job (self-hosted runner, on the server):** `git checkout <commit>`
+   in `DEPLOY_PATH` (so compose files match; fetched with the job's
+   `GITHUB_TOKEN`, so it works on a private repo too) → `docker login ghcr.io` →
+   `deploy/release.sh <env> <image>`. `release.sh` pulls, runs the `migrator`,
+   recreates `app`, waits for the Docker HEALTHCHECK, and restores the previous
+   image if the new one never becomes healthy.
+2. **`verify` job (GitHub-hosted):** `curl <PUBLIC_APP_URL>/api/health` from
+   outside. This proves the site is reachable from the internet, which the
+   server can't test itself: the client's router has no NAT loopback.
 
 ### One-time GitHub setup
 
@@ -71,20 +81,37 @@ Set the following on **each** environment — same names, different values:
 |---|---|---|
 | Variable | `DEPLOY_ENABLED` | `true` (flip to anything else to freeze deploys) |
 | Variable | `PUBLIC_APP_URL` | `https://<that environment's APP_DOMAIN>` |
-| Secret | `SSH_HOST`, `SSH_PORT`, `SSH_USER`, `SSH_PRIVATE_KEY`, `SSH_HOST_FINGERPRINT` | Server access (`ssh-keyscan -t ed25519 host` → SHA256 fingerprint) |
 | Secret | `DEPLOY_PATH` | e.g. `/srv/isms` — the clone on the server |
 | Secret | `GHCR_USERNAME`, `GHCR_PULL_TOKEN` | A PAT with `read:packages` so the server can pull the private image |
 
 Repo-level variable (optional): `NEXT_PUBLIC_SUPPORT_EMAIL` — the only value
 baked into the image at build time.
 
+**The repo is public, and self-hosted runners run whatever a workflow tells
+them to.** Keep *Settings → Actions → General → Fork pull request workflows* on
+**"Require approval for all external contributors"**, and never approve a
+fork PR's workflow run without reading its changes. Making the repo private
+removes this risk entirely. Deploys already authenticate for that case.
+
 ## Server setup (Finden) — once per server
 
-```bash
-# Docker Engine 24+ with compose plugin, ports 80/443 open, DNS A records → server
-sudo git clone https://github.com/Pixelcare-Consulting/ISMS.git /srv/isms && cd /srv/isms
+Network prerequisites, done by the **client's infra team** (not on the server):
+- A DNS A record per environment domain → the public IP.
+- A port forward on their firewall: public IP **80 and 443** → the server's
+  LAN IP (`hostname -I` on the server, first address). Inbound 22 isn't needed.
+- For people **inside** the client's office to open the site: NAT loopback
+  (hairpin NAT) on the firewall, or an internal DNS record → the LAN IP.
 
-# 1. Shared proxy (serves both app stacks, and later production)
+```bash
+# Docker Engine 24+ with compose plugin; run as root
+git clone https://github.com/Pixelcare-Consulting/ISMS.git /srv/isms && cd /srv/isms
+
+# 0. Host firewall (Ubuntu ufw is on by default with only 22 allowed)
+ufw allow 80/tcp && ufw allow 443/tcp
+
+# 1. Shared proxy (serves both app stacks, and later production).
+#    Docker Engine 29+ needs Traefik >= 3.6 (older releases fail with
+#    "client version 1.24 is too old").
 nano .env.traefik                                 # LETSENCRYPT_EMAIL=…
 touch traefik/acme.json && chmod 600 traefik/acme.json
 docker compose --env-file .env.traefik -f docker-compose.traefik.yml up -d
@@ -100,7 +127,7 @@ nano .env.develop && nano .env.staging && chmod 600 .env.develop .env.staging
 # 4. Registry access for pulls
 docker login ghcr.io -u <github-user>            # PAT with read:packages
 
-# 5. First rollout (then CI takes over)
+# 5. First rollout, by hand once (step 7 hands later deploys to CI)
 deploy/release.sh develop ghcr.io/pixelcare-consulting/isms:develop
 deploy/release.sh staging ghcr.io/pixelcare-consulting/isms:staging
 
@@ -112,7 +139,23 @@ docker run --rm --network isms-develop_internal --env-file .env.develop \
   -v "$PWD":/src:ro node:22-bookworm \
   bash -c 'cp -r /src /work && cd /work && npm i -g pnpm@11.6.0 >/dev/null \
     && pnpm install --frozen-lockfile && pnpm exec prisma db seed'
+
+# 7. Self-hosted runner, so CI can deploy (then CI takes over).
+#    Token: GitHub → Settings → Actions → Runners → New self-hosted runner
+#    (Linux x64). It expires after 1 hour.
+useradd -m -s /bin/bash github-runner && usermod -aG docker github-runner
+chown -R github-runner:github-runner /srv/isms
+git config --global --add safe.directory /srv/isms   # root can still use git here
+su - github-runner -c "mkdir -p actions-runner && cd actions-runner \
+  && curl -sL https://github.com/actions/runner/releases/download/v<ver>/actions-runner-linux-x64-<ver>.tar.gz | tar xz \
+  && ./config.sh --unattended --url https://github.com/Pixelcare-Consulting/ISMS \
+       --token <token> --name <server> --labels isms-develop,isms-staging"
+cd /home/github-runner/actions-runner && ./svc.sh install github-runner && ./svc.sh start
 ```
+
+Check the runner with `./svc.sh status` in that folder, or on GitHub under
+Settings → Actions → Runners (it should show **Idle**). Deploy jobs queue,
+rather than fail, while it's offline.
 
 Both stacks share the server safely: distinct project names (`isms-develop`,
 `isms-staging`), volumes, internal networks and Postgres host ports; only
@@ -156,7 +199,8 @@ maintainer). `grep -rhoE 'process\.env\.[A-Z0-9_]+' src` is the source of truth.
 deploy/stack.sh staging ps
 deploy/stack.sh staging logs -f app
 deploy/stack.sh staging logs cron                       # sap-sync failures
-curl -s https://$APP_DOMAIN/api/health               # {"status":"ok"} or 503
+curl -s https://$APP_DOMAIN/api/health               # {"status":"ok"} or 503 (from outside the client LAN)
+curl -sk --resolve $APP_DOMAIN:443:127.0.0.1 https://$APP_DOMAIN/api/health   # same check, on the server itself
 
 deploy/stack.sh staging run --rm migrator               # re-run migrations
 deploy/stack.sh staging run --rm app ./node_modules/.bin/prisma migrate status
@@ -168,6 +212,10 @@ gunzip -c isms-YYYY-MM-DD.sql.gz | deploy/stack.sh staging exec -T postgres psql
 
 # roll back / promote a specific image without CI
 deploy/release.sh staging ghcr.io/pixelcare-consulting/isms:sha-<previous commit>
+
+# deploy runner (in /home/github-runner/actions-runner)
+./svc.sh status | ./svc.sh stop | ./svc.sh start
+journalctl -u 'actions.runner.*' -f
 ```
 
 Persistent data per environment: volumes `isms-<develop|staging>_postgres-data` and
@@ -203,7 +251,9 @@ signs off on staging:
    (it is the staging override plus a nightly `postgres-backup` sidecar)
 3. Add `production` to the trigger lists, the `workflow_dispatch` choice and the
    `target` job's branch cases in `.github/workflows/ci.yml`, and to the `case`
-   statements in `deploy/stack.sh` and `deploy/release.sh`
+   statements in `deploy/stack.sh` and `deploy/release.sh`. Give the server's
+   runner an `isms-production` label (Settings → Actions → Runners → the runner
+   → labels). If production runs on a different server, register a runner there.
 4. On the server: second DNS record, `.env.production` (own `APP_DOMAIN`,
    `POSTGRES_HOST_PORT=5434`, fresh secrets), `deploy/release.sh production …`
 5. On GitHub: a `production` environment with *Required reviewers* and the same
