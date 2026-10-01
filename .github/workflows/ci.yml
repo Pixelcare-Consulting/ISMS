@@ -33,7 +33,7 @@ on:
       environment:
         description: Target environment
         type: choice
-        options: [develop, staging]
+        options: [staging]
         required: true
       image_tag:
         description: Image tag to deploy (e.g. sha-<40 hex>, develop, staging)
@@ -282,7 +282,9 @@ jobs:
         run: deploy/stack.sh sandbox down -v --remove-orphans
 
   # ───────────────────────────────────────────────────────── deploy
-  # Which environment + image this run should deploy, if any.
+  # Which environment + image this run should deploy, if any. Only staging
+  # deploys to the server; develop is hosted on Vercel (vercel.json), so a
+  # develop push still builds + publishes the image but stops here.
   target:
     name: Resolve deploy target
     needs: [image, e2e]
@@ -305,9 +307,6 @@ jobs:
           if [ "$EVENT" = workflow_dispatch ]; then
             echo "environment=$IN_ENV" >> "$GITHUB_OUTPUT"
             echo "image_tag=$IN_TAG"   >> "$GITHUB_OUTPUT"
-          elif [ "$REF" = refs/heads/develop ]; then
-            echo "environment=develop" >> "$GITHUB_OUTPUT"
-            echo "image_tag=sha-$SHA"  >> "$GITHUB_OUTPUT"
           elif [ "$REF" = refs/heads/staging ]; then
             echo "environment=staging" >> "$GITHUB_OUTPUT"
             echo "image_tag=sha-$SHA"  >> "$GITHUB_OUTPUT"

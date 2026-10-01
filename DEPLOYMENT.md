@@ -1,9 +1,8 @@
-# ISMS deployment — develop & staging
+# ISMS deployment — develop (Vercel) & staging (Finden server)
 
-Self-hosted Docker setup replacing Vercel. **Two deployed environments on the
-Finden server**, both live and both fed by the same pipeline: the image built
-from a commit is promoted unchanged from develop → staging; only the env file
-differs.
+**develop** stays on Vercel for internal testing. **staging**, the
+client-facing QA environment, runs as a self-hosted Docker stack on the Finden
+server. CI builds one image per commit, and staging runs that exact image.
 
 > **Production is not set up yet.** See [Adding production later](#adding-production-later).
 
@@ -12,23 +11,24 @@ differs.
 | | **develop** | **staging** | **sandbox** |
 |---|---|---|---|
 | Purpose | **Internal testing** — the team tries merged work on a real URL | **Client QA / UAT** — what the client is shown | Not deployed: the stack in containers on a laptop or CI runner |
-| Where | Finden server (`ismsv2`) | Finden server (`ismsv2`) | Your machine / GitHub Actions |
+| Where | **Vercel** (`vercel.json`, Supabase storage) | Finden server (`ismsv2`) | Your machine / GitHub Actions |
 | Git branch | `develop` | `staging` | none — your working tree |
-| Image | `ghcr.io/…/isms:sha-<commit>` published by CI (alias `:develop`) | the same `sha-<commit>` image after the merge (alias `:staging`) | built locally, or any tag you pull |
-| Deploy trigger | **Automatic** on every push to `develop` | **Automatic** on every push to `staging` | Manual (`deploy/stack.sh sandbox up -d --build`) |
-| Ingress | Traefik + Let's Encrypt on `APP_DOMAIN` | Traefik + Let's Encrypt on `APP_DOMAIN` | `http://localhost:3000`, no TLS |
-| Postgres host port | 5433 | 5434 | 5432 |
-| SAP cron | On | On | Off (opt-in `--profile cron`) |
-| Override file | `docker-compose.develop.yml`, `.env.develop` | `docker-compose.staging.yml`, `.env.staging` | `docker-compose.sandbox.yml`, `.env.sandbox` |
+| Image / build | Vercel builds from git. CI still publishes `ghcr.io/…/isms:sha-<commit>` (alias `:develop`) | `sha-<commit>` built by CI on the merge (alias `:staging`) | built locally, or any tag you pull |
+| Deploy trigger | **Automatic** (Vercel git integration) | **Automatic** on every push to `staging` | Manual (`deploy/stack.sh sandbox up -d --build`) |
+| Ingress | Vercel | Traefik + Let's Encrypt on `APP_DOMAIN` | `http://localhost:3000`, no TLS |
+| Postgres host port | — (own hosted database) | 5434 | 5432 |
+| SAP cron | Vercel cron (`vercel.json`) | `cron` sidecar | Off (opt-in `--profile cron`) |
+| Override file | — | `docker-compose.staging.yml`, `.env.staging` | `docker-compose.sandbox.yml`, `.env.sandbox` |
 
-`develop` and `staging` are identical in shape — same services, same Traefik,
-same health-gated rollout. They differ only in domain, database and secrets, so
-a change that works on develop behaves the same way for the client on staging.
+`docker-compose.develop.yml` and the `develop` case in `deploy/stack.sh` are
+kept, so a self-hosted develop stack can be brought back next to staging. Give
+it its own `APP_DOMAIN` and `POSTGRES_HOST_PORT=5433`, and re-add the `develop`
+branch case to the `target` job in `ci.yml`.
 
 Everything is driven through one wrapper:
 
 ```bash
-deploy/stack.sh <sandbox|develop|staging> <any docker compose args>
+deploy/stack.sh <sandbox|staging> <any docker compose args>   # (develop: dormant, see above)
 ```
 
 It selects `.env.<env>` and layers `docker-compose.<env>.yml` over the shared
@@ -43,13 +43,12 @@ It selects `.env.<env>` and layers `docker-compose.<env>.yml` over the shared
 feature/* ──PR──▶ develop ──PR/merge──▶ staging
                     │                      │
                     ▼                      ▼
-             internal testing          client QA
+          internal testing (Vercel)   client QA (Finden server)
 
 PR → either branch ─ lint · typecheck · unit tests · prisma checks · image build (not pushed) · e2e against that image
-push develop ──┐
-push staging ──┴─ same checks ─ push image to GHCR ─┬─ (develop) deploy → develop
-                                                     └─ (staging) deploy → staging
-workflow_dispatch ── deploy any published tag to develop or staging (promote / rollback)
+push develop ─ same checks ─ push image to GHCR      (no server deploy; Vercel deploys develop itself)
+push staging ─ same checks ─ push image to GHCR ─ deploy → staging ─ public health check
+workflow_dispatch ── deploy any published tag to staging (rollback / redeploy)
 ```
 
 Branch protection worth turning on: PRs required into `develop` and `staging`.
@@ -71,11 +70,11 @@ keeps port 22 closed.
 
 ### One-time GitHub setup
 
-Settings → Environments → create **`develop`** and **`staging`**. Restrict each
-to its own branch under *Deployment branches*, and tick *Required reviewers* on
-`staging` if you want client-facing deploys to pause for approval.
+Settings → Environments → create **`staging`**. Restrict it to the `staging`
+branch under *Deployment branches*, and tick *Required reviewers* if you want
+client-facing deploys to pause for approval.
 
-Set the following on **each** environment — same names, different values:
+Set the following on it:
 
 | Kind | Name | Value |
 |---|---|---|
@@ -119,23 +118,21 @@ docker compose --env-file .env.traefik -f docker-compose.traefik.yml up -d
 # 2. Portainer (optional management UI)
 docker compose -f docker-compose.portainer.yml up -d
 
-# 3. Environment files — create .env.develop and .env.staging from the
-#    variable list below (values are kept outside the repo).
-#    Give each its own APP_DOMAIN, POSTGRES_HOST_PORT, database and secrets.
-nano .env.develop && nano .env.staging && chmod 600 .env.develop .env.staging
+# 3. Environment file — create .env.staging from the variable list below
+#    (values are kept outside the repo; POSTGRES_HOST_PORT=5434).
+nano .env.staging && chmod 600 .env.staging
 
 # 4. Registry access for pulls
 docker login ghcr.io -u <github-user>            # PAT with read:packages
 
 # 5. First rollout, by hand once (step 7 hands later deploys to CI)
-deploy/release.sh develop ghcr.io/pixelcare-consulting/isms:develop
 deploy/release.sh staging ghcr.io/pixelcare-consulting/isms:staging
 
 # 6. Seed core data (tenant, roles, permissions) — once per fresh database, per env
 #    The runtime image has no src/ (the seed imports it), so run it from the
 #    checkout in a throwaway Node container on the stack's internal network.
-#    Swap develop → staging for the other env; SEED_PROFILE=full adds demo data.
-docker run --rm --network isms-develop_internal --env-file .env.develop \
+#    SEED_PROFILE=full adds demo data.
+docker run --rm --network isms-staging_internal --env-file .env.staging \
   -v "$PWD":/src:ro node:22-bookworm \
   bash -c 'cp -r /src /work && cd /work && npm i -g pnpm@11.6.0 >/dev/null \
     && pnpm install --frozen-lockfile && pnpm exec prisma db seed'
@@ -157,9 +154,9 @@ Check the runner with `./svc.sh status` in that folder, or on GitHub under
 Settings → Actions → Runners (it should show **Idle**). Deploy jobs queue,
 rather than fail, while it's offline.
 
-Both stacks share the server safely: distinct project names (`isms-develop`,
-`isms-staging`), volumes, internal networks and Postgres host ports; only
-Traefik is shared, and it routes by `APP_DOMAIN`.
+Stacks share a server safely: distinct project names (`isms-<env>`), volumes,
+internal networks and Postgres host ports. Only Traefik is shared, and it
+routes by `APP_DOMAIN`.
 
 ## Local development (the `sandbox` stack)
 
@@ -178,7 +175,7 @@ hostnames like `postgres:5432` into your host run. Keep `.env.local` for `pnpm d
 
 ## Environment variables
 
-Env files (`.env.sandbox`, `.env.develop`, `.env.staging`, `.env.traefik`) are
+Env files (`.env.sandbox`, `.env.staging`, `.env.traefik`) are
 **never committed** and hold no example values in this repo. `deploy/stack.sh`
 passes the file both as `--env-file` (Compose `${VAR}` interpolation) and
 `env_file:` (into the containers). Variables the stack reads:
@@ -218,8 +215,8 @@ deploy/release.sh staging ghcr.io/pixelcare-consulting/isms:sha-<previous commit
 journalctl -u 'actions.runner.*' -f
 ```
 
-Persistent data per environment: volumes `isms-<develop|staging>_postgres-data` and
-`isms-<develop|staging>_uploads-data` (policy attachments, audit archives — `STORAGE_ROOT=/app/data/uploads`).
+Persistent data: volumes `isms-staging_postgres-data` and
+`isms-staging_uploads-data` (policy attachments, audit archives — `STORAGE_ROOT=/app/data/uploads`).
 Back up both.
 
 Config changes: edit `.env.<env>`, then `deploy/stack.sh <env> up -d` (recreates
@@ -229,16 +226,17 @@ except `NEXT_PUBLIC_SUPPORT_EMAIL`.
 ## Promoting
 
 ```bash
-# feature → develop (auto-deploys the internal environment)
+# feature → develop (Vercel deploys the internal environment)
 gh pr create --base develop --head feature/my-change
 
 # develop → staging (auto-deploys the client QA environment)
 gh pr create --base staging --head develop --title "Promote to staging"
 ```
 
-The staging deploy reuses the exact `sha-…` image the team already exercised on
-develop — it is not rebuilt, so there is nothing new to go wrong between the
-two environments.
+The staging deploy runs the `sha-…` image CI built and e2e-tested for that
+exact commit. On a fast-forward merge, that's the same image the develop push
+already produced. Note that develop on Vercel is a separate build of the same
+code, not this image.
 
 ## Adding production later
 
@@ -255,7 +253,7 @@ signs off on staging:
    runner an `isms-production` label (Settings → Actions → Runners → the runner
    → labels). If production runs on a different server, register a runner there.
 4. On the server: second DNS record, `.env.production` (own `APP_DOMAIN`,
-   `POSTGRES_HOST_PORT=5434`, fresh secrets), `deploy/release.sh production …`
+   `POSTGRES_HOST_PORT=5435` — 5434 is staging, fresh secrets), `deploy/release.sh production …`
 5. On GitHub: a `production` environment with *Required reviewers* and the same
    secrets/vars as staging
 
