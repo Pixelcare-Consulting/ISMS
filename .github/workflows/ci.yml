@@ -360,7 +360,8 @@ jobs:
           cd "$DEPLOY_PATH"
           # Compose files + scripts on the server track the deployed commit.
           # The job token authenticates the fetch, so this keeps working if the repo goes private.
-          git -c http.extraheader="AUTHORIZATION: bearer $GIT_TOKEN" fetch --quiet --tags origin
+          GIT_AUTH="$(printf 'x-access-token:%s' "$GIT_TOKEN" | base64 -w0)"
+          git -c http.extraheader="AUTHORIZATION: basic $GIT_AUTH" fetch --quiet --tags origin
           git checkout --quiet --detach "$GIT_SHA" 2>/dev/null || git checkout --quiet --detach "origin/$STACK_ENV"
           printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GHCR_USERNAME" --password-stdin
           deploy/release.sh "$STACK_ENV" "$APP_IMAGE"
