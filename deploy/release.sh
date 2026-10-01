@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # Roll one ISMS environment forward to a published image, with health-gated
-# rollback. Used by .github/workflows/deploy.yml over SSH, and safe to run by
-# hand on the server:
+# rollback. Run by the `deploy` job in .github/workflows/ci.yml on the server's
+# self-hosted runner, and safe to run by hand on the server:
 #
-#   deploy/release.sh develop ghcr.io/pixelcare-consulting/isms:sha-<40 hex>
+#   deploy/release.sh staging ghcr.io/pixelcare-consulting/isms:sha-<40 hex>
 #   deploy/release.sh staging ghcr.io/pixelcare-consulting/isms:staging
 #
 # Steps: pull image → ensure postgres up → run migrator → recreate app →
 # wait for the Docker HEALTHCHECK → on failure, restore the previous image.
 set -euo pipefail
 
-ENV_NAME="${1:?usage: deploy/release.sh <develop|staging> <image>}"
-NEW_IMAGE="${2:?usage: deploy/release.sh <develop|staging> <image>}"
+ENV_NAME="${1:?usage: deploy/release.sh staging <image>}"
+NEW_IMAGE="${2:?usage: deploy/release.sh staging <image>}"
 HEALTH_ATTEMPTS="${HEALTH_ATTEMPTS:-45}"   # × 2s
 
 cd "$(dirname "$0")/.."

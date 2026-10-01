@@ -20,15 +20,15 @@ server. CI builds one image per commit, and staging runs that exact image.
 | SAP cron | Vercel cron (`vercel.json`) | `cron` sidecar | Off (opt-in `--profile cron`) |
 | Override file | — | `docker-compose.staging.yml`, `.env.staging` | `docker-compose.sandbox.yml`, `.env.sandbox` |
 
-`docker-compose.develop.yml` and the `develop` case in `deploy/stack.sh` are
-kept, so a self-hosted develop stack can be brought back next to staging. Give
-it its own `APP_DOMAIN` and `POSTGRES_HOST_PORT=5433`, and re-add the `develop`
-branch case to the `target` job in `ci.yml`.
+To self-host develop again next to staging, restore the override with
+`git show 275b7d5:docker-compose.develop.yml > docker-compose.develop.yml`, add
+`develop` back to `deploy/stack.sh`, `deploy/release.sh` and the `target` job in
+`ci.yml`, and give it its own `APP_DOMAIN` and `POSTGRES_HOST_PORT=5433`.
 
 Everything is driven through one wrapper:
 
 ```bash
-deploy/stack.sh <sandbox|staging> <any docker compose args>   # (develop: dormant, see above)
+deploy/stack.sh <sandbox|staging> <any docker compose args>
 ```
 
 It selects `.env.<env>` and layers `docker-compose.<env>.yml` over the shared
@@ -51,10 +51,13 @@ push staging ─ same checks ─ push image to GHCR ─ deploy → staging ─ p
 workflow_dispatch ── deploy any published tag to staging (rollback / redeploy)
 ```
 
-Branch protection worth turning on: PRs required into `develop` and `staging`.
+Only merge into `staging` through a PR, once **CI success** is green. Every
+push to `staging` deploys to the client. On GitHub Free, private repos can't
+enforce this with branch protection (that needs GitHub Team), so it's a team
+rule.
 
 Deploy runs **on the server**, through a GitHub self-hosted runner installed
-there (labels `isms-develop`, `isms-staging`). The runner polls GitHub over
+there (label `isms-staging`). The runner polls GitHub over
 outbound HTTPS, so the server needs **no inbound SSH**. The client's network
 keeps port 22 closed.
 
@@ -86,11 +89,11 @@ Set the following on it:
 Repo-level variable (optional): `NEXT_PUBLIC_SUPPORT_EMAIL` — the only value
 baked into the image at build time.
 
-**The repo is public, and self-hosted runners run whatever a workflow tells
-them to.** Keep *Settings → Actions → General → Fork pull request workflows* on
-**"Require approval for all external contributors"**, and never approve a
-fork PR's workflow run without reading its changes. Making the repo private
-removes this risk entirely. Deploys already authenticate for that case.
+**Keep the repo private.** Self-hosted runners run whatever a workflow tells
+them to, so on a public repo a stranger's fork PR could run code on the
+client's server. If it ever goes public again, set *Settings → Actions →
+General → Fork pull request workflows* to **"Require approval for all external
+contributors"**.
 
 ## Server setup (Finden) — once per server
 
@@ -146,7 +149,7 @@ git config --global --add safe.directory /srv/isms   # root can still use git he
 su - github-runner -c "mkdir -p actions-runner && cd actions-runner \
   && curl -sL https://github.com/actions/runner/releases/download/v<ver>/actions-runner-linux-x64-<ver>.tar.gz | tar xz \
   && ./config.sh --unattended --url https://github.com/Pixelcare-Consulting/ISMS \
-       --token <token> --name <server> --labels isms-develop,isms-staging"
+       --token <token> --name <server> --labels isms-staging"
 cd /home/github-runner/actions-runner && ./svc.sh install github-runner && ./svc.sh start
 ```
 
@@ -180,7 +183,7 @@ Env files (`.env.sandbox`, `.env.staging`, `.env.traefik`) are
 passes the file both as `--env-file` (Compose `${VAR}` interpolation) and
 `env_file:` (into the containers). Variables the stack reads:
 
-- Compose: `APP_IMAGE` (required on develop/staging), `APP_DOMAIN` (develop/staging), `APP_HOST_PORT` (sandbox), `POSTGRES_HOST_PORT` (unique per env on a shared server)
+- Compose: `APP_IMAGE` (required on staging), `APP_DOMAIN` (staging), `APP_HOST_PORT` (sandbox), `POSTGRES_HOST_PORT` (unique per env on a shared server)
 - App URL / auth: `APP_URL`, `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `AUTH_SECRET`, `BETTER_AUTH_API_KEY`, `ALLOW_PUBLIC_REGISTER`, `AUTH_RATE_LIMIT_ENABLED` (only ever `false` in the CI e2e stack)
 - Database: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `DATABASE_URL`, `DIRECT_URL` (host is the compose service `postgres`)
 - Integrations: `CRON_SECRET`, `SAP_ENCRYPTION_KEY`, `SAP_*` tuning, `RESEND_API_KEY`, `EMAIL_FROM`, `OPENAI_API_KEY`, `AI_MODEL`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`

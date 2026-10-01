@@ -1,12 +1,13 @@
-# ISMS CI/CD — one pipeline, two deployed environments, one branch each.
+# ISMS CI/CD. develop is hosted on Vercel (vercel.json); staging is the one
+# environment this pipeline deploys, to the client's server.
 #
 #   event                     checks*  image                    deploy
 #   ────────────────────────  ──────   ───────────────────────  ─────────────────────
 #   PR → develop/staging      ✔        build only (not pushed)  —
-#   push develop              ✔        :develop :sha-…          develop (internal testing)
+#   push develop              ✔        :develop :sha-…          — (Vercel deploys develop)
 #   push staging              ✔        :staging :sha-…          staging (client QA)
-#   workflow_dispatch         —        —                        chosen env ← chosen tag
-#                                                                 (promote / rollback)
+#   workflow_dispatch         —        —                        staging ← chosen tag
+#                                                                 (redeploy / rollback)
 #
 # * checks = lint · typecheck · unit tests (Jest) · prisma · e2e (Playwright
 #   against the freshly built image running in the sandbox Compose stack — the
@@ -14,13 +15,13 @@
 #
 # Promotion is a merge: develop → staging. The image built from a commit is
 # identified by its sha-… tag and nothing environment-specific is baked in
-# (see Dockerfile / APP_URL), so the image staging runs is byte-identical to
-# the one the team already tried on develop.
+# (see Dockerfile / APP_URL), so the same image can be rolled back to by tag.
 #
 # PRODUCTION IS NOT WIRED UP YET. To add it: create a `production` branch and a
 # GitHub environment of the same name, restore docker-compose.production.yml
 # (`git show <commit>:docker-compose.production.yml`), add `production` to the
-# trigger/choice lists and `deploy/stack.sh`, and add a branch case in `target`.
+# trigger/choice lists and `deploy/stack.sh`, add a branch case in `target`,
+# and give the server's runner an `isms-production` label.
 name: CI/CD
 
 on:
@@ -36,7 +37,7 @@ on:
         options: [staging]
         required: true
       image_tag:
-        description: Image tag to deploy (e.g. sha-<40 hex>, develop, staging)
+        description: Image tag to deploy (e.g. sha-<40 hex>, staging)
         type: string
         required: true
 
@@ -282,9 +283,8 @@ jobs:
         run: deploy/stack.sh sandbox down -v --remove-orphans
 
   # ───────────────────────────────────────────────────────── deploy
-  # Which environment + image this run should deploy, if any. Only staging
-  # deploys to the server; develop is hosted on Vercel (vercel.json), so a
-  # develop push still builds + publishes the image but stops here.
+  # Which environment + image this run should deploy, if any. A develop push
+  # still builds, tests and publishes the image, but deploys nothing here.
   target:
     name: Resolve deploy target
     needs: [image, e2e]
