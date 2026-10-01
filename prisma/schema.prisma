@@ -79,6 +79,7 @@ enum StockCountSessionStatus {
   counting_complete
   variances_under_investigation
   pending_adjustment
+  posting
   adjustment_requested
   closed
 }
@@ -113,6 +114,7 @@ enum SapIntegrationJobType {
   sales_summary
   inventory_sync_inbound
   inventory_adjustment
+  inventory_posting
   delivery_sync_inbound
 }
 
@@ -140,6 +142,12 @@ enum SkuStatus {
   active
   hold
   retired
+}
+
+enum NotificationAudience {
+  TENANT
+  ROLE
+  USER
 }
 
 /// SN movement ledger types from Excel Schema (Historical Details).
@@ -251,6 +259,7 @@ model Tenant {
   sapServiceLayerConfigs SapServiceLayerConfig[]
   sapSyncCursors      SapSyncCursor[]
   announcements       Announcement[]
+  notifications       Notification[]
   competitorObservations CompetitorObservation[]
   officialSalesImportBatches OfficialSalesImportBatch[]
 
@@ -309,6 +318,14 @@ model User {
   stockVariancesInvestigated StockVariance[]      @relation("StockVarianceInvestigatedBy")
   stockVariancesAdjustmentRequested StockVariance[] @relation("StockVarianceAdjustmentRequestedBy")
   announcementsCreated      Announcement[]        @relation("AnnouncementCreatedBy")
+  announcementReads         AnnouncementRead[]
+  announcementLikes         AnnouncementLike[]
+  announcementComments      AnnouncementComment[]
+  announcementCommentRevisions AnnouncementCommentRevision[] @relation("AnnouncementCommentRevisionEditedBy")
+  announcementRevisions     AnnouncementRevision[] @relation("AnnouncementRevisionEditedBy")
+  notificationsCreated      Notification[]        @relation("NotificationCreatedBy")
+  notificationsTargeted     Notification[]        @relation("NotificationTargetUser")
+  notificationStates        NotificationState[]
   competitorObservationsCreated CompetitorObservation[] @relation("CompetitorObservationCreatedBy")
   officialSalesImportBatchesUploaded OfficialSalesImportBatch[] @relation("OfficialSalesImportBatchUploadedBy")
   demandPlanningRunsCreated DemandPlanningRun[] @relation("DemandPlanningRunCreatedBy")
@@ -610,6 +627,10 @@ model ProductModel {
   status       SkuStatus @default(active)
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+  /// Set to the SAP sync pass that last saw this row. A finished pass soft-deletes rows it
+  /// never stamped — they are no longer in SAP (or no longer match the sync's filter).
+  sapSyncedAt  DateTime? @map("sap_synced_at")
 
   tenant             Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   brand              Brand?               @relation(fields: [brandId], references: [id], onDelete: SetNull)
@@ -1099,6 +1120,8 @@ model ServiceCenter {
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")
   deletedAt       DateTime?    @map("deleted_at")
+  /// See `ProductModel.sapSyncedAt`.
+  sapSyncedAt     DateTime?    @map("sap_synced_at")
 
   tenant        Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   area          Area?                   @relation(fields: [areaId], references: [id], onDelete: SetNull)
@@ -1190,6 +1213,11 @@ model Branch {
   createdAt          DateTime     @default(now()) @map("created_at")
   updatedAt          DateTime     @updatedAt @map("updated_at")
   deletedAt          DateTime?    @map("deleted_at")
+  /// See `ProductModel.sapSyncedAt`.
+  sapSyncedAt        DateTime?    @map("sap_synced_at")
+  /// Which SAP sync last saw this row (`branch` = OBRA, `branch-from-warehouse` = OWHS).
+  /// Branches have two SAP sources, so each sync only retires the rows it owns.
+  sapSyncSource      String?      @map("sap_sync_source")
 
   tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   area                  Area?                  @relation(fields: [areaId], references: [id], onDelete: SetNull)
@@ -1304,6 +1332,9 @@ model Warehouse {
   modeOfPaymentId String?  @map("mode_of_payment_id")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+  /// See `ProductModel.sapSyncedAt`.
+  sapSyncedAt     DateTime? @map("sap_synced_at")
 
   tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   modeOfPayment       ModeOfPayment?       @relation(fields: [modeOfPaymentId], references: [id], onDelete: SetNull)
@@ -1500,6 +1531,9 @@ model SerialNumber {
   createdById  String?            @map("created_by_id")
   createdAt    DateTime           @default(now()) @map("created_at")
   updatedAt    DateTime           @updatedAt @map("updated_at")
+  deletedAt    DateTime?          @map("deleted_at")
+  /// See `ProductModel.sapSyncedAt`.
+  sapSyncedAt  DateTime?          @map("sap_synced_at")
 
   tenant            Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   model             ProductModel              @relation(fields: [modelId], references: [id], onDelete: Cascade)
@@ -1689,7 +1723,7 @@ model SkuForecastTarget {
   @@map("sku_forecast_targets")
 }
 
-/// Versioned Demand Planning document (DP-YYYYMM-nnn). Re-runs create a new version.
+/// Versioned Supply Planning document (SP-YYYYMM-nnn). Re-runs create a new version.
 model DemandPlanningRun {
   id               String                   @id @default(cuid())
   tenantId         String                   @map("tenant_id")
@@ -2177,9 +2211,139 @@ model Announcement {
 
   tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   createdBy User   @relation("AnnouncementCreatedBy", fields: [createdById], references: [id])
+  reads     AnnouncementRead[]
+  likes     AnnouncementLike[]
+  comments  AnnouncementComment[]
+  revisions AnnouncementRevision[]
 
   @@index([tenantId, isActive, publishedAt])
   @@map("announcements")
+}
+
+/// Snapshot of announcement title+body before an edit (newest revision = most recent previous content).
+model AnnouncementRevision {
+  id             String   @id @default(cuid())
+  announcementId String   @map("announcement_id")
+  title          String
+  body           String   @db.Text
+  editedById     String   @map("edited_by_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  editedBy     User         @relation("AnnouncementRevisionEditedBy", fields: [editedById], references: [id], onDelete: Cascade)
+
+  @@index([announcementId, createdAt])
+  @@index([editedById])
+  @@map("announcement_revisions")
+}
+
+model AnnouncementRead {
+  id             String   @id @default(cuid())
+  announcementId String   @map("announcement_id")
+  userId         String   @map("user_id")
+  readAt         DateTime @default(now()) @map("read_at")
+
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([announcementId, userId])
+  @@index([announcementId, readAt])
+  @@index([userId])
+  @@map("announcement_reads")
+}
+
+model AnnouncementLike {
+  id             String   @id @default(cuid())
+  announcementId String   @map("announcement_id")
+  userId         String   @map("user_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([announcementId, userId])
+  @@index([announcementId, createdAt])
+  @@index([userId])
+  @@map("announcement_likes")
+}
+
+model AnnouncementComment {
+  id             String   @id @default(cuid())
+  announcementId String   @map("announcement_id")
+  userId         String   @map("user_id")
+  body           String   @db.Text
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  revisions    AnnouncementCommentRevision[]
+
+  @@index([announcementId, createdAt])
+  @@index([userId])
+  @@map("announcement_comments")
+}
+
+/// Snapshot of a comment body before an edit (newest revision = most recent previous body).
+model AnnouncementCommentRevision {
+  id         String   @id @default(cuid())
+  commentId  String   @map("comment_id")
+  body       String   @db.Text
+  editedById String   @map("edited_by_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  comment  AnnouncementComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  editedBy User                @relation("AnnouncementCommentRevisionEditedBy", fields: [editedById], references: [id], onDelete: Cascade)
+
+  @@index([commentId, createdAt])
+  @@index([editedById])
+  @@map("announcement_comment_revisions")
+}
+
+/// In-app notification targeted at a tenant, role, or single user (read state is per-user).
+model Notification {
+  id          String               @id @default(cuid())
+  tenantId    String               @map("tenant_id")
+  audience    NotificationAudience
+  roleSlug    String?              @map("role_slug")
+  userId      String?              @map("user_id")
+  type        String
+  title       String
+  body        String?              @db.Text
+  href        String?
+  metadata    Json?
+  createdById String?              @map("created_by_id")
+  createdAt   DateTime             @default(now()) @map("created_at")
+  updatedAt   DateTime             @updatedAt @map("updated_at")
+  expiresAt   DateTime?            @map("expires_at")
+  deletedAt   DateTime?            @map("deleted_at")
+
+  tenant    Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  targetUser User?              @relation("NotificationTargetUser", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy User?               @relation("NotificationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  states    NotificationState[]
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, audience, userId])
+  @@index([tenantId, audience, roleSlug])
+  @@map("notifications")
+}
+
+model NotificationState {
+  id             String    @id @default(cuid())
+  notificationId String    @map("notification_id")
+  userId         String    @map("user_id")
+  readAt         DateTime? @map("read_at")
+  dismissedAt    DateTime? @map("dismissed_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, userId])
+  @@index([userId])
+  @@map("notification_states")
 }
 
 model CompetitorObservation {

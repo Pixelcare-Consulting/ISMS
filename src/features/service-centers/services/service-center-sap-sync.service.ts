@@ -12,14 +12,15 @@ import type { SapSyncResult } from "@/features/sap/schemas/sap-master-sync.schem
  * cost-accounting dimensions each belongs to (`InWhichDimension`); the company reserves
  * dimension 5 for its service centres. Filtered server-side on that dimension so the
  * split happens in SAP and a cost centre on any other dimension is never fetched.
- * Inactive cost centres are excluded the same way, so one SAP closes out simply stops
- * coming back from the sync.
+ * Inactive cost centres are excluded the same way. A centre that stops coming back —
+ * deleted, made inactive, or moved to another dimension — is soft-deleted and set
+ * `inactive` when the pass completes, and restored (`active`) if SAP returns it again.
  *
  * Syncs `name` only. Area, dealer type, dealer area and mode of payment are ISMS-only
  * classifications with no SAP counterpart, so a service centre created here lands with
- * them unset and a later sync never touches them. Status is ISMS-managed too: a new row
- * lands `active`, and updates leave status alone rather than reviving something an admin
- * deactivated on purpose. Locations are ISMS-only as well.
+ * them unset and a later sync never touches them. Otherwise status is ISMS-managed too: a
+ * new row lands `active`, and updates leave a live centre's status alone rather than
+ * reviving something an admin deactivated on purpose. Locations are ISMS-only as well.
  *
  * Field names confirmed against the live company database (`GET /ProfitCenters`):
  * `CenterCode`, `CenterName`, `InWhichDimension` (integer) and `Active` (`tYES`/`tNO`).
@@ -57,6 +58,17 @@ export const serviceCenterSyncEntity: SapSyncEntity<ServiceCenterRecord> = {
 
   applyPage(tenantId, records) {
     return serviceCenterRepository.applySapSyncPage(tenantId, records);
+  },
+
+  reconcile: {
+    markSeen: (tenantId, records, passMark) =>
+      serviceCenterRepository.markSapSyncSeen(
+        tenantId,
+        records.map((record) => record.sapCode),
+        passMark,
+      ),
+    retireUnseen: (tenantId, passMark) =>
+      serviceCenterRepository.retireUnseenSapServiceCenters(tenantId, passMark),
   },
 };
 

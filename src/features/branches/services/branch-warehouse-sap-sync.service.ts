@@ -1,5 +1,5 @@
 import { branchRepository } from "@/features/branches/repositories/branch.repository";
-import { sapText } from "@/features/sap/services/sap-master-data";
+import { parseSapFlag, sapText } from "@/features/sap/services/sap-master-data";
 import { runSapSync } from "@/features/sap/services/sap-sync-engine";
 import {
   SAP_WAREHOUSE_TYPES,
@@ -22,15 +22,18 @@ import type { SapSyncResult } from "@/features/sap/schemas/sap-master-sync.schem
  * theirs: a row reaches exactly one of the three, so this sync's skip list stays about
  * genuine problems rather than about the ~1,300 rows that were never branches.
  *
- * Syncs `name` only. Area, dealer, primary warehouse and the rest are ISMS-only
- * classifications with no SAP counterpart; a branch created here lands with them unset and
- * a later sync never touches them. Status is left alone for the same reason the OBRA sync
- * leaves it alone — see `applySapSyncPage`.
+ * Syncs `name`, plus SAP's Inactive flag: an inactive warehouse soft-deletes its branch
+ * and sets it `inactive`, and a branch SAP stops returning (deleted, or retyped away from
+ * `Branch`) is retired the same way when the pass completes. Either comes back restored
+ * and `active` once SAP returns it active. Area, dealer, primary warehouse and the rest
+ * are ISMS-only classifications with no SAP counterpart; a branch created here lands with
+ * them unset and a later sync never touches them.
  */
 
 interface BranchRecord {
   sapCode: string;
   name: string;
+  isInactive: boolean;
 }
 
 export const branchWarehouseSyncEntity: SapSyncEntity<BranchRecord> = {
@@ -38,7 +41,7 @@ export const branchWarehouseSyncEntity: SapSyncEntity<BranchRecord> = {
   noun: { one: "branch", many: "branches" },
 
   entity: "Warehouses",
-  select: "WarehouseCode,WarehouseName",
+  select: "WarehouseCode,WarehouseName,Inactive",
   filter: sapWarehouseTypeFilter(SAP_WAREHOUSE_TYPES.branch),
   keyField: "WarehouseCode",
   keyKind: "string",
@@ -52,11 +55,30 @@ export const branchWarehouseSyncEntity: SapSyncEntity<BranchRecord> = {
     const name = sapText(row.WarehouseName);
     if (!name) return { skip: "SAP branch has no name", example: sapCode };
 
-    return { record: { sapCode, name } };
+    return { record: { sapCode, name, isInactive: parseSapFlag(row.Inactive) } };
   },
 
   applyPage(tenantId, records) {
     return branchRepository.applySapSyncPage(tenantId, records);
+  },
+
+  // The primary branch source, so it also retires branches no sync has ever claimed —
+  // ones created by hand or imported that SAP does not hold.
+  reconcile: {
+    markSeen: (tenantId, records, passMark) =>
+      branchRepository.markSapSyncSeen(
+        tenantId,
+        records.map((record) => record.sapCode),
+        passMark,
+        branchWarehouseSyncEntity.key,
+      ),
+    retireUnseen: (tenantId, passMark) =>
+      branchRepository.retireUnseenSapBranches(
+        tenantId,
+        passMark,
+        branchWarehouseSyncEntity.key,
+        true,
+      ),
   },
 };
 

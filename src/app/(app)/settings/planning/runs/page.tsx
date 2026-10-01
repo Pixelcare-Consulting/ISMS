@@ -49,7 +49,7 @@ export default async function DemandPlanningRunsPage({
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Demand Planning"
+        title="Supply Planning"
         description="Generate a run, review the grid, then release to auto-replenish."
       />
       <DemandPlanningRunList

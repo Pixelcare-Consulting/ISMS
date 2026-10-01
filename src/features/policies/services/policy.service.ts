@@ -10,14 +10,14 @@ import {
   updatePolicySchema,
 } from "@/features/policies/schemas/policy.schema";
 import { sendPolicyReviewEmail } from "@/lib/notifications";
+import { appUrl } from "@/lib/shared/env";
 import {
   buildPolicyAttachmentPath,
   getObjectStorage,
 } from "@/lib/storage";
 
 function policyUrl(policyId: string) {
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-  return `${base.replace(/\/$/, "")}/policies/${policyId}`;
+  return `${appUrl()}/policies/${policyId}`;
 }
 
 export const policyService = {

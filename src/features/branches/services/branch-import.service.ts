@@ -37,8 +37,9 @@ import { mapWithConcurrency } from "@/lib/shared/concurrency";
 /**
  * Bulk branch import from the Branches workbook (or a PSG ISMS single sheet).
  *
- * Unknown sap_codes are created; existing ones are updated. Optional legacy
- * Allowed Models sheet still requires existing product models — never auto-created.
+ * Update-only: every sap_code must already exist (branches come from the SAP sync),
+ * and unknown ones are rejected as row errors. Optional legacy Allowed Models sheet
+ * still requires existing product models — never auto-created.
  */
 
 const MAX_ROWS = 20_000;
@@ -534,7 +535,7 @@ export const branchImportService = {
           select: { id: true, name: true, sapCode: true },
         }),
         prisma.warehouse.findMany({
-          where: { tenantId },
+          where: { tenantId, deletedAt: null },
           select: { id: true, name: true, code: true },
         }),
         prisma.area.findMany({
@@ -569,16 +570,11 @@ export const branchImportService = {
     const provinceIndex = indexByCodeOrName(provinces);
     const branchAreaByName = new Map(branchAreas.map((a) => [lookupKey(a.name), a]));
 
-    const createSapKeys = new Set<string>();
-    for (const [key] of lastBranchRowBySap) {
-      if (!branchBySapCode.has(key)) createSapKeys.add(key);
-    }
-
-    /** Resolve for allowed-models: must exist in DB or be created from branch sheet. */
+    /** Resolve for allowed-models: the branch must already exist in the DB. */
     function resolveBranchForModels(
       sheet: string,
       row: { rowNumber: number; values: Record<string, string> },
-    ): BranchRecord | { sapCode: string; pendingCreate: true } | null {
+    ): BranchRecord | null {
       const sapCode = row.values.sapcode?.trim() ?? "";
       if (!sapCode || isBlankOrDash(sapCode)) {
         errors.push({ sheet, rowNumber: row.rowNumber, sapCode: "", message: "branch_sap_code is empty." });
@@ -586,14 +582,11 @@ export const branchImportService = {
       }
       const existing = branchBySapCode.get(lookupKey(sapCode));
       if (existing) return existing;
-      if (createSapKeys.has(lookupKey(sapCode))) {
-        return { sapCode, pendingCreate: true };
-      }
       errors.push({
         sheet,
         rowNumber: row.rowNumber,
         sapCode,
-        message: `Branch "${sapCode}" does not exist and is not in the Branches sheet to create.`,
+        message: `Branch "${sapCode}" does not exist.`,
       });
       return null;
     }
@@ -602,7 +595,7 @@ export const branchImportService = {
       return columns.has(key);
     }
 
-    // --- Sheet 1: branch creates / updates ------------------------------------
+    // --- Sheet 1: branch updates ---------------------------------------------
     const planBySap = new Map<string, BranchPlanInternal>();
     const psgRows: PsgBranchRow[] = [];
 
@@ -631,24 +624,15 @@ export const branchImportService = {
       const isCreate = !existing;
       let rowHasError = false;
 
+      // Import only updates: branches are created by the SAP sync, never from a file.
       if (isCreate) {
-        if (!nameRaw && !name) {
-          errors.push({
-            sheet: sheetLabel,
-            rowNumber: row.rowNumber,
-            sapCode,
-            message: "branch_name is required when creating a new branch.",
-          });
-          continue;
-        }
-        fields.name = name;
-        if (status) fields.status = status;
-        if (branchAreaName) fields.branchAreaName = branchAreaName;
-        if (devantQuota != null) fields.devantQuota = devantQuota;
-        if (hisenseQuota != null) fields.hisenseQuota = hisenseQuota;
-        pushChange(changes, "name", "—", name);
-        if (status) pushChange(changes, "status", "—", status);
-        if (branchAreaName) pushChange(changes, "branchArea", "—", branchAreaName);
+        errors.push({
+          sheet: sheetLabel,
+          rowNumber: row.rowNumber,
+          sapCode,
+          message: `Branch "${sapCode}" does not exist. Import only updates existing branches — sync new ones from SAP.`,
+        });
+        continue;
       } else if (existing) {
         if (nameRaw && nameRaw !== existing.name) {
           fields.name = nameRaw;
@@ -808,8 +792,8 @@ export const branchImportService = {
           for (const altCode of codes) {
             if (lookupKey(altCode) === key) continue; // skip self
             const existingAlt = branchBySapCode.get(lookupKey(altCode));
-            if (existingAlt || createSapKeys.has(lookupKey(altCode))) {
-              resolvedCodes.push(existingAlt?.sapCode ?? altCode);
+            if (existingAlt) {
+              resolvedCodes.push(existingAlt.sapCode);
               continue;
             }
             errors.push({

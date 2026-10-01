@@ -1,4 +1,5 @@
 import {
+  Activity,
   ArrowLeftRight,
   ArrowUpToLine,
   Barcode,
@@ -42,6 +43,11 @@ export interface NavLinkItem {
   platformOperatorOnly?: boolean;
   /** Compact sidebar badge (e.g. recently added menus) */
   badge?: "new";
+  /**
+   * When set, sidebar can show a live numeric count badge for this href
+   * (e.g. unread announcements on Overview).
+   */
+  countBadgeKey?: "unreadAnnouncements";
 }
 
 export interface NavLinkEntry extends NavLinkItem {
@@ -74,11 +80,76 @@ export function isNavSubGroup(child: NavGroupChild): child is NavSubGroupItem {
 
 export const appNavigation: NavEntry[] = [
   {
-    type: "link",
-    href: "/dashboard",
+    type: "group",
     label: "Dashboard",
     icon: LayoutDashboard,
-    permission: getModuleNavPermission("dashboard"),
+    defaultOpen: true,
+    items: [
+      {
+        href: "/dashboard",
+        label: "Overview",
+        icon: LayoutDashboard,
+        exact: true,
+        permission: getModuleNavPermission("dashboard"),
+        countBadgeKey: "unreadAnnouncements",
+      },
+      {
+        href: "/dashboard/operations",
+        label: "Operations",
+        icon: Activity,
+        anyPermissions: [
+          "inventory.view",
+          "orders.view",
+          "orders.manual.view",
+          "orders.special.view",
+          "orders.auto_replenish.view",
+          "logistics.view",
+          "logistics.create",
+          "logistics.manage",
+          "forecast.view",
+          "forecast.manage",
+          "planogram.view",
+          "planogram.manage",
+        ],
+      },
+      {
+        href: "/dashboard/sales",
+        label: "Sales",
+        icon: Store,
+        anyPermissions: [
+          "sales.view",
+          "sales.create",
+          "sales.update",
+          "returns.view",
+          "returns.branch.view",
+          "returns.service.view",
+          "returns.request",
+          "returns.evaluate",
+          "returns.approve",
+          "returns.complete",
+        ],
+      },
+      {
+        href: "/dashboard/pcount",
+        label: "P-Count Dashboard",
+        icon: ClipboardList,
+        anyPermissions: ["inventory.view", "reports.view"],
+        badge: "new",
+      },
+      {
+        href: "/dashboard/site-traffic",
+        label: "Site Traffic",
+        icon: Users,
+        anyPermissions: ["users.manage", "audit_logs.view"],
+        badge: "new",
+      },
+      {
+        href: "/competitors",
+        label: "Market Survey",
+        icon: ChartColumn,
+        permission: "competitors.view",
+      },
+    ],
   },
   {
     type: "link",
@@ -201,12 +272,6 @@ export const appNavigation: NavEntry[] = [
         permission: "inventory.view",
       },
       {
-        href: "/inventory/warehouse-stock",
-        label: "Warehouse stock",
-        icon: Warehouse,
-        anyPermissions: ["inventory.view", "warehouses.manage"],
-      },
-      {
         href: "/inventory/stock-count",
         label: "P-Count",
         icon: ClipboardList,
@@ -313,11 +378,16 @@ export const appNavigation: NavEntry[] = [
       
       },
       {
-        href: "/reports/inventory",
         label: "Inventory",
         icon: Package,
-        anyPermissions: ["reports.view", "inventory.view"],
-     
+        items: [
+          {
+            href: "/inventory/warehouse-stock",
+            label: "Warehouse stock",
+            icon: Warehouse,
+            anyPermissions: ["inventory.view", "warehouses.manage"],
+          },
+        ],
       },
       {
         href: "/reports/dii",
@@ -327,7 +397,7 @@ export const appNavigation: NavEntry[] = [
       },
       {
         href: "/reports/demand-planning",
-        label: "Demand Planning",
+        label: "Supply Planning",
         icon: ChartColumn,
         anyPermissions: ["forecast.view", "forecast.manage"],
       },
@@ -365,13 +435,6 @@ export const appNavigation: NavEntry[] = [
         permission: "serial_logs.view",
       },
     ],
-  },
-  {
-    type: "link",
-    href: "/competitors",
-    label: "Competitors",
-    icon: ChartColumn,
-    permission: "competitors.view",
   },
   {
     type: "link",
@@ -488,7 +551,7 @@ export const appNavigation: NavEntry[] = [
           },
           // DO NOT UNCOMMENT THIS, NO NEED TO SHOW IN THE NAVIGATION {
           //   href: "/settings/planning/runs",
-          //   label: "Demand Planning",
+          //   label: "Supply Planning",
           //   icon: CalendarDays,
           //   anyPermissions: ["forecast.view", "forecast.manage"],
           //   badge: "new",

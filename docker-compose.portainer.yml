@@ -1,0 +1,35 @@
+# Portainer — host management UI. Deployed on its own, NOT part of the app stack,
+# so that tearing down or redeploying the app never takes the management UI with it.
+#
+#   docker compose -f docker-compose.portainer.yml up -d
+#
+# Access: https://<server-ip>:9443  (https is required)
+name: portainer
+
+services:
+  portainer:
+    image: portainer/portainer-ce:lts
+    container_name: portainer
+    restart: always
+    ports:
+      # HTTPS web UI
+      - "9443:9443"
+      # Edge Agent tunnel — only needed for remote agents; safe to remove
+      - "8000:8000"
+    volumes:
+      # How Portainer talks to Docker. Full socket access == root on the host,
+      # so keep 9443 restricted to trusted IPs in the security group.
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  portainer_data:
+    # Pinned to the un-prefixed name used by the original manual setup, so an
+    # existing install is adopted and keeps its users and settings. Created
+    # automatically on a fresh server.
+    name: portainer_data

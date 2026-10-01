@@ -8,6 +8,8 @@ import {
   createAnnouncementAction,
   updateAnnouncementAction,
 } from "@/features/announcements/actions/announcement.actions";
+import { AnnouncementRichEditor } from "@/features/announcements/components/announcement-rich-editor";
+import { stripAnnouncementHtml } from "@/features/announcements/lib/sanitize-announcement-html";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -20,7 +22,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 
 export type AnnouncementDialogRow = {
   id: string;
@@ -41,6 +42,12 @@ function toDatetimeLocalValue(value: string | Date | null | undefined): string {
 
 function defaultPublishedAt(): string {
   return toDatetimeLocalValue(new Date());
+}
+
+function bodyHasContent(html: string): boolean {
+  if (/<img\b/i.test(html)) return true;
+  if (/<table\b/i.test(html)) return true;
+  return stripAnnouncementHtml(html).length > 0;
 }
 
 interface AnnouncementFormDialogProps {
@@ -93,9 +100,14 @@ export function AnnouncementFormDialog({
     event.preventDefault();
     setError(null);
 
+    if (!bodyHasContent(body)) {
+      setError("Body is required");
+      return;
+    }
+
     const payload = {
       title: title.trim(),
-      body: body.trim(),
+      body,
       publishedAt,
       expiresAt: expiresAt || null,
       isActive,
@@ -125,69 +137,69 @@ export function AnnouncementFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
+        <DialogHeader className="shrink-0 space-y-1.5 border-b px-4 py-4 pr-12 sm:px-6">
           <DialogTitle>{isEdit ? "Edit announcement" : "New announcement"}</DialogTitle>
           <DialogDescription>
             {isEdit
               ? "Update the announcement content and schedule."
-              : "Publish a tenant announcement. Active posts appear on the dashboard."}
+              : "Publish a team announcement with formatting, links, images, and tables. Active posts appear on Dashboard → Overview."}
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={onSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="announcement-title">Title</Label>
-            <Input
-              id="announcement-title"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              required
-              maxLength={200}
-              placeholder="System maintenance this weekend"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="announcement-body">Body</Label>
-            <Textarea
-              id="announcement-body"
-              value={body}
-              onChange={(event) => setBody(event.target.value)}
-              required
-              maxLength={10_000}
-              rows={5}
-              placeholder="Details for your team…"
-            />
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
+        <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-6">
             <div className="space-y-2">
-              <Label htmlFor="announcement-published-at">Published at</Label>
+              <Label htmlFor="announcement-title">Title</Label>
               <Input
-                id="announcement-published-at"
-                type="datetime-local"
-                value={publishedAt}
-                onChange={(event) => setPublishedAt(event.target.value)}
+                id="announcement-title"
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
                 required
+                maxLength={200}
+                placeholder="System maintenance this weekend"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="announcement-expires-at">Expires at (optional)</Label>
-              <Input
-                id="announcement-expires-at"
-                type="datetime-local"
-                value={expiresAt}
-                onChange={(event) => setExpiresAt(event.target.value)}
+              <Label>Body</Label>
+              <AnnouncementRichEditor
+                key={seededFor ?? "closed"}
+                value={body}
+                onChange={setBody}
+                disabled={pending}
+                placeholder="Details for your team…"
               />
             </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="announcement-published-at">Published at</Label>
+                <Input
+                  id="announcement-published-at"
+                  type="datetime-local"
+                  value={publishedAt}
+                  onChange={(event) => setPublishedAt(event.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="announcement-expires-at">Expires at (optional)</Label>
+                <Input
+                  id="announcement-expires-at"
+                  type="datetime-local"
+                  value={expiresAt}
+                  onChange={(event) => setExpiresAt(event.target.value)}
+                />
+              </div>
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={isActive}
+                onCheckedChange={(checked) => setIsActive(checked === true)}
+              />
+              Active (show on Overview when published and not expired)
+            </label>
+            {error ? <p className="text-sm text-destructive">{error}</p> : null}
           </div>
-          <label className="flex items-center gap-2 text-sm">
-            <Checkbox
-              checked={isActive}
-              onCheckedChange={(checked) => setIsActive(checked === true)}
-            />
-            Active (show on dashboard when published and not expired)
-          </label>
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
-          <DialogFooter>
+          <DialogFooter className="shrink-0 border-t px-4 py-4 sm:px-6">
             <Button
               type="button"
               variant="outline"

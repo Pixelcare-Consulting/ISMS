@@ -36,7 +36,7 @@ export function NewRunDialog({
         showCloseButton={false}
         className="flex max-h-[90vh] w-[calc(100%-2rem)] max-w-7xl flex-col gap-0 overflow-hidden p-0 sm:max-w-7xl"
       >
-        <DialogTitle className="sr-only">New demand planning run</DialogTitle>
+        <DialogTitle className="sr-only">New supply planning run</DialogTitle>
         <DialogDescription className="sr-only">
           Choose scope and parameters, confirm data sources, then review the generated plan.
         </DialogDescription>

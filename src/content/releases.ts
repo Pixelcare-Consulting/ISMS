@@ -52,6 +52,319 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.49.5",
+    date: "2026-09-29",
+    releasedAt: "2026-09-29T18:30:00+08:00",
+    title: "P-Count tables easier to read",
+    highlights: [
+      "P-Count Dashboard dealer lists and Session history in the branch drawer now have solid headers and clearer row shading so rows no longer look see-through.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "P-Count Dashboard branch tables and Session history use solid header and row backgrounds so status rows are easy to scan against the white card.",
+      },
+    ],
+  },
+  {
+    version: "0.49.4",
+    date: "2026-09-29",
+    releasedAt: "2026-09-29T14:55:00+08:00",
+    title: "Announcement dates easier to spot",
+    highlights: [
+      "Each announcement on Overview and in the Announcements list now shows a clear calendar date box beside the title so you can see when it was posted at a glance.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Announcement cards show a compact month–day–year date box next to the title, with the author line kept free of the full date string.",
+      },
+    ],
+  },
+  {
+    version: "0.49.3",
+    date: "2026-09-29",
+    releasedAt: "2026-09-29T14:05:00+08:00",
+    title: "Notifications list easier to scan",
+    highlights: [
+      "The header notifications list now shows a clear icon for each kind of update, stronger unread styling, and cleaner spacing so you can spot what matters faster.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Notifications in the header bell use type icons, clearer unread vs read styling, and a friendlier empty state.",
+      },
+    ],
+  },
+  {
+    version: "0.49.2",
+    date: "2026-09-29",
+    releasedAt: "2026-09-29T14:00:00+08:00",
+    title: "Announcement body editor looks editable",
+    highlights: [
+      "The Body field when creating or editing an announcement now matches the white input style of Title and dates, so it no longer looks locked or read-only.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "The announcement Body rich-text area uses the same white editable surface as other form fields, while the formatting toolbar stays visually distinct.",
+      },
+    ],
+  },
+  {
+    version: "0.49.1",
+    date: "2026-09-29",
+    releasedAt: "2026-09-29T13:55:00+08:00",
+    title: "Optional announcement expiry works again",
+    highlights: [
+      "You can leave Expires at blank when creating or editing an announcement — it is truly optional and no longer blocks Create with a false expiry error.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Leaving Expires at empty on a new or edited announcement no longer shows “Expiry must be after the publish date” and lets you create or save without setting an end date.",
+      },
+    ],
+  },
+  {
+    version: "0.49.0",
+    date: "2026-09-29",
+    releasedAt: "2026-09-29T13:50:00+08:00",
+    title: "Announcements reach your notifications bell",
+    highlights: [
+      "When a company announcement goes live, everyone gets a notification in the header bell — open it to jump straight to Overview.",
+      "The bell shows five notifications at a time with simple previous/next paging so you can browse older alerts without scrolling forever.",
+      "Overview opens on New announcements first; once you’ve read them all, it shows everything so the page never looks empty.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Publishing a live announcement creates a company-wide in-app notification that opens Overview from the header bell.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The notifications popover lists five items per page with previous/next controls and a page indicator.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Overview focuses on unread announcements by default and switches to all posts when nothing new remains.",
+      },
+    ],
+  },
+  {
+    version: "0.48.0",
+    date: "2026-09-29",
+    releasedAt: "2026-09-29T13:35:00+08:00",
+    title: "In-app notifications in the header",
+    highlights: [
+      "A notifications bell sits on the right of the header so updates can find you without leaving your page.",
+      "What’s new and the version label now sit next to the sidebar drawer, keeping release notes one click away on the left.",
+      "Open the bell for your inbox — mark one or all as read when you are caught up (nothing to show yet until alerts start arriving).",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "New notifications bell in the header opens your in-app inbox, shows an unread count, and lets you mark items as read.",
+      },
+      {
+        type: "improvement",
+        description:
+          "What’s new and the build version sit beside the sidebar drawer so the right side of the header stays clear for notifications.",
+      },
+    ],
+  },
+  {
+    version: "0.47.1",
+    date: "2026-09-29",
+    releasedAt: "2026-09-29T13:20:00+08:00",
+    title: "Overview filters sit with announcements",
+    highlights: [
+      "Overview filters stay with the announcement list — pick All, New, or Earlier, search by title, and narrow by date from and date to while you scroll.",
+      "Hide or show those Overview filters with one click so the list has more room when you do not need them.",
+      "Announcement cards are clearer to scan — title and details sit above a clean line before the message body.",
+      "The Overview announcements page opens again on the develop site after a server error blocked it.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Overview announcement filters (All / New / Earlier, title search, and date from / date to) sit inside the announcement list section and stay visible while you scroll the cards.",
+      },
+      {
+        type: "improvement",
+        description:
+          "You can collapse Overview announcement filters to free space, and reopen them anytime — a small cue shows when filters are still applied.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Overview and Announcements cards separate the title block from the body with a clear line, so posts are easier to scan.",
+      },
+      {
+        type: "fix",
+        description:
+          "Overview and announcement pages no longer hit a server error when opening the feed on the develop deployment.",
+      },
+    ],
+  },
+  {
+    version: "0.47.0",
+    date: "2026-09-28",
+    releasedAt: "2026-09-28T19:55:00+08:00",
+    title: "Dashboard split: announcements Overview, Operations & Sales homes",
+    highlights: [
+      "Overview is now announcements only — New (unread) and Earlier (read), with solid section badges and a red unread count on the menu.",
+      "See who already read a post at a glance — up to five reader avatars beside the read count, with a +N when there are more.",
+      "Filter Overview to All, New, or Earlier, or search announcements by title.",
+      "Write announcements with formatting, links, images, and pasted tables; the create/edit window keeps title and actions visible while you scroll.",
+      "Edited announcements and comments show an Edited mark you can open to review earlier versions.",
+      "Operations and Sales each have today’s briefing and role cards — no announcement banners there.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Dashboard menu adds Operations and Sales pages beside Overview, P-Count Dashboard, Site Traffic, and Market Survey — each role only sees the homes they can use.",
+      },
+      {
+        type: "feature",
+        description:
+          "Overview shows unread announcements first, then ones you already read, and the Overview menu badge counts what you have not marked as read yet.",
+      },
+      {
+        type: "feature",
+        description:
+          "Announcements support rich formatting, links, image uploads, and tables (including paste from Excel or Word); on Overview you can edit or delete your comments, and announcement managers can delete any comment.",
+      },
+      {
+        type: "feature",
+        description:
+          "Each Overview announcement shows overlapping reader avatars (up to five) next to the read count; click the stack or count to open the full readers list.",
+      },
+      {
+        type: "feature",
+        description:
+          "Overview lets you filter announcements to All, New (unread), or Earlier (read), and search by title.",
+      },
+      {
+        type: "feature",
+        description:
+          "Edited comments on Overview show a clickable Edited mark — open it to see earlier versions of the comment.",
+      },
+      {
+        type: "feature",
+        description:
+          "Edited announcements show a clickable Edited mark on Overview and in Announcements — open it to see earlier title and body versions.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Overview comment threads show the latest few by default with Show all comments when there are more; company announcements stay on Overview while Operations and Sales focus on work cards.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Overview announcements read more like a blog list — flat sharp-corner posts on solid panels instead of rounded cards.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The Announcements admin list uses the same solid white panels and sharp Live/Scheduled badges as Overview, on a light slate page background.",
+      },
+      {
+        type: "improvement",
+        description:
+          "New and Earlier on Overview use solid square badges so unread vs read sections are easy to spot at a glance.",
+      },
+      {
+        type: "improvement",
+        description:
+          "When creating or editing an announcement, the title and Cancel/Save buttons stay visible while the body scrolls.",
+      },
+      {
+        type: "fix",
+        description:
+          "On Overview, the comment count opens the thread and comment box, and edited comments show an Edited mark beside the time.",
+      },
+      {
+        type: "fix",
+        description:
+          "Edited comments on Overview show the time of the latest edit, not the original post time.",
+      },
+      {
+        type: "fix",
+        description:
+          "Pasting a table into an announcement keeps the real grid instead of flattening it into a list of cell words.",
+      },
+      {
+        type: "fix",
+        description:
+          "Overview announcement posts, comments, and the comment box sit on solid backgrounds so they no longer blend into the page.",
+      },
+    ],
+  },
+  {
+    version: "0.46.0",
+    date: "2026-09-28",
+    releasedAt: "2026-09-28T18:40:00+08:00",
+    title: "Dashboard hub: Overview feed, P-Count progress, Site Traffic",
+    highlights: [
+      "Dashboard is now a menu with Overview, P-Count Dashboard, Site Traffic, and Market Survey.",
+      "Overview shows company announcements you can mark as read, like, and comment on.",
+      "P-Count Dashboard tracks this month’s branch progress by dealer, with Excel export and session links.",
+      "Site Traffic shows who is signed in, recent activity, and top PS sales for the month.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Dashboard menu groups Overview (announcement feed with read receipts, likes, and comments), P-Count Dashboard (dealer cards and month progress), Site Traffic (users online and sales leaders), and Market Survey (Competitors).",
+      },
+      {
+        type: "improvement",
+        description:
+          "Inventory → P-Count still runs counting sessions, and Reports → P-Count still lists closed history — the new dashboard is for overview and progress, not a replacement for those screens.",
+      },
+    ],
+  },
+  {
+    version: "0.45.0",
+    date: "2026-09-28",
+    releasedAt: "2026-09-28T17:30:00+08:00",
+    title: "P-Count posts like SAP Business One",
+    highlights: [
+      "Stock count follows the B1 flow: open a count, scan serials, review differences, then Post differences.",
+      "Unexpected serials count as surplus; you can reject or recount before posting.",
+      "Post differences corrects local shelf stock and sends a live SAP Inventory Posting when connected — otherwise it stays honestly pending (no fake SAP document).",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "P-Count sessions now support serial scan, surplus finds, soft freeze while counting, reject/recount, and session-level Post differences that update shelf stock and post to SAP when Service Layer is ready.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Help, tutorials, and workflow guides describe the Open → Count → Review → Post → Close path in plain language.",
+      },
+      {
+        type: "fix",
+        description:
+          "Stock count no longer invents a successful SAP document when Service Layer is not connected.",
+      },
+    ],
+  },
+  {
     version: "0.44.3",
     date: "2026-09-18",
     releasedAt: "2026-09-18T14:35:00+08:00",
@@ -74,7 +387,7 @@ export const RELEASES: ReleaseNote[] = [
     releasedAt: "2026-09-18T13:45:00+08:00",
     title: "Release open orders by period",
     highlights: [
-      "Demand Planning Release only skips a branch when it already has an open Auto Replenish for the same planning period — an August order no longer blocks October.",
+      "Supply Planning Release only skips a branch when it already has an open Auto Replenish for the same planning period — an August order no longer blocks October.",
       "Release confirmation and skip messages say when the open order is for this period.",
     ],
     changes: [
@@ -98,13 +411,13 @@ export const RELEASES: ReleaseNote[] = [
     highlights: [
       "Import forecast accepts FREE items (0 SRP) — Target Quota can be ₱0 with a warning, not a hard stop.",
       "Release asks you to confirm and lists branches with no sales history, no Drop 1, or an open Auto Replenish.",
-      "Planning guide spells out what you need before Demand Planning and Release.",
+      "Planning guide spells out what you need before Supply Planning and Release.",
     ],
     changes: [
       {
         type: "improvement",
         description:
-          "Demand Planning Release confirmation shows how many branches go to Team Leader, which are skipped, and which have no sales history before you proceed.",
+          "Supply Planning Release confirmation shows how many branches go to Team Leader, which are skipped, and which have no sales history before you proceed.",
       },
       {
         type: "improvement",
@@ -125,14 +438,14 @@ export const RELEASES: ReleaseNote[] = [
     title: "Forecast template and Release to Team Leader",
     highlights: [
       "Forecast Download template pre-fills every active branch and its planogram SKUs so you can fill quantities faster.",
-      "Demand Planning New run shows Date from and Date to side by side.",
+      "Supply Planning New run shows Date from and Date to side by side.",
       "Release sends Auto Replenish straight to Team Leader whenever Drop 1 has quantity — even without sales history.",
     ],
     changes: [
       {
         type: "feature",
         description:
-          "Demand Planning Release creates Auto Replenish orders already waiting for Team Leader when Drop 1 quantity is above zero, including branches with no sales history.",
+          "Supply Planning Release creates Auto Replenish orders already waiting for Team Leader when Drop 1 quantity is above zero, including branches with no sales history.",
       },
       {
         type: "improvement",
@@ -142,7 +455,7 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "improvement",
         description:
-          "Demand Planning New run places Date from and Date to next to each other for easier history range setup.",
+          "Supply Planning New run places Date from and Date to next to each other for easier history range setup.",
       },
     ],
   },

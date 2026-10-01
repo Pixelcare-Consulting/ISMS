@@ -3,6 +3,7 @@ import { seedBranchSchedules } from "./seed-branch-schedules";
 import { seedBrsDemoData } from "./seed-brs";
 import { seedCore } from "./seed-core";
 import { resolveSeedProfile, type SeedProfile } from "./seed-data";
+import { seedDemoNotifications } from "./seed-notifications";
 import { seedRegionsAndProvincesForAllTenants } from "./seed-ph-geo";
 import { seedPsgBranchesForAllTenants } from "./seed-psg-branches";
 import { seedPsgModelAndOutgoing } from "./seed-psg";
@@ -82,10 +83,18 @@ async function runProfile(profile: SeedProfile) {
     return;
   }
 
+  if (profile === "notifications") {
+    const { demoTenant, usersByEmail } = await loadDemoContext();
+    await seedDemoNotifications(prisma, demoTenant.id, usersByEmail);
+    console.log(`Seed [notifications] done in ${Date.now() - started}ms`);
+    return;
+  }
+
   const { demoTenant, usersByEmail } = await seedCore(prisma);
   console.log("Seeding regions/provinces for all tenants…");
   await seedRegionsAndProvincesForAllTenants(prisma);
   const statusCodes = await seedReasonStatusesForTenant(prisma, demoTenant.id);
+  await seedDemoNotifications(prisma, demoTenant.id, usersByEmail);
 
   if (profile === "full") {
     await seedBrsDemoData(prisma, demoTenant.id, usersByEmail, statusCodes);
@@ -93,13 +102,13 @@ async function runProfile(profile: SeedProfile) {
     console.log("Seeding PSG branches for all tenants (may take a bit for ~1k rows)…");
     await seedPsgBranchesForAllTenants(prisma);
     console.log(
-      `Seed [full] done in ${Date.now() - started}ms — core + geo + status + BRS + PSG branches. See database/seed-users.md`,
+      `Seed [full] done in ${Date.now() - started}ms — core + geo + status + notifications + BRS + PSG branches. See database/seed-users.md`,
     );
     return;
   }
 
   console.log(
-    `Seed [minimal] done in ${Date.now() - started}ms — core + geo + status. Run \`pnpm run db:seed:full\` for BRS demo data, or \`pnpm run db:seed:branches\` for PSG branches.`,
+    `Seed [minimal] done in ${Date.now() - started}ms — core + geo + status + notifications. Run \`pnpm run db:seed:full\` for BRS demo data, or \`pnpm run db:seed:branches\` for PSG branches.`,
   );
 }
 

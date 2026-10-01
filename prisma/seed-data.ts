@@ -221,6 +221,7 @@ export const ROLES = [
       "ordering_settings.manage",
       "aors.manage",
       "inventory.view",
+      "inventory.manage",
       ...ORDERS_VIEW_ALL,
       ...ORDERS_CREATE_ALL,
       ...ORDERS_APPROVE_ALL,
@@ -574,7 +575,8 @@ export type SeedProfile =
   | "schedules"
   | "branches"
   | "psg"
-  | "warehouse";
+  | "warehouse"
+  | "notifications";
 
 export function resolveSeedProfile(): SeedProfile {
   const raw = process.env.SEED_PROFILE?.trim().toLowerCase();
@@ -587,6 +589,7 @@ export function resolveSeedProfile(): SeedProfile {
     raw === "branches" ||
     raw === "psg" ||
     raw === "warehouse" ||
+    raw === "notifications" ||
     raw === "minimal"
   ) {
     return raw;

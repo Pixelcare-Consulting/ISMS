@@ -1,9 +1,10 @@
-import { prisma } from "@/lib/database/client";
+import type { Prisma } from "@prisma/client";
+import type { PostableVarianceStatus } from "@/features/stock-audit/constants/stock-count-workflow";
 import {
   resolvePagination,
   toPaginatedResult,
 } from "@/lib/shared/pagination";
-import type { Prisma } from "@prisma/client";
+import { prisma } from "@/lib/database/client";
 
 const sessionListInclude = {
   branch: { select: { id: true, name: true, sapCode: true } },
@@ -181,6 +182,20 @@ export const stockAuditRepository = {
   findLine(sessionId: string, lineId: string) {
     return prisma.stockCountLine.findFirst({
       where: { id: lineId, sessionId },
+      include: {
+        serialNumber: { select: { id: true, serialNo: true } },
+        variance: true,
+      },
+    });
+  },
+
+  findLineBySerial(sessionId: string, serialNumberId: string) {
+    return prisma.stockCountLine.findFirst({
+      where: { sessionId, serialNumberId },
+      include: {
+        serialNumber: { select: { id: true, serialNo: true } },
+        variance: true,
+      },
     });
   },
 
@@ -195,30 +210,103 @@ export const stockAuditRepository = {
     });
   },
 
+  clearLineCounted(lineId: string) {
+    return prisma.stockCountLine.update({
+      where: { id: lineId },
+      data: {
+        status: "pending",
+        countedAt: null,
+        countedById: null,
+      },
+    });
+  },
+
+  createLine(data: Prisma.StockCountLineUncheckedCreateInput) {
+    return prisma.stockCountLine.create({ data });
+  },
+
   createVariance(data: Prisma.StockVarianceUncheckedCreateInput) {
     return prisma.stockVariance.create({ data });
   },
 
-  /** Atomically mark all pending lines as variances and advance session status. */
+  deleteVariance(tenantId: string, varianceId: string) {
+    return prisma.stockVariance.delete({
+      where: { id: varianceId, tenantId },
+    });
+  },
+
+  /**
+   * Mark pending expected lines as missing variances and counted unexpected
+   * lines as surplus variances, then advance session status.
+   */
   completeCountingTx(
     tenantId: string,
     sessionId: string,
-    pendingLineIds: string[],
-    variance: Omit<Prisma.StockVarianceUncheckedCreateInput, "lineId">,
+    missingLineIds: string[],
+    surplusLineIds: string[],
     nextStatus: Prisma.StockCountSessionUpdateInput["status"],
   ) {
     return prisma.$transaction(async (tx) => {
-      for (const lineId of pendingLineIds) {
+      for (const lineId of missingLineIds) {
         await tx.stockCountLine.update({
           where: { id: lineId },
           data: { status: "variance" },
         });
-        await tx.stockVariance.create({ data: { ...variance, lineId } });
+        await tx.stockVariance.create({
+          data: {
+            tenantId,
+            sessionId,
+            lineId,
+            varianceType: "missing",
+            status: "open",
+            description: "Expected unit not scanned during physical count",
+          },
+        });
+      }
+      for (const lineId of surplusLineIds) {
+        await tx.stockCountLine.update({
+          where: { id: lineId },
+          data: { status: "variance" },
+        });
+        await tx.stockVariance.create({
+          data: {
+            tenantId,
+            sessionId,
+            lineId,
+            varianceType: "surplus",
+            status: "open",
+            description: "Unexpected serial found during physical count",
+          },
+        });
       }
       await tx.stockCountSession.update({
         where: { id: sessionId, tenantId },
         data: { status: nextStatus },
       });
+    });
+  },
+
+  findVariancesForPosting(
+    tenantId: string,
+    sessionId: string,
+    statuses: readonly PostableVarianceStatus[],
+  ) {
+    return prisma.stockVariance.findMany({
+      where: {
+        tenantId,
+        sessionId,
+        status: { in: [...statuses] },
+      },
+      include: {
+        line: {
+          include: {
+            serialNumber: { select: { id: true, serialNo: true } },
+            model: { select: { id: true, skuCode: true, name: true } },
+            branchInventory: { select: { id: true, statusCodeId: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: "asc" },
     });
   },
 

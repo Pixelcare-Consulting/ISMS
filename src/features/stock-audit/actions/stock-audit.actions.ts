@@ -58,6 +58,8 @@ async function requireStockCountManage() {
 function revalidateStockCountPaths(sessionId?: string) {
   revalidatePath("/inventory/stock-count");
   revalidatePath("/reports/pcount");
+  revalidatePath("/dashboard/pcount");
+  revalidatePath("/inventory");
   if (sessionId) {
     revalidatePath(`/inventory/stock-count/${sessionId}`);
   }
@@ -177,6 +179,50 @@ export async function recordStockCountLineAction(sessionId: string, lineId: stri
   }
 }
 
+const scanSerialSchema = z.object({
+  sessionId: z.string().min(1),
+  serialNo: z.string().min(1),
+});
+
+export async function scanStockCountSerialAction(input: unknown) {
+  const { error, session } = await requireStockCountManage();
+  if (error || !session) return { error: error ?? STOCK_COUNT_PERMISSION_MESSAGE };
+
+  const parsed = scanSerialSchema.safeParse(input);
+  if (!parsed.success) return { error: "Serial number is required" };
+
+  try {
+    const result = await stockAuditService.scanSerial(
+      session.user.tenantId,
+      session.user.id,
+      parsed.data.sessionId,
+      parsed.data.serialNo,
+    );
+    revalidateStockCountPaths(parsed.data.sessionId);
+    return { success: true as const, ...result };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to scan serial" };
+  }
+}
+
+export async function recountStockCountLineAction(sessionId: string, lineId: string) {
+  const { error, session } = await requireStockCountManage();
+  if (error || !session) return { error: error ?? STOCK_COUNT_PERMISSION_MESSAGE };
+
+  try {
+    await stockAuditService.recountLine(
+      session.user.tenantId,
+      session.user.id,
+      sessionId,
+      lineId,
+    );
+    revalidateStockCountPaths(sessionId);
+    return { success: true as const };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to recount line" };
+  }
+}
+
 export async function completeStockCountAction(sessionId: string) {
   const { error, session } = await requireStockCountManage();
   if (error || !session) return { error: error ?? STOCK_COUNT_PERMISSION_MESSAGE };
@@ -220,20 +266,56 @@ export async function investigateStockVarianceAction(
   }
 }
 
-export async function requestStockAdjustmentAction(varianceId: string) {
+const rejectSchema = z.object({ notes: z.string().optional() });
+
+export async function rejectStockVarianceAction(varianceId: string, input?: unknown) {
   const { error, session } = await requireStockCountManage();
   if (error || !session) return { error: error ?? STOCK_COUNT_PERMISSION_MESSAGE };
 
+  const parsed = rejectSchema.safeParse(input ?? {});
+  if (!parsed.success) return { error: "Invalid input" };
+
   try {
-    await stockAuditService.requestAdjustment(
+    await stockAuditService.rejectVariance(
       session.user.tenantId,
       session.user.id,
       varianceId,
+      parsed.data.notes,
     );
     revalidateStockCountPaths();
     return { success: true as const };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "Failed to request adjustment" };
+    return { error: e instanceof Error ? e.message : "Failed to reject variance" };
+  }
+}
+
+/** @deprecated Prefer postStockCountDifferencesAction (session-level Post differences). */
+export async function requestStockAdjustmentAction(varianceId: string) {
+  const { error, session } = await requireStockCountManage();
+  if (error || !session) return { error: error ?? STOCK_COUNT_PERMISSION_MESSAGE };
+
+  void varianceId;
+  void session;
+  return {
+    error:
+      "Per-variance SAP adjustment is retired. Use Post differences on the count session instead.",
+  };
+}
+
+export async function postStockCountDifferencesAction(sessionId: string) {
+  const { error, session } = await requireStockCountManage();
+  if (error || !session) return { error: error ?? STOCK_COUNT_PERMISSION_MESSAGE };
+
+  try {
+    const result = await stockAuditService.postDifferences(
+      session.user.tenantId,
+      session.user.id,
+      sessionId,
+    );
+    revalidateStockCountPaths(sessionId);
+    return { success: true as const, ...result };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to post differences" };
   }
 }
 

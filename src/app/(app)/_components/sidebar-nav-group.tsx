@@ -4,12 +4,14 @@ import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
+import { SidebarNavCountBadge } from "@/app/(app)/_components/sidebar-nav-count-badge";
 import { SidebarNavNewBadge } from "@/app/(app)/_components/sidebar-nav-new-badge";
 import {
   SIDEBAR_NAV_BUTTON_WRAP_CLASS,
   SIDEBAR_NAV_LABEL_CLASS,
   SIDEBAR_NAV_SUB_BUTTON_WRAP_CLASS,
 } from "@/app/(app)/_components/sidebar-nav-item";
+import type { NavCountBadges } from "@/app/(app)/_components/sidebar-nav";
 import {
   Collapsible,
   CollapsibleContent,
@@ -36,9 +38,15 @@ interface SidebarNavGroupProps {
   group: NavGroupEntry;
   items: NavGroupChild[];
   pathname: string;
+  countBadges?: NavCountBadges;
 }
 
-export function SidebarNavGroup({ group, items, pathname }: SidebarNavGroupProps) {
+export function SidebarNavGroup({
+  group,
+  items,
+  pathname,
+  countBadges,
+}: SidebarNavGroupProps) {
   const isChildActive = isNavGroupActive(pathname, items);
   const [isOpen, setIsOpen] = useState(
     () => isChildActive || Boolean(group.defaultOpen),
@@ -72,12 +80,14 @@ export function SidebarNavGroup({ group, items, pathname }: SidebarNavGroupProps
                   key={child.label}
                   subGroup={child}
                   pathname={pathname}
+                  countBadges={countBadges}
                 />
               ) : (
                 <SidebarNavSubItem
                   key={child.href}
                   item={child}
                   pathname={pathname}
+                  countBadges={countBadges}
                 />
               ),
             )}
@@ -88,15 +98,28 @@ export function SidebarNavGroup({ group, items, pathname }: SidebarNavGroupProps
   );
 }
 
+function resolveItemCount(
+  item: NavLinkItem,
+  countBadges?: NavCountBadges,
+): number | undefined {
+  if (item.countBadgeKey === "unreadAnnouncements") {
+    return countBadges?.unreadAnnouncements;
+  }
+  return undefined;
+}
+
 function SidebarNavSubItem({
   item,
   pathname,
+  countBadges,
 }: {
   item: NavLinkItem;
   pathname: string;
+  countBadges?: NavCountBadges;
 }) {
   const ItemIcon = item.icon;
   const active = isNavItemActive(pathname, item.href, item.exact);
+  const count = resolveItemCount(item, countBadges);
 
   return (
     <SidebarMenuSubItem>
@@ -108,7 +131,11 @@ function SidebarNavSubItem({
         <Link href={item.href}>
           <ItemIcon />
           <span className={SIDEBAR_NAV_LABEL_CLASS}>{item.label}</span>
-          {item.badge === "new" ? <SidebarNavNewBadge /> : null}
+          {typeof count === "number" && count > 0 ? (
+            <SidebarNavCountBadge count={count} />
+          ) : item.badge === "new" ? (
+            <SidebarNavNewBadge />
+          ) : null}
         </Link>
       </SidebarMenuSubButton>
     </SidebarMenuSubItem>
@@ -118,9 +145,11 @@ function SidebarNavSubItem({
 function SidebarNavSubGroup({
   subGroup,
   pathname,
+  countBadges,
 }: {
   subGroup: NavSubGroupItem;
   pathname: string;
+  countBadges?: NavCountBadges;
 }) {
   const isChildActive = isNavGroupActive(pathname, subGroup.items);
   const [isOpen, setIsOpen] = useState(() => isChildActive);
@@ -152,6 +181,7 @@ function SidebarNavSubGroup({
                 key={item.href}
                 item={item}
                 pathname={pathname}
+                countBadges={countBadges}
               />
             ))}
           </SidebarMenuSub>

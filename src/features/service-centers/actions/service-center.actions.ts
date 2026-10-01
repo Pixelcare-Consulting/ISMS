@@ -74,17 +74,6 @@ export async function addServiceCenterLocationAction(input: unknown) {
   }
 }
 
-export async function deleteServiceCenterAction(id: string) {
-  const session = await requirePermission("service_centers.manage");
-  try {
-    await serviceCenterRepository.softDelete(session.user.tenantId, id);
-    revalidate();
-    return { success: true as const };
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : "Failed to delete" };
-  }
-}
-
 export async function deleteServiceCenterLocationAction(id: string) {
   await requirePermission("service_centers.manage");
   try {

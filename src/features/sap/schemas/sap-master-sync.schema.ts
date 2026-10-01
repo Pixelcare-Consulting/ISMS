@@ -2,9 +2,9 @@
  * Shared result contract for the one-way SAP → ISMS master-data syncs (branches,
  * warehouses, dealers, models, serial numbers).
  *
- * Every sync is additive: it creates records SAP knows about and patches the fields SAP
- * owns, matched on the record's SAP code. None of them delete or deactivate anything — a
- * record SAP stops returning is simply left alone.
+ * Every sync mirrors SAP: it creates records SAP knows about and patches the fields SAP
+ * owns, matched on the record's SAP code. A record SAP no longer returns is soft-deleted
+ * when a pass completes, and restored if SAP returns it again — see `SapSyncReconcile`.
  *
  * Lives in the sap feature rather than per-module so the engine, the server actions and
  * the shared sync button all read from one definition.
@@ -33,6 +33,11 @@ export interface SapSyncResult {
   updated: number;
   /** Matched a record that already agreed with SAP on every synced field. */
   unchanged: number;
+  /**
+   * ISMS records soft-deleted because the pass completed without SAP returning them.
+   * Only ever non-zero on the run that completes a pass.
+   */
+  removed: number;
   skipped: SapSyncSkip[];
 
   /**

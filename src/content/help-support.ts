@@ -53,7 +53,7 @@ export const HELP_QUICK_LINKS: HelpQuickLink[] = [
   {
     id: "dashboard",
     title: "Dashboard",
-    description: "Start here for your daily overview.",
+    description: "Announcements home; open Operations or Sales for role cards.",
     href: "/dashboard",
     group: "daily",
   },
@@ -133,7 +133,7 @@ export const HELP_WORKFLOW_GUIDES: HelpWorkflowGuide[] = [
     steps: [
       {
         label:
-          "Sign in and land on Dashboard for a role-based snapshot of what needs attention.",
+          "Sign in and land on Dashboard → Overview for company announcements (New vs Earlier). Open Operations or Sales under the same menu for role cards and today’s briefing when you have access. Use P-Count Dashboard and Site Traffic when available.",
       },
       {
         label:
@@ -376,16 +376,29 @@ export const HELP_WORKFLOW_GUIDES: HelpWorkflowGuide[] = [
   {
     id: "stock-count",
     title: "P-Count (stock count) session",
-    summary: "Structured cycle to align physical stock with system records.",
+    summary:
+      "Count like SAP B1 Inventory Counting, then post differences like Inventory Posting.",
     audience: "Branch · Inventory",
     href: "/inventory/stock-count",
     steps: [
-      { label: "Create a session for the branch and scope (location or category)." },
-      { label: "Count units and enter quantities; flag discrepancies with notes." },
-      { label: "Submit for review; approvers validate large variances." },
-      { label: "Finalize accepted adjustments and close the session for audit lock." },
+      { label: "Create and start a session for the branch (opens the STK count list)." },
+      {
+        label:
+          "Scan serials or mark expected units counted; unexpected serials are recorded as surplus.",
+      },
+      {
+        label:
+          "Complete counting to open missing/surplus variances; investigate, reject, or recount as needed.",
+      },
+      {
+        label:
+          "Post differences to correct local stock and send (or honestly queue) SAP Inventory Posting, then close the session.",
+      },
     ],
-    tips: ["Do not reopen closed sessions—start a new session for recounts."],
+    tips: [
+      "Serials on an active count are soft-frozen until differences are posted.",
+      "Do not reopen closed sessions—start a new session for recounts.",
+    ],
   },
   {
     id: "policy-lifecycle",
@@ -487,7 +500,7 @@ export const HELP_FAQ_CATEGORIES: HelpFaqCategory[] = [
         id: "nav-2",
         question: "When should I use Stock units vs Warehouse stock vs Stock count?",
         answer:
-          "Stock units is branch shelf stock. Warehouse stock is serials still in warehouses. Stock count (P-Count) is for scheduled physical counts and posting variances.",
+          "Stock units is branch shelf stock. Warehouse stock is serials still in warehouses. Stock count (P-Count) is for scheduled physical counts: scan serials, review differences, then Post differences to correct stock (and SAP when connected).",
       },
       {
         id: "nav-3",
@@ -559,7 +572,7 @@ export const HELP_FAQ_CATEGORIES: HelpFaqCategory[] = [
         id: "inventory-2",
         question: "What if counted quantity differs from system quantity?",
         answer:
-          "Submit adjustment details in the session and complete the review process before finalizing.",
+          "Open or investigate the variance, then use Post differences on the session. That corrects local stock and posts (or queues) an Inventory Posting to SAP when Service Layer is connected — it will not invent a fake SAP document.",
       },
       {
         id: "inventory-3",

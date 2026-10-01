@@ -1,3 +1,4 @@
+import { assertSerialsNotFrozenInStockCount } from "@/features/stock-audit/services/stock-count-freeze";
 import { prisma } from "@/lib/database/client";
 
 type BranchInventoryTx = Pick<typeof prisma, "branchInventory">;
@@ -19,6 +20,8 @@ export async function markSerialSoldFromStockSource(
     updatedById: string;
   },
 ) {
+  await assertSerialsNotFrozenInStockCount(input.tenantId, [input.serialNumberId]);
+
   const relocate = input.stockBranchId !== input.soldBranchId;
   const updated = await tx.branchInventory.updateMany({
     where: {

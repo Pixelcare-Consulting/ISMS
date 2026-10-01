@@ -2,19 +2,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState } from "react";
 import { LayoutGrid, Upload } from "lucide-react";
-import { toast } from "sonner";
 
-import {
-  deleteBranchAction,
-  syncBranchesFromSapWarehousesAction,
-} from "@/features/branches/actions/branch.actions";
+import { syncBranchesFromSapWarehousesAction } from "@/features/branches/actions/branch.actions";
 import { SapSyncButton } from "@/features/sap/components/sap-sync-button";
 import { EditBranchDialog } from "@/app/(app)/settings/branches/_components/edit-branch-dialog";
 import { ImportBranchesDialog } from "@/app/(app)/settings/branches/_components/import-branches-dialog";
 import {
-  DeleteConfirmDialog,
   TableEmptyRow,
   TableIndexCell,
   TableIndexHead,
@@ -63,9 +58,7 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
   const [prevBranches, setPrevBranches] = useState(branches);
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<BranchRow | null>(null);
-  const [deleting, setDeleting] = useState<BranchRow | null>(null);
   const [importing, setImporting] = useState(false);
-  const [pending, startTransition] = useTransition();
 
   // Sync local optimistic rows when server props change (render-time, not effect).
   if (branches !== prevBranches) {
@@ -109,23 +102,6 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
   } = useClientTablePagination(sort.sorted, {
     resetKey: `${query}:${sort.sortKey}:${sort.sortDir}`,
   });
-
-  function handleDelete() {
-    if (!deleting) return;
-    startTransition(async () => {
-      const result = await deleteBranchAction(deleting.id);
-      if (result.error) {
-        toast.error("Could not delete branch", {
-          description: typeof result.error === "string" ? result.error : undefined,
-        });
-        return;
-      }
-      toast.success("Branch removed");
-      setRows((currentRows) => currentRows.filter((branch) => branch.id !== deleting.id));
-      setDeleting(null);
-      router.refresh();
-    });
-  }
 
   return (
     <>
@@ -193,10 +169,7 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
                     <TableCell>
                       <TableStatusBadge status={branch.status} />
                     </TableCell>
-                    <TableRowActions
-                      onEdit={() => setEditing(branch)}
-                      onDelete={() => setDeleting(branch)}
-                    >
+                    <TableRowActions onEdit={() => setEditing(branch)}>
                       <Button variant="ghost" size="icon" className="size-8" asChild title="Planogram">
                         <Link href={`/settings/planogram/${branch.id}`}>
                           <LayoutGrid className="size-4" />
@@ -222,14 +195,6 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
         />
       ) : null}
       <ImportBranchesDialog open={importing} onOpenChange={setImporting} />
-      <DeleteConfirmDialog
-        open={!!deleting}
-        onOpenChange={() => setDeleting(null)}
-        title="Delete branch?"
-        description={`Remove ${deleting?.name ?? "this branch"}?`}
-        onConfirm={handleDelete}
-        pending={pending}
-      />
     </>
   );
 }

@@ -65,8 +65,9 @@ export default function proxy(request: NextRequest) {
 
 export const config = {
   // Run on everything except Next internals, auth API, cron (bearer-authenticated
-  // server-to-server calls that must survive maintenance), and static asset files.
+  // server-to-server calls that must survive maintenance), the container
+  // health probe, and static asset files.
   matcher: [
-    "/((?!api/auth|api/cron|_next/static|_next/image|favicon.ico|.*\\.[\\w]+$).*)",
+    "/((?!api/auth|api/cron|api/health|_next/static|_next/image|favicon.ico|.*\\.[\\w]+$).*)",
   ],
 };

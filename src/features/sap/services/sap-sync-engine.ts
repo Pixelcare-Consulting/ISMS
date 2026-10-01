@@ -189,6 +189,11 @@ async function runSlice(
     );
   }
 
+  // Every row a page names is stamped with this, and a completed pass retires rows that
+  // were never stamped. It is the pass's own start time, so it is the same value on every
+  // run of a multi-run pass and never depends on this server's clock agreeing with SAP's.
+  const passMark = cursor.passStartedAt ?? new Date();
+
   const context = await entity.prepare?.(tenantId);
   const deadline = Date.now() + budgetMs(options?.budgetMs);
   const skips = new SkipTally();
@@ -199,6 +204,7 @@ async function runSlice(
   let created = 0;
   let updated = 0;
   let unchanged = 0;
+  let removed = 0;
   let completed = false;
 
   /** Parse and write one page, folding what it did into this run's totals. */
@@ -216,6 +222,10 @@ async function runSlice(
       updated += applied.updated;
       unchanged += applied.unchanged;
       for (const failure of applied.failures) skips.add(failure.reason, failure.example);
+
+      // Every parsed row is still in SAP, written or not: a row that failed to update is
+      // stale, not gone, and must not be retired for it.
+      await entity.reconcile.markSeen(tenantId, records, passMark);
     }
 
     fetched += rows.length;
@@ -295,13 +305,25 @@ async function runSlice(
   // Finishing a pass arms the next one. Nothing schedules it here — the next run finds no
   // pass in progress and starts one, which is also what makes a small entity's every run
   // a complete, fresh read.
-  if (completed) await sapSyncCursorRepository.completePass(tenantId, entity.key);
+  if (completed) {
+    // A pass that read nothing at all is far likelier to be a broken filter or a renamed
+    // UDF than an entity SAP emptied, and retiring on it would wipe the whole table.
+    if (passRows === 0) {
+      skips.add(
+        `SAP returned no ${entity.noun.many} — nothing was removed from ISMS as a precaution`,
+      );
+    } else {
+      removed = await entity.reconcile.retireUnseen(tenantId, passMark);
+    }
+    await sapSyncCursorRepository.completePass(tenantId, entity.key);
+  }
 
   const result: SapSyncResult = {
     fetched,
     created,
     updated,
     unchanged,
+    removed,
     skipped: skips.toList(),
     caughtUp: completed,
     passRows,
@@ -318,6 +340,7 @@ async function runSlice(
       created,
       updated,
       unchanged,
+      removed,
       passRows,
       totalAtSource: cursor.totalAtSource,
       caughtUp: completed,
@@ -337,6 +360,7 @@ async function runSlice(
       created,
       updated,
       unchanged,
+      removed,
       skipped: result.skipped.reduce((sum, skip) => sum + skip.count, 0),
       passRows,
       caughtUp: completed,

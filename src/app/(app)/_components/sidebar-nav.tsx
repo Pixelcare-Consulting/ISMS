@@ -10,12 +10,21 @@ import {
   filterNavByPermissions,
 } from "@/config/app-navigation";
 
+export type NavCountBadges = {
+  unreadAnnouncements?: number;
+};
+
 interface SidebarNavProps {
   permissions: string[];
   isPlatformOperator: boolean;
+  countBadges?: NavCountBadges;
 }
 
-export function SidebarNav({ permissions, isPlatformOperator }: SidebarNavProps) {
+export function SidebarNav({
+  permissions,
+  isPlatformOperator,
+  countBadges,
+}: SidebarNavProps) {
   const pathname = usePathname();
   const entries = filterNavByPermissions(
     appNavigation,
@@ -37,6 +46,11 @@ export function SidebarNav({ permissions, isPlatformOperator }: SidebarNavProps)
                 pathname={pathname}
                 exact={entry.exact}
                 badge={entry.badge}
+                count={
+                  entry.countBadgeKey === "unreadAnnouncements"
+                    ? countBadges?.unreadAnnouncements
+                    : undefined
+                }
               />
             );
           }
@@ -47,6 +61,7 @@ export function SidebarNav({ permissions, isPlatformOperator }: SidebarNavProps)
               group={entry}
               items={entry.items}
               pathname={pathname}
+              countBadges={countBadges}
             />
           );
         })}

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 
+import { SidebarNavCountBadge } from "@/app/(app)/_components/sidebar-nav-count-badge";
 import { SidebarNavNewBadge } from "@/app/(app)/_components/sidebar-nav-new-badge";
 import {
   SidebarMenuButton,
@@ -26,6 +27,7 @@ interface SidebarNavItemProps {
   pathname: string;
   exact?: boolean;
   badge?: "new";
+  count?: number;
 }
 
 export function SidebarNavItem({
@@ -35,6 +37,7 @@ export function SidebarNavItem({
   pathname,
   exact,
   badge,
+  count,
 }: SidebarNavItemProps) {
   const isActive = isNavItemActive(pathname, href, exact);
 
@@ -55,7 +58,11 @@ export function SidebarNavItem({
           ) : null}
           <Icon className="mt-0.5" />
           <span className={SIDEBAR_NAV_LABEL_CLASS}>{label}</span>
-          {badge === "new" ? <SidebarNavNewBadge /> : null}
+          {typeof count === "number" && count > 0 ? (
+            <SidebarNavCountBadge count={count} />
+          ) : badge === "new" ? (
+            <SidebarNavNewBadge />
+          ) : null}
         </Link>
       </SidebarMenuButton>
     </SidebarMenuItem>

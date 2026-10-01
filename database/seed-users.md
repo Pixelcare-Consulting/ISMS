@@ -20,12 +20,13 @@ Local demo still includes `superadmin@demo.local` on the **demo** tenant — a *
 
 | Command | What it loads | When to use |
 |---------|---------------|-------------|
-| `pnpm run db:seed` | **minimal** — users, roles, permissions, status codes | Default after migrate (fast) |
+| `pnpm run db:seed` | **minimal** — users, roles, permissions, status codes, sample notifications | Default after migrate (fast) |
 | `pnpm run db:seed:full` | minimal + BRS demo (branches, planogram, sample SNs) | First-time demo / inventory testing |
 | `pnpm run db:seed:core` | users, roles, permissions only | Reset logins without touching ops data |
 | `pnpm run db:seed:status` | reason/status lookup codes only | After adding new workflow status codes |
 | `pnpm run db:seed:brs` | BRS demo data only (includes warehouse demo SNs) | Refresh branches/planogram without resetting users |
 | `pnpm run db:seed:warehouse-inventory` | Demo WHSE serials only (`SN-WHSE-001`…`003`) | Official Sales WHSE_ADD UAT on an existing BRS DB |
+| `pnpm run db:seed:notifications` | Sample header-bell notifications (tenant / role / user) | Fill the notifications bell after core seed |
 | `pnpm run db:migrate:only` | migrate without seed | Faster schema-only migrations |
 
 Optional env: `SEED_BCRYPT_ROUNDS=8` (default) — lower for faster local re-seed.

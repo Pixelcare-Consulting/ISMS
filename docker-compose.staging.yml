@@ -1,0 +1,36 @@
+# STAGING (pre-production) override — Finden server, behind the shared Traefik.
+#
+#   deploy/stack.sh staging up -d
+#
+# Image: always a published GHCR tag (built by CI from the `staging` branch), never built here.
+# Ingress: joins the external `traefik-public` network created by
+# docker-compose.traefik.yml; TLS via Let's Encrypt on ${APP_DOMAIN}.
+name: isms-staging
+
+x-env-file: &env-file .env.staging
+
+services:
+  migrator:
+    image: ${APP_IMAGE:?APP_IMAGE must be a published image, e.g. ghcr.io/pixelcare-consulting/isms:sha-…}
+    env_file: [*env-file]
+
+  app:
+    image: ${APP_IMAGE:?APP_IMAGE must be a published image, e.g. ghcr.io/pixelcare-consulting/isms:sha-…}
+    env_file: [*env-file]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik-public
+      - traefik.http.routers.isms-staging.rule=Host(`${APP_DOMAIN:?set APP_DOMAIN in .env.staging}`)
+      - traefik.http.routers.isms-staging.entrypoints=websecure
+      - traefik.http.routers.isms-staging.tls.certresolver=letsencrypt
+      - traefik.http.services.isms-staging.loadbalancer.server.port=3000
+    networks:
+      - internal
+      - traefik-public
+
+  cron:
+    env_file: [*env-file]
+
+networks:
+  traefik-public:
+    external: true

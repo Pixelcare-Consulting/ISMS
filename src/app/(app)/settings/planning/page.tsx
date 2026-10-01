@@ -47,11 +47,11 @@ export default async function PlanningPage({ searchParams }: PlanningPageProps) 
       <PageHeader
         title="Planning & Forecast"
         tutorial={PLANNING_PAGE_TUTORIAL}
-        description="Import the SFE forecast to set Target Quota automatically, then switch the active period. Demand Planning runs live under Settings → Planning."
+        description="Import the SFE forecast to set Target Quota automatically, then switch the active period. Supply Planning runs live under Settings → Planning."
         sticky={false}
         actions={
           <Button variant="outline" asChild>
-            <Link href="/settings/planning/runs">Demand Planning</Link>
+            <Link href="/settings/planning/runs">Supply Planning</Link>
           </Button>
         }
       />

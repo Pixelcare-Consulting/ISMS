@@ -3,12 +3,12 @@ import type { ModuleGuideContent } from "@/content/module-guides/types";
 export const PLANNING_MODULE_GUIDE: ModuleGuideContent = {
   title: "Planning & Forecast",
   description:
-    "Import the SFE forecast for Target Quota, keep planogram and sales history ready, then use Demand Planning to generate and release Auto Replenish to Team Leader.",
+    "Import the SFE forecast for Target Quota, keep planogram and sales history ready, then use Supply Planning to generate and release Auto Replenish to Team Leader.",
   tips: [
-    { label: "Before Demand Planning: branches, SKUs, and price list (SRP may be 0 / FREE), planogram per branch, SFE import for the period, and sales history in the Date from–Date to range when you can" },
+    { label: "Before Supply Planning: branches, SKUs, and price list (SRP may be 0 / FREE), planogram per branch, SFE import for the period, and sales history in the Date from–Date to range when you can" },
     { label: "0 SRP means FREE — Import forecast still sets Target Quota to ₱0 and shows a warning; it does not block Apply" },
     { label: "Use the Active period list at the top to switch periods — that period becomes the one used on the dashboard" },
-    { label: "Click the cards to jump to Target Quota or Demand Planning (Settings → Planning)" },
+    { label: "Click the cards to jump to Target Quota or Supply Planning (Settings → Planning)" },
     { label: "Target Quota is read-only here — import the SFE sheet to set or update it (forecast qty × price list)" },
     { label: "Download the Forecast template — it lists active branches × planogram SKUs (fill forecast qty), then upload to preview and apply" },
     { label: "Keep Forecast period as text (Dec-25), not an Excel date" },

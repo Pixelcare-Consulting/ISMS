@@ -4,6 +4,8 @@ const envSchema = z.object({
   NODE_ENV: z
     .enum(["development", "test", "production"])
     .default("development"),
+  /** Runtime public origin (Docker). Preferred over NEXT_PUBLIC_APP_URL, which Next inlines at build time. */
+  APP_URL: z.string().url().optional(),
   NEXT_PUBLIC_APP_URL: z.string().url().optional(),
   AUTH_SECRET: z.string().min(1).optional(),
   DATABASE_URL: z.string().min(1).optional(),
@@ -22,6 +24,7 @@ export type Env = z.infer<typeof envSchema>;
 function parseEnv(): Env {
   const result = envSchema.safeParse({
     NODE_ENV: process.env.NODE_ENV,
+    APP_URL: process.env.APP_URL,
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
     AUTH_SECRET: process.env.AUTH_SECRET,
     DATABASE_URL: process.env.DATABASE_URL,
@@ -36,6 +39,7 @@ function parseEnv(): Env {
   if (result.success) return result.data;
   return {
     NODE_ENV: "development",
+    APP_URL: process.env.APP_URL,
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
     AUTH_SECRET: process.env.AUTH_SECRET,
     DATABASE_URL: process.env.DATABASE_URL,
@@ -53,6 +57,12 @@ function parseEnv(): Env {
 }
 
 export const env = parseEnv();
+
+/** Public origin of this deployment: APP_URL (runtime) → NEXT_PUBLIC_APP_URL (build-time) → local dev. */
+export function appUrl(): string {
+  const base = env.APP_URL ?? env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  return base.replace(/\/$/, "");
+}
 
 export function requireEnv<K extends keyof Env>(key: K): NonNullable<Env[K]> {
   const value = env[key];

@@ -2,11 +2,11 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.44.3`
+**Current version:** `0.49.5`
 
 ## Stack
 
-Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand · Better Auth · Prisma 7 · PostgreSQL (Docker / self-hosted) · Pino · Resend · Local filesystem storage · React PDF · Vercel AI SDK
+Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand · Better Auth · Prisma 7 · PostgreSQL (Docker / self-hosted) · Pino · Resend · Local filesystem storage · TipTap · React PDF · Vercel AI SDK
 
 ## What's shipped
 
@@ -15,14 +15,14 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | **Auth** | Email/password (Better Auth), tenant-scoped sessions, demo seed users; public `/register` off unless `ALLOW_PUBLIC_REGISTER=true` |
 | **Help** | Workflow guides, FAQs, page tutorials; **ISMS Assist** (ask in plain language over Help content; sources shown) |
 | **Provider** | Platform console at `/provider/*` for platform operators only (provider role on the `isPlatform` Pixelcare tenant): customer summaries, create org + first Tenant Admin, org branding edit, full user/admin management, soft-disable/restore, global permissions |
-| **Dashboard** | Role-aware activity cards (top 4); Inventory summary + Planning & alerts; This month (icons) beside Order pipeline; **Sales overview** (month KPIs, status mix, return pipeline, top branches/models) when you can access Sales; compliance overview when no ops access; active announcement banner; optional **daily briefing** (ISMS Assist) |
-| **Announcements** | Tenant posts (title, body, publish/expiry); list + CRUD (`/announcements`) |
+| **Dashboard** | Nav group: **Overview** (announcements only — defaults to New/unread, falls back to All when caught up; unread count badge in the menu), **Operations** (Today’s briefing + ops KPI cards / inventory / planning / order pipeline; role-gated), **Sales** (Today’s briefing + sales overview; role-gated), **P-Count Dashboard**, **Site Traffic**, **Market Survey** → Competitors. Header: What’s new beside the sidebar drawer; notifications bell on the right (paginated inbox). Announcement CRUD stays under Announcements. |
+| **Announcements** | Tenant posts with rich body (formatting, links, images, tables); list + CRUD (`/announcements`); publishing a live announcement also sends a tenant-wide in-app notification (header bell → Overview); Overview feed defaults to New (unread) and falls back to All when everything is read; mark-as-read, likes, comments (latest 3 + show all; edit own / managers delete any), reader avatar stack (max 5), and All / New / Earlier + title search filters |
 | **Competitors** | Market observations with master Competitor + Competitor brand/model lookups, AOR-bound branch, optional promotion; KPIs + CRUD (`/competitors`) |
 | **Settings** | Company, users, departments, roles, permissions catalog (`roles.manage`; assign via Roles), branches, warehouses, dealers, service centers, AORs (branches / warehouses / service centers assign + sync), master data (incl. Series / Categories, Competitors / Competitor brands), status codes (per-module tabs + badge colors); collapsible Module guides on complex settings/ops pages |
-| **Planning** | Period switcher + clickable cards; in-page Add/Edit/Remove branch revenue targets; official Forecast template download + import (bulk; period as MMM-YY e.g. Dec-25); allocation; Demand Planning runs (`/settings/planning`, `/settings/planning/runs`) |
+| **Planning** | Period switcher + clickable cards; in-page Add/Edit/Remove branch revenue targets; official Forecast template download + import (bulk; period as MMM-YY e.g. Dec-25); allocation; Supply Planning runs (`/settings/planning`, `/settings/planning/runs`) |
 | **Planogram** | Clickable cards filter branches with a planogram or none yet; branch list shows allowed SKUs as tags; Open a branch shows a wait message with the branch name; per-branch SKU assignment; current or latest model price and date; editable max qty; Allowed models uses the same table; official Excel template download + import (branch SAP + SKU); Add model requires Allowed models first |
 | **Policies** | Full document control (ISO track) |
-| **Inventory** | Serialized stock (STK on Stock units), **warehouse stock** SN list (`/inventory/warehouse-stock`; also Settings → Warehouses →image.png Stock), AOR-scoped lists, series QTY/VALUE + DR#/date/aging, **physical stock count / P-Count** (`/inventory/stock-count`) |
+| **Inventory** | Serialized stock (STK on Stock units), **warehouse stock** SN list (`/inventory/warehouse-stock`; also Settings → Warehouses →image.png Stock), AOR-scoped lists, series QTY/VALUE + DR#/date/aging, **physical stock count / P-Count** (`/inventory/stock-count`) — scan serials, surplus/missing variances, Post differences (local STK + SAP Inventory Posting when SL connected) |
 | **Orders** | Nav group: Manual / Special / Auto replenish (`/orders/manual` etc.); per-type Module guide; Manual/Special tabs **Orders \| Order Analytics \| Order History** (`?tab=`); Auto replenish **Orders \| Order History** (no Analytics); Orders tab is a role work queue (PS / TL / SP / Logistics see their step; admins see the live pipeline) and omits approved / rejected / cancelled (those stay in Order History); pipeline counts sit under Orders as KPI cards for the queue; Analytics filter card (search for a branch, then brand on the card; assigned branch is selected for you; Clear; DII / inventory KPI cards after both are set); Create optional brand (cleared = all SKUs), extras below the table with multi-add, row numbers, delete a wrong line; per-branch create workspace (multi-line); Create shows a placeholder SKU grid while models load; Create submit shows a please-wait overlay; Auto replenish has no Create — use Suggested orders / Replenishment; drafts use **Submit for review** before TL; per-type `orders.manual`, `orders.special`, `orders.auto_replenish` with view/create/approve; PS → TL → SP; SO#, processed orders, delivery-due auto-reschedule |
 | **Logistics** | Deliveries (accept/reject), transfers, pull-outs with SN movement; gated by `logistics.view` / `create` / `manage` |
 | **Sales** | Encode at `/sales/new` (CTA from `/sales`); PS auto-branch; TL `sales.create` + branch picker; package detail modal (qty → N sets), reserved (RSV) sales; list + KPIs show Sold / Official Sold / TO FOLLOW only (return workflow on Returns); line Edit only for TO-FOLLOW; Accounting `sales.update` edits transaction headers; Process Return per serial line from Sale details (document type, STK/DEF, problems, Return or Replacement) |
@@ -43,7 +43,11 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/provider/tenants` | Platform operator — customer list (status filters) / create / detail (org branding + users) / disable / restore |
 | `/provider/permissions` | Platform operator — global permissions catalog |
 | `/help` | Authenticated — Help & Support; Assist when `ai.assist` |
-| `/dashboard` | Authenticated tenant app (platform operators redirect to `/provider`) |
+| `/dashboard` | Authenticated tenant app — Overview announcement feed only (platform operators redirect to `/provider`) |
+| `/dashboard/operations` | Inventory / orders / logistics / planning access — ops cards + Today’s briefing (no announcements) |
+| `/dashboard/sales` | `sales.*` / returns access — Sales overview + Today’s briefing (no announcements) |
+| `/dashboard/pcount` | `inventory.view` or `reports.view` — P-Count Dashboard (dealer/branch month progress) |
+| `/dashboard/site-traffic` | `users.manage` or `audit_logs.view` — Site Traffic KPIs and activity tabs |
 | `/announcements` | `announcements.view` / `announcements.manage` |
 | `/competitors` | `competitors.view` / `competitors.manage` |
 | `/inventory` | `inventory.view` (Stock units: STK only, series summary, DR#/date/aging; Sold etc. in Sales) |
@@ -53,7 +57,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/orders/manual` | `orders.manual.view` / `create` / `approve` (or legacy `orders.*`); tabs `?tab=orders` \| `analytics` \| `history` |
 | `/orders/special` | `orders.special.view` / `create` / `approve` (or legacy `orders.*`); tabs `?tab=orders` \| `analytics` \| `history` |
 | `/orders/auto-replenish` | `orders.auto_replenish.view` / `create` / `approve` (or legacy `orders.*`); tabs `?tab=orders` \| `history` (no Analytics) |
-| `/settings/planning/runs` | `forecast.view` / `forecast.manage` — Demand Planning runs (legacy `/planning` and `/planning/suggested-orders` redirect here) |
+| `/settings/planning/runs` | `forecast.view` / `forecast.manage` — Supply Planning runs (legacy `/planning` and `/planning/suggested-orders` redirect here) |
 | `/logistics/deliveries`, `/transfers`, `/pickups` | `logistics.view` / `create` / `manage` (legacy `orders.*` aliases for list) |
 | `/operations` | `inventory.view` (combined ops view) |
 | `/sales` | `sales.view` / `sales.create` / `sales.update` (New transaction needs `sales.create`; header Edit needs `sales.update`; `?tab=returns` redirects to `/returns?tab=branch`) |
@@ -75,7 +79,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/settings/dealers` | `dealers.manage` |
 | `/settings/service-centers` | `service_centers.manage` |
 | `/settings/aors` | `aors.manage` |
-| `/settings/planning`, `/settings/planning/runs`, `/settings/planogram`, `/settings/planogram/[branchId]` | `forecast.manage` / `planogram.*` (Planning: Forecast template — period, branch_sap_code, revenue_target; Demand Planning runs under Settings → Planning; Planogram: Download template + upload — branch SAP + SKU; SKUs/branches must already exist; Add model needs Allowed models; Open a branch stays under Planogram) |
+| `/settings/planning`, `/settings/planning/runs`, `/settings/planogram`, `/settings/planogram/[branchId]` | `forecast.manage` / `planogram.*` (Planning: Forecast template — period, branch_sap_code, revenue_target; Supply Planning runs under Settings → Planning; Planogram: Download template + upload — branch SAP + SKU; SKUs/branches must already exist; Add model needs Allowed models; Open a branch stays under Planogram) |
 | `/settings/master-data/*` | `master_data.manage` (Models: Import template + upload; creates new SKUs / updates existing; our template only. Price lists: Import template + upload; SKUs/package types must already exist; matching periods update amount) |
 | `/settings/sap-integration` | `sap.manage` (queue) |
 | `/settings/sap-integration/service-layer` | `sap.manage` (B1 Service Layer config) |
@@ -99,6 +103,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | [`docs/sales-nav-revalidation.md`](docs/sales-nav-revalidation.md) | PS/TL `/sales` nav + `sales.create` revalidation |
 | [`database/seed-users.md`](database/seed-users.md) | Demo accounts and seed profiles |
 | [`database/postgres.example.md`](database/postgres.example.md) | Docker Postgres, env, migrate, storage |
+| [`DEPLOYMENT.md`](DEPLOYMENT.md) | Self-hosted deployment with Docker Compose — develop (internal) & staging (client QA) |
 | [`docs/release-notes.md`](docs/release-notes.md) | Release workflow |
 | [`src/content/releases.ts`](src/content/releases.ts) | In-app What's New |
 
@@ -163,6 +168,8 @@ Public `/register` is closed by default. Set `ALLOW_PUBLIC_REGISTER=true` in `.e
 | `pnpm run build` | Production build |
 | `pnpm run lint` | ESLint |
 | `pnpm run typecheck` | `tsc --noEmit` |
+| `pnpm run test` | Unit tests (Jest) — `test:watch`, `test:coverage` |
+| `pnpm run test:e2e` | End-to-end tests (Playwright) — `test:e2e:ui`, `test:e2e:report` |
 | `pnpm run db:generate` | Prisma client |
 | `pnpm run db:migrate` | Dev migrations |
 | `pnpm run db:deploy` | Deploy migrations |
@@ -172,10 +179,46 @@ Public `/register` is closed by default. Set `ALLOW_PUBLIC_REGISTER=true` in `.e
 | `pnpm run db:seed:branches` | PH regions/provinces + PSG ISMS branches for all tenants |
 | `pnpm run db:seed:psg` | PSG MODEL catalog (all tenants) + Outgoing serial stock (demo); run after `db:seed:branches` |
 | `pnpm run db:seed:warehouse-inventory` | Demo warehouse serials (SN-WHSE-001…003 on PASIG-MAIN/A1) for Official Sales WHSE_ADD; requires BRS seed first |
+| `pnpm run db:seed:notifications` | Sample in-app notifications for the header bell (demo tenant); also included in `db:seed` / `db:seed:full` |
 | `pnpm run db:studio` | Prisma Studio |
 | `pnpm run docs:modules-matrix` | Regenerate `docs/ISMS_App_Modules_vs_Workflow.xlsx` |
 | `pnpm run docs:end-user-process-flow` | Regenerate end-user Process Flow Word + Excel under `docs/` |
 | `pnpm run docs:sap-b1-proposal` | Regenerate SAP B1 automation proposal Word + module matrix Excel under `docs/` |
+
+## Testing
+
+All tests live under `tests/`, never inside `src/`:
+
+```
+tests/
+  jest.setup.ts              jest-dom matchers (runs before every unit test file)
+  unit/                      Jest — mirrors src/ one-to-one
+    lib/shared/env.test.ts   ↔ src/lib/shared/env.ts
+    app/(app)/_components/page-header.test.tsx   (jsdom + Testing Library example)
+  e2e/                       Playwright — Page Object Model + fixtures
+    fixtures/test.ts         test.extend() — injects page objects into every spec
+    fixtures/users.ts        seeded accounts (see database/seed-users.md)
+    pages/*.page.ts          LoginPage, DashboardPage, …  (locators + actions only)
+    auth.setup.ts            signs in once, saves tests/e2e/.auth/user.json (storageState)
+    specs/*.spec.ts          specs import { test, expect } from "../fixtures/test"
+```
+
+**Unit — Jest** (`jest.config.mjs`, via `next/jest`). Import the code under test
+through the `@/` alias. Default environment is Node; component tests opt into
+the DOM with `/** @jest-environment jsdom */`.
+
+**E2E — Playwright** (`playwright.config.ts`).
+
+Locally it targets `E2E_BASE_URL` (default `http://localhost:3000`; starts
+`pnpm dev` if nothing is listening) and needs a seeded database
+(`pnpm run db:seed`). To run against the real image instead, bring up the
+sandbox stack: `deploy/stack.sh sandbox up -d --build`. `pnpm exec playwright install chromium` once.
+Sign-in is rate-limited per IP + email, so each spec that logs in uses a
+different seeded user; specs that only need to be signed in reuse the stored
+session instead of logging in again.
+
+In CI (`.github/workflows/ci.yml`) the same suite runs against the Docker image
+built from the commit, inside the `sandbox` Compose stack.
 
 ## Optional env
 

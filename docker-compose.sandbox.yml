@@ -1,0 +1,42 @@
+# SANDBOX override — the whole stack in containers on a laptop or a CI runner.
+# NOT a deployed environment: nothing on a server ever uses this file, and no
+# branch deploys here. Use it to run the real image locally and for the e2e
+# suite (.github/workflows/ci.yml does exactly that).
+#
+#   deploy/stack.sh sandbox up -d --build          # build from the working tree → http://localhost:3000
+#   deploy/stack.sh sandbox up -d postgres         # DB only, then `pnpm dev` on the host (.env.local)
+#   APP_IMAGE=ghcr.io/pixelcare-consulting/isms:develop deploy/stack.sh sandbox up -d --pull always
+#
+# Differences from the deployed environments: builds from the working tree by
+# default, no Traefik/TLS (port 3000 published directly), and cron is opt-in
+# (`--profile cron`) so a laptop never hammers SAP by accident.
+name: isms-sandbox
+
+x-env-file: &env-file .env.sandbox
+
+services:
+  migrator:
+    image: ${APP_IMAGE:-isms:sandbox}
+    build: &app-build
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_SUPPORT_EMAIL: ${NEXT_PUBLIC_SUPPORT_EMAIL:-}
+    env_file: [*env-file]
+
+  app:
+    image: ${APP_IMAGE:-isms:sandbox}
+    build: *app-build
+    env_file: [*env-file]
+    ports:
+      - "${APP_HOST_PORT:-3000}:3000"
+
+  cron:
+    profiles: ["cron"]
+    env_file: [*env-file]
+
+volumes:
+  postgres-data:
+    # Adopt the volume the old docker-compose.yml created (isms/isms/isms) so
+    # existing local data survives the switch.
+    name: isms_pg_data

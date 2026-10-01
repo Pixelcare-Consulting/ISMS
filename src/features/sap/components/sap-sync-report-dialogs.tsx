@@ -24,7 +24,8 @@ const formatCount = (value: number) => value.toLocaleString();
 function summarize(result: SapSyncResult): string {
   return (
     `${formatCount(result.created)} added · ${formatCount(result.updated)} updated · ` +
-    `${formatCount(result.unchanged)} unchanged`
+    `${formatCount(result.unchanged)} unchanged` +
+    (result.removed > 0 ? ` · ${formatCount(result.removed)} removed` : "")
   );
 }
 

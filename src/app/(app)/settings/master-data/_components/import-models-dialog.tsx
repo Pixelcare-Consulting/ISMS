@@ -111,7 +111,6 @@ export function ImportModelsDialog({
       let offset = 0;
       let lastProcessed = 0;
       let lastTotal = 0;
-      let modelsCreated = 0;
       let modelsUpdated = 0;
       let brandsCreated = 0;
       let seriesCreated = 0;
@@ -161,7 +160,6 @@ export function ImportModelsDialog({
           resendFile = false;
           if (progress.planKey) planKey = progress.planKey;
 
-          modelsCreated += progress.modelsCreated;
           modelsUpdated += progress.modelsUpdated;
           brandsCreated += progress.brandsCreated;
           seriesCreated += progress.seriesCreated;
@@ -185,7 +183,6 @@ export function ImportModelsDialog({
 
           if (progress.done) {
             const parts = [
-              `${modelsCreated} created`,
               `${modelsUpdated} updated`,
               `${unchangedCount} unchanged`,
             ];
@@ -260,8 +257,8 @@ export function ImportModelsDialog({
               that same file. Other spreadsheet layouts are not accepted.
             </p>
             <p>
-              Unknown SKUs are created; existing ones update when values differ. Blank
-              optional cells stay unchanged.
+              Import only updates existing models — unknown SKUs are rejected (new
+              models come from the SAP sync). Blank optional cells stay unchanged.
             </p>
           </div>
 
@@ -313,9 +310,6 @@ export function ImportModelsDialog({
               <div className="flex flex-wrap gap-4 rounded-lg border px-4 py-3 text-sm">
                 <span>
                   <strong>{preview.rowCount}</strong> rows
-                </span>
-                <span>
-                  <strong>{preview.createCount}</strong> to create
                 </span>
                 <span>
                   <strong>{preview.updateCount}</strong> to update

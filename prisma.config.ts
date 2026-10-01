@@ -12,5 +12,10 @@ export default defineConfig({
   datasource: {
     // CLI migrations use direct connection (app runtime uses DATABASE_URL via adapter).
     url: env("DIRECT_URL"),
+    // Only `prisma migrate diff --from-migrations` needs this (the drift check in
+    // CI). Added conditionally so nothing changes when the var is unset locally.
+    ...(process.env.SHADOW_DATABASE_URL
+      ? { shadowDatabaseUrl: process.env.SHADOW_DATABASE_URL }
+      : {}),
   },
 });

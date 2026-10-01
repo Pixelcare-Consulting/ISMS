@@ -6,6 +6,7 @@ import { Loader2, Sparkles } from "lucide-react";
 
 import { generateDashboardBriefingAction } from "@/features/ai/actions/ai.actions";
 import type { DashboardBriefing } from "@/features/ai/schemas/ai.schema";
+import type { DashboardBriefingSurface } from "@/features/ai/services/briefing.service";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -13,7 +14,9 @@ export function DashboardBriefingStrip(props: {
   canAssist: boolean;
   configured: boolean;
   initial: DashboardBriefing | null;
+  surface?: DashboardBriefingSurface;
 }) {
+  const surface = props.surface ?? "operations";
   const [briefing, setBriefing] = useState<DashboardBriefing | null>(props.initial);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -25,7 +28,7 @@ export function DashboardBriefingStrip(props: {
     }
     autoStarted.current = true;
     setPending(true);
-    void generateDashboardBriefingAction(false).then((result) => {
+    void generateDashboardBriefingAction(false, surface).then((result) => {
       setPending(false);
       if (!result.ok) {
         setError(result.error);
@@ -33,7 +36,7 @@ export function DashboardBriefingStrip(props: {
       }
       setBriefing(result.briefing);
     });
-  }, [props.canAssist, props.configured, props.initial]);
+  }, [props.canAssist, props.configured, props.initial, surface]);
 
   if (!props.canAssist) {
     return null;
@@ -42,7 +45,7 @@ export function DashboardBriefingStrip(props: {
   async function refresh() {
     setPending(true);
     setError(null);
-    const result = await generateDashboardBriefingAction(true);
+    const result = await generateDashboardBriefingAction(true, surface);
     setPending(false);
     if (!result.ok) {
       setError(result.error);

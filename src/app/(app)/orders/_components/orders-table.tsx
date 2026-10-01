@@ -85,7 +85,7 @@ interface OrdersTableProps {
   };
   viewerRoleSlugs: string[];
   canEdit?: boolean;
-  /** Same gate as Demand Planning (`forecast.manage` / `planogram.manage`). */
+  /** Same gate as Supply Planning (`forecast.manage` / `planogram.manage`). */
   canAccessSuggestedOrders?: boolean;
   /** When set, list is type-scoped and create dialog locks this type. */
   fixedOrderType?: BranchOrderType;

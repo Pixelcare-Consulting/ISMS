@@ -1,0 +1,403 @@
+# ISMS CI/CD. develop is hosted on Vercel (vercel.json); staging is the one
+# environment this pipeline deploys, to the client's server.
+#
+#   event                     checks*  image                    deploy
+#   ────────────────────────  ──────   ───────────────────────  ─────────────────────
+#   PR → develop/staging      ✔        build only (not pushed)  —
+#   push develop              ✔        :develop :sha-…          — (Vercel deploys develop)
+#   push staging              ✔        :staging :sha-…          staging (client QA)
+#   workflow_dispatch         —        —                        staging ← chosen tag
+#                                                                 (redeploy / rollback)
+#
+# * checks = lint · typecheck · unit tests (Jest) · prisma · e2e (Playwright
+#   against the freshly built image running in the sandbox Compose stack — the
+#   laptop/CI stack, which is never deployed anywhere).
+#
+# Promotion is a merge: develop → staging. The image built from a commit is
+# identified by its sha-… tag and nothing environment-specific is baked in
+# (see Dockerfile / APP_URL), so the same image can be rolled back to by tag.
+#
+# PRODUCTION IS NOT WIRED UP YET. To add it: create a `production` branch and a
+# GitHub environment of the same name, restore docker-compose.production.yml
+# (`git show <commit>:docker-compose.production.yml`), add `production` to the
+# trigger/choice lists and `deploy/stack.sh`, add a branch case in `target`,
+# and give the server's runner an `isms-production` label.
+name: CI/CD
+
+on:
+  pull_request:
+    branches: [develop, staging]
+  push:
+    branches: [develop, staging]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        options: [staging]
+        required: true
+      image_tag:
+        description: Image tag to deploy (e.g. sha-<40 hex>, staging)
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cicd-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: pixelcare-consulting/isms
+
+jobs:
+  # ───────────────────────────────────────────────────────── checks
+  quality:
+    name: Lint & type-check
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: postgresql://isms:isms@127.0.0.1:5432/isms
+      DIRECT_URL: postgresql://isms:isms@127.0.0.1:5432/isms
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec prisma generate
+      - run: pnpm lint
+      - run: pnpm typecheck
+
+  prisma:
+    name: Prisma schema & migrations
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/isms_ci
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/isms_ci
+      SHADOW_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/isms_ci_shadow
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: isms_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d isms_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Create shadow database
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -c 'CREATE DATABASE isms_ci_shadow;'
+      - run: pnpm exec prisma validate
+      - name: Migrations apply cleanly
+        run: pnpm exec prisma migrate deploy
+      # Prisma 7 takes the shadow database from prisma.config.ts
+      # (datasource.shadowDatabaseUrl ← $SHADOW_DATABASE_URL), not from a flag.
+      - name: Migrations match schema.prisma
+        run: >-
+          pnpm exec prisma migrate diff
+          --from-migrations prisma/migrations
+          --to-schema prisma/schema.prisma
+          --exit-code
+
+  unit:
+    name: Unit tests (Jest)
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: postgresql://isms:isms@127.0.0.1:5432/isms
+      DIRECT_URL: postgresql://isms:isms@127.0.0.1:5432/isms
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec prisma generate
+      # Jest picks up CI=true from the runner; passing `-- --ci` through pnpm
+      # makes Jest read "--ci" as a test path pattern and match nothing.
+      - run: pnpm test:coverage
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: coverage
+          path: coverage/lcov.info
+          retention-days: 14
+
+  actionlint:
+    name: Lint workflows
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - run: docker run --rm -v "$PWD:/repo" --workdir /repo rhysd/actionlint:1.7.7 -color
+
+  # ───────────────────────────────────────────────────────── image
+  image:
+    name: Build image${{ github.event_name == 'push' && ' & publish to GHCR' || '' }}
+    if: github.event_name != 'workflow_dispatch'
+    needs: [quality, prisma, unit]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      sha_tag: sha-${{ github.sha }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - name: Log in to GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Image tags
+        id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=sha-${{ github.sha }}
+            type=ref,event=branch
+      - name: Build${{ github.event_name == 'push' && ' and push' || '' }}
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          target: runner
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            NEXT_PUBLIC_SUPPORT_EMAIL=${{ vars.NEXT_PUBLIC_SUPPORT_EMAIL }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: mode=max
+          sbom: true
+
+  # ───────────────────────────────────────────────────────── e2e
+  # Runs Playwright against the exact image this commit produced, inside the
+  # sandbox Compose stack (deploy/stack.sh sandbox) — the same one developers
+  # use locally. The build is a cache hit from the `image` job, so this is
+  # seconds, not a second build.
+  e2e:
+    name: E2E tests (Playwright)
+    if: github.event_name != 'workflow_dispatch'
+    needs: [image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      E2E_BASE_URL: http://localhost:3000
+      # host-side Prisma commands (seed) talk to the stack's loopback port
+      DATABASE_URL: postgresql://isms:isms@127.0.0.1:5432/isms
+      DIRECT_URL: postgresql://isms:isms@127.0.0.1:5432/isms
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - name: Load image from build cache
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          target: runner
+          load: true
+          tags: isms:ci
+          provenance: false
+          build-args: |
+            NEXT_PUBLIC_SUPPORT_EMAIL=${{ vars.NEXT_PUBLIC_SUPPORT_EMAIL }}
+          cache-from: type=gha
+      - name: Write CI env file for the sandbox stack
+        # Throwaway values for a throwaway database on a CI runner — nothing here
+        # is a real secret. AUTH_RATE_LIMIT_ENABLED=false lets parallel browser
+        # workers sign in (see src/lib/auth/auth.ts).
+        run: |
+          cat > .env.sandbox <<'EOF'
+          APP_IMAGE=isms:ci
+          APP_HOST_PORT=3000
+          POSTGRES_HOST_PORT=5432
+          APP_URL=http://localhost:3000
+          BETTER_AUTH_URL=http://localhost:3000
+          BETTER_AUTH_SECRET=ci-only-secret-0123456789abcdefghijklmnopqrstuv
+          AUTH_SECRET=ci-only-secret-0123456789abcdefghijklmnopqrstuv
+          AUTH_RATE_LIMIT_ENABLED=false
+          POSTGRES_USER=isms
+          POSTGRES_PASSWORD=isms
+          POSTGRES_DB=isms
+          DATABASE_URL=postgresql://isms:isms@postgres:5432/isms
+          DIRECT_URL=postgresql://isms:isms@postgres:5432/isms
+          CRON_SECRET=ci
+          LOG_LEVEL=info
+          EOF
+      - name: Start stack (postgres → migrator → app healthy)
+        run: deploy/stack.sh sandbox up -d --wait postgres migrator app
+      - name: Seed demo users
+        env:
+          SEED_BCRYPT_ROUNDS: "4"
+        run: pnpm exec prisma db seed
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run Playwright
+        run: pnpm test:e2e
+      - name: App logs (on failure)
+        if: failure()
+        run: deploy/stack.sh sandbox logs --no-color --tail=200 app migrator
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            playwright-report
+            test-results
+          retention-days: 14
+      - name: Tear down
+        if: always()
+        run: deploy/stack.sh sandbox down -v --remove-orphans
+
+  # ───────────────────────────────────────────────────────── deploy
+  # Which environment + image this run should deploy, if any. A develop push
+  # still builds, tests and publishes the image, but deploys nothing here.
+  target:
+    name: Resolve deploy target
+    needs: [image, e2e]
+    if: always() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && needs.image.result == 'success' && needs.e2e.result == 'success'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      environment: ${{ steps.pick.outputs.environment }}
+      image_tag: ${{ steps.pick.outputs.image_tag }}
+    steps:
+      - id: pick
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          SHA: ${{ github.sha }}
+          IN_ENV: ${{ inputs.environment }}
+          IN_TAG: ${{ inputs.image_tag }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = workflow_dispatch ]; then
+            echo "environment=$IN_ENV" >> "$GITHUB_OUTPUT"
+            echo "image_tag=$IN_TAG"   >> "$GITHUB_OUTPUT"
+          elif [ "$REF" = refs/heads/staging ]; then
+            echo "environment=staging" >> "$GITHUB_OUTPUT"
+            echo "image_tag=sha-$SHA"  >> "$GITHUB_OUTPUT"
+          else
+            echo "environment=" >> "$GITHUB_OUTPUT"
+            echo "image_tag="   >> "$GITHUB_OUTPUT"
+          fi
+
+  # Runs ON the server: a self-hosted runner there (labelled isms-<env>) polls
+  # GitHub, so the server needs no inbound SSH. See DEPLOYMENT.md.
+  deploy:
+    name: Deploy → ${{ needs.target.outputs.environment }}
+    needs: [target]
+    if: needs.target.outputs.environment != ''
+    runs-on: [self-hosted, "isms-${{ needs.target.outputs.environment }}"]
+    timeout-minutes: 20
+    outputs:
+      url: ${{ steps.url.outputs.url }}
+    # Tick "Required reviewers" on the `staging` GitHub environment if you want
+    # a merge into staging (client QA) to pause here for approval.
+    environment:
+      name: ${{ needs.target.outputs.environment }}
+      url: ${{ vars.PUBLIC_APP_URL }}
+    concurrency:
+      group: deploy-${{ needs.target.outputs.environment }}
+      cancel-in-progress: false
+    env:
+      # environment == git branch == compose override == env file
+      STACK_ENV: ${{ needs.target.outputs.environment }}
+      APP_IMAGE: ghcr.io/pixelcare-consulting/isms:${{ needs.target.outputs.image_tag }}
+    steps:
+      - name: Guard
+        env:
+          DEPLOY_ENABLED: ${{ vars.DEPLOY_ENABLED }}
+        run: |
+          if [ "$DEPLOY_ENABLED" != "true" ]; then
+            echo "::error::DEPLOY_ENABLED is not 'true' on this environment — refusing to deploy."
+            exit 1
+          fi
+
+      - name: Release
+        env:
+          GIT_SHA: ${{ github.sha }}
+          GIT_TOKEN: ${{ github.token }}
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+          GHCR_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          set -euo pipefail
+          cd "$DEPLOY_PATH"
+          # Compose files + scripts on the server track the deployed commit.
+          # The job token authenticates the fetch, so this keeps working if the repo goes private.
+          GIT_AUTH="$(printf 'x-access-token:%s' "$GIT_TOKEN" | base64 -w0)"
+          git -c http.extraheader="AUTHORIZATION: basic $GIT_AUTH" fetch --quiet --tags origin
+          git checkout --quiet --detach "$GIT_SHA" 2>/dev/null || git checkout --quiet --detach "origin/$STACK_ENV"
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GHCR_USERNAME" --password-stdin
+          deploy/release.sh "$STACK_ENV" "$APP_IMAGE"
+
+      - name: Hand the public URL to the verify job
+        id: url
+        env:
+          URL: ${{ vars.PUBLIC_APP_URL }}
+        run: echo "url=$URL" >> "$GITHUB_OUTPUT"
+
+  # From GitHub's cloud, not the server: proves the site is reachable from the
+  # internet (the server itself may not reach its own public IP — no NAT loopback).
+  verify:
+    name: Public health check → ${{ needs.target.outputs.environment }}
+    needs: [target, deploy]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Public health check
+        env:
+          URL: ${{ needs.deploy.outputs.url }}
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+            --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 10 --max-time 30 \
+            "${URL%/}/api/health"
+
+  # ───────────────────────────────────────────────────────── gate
+  ci-success:
+    name: CI success
+    if: always() && github.event_name != 'workflow_dispatch'
+    needs: [quality, prisma, unit, actionlint, image, e2e]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "results: $RESULTS"
+          for r in $RESULTS; do [ "$r" = success ] || { echo "::error::a required job ended with '$r'"; exit 1; }; done

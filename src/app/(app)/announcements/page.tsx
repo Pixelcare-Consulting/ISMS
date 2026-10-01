@@ -17,10 +17,10 @@ export default async function AnnouncementsPage() {
   const announcements = await listAnnouncementsAction();
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 rounded-none bg-slate-50 dark:bg-muted">
       <PageHeader
         title="Announcements"
-        description="Tenant posts shown to your team. Active announcements also appear on the dashboard."
+        description="Tenant posts shown on Dashboard → Overview. Active announcements appear in the feed for your team."
       />
       <AnnouncementsPanel
         canManage={canManage}
@@ -32,6 +32,7 @@ export default async function AnnouncementsPage() {
           expiresAt: row.expiresAt?.toISOString() ?? null,
           isActive: row.isActive,
           createdAt: row.createdAt.toISOString(),
+          updatedAt: row.updatedAt.toISOString(),
           createdBy: row.createdBy,
         }))}
       />

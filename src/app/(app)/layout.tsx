@@ -17,6 +17,9 @@ import { resolveRouteTitle } from "@/config/route-titles";
 import { AiCopilotLauncher } from "@/features/ai/components/ai-copilot-launcher";
 import { canUseAiAssist } from "@/features/ai/constants/ai-permissions";
 import { isAiConfigured } from "@/features/ai/lib/provider";
+import { countUnreadAnnouncementsAction } from "@/features/announcements/actions/announcement.actions";
+import { countUnreadNotificationsAction } from "@/features/notifications/actions/notification.actions";
+import { NotificationsHeaderAction } from "@/features/notifications/components/notifications-header-action";
 import { SapSyncReportDialogs } from "@/features/sap/components/sap-sync-report-dialogs";
 import { pageMetadata } from "@/lib/shared/seo";
 
@@ -32,11 +35,20 @@ export default async function AppLayout({
   children: React.ReactNode;
 }) {
   const session = await requireAuth();
-  const [branding, profile, isPlatformOperator, cookieStore] = await Promise.all([
+  const [
+    branding,
+    profile,
+    isPlatformOperator,
+    cookieStore,
+    unreadAnnouncementCount,
+    unreadNotificationCount,
+  ] = await Promise.all([
     getCachedLayoutBranding(session.user.tenantId),
     getCachedLayoutProfile(session.user.tenantId, session.user.id),
     resolveSessionPlatformOperator(session.user),
     cookies(),
+    countUnreadAnnouncementsAction().catch(() => 0),
+    countUnreadNotificationsAction().catch(() => 0),
   ]);
 
   const user = {
@@ -57,13 +69,20 @@ export default async function AppLayout({
         <AppNavigationProgress />
       </Suspense>
 
-      <AppSidebar branding={branding} user={user} />
+      <AppSidebar
+        branding={branding}
+        user={user}
+        unreadAnnouncementCount={unreadAnnouncementCount}
+      />
 
       <SidebarInset className="h-svh overflow-hidden">
         <header className="app-header flex h-14 shrink-0 items-center gap-2 bg-white pl-2 pr-3 text-sidebar-foreground sm:pr-4 lg:pr-6">
           <SidebarTrigger className="text-sidebar hover:bg-sidebar-accent/60 hover:text-sidebar-foreground" />
+          <WhatsNewHeaderAction />
           <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
-            <WhatsNewHeaderAction />
+            <NotificationsHeaderAction
+              initialUnreadCount={unreadNotificationCount}
+            />
           </div>
         </header>
 
