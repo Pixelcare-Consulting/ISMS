@@ -3,13 +3,11 @@
 import { Fragment, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Package, Trash2 } from "lucide-react";
+import { Package } from "lucide-react";
 import { toast } from "sonner";
 
 import {
   addWarehouseLocationAction,
-  deleteWarehouseAction,
-  deleteWarehousesAction,
   deleteWarehouseLocationAction,
   syncWarehousesFromSapAction,
 } from "@/features/warehouses/actions/warehouse.actions";
@@ -20,12 +18,8 @@ import {
   TableIndexCell,
   TableIndexHead,
   TableRowActions,
-  TableRowCheckbox,
-  TableSelectAllCheckbox,
-  TableSelectionBadge,
   uniqueSearchSuggestions,
   useClientTablePagination,
-  useTableSelection,
 } from "@/components/data-table";
 import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 import { Badge } from "@/components/ui/badge";
@@ -56,7 +50,7 @@ interface WarehouseRow {
   _count: { aors: number; pulloutsDestination: number };
 }
 
-const COL_COUNT = 7;
+const COL_COUNT = 6;
 
 export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) {
   const router = useRouter();
@@ -68,8 +62,6 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
   }
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
-  const [deleting, setDeleting] = useState<WarehouseRow | null>(null);
-  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [deletingLocation, setDeletingLocation] = useState<{
     warehouseId: string;
     location: LocationRow;
@@ -96,8 +88,6 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
     [rows],
   );
 
-  const filteredIds = useMemo(() => filtered.map((warehouse) => warehouse.id), [filtered]);
-  const selection = useTableSelection(filteredIds);
   const sort = useClientTableSort(filtered, {
     code: (w) => w.code,
     name: (w) => w.name,
@@ -116,78 +106,6 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
   } = useClientTablePagination(sort.sorted, {
     resetKey: `${query}:${sort.sortKey}:${sort.sortDir}`,
   });
-
-  function handleDelete() {
-    if (!deleting) return;
-    startTransition(async () => {
-      const result = await deleteWarehouseAction(deleting.id);
-      if (result.error) {
-        toast.error(String(result.error));
-        return;
-      }
-      toast.success("Warehouse removed");
-      setRows((currentRows) =>
-        currentRows.filter((warehouse) => warehouse.id !== deleting.id),
-      );
-      selection.clearSelection();
-      setDeleting(null);
-      router.refresh();
-    });
-  }
-
-  function handleBulkDelete() {
-    const ids = selection.selectedIds.filter((id) =>
-      filteredIds.includes(id),
-    );
-    if (ids.length === 0) return;
-
-    startTransition(async () => {
-      const result = await deleteWarehousesAction({ warehouseIds: ids });
-      if ("error" in result && result.error && !("deletedIds" in result)) {
-        toast.error(String(result.error));
-        return;
-      }
-
-      const deletedIds =
-        "deletedIds" in result && Array.isArray(result.deletedIds)
-          ? result.deletedIds
-          : [];
-      const failed =
-        "failed" in result && Array.isArray(result.failed) ? result.failed : [];
-
-      if (deletedIds.length > 0) {
-        const deletedSet = new Set(deletedIds);
-        setRows((currentRows) =>
-          currentRows.filter((warehouse) => !deletedSet.has(warehouse.id)),
-        );
-      }
-
-      selection.clearSelection();
-      setBulkDeleteOpen(false);
-
-      if (deletedIds.length > 0 && failed.length === 0) {
-        toast.success(
-          `Deleted ${deletedIds.length} warehouse${deletedIds.length === 1 ? "" : "s"}`,
-        );
-      } else if (deletedIds.length > 0 && failed.length > 0) {
-        toast.success(
-          `Deleted ${deletedIds.length} warehouse${deletedIds.length === 1 ? "" : "s"}`,
-        );
-        toast.error(
-          `${failed.length} could not be deleted (linked AORs, pull-outs, or stock)`,
-        );
-      } else if (failed.length > 0) {
-        toast.error(
-          failed.length === 1
-            ? failed[0]?.error ??
-                "Could not delete warehouse (linked AORs, pull-outs, or stock)"
-            : `None deleted — ${failed.length} warehouses still have links or stock`,
-        );
-      }
-
-      router.refresh();
-    });
-  }
 
   function addLocation(warehouseId: string) {
     startTransition(async () => {
@@ -250,8 +168,6 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
       ? "No warehouses yet."
       : "No warehouses match your search.";
 
-  const selectedCount = selection.selectedCount;
-
   return (
     <>
       <GlobalDataTable
@@ -262,27 +178,6 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
           placeholder: "Search warehouses…",
           suggestions,
         }}
-        toolbarLeading={
-          <TableSelectionBadge
-            count={selectedCount}
-            onClear={selection.clearSelection}
-            actions={
-              selectedCount > 0 ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  disabled={pending}
-                  onClick={() => setBulkDeleteOpen(true)}
-                >
-                  <Trash2 className="size-4" />
-                  Delete selected
-                </Button>
-              ) : null
-            }
-          />
-        }
         toolbarActions={
           <>
               <SapSyncButton
@@ -353,12 +248,6 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
       >
             <TableHeader>
               <TableRow className="bg-muted/30 hover:bg-muted/30">
-                <TableSelectAllCheckbox
-                  isAllSelected={selection.isAllSelected}
-                  isPartiallySelected={selection.isPartiallySelected}
-                  onToggleAll={selection.toggleAll}
-                  aria-label="Select all matching warehouses"
-                />
                 <TableIndexHead />
                 <GlobalTableHead {...sort.sortProps("code")}>Code</GlobalTableHead>
                 <GlobalTableHead {...sort.sortProps("name")}>Name</GlobalTableHead>
@@ -373,15 +262,7 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
               ) : (
                 pageItems.map((w, index) => (
                   <Fragment key={w.id}>
-                    <TableRow
-                      data-state={selection.isRowSelected(w.id) ? "selected" : undefined}
-                      className={cn(index % 2 === 1 && "bg-table-stripe")}
-                    >
-                      <TableRowCheckbox
-                        checked={selection.isRowSelected(w.id)}
-                        onCheckedChange={(checked) => selection.toggleRow(w.id, checked)}
-                        aria-label={`Select warehouse ${w.name}`}
-                      />
+                    <TableRow className={cn(index % 2 === 1 && "bg-table-stripe")}>
                       <TableIndexCell index={indexOffset + index + 1} />
                       <TableCell className="font-mono text-sm">
                         {w.code}
@@ -404,10 +285,7 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
                       <TableCell className="text-sm text-muted-foreground">
                         {w._count.aors} AOR · {w._count.pulloutsDestination} pull-outs
                       </TableCell>
-                      <TableRowActions
-                        onDelete={() => setDeleting(w)}
-                        deleteDisabled={pending}
-                      >
+                      <TableRowActions>
                         <Button
                           asChild
                           size="sm"
@@ -448,39 +326,6 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
               )}
             </TableBody>
       </GlobalDataTable>
-
-      <DeleteConfirmDialog
-        open={deleting !== null}
-        onOpenChange={(open) => {
-          if (!open) setDeleting(null);
-        }}
-        title="Delete warehouse?"
-        description={
-          deleting
-            ? `Remove ${deleting.name} (${deleting.code}) and all locations. Warehouses with linked AORs, pull-outs, or stock cannot be deleted.`
-            : ""
-        }
-        onConfirm={handleDelete}
-        pending={pending}
-      />
-
-      <DeleteConfirmDialog
-        open={bulkDeleteOpen}
-        onOpenChange={(open) => {
-          if (!open && !pending) setBulkDeleteOpen(false);
-        }}
-        title="Delete selected warehouses?"
-        description={
-          selectedCount === 1
-            ? "Remove the selected warehouse and its locations. Warehouses with linked AORs, pull-outs, or stock will be skipped."
-            : `Remove ${selectedCount} selected warehouses and their locations. Warehouses with linked AORs, pull-outs, or stock will be skipped.`
-        }
-        confirmLabel={
-          selectedCount === 1 ? "Delete warehouse" : `Delete ${selectedCount} warehouses`
-        }
-        onConfirm={handleBulkDelete}
-        pending={pending}
-      />
 
       <DeleteConfirmDialog
         open={deletingLocation !== null}

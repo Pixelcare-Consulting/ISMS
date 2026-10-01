@@ -23,16 +23,18 @@ import { warehouseRepository } from "@/features/warehouses/repositories/warehous
  * it should never hold. The backlog is not silent, it is just not this sync's job to
  * report — `scripts/check-sap-warehouse-type-udf.mjs` counts the untyped rows on demand.
  *
- * Only `name` is synced. `isMain` is an ISMS-only concept with no SAP counterpart, so it
- * is never touched — new warehouses land with the schema default (false) and an admin
- * picks the main one. Warehouse locations (bins) are out of scope; SAP models those as
+ * Only `name` is synced, plus SAP's Inactive flag, which soft-deletes the ISMS row (ISMS
+ * warehouses have no status column). A warehouse SAP stops returning — deleted, or
+ * retyped away from `Warehouse` — is soft-deleted when the pass completes. `isMain` is an
+ * ISMS-only concept with no SAP counterpart, so it is never touched — new warehouses land
+ * with the schema default (false) and an admin picks the main one. Warehouse locations (bins) are out of scope; SAP models those as
  * `BinLocations`, a separate entity.
  */
 
 interface WarehouseRecord {
   code: string;
   name: string;
-  /** Passed through rather than acted on here — see `applySapSyncPage`. */
+  /** Soft-deletes the ISMS row — see `applySapSyncPage`. */
   isInactive: boolean;
 }
 
@@ -60,6 +62,17 @@ export const warehouseSyncEntity: SapSyncEntity<WarehouseRecord> = {
 
   applyPage(tenantId, records) {
     return warehouseRepository.applySapSyncPage(tenantId, records);
+  },
+
+  reconcile: {
+    markSeen: (tenantId, records, passMark) =>
+      warehouseRepository.markSapSyncSeen(
+        tenantId,
+        records.map((record) => record.code),
+        passMark,
+      ),
+    retireUnseen: (tenantId, passMark) =>
+      warehouseRepository.retireUnseenSapWarehouses(tenantId, passMark),
   },
 };
 

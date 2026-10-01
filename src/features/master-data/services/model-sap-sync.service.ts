@@ -10,11 +10,12 @@ import type { SkuStatus } from "@/lib/database/generated/prisma/client";
  *
  * Branded items only: `U_Brand` is the item Brand UDF, and the filter below keeps rows
  * that have a value for it. An item SAP has not classified has no place in ISMS ordering
- * or planogram pickers, so it is never fetched — and one that loses its brand in SAP
- * simply stops coming back, exactly like an inactive dealer.
+ * or planogram pickers, so it is never fetched — and one that loses its brand in SAP (or
+ * is deleted there) stops coming back, so the completed pass soft-deletes it in ISMS.
  *
  * Syncs `description` (and `name`, which carries the same ItemName because the column is
- * NOT NULL), `status` (SAP Active → `active`, Inactive → `retired`) and `brand`. Feature,
+ * NOT NULL), `status` (SAP Active → `active`, Inactive → `retired` and soft-deleted) and
+ * `brand`. A soft-deleted model SAP returns as active again is restored. Feature,
  * resolution, size, SRP and CBM are ISMS-only and are never touched. Series is also
  * ISMS-only: a sync does not create series rows, but a new or unlinked model is attached
  * to an existing series when the SKU matches that series code. An already-set series is
@@ -73,6 +74,17 @@ export const modelSyncEntity: SapSyncEntity<ModelRecord> = {
 
   applyPage(tenantId, records) {
     return masterDataRepository.applySapSyncPage(tenantId, records);
+  },
+
+  reconcile: {
+    markSeen: (tenantId, records, passMark) =>
+      masterDataRepository.markSapSyncSeen(
+        tenantId,
+        records.map((record) => record.skuCode),
+        passMark,
+      ),
+    retireUnseen: (tenantId, passMark) =>
+      masterDataRepository.retireUnseenSapModels(tenantId, passMark),
   },
 };
 

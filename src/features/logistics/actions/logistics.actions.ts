@@ -913,7 +913,7 @@ export async function listBranchesForLogisticsAction() {
 export async function listWarehousesForLogisticsAction() {
   const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
   return prisma.warehouse.findMany({
-    where: { tenantId: session.user.tenantId },
+    where: { tenantId: session.user.tenantId, deletedAt: null },
     orderBy: { name: "asc" },
   });
 }

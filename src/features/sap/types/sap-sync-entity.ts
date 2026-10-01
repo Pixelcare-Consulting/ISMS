@@ -61,6 +61,23 @@ export interface SapSyncSegment<TContext = unknown> {
   keys(context: TContext): string[];
 }
 
+/**
+ * Keep ISMS's *membership* in step with SAP, not only its fields.
+ *
+ * A sync pass reads everything SAP currently returns for the entity, so a row ISMS holds
+ * that the pass never saw is gone from SAP — deleted, deactivated where the filter only
+ * takes active rows, or no longer matching the filter (an item that lost its brand, a
+ * cost centre moved off dimension 5, a warehouse retyped). Every row a page names is
+ * stamped with the pass's start time; when the pass completes, rows without that stamp
+ * are soft-deleted. A soft-deleted row SAP returns again is restored by `applyPage`.
+ */
+export interface SapSyncReconcile<TRecord> {
+  /** Stamp the ISMS rows these records name as seen by the pass that started at `passMark`. */
+  markSeen(tenantId: string, records: TRecord[], passMark: Date): Promise<void>;
+  /** Soft-delete (and deactivate) live rows the pass never stamped. Returns how many. */
+  retireUnseen(tenantId: string, passMark: Date): Promise<number>;
+}
+
 export interface SapSyncEntity<TRecord = unknown, TContext = unknown> {
   /** Stable id for the lock, the UI sync key and the cron's registry, e.g. `"dealer"`. */
   key: string;
@@ -103,4 +120,6 @@ export interface SapSyncEntity<TRecord = unknown, TContext = unknown> {
    * table — so memory stays flat however large the entity is.
    */
   applyPage(tenantId: string, records: TRecord[]): Promise<SapSyncApplyResult>;
+
+  reconcile: SapSyncReconcile<TRecord>;
 }

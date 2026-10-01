@@ -10,7 +10,8 @@ import type { SapSyncResult } from "@/features/sap/schemas/sap-master-sync.schem
  * `Branches` is the multi-branch feature (DI API `Branches` object, table OBRA), not
  * `BusinessPlaces` — a separate, unrelated entity. It carries no active/inactive flag, so
  * branch status stays ISMS-managed: new branches land `active`, and a sync never touches
- * status on update.
+ * a live branch's status. A branch SAP stops returning is soft-deleted (and set
+ * `inactive`) when the pass completes, and restored if it comes back.
  */
 
 interface BranchRecord {
@@ -43,6 +44,20 @@ export const branchSyncEntity: SapSyncEntity<BranchRecord> = {
 
   applyPage(tenantId, records) {
     return branchRepository.applySapSyncPage(tenantId, records);
+  },
+
+  // Retires only the OBRA branches it has seen before; unclaimed rows belong to the
+  // warehouse-typed sync (see `branchWarehouseSyncEntity`).
+  reconcile: {
+    markSeen: (tenantId, records, passMark) =>
+      branchRepository.markSapSyncSeen(
+        tenantId,
+        records.map((record) => record.sapCode),
+        passMark,
+        branchSyncEntity.key,
+      ),
+    retireUnseen: (tenantId, passMark) =>
+      branchRepository.retireUnseenSapBranches(tenantId, passMark, branchSyncEntity.key, false),
   },
 };
 

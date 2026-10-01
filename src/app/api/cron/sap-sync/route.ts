@@ -70,6 +70,7 @@ export async function GET(request: Request) {
           created: result.created,
           updated: result.updated,
           unchanged: result.unchanged,
+          removed: result.removed,
           caughtUp: result.caughtUp,
           passRows: result.passRows,
         });

@@ -535,7 +535,7 @@ export const branchImportService = {
           select: { id: true, name: true, sapCode: true },
         }),
         prisma.warehouse.findMany({
-          where: { tenantId },
+          where: { tenantId, deletedAt: null },
           select: { id: true, name: true, code: true },
         }),
         prisma.area.findMany({

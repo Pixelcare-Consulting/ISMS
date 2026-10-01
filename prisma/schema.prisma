@@ -627,6 +627,10 @@ model ProductModel {
   status       SkuStatus @default(active)
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+  /// Set to the SAP sync pass that last saw this row. A finished pass soft-deletes rows it
+  /// never stamped — they are no longer in SAP (or no longer match the sync's filter).
+  sapSyncedAt  DateTime? @map("sap_synced_at")
 
   tenant             Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   brand              Brand?               @relation(fields: [brandId], references: [id], onDelete: SetNull)
@@ -1116,6 +1120,8 @@ model ServiceCenter {
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")
   deletedAt       DateTime?    @map("deleted_at")
+  /// See `ProductModel.sapSyncedAt`.
+  sapSyncedAt     DateTime?    @map("sap_synced_at")
 
   tenant        Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   area          Area?                   @relation(fields: [areaId], references: [id], onDelete: SetNull)
@@ -1207,6 +1213,11 @@ model Branch {
   createdAt          DateTime     @default(now()) @map("created_at")
   updatedAt          DateTime     @updatedAt @map("updated_at")
   deletedAt          DateTime?    @map("deleted_at")
+  /// See `ProductModel.sapSyncedAt`.
+  sapSyncedAt        DateTime?    @map("sap_synced_at")
+  /// Which SAP sync last saw this row (`branch` = OBRA, `branch-from-warehouse` = OWHS).
+  /// Branches have two SAP sources, so each sync only retires the rows it owns.
+  sapSyncSource      String?      @map("sap_sync_source")
 
   tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   area                  Area?                  @relation(fields: [areaId], references: [id], onDelete: SetNull)
@@ -1321,6 +1332,9 @@ model Warehouse {
   modeOfPaymentId String?  @map("mode_of_payment_id")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+  /// See `ProductModel.sapSyncedAt`.
+  sapSyncedAt     DateTime? @map("sap_synced_at")
 
   tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   modeOfPayment       ModeOfPayment?       @relation(fields: [modeOfPaymentId], references: [id], onDelete: SetNull)
@@ -1517,6 +1531,9 @@ model SerialNumber {
   createdById  String?            @map("created_by_id")
   createdAt    DateTime           @default(now()) @map("created_at")
   updatedAt    DateTime           @updatedAt @map("updated_at")
+  deletedAt    DateTime?          @map("deleted_at")
+  /// See `ProductModel.sapSyncedAt`.
+  sapSyncedAt  DateTime?          @map("sap_synced_at")
 
   tenant            Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   model             ProductModel              @relation(fields: [modelId], references: [id], onDelete: Cascade)

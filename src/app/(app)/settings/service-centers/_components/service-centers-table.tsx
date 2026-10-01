@@ -7,7 +7,6 @@ import { toast } from "sonner";
 import {
   addServiceCenterLocationAction,
   createServiceCenterAction,
-  deleteServiceCenterAction,
   deleteServiceCenterLocationAction,
   listServiceCenterFormOptionsAction,
   syncServiceCentersFromSapAction,
@@ -16,7 +15,6 @@ import { SapSyncButton } from "@/features/sap/components/sap-sync-button";
 import {
   DeleteConfirmDialog,
   TableEmptyRow,
-  TableRowActions,
   uniqueSearchSuggestions,
   useClientTablePagination,
 } from "@/components/data-table";
@@ -57,7 +55,7 @@ interface CenterRow {
   locations: LocationRow[];
 }
 
-const COL_COUNT = 5;
+const COL_COUNT = 4;
 
 export function ServiceCentersTable({ centers }: { centers: CenterRow[] }) {
   const router = useRouter();
@@ -75,7 +73,6 @@ export function ServiceCentersTable({ centers }: { centers: CenterRow[] }) {
   }
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
-  const [deleting, setDeleting] = useState<CenterRow | null>(null);
   const [deletingLocation, setDeletingLocation] = useState<{
     centerId: string;
     location: LocationRow;
@@ -259,7 +256,6 @@ export function ServiceCentersTable({ centers }: { centers: CenterRow[] }) {
                 <GlobalTableHead {...sort.sortProps("name")}>Name</GlobalTableHead>
                 <GlobalTableHead {...sort.sortProps("area")}>Area</GlobalTableHead>
                 <GlobalTableHead>Locations</GlobalTableHead>
-                <GlobalTableHead className="w-28 text-right">Actions</GlobalTableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -283,7 +279,6 @@ export function ServiceCentersTable({ centers }: { centers: CenterRow[] }) {
                           {row.locations.length} location(s)
                         </Button>
                       </TableCell>
-                      <TableRowActions onDelete={() => setDeleting(row)} />
                     </TableRow>
                     {expandedId === row.id ? (
                       <TableRow>
@@ -401,26 +396,6 @@ export function ServiceCentersTable({ centers }: { centers: CenterRow[] }) {
           </form>
         </SheetContent>
       </Sheet>
-
-      <DeleteConfirmDialog
-        open={Boolean(deleting)}
-        onOpenChange={(open) => !open && setDeleting(null)}
-        title="Delete service center?"
-        description={deleting ? `Remove ${deleting.name}?` : "Remove this service center?"}
-        onConfirm={() => {
-          if (!deleting) return;
-          startTransition(async () => {
-            const result = await deleteServiceCenterAction(deleting.id);
-            if (result.error) toast.error(String(result.error));
-            else {
-              toast.success("Deleted");
-              setDeleting(null);
-              router.refresh();
-            }
-          });
-        }}
-        pending={pending}
-      />
 
       <DeleteConfirmDialog
         open={Boolean(deletingLocation)}
