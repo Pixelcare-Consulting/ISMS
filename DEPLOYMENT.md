@@ -17,13 +17,13 @@ server. CI builds one image per commit, and staging runs that exact image.
 | Deploy trigger | **Automatic** (Vercel git integration) | **Automatic** on every push to `staging` | Manual (`deploy/stack.sh sandbox up -d --build`) |
 | Ingress | Vercel | Traefik + Let's Encrypt on `APP_DOMAIN` | `http://localhost:3000`, no TLS |
 | Postgres host port | — (own hosted database) | 5434 | 5432 |
+| SAP auto-check | None | `cron` sidecar | Off (opt-in `--profile cron`) |
 | Override file | — | `docker-compose.staging.yml`, `.env.staging` | `docker-compose.sandbox.yml`, `.env.sandbox` |
 
 To self-host develop again next to staging, restore the override with
 `git show 275b7d5:docker-compose.develop.yml > docker-compose.develop.yml`, add
 `develop` back to `deploy/stack.sh`, `deploy/release.sh` and the `target` job in
-`ci.yml`, and give it its own `APP_DOMAIN` and `POSTGRES_HOST_PORT=5433`. Delete its `cron:`
-block — the base stack no longer has a `cron` service.
+`ci.yml`, and give it its own `APP_DOMAIN` and `POSTGRES_HOST_PORT=5433`.
 
 Everything is driven through one wrapper:
 
@@ -169,6 +169,7 @@ routes by `APP_DOMAIN`.
 deploy/stack.sh sandbox up -d --build         # whole stack → http://localhost:3000
 deploy/stack.sh sandbox up -d postgres        # DB only, then `pnpm dev` on the host (.env.local)
 APP_IMAGE=ghcr.io/pixelcare-consulting/isms:develop deploy/stack.sh sandbox up -d --pull always
+deploy/stack.sh sandbox --profile cron up -d  # also run the SAP auto-check sidecar
 ```
 
 Nothing here is deployed — it is the same stack CI uses for the e2e suite.
@@ -186,7 +187,7 @@ passes the file both as `--env-file` (Compose `${VAR}` interpolation) and
 - Compose: `APP_IMAGE` (required on staging), `APP_DOMAIN` (staging), `APP_HOST_PORT` (sandbox), `POSTGRES_HOST_PORT` (unique per env on a shared server)
 - App URL / auth: `APP_URL`, `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `AUTH_SECRET`, `BETTER_AUTH_API_KEY`, `ALLOW_PUBLIC_REGISTER`, `AUTH_RATE_LIMIT_ENABLED` (only ever `false` in the CI e2e stack)
 - Database: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `DATABASE_URL`, `DIRECT_URL` (host is the compose service `postgres`)
-- Integrations: `CRON_SECRET`, `SAP_ENCRYPTION_KEY`, `SAP_*` tuning, `RESEND_API_KEY`, `EMAIL_FROM`, `OPENAI_API_KEY`, `AI_MODEL`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`
+- Integrations: `CRON_SECRET` (required for the SAP auto-check), `SAP_CHECK_INTERVAL_SECONDS` (cron sidecar, default 600), `SAP_ENCRYPTION_KEY`, `SAP_*` tuning, `RESEND_API_KEY`, `EMAIL_FROM`, `OPENAI_API_KEY`, `AI_MODEL`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`
 - Operations: `MAINTENANCE_MODE`, `LOG_LEVEL`, `SENTRY_DSN`, `SLOW_QUERY_MS`, `PRISMA_LOG_QUERIES`, `AUDIT_LOG_HOT_DAYS`
 - Traefik: `LETSENCRYPT_EMAIL`
 
@@ -198,6 +199,7 @@ maintainer). `grep -rhoE 'process\.env\.[A-Z0-9_]+' src` is the source of truth.
 ```bash
 deploy/stack.sh staging ps
 deploy/stack.sh staging logs -f app
+deploy/stack.sh staging logs cron                       # sap-check results and failures
 curl -s https://$APP_DOMAIN/api/health               # {"status":"ok"} or 503 (from outside the client LAN)
 curl -sk --resolve $APP_DOMAIN:443:127.0.0.1 https://$APP_DOMAIN/api/health   # same check, on the server itself
 
@@ -248,8 +250,7 @@ signs off on staging:
 1. `git checkout -b production staging && git push -u origin production`
 2. Restore the production Compose override:
    `git show 2edb4b5:docker-compose.production.yml > docker-compose.production.yml`
-   (it is the staging override plus a nightly `postgres-backup` sidecar); delete its
-   `cron:` block — the base stack no longer has a `cron` service
+   (it is the staging override plus a nightly `postgres-backup` sidecar)
 3. Add `production` to the trigger lists, the `workflow_dispatch` choice and the
    `target` job's branch cases in `.github/workflows/ci.yml`, and to the `case`
    statements in `deploy/stack.sh` and `deploy/release.sh`. Give the server's
@@ -265,7 +266,7 @@ The image never changes — production pulls the same `sha-…` tag staging ran.
 ## Differences from Vercel
 
 - **Storage**: `src/lib/storage` uses the local filesystem whenever `VERCEL` is unset; Supabase Storage is no longer required.
-- **Cron**: none. SAP syncs are manual (the Sync button on each module); nothing runs them on a schedule.
+- **Cron**: the `cron` sidecar calls `/api/cron/sap-check` with `CRON_SECRET` every `SAP_CHECK_INTERVAL_SECONDS` (default 10 min). It only checks SAP and notifies users; SAP syncs stay manual (the Sync button on each module). Develop on Vercel has no cron.
 - **Redis**: the app talks to Upstash over REST only; there is no Redis container. Leave `UPSTASH_*` unset for the in-memory fallback.
 - **URL**: `APP_URL` (runtime) replaces `NEXT_PUBLIC_APP_URL` (build-time) for auth trusted origins and email links.
 - `vercel.json` can be deleted once Vercel is decommissioned.
