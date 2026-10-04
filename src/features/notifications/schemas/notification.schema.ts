@@ -1,12 +1,18 @@
 import { z } from "zod";
 
-export const notificationAudienceSchema = z.enum(["TENANT", "ROLE", "USER"]);
+export const notificationAudienceSchema = z.enum([
+  "TENANT",
+  "ROLE",
+  "USER",
+  "PERMISSION",
+]);
 
 export const createNotificationSchema = z
   .object({
     audience: notificationAudienceSchema,
     roleSlug: z.string().trim().min(1).max(100).optional().nullable(),
     userId: z.string().trim().min(1).optional().nullable(),
+    permissionKey: z.string().trim().min(1).max(100).optional().nullable(),
     type: z.string().trim().min(1).max(100),
     title: z.string().trim().min(1).max(200),
     body: z.string().trim().max(5_000).optional().nullable(),
@@ -27,6 +33,13 @@ export const createNotificationSchema = z
         code: "custom",
         path: ["userId"],
         message: "User is required for user-targeted notifications",
+      });
+    }
+    if (value.audience === "PERMISSION" && !value.permissionKey) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["permissionKey"],
+        message: "Permission is required for permission-targeted notifications",
       });
     }
   });

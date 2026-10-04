@@ -7,6 +7,7 @@ import {
   Inbox,
   Info,
   Megaphone,
+  RefreshCw,
   Shield,
   User,
 } from "lucide-react";
@@ -60,6 +61,10 @@ function NotificationTypeIcon({
 
   if (type === "announcement" || type.startsWith("announcement.")) {
     return <Megaphone className={className} />;
+  }
+  // SAP auto-check: "SAP has new data, press Sync" — same icon as the Sync buttons.
+  if (type.startsWith("sap.changes.")) {
+    return <RefreshCw className={className} />;
   }
   if (type.includes("role") || item.audience === "ROLE") {
     return <Shield className={className} />;

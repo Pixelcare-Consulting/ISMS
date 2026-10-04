@@ -5,39 +5,48 @@ import type {
 
 import { prisma } from "@/lib/database/client";
 
-type VisibleForUserParams = {
+/** Who is reading the inbox — everything the audience filter matches against. */
+export type InboxViewer = {
   tenantId: string;
   userId: string;
   roleSlugs: string[];
+  /** The session's permission keys; PERMISSION notifications match against these. */
+  permissions: string[];
+};
+
+type VisibleForUserParams = InboxViewer & {
   limit?: number;
   offset?: number;
 };
 
-function audienceMatchFilter(
-  userId: string,
-  roleSlugs: string[],
-): Prisma.NotificationWhereInput {
-  const roleOrUser: Prisma.NotificationWhereInput[] = [
+function audienceMatchFilter(viewer: InboxViewer): Prisma.NotificationWhereInput {
+  const audiences: Prisma.NotificationWhereInput[] = [
     { audience: "TENANT" },
-    { audience: "USER", userId },
+    { audience: "USER", userId: viewer.userId },
   ];
 
-  if (roleSlugs.length > 0) {
-    roleOrUser.push({
+  if (viewer.roleSlugs.length > 0) {
+    audiences.push({
       audience: "ROLE",
-      roleSlug: { in: roleSlugs },
+      roleSlug: { in: viewer.roleSlugs },
     });
   }
 
-  return { OR: roleOrUser };
+  // Resolved from the session on every read, so granting or revoking a permission changes
+  // the inbox immediately, and a permission held through two roles still matches one row.
+  if (viewer.permissions.length > 0) {
+    audiences.push({
+      audience: "PERMISSION",
+      permissionKey: { in: viewer.permissions },
+    });
+  }
+
+  return { OR: audiences };
 }
 
-function activeNotificationFilter(
-  tenantId: string,
-  userId: string,
-  roleSlugs: string[],
-): Prisma.NotificationWhereInput {
+function activeNotificationFilter(viewer: InboxViewer): Prisma.NotificationWhereInput {
   const now = new Date();
+  const { tenantId, userId } = viewer;
   return {
     tenantId,
     deletedAt: null,
@@ -45,7 +54,7 @@ function activeNotificationFilter(
       {
         OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
       },
-      audienceMatchFilter(userId, roleSlugs),
+      audienceMatchFilter(viewer),
       {
         NOT: {
           states: {
@@ -132,6 +141,7 @@ export const notificationRepository = {
     audience: NotificationAudience;
     roleSlug?: string | null;
     userId?: string | null;
+    permissionKey?: string | null;
     type: string;
     title: string;
     body?: string | null;
@@ -146,6 +156,8 @@ export const notificationRepository = {
         audience: data.audience,
         roleSlug: data.audience === "ROLE" ? data.roleSlug ?? null : null,
         userId: data.audience === "USER" ? data.userId ?? null : null,
+        permissionKey:
+          data.audience === "PERMISSION" ? data.permissionKey ?? null : null,
         type: data.type,
         title: data.title,
         body: data.body ?? null,
@@ -162,11 +174,7 @@ export const notificationRepository = {
   ): Promise<{ items: NotificationInboxItem[]; total: number }> {
     const limit = params.limit ?? 5;
     const offset = params.offset ?? 0;
-    const where = activeNotificationFilter(
-      params.tenantId,
-      params.userId,
-      params.roleSlugs,
-    );
+    const where = activeNotificationFilter(params);
 
     const [rows, total] = await Promise.all([
       prisma.notification.findMany({
@@ -189,35 +197,22 @@ export const notificationRepository = {
     return { items: rows.map(mapInboxRow), total };
   },
 
-  countUnreadForUser(params: Omit<VisibleForUserParams, "limit" | "offset">) {
+  countUnreadForUser(params: InboxViewer) {
     return prisma.notification.count({
       where: {
         AND: [
-          activeNotificationFilter(
-            params.tenantId,
-            params.userId,
-            params.roleSlugs,
-          ),
+          activeNotificationFilter(params),
           unreadForUserFilter(params.userId),
         ],
       },
     });
   },
 
-  findVisibleById(params: {
-    tenantId: string;
-    userId: string;
-    roleSlugs: string[];
-    notificationId: string;
-  }) {
+  findVisibleById(params: InboxViewer & { notificationId: string }) {
     return prisma.notification.findFirst({
       where: {
         id: params.notificationId,
-        ...activeNotificationFilter(
-          params.tenantId,
-          params.userId,
-          params.roleSlugs,
-        ),
+        ...activeNotificationFilter(params),
       },
       select: { id: true },
     });
@@ -246,19 +241,11 @@ export const notificationRepository = {
     });
   },
 
-  async markAllRead(params: {
-    tenantId: string;
-    userId: string;
-    roleSlugs: string[];
-  }) {
+  async markAllRead(params: InboxViewer) {
     const unread = await prisma.notification.findMany({
       where: {
         AND: [
-          activeNotificationFilter(
-            params.tenantId,
-            params.userId,
-            params.roleSlugs,
-          ),
+          activeNotificationFilter(params),
           unreadForUserFilter(params.userId),
         ],
       },
