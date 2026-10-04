@@ -8,8 +8,7 @@
 #   APP_IMAGE=ghcr.io/pixelcare-consulting/isms:develop deploy/stack.sh sandbox up -d --pull always
 #
 # Differences from the deployed environments: builds from the working tree by
-# default, no Traefik/TLS (port 3000 published directly), and cron is opt-in
-# (`--profile cron`) so a laptop never hammers SAP by accident.
+# default and no Traefik/TLS (port 3000 published directly).
 name: isms-sandbox
 
 x-env-file: &env-file .env.sandbox
@@ -30,10 +29,6 @@ services:
     env_file: [*env-file]
     ports:
       - "${APP_HOST_PORT:-3000}:3000"
-
-  cron:
-    profiles: ["cron"]
-    env_file: [*env-file]
 
 volumes:
   postgres-data:

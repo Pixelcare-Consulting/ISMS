@@ -13,7 +13,6 @@
 #   postgres  Postgres 16, data in a named volume, loopback-only host port
 #   migrator  one-shot: extensions + `prisma migrate deploy`, then exits
 #   app       Next.js standalone server (:3000), starts after migrator succeeds
-#   cron      calls /api/cron/sap-sync every 5 min (replaces the Vercel cron)
 
 x-logging: &default-logging
   driver: json-file
@@ -77,26 +76,6 @@ services:
       # Policy attachments + audit archives. STORAGE_ROOT is fixed in the image.
       - uploads-data:/app/data/uploads
     # HEALTHCHECK comes from the Dockerfile (Node fetch against /api/health).
-    logging: *default-logging
-    networks:
-      - internal
-
-  cron:
-    image: curlimages/curl:8.10.1
-    restart: unless-stopped
-    depends_on:
-      app:
-        condition: service_healthy
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        while true; do
-          sleep 300
-          curl -fsS -m 290 \
-            -H "Authorization: Bearer $$CRON_SECRET" \
-            http://app:3000/api/cron/sap-sync \
-            || echo "[cron] sap-sync failed ($(date -u +%FT%TZ))"
-        done
     logging: *default-logging
     networks:
       - internal

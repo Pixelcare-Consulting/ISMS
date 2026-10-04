@@ -28,9 +28,6 @@ services:
       - internal
       - traefik-public
 
-  cron:
-    env_file: [*env-file]
-
 networks:
   traefik-public:
     external: true

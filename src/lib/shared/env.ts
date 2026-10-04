@@ -15,7 +15,7 @@ const envSchema = z.object({
   AUDIT_LOG_HOT_DAYS: z.coerce.number().int().positive().optional(),
   SLOW_QUERY_MS: z.coerce.number().int().positive().optional(),
   SENTRY_DSN: z.string().url().optional(),
-  /** Bearer token Vercel Cron presents to the scheduled sync route. */
+  /** Bearer token a scheduler must present to the `/api/cron/*` routes. */
   CRON_SECRET: z.string().min(1).optional(),
 });
 
