@@ -148,6 +148,8 @@ enum NotificationAudience {
   TENANT
   ROLE
   USER
+  /// Everyone holding `Notification.permissionKey`, resolved at read time from the session.
+  PERMISSION
 }
 
 /// SN movement ledger types from Excel Schema (Historical Details).
@@ -258,6 +260,7 @@ model Tenant {
   sapIntegrationJobs  SapIntegrationJob[]
   sapServiceLayerConfigs SapServiceLayerConfig[]
   sapSyncCursors      SapSyncCursor[]
+  sapChangeWatches    SapChangeWatch[]
   announcements       Announcement[]
   notifications       Notification[]
   competitorObservations CompetitorObservation[]
@@ -2307,6 +2310,8 @@ model Notification {
   audience    NotificationAudience
   roleSlug    String?              @map("role_slug")
   userId      String?              @map("user_id")
+  /// Set when `audience` is PERMISSION, e.g. `warehouses.manage`.
+  permissionKey String?            @map("permission_key")
   type        String
   title       String
   body        String?              @db.Text
@@ -2326,6 +2331,7 @@ model Notification {
   @@index([tenantId, createdAt])
   @@index([tenantId, audience, userId])
   @@index([tenantId, audience, roleSlug])
+  @@index([tenantId, audience, permissionKey])
   @@map("notifications")
 }
 
@@ -2464,6 +2470,34 @@ model SapSyncCursor {
 
   @@unique([tenantId, entity])
   @@map("sap_sync_cursors")
+}
+
+/// What the scheduled SAP auto-check last told users about one sync, per tenant. The check
+/// only reads SAP and ISMS master data; this row and its notification are all it writes.
+model SapChangeWatch {
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
+  /// The sync descriptor's `key`, e.g. `warehouse` (same values as `SapSyncCursor.entity`).
+  syncKey  String @map("sync_key")
+
+  /// SHA-256 of the sorted affected keys: unchanged means the open notification still holds.
+  fingerprint    String? @map("fingerprint")
+  /// The open `Notification` for this sync, if any. Not a relation: a missing row reads as none.
+  notificationId String? @map("notification_id")
+  /// Serial numbers only: highest `DocEntry` already read from `SerialNumberDetails`.
+  highKey        String? @map("high_key")
+  /// Serial numbers only: serials seen in SAP but not yet in ISMS.
+  pendingKeys    Json?   @map("pending_keys")
+
+  checkedAt DateTime? @map("checked_at")
+  lastError String?   @map("last_error")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, syncKey])
+  @@map("sap_change_watches")
 }
 
 model SapServiceLayerConfig {

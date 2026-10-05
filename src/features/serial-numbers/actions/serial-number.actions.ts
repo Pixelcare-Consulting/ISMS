@@ -111,8 +111,8 @@ export async function setSerialNumberStatusAction(id: string, input: unknown) {
 
 /**
  * Runs one slice of the serial sync. The entity is far larger than any request can read,
- * so this returns after its budget with the watermark saved; the cron finishes the rest.
- * A shorter budget than the cron's keeps the button responsive.
+ * so this returns after its budget with the watermark saved; pressing Continue resumes it.
+ * A short budget keeps the button responsive.
  */
 export async function syncSerialNumbersFromSapAction() {
   const session = await requirePermission("inventory.manage");

@@ -13,7 +13,8 @@
 #   postgres  Postgres 16, data in a named volume, loopback-only host port
 #   migrator  one-shot: extensions + `prisma migrate deploy`, then exits
 #   app       Next.js standalone server (:3000), starts after migrator succeeds
-#   cron      calls /api/cron/sap-sync every 5 min (replaces the Vercel cron)
+#   cron      calls /api/cron/sap-check every SAP_CHECK_INTERVAL_SECONDS (default 600).
+#             Read-only: notifies users when SAP has data to sync; never syncs.
 
 x-logging: &default-logging
   driver: json-file
@@ -88,14 +89,17 @@ services:
       app:
         condition: service_healthy
     entrypoint: ["/bin/sh", "-c"]
+    # $$ defers to the container's shell, so both values come from the env file.
     command:
       - |
+        interval="$${SAP_CHECK_INTERVAL_SECONDS:-600}"
         while true; do
-          sleep 300
+          sleep "$$interval"
           curl -fsS -m 290 \
             -H "Authorization: Bearer $$CRON_SECRET" \
-            http://app:3000/api/cron/sap-sync \
-            || echo "[cron] sap-sync failed ($(date -u +%FT%TZ))"
+            http://app:3000/api/cron/sap-check \
+            || echo "[cron] sap-check failed ($(date -u +%FT%TZ))"
+          echo
         done
     logging: *default-logging
     networks:

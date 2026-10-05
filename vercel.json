@@ -10,11 +10,5 @@
       "develop": true
     }
   },
-  "ignoreCommand": "if [ -n \"$VERCEL_GIT_COMMIT_REF\" ] && [ \"$VERCEL_GIT_COMMIT_REF\" != \"main\" ] && [ \"$VERCEL_GIT_COMMIT_REF\" != \"develop\" ]; then exit 0; fi; exit 1",
-  "crons": [
-    {
-      "path": "/api/cron/sap-sync",
-      "schedule": "*/5 * * * *"
-    }
-  ]
+  "ignoreCommand": "if [ -n \"$VERCEL_GIT_COMMIT_REF\" ] && [ \"$VERCEL_GIT_COMMIT_REF\" != \"main\" ] && [ \"$VERCEL_GIT_COMMIT_REF\" != \"develop\" ]; then exit 0; fi; exit 1"
 }
