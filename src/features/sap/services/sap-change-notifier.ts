@@ -90,12 +90,13 @@ export async function notifySapChanges(input: {
 
   if (fingerprint === null) {
     if (watch.notificationId === null && watch.fingerprint === null) return "none";
-    await sapChangeWatchRepository.clear({
+    const cleared = await sapChangeWatchRepository.clear({
       tenantId,
       syncKey: target.syncKey,
       previousNotificationId: watch.notificationId,
     });
-    return "cleared";
+    // False: an overlapping check already handled it.
+    return cleared ? "cleared" : "unchanged";
   }
 
   if (
@@ -107,7 +108,7 @@ export async function notifySapChanges(input: {
   }
 
   const { title, body } = describeSapChanges(target, changes);
-  await sapChangeWatchRepository.publish({
+  const published = await sapChangeWatchRepository.publish({
     tenantId,
     syncKey: target.syncKey,
     fingerprint,
@@ -134,7 +135,8 @@ export async function notifySapChanges(input: {
       },
     },
   });
-  return "published";
+  // Null: an overlapping check already posted; its notification stands.
+  return published === null ? "unchanged" : "published";
 }
 
 /** Hard-delete auto-check notifications closed more than the retention period ago. */

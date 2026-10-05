@@ -295,6 +295,17 @@ export const SAP_CHANGE_CHECKS: SapChangeCheck[] = [
   },
 ];
 
+/**
+ * SAP itself is unreachable (down, network cut, timed out) rather than one entity failing.
+ * Each such call can take the full request timeout, so after one the tenant's remaining
+ * checks are skipped instead of waiting it out again for every sync.
+ */
+function isSapUnreachable(message: string): boolean {
+  return /SAP did not respond|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|ENOTFOUND|EAI_AGAIN|socket hang up/i.test(
+    message,
+  );
+}
+
 function syncInProgress(cursor: SyncCursorRow | undefined, now: number): boolean {
   return (
     cursor?.passStartedAt != null &&
@@ -314,10 +325,16 @@ export async function runSapChangeCheck(tenantId: string): Promise<SapChangeChec
   const cursors = await sapChangeCheckRepository.listSyncCursors(tenantId);
   const cursorByKey = new Map(cursors.map((cursor) => [cursor.entity, cursor]));
   const results: SapChangeCheckResult[] = [];
+  let unreachable: string | null = null;
 
   for (const check of SAP_CHANGE_CHECKS) {
     const { syncKey } = check.target;
     const cursor = cursorByKey.get(syncKey);
+
+    if (unreachable) {
+      results.push({ syncKey, outcome: "skipped", detail: `SAP unreachable: ${unreachable}` });
+      continue;
+    }
 
     // ISMS is half-updated while a sync pass runs; comparing now would report noise.
     if (!check.checksMidPass && syncInProgress(cursor, Date.now())) {
@@ -356,6 +373,7 @@ export async function runSapChangeCheck(tenantId: string): Promise<SapChangeChec
       logger.error({ tenantId, syncKey, err: message }, "sap change check failed");
       await sapChangeWatchRepository.recordError(tenantId, syncKey, message).catch(() => {});
       results.push({ syncKey, outcome: "failed", detail: message });
+      if (isSapUnreachable(message)) unreachable = message;
     }
   }
 
