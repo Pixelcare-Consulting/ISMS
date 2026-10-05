@@ -167,6 +167,20 @@ describe("runSapChangeCheck — location syncs", () => {
     expect(changesFor("warehouse")).toBeDefined();
   });
 
+  it("stops checking a tenant once SAP itself is unreachable", async () => {
+    readAll.mockImplementationOnce(async () => {
+      throw new Error("SAP did not respond for 60000ms (GET /b1s/v1/Warehouses).");
+    });
+
+    const results = await runSapChangeCheck("t1");
+
+    expect(resultFor(results, "branch-from-warehouse")).toMatchObject({ outcome: "failed" });
+    expect(results.slice(1).every((result) => result.outcome === "skipped")).toBe(true);
+    expect(resultFor(results, "warehouse")?.detail).toMatch(/^SAP unreachable/);
+    // Only the first check paid the timeout.
+    expect(readAll).toHaveBeenCalledTimes(1);
+  });
+
   it("refuses to run without a SAP connection", async () => {
     (sapServiceLayerService.getCredentials as jest.Mock).mockResolvedValue(null);
     await expect(runSapChangeCheck("t1")).rejects.toThrow();

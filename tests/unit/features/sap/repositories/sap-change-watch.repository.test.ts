@@ -3,7 +3,7 @@ const tx = {
     create: jest.fn().mockResolvedValue({ id: "n-new" }),
     updateMany: jest.fn().mockResolvedValue({ count: 1 }),
   },
-  sapChangeWatch: { update: jest.fn().mockResolvedValue({}) },
+  sapChangeWatch: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
 };
 
 jest.mock("@/lib/database/client", () => ({
@@ -45,10 +45,27 @@ describe("sapChangeWatchRepository.publish", () => {
       where: { id: "n-old", deletedAt: null },
       data: { deletedAt: expect.any(Date) },
     });
-    expect(tx.sapChangeWatch.update).toHaveBeenCalledWith({
-      where: { tenantId_syncKey: { tenantId: "t1", syncKey: "warehouse" } },
+    // Only moves the watch if it still points at the notification this check started from.
+    expect(tx.sapChangeWatch.updateMany).toHaveBeenCalledWith({
+      where: { tenantId: "t1", syncKey: "warehouse", notificationId: "n-old" },
       data: { fingerprint: "fp", notificationId: "n-new" },
     });
+  });
+
+  it("returns null and closes nothing when an overlapping check moved the watch first", async () => {
+    tx.sapChangeWatch.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    const id = await sapChangeWatchRepository.publish({
+      tenantId: "t1",
+      syncKey: "warehouse",
+      fingerprint: "fp",
+      previousNotificationId: "n-old",
+      notification,
+    });
+
+    // The thrown marker rolls the transaction back, so the created notification goes too.
+    expect(id).toBeNull();
+    expect(tx.notification.updateMany).not.toHaveBeenCalled();
   });
 
   it("closes nothing on the first notification", async () => {
@@ -59,6 +76,26 @@ describe("sapChangeWatchRepository.publish", () => {
       previousNotificationId: null,
       notification,
     });
+    expect(tx.notification.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("sapChangeWatchRepository.clear", () => {
+  it("closes the notification and resets the watch", async () => {
+    await expect(
+      sapChangeWatchRepository.clear({ tenantId: "t1", syncKey: "warehouse", previousNotificationId: "n1" }),
+    ).resolves.toBe(true);
+    expect(tx.notification.updateMany).toHaveBeenCalledWith({
+      where: { id: "n1", deletedAt: null },
+      data: { deletedAt: expect.any(Date) },
+    });
+  });
+
+  it("returns false when an overlapping check moved the watch first", async () => {
+    tx.sapChangeWatch.updateMany.mockResolvedValueOnce({ count: 0 });
+    await expect(
+      sapChangeWatchRepository.clear({ tenantId: "t1", syncKey: "warehouse", previousNotificationId: "n1" }),
+    ).resolves.toBe(false);
     expect(tx.notification.updateMany).not.toHaveBeenCalled();
   });
 });

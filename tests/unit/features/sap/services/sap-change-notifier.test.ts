@@ -1,7 +1,7 @@
 jest.mock("@/features/sap/repositories/sap-change-watch.repository", () => ({
   SAP_CHANGE_NOTIFICATION_PREFIX: "sap.changes.",
   sapChangeWatchRepository: {
-    clear: jest.fn(),
+    clear: jest.fn().mockResolvedValue(true),
     isNotificationLive: jest.fn(),
     publish: jest.fn().mockResolvedValue("n-new"),
     purgeClosedNotifications: jest.fn().mockResolvedValue(0),
@@ -111,6 +111,12 @@ describe("notifySapChanges", () => {
       href: "/settings/warehouses",
       metadata: { syncKey: "warehouse", counts: { created: 1, updated: 2, removed: 0 } },
     });
+  });
+
+  it("steps aside when an overlapping check already published", async () => {
+    repo.publish.mockResolvedValueOnce(null);
+    const outcome = await notifySapChanges({ tenantId: "t1", target, watch: empty, changes });
+    expect(outcome).toBe("unchanged");
   });
 
   it("re-publishes same news if its notification is gone", async () => {
