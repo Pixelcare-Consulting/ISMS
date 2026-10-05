@@ -1,5 +1,10 @@
 import { prisma } from "@/lib/database/client";
-import { createInChunks, updateEach } from "@/features/sap/services/sap-sync-writer";
+import {
+  createInChunks,
+  markSapSeen,
+  unseenSince,
+  updateEach,
+} from "@/features/sap/services/sap-sync-writer";
 import type { SapSyncApplyResult } from "@/features/sap/types/sap-sync-entity";
 import { CACHE_TTL, cacheKey, deleteCache, getOrSet } from "@/lib/cache/redis";
 import type { SkuStatus } from "@/lib/database/generated/prisma/client";
@@ -126,7 +131,7 @@ export const masterDataRepository = {
       CACHE_TTL.masterData,
       () =>
         prisma.productModel.findMany({
-          where: { tenantId, ...(brandId ? { brandId } : {}) },
+          where: { tenantId, deletedAt: null, ...(brandId ? { brandId } : {}) },
           include: {
             brand: true,
             series: true,
@@ -260,7 +265,13 @@ export const masterDataRepository = {
     });
   },
 
-  /** Apply one page of a SAP item sync, matched on `skuCode`. */
+  /**
+   * Apply one page of a SAP item sync, matched on `skuCode`.
+   *
+   * An item SAP marks Inactive is soft-deleted (and `retired`); one SAP returns active
+   * again is restored. Inactive items new to ISMS are still created — soft-deleted — so
+   * their SAP serials keep a model to link to.
+   */
   async applySapSyncPage(
     tenantId: string,
     records: { skuCode: string; name: string; status: SkuStatus; brandName: string }[],
@@ -279,6 +290,7 @@ export const masterDataRepository = {
           status: true,
           brandId: true,
           seriesId: true,
+          deletedAt: true,
         },
       }),
       resolveSyncBrandIds(tenantId, rows.map((row) => row.brandName)),
@@ -293,6 +305,7 @@ export const masterDataRepository = {
       status: SkuStatus;
       brandId: string;
       seriesId: string | null;
+      deletedAt: Date | null;
     }
     const toCreate: ModelFields[] = [];
     const toUpdate: (ModelFields & { id: string })[] = [];
@@ -313,6 +326,10 @@ export const masterDataRepository = {
       // it too because the column is NOT NULL and, with manual creation disabled, SAP is
       // the only thing that ever names a model.
       const seriesId = seriesIdByCode.get(seriesCodeKey(row.skuCode)) ?? null;
+      const match = bySkuCode.get(row.skuCode);
+      // Inactive in SAP means soft-deleted in ISMS; keep the original deletion time
+      // rather than restamping it every pass.
+      const deletedAt = row.status === "retired" ? (match?.deletedAt ?? new Date()) : null;
       const fields = {
         skuCode: row.skuCode,
         name: row.name,
@@ -320,8 +337,8 @@ export const masterDataRepository = {
         status: row.status,
         brandId,
         seriesId,
+        deletedAt,
       };
-      const match = bySkuCode.get(row.skuCode);
 
       if (!match) {
         toCreate.push(fields);
@@ -333,7 +350,8 @@ export const masterDataRepository = {
         match.description === fields.description &&
         match.status === fields.status &&
         match.brandId === fields.brandId &&
-        match.seriesId === nextSeriesId
+        match.seriesId === nextSeriesId &&
+        (match.deletedAt === null) === (fields.deletedAt === null)
       ) {
         unchanged += 1;
         continue;
@@ -364,6 +382,7 @@ export const masterDataRepository = {
             status: row.status,
             brandId: row.brandId,
             seriesId: row.seriesId,
+            deletedAt: row.deletedAt,
           },
         });
       },
@@ -376,6 +395,19 @@ export const masterDataRepository = {
       unchanged,
       failures: [...failures, ...inserted.failures, ...changed.failures],
     };
+  },
+
+  markSapSyncSeen(tenantId: string, skuCodes: string[], passMark: Date) {
+    return markSapSeen("product_models", tenantId, skuCodes, passMark);
+  },
+
+  /** Soft-delete models a completed item sync pass no longer found in SAP. */
+  async retireUnseenSapModels(tenantId: string, passMark: Date): Promise<number> {
+    const { count } = await prisma.productModel.updateMany({
+      where: { tenantId, ...unseenSince(passMark) },
+      data: { deletedAt: new Date(), status: "retired" },
+    });
+    return count;
   },
 
   listPriceLists(tenantId: string, modelId?: string) {

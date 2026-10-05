@@ -84,68 +84,6 @@ export const warehouseService = {
     return location;
   },
 
-  async deleteWarehouse(input: {
-    tenantId: string;
-    actorUserId: string;
-    warehouseId: string;
-  }) {
-    const warehouse = await warehouseRepository.findById(input.tenantId, input.warehouseId);
-    if (!warehouse) throw new Error("Warehouse not found");
-
-    const counts = await warehouseRepository.countLinks(input.tenantId, input.warehouseId);
-    if (counts.aors > 0 || counts.pulloutsDestination > 0 || counts.inventory > 0) {
-      throw new Error(
-        "Cannot delete warehouse with linked AORs, pull-outs, or stock",
-      );
-    }
-
-    await warehouseRepository.deleteWarehouse(input.tenantId, input.warehouseId);
-
-    await auditService.log({
-      tenantId: input.tenantId,
-      userId: input.actorUserId,
-      action: "warehouse.deleted",
-      entityType: "Warehouse",
-      entityId: input.warehouseId,
-      metadata: { code: warehouse.code, name: warehouse.name },
-    });
-  },
-
-  async deleteWarehouses(input: {
-    tenantId: string;
-    actorUserId: string;
-    warehouseIds: string[];
-  }) {
-    const uniqueIds = Array.from(new Set(input.warehouseIds.filter(Boolean)));
-    const deletedIds: string[] = [];
-    const failed: { id: string; code?: string; name?: string; error: string }[] =
-      [];
-
-    for (const warehouseId of uniqueIds) {
-      const warehouse = await warehouseRepository.findById(
-        input.tenantId,
-        warehouseId,
-      );
-      try {
-        await warehouseService.deleteWarehouse({
-          tenantId: input.tenantId,
-          actorUserId: input.actorUserId,
-          warehouseId,
-        });
-        deletedIds.push(warehouseId);
-      } catch (e) {
-        failed.push({
-          id: warehouseId,
-          code: warehouse?.code,
-          name: warehouse?.name,
-          error: e instanceof Error ? e.message : "Failed to delete warehouse",
-        });
-      }
-    }
-
-    return { deletedIds, failed };
-  },
-
   async deleteLocation(input: {
     tenantId: string;
     actorUserId: string;

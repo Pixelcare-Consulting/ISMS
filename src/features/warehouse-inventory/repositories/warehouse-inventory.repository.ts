@@ -139,7 +139,7 @@ export const warehouseInventoryRepository = {
       );
     }
     return prisma.warehouse.findMany({
-      where: { tenantId, id: { in: warehouseIds } },
+      where: { tenantId, id: { in: warehouseIds }, deletedAt: null },
       select: { id: true, code: true, name: true },
       orderBy: [{ isMain: "desc" }, { name: "asc" }],
     });

@@ -133,23 +133,4 @@ export const branchService = {
       throw error;
     }
   },
-
-  async deleteBranch(input: {
-    tenantId: string;
-    actorUserId: string;
-    branchId: string;
-  }) {
-    const branch = await branchRepository.findById(input.tenantId, input.branchId);
-    if (!branch) throw new Error("Branch not found");
-
-    await branchRepository.softDelete(input.tenantId, input.branchId);
-    await auditService.log({
-      tenantId: input.tenantId,
-      userId: input.actorUserId,
-      action: "branch.deleted",
-      entityType: "Branch",
-      entityId: branch.id,
-      metadata: { name: branch.name },
-    });
-  },
 };

@@ -1,11 +1,11 @@
 {
   "name": "isms",
-  "version": "0.49.4",
+  "version": "0.49.5",
   "private": true,
   "packageManager": "pnpm@11.6.0",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",

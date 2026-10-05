@@ -1,7 +1,12 @@
 import type { LookupRecordStatus, Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/database/client";
-import { createInChunks, updateEach } from "@/features/sap/services/sap-sync-writer";
+import {
+  createInChunks,
+  markSapSeen,
+  unseenSince,
+  updateEach,
+} from "@/features/sap/services/sap-sync-writer";
 import type { SapSyncApplyResult } from "@/features/sap/types/sap-sync-entity";
 import {
   resolvePagination,
@@ -145,6 +150,7 @@ export const serialNumberRepository = {
 
     const where: Prisma.SerialNumberWhereInput = {
       tenantId,
+      deletedAt: null,
       ...(filters?.status ? { recordStatus: filters.status } : {}),
       ...(q
         ? {
@@ -194,9 +200,23 @@ export const serialNumberRepository = {
 
   listModelOptions(tenantId: string) {
     return prisma.productModel.findMany({
-      where: { tenantId },
+      where: { tenantId, deletedAt: null },
       orderBy: { skuCode: "asc" },
       select: { id: true, skuCode: true, name: true },
+    });
+  },
+
+  /**
+   * Every model's item code, soft-deleted ones included, for the serial sync's walk.
+   *
+   * An item that is inactive in SAP still has serials there, and a serial is mirrored
+   * whatever its model's state — leaving those models out would make the pass miss their
+   * serials and retire them as if SAP had deleted them.
+   */
+  listSapSyncModelKeys(tenantId: string) {
+    return prisma.productModel.findMany({
+      where: { tenantId },
+      select: { id: true, skuCode: true },
     });
   },
 
@@ -232,6 +252,9 @@ export const serialNumberRepository = {
    * Creates carry no inventory: no BranchInventory or WarehouseInventory row is made, so
    * a synced serial exists in the registry with no location until something in ISMS puts
    * it somewhere.
+   *
+   * A serial soft-deleted by an earlier pass (gone from SAP) that SAP returns again is
+   * restored: undeleted, set active, and relinked to the model SAP now gives it.
    */
   async applySapSyncPage(
     tenantId: string,
@@ -243,12 +266,13 @@ export const serialNumberRepository = {
 
     const existing = await prisma.serialNumber.findMany({
       where: { tenantId, serialNo: { in: rows.map((row) => row.serialNo) } },
-      select: { id: true, serialNo: true, modelId: true },
+      select: { id: true, serialNo: true, modelId: true, deletedAt: true },
     });
     const bySerialNo = new Map(existing.map((serial) => [serial.serialNo, serial]));
 
     const toCreate: { serialNo: string; modelId: string }[] = [];
-    const toUpdate: { id: string; serialNo: string; modelId: string }[] = [];
+    const toUpdate: { id: string; serialNo: string; modelId: string; restore: boolean }[] =
+      [];
     let unchanged = 0;
 
     for (const row of rows) {
@@ -259,8 +283,9 @@ export const serialNumberRepository = {
       }
       // A serial already here from the PSG import gets its model linked (or corrected)
       // rather than being ignored — that link is the point of the sync.
-      if (match.modelId === row.modelId) unchanged += 1;
-      else toUpdate.push({ id: match.id, serialNo: row.serialNo, modelId: row.modelId });
+      const restore = match.deletedAt !== null;
+      if (match.modelId === row.modelId && !restore) unchanged += 1;
+      else toUpdate.push({ id: match.id, serialNo: row.serialNo, modelId: row.modelId, restore });
     }
 
     const inserted = await createInChunks(toCreate, {
@@ -285,7 +310,9 @@ export const serialNumberRepository = {
       updateOne: async (row) => {
         await prisma.serialNumber.update({
           where: { id: row.id, tenantId },
-          data: { modelId: row.modelId },
+          data: row.restore
+            ? { modelId: row.modelId, deletedAt: null, recordStatus: "active" }
+            : { modelId: row.modelId },
         });
       },
       describe: (row) => row.serialNo,
@@ -299,14 +326,27 @@ export const serialNumberRepository = {
     };
   },
 
+  markSapSyncSeen(tenantId: string, serialNos: string[], passMark: Date) {
+    return markSapSeen("serial_numbers", tenantId, serialNos, passMark);
+  },
+
+  /** Soft-delete serials a completed serial sync pass no longer found in SAP. */
+  async retireUnseenSapSerials(tenantId: string, passMark: Date): Promise<number> {
+    const { count } = await prisma.serialNumber.updateMany({
+      where: { tenantId, ...unseenSince(passMark) },
+      data: { deletedAt: new Date(), recordStatus: "inactive" },
+    });
+    return count;
+  },
+
   countAll(tenantId: string) {
-    return prisma.serialNumber.count({ where: { tenantId } });
+    return prisma.serialNumber.count({ where: { tenantId, deletedAt: null } });
   },
 
   countByRecordStatus(tenantId: string) {
     return prisma.serialNumber.groupBy({
       by: ["recordStatus"],
-      where: { tenantId },
+      where: { tenantId, deletedAt: null },
       _count: { id: true },
     });
   },

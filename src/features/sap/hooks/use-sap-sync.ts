@@ -90,6 +90,7 @@ function summarize(result: SapSyncResult): string {
     `${formatCount(result.updated)} updated`,
     `${formatCount(result.unchanged)} unchanged`,
   ];
+  if (result.removed > 0) parts.push(`${formatCount(result.removed)} removed`);
   const skipped = skippedCount(result);
   if (skipped > 0) parts.push(`${formatCount(skipped)} skipped`);
   return parts.join(" · ");

@@ -1,27 +1,20 @@
 import type { Prisma } from "@prisma/client";
 
-import { notificationRepository } from "@/features/notifications/repositories/notification.repository";
+import {
+  notificationRepository,
+  type InboxViewer,
+} from "@/features/notifications/repositories/notification.repository";
 import {
   createNotificationSchema,
   type CreateNotificationInput,
 } from "@/features/notifications/schemas/notification.schema";
 
 export const notificationService = {
-  listForUser(input: {
-    tenantId: string;
-    userId: string;
-    roleSlugs: string[];
-    limit?: number;
-    offset?: number;
-  }) {
+  listForUser(input: InboxViewer & { limit?: number; offset?: number }) {
     return notificationRepository.listVisibleForUser(input);
   },
 
-  countUnreadForUser(input: {
-    tenantId: string;
-    userId: string;
-    roleSlugs: string[];
-  }) {
+  countUnreadForUser(input: InboxViewer) {
     return notificationRepository.countUnreadForUser(input);
   },
 
@@ -37,6 +30,7 @@ export const notificationService = {
       audience: parsed.audience,
       roleSlug: parsed.roleSlug,
       userId: parsed.userId,
+      permissionKey: parsed.permissionKey,
       type: parsed.type,
       title: parsed.title,
       body: parsed.body,
@@ -47,18 +41,8 @@ export const notificationService = {
     });
   },
 
-  async markRead(input: {
-    tenantId: string;
-    userId: string;
-    roleSlugs: string[];
-    notificationId: string;
-  }) {
-    const visible = await notificationRepository.findVisibleById({
-      tenantId: input.tenantId,
-      userId: input.userId,
-      roleSlugs: input.roleSlugs,
-      notificationId: input.notificationId,
-    });
+  async markRead(input: InboxViewer & { notificationId: string }) {
+    const visible = await notificationRepository.findVisibleById(input);
     if (!visible) {
       throw new Error("Notification not found");
     }
@@ -69,11 +53,7 @@ export const notificationService = {
     });
   },
 
-  markAllRead(input: {
-    tenantId: string;
-    userId: string;
-    roleSlugs: string[];
-  }) {
+  markAllRead(input: InboxViewer) {
     return notificationRepository.markAllRead(input);
   },
 };

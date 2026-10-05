@@ -1,8 +1,11 @@
+import { Prisma } from "@prisma/client";
+
 import {
   describeWriteError,
   SAP_SYNC_CHUNK,
   SAP_SYNC_WRITE_CONCURRENCY,
 } from "@/features/sap/services/sap-master-data";
+import { prisma } from "@/lib/database/client";
 import { mapWithConcurrency } from "@/lib/shared/concurrency";
 
 /**
@@ -94,4 +97,52 @@ export async function updateEach<TRow>(
     else updated += 1;
   }
   return { updated, failures };
+}
+
+/** The SAP-synced tables and the column each one is matched to SAP on. */
+const SAP_SEEN_TARGETS = {
+  product_models: "sku_code",
+  serial_numbers: "serial_no",
+  warehouses: "code",
+  branches: "sap_code",
+  service_centers: "sap_code",
+} as const;
+
+/**
+ * Stamp the rows a page named as seen by the current pass (see `SapSyncReconcile`).
+ *
+ * Raw SQL on purpose: Prisma's `updateMany` would also bump `updated_at`, and this runs
+ * over every row of every pass, so "last updated" would stop meaning anything. One
+ * statement per page, through the `(tenant_id, <key>)` unique index.
+ *
+ * `source` is for branches, which two syncs feed — it records which one owns the row.
+ */
+export async function markSapSeen(
+  table: keyof typeof SAP_SEEN_TARGETS,
+  tenantId: string,
+  keys: string[],
+  passMark: Date,
+  source?: string,
+): Promise<void> {
+  if (keys.length === 0) return;
+  const unique = [...new Set(keys)];
+  const keyColumn = Prisma.raw(`"${SAP_SEEN_TARGETS[table]}"`);
+  const setSource = source ? Prisma.sql`, "sap_sync_source" = ${source}` : Prisma.empty;
+
+  for (let i = 0; i < unique.length; i += SAP_SYNC_CHUNK) {
+    const chunk = unique.slice(i, i + SAP_SYNC_CHUNK);
+    await prisma.$executeRaw`
+      UPDATE ${Prisma.raw(`"${table}"`)}
+      SET "sap_synced_at" = ${passMark}${setSource}
+      WHERE "tenant_id" = ${tenantId} AND ${keyColumn} IN (${Prisma.join(chunk)})
+    `;
+  }
+}
+
+/** Rows a completed pass never stamped — the `where` every `retireUnseen` shares. */
+export function unseenSince(passMark: Date) {
+  return {
+    deletedAt: null,
+    OR: [{ sapSyncedAt: null }, { sapSyncedAt: { lt: passMark } }],
+  };
 }

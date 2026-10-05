@@ -71,7 +71,7 @@ export const serialNumberSyncEntity: SapSyncEntity<SerialRecord, ModelIndex> = {
    * that reads like SAP had nothing to send.
    */
   async prepare(tenantId) {
-    const models = await serialNumberRepository.listModelOptions(tenantId);
+    const models = await serialNumberRepository.listSapSyncModelKeys(tenantId);
     if (models.length === 0) {
       throw new Error(
         "No product models in ISMS yet. Serial numbers link to a model, so sync Models " +
@@ -102,6 +102,22 @@ export const serialNumberSyncEntity: SapSyncEntity<SerialRecord, ModelIndex> = {
 
   applyPage(tenantId, records) {
     return serialNumberRepository.applySapSyncPage(tenantId, records);
+  },
+
+  /**
+   * Every ISMS serial belongs to a model, and every model's item code is walked, so a
+   * completed pass has seen every serial SAP still holds for ISMS's items — anything left
+   * unstamped is gone from SAP.
+   */
+  reconcile: {
+    markSeen: (tenantId, records, passMark) =>
+      serialNumberRepository.markSapSyncSeen(
+        tenantId,
+        records.map((record) => record.serialNo),
+        passMark,
+      ),
+    retireUnseen: (tenantId, passMark) =>
+      serialNumberRepository.retireUnseenSapSerials(tenantId, passMark),
   },
 };
 

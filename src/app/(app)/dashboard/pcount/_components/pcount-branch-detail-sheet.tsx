@@ -191,21 +191,26 @@ export function PcountBranchDetailSheet({
                     No count sessions for this branch yet.
                   </p>
                 ) : (
-                  <div className="overflow-x-auto rounded-lg border border-border/60">
-                    <Table>
+                  <div className="overflow-x-auto rounded-lg border border-border bg-card">
+                    <Table scrollContainer={false}>
                       <TableHeader>
-                        <TableRow>
-                          <TableHead>Session</TableHead>
-                          <TableHead>By</TableHead>
-                          <TableHead>Counting</TableHead>
-                          <TableHead>Posting</TableHead>
-                          <TableHead>Closed</TableHead>
-                          <TableHead>SAP doc</TableHead>
+                        <TableRow className="border-b bg-muted hover:bg-muted">
+                          <TableHead className="bg-muted">Session</TableHead>
+                          <TableHead className="bg-muted">By</TableHead>
+                          <TableHead className="bg-muted">Counting</TableHead>
+                          <TableHead className="bg-muted">Posting</TableHead>
+                          <TableHead className="bg-muted">Closed</TableHead>
+                          <TableHead className="bg-muted">SAP doc</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {detail.sessions.map((session) => (
-                          <TableRow key={session.id}>
+                        {detail.sessions.map((session, index) => (
+                          <TableRow
+                            key={session.id}
+                            className={
+                              index % 2 === 1 ? "bg-table-stripe" : "bg-card"
+                            }
+                          >
                             <TableCell>
                               <Link
                                 href={`/inventory/stock-count/${session.id}`}

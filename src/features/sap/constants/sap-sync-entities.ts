@@ -7,8 +7,7 @@ import { warehouseSyncEntity } from "@/features/warehouses/services/warehouse-sa
 import type { SapSyncEntity } from "@/features/sap/types/sap-sync-entity";
 
 /**
- * Every SAP → ISMS master-data sync, in the order a scheduled run should work through
- * them.
+ * Every SAP → ISMS master-data sync, in the order they should be run.
  *
  * The order is a dependency order, not a preference: a serial number cannot be stored
  * without its product model, so `Items` is read before `SerialNumberDetails` and a serial

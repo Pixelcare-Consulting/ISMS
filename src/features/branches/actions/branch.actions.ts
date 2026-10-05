@@ -109,18 +109,3 @@ export async function syncBranchesFromSapWarehousesAction() {
     return { error: e instanceof Error ? e.message : "Failed to sync branches from SAP" };
   }
 }
-
-export async function deleteBranchAction(branchId: string) {
-  const session = await requirePermission("branches.manage");
-  try {
-    await branchService.deleteBranch({
-      tenantId: session.user.tenantId,
-      actorUserId: session.user.id,
-      branchId,
-    });
-    revalidatePath("/settings/branches");
-    return { success: true as const, branchId };
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : "Failed to delete branch" };
-  }
-}

@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/database/client";
 import {
   createInChunks,
+  markSapSeen,
+  unseenSince,
   updateEach,
   type SapWriteFailure,
 } from "@/features/sap/services/sap-sync-writer";
@@ -216,13 +218,6 @@ export const branchRepository = {
     });
   },
 
-  softDelete(tenantId: string, id: string) {
-    return prisma.branch.update({
-      where: { id, tenantId },
-      data: { deletedAt: new Date() },
-    });
-  },
-
   /** Bulk lookup for the CSV import — one query instead of one per row. */
   findManyBySapCodes(tenantId: string, sapCodes: string[]) {
     return prisma.branch.findMany({
@@ -278,8 +273,9 @@ export const branchRepository = {
    * Apply one page of a SAP branch sync, matched on `sapCode`.
    *
    * Soft-deleted branches are looked up too, because they still occupy their sapCode
-   * slot: re-creating over one would collide, so it is reported instead of silently
-   * reviving a branch someone chose to remove.
+   * slot. One SAP returns active again is restored — undeleted and set `active` — and
+   * one SAP marks inactive is soft-deleted and set `inactive`. Otherwise status stays
+   * ISMS-managed: a live branch's status is never touched.
    *
    * Not wrapped in a transaction. Each page is independently valid — the cursor only
    * advances once its page is written — and an interactive transaction pins a single
@@ -287,7 +283,7 @@ export const branchRepository = {
    */
   async applySapSyncPage(
     tenantId: string,
-    records: { sapCode: string; name: string }[],
+    records: { sapCode: string; name: string; isInactive?: boolean }[],
   ): Promise<SapSyncApplyResult> {
     // Paged by Code, so a repeat within a page would be a SAP anomaly; first wins.
     const rows = [...new Map(records.map((row) => [row.sapCode, row])).values()];
@@ -300,27 +296,40 @@ export const branchRepository = {
 
     const failures: SapWriteFailure[] = [];
     const toCreate: { sapCode: string; name: string }[] = [];
-    const toUpdate: { id: string; sapCode: string; name: string }[] = [];
+    const toUpdate: {
+      id: string;
+      sapCode: string;
+      name: string;
+      /** Only set when the row moves between live and soft-deleted. */
+      lifecycle?: { deletedAt: Date | null; status: BranchStatus };
+    }[] = [];
     let unchanged = 0;
 
     for (const row of rows) {
       const match = bySapCode.get(row.sapCode);
+      const fields = { sapCode: row.sapCode, name: row.name };
       if (!match) {
-        toCreate.push(row);
+        // Don't create dead master data.
+        if (row.isInactive) {
+          failures.push({ reason: "Inactive in SAP — not imported", example: row.sapCode });
+        } else {
+          toCreate.push(fields);
+        }
         continue;
       }
-      if (match.deletedAt) {
-        failures.push({
-          reason: "Matches a deleted ISMS branch — restore it before syncing",
-          example: row.sapCode,
-        });
-        continue;
+
+      let lifecycle: { deletedAt: Date | null; status: BranchStatus } | undefined;
+      if (row.isInactive && !match.deletedAt) {
+        lifecycle = { deletedAt: new Date(), status: "inactive" };
+      } else if (!row.isInactive && match.deletedAt) {
+        lifecycle = { deletedAt: null, status: "active" };
       }
-      if (match.name === row.name) {
+
+      if (match.name === row.name && !lifecycle) {
         unchanged += 1;
         continue;
       }
-      toUpdate.push({ id: match.id, ...row });
+      toUpdate.push({ id: match.id, ...fields, lifecycle });
     }
 
     const inserted = await createInChunks(toCreate, {
@@ -340,7 +349,7 @@ export const branchRepository = {
       updateOne: async (row) => {
         await prisma.branch.update({
           where: { id: row.id, tenantId },
-          data: { name: row.name },
+          data: { name: row.name, ...row.lifecycle },
         });
       },
       describe: (row) => row.sapCode,
@@ -352,6 +361,39 @@ export const branchRepository = {
       unchanged,
       failures: [...failures, ...inserted.failures, ...changed.failures],
     };
+  },
+
+  /** Stamp branches as seen by `source`'s current pass, and as owned by that sync. */
+  markSapSyncSeen(tenantId: string, sapCodes: string[], passMark: Date, source: string) {
+    return markSapSeen("branches", tenantId, sapCodes, passMark, source);
+  },
+
+  /**
+   * Soft-delete (and deactivate) branches a completed pass of `source` no longer found.
+   *
+   * Branches have two SAP sources, so each sync only retires the rows it owns — otherwise
+   * a pass of one would retire every branch the other one brought in. Rows no sync has
+   * ever claimed (created by hand or by import) are retired by `claimsUnowned`'s sync.
+   */
+  async retireUnseenSapBranches(
+    tenantId: string,
+    passMark: Date,
+    source: string,
+    claimsUnowned: boolean,
+  ): Promise<number> {
+    const { count } = await prisma.branch.updateMany({
+      where: {
+        tenantId,
+        ...unseenSince(passMark),
+        AND: [
+          claimsUnowned
+            ? { OR: [{ sapSyncSource: source }, { sapSyncSource: null }] }
+            : { sapSyncSource: source },
+        ],
+      },
+      data: { deletedAt: new Date(), status: "inactive" },
+    });
+    return count;
   },
 
   findModelsBySkuCodes(tenantId: string, skuCodes: string[]) {
@@ -408,7 +450,10 @@ export const branchRepository = {
         where: { tenantId, deletedAt: null, status: "active" },
         orderBy: { name: "asc" },
       }),
-      prisma.warehouse.findMany({ where: { tenantId }, orderBy: { name: "asc" } }),
+      prisma.warehouse.findMany({
+        where: { tenantId, deletedAt: null },
+        orderBy: { name: "asc" },
+      }),
       prisma.region.findMany({ where: { tenantId }, orderBy: { name: "asc" } }),
       prisma.province.findMany({ where: { tenantId }, orderBy: { name: "asc" } }),
       prisma.branch.findMany({

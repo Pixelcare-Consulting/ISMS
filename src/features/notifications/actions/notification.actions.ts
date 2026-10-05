@@ -18,6 +18,7 @@ function sessionInboxContext(session: Awaited<ReturnType<typeof requireAuth>>) {
     tenantId: session.user.tenantId,
     userId: session.user.id,
     roleSlugs: session.user.roleSlugs ?? [],
+    permissions: session.user.permissions ?? [],
   };
 }
 

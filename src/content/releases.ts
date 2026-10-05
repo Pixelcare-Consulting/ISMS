@@ -52,6 +52,22 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.49.5",
+    date: "2026-09-29",
+    releasedAt: "2026-09-29T18:30:00+08:00",
+    title: "P-Count tables easier to read",
+    highlights: [
+      "P-Count Dashboard dealer lists and Session history in the branch drawer now have solid headers and clearer row shading so rows no longer look see-through.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "P-Count Dashboard branch tables and Session history use solid header and row backgrounds so status rows are easy to scan against the white card.",
+      },
+    ],
+  },
+  {
     version: "0.49.4",
     date: "2026-09-29",
     releasedAt: "2026-09-29T14:55:00+08:00",

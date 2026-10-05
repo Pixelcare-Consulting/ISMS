@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/database/client";
 import {
   createInChunks,
+  markSapSeen,
+  unseenSince,
   updateEach,
   type SapWriteFailure,
 } from "@/features/sap/services/sap-sync-writer";
@@ -65,17 +67,17 @@ export const serviceCenterRepository = {
     });
   },
 
-  softDelete(tenantId: string, id: string) {
-    return prisma.serviceCenter.update({
-      where: { id, tenantId },
-      data: { deletedAt: new Date() },
-    });
-  },
-
   deleteLocation(id: string) {
     return prisma.serviceCenterLocation.delete({ where: { id } });
   },
 
+  /**
+   * Apply one page of a SAP cost-centre sync, matched on `sapCode`.
+   *
+   * The fetch only returns active dimension-5 centres, so a soft-deleted match is one SAP
+   * has brought back: it is restored and set `active`. A live centre's status stays
+   * ISMS-managed and is never touched.
+   */
   async applySapSyncPage(
     tenantId: string,
     records: { sapCode: string; name: string }[],
@@ -91,7 +93,7 @@ export const serviceCenterRepository = {
 
     const failures: SapWriteFailure[] = [];
     const toCreate: { sapCode: string; name: string }[] = [];
-    const toUpdate: { id: string; sapCode: string; name: string }[] = [];
+    const toUpdate: { id: string; sapCode: string; name: string; restore: boolean }[] = [];
     let unchanged = 0;
 
     for (const row of rows) {
@@ -100,20 +102,12 @@ export const serviceCenterRepository = {
         toCreate.push(row);
         continue;
       }
-      // Soft-deleted rows still hold the unique sapCode, so writing through one would
-      // fail on the constraint anyway. Say so rather than letting it read as a SAP error.
-      if (match.deletedAt) {
-        failures.push({
-          reason: "Matches a deleted ISMS service centre — restore it before syncing",
-          example: row.sapCode,
-        });
-        continue;
-      }
-      if (match.name === row.name) {
+      const restore = match.deletedAt !== null;
+      if (match.name === row.name && !restore) {
         unchanged += 1;
         continue;
       }
-      toUpdate.push({ id: match.id, ...row });
+      toUpdate.push({ id: match.id, ...row, restore });
     }
 
     const inserted = await createInChunks(toCreate, {
@@ -129,13 +123,15 @@ export const serviceCenterRepository = {
       describe: (row) => row.sapCode,
     });
 
-    // Name only: status is ISMS-managed, so a sync never revives a centre an admin
-    // deactivated.
+    // Name only for a live centre: status is ISMS-managed, so a sync never revives a
+    // centre an admin deactivated. Only a restore resets it.
     const changed = await updateEach(toUpdate, {
       updateOne: async (row) => {
         await prisma.serviceCenter.update({
           where: { id: row.id, tenantId },
-          data: { name: row.name },
+          data: row.restore
+            ? { name: row.name, deletedAt: null, status: "active" }
+            : { name: row.name },
         });
       },
       describe: (row) => row.sapCode,
@@ -147,5 +143,21 @@ export const serviceCenterRepository = {
       unchanged,
       failures: [...failures, ...inserted.failures, ...changed.failures],
     };
+  },
+
+  markSapSyncSeen(tenantId: string, sapCodes: string[], passMark: Date) {
+    return markSapSeen("service_centers", tenantId, sapCodes, passMark);
+  },
+
+  /**
+   * Soft-delete (and deactivate) centres a completed pass no longer found — deleted in
+   * SAP, made inactive, or moved off dimension 5.
+   */
+  async retireUnseenSapServiceCenters(tenantId: string, passMark: Date): Promise<number> {
+    const { count } = await prisma.serviceCenter.updateMany({
+      where: { tenantId, ...unseenSince(passMark) },
+      data: { deletedAt: new Date(), status: "inactive" },
+    });
+    return count;
   },
 };
