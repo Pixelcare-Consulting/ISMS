@@ -52,6 +52,7 @@ interface PlanogramRow {
   id: string;
   maxQty: number;
   effectiveFrom?: string | null;
+  onHandQty: number | null;
   stockCount: number;
   ditCount: number;
   daysThreshold: number | null;
@@ -65,6 +66,14 @@ interface PlanogramRow {
     brand: { name: string } | null;
   };
 }
+
+/** SAP on-hand, read-only. Null means the branch's stock has not been read from SAP yet. */
+function formatOnHand(qty: number | null): string {
+  return qty == null ? "—" : qty.toLocaleString();
+}
+
+const ON_HAND_HINT =
+  "On hand in SAP for this branch. Updated by the Models and Serial numbers syncs; not editable.";
 
 function messageForAddEmptyReason(reason: PlanogramAddEmptyReason): string {
   switch (reason) {
@@ -117,6 +126,7 @@ export function PlanogramTable({
     sku: (row) => row.model.skuCode,
     model: (row) => row.model.name,
     series: (row) => row.model.series,
+    onHand: (row) => row.onHandQty ?? -1,
   });
 
   const suggestions = useMemo(
@@ -130,7 +140,7 @@ export function PlanogramTable({
     [rows],
   );
 
-  const colCount = canManage ? 6 : 5;
+  const colCount = canManage ? 7 : 6;
 
   function handleRemove() {
     if (!deleting) return;
@@ -189,6 +199,13 @@ export function PlanogramTable({
                 <GlobalTableHead {...sort.sortProps("sku")}>SKU</GlobalTableHead>
                 <GlobalTableHead {...sort.sortProps("model")}>Model</GlobalTableHead>
                 <GlobalTableHead {...sort.sortProps("series")}>Series</GlobalTableHead>
+                <GlobalTableHead
+                  {...sort.sortProps("onHand")}
+                  className="w-28 text-right"
+                  title={ON_HAND_HINT}
+                >
+                  On hand
+                </GlobalTableHead>
                 <TableHead className="w-28">Units</TableHead>
                 {canManage ? <TableHead className="w-24" /> : null}
               </TableRow>
@@ -275,6 +292,7 @@ function PlanogramRowEditor({
       <TableCell className="font-mono text-sm">{row.model.skuCode}</TableCell>
       <TableCell>{row.model.name}</TableCell>
       <TableCell>{row.model.series ?? "—"}</TableCell>
+      <TableCell className="text-right tabular-nums">{formatOnHand(row.onHandQty)}</TableCell>
       <TableCell>
         <Button variant="link" size="sm" className="h-auto p-0" asChild>
           <Link href={inventoryHref}>View units</Link>
@@ -305,10 +323,10 @@ function AddPlanogramDialog({
   const [pending, startTransition] = useTransition();
   const [loading, setLoading] = useState(true);
   const [models, setModels] = useState<
-    { id: string; skuCode: string; name: string }[]
+    { id: string; skuCode: string; name: string; onHandQty: number | null }[]
   >([]);
   const [modelId, setModelId] = useState("");
-  const [maxQty, setMaxQty] = useState("1");
+  const selectedModel = models.find((m) => m.id === modelId);
   const [emptyReason, setEmptyReason] = useState<PlanogramAddEmptyReason | null>(
     null,
   );
@@ -321,7 +339,14 @@ function AddPlanogramDialog({
       try {
         const result = await listActiveModelsForPlanogramAction(branchId);
         if (cancelled) return;
-        setModels(result.models.map((m) => ({ id: m.id, skuCode: m.skuCode, name: m.name })));
+        setModels(
+          result.models.map((m) => ({
+            id: m.id,
+            skuCode: m.skuCode,
+            name: m.name,
+            onHandQty: m.onHandQty,
+          })),
+        );
         setModelId(result.models[0]?.id ?? "");
         setEmptyReason(result.emptyReason);
       } catch (error) {
@@ -340,17 +365,10 @@ function AddPlanogramDialog({
   }, [branchId]);
 
   function submit() {
-    const parsedQty = Number.parseInt(maxQty, 10);
-    if (!Number.isInteger(parsedQty) || parsedQty < 1) {
-      toast.error("Max quantity must be at least 1");
-      return;
-    }
-
     startTransition(async () => {
       const result = await addPlanogramModelAction({
         branchId,
         modelId,
-        maxQty: parsedQty,
         daysThreshold: 30,
       });
       if ("emptyReason" in result && result.emptyReason) {
@@ -387,16 +405,19 @@ function AddPlanogramDialog({
                 searchPlaceholder="Search models…"
               />
               <div className="space-y-2">
-                <Label htmlFor="add-planogram-max-qty">Max qty</Label>
+                <Label htmlFor="add-planogram-on-hand">On hand (SAP)</Label>
                 <Input
-                  id="add-planogram-max-qty"
-                  type="number"
-                  min={1}
-                  step={1}
-                  value={maxQty}
-                  onChange={(e) => setMaxQty(e.target.value)}
-                  disabled={pending}
+                  id="add-planogram-on-hand"
+                  value={selectedModel ? formatOnHand(selectedModel.onHandQty) : "—"}
+                  readOnly
+                  disabled
+                  className="tabular-nums"
                 />
+                <p className="text-xs text-muted-foreground">
+                  {selectedModel?.onHandQty == null
+                    ? "Not read from SAP yet — run the Models sync to fill it in."
+                    : ON_HAND_HINT}
+                </p>
               </div>
             </>
           ) : (

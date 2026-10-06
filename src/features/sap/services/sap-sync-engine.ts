@@ -142,7 +142,7 @@ function pageEndKey(rows: Record<string, unknown>[], entity: SapSyncEntity): str
 }
 
 /** Collect skips by reason — at four million rows a per-row list is unreadable. */
-class SkipTally {
+export class SkipTally {
   private readonly byReason = new Map<string, { count: number; examples: Set<string> }>();
 
   add(reason: string, example?: string | null) {

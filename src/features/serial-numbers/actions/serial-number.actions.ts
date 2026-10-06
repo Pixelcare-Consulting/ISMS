@@ -123,6 +123,12 @@ export async function syncSerialNumbersFromSapAction() {
       { budgetMs: 45_000 },
     );
     revalidatePath(SERIAL_NUMBERS_ROUTE);
+    // A completed pass places Stock units and refreshes planogram on-hand.
+    if (result.caughtUp) {
+      revalidatePath("/inventory");
+      revalidatePath("/settings/planogram", "layout");
+      revalidatePath("/settings/branches/[branchId]/planogram", "page");
+    }
     return { success: true as const, result };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to sync serial numbers from SAP" };

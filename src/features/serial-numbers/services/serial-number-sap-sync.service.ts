@@ -1,3 +1,4 @@
+import { sapBranchStockService } from "@/features/inventory/services/sap-branch-stock.service";
 import { sapText } from "@/features/sap/services/sap-master-data";
 import { runSapSync } from "@/features/sap/services/sap-sync-engine";
 import type { SapSyncEntity } from "@/features/sap/types/sap-sync-entity";
@@ -129,15 +130,17 @@ export const serialNumberSapSyncService = {
    * takes several runs, and `caughtUp` says whether SAP has more. The cron calls this
    * repeatedly until it does.
    *
-   * Registry only — no inventory is created. A synced serial exists with no branch or
-   * warehouse location until something in ISMS places it.
+   * The run that completes a pass then places the serials SAP holds on hand at each
+   * branch into Stock units — see `sapBranchStockService`. Warehouse and service-centre
+   * stock is not placed.
    */
-  syncFromSap(
+  async syncFromSap(
     tenantId: string,
     /** Null for scheduled runs — `AuditLog.userId` is nullable and means "not a person". */
     actorUserId: string | null,
     options?: { budgetMs?: number },
   ): Promise<SapSyncResult> {
-    return runSapSync(tenantId, serialNumberSyncEntity, actorUserId, options);
+    const result = await runSapSync(tenantId, serialNumberSyncEntity, actorUserId, options);
+    return sapBranchStockService.afterSerialSync(tenantId, actorUserId, result);
   },
 };
