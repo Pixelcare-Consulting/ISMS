@@ -351,7 +351,8 @@ export const stockAuditService = {
     const surplusLines = session.lines.filter(
       (l) => l.status === "counted" && !l.expectedInCount,
     );
-    const varianceCount = missingLines.length + surplusLines.length;
+    const varianceCount =
+      missingLines.length + surplusLines.length + session.variances.length;
     const nextStatus: StockCountSessionStatus =
       varianceCount > 0 ? "variances_under_investigation" : "counting_complete";
 

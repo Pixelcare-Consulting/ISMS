@@ -265,6 +265,13 @@ export const appNavigation: NavEntry[] = [
     icon: Package,
     items: [
       {
+        href: "/inventory/monthly-sir",
+        label: "Monthly SIR",
+        icon: ClipboardList,
+        permission: "inventory.view",
+        badge: "new",
+      },
+      {
         href: "/inventory",
         label: "Stock units",
         icon: Package,
