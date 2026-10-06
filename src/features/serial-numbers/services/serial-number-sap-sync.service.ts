@@ -102,7 +102,10 @@ const serialSyncDescriptor: SapSyncEntity<SerialRecord, SerialContext> = {
   },
 
   async applyPage(tenantId, records, context) {
-    const result = await serialNumberRepository.applySapSyncPage(tenantId, records);
+    const result = await serialNumberRepository.applySapSyncPage(
+      tenantId,
+      records.map(({ serialNo, modelId }) => ({ serialNo, modelId })),
+    );
     if (!context?.placement) return result;
     // Placed straight after the write, so Stock units fill in batch by batch.
     const failures = await context.placement.placePage(records);

@@ -27,6 +27,7 @@ jest.mock("@/features/sap/services/sap-sync-engine", () => ({
 }));
 
 import { sapStockPlacementService } from "@/features/inventory/services/sap-stock-placement.service";
+import { serialNumberRepository } from "@/features/serial-numbers/repositories/serial-number.repository";
 import { serialNumberSapSyncService } from "@/features/serial-numbers/services/serial-number-sap-sync.service";
 
 const beginRun = sapStockPlacementService.beginRun as jest.Mock;
@@ -48,6 +49,17 @@ it("places each written page and reports the batch's stock", async () => {
   ]);
   expect(result.notes).toEqual(["Stock from SAP for this batch: 2 added"]);
   expect(result.created).toBe(2);
+});
+
+it("writes serials with only their own columns — placement fields never reach Prisma", async () => {
+  beginRun.mockResolvedValue({ placePage: jest.fn().mockResolvedValue([]), finish: jest.fn().mockResolvedValue({ notes: [], skipped: [] }) });
+
+  await serialNumberSapSyncService.syncFromSap("t1", "u1");
+
+  expect(serialNumberRepository.applySapSyncPage).toHaveBeenCalledWith("t1", [
+    { serialNo: "SN1", modelId: "m1" },
+    { serialNo: "SN2", modelId: "m1" },
+  ]);
 });
 
 it("still syncs serials when placement cannot start, and says why", async () => {
