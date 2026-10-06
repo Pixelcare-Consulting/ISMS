@@ -52,7 +52,6 @@ interface PlanogramRow {
   id: string;
   maxQty: number;
   effectiveFrom?: string | null;
-  onHandQty: number | null;
   stockCount: number;
   ditCount: number;
   daysThreshold: number | null;
@@ -67,13 +66,13 @@ interface PlanogramRow {
   };
 }
 
-/** SAP on-hand, read-only. Null means the branch's stock has not been read from SAP yet. */
-function formatOnHand(qty: number | null): string {
+/** SAP on-hand, read-only. Null means SAP could not be read. */
+function formatQty(qty: number | null): string {
   return qty == null ? "—" : qty.toLocaleString();
 }
 
-const ON_HAND_HINT =
-  "On hand in SAP for this branch. Updated by the Models and Serial numbers syncs; not editable.";
+const QTY_HINT =
+  "SAP's In Stock for this model at this branch. Set by the Models and Serial numbers syncs; not editable.";
 
 function messageForAddEmptyReason(reason: PlanogramAddEmptyReason): string {
   switch (reason) {
@@ -126,7 +125,7 @@ export function PlanogramTable({
     sku: (row) => row.model.skuCode,
     model: (row) => row.model.name,
     series: (row) => row.model.series,
-    onHand: (row) => row.onHandQty ?? -1,
+    qty: (row) => row.maxQty,
   });
 
   const suggestions = useMemo(
@@ -200,11 +199,11 @@ export function PlanogramTable({
                 <GlobalTableHead {...sort.sortProps("model")}>Model</GlobalTableHead>
                 <GlobalTableHead {...sort.sortProps("series")}>Series</GlobalTableHead>
                 <GlobalTableHead
-                  {...sort.sortProps("onHand")}
-                  className="w-28 text-right"
-                  title={ON_HAND_HINT}
+                  {...sort.sortProps("qty")}
+                  className="w-24 text-right"
+                  title={QTY_HINT}
                 >
-                  On hand
+                  Qty
                 </GlobalTableHead>
                 <TableHead className="w-28">Units</TableHead>
                 {canManage ? <TableHead className="w-24" /> : null}
@@ -292,7 +291,7 @@ function PlanogramRowEditor({
       <TableCell className="font-mono text-sm">{row.model.skuCode}</TableCell>
       <TableCell>{row.model.name}</TableCell>
       <TableCell>{row.model.series ?? "—"}</TableCell>
-      <TableCell className="text-right tabular-nums">{formatOnHand(row.onHandQty)}</TableCell>
+      <TableCell className="text-right tabular-nums">{formatQty(row.maxQty)}</TableCell>
       <TableCell>
         <Button variant="link" size="sm" className="h-auto p-0" asChild>
           <Link href={inventoryHref}>View units</Link>
@@ -405,18 +404,18 @@ function AddPlanogramDialog({
                 searchPlaceholder="Search models…"
               />
               <div className="space-y-2">
-                <Label htmlFor="add-planogram-on-hand">On hand (SAP)</Label>
+                <Label htmlFor="add-planogram-qty">Qty</Label>
                 <Input
-                  id="add-planogram-on-hand"
-                  value={selectedModel ? formatOnHand(selectedModel.onHandQty) : "—"}
+                  id="add-planogram-qty"
+                  value={selectedModel ? formatQty(selectedModel.onHandQty) : "—"}
                   readOnly
                   disabled
                   className="tabular-nums"
                 />
                 <p className="text-xs text-muted-foreground">
-                  {selectedModel?.onHandQty == null
-                    ? "Not read from SAP yet — run the Models sync to fill it in."
-                    : ON_HAND_HINT}
+                  {selectedModel && selectedModel.onHandQty == null
+                    ? "SAP could not be read just now — the next Models sync sets it."
+                    : QTY_HINT}
                 </p>
               </div>
             </>

@@ -1,4 +1,4 @@
-import { sapBranchStockService } from "@/features/inventory/services/sap-branch-stock.service";
+import { sapStockPlacementService } from "@/features/inventory/services/sap-stock-placement.service";
 import { sapText } from "@/features/sap/services/sap-master-data";
 import { runSapSync } from "@/features/sap/services/sap-sync-engine";
 import type { SapSyncEntity } from "@/features/sap/types/sap-sync-entity";
@@ -122,17 +122,19 @@ export const serialNumberSyncEntity: SapSyncEntity<SerialRecord, ModelIndex> = {
   },
 };
 
+/** Budget for one call when the caller does not set one — matches the sync button's. */
+const DEFAULT_BUDGET_MS = 45_000;
+
 export const serialNumberSapSyncService = {
   /**
-   * Pull serial master data from SAP into the ISMS registry.
+   * Pull serial master data from SAP into the ISMS registry, then place SAP's on-hand
+   * stock into Stock units and Warehouse stock.
    *
    * One call is a slice of the work, not necessarily all of it: at ~4M rows a full pass
-   * takes several runs, and `caughtUp` says whether SAP has more. The cron calls this
-   * repeatedly until it does.
-   *
-   * The run that completes a pass then places the serials SAP holds on hand at each
-   * branch into Stock units — see `sapBranchStockService`. Warehouse and service-centre
-   * stock is not placed.
+   * takes several runs, and so does placement (one warehouse alone holds ~137k serials).
+   * `caughtUp` is true only once both are done; until then the sync button offers
+   * Continue, and each call picks up where the last one stopped — placement first if it
+   * is part-way through, otherwise the serial walk.
    */
   async syncFromSap(
     tenantId: string,
@@ -140,7 +142,34 @@ export const serialNumberSapSyncService = {
     actorUserId: string | null,
     options?: { budgetMs?: number },
   ): Promise<SapSyncResult> {
+    const budgetMs = options?.budgetMs ?? DEFAULT_BUDGET_MS;
+    if (await sapStockPlacementService.inProgress(tenantId)) {
+      return sapStockPlacementService.place(tenantId, actorUserId, budgetMs);
+    }
+
     const result = await runSapSync(tenantId, serialNumberSyncEntity, actorUserId, options);
-    return sapBranchStockService.afterSerialSync(tenantId, actorUserId, result);
+    if (!result.caughtUp) return result;
+
+    // The registry is current; place the stock built on it. A failure to start (no saved
+    // query, SAP down) is reported on the completed serial result rather than thrown.
+    try {
+      const placed = await sapStockPlacementService.place(tenantId, actorUserId, budgetMs);
+      return {
+        ...placed,
+        notes: [
+          `Serial numbers are up to date with SAP (${result.created.toLocaleString()} added, ` +
+            `${result.removed.toLocaleString()} removed)`,
+          ...(placed.notes ?? []),
+        ],
+        skipped: [...result.skipped, ...placed.skipped],
+      };
+    } catch (error) {
+      return {
+        ...result,
+        notes: [
+          `Stock was not placed from SAP: ${error instanceof Error ? error.message : String(error)}`,
+        ],
+      };
+    }
   },
 };

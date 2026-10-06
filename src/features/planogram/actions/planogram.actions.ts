@@ -88,7 +88,6 @@ export async function listActiveModelsForPlanogramAction(branchId: string) {
 const addSchema = z.object({
   branchId: z.string().min(1),
   modelId: z.string().min(1),
-  maxQty: z.number().int().min(1).optional(),
   daysThreshold: z.number().int().min(1).optional(),
 });
 

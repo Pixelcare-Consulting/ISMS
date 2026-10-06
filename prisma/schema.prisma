@@ -233,7 +233,6 @@ model Tenant {
   branchPlanograms            BranchPlanogram[]
   branchMilSettings           BranchMilSetting[]
   branchAllowedModels         BranchAllowedModel[]
-  branchStockLevels           BranchStockLevel[]
   branchOrders                BranchOrder[]
   branchDeliveries            BranchDelivery[]
   branchTransfers             BranchTransfer[]
@@ -656,7 +655,6 @@ model ProductModel {
   branchPlanograms                   BranchPlanogram[]
   branchMilSettings                  BranchMilSetting[]
   branchAllowedModels                BranchAllowedModel[]
-  branchStockLevels                  BranchStockLevel[]
   branchOrderDetails                 BranchOrderDetail[]
   branchAllocations                  BranchAllocation[]
   skuForecastTargets                 SkuForecastTarget[]
@@ -1250,7 +1248,6 @@ model Branch {
   branchPlanograms          BranchPlanogram[]
   branchMilSettings         BranchMilSetting[]
   branchAllowedModels       BranchAllowedModel[]
-  branchStockLevels         BranchStockLevel[]
   deliveryScheduleConfig    BranchDeliverySchedule?
   branchOrders              BranchOrder[]
   branchDeliveries          BranchDelivery[]
@@ -1647,27 +1644,6 @@ model BranchAllowedModel {
   @@unique([branchId, modelId])
   @@index([tenantId])
   @@map("branch_allowed_models")
-}
-
-/// SAP's on-hand quantity ("In Stock") per branch and model, refreshed by the Models and
-/// Serial numbers syncs from the `ISMS_SN_ONHAND` saved query. Read-only in ISMS — it is
-/// what the planogram shows as On hand, and is replaced wholesale per branch on each read.
-/// A missing row means SAP holds none of that model at the branch.
-model BranchStockLevel {
-  id        String   @id @default(cuid())
-  tenantId  String   @map("tenant_id")
-  branchId  String   @map("branch_id")
-  modelId   String   @map("model_id")
-  onHandQty Int      @map("on_hand_qty")
-  syncedAt  DateTime @map("synced_at")
-
-  tenant Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  branch Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  model  ProductModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
-
-  @@unique([branchId, modelId])
-  @@index([tenantId])
-  @@map("branch_stock_levels")
 }
 
 model BranchMilSetting {

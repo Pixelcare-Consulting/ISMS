@@ -4,8 +4,10 @@ jest.mock("@/features/sap/services/sap-service-layer-client", () => ({
 
 import {
   assertSapOnHandQueryInstalled,
+  countByItem,
+  fetchSapOnHandPage,
   fetchSapOnHandSerials,
-} from "@/features/sap/services/sap-branch-stock";
+} from "@/features/sap/services/sap-onhand-stock";
 import { sapServiceLayerClient } from "@/features/sap/services/sap-service-layer-client";
 import type { SapServiceLayerCredentials } from "@/features/sap/types/sap-service-layer";
 
@@ -58,6 +60,44 @@ describe("fetchSapOnHandSerials", () => {
     await expect(fetchSapOnHandSerials(creds, "ABB001")).rejects.toThrow(
       "Table 'OWHS' not accessible",
     );
+  });
+});
+
+describe("fetchSapOnHandPage", () => {
+  it("resumes at a saved $skip and returns the next one from nextLink", async () => {
+    request.mockResolvedValueOnce(
+      ok({
+        value: [{ ItemCode: "32STV105", DistNumber: "SN3" }],
+        "odata.nextLink": "SQLQueries('ISMS_SN_ONHAND')/List?whs='FWH14P1F'&$skip=6000",
+      }),
+    );
+
+    const page = await fetchSapOnHandPage(creds, "FWH14P1F", 4000);
+
+    expect(request.mock.calls[0][0].path).toBe(
+      "/SQLQueries('ISMS_SN_ONHAND')/List?whs='FWH14P1F'&$skip=4000",
+    );
+    expect(page).toEqual({ serials: [{ itemCode: "32STV105", serialNo: "SN3" }], nextSkip: 6000 });
+  });
+
+  it("reports the last page with a null nextSkip", async () => {
+    request.mockResolvedValueOnce(ok({ value: [] }));
+    await expect(fetchSapOnHandPage(creds, "FWH01SKD")).resolves.toEqual({
+      serials: [],
+      nextSkip: null,
+    });
+  });
+});
+
+describe("countByItem", () => {
+  it("counts units per item code", () => {
+    expect(
+      countByItem([
+        { itemCode: "A", serialNo: "1" },
+        { itemCode: "A", serialNo: "2" },
+        { itemCode: "B", serialNo: "3" },
+      ]),
+    ).toEqual(new Map([["A", 2], ["B", 1]]));
   });
 });
 

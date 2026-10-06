@@ -7,21 +7,19 @@ import type {
   PlanogramIndexKpis,
 } from "@/features/planogram/lib/planogram-index";
 import { planogramRepository } from "@/features/planogram/repositories/planogram.repository";
-import { PLANOGRAM_DEFAULT_MAX_QTY } from "@/features/planogram/schemas/planogram-import.schema";
-import { sapBranchStockRepository } from "@/features/inventory/repositories/sap-branch-stock.repository";
+import { sapStockPlacementService } from "@/features/inventory/services/sap-stock-placement.service";
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
 
 export interface PlanogramRow {
   id: string;
   branchId: string;
   modelId: string;
+  /**
+   * The planogram quantity: SAP's on-hand for this model at the branch, written by the
+   * Models and Serial numbers syncs and read-only in ISMS.
+   */
   maxQty: number;
   effectiveFrom: string | null;
-  /**
-   * SAP's on-hand for this model at the branch, read-only (`branch_stock_levels`). Null
-   * until the branch's stock has been read from SAP at least once.
-   */
-  onHandQty: number | null;
   stockCount: number;
   ditCount: number;
   daysThreshold: number | null;
@@ -50,7 +48,10 @@ export type ActiveModelForAdd = {
   skuCode: string;
   name: string;
   status: string;
-  /** SAP's on-hand at the branch — shown read-only when the model is picked. */
+  /**
+   * SAP's on-hand at the branch, read live — shown read-only when the model is picked and
+   * becomes the row's quantity. Null when SAP could not be read.
+   */
   onHandQty: number | null;
 };
 
@@ -66,21 +67,6 @@ export class PlanogramModelNotAllowedError extends Error {
     super("Model is not on this branch's allowed-models list");
     this.name = "PlanogramModelNotAllowedError";
   }
-}
-
-/**
- * SAP on-hand per model at a branch, or null for every model when the branch's stock has
- * never been read — so the UI can say "not synced" rather than a misleading 0.
- */
-async function loadOnHand(
-  tenantId: string,
-  branchId: string,
-): Promise<(modelId: string) => number | null> {
-  const [levels, syncedAt] = await Promise.all([
-    sapBranchStockRepository.stockLevelsForBranch(tenantId, branchId),
-    sapBranchStockRepository.stockLevelsSyncedAt(tenantId, branchId),
-  ]);
-  return (modelId) => (syncedAt ? (levels.get(modelId) ?? 0) : null);
 }
 
 function formatSrp(value: { toNumber?: () => number } | number | null | undefined) {
@@ -121,11 +107,10 @@ export const planogramService = {
   },
 
   async listPlanogram(tenantId: string, branchId: string): Promise<PlanogramRow[]> {
-    const [initialEntries, milSettings, ditCode, onHandFor] = await Promise.all([
+    const [initialEntries, milSettings, ditCode] = await Promise.all([
       planogramRepository.listByBranch(tenantId, branchId),
       planogramRepository.listMilByBranch(tenantId, branchId),
       reasonStatusRepository.findCodeId(tenantId, "inventory_system", "DIT"),
-      loadOnHand(tenantId, branchId),
     ]);
     let entries = initialEntries;
 
@@ -189,7 +174,6 @@ export const planogramService = {
           modelId: entry.modelId,
           maxQty: entry.maxQty,
           effectiveFrom: price.effectiveFrom,
-          onHandQty: onHandFor(entry.modelId),
           stockCount: stockByModel.get(entry.modelId) ?? 0,
           ditCount: ditByModel.get(entry.modelId) ?? 0,
           daysThreshold: milByModel.get(entry.modelId) ?? null,
@@ -212,17 +196,8 @@ export const planogramService = {
     actorUserId: string;
     branchId: string;
     modelId: string;
-    /**
-     * Shelf capacity. Not asked of the user any more — the planogram's quantity is SAP's
-     * on-hand, read-only — so this takes the default unless a caller supplies one.
-     */
-    maxQty?: number;
     daysThreshold?: number;
   }) {
-    const maxQty = input.maxQty ?? PLANOGRAM_DEFAULT_MAX_QTY;
-    if (maxQty < 1) {
-      throw new Error("Max quantity must be at least 1");
-    }
 
     const model = await masterDataRepository.findModel(input.tenantId, input.modelId);
     if (!model) throw new Error(`Model not found: ${input.modelId} (tenant: ${input.tenantId})`);
@@ -243,6 +218,14 @@ export const planogramService = {
       input.modelId,
     );
     if (existing) throw new Error("Model is already on this branch planogram");
+
+    // The quantity is SAP's on-hand, not something the user types. If SAP cannot be read
+    // right now the row starts at 0 and the next Models or Serial numbers sync sets it.
+    const onHand = await sapStockPlacementService.branchQtyByModel(
+      input.tenantId,
+      input.branchId,
+    );
+    const maxQty = onHand?.get(input.modelId) ?? 0;
 
     const entry = await planogramRepository.createEntry(input.tenantId, {
       branchId: input.branchId,
@@ -368,7 +351,7 @@ export const planogramService = {
     tenantId: string,
     branchId: string,
   ): Promise<ActiveModelsForAddResult> {
-    const [models, entries, allowedModelIds, onHandFor] = await Promise.all([
+    const [models, entries, allowedModelIds] = await Promise.all([
       masterDataRepository.listModels(tenantId) as Promise<
         { id: string; skuCode: string; name: string; status: string }[]
       >,
@@ -376,7 +359,6 @@ export const planogramService = {
         { modelId: string }[]
       >,
       planogramRepository.listAllowedModelIds(tenantId, branchId),
-      loadOnHand(tenantId, branchId),
     ]);
 
     const onPlanogram = new Set(entries.map((e) => e.modelId));
@@ -385,13 +367,14 @@ export const planogramService = {
     const available = allowedActive.filter((m) => !onPlanogram.has(m.id));
 
     if (available.length > 0) {
+      const onHand = await sapStockPlacementService.branchQtyByModel(tenantId, branchId);
       return {
         models: available.map((m) => ({
           id: m.id,
           skuCode: m.skuCode,
           name: m.name,
           status: m.status,
-          onHandQty: onHandFor(m.id),
+          onHandQty: onHand ? (onHand.get(m.id) ?? 0) : null,
         })),
         emptyReason: null,
       };
