@@ -345,7 +345,7 @@ export const monthlySirService = {
       throw new Error(`Unknown serials: ${preview.invalidSerials.join(", ")}`);
     }
     if (preview.invalidStatuses.length > 0) {
-      throw new Error(`Invalid pCOUNT statuses: ${preview.invalidStatuses.join(", ")}`);
+      throw new Error(`Invalid P-COUNT statuses: ${preview.invalidStatuses.join(", ")}`);
     }
 
     const rows = await parseMonthlySirUpload(input.file);
@@ -400,7 +400,7 @@ export const monthlySirService = {
 
       await prisma.stockCountLine.update({
         where: { id: lineId },
-        data: { notes: `pCOUNT: ${row.pcount}` },
+        data: { notes: `P-COUNT: ${row.pcount}` },
       });
       const systemCode = existing?.branchInventory?.statusCode.code.toUpperCase();
       if (existing?.expectedInCount && systemCode && systemCode !== row.pcount) {
@@ -416,7 +416,7 @@ export const monthlySirService = {
               lineId,
               varianceType: "status_mismatch",
               status: "open",
-              description: `System ${systemCode}; pCOUNT ${row.pcount}`,
+              description: `System ${systemCode}; P-COUNT ${row.pcount}`,
             },
           }),
         ]);

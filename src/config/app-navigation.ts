@@ -277,12 +277,14 @@ export const appNavigation: NavEntry[] = [
         icon: Package,
         exact: true,
         permission: "inventory.view",
+        badge: "new",
       },
       {
         href: "/inventory/stock-count",
         label: "P-Count",
         icon: ClipboardList,
         permission: "inventory.view",
+        badge: "new",
       },
       {
         href: "/inventory/serial-numbers",

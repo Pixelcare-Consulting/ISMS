@@ -39,7 +39,11 @@ import {
   reviewMonthlySirRequestAction,
   validateMonthlySirScansAction,
 } from "@/features/monthly-sir/actions/monthly-sir.actions";
-import { MONTHLY_SIR_STATUS_LABELS } from "@/features/monthly-sir/constants/monthly-sir";
+import {
+  MONTHLY_SIR_STATUS_LABELS,
+  MONTHLY_SIR_STATUS_VARIANTS,
+} from "@/features/monthly-sir/constants/monthly-sir";
+import { cn } from "@/utils/cn";
 
 const XLSX_MIME =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -190,7 +194,7 @@ export function MonthlySirPanel({
       }
       downloadWorkbook(result.base64, result.filename);
     } catch {
-      toast.error("Failed to prepare the pCOUNT template");
+      toast.error("Failed to prepare the P-COUNT template");
     } finally {
       setDownloadKind(null);
     }
@@ -288,9 +292,9 @@ export function MonthlySirPanel({
         return;
       }
       downloadWorkbook(result.base64, result.filename);
-      toast.success("Filled pCOUNT Excel is ready. Upload it when reviewed.");
+      toast.success("Filled P-COUNT Excel is ready. Upload it when reviewed.");
     } catch {
-      toast.error("Failed to build the pCOUNT Excel file");
+      toast.error("Failed to build the P-COUNT Excel file");
     } finally {
       setDownloadKind(null);
     }
@@ -326,7 +330,7 @@ export function MonthlySirPanel({
         toast.error(result.error);
         return;
       }
-      toast.success(`Applied ${result.rowCount} pCOUNT rows and generated variances`);
+      toast.success(`Applied ${result.rowCount} P-COUNT rows and generated variances`);
       setUploadRow(null);
       setUploadFile(null);
       setPreview(null);
@@ -365,7 +369,7 @@ export function MonthlySirPanel({
           />
         </div>
         <Button onClick={() => setRequestOpen(true)}>
-          Request to upload PCOUNT
+          Request to upload P-COUNT
         </Button>
       </div>
 
@@ -403,7 +407,15 @@ export function MonthlySirPanel({
                   <TableCell className="max-w-65 whitespace-normal">{row.purpose}</TableCell>
                   <TableCell>{new Date(row.createdAt).toLocaleDateString()}</TableCell>
                   <TableCell>
-                    <Badge variant="outline">{MONTHLY_SIR_STATUS_LABELS[row.status]}</Badge>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "font-normal",
+                        MONTHLY_SIR_STATUS_VARIANTS[row.status],
+                      )}
+                    >
+                      {MONTHLY_SIR_STATUS_LABELS[row.status]}
+                    </Badge>
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-2">
@@ -440,7 +452,7 @@ export function MonthlySirPanel({
                                 variant="outline"
                                 onClick={() => setUploadRow(row)}
                               >
-                                Upload PCOUNT
+                                Upload P-COUNT
                               </Button>
                             </>
                           ) : (
@@ -497,7 +509,7 @@ export function MonthlySirPanel({
           <DialogHeader>
             <DialogTitle>Request Monthly SIR</DialogTitle>
             <DialogDescription>
-              Submit a branch PCOUNT request for Team Leader approval.
+              Submit a branch P-COUNT request for Team Leader approval.
             </DialogDescription>
           </DialogHeader>
           <SearchableSelect
@@ -561,7 +573,7 @@ export function MonthlySirPanel({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Upload PCOUNT file</DialogTitle>
+            <DialogTitle>Upload P-COUNT file</DialogTitle>
             <DialogDescription>
               Preview validates serials and status codes before completing the linked count.
             </DialogDescription>
@@ -623,9 +635,9 @@ export function MonthlySirPanel({
           <DialogHeader>
             <DialogTitle>Scan serials</DialogTitle>
             <DialogDescription>
-              Keep the cursor in the field and scan with a USB barcode scanner.
+              Keep the cursor in the field and scan with a scanner.
               Each Enter adds one serial. Build the Excel file, review it, then use
-              Upload PCOUNT.
+              Upload P-COUNT.
             </DialogDescription>
           </DialogHeader>
           <form className="flex gap-2" onSubmit={addScan}>

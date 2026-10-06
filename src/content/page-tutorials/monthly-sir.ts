@@ -5,7 +5,7 @@ export const MONTHLY_SIR_PAGE_TUTORIAL: PageTutorialContent = {
   triggerLabel: "Open Monthly SIR tutorial",
   dialogTitle: "Monthly SIR — quick guide",
   dialogDescription:
-    "Request, scan, review, and upload a branch physical count using the guided pCOUNT workbook.",
+    "Request, scan, review, and upload a branch physical count using the guided P-COUNT workbook.",
   helpHref: "/help",
   helpLinkLabel: "Full Help & Support portal",
   sections: [
@@ -13,8 +13,8 @@ export const MONTHLY_SIR_PAGE_TUTORIAL: PageTutorialContent = {
       title: "Typical flow",
       bullets: [
         "Submit a Monthly SIR request for the branch and wait for approval.",
-        "Scan serials with a USB barcode scanner, then build the filled Excel file.",
-        "Review the file and upload it through Upload PCOUNT. Scanning never uploads automatically.",
+        "Scan serials with a barcode scanner and build the filled Excel file.",
+        "Review the file and upload it through Upload P-COUNT. Scanning never uploads automatically.",
         "Generate the variance workbook, then open P-Count to investigate and finish the count.",
       ],
     },
@@ -26,7 +26,7 @@ export const MONTHLY_SIR_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "Alternative",
       description:
-        "Download the empty template when you need to complete pCOUNT manually. Both paths use the same Upload PCOUNT review and variance process.",
+        "Download the empty template when you need to complete P-COUNT manually. Both paths use the same Upload P-COUNT review and variance process.",
     },
   ],
 };

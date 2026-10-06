@@ -35,7 +35,7 @@ export default async function MonthlySirPage({
   return (
     <div className="space-y-4">
       <SectionPageLead>
-        Request a monthly inventory record, complete PCOUNT in Excel, and review
+        Request a monthly inventory record, complete P-COUNT in Excel, and review
         variances through the existing P-Count workflow.
       </SectionPageLead>
       <MonthlySirPanel

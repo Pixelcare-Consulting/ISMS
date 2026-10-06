@@ -39,7 +39,7 @@ function actionError(error: unknown, fallback: string) {
 async function uploadBuffer(formData: FormData) {
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) {
-    throw new Error("Select a pCOUNT Excel file");
+    throw new Error("Select a P-COUNT Excel file");
   }
   if (file.size > MAX_UPLOAD_BYTES) {
     throw new Error("The file is larger than 10 MB");
@@ -135,7 +135,7 @@ export async function downloadMonthlySirTemplateAction(requestId: string) {
     });
     return { base64: result.buffer.toString("base64"), filename: result.filename };
   } catch (error) {
-    return actionError(error, "Failed to build pCOUNT template");
+    return actionError(error, "Failed to build P-COUNT template");
   }
 }
 
@@ -173,7 +173,7 @@ export async function buildMonthlySirTemplateFromScansAction(input: unknown) {
     });
     return { base64: result.buffer.toString("base64"), filename: result.filename };
   } catch (error) {
-    return actionError(error, "Failed to build pCOUNT from scans");
+    return actionError(error, "Failed to build P-COUNT from scans");
   }
 }
 
@@ -193,7 +193,7 @@ export async function previewMonthlySirUploadAction(formData: FormData) {
       file,
     });
   } catch (error) {
-    return actionError(error, "Failed to preview pCOUNT upload");
+    return actionError(error, "Failed to preview P-COUNT upload");
   }
 }
 
@@ -215,7 +215,7 @@ export async function applyMonthlySirUploadAction(formData: FormData) {
     revalidateMonthlySir();
     return { success: true as const, ...result };
   } catch (error) {
-    return actionError(error, "Failed to apply pCOUNT upload");
+    return actionError(error, "Failed to apply P-COUNT upload");
   }
 }
 
@@ -231,6 +231,6 @@ export async function generateMonthlySirVarianceAction(requestId: string) {
     });
     return { base64: result.buffer.toString("base64"), filename: result.filename };
   } catch (error) {
-    return actionError(error, "Failed to generate pCOUNT variance");
+    return actionError(error, "Failed to generate P-COUNT variance");
   }
 }

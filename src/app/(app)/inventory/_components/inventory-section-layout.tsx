@@ -25,7 +25,7 @@ function resolveInventoryTutorial(pathname: string): PageTutorialContent {
 
 function resolveInventoryDescription(pathname: string): string {
   if (pathname.startsWith("/inventory/monthly-sir")) {
-    return "Scan branch serials, build and upload the pCOUNT workbook, then review variances.";
+    return "Scan branch serials, build and upload the P-COUNT workbook, then review variances.";
   }
   if (pathname.startsWith("/inventory/stock-count")) {
     return "Physical count sessions (P-Count) to align shelf and system stock.";

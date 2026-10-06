@@ -55,21 +55,26 @@ export const RELEASES: ReleaseNote[] = [
     version: "0.50.0",
     date: "2026-10-06",
     releasedAt: "2026-10-06T06:50:00+08:00",
-    title: "Monthly SIR and Excel pCOUNT",
+    title: "Monthly SIR and Excel P-COUNT",
     highlights: [
-      "Branches can now scan serials with a USB barcode scanner and build a filled pCOUNT Excel file ready for review and upload.",
+      "Branches can now scan serials with a barcode scanner and build a filled P-COUNT Excel file ready for review and upload.",
       "Approved requests can generate a ready-to-review variance workbook and continue in P-Count for investigation, posting, and closure.",
     ],
     changes: [
       {
         type: "feature",
         description:
-          "Monthly SIR brings requests, approvals, barcode scanning, filled pCOUNT Excel creation, upload, and variance generation into one Inventory workspace.",
+          "Monthly SIR brings requests, approvals, barcode scanning, filled P-COUNT Excel creation, upload, and variance generation into one Inventory workspace.",
       },
       {
         type: "improvement",
         description:
           "Excel downloads now show a clear wait message, while uploads are checked before confirmation and show anything that needs correction.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Monthly SIR request statuses use clearer color cues so pending, approved, and disapproved rows are easier to spot in the list.",
       },
     ],
   },
