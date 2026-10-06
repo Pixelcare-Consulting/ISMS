@@ -74,6 +74,10 @@ yarn-error.log*
 .cursor-aor-restore-backup/*
 /cursor-aor-restore-backup/
 /cursor-aor-restore-backup/*
+
+.windsurf
+.windsurf/*
+
 .data/
 .data/*
 /data/
