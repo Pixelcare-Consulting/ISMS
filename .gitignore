@@ -83,6 +83,18 @@ yarn-error.log*
 /data/
 /data/*
 
+/seed-users.md
+/seed-users.md/*
+/postgres.example.md
+/postgres.example.md/*
+.seed-users.md/*
+.postgres.example.md/*
+
+.agents/*
+.agents/*/*
+
+.claude/*
+.claude/*/*
 .claude/
 _bmad/
 _bmad-output/
