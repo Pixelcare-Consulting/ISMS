@@ -94,3 +94,6 @@ public/BRS Planogram & Forecast.xlsx
 /playwright-report
 /test-results
 /blob-report
+
+# pnpm is the package manager; keep npm from recreating a stale lockfile
+package-lock.json

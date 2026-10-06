@@ -26,6 +26,8 @@ ENV DIRECT_URL="postgresql://isms:isms@127.0.0.1:5432/isms"
 # ---------------------------------------------------------------- deps
 FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml prisma.config.ts ./
+# xlsx is installed from a vendored tarball (SheetJS no longer publishes to npm)
+COPY vendor ./vendor
 COPY prisma ./prisma
 RUN pnpm install --frozen-lockfile
 
