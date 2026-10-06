@@ -6,6 +6,7 @@ export const INVENTORY_MODULE_GUIDE: ModuleGuideContent = {
     "Serialized branch stock scoped by your areas of responsibility. Look up units, spot off-planogram exceptions, and open a serial for detail.",
   tips: [
     { label: "Lists Stock (STK) units only — sold and other statuses live in Sales / Logistics" },
+    { label: "Filled from SAP as the Serial numbers sync runs: each serial SAP holds at a branch lands here batch by batch" },
     { label: "Series summary groups QTY and value by SKU — click to expand" },
     { label: "Off planogram means the SKU is not on that branch’s authorized list" },
     { label: "Search by serial, SKU, or branch" },

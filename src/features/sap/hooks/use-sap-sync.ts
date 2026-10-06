@@ -1,5 +1,6 @@
 "use client";
 
+import type { MouseEvent } from "react";
 import { toast } from "sonner";
 
 import type { SapSyncResult } from "@/features/sap/schemas/sap-master-sync.schema";
@@ -93,7 +94,8 @@ function summarize(result: SapSyncResult): string {
   if (result.removed > 0) parts.push(`${formatCount(result.removed)} removed`);
   const skipped = skippedCount(result);
   if (skipped > 0) parts.push(`${formatCount(skipped)} skipped`);
-  return parts.join(" · ");
+  const summary = parts.join(" · ");
+  return result.notes?.length ? [summary, ...result.notes].join(". ") : summary;
 }
 
 /** The reason behind the most rows, to lead with when nothing could be applied. */
@@ -115,7 +117,7 @@ function progressLine(result: SapSyncResult): string {
 
 interface SyncToastButton {
   label: string;
-  onClick: () => void;
+  onClick: (event: MouseEvent<HTMLButtonElement>) => void;
 }
 
 interface SyncToastOptions {
@@ -228,7 +230,13 @@ export function runSapSync(
           description: detail,
           action: {
             label: "Continue",
-            onClick: () => runSapSync(key, noun, action, onFinished),
+            onClick: (event) => {
+              // Sonner closes a toast after its action runs unless told not to — and by then
+              // this toast id already shows the next slice's progress, so letting it close
+              // would hide the progress for the whole slice.
+              event.preventDefault();
+              runSapSync(key, noun, action, onFinished);
+            },
           },
           cancel: { label: "Stop", onClick: () => toast.dismiss(key) },
         });

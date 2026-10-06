@@ -117,9 +117,10 @@ export interface SapSyncEntity<TRecord = unknown, TContext = unknown> {
 
   /**
    * Write one page. Implementations look up only the keys in `records` — never a whole
-   * table — so memory stays flat however large the entity is.
+   * table — so memory stays flat however large the entity is. `context` is what `prepare`
+   * returned for this run.
    */
-  applyPage(tenantId: string, records: TRecord[]): Promise<SapSyncApplyResult>;
+  applyPage(tenantId: string, records: TRecord[], context: TContext): Promise<SapSyncApplyResult>;
 
   reconcile: SapSyncReconcile<TRecord>;
 }

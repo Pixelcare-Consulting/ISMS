@@ -1,3 +1,7 @@
+import {
+  sapStockPlacementService,
+  type StockPlacementRun,
+} from "@/features/inventory/services/sap-stock-placement.service";
 import { sapText } from "@/features/sap/services/sap-master-data";
 import { runSapSync } from "@/features/sap/services/sap-sync-engine";
 import type { SapSyncEntity } from "@/features/sap/types/sap-sync-entity";
@@ -16,17 +20,34 @@ import { serialNumberRepository } from "@/features/serial-numbers/repositories/s
  *
  * It is also the only sync that walks a *segment* — the fetch is restricted to the item
  * codes ISMS actually holds, rather than reading OSRN whole and discarding most of it.
+ *
+ * Run from the sync button it also places stock as it goes: each page, once written, is
+ * looked up in SAP and its on-hand serials filed into Stock units / Warehouse stock — see
+ * `sapStockPlacementService`.
  */
 
 interface SerialRecord {
   serialNo: string;
   modelId: string;
+  itemCode: string;
+  /** OSRN.AbsEntry — what stock placement looks the page up by. */
+  docEntry: number;
 }
 
-/** Item codes ISMS knows, so a serial can be linked to the model it belongs to. */
-type ModelIndex = Map<string, string>;
+interface SerialContext {
+  /** Item codes ISMS knows, so a serial can be linked to the model it belongs to. */
+  modelIdBySku: Map<string, string>;
+  /** Places each page's stock; null when this run only syncs the registry. */
+  placement: StockPlacementRun | null;
+}
 
-export const serialNumberSyncEntity: SapSyncEntity<SerialRecord, ModelIndex> = {
+function buildSerialSyncEntity(
+  placement: StockPlacementRun | null,
+): SapSyncEntity<SerialRecord, SerialContext> {
+  return { ...serialSyncDescriptor, prepare: (tenantId) => prepareSerialSync(tenantId, placement) };
+}
+
+const serialSyncDescriptor: SapSyncEntity<SerialRecord, SerialContext> = {
   key: "serial-number",
   noun: { one: "serial number", many: "serial numbers" },
 
@@ -55,35 +76,15 @@ export const serialNumberSyncEntity: SapSyncEntity<SerialRecord, ModelIndex> = {
   segment: {
     field: "ItemCode",
     kind: "string",
-    keys: (modelIdBySku) => [...modelIdBySku.keys()],
+    keys: (context) => [...context.modelIdBySku.keys()],
   },
 
   audit: { action: "serial_number.sap_sync", entityType: "SerialNumber" },
 
-  /**
-   * `SerialNumber.modelId` is a required FK, so a serial cannot be stored until its item
-   * exists in ISMS. Models number in the thousands, so this index is cheap to hold for a
-   * whole run — unlike the serials themselves.
-   *
-   * With no models at all, every row SAP returns is unusable and the only thing reading
-   * four million of them can establish is that fact. Stopping here says so in one step,
-   * with the action that fixes it, instead of burning a pass to arrive at an empty result
-   * that reads like SAP had nothing to send.
-   */
-  async prepare(tenantId) {
-    const models = await serialNumberRepository.listSapSyncModelKeys(tenantId);
-    if (models.length === 0) {
-      throw new Error(
-        "No product models in ISMS yet. Serial numbers link to a model, so sync Models " +
-          "from SAP first (Settings → Master Data → Models), then run this again.",
-      );
-    }
-    return new Map(models.map((model) => [model.skuCode, model.id]));
-  },
-
-  parse(row, modelIdBySku) {
+  parse(row, { modelIdBySku }) {
     const serialNo = sapText(row.SerialNumber);
     const itemCode = sapText(row.ItemCode);
+    const docEntry = Number(row.DocEntry);
 
     if (!serialNo) return { skip: "SAP row has no serial number" };
 
@@ -97,11 +98,18 @@ export const serialNumberSyncEntity: SapSyncEntity<SerialRecord, ModelIndex> = {
       };
     }
 
-    return { record: { serialNo, modelId } };
+    return { record: { serialNo, modelId, itemCode, docEntry } };
   },
 
-  applyPage(tenantId, records) {
-    return serialNumberRepository.applySapSyncPage(tenantId, records);
+  async applyPage(tenantId, records, context) {
+    const result = await serialNumberRepository.applySapSyncPage(
+      tenantId,
+      records.map(({ serialNo, modelId }) => ({ serialNo, modelId })),
+    );
+    if (!context?.placement) return result;
+    // Placed straight after the write, so Stock units fill in batch by batch.
+    const failures = await context.placement.placePage(records);
+    return { ...result, failures: [...result.failures, ...failures] };
   },
 
   /**
@@ -121,23 +129,75 @@ export const serialNumberSyncEntity: SapSyncEntity<SerialRecord, ModelIndex> = {
   },
 };
 
+/**
+ * `SerialNumber.modelId` is a required FK, so a serial cannot be stored until its item
+ * exists in ISMS. Models number in the thousands, so this index is cheap to hold for a
+ * whole run — unlike the serials themselves.
+ *
+ * With no models at all, every row SAP returns is unusable and the only thing reading
+ * four million of them can establish is that fact. Stopping here says so in one step,
+ * with the action that fixes it, instead of burning a pass to arrive at an empty result
+ * that reads like SAP had nothing to send.
+ */
+async function prepareSerialSync(
+  tenantId: string,
+  placement: StockPlacementRun | null,
+): Promise<SerialContext> {
+  const models = await serialNumberRepository.listSapSyncModelKeys(tenantId);
+  if (models.length === 0) {
+    throw new Error(
+      "No product models in ISMS yet. Serial numbers link to a model, so sync Models " +
+        "from SAP first (Settings → Master Data → Models), then run this again.",
+    );
+  }
+  return {
+    modelIdBySku: new Map(models.map((model) => [model.skuCode, model.id])),
+    placement,
+  };
+}
+
+/** The serial sync as the registry and the cron see it — without stock placement. */
+export const serialNumberSyncEntity = buildSerialSyncEntity(null);
+
 export const serialNumberSapSyncService = {
   /**
-   * Pull serial master data from SAP into the ISMS registry.
+   * Pull serial master data from SAP into the ISMS registry, placing each page's on-hand
+   * serials into Stock units and Warehouse stock as it is written.
    *
    * One call is a slice of the work, not necessarily all of it: at ~4M rows a full pass
-   * takes several runs, and `caughtUp` says whether SAP has more. The cron calls this
-   * repeatedly until it does.
-   *
-   * Registry only — no inventory is created. A synced serial exists with no branch or
-   * warehouse location until something in ISMS places it.
+   * takes several runs, and `caughtUp` says whether SAP has more. Stock appears batch by
+   * batch rather than at the end. If placement cannot start (no SAP connection, the SAP
+   * query cannot be created, STK missing), serials still sync and the result says why.
    */
-  syncFromSap(
+  async syncFromSap(
     tenantId: string,
     /** Null for scheduled runs — `AuditLog.userId` is nullable and means "not a person". */
     actorUserId: string | null,
     options?: { budgetMs?: number },
   ): Promise<SapSyncResult> {
-    return runSapSync(tenantId, serialNumberSyncEntity, actorUserId, options);
+    let placement: StockPlacementRun | null = null;
+    let placementError: string | null = null;
+    try {
+      placement = await sapStockPlacementService.beginRun(tenantId, actorUserId);
+    } catch (error) {
+      placementError = error instanceof Error ? error.message : String(error);
+    }
+
+    const result = await runSapSync(
+      tenantId,
+      buildSerialSyncEntity(placement),
+      actorUserId,
+      options,
+    );
+
+    if (!placement) {
+      return { ...result, notes: [`Stock was not placed from SAP: ${placementError}`] };
+    }
+    const placed = await placement.finish();
+    return {
+      ...result,
+      notes: [...(result.notes ?? []), ...placed.notes],
+      skipped: [...result.skipped, ...placed.skipped],
+    };
   },
 };

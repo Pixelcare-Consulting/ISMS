@@ -142,7 +142,7 @@ function pageEndKey(rows: Record<string, unknown>[], entity: SapSyncEntity): str
 }
 
 /** Collect skips by reason — at four million rows a per-row list is unreadable. */
-class SkipTally {
+export class SkipTally {
   private readonly byReason = new Map<string, { count: number; examples: Set<string> }>();
 
   add(reason: string, example?: string | null) {
@@ -217,7 +217,7 @@ async function runSlice(
     }
 
     if (records.length > 0) {
-      const applied = await entity.applyPage(tenantId, records);
+      const applied = await entity.applyPage(tenantId, records, context);
       created += applied.created;
       updated += applied.updated;
       unchanged += applied.unchanged;
