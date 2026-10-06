@@ -7,17 +7,12 @@ import type {
   PlanogramIndexKpis,
 } from "@/features/planogram/lib/planogram-index";
 import { planogramRepository } from "@/features/planogram/repositories/planogram.repository";
-import { sapStockPlacementService } from "@/features/inventory/services/sap-stock-placement.service";
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
 
 export interface PlanogramRow {
   id: string;
   branchId: string;
   modelId: string;
-  /**
-   * The planogram quantity: Stock units synced from SAP for this model at the branch,
-   * kept current by the Serial numbers and Models syncs and read-only in ISMS.
-   */
   maxQty: number;
   effectiveFrom: string | null;
   stockCount: number;
@@ -49,8 +44,8 @@ export type ActiveModelForAdd = {
   name: string;
   status: string;
   /**
-   * Stock units at the branch for this model — shown read-only when the model is picked
-   * and becomes the row's quantity.
+   * Stock units at the branch for this model, counted live — shown read-only as the Max
+   * qty when the model is picked, and saved as the row's `maxQty`.
    */
   onHandQty: number;
 };
@@ -198,7 +193,6 @@ export const planogramService = {
     modelId: string;
     daysThreshold?: number;
   }) {
-
     const model = await masterDataRepository.findModel(input.tenantId, input.modelId);
     if (!model) throw new Error(`Model not found: ${input.modelId} (tenant: ${input.tenantId})`);
     if (model.status !== "active") throw new Error("Only active SKUs can be added to a planogram");
@@ -219,12 +213,14 @@ export const planogramService = {
     );
     if (existing) throw new Error("Model is already on this branch planogram");
 
-    // The quantity is the branch's Stock units for the model, not something the user types.
-    const onHand = await sapStockPlacementService.branchQtyByModel(
+    // Max qty is not typed: it is the branch's Stock units for the model at the moment it
+    // is added — the same live count the Add dialog shows. 0 when the branch holds none.
+    const stock = await planogramRepository.countStockByBranchModels(
       input.tenantId,
       input.branchId,
+      [input.modelId],
     );
-    const maxQty = onHand.get(input.modelId) ?? 0;
+    const maxQty = stock.get(input.modelId) ?? 0;
 
     const entry = await planogramRepository.createEntry(input.tenantId, {
       branchId: input.branchId,
@@ -366,7 +362,11 @@ export const planogramService = {
     const available = allowedActive.filter((m) => !onPlanogram.has(m.id));
 
     if (available.length > 0) {
-      const onHand = await sapStockPlacementService.branchQtyByModel(tenantId, branchId);
+      const onHand = await planogramRepository.countStockByBranchModels(
+        tenantId,
+        branchId,
+        available.map((m) => m.id),
+      );
       return {
         models: available.map((m) => ({
           id: m.id,

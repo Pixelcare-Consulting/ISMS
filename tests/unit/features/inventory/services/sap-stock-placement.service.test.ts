@@ -25,10 +25,6 @@ jest.mock("@/features/inventory/repositories/sap-stock-placement.repository", ()
     findWarehouseUnits: jest.fn(),
     createWarehouseUnits: jest.fn(async (_t: string, _l: string, ids: unknown[]) => ids.length),
     moveWarehouseUnits: jest.fn().mockResolvedValue(undefined),
-    stampWarehouseUnits: jest.fn().mockResolvedValue(undefined),
-    countStockUnits: jest.fn(),
-    listPlanogramQty: jest.fn(),
-    setPlanogramQty: jest.fn().mockResolvedValue(undefined),
   },
 }));
 
@@ -37,7 +33,6 @@ import {
   sapStockPlacementService,
   type PlacementSerial,
 } from "@/features/inventory/services/sap-stock-placement.service";
-import type { SapSyncResult } from "@/features/sap/schemas/sap-master-sync.schema";
 import { fetchSapSerialLocations } from "@/features/sap/services/sap-onhand-stock";
 
 const repo = sapStockPlacementRepository as jest.Mocked<typeof sapStockPlacementRepository>;
@@ -85,11 +80,6 @@ beforeEach(() => {
     { id: "wu-stays", serialNumberId: "s-W-STAYS", warehouseId: "W1" },
     { id: "wu-moved", serialNumberId: "s-W-MOVED", warehouseId: "W2" },
   ]);
-  repo.listPlanogramQty.mockResolvedValue([
-    { id: "pA", branchId: "bA", modelId: "m1", maxQty: 1 },
-    { id: "pB", branchId: "bB", modelId: "m1", maxQty: 3 },
-  ]);
-  repo.countStockUnits.mockResolvedValue(new Map([["bA:m1", 3], ["bB:m1", 1]]));
 });
 
 describe("placement run", () => {
@@ -110,17 +100,10 @@ describe("placement run", () => {
     // Warehouse → Warehouse stock, under the warehouse's own location
     expect(repo.createWarehouseUnits).toHaveBeenCalledWith("t1", "loc-W1", ["s-W-NEW"], expect.any(Date));
     expect(repo.moveWarehouseUnits).toHaveBeenCalledWith("t1", ["wu-moved"], "loc-W1", expect.any(Date));
-    expect(repo.stampWarehouseUnits).toHaveBeenCalledWith("t1", ["wu-stays"], expect.any(Date));
-    // Planogram qty = Stock units, for the branch × model pairs this page touched
-    expect(repo.setPlanogramQty).toHaveBeenCalledWith("t1", [
-      { id: "pA", maxQty: 3 },
-      { id: "pB", maxQty: 1 },
-    ]);
 
     const outcome = await run.finish();
     expect(outcome.notes).toEqual([
       "Stock from SAP for this batch: 2 added · 2 moved · 2 unchanged · 1 no longer on hand in SAP (left as is)",
-      "2 planogram quantities updated",
     ]);
   });
 
@@ -145,41 +128,5 @@ describe("placement run", () => {
     await run.placePage(page.slice(0, 1));
 
     expect(repo.createBranchUnits).toHaveBeenCalledWith("t1", [], "stk", "u1");
-  });
-});
-
-describe("planogram quantity", () => {
-  const passDone: SapSyncResult = {
-    fetched: 10,
-    created: 0,
-    updated: 0,
-    unchanged: 10,
-    removed: 0,
-    skipped: [],
-    caughtUp: true,
-    passRows: 10,
-    totalAtSource: 10,
-  };
-
-  it("models sync sets every planogram row to its Stock unit count", async () => {
-    const result = await sapStockPlacementService.afterModelSync("t1", passDone);
-    expect(repo.setPlanogramQty).toHaveBeenCalledWith("t1", [
-      { id: "pA", maxQty: 3 },
-      { id: "pB", maxQty: 1 },
-    ]);
-    expect(result.notes).toEqual(["Planogram quantities refreshed from Stock units: 2 changed"]);
-    expect(locate).not.toHaveBeenCalled();
-  });
-
-  it("does nothing until the models pass completes", async () => {
-    const partial = { ...passDone, caughtUp: false };
-    await expect(sapStockPlacementService.afterModelSync("t1", partial)).resolves.toBe(partial);
-  });
-
-  it("add-model dialog reads one branch's Stock units by model", async () => {
-    repo.countStockUnits.mockResolvedValue(new Map([["bA:m1", 3]]));
-    await expect(sapStockPlacementService.branchQtyByModel("t1", "bA")).resolves.toEqual(
-      new Map([["m1", 3]]),
-    );
   });
 });

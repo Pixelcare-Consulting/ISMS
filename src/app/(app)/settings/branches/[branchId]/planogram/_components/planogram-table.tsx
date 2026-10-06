@@ -66,13 +66,8 @@ interface PlanogramRow {
   };
 }
 
-/** Planogram quantity, read-only. */
-function formatQty(qty: number | null): string {
-  return qty == null ? "—" : qty.toLocaleString();
-}
-
-const QTY_HINT =
-  "Stock units synced from SAP for this model at this branch. Updated by the Serial numbers sync; not editable.";
+const MAX_QTY_HINT =
+  "Set automatically to this model's Stock units at this branch (synced from SAP). Not editable.";
 
 function messageForAddEmptyReason(reason: PlanogramAddEmptyReason): string {
   switch (reason) {
@@ -125,7 +120,6 @@ export function PlanogramTable({
     sku: (row) => row.model.skuCode,
     model: (row) => row.model.name,
     series: (row) => row.model.series,
-    qty: (row) => row.maxQty,
   });
 
   const suggestions = useMemo(
@@ -139,7 +133,7 @@ export function PlanogramTable({
     [rows],
   );
 
-  const colCount = canManage ? 7 : 6;
+  const colCount = canManage ? 6 : 5;
 
   function handleRemove() {
     if (!deleting) return;
@@ -198,13 +192,6 @@ export function PlanogramTable({
                 <GlobalTableHead {...sort.sortProps("sku")}>SKU</GlobalTableHead>
                 <GlobalTableHead {...sort.sortProps("model")}>Model</GlobalTableHead>
                 <GlobalTableHead {...sort.sortProps("series")}>Series</GlobalTableHead>
-                <GlobalTableHead
-                  {...sort.sortProps("qty")}
-                  className="w-24 text-right"
-                  title={QTY_HINT}
-                >
-                  Qty
-                </GlobalTableHead>
                 <TableHead className="w-28">Units</TableHead>
                 {canManage ? <TableHead className="w-24" /> : null}
               </TableRow>
@@ -291,7 +278,6 @@ function PlanogramRowEditor({
       <TableCell className="font-mono text-sm">{row.model.skuCode}</TableCell>
       <TableCell>{row.model.name}</TableCell>
       <TableCell>{row.model.series ?? "—"}</TableCell>
-      <TableCell className="text-right tabular-nums">{formatQty(row.maxQty)}</TableCell>
       <TableCell>
         <Button variant="link" size="sm" className="h-auto p-0" asChild>
           <Link href={inventoryHref}>View units</Link>
@@ -404,15 +390,15 @@ function AddPlanogramDialog({
                 searchPlaceholder="Search models…"
               />
               <div className="space-y-2">
-                <Label htmlFor="add-planogram-qty">Qty</Label>
+                <Label htmlFor="add-planogram-max-qty">Max qty</Label>
                 <Input
-                  id="add-planogram-qty"
-                  value={selectedModel ? formatQty(selectedModel.onHandQty) : "—"}
+                  id="add-planogram-max-qty"
+                  value={selectedModel ? selectedModel.onHandQty.toLocaleString() : "—"}
                   readOnly
                   disabled
                   className="tabular-nums"
                 />
-                <p className="text-xs text-muted-foreground">{QTY_HINT}</p>
+                <p className="text-xs text-muted-foreground">{MAX_QTY_HINT}</p>
               </div>
             </>
           ) : (

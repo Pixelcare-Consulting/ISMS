@@ -205,9 +205,6 @@ export async function syncModelsFromSapAction() {
 
     revalidatePath("/settings/master-data/models");
     revalidatePath("/settings/master-data/brands");
-    // A completed pass sets planogram quantities from SAP's on-hand.
-    revalidatePath("/settings/planogram", "layout");
-    revalidatePath("/settings/branches/[branchId]/planogram", "page");
     return { success: true as const, result };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to sync models from SAP" };

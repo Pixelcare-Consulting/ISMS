@@ -27,8 +27,9 @@ import { logger } from "@/lib/shared/logger";
  *   (`warehouse_inventories`), under one location per warehouse named after it.
  * - **Service centres are not placed.** They are dimension-5 cost centres in SAP, which
  *   hold no serials. Untyped warehouses are not placed either.
- * - The planogram quantity (`maxQty`) of every branch × model a page touched is set to the
- *   number of Stock units there — what ISMS has synced, so it grows as the sync runs.
+ *
+ * The planogram's quantity is these Stock units, counted live on the planogram page — so
+ * it grows as the sync runs and never goes stale; nothing here writes to the planogram.
  *
  * Rules — SAP decides *where* a unit is; ISMS keeps its own workflow state:
  *
@@ -53,7 +54,6 @@ interface RunStats {
   moved: number;
   unchanged: number;
   notOnHandInSap: number;
-  planogramRowsUpdated: number;
 }
 
 interface PageFailure {
@@ -88,38 +88,6 @@ async function stkStatusId(tenantId: string): Promise<string> {
 }
 
 /**
- * Set planogram rows to their Stock (STK) unit count — at these branches (all when null),
- * optionally only the `branchId:modelId` pairs in `only`. Returns how many rows changed.
- */
-async function setPlanogramQtyFromStock(
-  tenantId: string,
-  stkId: string,
-  branchIds: string[] | null,
-  only?: Set<string>,
-): Promise<number> {
-  const rows = await repo.listPlanogramQty(tenantId, branchIds ?? undefined);
-  const relevant = only ? rows.filter((row) => only.has(`${row.branchId}:${row.modelId}`)) : rows;
-  if (relevant.length === 0) return 0;
-
-  const counts = await repo.countStockUnits(
-    tenantId,
-    stkId,
-    [...new Set(relevant.map((row) => row.branchId))],
-    [...new Set(relevant.map((row) => row.modelId))],
-  );
-  const updates = relevant
-    .map((row) => ({
-      id: row.id,
-      maxQty: counts.get(`${row.branchId}:${row.modelId}`) ?? 0,
-      was: row.maxQty,
-    }))
-    .filter((row) => row.maxQty !== row.was)
-    .map(({ id, maxQty }) => ({ id, maxQty }));
-  await repo.setPlanogramQty(tenantId, updates);
-  return updates.length;
-}
-
-/**
  * Placement for one serial-sync run: what every page needs (sites, STK, credentials),
  * loaded once, plus the run's running totals for the toast.
  */
@@ -130,7 +98,6 @@ export class StockPlacementRun {
     moved: 0,
     unchanged: 0,
     notOnHandInSap: 0,
-    planogramRowsUpdated: 0,
   };
   private readonly locationIdByWarehouse = new Map<string, string>();
 
@@ -190,16 +157,15 @@ export class StockPlacementRun {
       return found && !found.deletedAt ? [{ ...serial, id: found.id }] : [];
     });
 
-    const touched = await this.placeBranches(placeable, whereBySerial);
+    await this.placeBranches(placeable, whereBySerial);
     await this.placeWarehouses(placeable, whereBySerial);
-    await this.refreshPlanogram(touched);
   }
 
-  /** Stock units. Returns the branch × model pairs whose Stock count may have changed. */
+  /** Stock units. */
   private async placeBranches(
     serials: PlaceableSerial[],
     whereBySerial: Map<string, string>,
-  ): Promise<string[]> {
+  ): Promise<void> {
     const units = groupBy(
       await repo.findBranchUnits(
         this.tenantId,
@@ -210,7 +176,6 @@ export class StockPlacementRun {
 
     const creates: { branchId: string; serialNumberId: string }[] = [];
     const moves: { id: string; branchId: string }[] = [];
-    const touched: string[] = [];
 
     for (const serial of serials) {
       const existing = units.get(serial.id) ?? [];
@@ -228,10 +193,8 @@ export class StockPlacementRun {
         this.stats.unchanged += 1;
       } else if (existing.length > 0) {
         moves.push({ id: existing[0].id, branchId: branch.id });
-        touched.push(`${existing[0].branchId}:${serial.modelId}`, `${branch.id}:${serial.modelId}`);
       } else {
         creates.push({ branchId: branch.id, serialNumberId: serial.id });
-        touched.push(`${branch.id}:${serial.modelId}`);
       }
     }
 
@@ -244,7 +207,6 @@ export class StockPlacementRun {
     await repo.moveBranchUnits(this.tenantId, moves, this.stkId, this.actorUserId);
     this.stats.created += created;
     this.stats.moved += moves.length;
-    return touched;
   }
 
   /** Warehouse stock, under the ISMS location that stands for each SAP warehouse. */
@@ -262,7 +224,6 @@ export class StockPlacementRun {
 
     const creates: { warehouse: SapStockSite; serialId: string }[] = [];
     const moves: { warehouse: SapStockSite; unitId: string }[] = [];
-    const stays: string[] = [];
 
     for (const serial of serials) {
       const existing = units.get(serial.id) ?? [];
@@ -273,8 +234,9 @@ export class StockPlacementRun {
         this.stats.notOnHandInSap += existing.length;
         continue;
       }
-      const here = existing.find((unit) => unit.warehouseId === warehouse.id);
-      if (here) stays.push(here.id);
+      // Already in this warehouse: nothing to write. Re-stamping it every pass cost a bulk
+      // update per page and fed nothing.
+      if (existing.some((unit) => unit.warehouseId === warehouse.id)) this.stats.unchanged += 1;
       else if (existing.length > 0) moves.push({ warehouse, unitId: existing[0].id });
       else creates.push({ warehouse, serialId: serial.id });
     }
@@ -299,8 +261,6 @@ export class StockPlacementRun {
       );
       this.stats.moved += group.length;
     }
-    await repo.stampWarehouseUnits(this.tenantId, stays, this.seenAt);
-    this.stats.unchanged += stays.length;
   }
 
   private async locationFor(warehouse: SapStockSite): Promise<string> {
@@ -310,19 +270,6 @@ export class StockPlacementRun {
       this.locationIdByWarehouse.set(warehouse.id, id);
     }
     return id;
-  }
-
-  /** Set the planogram quantity of the touched branch × model pairs to their Stock count. */
-  private async refreshPlanogram(pairs: string[]): Promise<void> {
-    if (pairs.length === 0) return;
-    const branchIds = [...new Set(pairs.map((pair) => pair.split(":")[0]))];
-    const changed = await setPlanogramQtyFromStock(
-      this.tenantId,
-      this.stkId,
-      branchIds,
-      new Set(pairs),
-    );
-    this.stats.planogramRowsUpdated += changed;
   }
 
   /** The run's outcome, folded into the serial sync's result. */
@@ -344,11 +291,10 @@ export class StockPlacementRun {
     if (stats.notOnHandInSap > 0) {
       parts.push(`${count(stats.notOnHandInSap)} no longer on hand in SAP (left as is)`);
     }
-    const notes = [`Stock from SAP for this batch: ${parts.join(" · ")}`];
-    if (stats.planogramRowsUpdated > 0) {
-      notes.push(`${count(stats.planogramRowsUpdated)} planogram quantities updated`);
-    }
-    return { notes, skipped: this.skips.toList() };
+    return {
+      notes: [`Stock from SAP for this batch: ${parts.join(" · ")}`],
+      skipped: this.skips.toList(),
+    };
   }
 }
 
@@ -376,40 +322,5 @@ export const sapStockPlacementService = {
       new Map(warehouses.map((warehouse) => [warehouse.code, warehouse])),
       new Date(),
     );
-  },
-
-  /**
-   * Set every planogram row's quantity to its Stock unit count. Run by the Models sync once
-   * its pass completes, since models may have been added or retired. Database only; a
-   * failure is a note on that result, never a failed sync.
-   */
-  async afterModelSync(tenantId: string, result: SapSyncResult): Promise<SapSyncResult> {
-    if (!result.caughtUp) return result;
-    try {
-      const changed = await setPlanogramQtyFromStock(tenantId, await stkStatusId(tenantId), null);
-      return {
-        ...result,
-        notes: [
-          ...(result.notes ?? []),
-          `Planogram quantities refreshed from Stock units: ${count(changed)} changed`,
-        ],
-      };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      logger.error({ err: error }, `Planogram quantities were not refreshed: ${message}`);
-      return {
-        ...result,
-        notes: [...(result.notes ?? []), `Planogram quantities were not refreshed: ${message}`],
-      };
-    }
-  },
-
-  /**
-   * Stock units per model id at one branch — the planogram quantity, for the Add model
-   * dialog where it is shown before the row exists.
-   */
-  async branchQtyByModel(tenantId: string, branchId: string): Promise<Map<string, number>> {
-    const counts = await repo.countStockUnits(tenantId, await stkStatusId(tenantId), [branchId]);
-    return new Map([...counts].map(([key, qty]) => [key.split(":")[1], qty]));
   },
 };

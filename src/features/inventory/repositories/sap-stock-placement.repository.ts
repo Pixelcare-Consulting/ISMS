@@ -1,10 +1,9 @@
-import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/database/client";
 import { SAP_SYNC_CHUNK, SAP_SYNC_WRITE_CONCURRENCY } from "@/features/sap/services/sap-master-data";
 
 /**
- * Persistence for placing SAP's on-hand serials: Stock units (`branch_inventories`),
- * Warehouse stock (`warehouse_inventories`) and the planogram quantity (`maxQty`). See
+ * Persistence for placing SAP's on-hand serials: Stock units (`branch_inventories`) and
+ * Warehouse stock (`warehouse_inventories`). See
  * `sap-stock-placement.service.ts` for the rules.
  */
 
@@ -25,7 +24,7 @@ const LOOKUP_CHUNK = 5000;
 
 /**
  * What ISMS writes in `warehouse_inventories.system_status` for a unit SAP holds on hand.
- * `system_updated_at` is the placement pass that last confirmed it.
+ * `system_updated_at` is when it was placed or last moved.
  */
 export const SAP_ON_HAND_SYSTEM_STATUS = "On hand (SAP)";
 
@@ -207,62 +206,6 @@ export const sapStockPlacementRepository = {
           systemStatus: SAP_ON_HAND_SYSTEM_STATUS,
           systemUpdatedAt: seenAt,
         },
-      }),
-    );
-  },
-
-  /** Record that SAP still holds these units, without touching anything else about them. */
-  async stampWarehouseUnits(tenantId: string, ids: string[], seenAt: Date): Promise<void> {
-    for (const batch of chunk(ids, LOOKUP_CHUNK)) {
-      await prisma.warehouseInventory.updateMany({
-        where: { tenantId, id: { in: batch } },
-        data: { systemStatus: SAP_ON_HAND_SYSTEM_STATUS, systemUpdatedAt: seenAt },
-      });
-    }
-  },
-
-  // ── Planogram quantity ────────────────────────────────────────────────────────────
-
-  /**
-   * Stock (STK) units per branch × model, keyed `branchId:modelId`. Narrowed to the given
-   * branches and, if passed, models; pairs with no units are simply absent.
-   */
-  async countStockUnits(
-    tenantId: string,
-    stkStatusId: string,
-    branchIds: string[],
-    modelIds?: string[],
-  ): Promise<Map<string, number>> {
-    if (branchIds.length === 0 || modelIds?.length === 0) return new Map();
-    const rows = await prisma.$queryRaw<{ branch_id: string; model_id: string; qty: number }[]>`
-      SELECT bi.branch_id, sn.model_id, COUNT(*)::int AS qty
-      FROM branch_inventories bi
-      INNER JOIN serial_numbers sn ON sn.id = bi.serial_number_id
-      WHERE bi.tenant_id = ${tenantId}
-        AND bi.status_code_id = ${stkStatusId}
-        AND bi.branch_id IN (${Prisma.join(branchIds)})
-        ${modelIds ? Prisma.sql`AND sn.model_id IN (${Prisma.join(modelIds)})` : Prisma.empty}
-      GROUP BY bi.branch_id, sn.model_id
-    `;
-    return new Map(rows.map((row) => [`${row.branch_id}:${row.model_id}`, Number(row.qty)]));
-  },
-
-  /** Planogram rows, optionally only those at these branches. */
-  listPlanogramQty(
-    tenantId: string,
-    branchIds?: string[],
-  ): Promise<{ id: string; branchId: string; modelId: string; maxQty: number }[]> {
-    return prisma.branchPlanogram.findMany({
-      where: { tenantId, ...(branchIds ? { branchId: { in: branchIds } } : {}) },
-      select: { id: true, branchId: true, modelId: true, maxQty: true },
-    });
-  },
-
-  setPlanogramQty(tenantId: string, updates: { id: string; maxQty: number }[]): Promise<void> {
-    return inParallel(updates, (update) =>
-      prisma.branchPlanogram.update({
-        where: { id: update.id, tenantId },
-        data: { maxQty: update.maxQty },
       }),
     );
   },

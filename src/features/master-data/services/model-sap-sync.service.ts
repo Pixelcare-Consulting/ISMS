@@ -1,4 +1,3 @@
-import { sapStockPlacementService } from "@/features/inventory/services/sap-stock-placement.service";
 import { masterDataRepository } from "@/features/master-data/repositories/master-data.repository";
 import { parseSapFlag, sapText } from "@/features/sap/services/sap-master-data";
 import { runSapSync } from "@/features/sap/services/sap-sync-engine";
@@ -90,16 +89,12 @@ export const modelSyncEntity: SapSyncEntity<ModelRecord> = {
 };
 
 export const modelSapSyncService = {
-  /**
-   * Pull item master data from SAP and upsert ISMS product models. A completed pass then
-   * sets every branch's planogram quantities to SAP's on-hand.
-   */
-  async syncFromSap(
+  /** Pull item master data from SAP and upsert ISMS product models. */
+  syncFromSap(
     tenantId: string,
     actorUserId: string | null,
     options?: { budgetMs?: number },
   ): Promise<SapSyncResult> {
-    const result = await runSapSync(tenantId, modelSyncEntity, actorUserId, options);
-    return sapStockPlacementService.afterModelSync(tenantId, result);
+    return runSapSync(tenantId, modelSyncEntity, actorUserId, options);
   },
 };
