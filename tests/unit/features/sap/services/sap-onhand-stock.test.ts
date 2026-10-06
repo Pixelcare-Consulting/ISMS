@@ -3,7 +3,7 @@ jest.mock("@/features/sap/services/sap-service-layer-client", () => ({
 }));
 
 import {
-  assertSapOnHandQueryInstalled,
+  ensureSapOnHandQuery,
   fetchSapItemOnHand,
   fetchSapOnHandPage,
   fetchSapOnHandSerials,
@@ -108,16 +108,55 @@ describe("fetchSapItemOnHand", () => {
   });
 });
 
-describe("assertSapOnHandQueryInstalled", () => {
-  it("passes when the saved query exists", async () => {
+describe("ensureSapOnHandQuery", () => {
+  // The module caches confirmed queries per connection, so each case uses its own.
+  const fresh = (id: string) => ({ id, companyDb: "DB" }) as unknown as SapServiceLayerCredentials;
+  const missing = () => sapError(404, -2028, "No matching records found");
+
+  it("does nothing more when the query already exists", async () => {
     request.mockResolvedValueOnce(ok({ SqlCode: "ISMS_SN_ONHAND" }));
-    await expect(assertSapOnHandQueryInstalled(creds)).resolves.toBeUndefined();
+    await ensureSapOnHandQuery(fresh("exists"), "ISMS_SN_ONHAND");
+    expect(request).toHaveBeenCalledTimes(1);
   });
 
-  it("names the setup script when the query is missing", async () => {
-    request.mockResolvedValueOnce(sapError(404, -2028, "No matching records found"));
-    await expect(assertSapOnHandQueryInstalled(creds, "ISMS_ITEM_ONHAND")).rejects.toThrow(
-      "ISMS_ITEM_ONHAND is not installed",
+  it("creates a missing query with its SQL", async () => {
+    request.mockResolvedValueOnce(missing()).mockResolvedValueOnce(ok({}));
+
+    await ensureSapOnHandQuery(fresh("create"), "ISMS_ITEM_ONHAND");
+
+    expect(request.mock.calls[1][0]).toMatchObject({
+      method: "POST",
+      path: "/SQLQueries",
+      body: {
+        SqlCode: "ISMS_ITEM_ONHAND",
+        SqlText: expect.stringContaining("FROM OITW T0 WHERE T0.WhsCode = :whs"),
+      },
+    });
+  });
+
+  it("checks SAP once per connection, then trusts the cache", async () => {
+    const creds = fresh("cached");
+    request.mockResolvedValueOnce(ok({ SqlCode: "ISMS_SN_ONHAND" }));
+    await ensureSapOnHandQuery(creds, "ISMS_SN_ONHAND");
+    await ensureSapOnHandQuery(creds, "ISMS_SN_ONHAND");
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts a create that lost a race to another run", async () => {
+    request
+      .mockResolvedValueOnce(missing())
+      .mockResolvedValueOnce(sapError(400, -2035, "This entry already exists"))
+      .mockResolvedValueOnce(ok({ SqlCode: "ISMS_SN_ONHAND" }));
+    await expect(ensureSapOnHandQuery(fresh("race"), "ISMS_SN_ONHAND")).resolves.toBeUndefined();
+  });
+
+  it("names the setup script when SAP refuses to create it", async () => {
+    request
+      .mockResolvedValueOnce(missing())
+      .mockResolvedValueOnce(sapError(403, -1, "No permission"))
+      .mockResolvedValueOnce(missing());
+    await expect(ensureSapOnHandQuery(fresh("refused"), "ISMS_SN_ONHAND")).rejects.toThrow(
+      /could not create the SAP saved query ISMS_SN_ONHAND.*No permission.*setup-sap-serial-onhand-query\.mjs/,
     );
   });
 });

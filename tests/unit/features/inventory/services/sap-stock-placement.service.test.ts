@@ -8,7 +8,7 @@ jest.mock("@/features/sap/services/sap-service-layer.service", () => ({
 }));
 jest.mock("@/features/sap/services/sap-onhand-stock", () => ({
   ...jest.requireActual("@/features/sap/services/sap-onhand-stock"),
-  assertSapOnHandQueryInstalled: jest.fn().mockResolvedValue(undefined),
+  ensureSapOnHandQuery: jest.fn().mockResolvedValue(undefined),
   fetchSapOnHandSerials: jest.fn(),
   fetchSapOnHandPage: jest.fn(),
   fetchSapItemOnHand: jest.fn(),

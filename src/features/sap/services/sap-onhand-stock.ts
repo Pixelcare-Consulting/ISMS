@@ -11,8 +11,8 @@ import type { SapServiceLayerCredentials } from "@/features/sap/types/sap-servic
  *
  * `SerialNumberDetails` (OSRN) says which item a serial belongs to but not where it is.
  * Location lives in OSRQ (serial quantity per warehouse), which the Service Layer exposes
- * through no entity, so it is read through a saved query, installed once per company DB
- * by `scripts/setup-sap-serial-onhand-query.mjs`:
+ * through no entity, so it is read through a saved query, which ISMS creates in the
+ * company DB the first time it needs it (`ensureSapOnHandQuery`):
  *
  *   SELECT T0.ItemCode, T1.DistNumber, T0.WhsCode FROM OSRQ T0
  *   INNER JOIN OSRN T1 ON T1.ItemCode = T0.ItemCode AND T1.SysNumber = T0.SysNumber
@@ -35,9 +35,41 @@ import type { SapServiceLayerCredentials } from "@/features/sap/types/sap-servic
  * every warehouse with ~40 fields for every item, so it is not used.
  */
 
-/** Keep both codes in step with QUERIES in scripts/setup-sap-serial-onhand-query.mjs. */
 export const SAP_SERIAL_ONHAND_QUERY = "ISMS_SN_ONHAND";
 export const SAP_ITEM_ONHAND_QUERY = "ISMS_ITEM_ONHAND";
+
+/**
+ * The saved queries ISMS creates in SAP when they are missing. Keep in step with QUERIES
+ * in scripts/setup-sap-serial-onhand-query.mjs — the manual fallback for a SAP user that
+ * is not allowed to create queries.
+ */
+const SAP_ONHAND_QUERY_DEFINITIONS: Record<string, { name: string; text: string }> = {
+  [SAP_SERIAL_ONHAND_QUERY]: {
+    name: "ISMS - serials on hand per warehouse",
+    text: [
+      "SELECT T0.ItemCode, T1.DistNumber, T0.WhsCode",
+      "FROM OSRQ T0",
+      "INNER JOIN OSRN T1 ON T1.ItemCode = T0.ItemCode AND T1.SysNumber = T0.SysNumber",
+      "WHERE T0.WhsCode = :whs AND T0.Quantity > 0",
+      "ORDER BY T0.ItemCode, T1.DistNumber",
+    ].join(" "),
+  },
+  [SAP_ITEM_ONHAND_QUERY]: {
+    name: "ISMS - In Stock per item per warehouse",
+    text: [
+      "SELECT T0.ItemCode, T0.OnHand",
+      "FROM OITW T0",
+      "WHERE T0.WhsCode = :whs AND T0.OnHand > 0",
+      "ORDER BY T0.ItemCode",
+    ].join(" "),
+  },
+};
+
+/**
+ * Queries already confirmed in a company DB by this process, so the check costs one
+ * request per server start rather than one per sync. Keyed by connection + company DB.
+ */
+const confirmedQueries = new Set<string>();
 
 /** Runaway guard on `odata.nextLink` chains when reading a warehouse whole. */
 const MAX_PAGES = 2000;
@@ -45,7 +77,7 @@ const MAX_PAGES = 2000;
 /**
  * SAP's "No matching records found". `/List` answers an empty result with a 404 carrying
  * it — and answers a query that does not exist the same way, which is why
- * `assertSapOnHandQueryInstalled` has to be asked separately.
+ * `ensureSapOnHandQuery` checks for the query separately.
  */
 const SAP_NO_MATCHING_RECORDS = -2028;
 
@@ -83,28 +115,60 @@ function skipFromNextLink(link: string | undefined): number | null {
   return match ? Number(match[1]) : null;
 }
 
-/**
- * Fail loudly when a saved query is missing. Without this, every warehouse would read as
- * empty (see `SAP_NO_MATCHING_RECORDS`) and stock would be zeroed across the board.
- */
-export async function assertSapOnHandQueryInstalled(
-  creds: SapServiceLayerCredentials,
-  code: string = SAP_SERIAL_ONHAND_QUERY,
-): Promise<void> {
+async function queryExists(creds: SapServiceLayerCredentials, code: string): Promise<boolean> {
   const response = await sapServiceLayerClient.request({
     creds,
     method: "GET",
     path: `/SQLQueries('${code}')?$select=SqlCode`,
   });
-  if (response.statusCode === 404) {
-    throw new Error(
-      `The SAP saved query ${code} is not installed in this company database, so stock ` +
-        "on hand cannot be read. Run scripts/setup-sap-serial-onhand-query.mjs once against it.",
-    );
-  }
+  if (response.statusCode === 404) return false;
   if (response.statusCode >= 400) {
     throw new Error(sapErrorMessage(response.statusCode, response.rawBody, "SQLQueries"));
   }
+  return true;
+}
+
+/**
+ * Make sure a saved query exists in this company DB, creating it if it does not — so a new
+ * environment (production included) needs no manual setup step.
+ *
+ * Checked explicitly rather than inferred from `/List`: that answers "no rows" and "no
+ * such query" alike (see `SAP_NO_MATCHING_RECORDS`), and reading a missing query as empty
+ * would zero stock across the board.
+ *
+ * An existing query is never modified, even if its SQL differs — changing a query in a
+ * live SAP is left to the setup script's `--replace`. If SAP refuses the create (the
+ * Service Layer user may not be allowed to add queries), the error names the script.
+ */
+export async function ensureSapOnHandQuery(
+  creds: SapServiceLayerCredentials,
+  code: string,
+): Promise<void> {
+  const cacheKey = `${creds.id}:${creds.companyDb}:${code}`;
+  if (confirmedQueries.has(cacheKey)) return;
+
+  const definition = SAP_ONHAND_QUERY_DEFINITIONS[code];
+  if (!definition) throw new Error(`Unknown SAP saved query: ${code}`);
+
+  if (!(await queryExists(creds, code))) {
+    const created = await sapServiceLayerClient.request({
+      creds,
+      method: "POST",
+      path: "/SQLQueries",
+      body: { SqlCode: code, SqlName: definition.name, SqlText: definition.text },
+    });
+    // Another run may have created it in the meantime; only a query still missing is a failure.
+    if (created.statusCode >= 400 && !(await queryExists(creds, code))) {
+      throw new Error(
+        `ISMS could not create the SAP saved query ${code} it reads stock from ` +
+          `(${sapErrorMessage(created.statusCode, created.rawBody, "SQLQueries")}). ` +
+          "Ask for the Service Layer user to be allowed to add queries, or run " +
+          "scripts/setup-sap-serial-onhand-query.mjs once against this company database.",
+      );
+    }
+  }
+
+  confirmedQueries.add(cacheKey);
 }
 
 /** One page of a saved query's `/List` for one warehouse, starting `skip` rows in. */

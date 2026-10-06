@@ -6,7 +6,7 @@ import {
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
 import { sapSyncCursorRepository } from "@/features/sap/repositories/sap-sync-cursor.repository";
 import {
-  assertSapOnHandQueryInstalled,
+  ensureSapOnHandQuery,
   fetchSapItemOnHand,
   fetchSapOnHandPage,
   fetchSapOnHandSerials,
@@ -275,14 +275,14 @@ async function placeWarehousePage(
   return null;
 }
 
-/** SAP credentials, after checking the saved queries this caller reads are installed. */
+/** SAP credentials, after making sure the saved queries this caller reads exist in SAP. */
 async function credentialsWithQueries(
   tenantId: string,
   queries: string[],
 ): Promise<SapServiceLayerCredentials> {
   const creds = await sapServiceLayerService.getCredentials(tenantId);
   if (!creds) throw new Error(SAP_NO_CONNECTION_MESSAGE);
-  for (const query of queries) await assertSapOnHandQueryInstalled(creds, query);
+  for (const query of queries) await ensureSapOnHandQuery(creds, query);
   return creds;
 }
 
@@ -294,7 +294,8 @@ async function runPlacement(
   actorUserId: string | null,
   deadline: number,
 ): Promise<SapSyncResult> {
-  // Checked before a pass begins, so a missing query never leaves a pass half-open.
+  // Ensured before a pass begins, so a query SAP refuses to create never leaves a pass
+  // half-open.
   const creds = await credentialsWithQueries(tenantId, [
     SAP_SERIAL_ONHAND_QUERY,
     SAP_ITEM_ONHAND_QUERY,
