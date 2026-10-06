@@ -11,6 +11,7 @@ jest.mock("@/features/sap/services/sap-onhand-stock", () => ({
   assertSapOnHandQueryInstalled: jest.fn().mockResolvedValue(undefined),
   fetchSapOnHandSerials: jest.fn(),
   fetchSapOnHandPage: jest.fn(),
+  fetchSapItemOnHand: jest.fn(),
 }));
 jest.mock("@/features/reason-status/repositories/reason-status.repository", () => ({
   reasonStatusRepository: { findCodeId: jest.fn().mockResolvedValue({ id: "stk" }) },
@@ -49,12 +50,17 @@ import { sapStockPlacementRepository } from "@/features/inventory/repositories/s
 import { sapStockPlacementService } from "@/features/inventory/services/sap-stock-placement.service";
 import type { SapSyncResult } from "@/features/sap/schemas/sap-master-sync.schema";
 import { sapSyncCursorRepository } from "@/features/sap/repositories/sap-sync-cursor.repository";
-import { fetchSapOnHandPage, fetchSapOnHandSerials } from "@/features/sap/services/sap-onhand-stock";
+import {
+  fetchSapItemOnHand,
+  fetchSapOnHandPage,
+  fetchSapOnHandSerials,
+} from "@/features/sap/services/sap-onhand-stock";
 
 const repo = sapStockPlacementRepository as jest.Mocked<typeof sapStockPlacementRepository>;
 const cursors = sapSyncCursorRepository as jest.Mocked<typeof sapSyncCursorRepository>;
 const fetchBranch = fetchSapOnHandSerials as jest.MockedFunction<typeof fetchSapOnHandSerials>;
 const fetchPage = fetchSapOnHandPage as jest.MockedFunction<typeof fetchSapOnHandPage>;
+const fetchInStock = fetchSapItemOnHand as jest.MockedFunction<typeof fetchSapItemOnHand>;
 
 const PASS = new Date("2026-10-06T00:00:00Z");
 const idleCursor = { passStartedAt: null, lastKey: null } as never;
@@ -84,6 +90,10 @@ beforeEach(() => {
           { itemCode: "NOT-IN-ISMS", serialNo: "X1" },
         ]
       : [],
+  );
+  // SAP's In Stock column (OITW.OnHand): 7 of 32STV105 at ABB001, none at ABB002.
+  fetchInStock.mockImplementation(async (_c, whs) =>
+    whs === "ABB001" ? new Map([["32STV105", 7], ["NOT-IN-ISMS", 2]]) : new Map(),
   );
   fetchPage.mockResolvedValue({
     serials: [
@@ -138,8 +148,8 @@ describe("place", () => {
     expect(repo.moveWarehouseUnits).toHaveBeenCalledWith("t1", ["wu-moved"], "loc-W1", PASS);
     expect(repo.stampWarehouseUnits).toHaveBeenCalledWith("t1", ["wu-stays"], PASS);
 
-    // Planogram qty = SAP on-hand per branch × model (4 serials of m1 at bA, none at bB)
-    expect(repo.setPlanogramQty).toHaveBeenCalledWith("t1", [{ id: "p1", maxQty: 4 }]);
+    // Planogram qty = SAP's In Stock per branch × model (7 at bA, none at bB)
+    expect(repo.setPlanogramQty).toHaveBeenCalledWith("t1", [{ id: "p1", maxQty: 7 }]);
     expect(repo.setPlanogramQty).toHaveBeenCalledWith("t1", [{ id: "p2", maxQty: 0 }]);
 
     expect(result.caughtUp).toBe(true);
@@ -201,6 +211,19 @@ describe("place", () => {
   });
 });
 
+describe("branchQtyByModel", () => {
+  it("reads one branch's In Stock live, keyed by model", async () => {
+    await expect(sapStockPlacementService.branchQtyByModel("t1", "bA")).resolves.toEqual(
+      new Map([["m1", 7]]),
+    );
+  });
+
+  it("returns null when SAP cannot be read", async () => {
+    fetchInStock.mockRejectedValueOnce(new Error("down"));
+    await expect(sapStockPlacementService.branchQtyByModel("t1", "bA")).resolves.toBeNull();
+  });
+});
+
 describe("afterModelSync", () => {
   const passDone: SapSyncResult = {
     fetched: 10,
@@ -214,12 +237,13 @@ describe("afterModelSync", () => {
     totalAtSource: 10,
   };
 
-  it("sets planogram qty for every branch", async () => {
+  it("sets planogram qty for every branch from SAP's In Stock", async () => {
     const result = await sapStockPlacementService.afterModelSync("t1", passDone);
-    expect(repo.setPlanogramQty).toHaveBeenCalledWith("t1", [{ id: "p1", maxQty: 4 }]);
+    expect(repo.setPlanogramQty).toHaveBeenCalledWith("t1", [{ id: "p1", maxQty: 7 }]);
     expect(repo.setPlanogramQty).toHaveBeenCalledWith("t1", [{ id: "p2", maxQty: 0 }]);
     expect(result.notes).toEqual(["Planogram quantities refreshed from SAP: 2 changed across 2 branches"]);
     expect(fetchPage).not.toHaveBeenCalled();
+    expect(fetchBranch).not.toHaveBeenCalled();
   });
 
   it("does nothing until the models pass completes", async () => {

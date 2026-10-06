@@ -4,7 +4,7 @@ jest.mock("@/features/sap/services/sap-service-layer-client", () => ({
 
 import {
   assertSapOnHandQueryInstalled,
-  countByItem,
+  fetchSapItemOnHand,
   fetchSapOnHandPage,
   fetchSapOnHandSerials,
 } from "@/features/sap/services/sap-onhand-stock";
@@ -89,15 +89,22 @@ describe("fetchSapOnHandPage", () => {
   });
 });
 
-describe("countByItem", () => {
-  it("counts units per item code", () => {
-    expect(
-      countByItem([
-        { itemCode: "A", serialNo: "1" },
-        { itemCode: "A", serialNo: "2" },
-        { itemCode: "B", serialNo: "3" },
-      ]),
-    ).toEqual(new Map([["A", 2], ["B", 1]]));
+describe("fetchSapItemOnHand", () => {
+  it("reads SAP's In Stock per item from the OITW query, rounding decimals", async () => {
+    request.mockResolvedValueOnce(
+      ok({
+        value: [
+          { ItemCode: "32STV105", OnHand: 15 },
+          { ItemCode: "43STW102", OnHand: 9.999999 },
+          { ItemCode: "ZERO", OnHand: 0 },
+        ],
+      }),
+    );
+
+    const onHand = await fetchSapItemOnHand(creds, "ABB001");
+
+    expect(request.mock.calls[0][0].path).toBe("/SQLQueries('ISMS_ITEM_ONHAND')/List?whs='ABB001'");
+    expect(onHand).toEqual(new Map([["32STV105", 15], ["43STW102", 10]]));
   });
 });
 
@@ -109,8 +116,8 @@ describe("assertSapOnHandQueryInstalled", () => {
 
   it("names the setup script when the query is missing", async () => {
     request.mockResolvedValueOnce(sapError(404, -2028, "No matching records found"));
-    await expect(assertSapOnHandQueryInstalled(creds)).rejects.toThrow(
-      "setup-sap-serial-onhand-query.mjs",
+    await expect(assertSapOnHandQueryInstalled(creds, "ISMS_ITEM_ONHAND")).rejects.toThrow(
+      "ISMS_ITEM_ONHAND is not installed",
     );
   });
 });

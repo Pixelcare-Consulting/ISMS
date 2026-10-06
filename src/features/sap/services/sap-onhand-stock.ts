@@ -25,12 +25,19 @@ import type { SapServiceLayerCredentials } from "@/features/sap/types/sap-servic
  * The warehouse is the finest grain SAP has here: bin locations are not in use (only the
  * automatic system bin exists), so there is no position *within* a warehouse to read.
  *
- * Counting the rows per item gives SAP's "In Stock" (OITW.OnHand) for that warehouse —
- * every ISMS model is serial-managed. Verified against `ItemWarehouseInfoCollection`.
+ * SAP's "In Stock" itself — OITW.OnHand, the column on Item Master Data → Inventory Data —
+ * is a stored field, read through a second saved query rather than by counting serials:
+ *
+ *   SELECT T0.ItemCode, T0.OnHand FROM OITW T0
+ *   WHERE T0.WhsCode = :whs AND T0.OnHand > 0 ORDER BY T0.ItemCode
+ *
+ * The Service Layer's own route to it (`Items → ItemWarehouseInfoCollection`) returns
+ * every warehouse with ~40 fields for every item, so it is not used.
  */
 
-/** Keep in step with SQL_CODE in scripts/setup-sap-serial-onhand-query.mjs. */
+/** Keep both codes in step with QUERIES in scripts/setup-sap-serial-onhand-query.mjs. */
 export const SAP_SERIAL_ONHAND_QUERY = "ISMS_SN_ONHAND";
+export const SAP_ITEM_ONHAND_QUERY = "ISMS_ITEM_ONHAND";
 
 /** Runaway guard on `odata.nextLink` chains when reading a warehouse whole. */
 const MAX_PAGES = 2000;
@@ -77,27 +84,93 @@ function skipFromNextLink(link: string | undefined): number | null {
 }
 
 /**
- * Fail loudly when the saved query is missing. Without this, every warehouse would read
- * as empty (see `SAP_NO_MATCHING_RECORDS`) and stock would be zeroed across the board.
+ * Fail loudly when a saved query is missing. Without this, every warehouse would read as
+ * empty (see `SAP_NO_MATCHING_RECORDS`) and stock would be zeroed across the board.
  */
 export async function assertSapOnHandQueryInstalled(
   creds: SapServiceLayerCredentials,
+  code: string = SAP_SERIAL_ONHAND_QUERY,
 ): Promise<void> {
   const response = await sapServiceLayerClient.request({
     creds,
     method: "GET",
-    path: `/SQLQueries('${SAP_SERIAL_ONHAND_QUERY}')?$select=SqlCode`,
+    path: `/SQLQueries('${code}')?$select=SqlCode`,
   });
   if (response.statusCode === 404) {
     throw new Error(
-      `The SAP saved query ${SAP_SERIAL_ONHAND_QUERY} is not installed in this company ` +
-        "database, so stock on hand cannot be read. Run " +
-        "scripts/setup-sap-serial-onhand-query.mjs once against it.",
+      `The SAP saved query ${code} is not installed in this company database, so stock ` +
+        "on hand cannot be read. Run scripts/setup-sap-serial-onhand-query.mjs once against it.",
     );
   }
   if (response.statusCode >= 400) {
     throw new Error(sapErrorMessage(response.statusCode, response.rawBody, "SQLQueries"));
   }
+}
+
+/** One page of a saved query's `/List` for one warehouse, starting `skip` rows in. */
+async function fetchQueryPage(
+  creds: SapServiceLayerCredentials,
+  code: string,
+  warehouseCode: string,
+  skip: number,
+): Promise<{ rows: Record<string, unknown>[]; nextSkip: number | null }> {
+  const whs = encodeURIComponent(warehouseCode.replace(/'/g, "''"));
+  const path =
+    `/SQLQueries('${code}')/List?whs='${whs}'` + (skip > 0 ? `&$skip=${skip}` : "");
+
+  const response: SapServiceLayerRequestResult<SapQueryListResponse> =
+    await sapServiceLayerClient.request<SapQueryListResponse>({
+      creds,
+      method: "GET",
+      path,
+      headers: { Prefer: `odata.maxpagesize=${sapPageSize()}` },
+    });
+
+  if (response.statusCode === 404 && sapErrorCode(response.rawBody) === SAP_NO_MATCHING_RECORDS) {
+    return { rows: [], nextSkip: null };
+  }
+  if (response.statusCode >= 400) {
+    throw new Error(sapErrorMessage(response.statusCode, response.rawBody, "SQLQueries"));
+  }
+  return {
+    rows: response.data?.value ?? [],
+    nextSkip: skipFromNextLink(
+      response.data?.["odata.nextLink"] ?? response.data?.["@odata.nextLink"],
+    ),
+  };
+}
+
+/** Every row of a saved query for one warehouse, following SAP's paging to the end. */
+async function fetchQueryAll(
+  creds: SapServiceLayerCredentials,
+  code: string,
+  warehouseCode: string,
+): Promise<Record<string, unknown>[]> {
+  const rows: Record<string, unknown>[] = [];
+  let skip: number | null = 0;
+  for (let page = 0; skip !== null; page += 1) {
+    if (page >= MAX_PAGES) {
+      throw new Error(
+        `Stopped reading ${code} for ${warehouseCode} after ${MAX_PAGES} pages — SAP kept ` +
+          "returning more.",
+      );
+    }
+    const result: { rows: Record<string, unknown>[]; nextSkip: number | null } =
+      await fetchQueryPage(creds, code, warehouseCode, skip);
+    rows.push(...result.rows);
+    skip = result.nextSkip;
+  }
+  return rows;
+}
+
+function toSerials(rows: Record<string, unknown>[]): SapOnHandSerial[] {
+  const serials: SapOnHandSerial[] = [];
+  for (const row of rows) {
+    const itemCode = sapText(row.ItemCode);
+    const serialNo = sapText(row.DistNumber);
+    if (itemCode && serialNo) serials.push({ itemCode, serialNo });
+  }
+  return serials;
 }
 
 /**
@@ -109,39 +182,8 @@ export async function fetchSapOnHandPage(
   warehouseCode: string,
   skip = 0,
 ): Promise<SapOnHandPage> {
-  const whs = encodeURIComponent(warehouseCode.replace(/'/g, "''"));
-  const path =
-    `/SQLQueries('${SAP_SERIAL_ONHAND_QUERY}')/List?whs='${whs}'` +
-    (skip > 0 ? `&$skip=${skip}` : "");
-
-  const response: SapServiceLayerRequestResult<SapQueryListResponse> =
-    await sapServiceLayerClient.request<SapQueryListResponse>({
-      creds,
-      method: "GET",
-      path,
-      headers: { Prefer: `odata.maxpagesize=${sapPageSize()}` },
-    });
-
-  if (response.statusCode === 404 && sapErrorCode(response.rawBody) === SAP_NO_MATCHING_RECORDS) {
-    return { serials: [], nextSkip: null };
-  }
-  if (response.statusCode >= 400) {
-    throw new Error(sapErrorMessage(response.statusCode, response.rawBody, "SQLQueries"));
-  }
-
-  const serials: SapOnHandSerial[] = [];
-  for (const row of response.data?.value ?? []) {
-    const itemCode = sapText(row.ItemCode);
-    const serialNo = sapText(row.DistNumber);
-    if (itemCode && serialNo) serials.push({ itemCode, serialNo });
-  }
-
-  return {
-    serials,
-    nextSkip: skipFromNextLink(
-      response.data?.["odata.nextLink"] ?? response.data?.["@odata.nextLink"],
-    ),
-  };
+  const page = await fetchQueryPage(creds, SAP_SERIAL_ONHAND_QUERY, warehouseCode, skip);
+  return { serials: toSerials(page.rows), nextSkip: page.nextSkip };
 }
 
 /** Every serial SAP holds on hand in one warehouse. For branches, which are small. */
@@ -149,27 +191,23 @@ export async function fetchSapOnHandSerials(
   creds: SapServiceLayerCredentials,
   warehouseCode: string,
 ): Promise<SapOnHandSerial[]> {
-  const serials: SapOnHandSerial[] = [];
-  let skip: number | null = 0;
-  for (let page = 0; skip !== null; page += 1) {
-    if (page >= MAX_PAGES) {
-      throw new Error(
-        `Stopped reading stock for ${warehouseCode} after ${MAX_PAGES} pages — SAP kept ` +
-          "returning more.",
-      );
-    }
-    const result: SapOnHandPage = await fetchSapOnHandPage(creds, warehouseCode, skip);
-    serials.push(...result.serials);
-    skip = result.nextSkip;
-  }
-  return serials;
+  return toSerials(await fetchQueryAll(creds, SAP_SERIAL_ONHAND_QUERY, warehouseCode));
 }
 
-/** Units on hand per SAP item code. */
-export function countByItem(serials: SapOnHandSerial[]): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const serial of serials) {
-    counts.set(serial.itemCode, (counts.get(serial.itemCode) ?? 0) + 1);
+/**
+ * SAP's "In Stock" (OITW.OnHand) per item code in one warehouse. Items with none are not
+ * returned. OnHand is a decimal in SAP; serial-managed stock is whole units, so it is
+ * rounded rather than truncated against float noise.
+ */
+export async function fetchSapItemOnHand(
+  creds: SapServiceLayerCredentials,
+  warehouseCode: string,
+): Promise<Map<string, number>> {
+  const onHand = new Map<string, number>();
+  for (const row of await fetchQueryAll(creds, SAP_ITEM_ONHAND_QUERY, warehouseCode)) {
+    const itemCode = sapText(row.ItemCode);
+    const qty = Math.round(Number(row.OnHand));
+    if (itemCode && Number.isFinite(qty) && qty > 0) onHand.set(itemCode, qty);
   }
-  return counts;
+  return onHand;
 }

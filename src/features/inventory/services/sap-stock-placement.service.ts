@@ -7,9 +7,11 @@ import { reasonStatusRepository } from "@/features/reason-status/repositories/re
 import { sapSyncCursorRepository } from "@/features/sap/repositories/sap-sync-cursor.repository";
 import {
   assertSapOnHandQueryInstalled,
-  countByItem,
+  fetchSapItemOnHand,
   fetchSapOnHandPage,
   fetchSapOnHandSerials,
+  SAP_ITEM_ONHAND_QUERY,
+  SAP_SERIAL_ONHAND_QUERY,
   type SapOnHandSerial,
 } from "@/features/sap/services/sap-onhand-stock";
 import { SkipTally } from "@/features/sap/services/sap-sync-engine";
@@ -26,8 +28,8 @@ import { logger } from "@/lib/shared/logger";
  * SAP records which warehouse each serial is in (OSRQ) and tells branches from stock
  * warehouses with `U_Warehouse_Type`; that is the only location SAP has — no bins. So:
  *
- * - **Branches** → Stock units (`branch_inventories`). The same read sets each planogram
- *   row's quantity (`maxQty`) to SAP's on-hand for that branch and model.
+ * - **Branches** → Stock units (`branch_inventories`), and each planogram row's quantity
+ *   (`maxQty`) is set to SAP's "In Stock" (OITW.OnHand) for that branch and model.
  * - **Warehouses** (those the SAP warehouse sync created) → Warehouse stock
  *   (`warehouse_inventories`), under one location per warehouse named after it.
  * - **Service centres are not placed.** They are dimension-5 cost centres in SAP, which
@@ -156,18 +158,27 @@ async function resolveSerials(
   return resolved;
 }
 
-/** Set each planogram row at the branch to SAP's on-hand for its model. */
-async function applyPlanogramQty(
-  tenantId: string,
-  branchId: string,
-  serials: SapOnHandSerial[],
+/** SAP's In Stock per model id, from SAP's per-item-code answer. */
+function byModel(
+  onHandByItem: Map<string, number>,
   modelIdBySku: Map<string, string>,
-): Promise<number> {
+): Map<string, number> {
   const qtyByModel = new Map<string, number>();
-  for (const [itemCode, qty] of countByItem(serials)) {
+  for (const [itemCode, qty] of onHandByItem) {
     const modelId = modelIdBySku.get(itemCode);
     if (modelId) qtyByModel.set(modelId, qty);
   }
+  return qtyByModel;
+}
+
+/** Set each planogram row at the branch to SAP's In Stock for its model (0 if none). */
+async function applyPlanogramQty(
+  ctx: { tenantId: string; creds: SapServiceLayerCredentials; modelIdBySku: Map<string, string> },
+  branch: SapStockSite,
+): Promise<number> {
+  const { tenantId } = ctx;
+  const branchId = branch.id;
+  const qtyByModel = byModel(await fetchSapItemOnHand(ctx.creds, branch.code), ctx.modelIdBySku);
   const rows = await repo.listPlanogramQty(tenantId, branchId);
   const updates = rows
     .map((row) => ({ id: row.id, maxQty: qtyByModel.get(row.modelId) ?? 0, was: row.maxQty }))
@@ -180,12 +191,7 @@ async function applyPlanogramQty(
 async function placeBranch(ctx: Context, branch: Location): Promise<void> {
   const serials = await fetchSapOnHandSerials(ctx.creds, branch.code);
   ctx.stats.serialsRead += serials.length;
-  const planogramChanged = await applyPlanogramQty(
-    ctx.tenantId,
-    branch.id,
-    serials,
-    ctx.modelIdBySku,
-  );
+  const planogramChanged = await applyPlanogramQty(ctx, branch);
   ctx.stats.planogramRowsUpdated += planogramChanged;
 
   const resolved = await resolveSerials(ctx, serials);
@@ -269,10 +275,14 @@ async function placeWarehousePage(
   return null;
 }
 
-async function credentialsWithQuery(tenantId: string): Promise<SapServiceLayerCredentials> {
+/** SAP credentials, after checking the saved queries this caller reads are installed. */
+async function credentialsWithQueries(
+  tenantId: string,
+  queries: string[],
+): Promise<SapServiceLayerCredentials> {
   const creds = await sapServiceLayerService.getCredentials(tenantId);
   if (!creds) throw new Error(SAP_NO_CONNECTION_MESSAGE);
-  await assertSapOnHandQueryInstalled(creds);
+  for (const query of queries) await assertSapOnHandQueryInstalled(creds, query);
   return creds;
 }
 
@@ -285,7 +295,10 @@ async function runPlacement(
   deadline: number,
 ): Promise<SapSyncResult> {
   // Checked before a pass begins, so a missing query never leaves a pass half-open.
-  const creds = await credentialsWithQuery(tenantId);
+  const creds = await credentialsWithQueries(tenantId, [
+    SAP_SERIAL_ONHAND_QUERY,
+    SAP_ITEM_ONHAND_QUERY,
+  ]);
   const stk = await reasonStatusRepository.findCodeId(tenantId, "inventory_system", "STK");
   if (!stk) {
     throw new Error(
@@ -403,20 +416,6 @@ async function runPlacement(
   };
 }
 
-/** SAP on-hand per model id at one branch. */
-async function readBranchQtyByModel(
-  creds: SapServiceLayerCredentials,
-  branch: SapStockSite,
-  modelIdBySku: Map<string, string>,
-): Promise<Map<string, number>> {
-  const byModel = new Map<string, number>();
-  for (const [itemCode, qty] of countByItem(await fetchSapOnHandSerials(creds, branch.code))) {
-    const modelId = modelIdBySku.get(itemCode);
-    if (modelId) byModel.set(modelId, qty);
-  }
-  return byModel;
-}
-
 export const sapStockPlacementService = {
   /** Whether a placement pass is part-way through and should be continued first. */
   async inProgress(tenantId: string): Promise<boolean> {
@@ -444,25 +443,25 @@ export const sapStockPlacementService = {
   },
 
   /**
-   * Set every branch's planogram quantities to SAP's on-hand. Run by the Models sync once
+   * Set every branch's planogram quantities to SAP's In Stock. Run by the Models sync once
    * its pass completes; a failure is a note on that result, never a failed sync.
    */
   async afterModelSync(tenantId: string, result: SapSyncResult): Promise<SapSyncResult> {
     if (!result.caughtUp) return result;
     try {
-      const creds = await credentialsWithQuery(tenantId);
+      const creds = await credentialsWithQueries(tenantId, [SAP_ITEM_ONHAND_QUERY]);
       const [branches, modelIdBySku] = await Promise.all([
         repo.listSapBranches(tenantId),
         repo.modelIdBySku(tenantId),
       ]);
+      const ctx = { tenantId, creds, modelIdBySku };
       const skips = new SkipTally();
       let updated = 0;
       for (let i = 0; i < branches.length; i += BRANCH_READ_CONCURRENCY) {
         await Promise.all(
           branches.slice(i, i + BRANCH_READ_CONCURRENCY).map(async (branch) => {
             try {
-              const serials = await fetchSapOnHandSerials(creds, branch.code);
-              const changed = await applyPlanogramQty(tenantId, branch.id, serials, modelIdBySku);
+              const changed = await applyPlanogramQty(ctx, branch);
               updated += changed;
             } catch (error) {
               skips.add(
@@ -495,17 +494,21 @@ export const sapStockPlacementService = {
   },
 
   /**
-   * SAP on-hand per model id at one branch, read live — for the planogram's Add model
+   * SAP's In Stock per model id at one branch, read live — for the planogram's Add model
    * dialog, where the quantity is shown before the row exists. Null when SAP cannot be
    * read, so the UI can say so instead of showing a misleading 0.
    */
   async branchQtyByModel(tenantId: string, branchId: string): Promise<Map<string, number> | null> {
     try {
-      const creds = await credentialsWithQuery(tenantId);
+      const creds = await credentialsWithQueries(tenantId, [SAP_ITEM_ONHAND_QUERY]);
       const branches = await repo.listSapBranches(tenantId);
       const branch = branches.find((candidate) => candidate.id === branchId);
       if (!branch) return null;
-      return await readBranchQtyByModel(creds, branch, await repo.modelIdBySku(tenantId));
+      const [onHand, modelIdBySku] = await Promise.all([
+        fetchSapItemOnHand(creds, branch.code),
+        repo.modelIdBySku(tenantId),
+      ]);
+      return byModel(onHand, modelIdBySku);
     } catch (error) {
       logger.error({ err: error, branchId }, "could not read branch on-hand from SAP");
       return null;
