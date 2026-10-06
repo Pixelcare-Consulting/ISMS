@@ -52,9 +52,6 @@ import { logger } from "@/lib/shared/logger";
 
 const CURSOR_KEY = "stock-placement";
 
-/** Branches read from SAP at once when refreshing planogram quantities. */
-const BRANCH_READ_CONCURRENCY = 4;
-
 interface Location extends SapStockSite {
   kind: "branch" | "warehouse";
   /** Sort + resume key: branches first, then warehouses, each by SAP code. */
@@ -458,22 +455,20 @@ export const sapStockPlacementService = {
       const ctx = { tenantId, creds, modelIdBySku };
       const skips = new SkipTally();
       let updated = 0;
-      for (let i = 0; i < branches.length; i += BRANCH_READ_CONCURRENCY) {
-        await Promise.all(
-          branches.slice(i, i + BRANCH_READ_CONCURRENCY).map(async (branch) => {
-            try {
-              const changed = await applyPlanogramQty(ctx, branch);
-              updated += changed;
-            } catch (error) {
-              skips.add(
-                `Could not read this branch's stock from SAP: ${
-                  error instanceof Error ? error.message : String(error)
-                }`,
-                branch.code,
-              );
-            }
-          }),
-        );
+      // One branch at a time, deliberately. Every read shares one Service Layer session,
+      // and SAP queues concurrent requests on a session: four at once took 15s where one
+      // takes 0.3s, which turned 51 branches into minutes and left the sync button hanging.
+      for (const branch of branches) {
+        try {
+          updated += await applyPlanogramQty(ctx, branch);
+        } catch (error) {
+          skips.add(
+            `Could not read this branch's stock from SAP: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+            branch.code,
+          );
+        }
       }
       return {
         ...result,
