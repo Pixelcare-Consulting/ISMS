@@ -6,37 +6,28 @@ import {
 import type { SapServiceLayerCredentials } from "@/features/sap/types/sap-service-layer";
 
 /**
- * Which serials SAP holds on hand in one warehouse — a branch or a stock warehouse alike,
- * since SAP keeps both in OWHS and tells them apart only by `U_Warehouse_Type`.
+ * Where SAP holds the serials a serial-sync page just read.
  *
  * `SerialNumberDetails` (OSRN) says which item a serial belongs to but not where it is.
  * Location lives in OSRQ (serial quantity per warehouse), which the Service Layer exposes
- * through no entity, so it is read through a saved query, which ISMS creates in the
- * company DB the first time it needs it (`ensureSapOnHandQuery`):
+ * through no entity, so it is read through a saved query ISMS creates in the company DB
+ * the first time it needs it (`ensureSapOnHandQuery`):
  *
- *   SELECT T0.ItemCode, T1.DistNumber, T0.WhsCode FROM OSRQ T0
+ *   SELECT T1.AbsEntry, T1.DistNumber, T0.ItemCode, T0.WhsCode FROM OSRQ T0
  *   INNER JOIN OSRN T1 ON T1.ItemCode = T0.ItemCode AND T1.SysNumber = T0.SysNumber
- *   WHERE T0.WhsCode = :whs AND T0.Quantity > 0
- *   ORDER BY T0.ItemCode, T1.DistNumber
+ *   WHERE T1.AbsEntry > :lo AND T1.AbsEntry <= :hi AND T0.Quantity > 0
  *
- * Parameterised by warehouse because the Service Layer's SQL allow-list refuses OWHS
- * ("Table 'OWHS' not accessible"), so the query cannot filter on the warehouse type.
+ * Keyed by serial id because that is how the serial sync pages: `SerialNumberDetails`'
+ * `DocEntry` *is* OSRN.AbsEntry (verified 2026-10-06), so one call answers "which of this
+ * page's serials are on hand, and in which warehouse". The range also holds serials of
+ * items ISMS does not carry; the caller keeps only its own page's.
  *
- * The warehouse is the finest grain SAP has here: bin locations are not in use (only the
- * automatic system bin exists), so there is no position *within* a warehouse to read.
- *
- * SAP's "In Stock" itself — OITW.OnHand, the column on Item Master Data → Inventory Data —
- * is a stored field, read through a second saved query rather than by counting serials:
- *
- *   SELECT T0.ItemCode, T0.OnHand FROM OITW T0
- *   WHERE T0.WhsCode = :whs AND T0.OnHand > 0 ORDER BY T0.ItemCode
- *
- * The Service Layer's own route to it (`Items → ItemWarehouseInfoCollection`) returns
- * every warehouse with ~40 fields for every item, so it is not used.
+ * The parameters are `:lo`/`:hi` because `:from` is rejected as SQL syntax. Filtering on
+ * the warehouse type inside the query is not possible: the Service Layer's SQL allow-list
+ * refuses OWHS. The warehouse is also the finest grain SAP has here — bins are not in use.
  */
 
-export const SAP_SERIAL_ONHAND_QUERY = "ISMS_SN_ONHAND";
-export const SAP_ITEM_ONHAND_QUERY = "ISMS_ITEM_ONHAND";
+export const SAP_SERIAL_LOCATION_QUERY = "ISMS_SN_LOC_RANGE";
 
 /**
  * The saved queries ISMS creates in SAP when they are missing. Keep in step with QUERIES
@@ -44,23 +35,14 @@ export const SAP_ITEM_ONHAND_QUERY = "ISMS_ITEM_ONHAND";
  * is not allowed to create queries.
  */
 const SAP_ONHAND_QUERY_DEFINITIONS: Record<string, { name: string; text: string }> = {
-  [SAP_SERIAL_ONHAND_QUERY]: {
-    name: "ISMS - serials on hand per warehouse",
+  [SAP_SERIAL_LOCATION_QUERY]: {
+    name: "ISMS - serials on hand by serial range",
     text: [
-      "SELECT T0.ItemCode, T1.DistNumber, T0.WhsCode",
+      "SELECT T1.AbsEntry, T1.DistNumber, T0.ItemCode, T0.WhsCode",
       "FROM OSRQ T0",
       "INNER JOIN OSRN T1 ON T1.ItemCode = T0.ItemCode AND T1.SysNumber = T0.SysNumber",
-      "WHERE T0.WhsCode = :whs AND T0.Quantity > 0",
-      "ORDER BY T0.ItemCode, T1.DistNumber",
-    ].join(" "),
-  },
-  [SAP_ITEM_ONHAND_QUERY]: {
-    name: "ISMS - In Stock per item per warehouse",
-    text: [
-      "SELECT T0.ItemCode, T0.OnHand",
-      "FROM OITW T0",
-      "WHERE T0.WhsCode = :whs AND T0.OnHand > 0",
-      "ORDER BY T0.ItemCode",
+      "WHERE T1.AbsEntry > :lo AND T1.AbsEntry <= :hi AND T0.Quantity > 0",
+      "ORDER BY T1.AbsEntry, T0.WhsCode",
     ].join(" "),
   },
 };
@@ -71,7 +53,7 @@ const SAP_ONHAND_QUERY_DEFINITIONS: Record<string, { name: string; text: string 
  */
 const confirmedQueries = new Set<string>();
 
-/** Runaway guard on `odata.nextLink` chains when reading a warehouse whole. */
+/** Runaway guard on `odata.nextLink` chains. */
 const MAX_PAGES = 2000;
 
 /**
@@ -81,15 +63,11 @@ const MAX_PAGES = 2000;
  */
 const SAP_NO_MATCHING_RECORDS = -2028;
 
-export interface SapOnHandSerial {
-  itemCode: string;
+/** A serial SAP holds on hand, and where. */
+export interface SapSerialLocation {
   serialNo: string;
-}
-
-export interface SapOnHandPage {
-  serials: SapOnHandSerial[];
-  /** `$skip` for the next page, or null when this was the warehouse's last page. */
-  nextSkip: number | null;
+  itemCode: string;
+  warehouseCode: string;
 }
 
 interface SapQueryListResponse {
@@ -106,13 +84,6 @@ function sapErrorCode(rawBody: string): number | null {
   } catch {
     return null;
   }
-}
-
-/** `$skip` from SAP's nextLink (`…/List?whs='X'&$skip=2000`). */
-function skipFromNextLink(link: string | undefined): number | null {
-  if (!link) return null;
-  const match = /[?&]\$skip=(\d+)/.exec(link);
-  return match ? Number(match[1]) : null;
 }
 
 async function queryExists(creds: SapServiceLayerCredentials, code: string): Promise<boolean> {
@@ -134,7 +105,7 @@ async function queryExists(creds: SapServiceLayerCredentials, code: string): Pro
  *
  * Checked explicitly rather than inferred from `/List`: that answers "no rows" and "no
  * such query" alike (see `SAP_NO_MATCHING_RECORDS`), and reading a missing query as empty
- * would zero stock across the board.
+ * would report every serial as not on hand.
  *
  * An existing query is never modified, even if its SQL differs — changing a query in a
  * live SAP is left to the setup script's `--replace`. If SAP refuses the create (the
@@ -142,7 +113,7 @@ async function queryExists(creds: SapServiceLayerCredentials, code: string): Pro
  */
 export async function ensureSapOnHandQuery(
   creds: SapServiceLayerCredentials,
-  code: string,
+  code: string = SAP_SERIAL_LOCATION_QUERY,
 ): Promise<void> {
   const cacheKey = `${creds.id}:${creds.companyDb}:${code}`;
   if (confirmedQueries.has(cacheKey)) return;
@@ -171,107 +142,50 @@ export async function ensureSapOnHandQuery(
   confirmedQueries.add(cacheKey);
 }
 
-/** One page of a saved query's `/List` for one warehouse, starting `skip` rows in. */
-async function fetchQueryPage(
+/**
+ * Every serial SAP holds on hand with an id in `(lo, hi]`, following SAP's paging to the
+ * end. A serial on hand in two warehouses (a SAP data problem) appears once per warehouse.
+ */
+export async function fetchSapSerialLocations(
   creds: SapServiceLayerCredentials,
-  code: string,
-  warehouseCode: string,
-  skip: number,
-): Promise<{ rows: Record<string, unknown>[]; nextSkip: number | null }> {
-  const whs = encodeURIComponent(warehouseCode.replace(/'/g, "''"));
-  const path =
-    `/SQLQueries('${code}')/List?whs='${whs}'` + (skip > 0 ? `&$skip=${skip}` : "");
+  lo: number,
+  hi: number,
+): Promise<SapSerialLocation[]> {
+  const locations: SapSerialLocation[] = [];
+  let path: string | null =
+    `/SQLQueries('${SAP_SERIAL_LOCATION_QUERY}')/List?lo=${Math.floor(lo)}&hi=${Math.floor(hi)}`;
 
-  const response: SapServiceLayerRequestResult<SapQueryListResponse> =
-    await sapServiceLayerClient.request<SapQueryListResponse>({
-      creds,
-      method: "GET",
-      path,
-      headers: { Prefer: `odata.maxpagesize=${sapPageSize()}` },
-    });
-
-  if (response.statusCode === 404 && sapErrorCode(response.rawBody) === SAP_NO_MATCHING_RECORDS) {
-    return { rows: [], nextSkip: null };
-  }
-  if (response.statusCode >= 400) {
-    throw new Error(sapErrorMessage(response.statusCode, response.rawBody, "SQLQueries"));
-  }
-  return {
-    rows: response.data?.value ?? [],
-    nextSkip: skipFromNextLink(
-      response.data?.["odata.nextLink"] ?? response.data?.["@odata.nextLink"],
-    ),
-  };
-}
-
-/** Every row of a saved query for one warehouse, following SAP's paging to the end. */
-async function fetchQueryAll(
-  creds: SapServiceLayerCredentials,
-  code: string,
-  warehouseCode: string,
-): Promise<Record<string, unknown>[]> {
-  const rows: Record<string, unknown>[] = [];
-  let skip: number | null = 0;
-  for (let page = 0; skip !== null; page += 1) {
+  for (let page = 0; path; page += 1) {
     if (page >= MAX_PAGES) {
-      throw new Error(
-        `Stopped reading ${code} for ${warehouseCode} after ${MAX_PAGES} pages — SAP kept ` +
-          "returning more.",
-      );
+      throw new Error(`Stopped reading serial locations after ${MAX_PAGES} pages.`);
     }
-    const result: { rows: Record<string, unknown>[]; nextSkip: number | null } =
-      await fetchQueryPage(creds, code, warehouseCode, skip);
-    rows.push(...result.rows);
-    skip = result.nextSkip;
+
+    const response: SapServiceLayerRequestResult<SapQueryListResponse> =
+      await sapServiceLayerClient.request<SapQueryListResponse>({
+        creds,
+        method: "GET",
+        path,
+        headers: { Prefer: `odata.maxpagesize=${sapPageSize()}` },
+      });
+
+    if (response.statusCode === 404 && sapErrorCode(response.rawBody) === SAP_NO_MATCHING_RECORDS) {
+      break;
+    }
+    if (response.statusCode >= 400) {
+      throw new Error(sapErrorMessage(response.statusCode, response.rawBody, "SQLQueries"));
+    }
+
+    for (const row of response.data?.value ?? []) {
+      const serialNo = sapText(row.DistNumber);
+      const itemCode = sapText(row.ItemCode);
+      const warehouseCode = sapText(row.WhsCode);
+      if (serialNo && itemCode && warehouseCode) locations.push({ serialNo, itemCode, warehouseCode });
+    }
+
+    const next: string | undefined =
+      response.data?.["odata.nextLink"] ?? response.data?.["@odata.nextLink"];
+    path = next ? `/${next.replace(/^\/+/, "")}` : null;
   }
-  return rows;
-}
 
-function toSerials(rows: Record<string, unknown>[]): SapOnHandSerial[] {
-  const serials: SapOnHandSerial[] = [];
-  for (const row of rows) {
-    const itemCode = sapText(row.ItemCode);
-    const serialNo = sapText(row.DistNumber);
-    if (itemCode && serialNo) serials.push({ itemCode, serialNo });
-  }
-  return serials;
-}
-
-/**
- * One page of a warehouse's on-hand serials, starting `skip` rows in. Resumable: a large
- * warehouse (one holds ~137k serials) is read across several runs by saving `nextSkip`.
- */
-export async function fetchSapOnHandPage(
-  creds: SapServiceLayerCredentials,
-  warehouseCode: string,
-  skip = 0,
-): Promise<SapOnHandPage> {
-  const page = await fetchQueryPage(creds, SAP_SERIAL_ONHAND_QUERY, warehouseCode, skip);
-  return { serials: toSerials(page.rows), nextSkip: page.nextSkip };
-}
-
-/** Every serial SAP holds on hand in one warehouse. For branches, which are small. */
-export async function fetchSapOnHandSerials(
-  creds: SapServiceLayerCredentials,
-  warehouseCode: string,
-): Promise<SapOnHandSerial[]> {
-  return toSerials(await fetchQueryAll(creds, SAP_SERIAL_ONHAND_QUERY, warehouseCode));
-}
-
-/**
- * SAP's "In Stock" (OITW.OnHand) per item code in one warehouse. Items with none are not
- * returned. OnHand is a decimal in SAP; serial-managed stock is whole units, so it is
- * rounded rather than truncated against float noise.
- */
-export async function fetchSapItemOnHand(
-  creds: SapServiceLayerCredentials,
-  warehouseCode: string,
-): Promise<Map<string, number>> {
-  const onHand = new Map<string, number>();
-  for (const row of await fetchQueryAll(creds, SAP_ITEM_ONHAND_QUERY, warehouseCode)) {
-    const itemCode = sapText(row.ItemCode);
-    const qty = Math.round(Number(row.OnHand));
-    if (itemCode && Number.isFinite(qty) && qty > 0) onHand.set(itemCode, qty);
-  }
-  return onHand;
+  return locations;
 }

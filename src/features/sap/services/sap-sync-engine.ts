@@ -217,7 +217,7 @@ async function runSlice(
     }
 
     if (records.length > 0) {
-      const applied = await entity.applyPage(tenantId, records);
+      const applied = await entity.applyPage(tenantId, records, context);
       created += applied.created;
       updated += applied.updated;
       unchanged += applied.unchanged;

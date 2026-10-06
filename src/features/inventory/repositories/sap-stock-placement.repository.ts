@@ -1,6 +1,6 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/database/client";
 import { SAP_SYNC_CHUNK, SAP_SYNC_WRITE_CONCURRENCY } from "@/features/sap/services/sap-master-data";
-import { STOCK_UNITS_LIST_STATUS_CODES } from "@/features/inventory/repositories/inventory.repository";
 
 /**
  * Persistence for placing SAP's on-hand serials: Stock units (`branch_inventories`),
@@ -79,15 +79,6 @@ export const sapStockPlacementRepository = {
     return location.id;
   },
 
-  /** Model id per SAP item code. Includes retired models so their stock still lands. */
-  async modelIdBySku(tenantId: string): Promise<Map<string, string>> {
-    const models = await prisma.productModel.findMany({
-      where: { tenantId },
-      select: { id: true, skuCode: true },
-    });
-    return new Map(models.map((model) => [model.skuCode, model.id]));
-  },
-
   async findSerials(tenantId: string, serialNos: string[]): Promise<Map<string, IsmsSerial>> {
     const found = new Map<string, IsmsSerial>();
     for (const batch of chunk(serialNos, LOOKUP_CHUNK)) {
@@ -105,13 +96,14 @@ export const sapStockPlacementRepository = {
   async findBranchUnits(
     tenantId: string,
     serialNumberIds: string[],
-  ): Promise<{ id: string; branchId: string; serialNumberId: string }[]> {
-    const rows: { id: string; branchId: string; serialNumberId: string }[] = [];
+  ): Promise<{ id: string; branchId: string; serialNumberId: string; statusCodeId: string }[]> {
+    const rows: { id: string; branchId: string; serialNumberId: string; statusCodeId: string }[] =
+      [];
     for (const batch of chunk(serialNumberIds, LOOKUP_CHUNK)) {
       rows.push(
         ...(await prisma.branchInventory.findMany({
           where: { tenantId, serialNumberId: { in: batch } },
-          select: { id: true, branchId: true, serialNumberId: true },
+          select: { id: true, branchId: true, serialNumberId: true, statusCodeId: true },
         })),
       );
     }
@@ -148,19 +140,6 @@ export const sapStockPlacementRepository = {
         data: { branchId: move.branchId, statusCodeId, updatedById },
       }),
     );
-  },
-
-  /** Serial numbers of the on-hand (STK) Stock units at one branch. */
-  async listBranchOnHandSerialNos(tenantId: string, branchId: string): Promise<string[]> {
-    const rows = await prisma.branchInventory.findMany({
-      where: {
-        tenantId,
-        branchId,
-        statusCode: { code: { in: [...STOCK_UNITS_LIST_STATUS_CODES] } },
-      },
-      select: { serialNumber: { select: { serialNo: true } } },
-    });
-    return rows.map((row) => row.serialNumber.serialNo);
   },
 
   // ── Warehouse stock ───────────────────────────────────────────────────────────────
@@ -242,26 +221,40 @@ export const sapStockPlacementRepository = {
     }
   },
 
-  /** Units in this warehouse that the placement pass started at `passMark` never saw. */
-  countWarehouseUnitsUnseen(tenantId: string, warehouseId: string, passMark: Date) {
-    return prisma.warehouseInventory.count({
-      where: {
-        tenantId,
-        warehouseLocation: { warehouseId },
-        OR: [{ systemUpdatedAt: null }, { systemUpdatedAt: { lt: passMark } }],
-      },
-    });
-  },
-
   // ── Planogram quantity ────────────────────────────────────────────────────────────
 
+  /**
+   * Stock (STK) units per branch × model, keyed `branchId:modelId`. Narrowed to the given
+   * branches and, if passed, models; pairs with no units are simply absent.
+   */
+  async countStockUnits(
+    tenantId: string,
+    stkStatusId: string,
+    branchIds: string[],
+    modelIds?: string[],
+  ): Promise<Map<string, number>> {
+    if (branchIds.length === 0 || modelIds?.length === 0) return new Map();
+    const rows = await prisma.$queryRaw<{ branch_id: string; model_id: string; qty: number }[]>`
+      SELECT bi.branch_id, sn.model_id, COUNT(*)::int AS qty
+      FROM branch_inventories bi
+      INNER JOIN serial_numbers sn ON sn.id = bi.serial_number_id
+      WHERE bi.tenant_id = ${tenantId}
+        AND bi.status_code_id = ${stkStatusId}
+        AND bi.branch_id IN (${Prisma.join(branchIds)})
+        ${modelIds ? Prisma.sql`AND sn.model_id IN (${Prisma.join(modelIds)})` : Prisma.empty}
+      GROUP BY bi.branch_id, sn.model_id
+    `;
+    return new Map(rows.map((row) => [`${row.branch_id}:${row.model_id}`, Number(row.qty)]));
+  },
+
+  /** Planogram rows, optionally only those at these branches. */
   listPlanogramQty(
     tenantId: string,
-    branchId: string,
-  ): Promise<{ id: string; modelId: string; maxQty: number }[]> {
+    branchIds?: string[],
+  ): Promise<{ id: string; branchId: string; modelId: string; maxQty: number }[]> {
     return prisma.branchPlanogram.findMany({
-      where: { tenantId, branchId },
-      select: { id: true, modelId: true, maxQty: true },
+      where: { tenantId, ...(branchIds ? { branchId: { in: branchIds } } : {}) },
+      select: { id: true, branchId: true, modelId: true, maxQty: true },
     });
   },
 

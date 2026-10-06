@@ -66,13 +66,13 @@ interface PlanogramRow {
   };
 }
 
-/** SAP on-hand, read-only. Null means SAP could not be read. */
+/** Planogram quantity, read-only. */
 function formatQty(qty: number | null): string {
   return qty == null ? "—" : qty.toLocaleString();
 }
 
 const QTY_HINT =
-  "SAP's In Stock for this model at this branch. Set by the Models and Serial numbers syncs; not editable.";
+  "Stock units synced from SAP for this model at this branch. Updated by the Serial numbers sync; not editable.";
 
 function messageForAddEmptyReason(reason: PlanogramAddEmptyReason): string {
   switch (reason) {
@@ -322,7 +322,7 @@ function AddPlanogramDialog({
   const [pending, startTransition] = useTransition();
   const [loading, setLoading] = useState(true);
   const [models, setModels] = useState<
-    { id: string; skuCode: string; name: string; onHandQty: number | null }[]
+    { id: string; skuCode: string; name: string; onHandQty: number }[]
   >([]);
   const [modelId, setModelId] = useState("");
   const selectedModel = models.find((m) => m.id === modelId);
@@ -412,11 +412,7 @@ function AddPlanogramDialog({
                   disabled
                   className="tabular-nums"
                 />
-                <p className="text-xs text-muted-foreground">
-                  {selectedModel && selectedModel.onHandQty == null
-                    ? "SAP could not be read just now — the next Models sync sets it."
-                    : QTY_HINT}
-                </p>
+                <p className="text-xs text-muted-foreground">{QTY_HINT}</p>
               </div>
             </>
           ) : (

@@ -15,8 +15,8 @@ export interface PlanogramRow {
   branchId: string;
   modelId: string;
   /**
-   * The planogram quantity: SAP's on-hand for this model at the branch, written by the
-   * Models and Serial numbers syncs and read-only in ISMS.
+   * The planogram quantity: Stock units synced from SAP for this model at the branch,
+   * kept current by the Serial numbers and Models syncs and read-only in ISMS.
    */
   maxQty: number;
   effectiveFrom: string | null;
@@ -49,10 +49,10 @@ export type ActiveModelForAdd = {
   name: string;
   status: string;
   /**
-   * SAP's on-hand at the branch, read live — shown read-only when the model is picked and
-   * becomes the row's quantity. Null when SAP could not be read.
+   * Stock units at the branch for this model — shown read-only when the model is picked
+   * and becomes the row's quantity.
    */
-  onHandQty: number | null;
+  onHandQty: number;
 };
 
 export type ActiveModelsForAddResult = {
@@ -219,13 +219,12 @@ export const planogramService = {
     );
     if (existing) throw new Error("Model is already on this branch planogram");
 
-    // The quantity is SAP's on-hand, not something the user types. If SAP cannot be read
-    // right now the row starts at 0 and the next Models or Serial numbers sync sets it.
+    // The quantity is the branch's Stock units for the model, not something the user types.
     const onHand = await sapStockPlacementService.branchQtyByModel(
       input.tenantId,
       input.branchId,
     );
-    const maxQty = onHand?.get(input.modelId) ?? 0;
+    const maxQty = onHand.get(input.modelId) ?? 0;
 
     const entry = await planogramRepository.createEntry(input.tenantId, {
       branchId: input.branchId,
@@ -374,7 +373,7 @@ export const planogramService = {
           skuCode: m.skuCode,
           name: m.name,
           status: m.status,
-          onHandQty: onHand ? (onHand.get(m.id) ?? 0) : null,
+          onHandQty: onHand.get(m.id) ?? 0,
         })),
         emptyReason: null,
       };
