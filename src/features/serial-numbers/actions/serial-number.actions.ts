@@ -15,11 +15,7 @@ import { requirePermission } from "@/lib/auth/permissions";
 
 const SERIAL_NUMBERS_ROUTE = "/inventory/serial-numbers";
 
-const SERIAL_NUMBER_SORT_FIELDS = new Set<SerialNumberListSort>([
-  "serialNo",
-  "model",
-  "recordStatus",
-]);
+const SERIAL_NUMBER_SORT_FIELDS = new Set<SerialNumberListSort>(["model"]);
 
 function parseSerialNumberSort(value?: string): SerialNumberListSort | undefined {
   if (value && SERIAL_NUMBER_SORT_FIELDS.has(value as SerialNumberListSort)) {
@@ -58,6 +54,27 @@ export async function getSerialNumberKpisAction() {
 export async function listSerialModelOptionsAction() {
   const session = await requirePermission("inventory.manage");
   return serialNumberService.listModelOptions(session.user.tenantId);
+}
+
+export async function listModelBranchSerialsAction(
+  modelId: string,
+  page = 1,
+  query?: string,
+) {
+  const session = await requirePermission("inventory.view");
+  try {
+    const result = await serialNumberService.listModelSerials(
+      session.user.tenantId,
+      modelId,
+      page,
+      query,
+    );
+    return { success: true as const, ...result };
+  } catch (e) {
+    return {
+      error: e instanceof Error ? e.message : "Failed to load serial numbers",
+    };
+  }
 }
 
 export async function getSerialTraceabilityAction(id: string) {

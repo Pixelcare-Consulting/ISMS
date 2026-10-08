@@ -367,7 +367,7 @@ export function CreateOrderDialog({
           ? "Special order submitted for SP approval"
           : orderType === "auto_replenish"
             ? "Auto-replenish order submitted for TL review"
-            : "Manual order submitted for PS review",
+            : "Manual order submitted for Team Leader review",
       );
       onClose();
       router.refresh();

@@ -7,6 +7,7 @@ import {
 } from "@/features/orders/constants/order-status";
 import {
   canApproveOrder,
+  declineOrderStatus,
   getApprovalLevelForStatus,
   getInitialOrderStatus,
   getRoleSlugForApproval,
@@ -72,7 +73,10 @@ function pendingApprovalEmail(status: BranchOrderStatus, orderType: BranchOrderT
   if (orderType === "special" && status === "pending_sp") {
     return "Special order submitted — pending Supply Planning approval.";
   }
-  if (status === "pending_ps") return "Manual order submitted — pending PS review.";
+  if (status === "pending_ps") return "Manual order is still with the product specialist.";
+  if (orderType === "manual" && status === "pending_tl") {
+    return "Manual order submitted — pending Team Leader review.";
+  }
   if (status === "pending_tl") return "Order pending Team Leader review.";
   if (status === "pending_sp") return "Order pending Supply Planning approval.";
   return `Order is pending approval (${status}).`;
@@ -617,8 +621,9 @@ export const orderService = {
 
     const level = getApprovalLevelForStatus(order.status, order.orderType);
     const roleSlug = getRoleSlugForApproval(order.status, order.orderType);
+    const nextStatus = declineOrderStatus(order.status, order.orderType);
 
-    await orderRepository.updateStatus(tenantId, orderId, "rejected");
+    await orderRepository.updateStatus(tenantId, orderId, nextStatus);
     await orderRepository.addRejection(orderId, {
       level,
       roleSlug,
@@ -629,13 +634,13 @@ export const orderService = {
     await auditService.log({
       tenantId,
       userId,
-      action: "order.rejected",
+      action: nextStatus === "cancelled" ? "order.cancelled" : "order.rejected",
       entityType: "BranchOrder",
       entityId: orderId,
       metadata: {
         ...orderAuditMetadata(order),
         from: order.status,
-        to: "rejected",
+        to: nextStatus,
         ...(comment ? { comment } : {}),
       },
     });

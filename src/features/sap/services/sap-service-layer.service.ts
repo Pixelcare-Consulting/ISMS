@@ -58,7 +58,7 @@ function decryptField(stored: string): string {
 function decryptRow(row: ConfigRow): SapServiceLayerCredentials {
   return {
     id: row.id,
-    baseUrl: decryptField(row.baseUrlEncrypted),
+    baseUrl: normalizeBaseUrl(decryptField(row.baseUrlEncrypted)),
     companyDb: decryptField(row.companyDbEncrypted),
     username: decryptField(row.usernameEncrypted),
     password: decryptField(row.passwordEncrypted),

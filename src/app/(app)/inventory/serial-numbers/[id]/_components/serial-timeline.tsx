@@ -45,11 +45,13 @@ export function SerialTimeline({ serial }: SerialTimelineProps) {
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-4">
           <div className="space-y-1">
-            <CardTitle className="font-mono text-lg">{serial.serialNo}</CardTitle>
-            <p className="text-sm text-muted-foreground">
+            {/* <CardTitle className="font-mono text-lg">{serial.serialNo}</CardTitle> */}
+            {/* <p className="text-sm text-muted-foreground">
               {serial.model.skuCode} — {serial.model.name}
               {serial.model.brand ? ` · ${serial.model.brand}` : ""}
-            </p>
+            </p> */}
+            <CardTitle className="font-mono text-lg">  {serial.model.skuCode} — {serial.model.name}</CardTitle> 
+            {serial.model.brand ? <p className="text-sm text-muted-foreground">{serial.model.brand}</p> : null}
           </div>
           <Badge
             variant={serial.recordStatus === "active" ? "default" : "secondary"}

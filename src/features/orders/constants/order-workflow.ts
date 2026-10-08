@@ -10,11 +10,13 @@ export interface OrderApprovalStep {
 }
 
 /**
- * Per FINDEN ISMS Process Flow swimlanes (Ordering):
- * - Auto-replenish: system form → TL review (optional) → SP approval → logistics delivery
- * - Manual: system form → PS review (required) → TL review (optional) → SP approval
- * - Special: TL creates form → SP approval
- * Logistics is fulfillment after SP approval — not an order approval gate.
+ * Signed FINDEN Process II (Ordering):
+ * - PS reviews Manual Orders and submits the request.
+ * - TL reviews. A special order is created and submitted by TL. Anything else goes to SP.
+ * - SP approves or cancels. Approval queues the SAP stand-in for Auto Create ITR/SO.
+ *   That job does not move stock. A date outside the delivery window is rescheduled.
+ * - Auto-replenish still starts with TL, then SP.
+ * Logistics fulfills after SP approval. It is not an order approval gate.
  */
 export function getOrderApprovalChain(orderType: BranchOrderType): OrderApprovalStep[] {
   switch (orderType) {
@@ -40,6 +42,8 @@ export function getOrderApprovalChain(orderType: BranchOrderType): OrderApproval
 }
 
 export function getInitialOrderStatus(orderType: BranchOrderType): BranchOrderStatus {
+  // Process II: submitting a manual request sends it to Team Leader review.
+  if (orderType === "manual") return "pending_tl";
   return getOrderApprovalChain(orderType)[0]?.status ?? "pending_tl";
 }
 
@@ -48,6 +52,8 @@ export function nextStatusAfterApprove(
   orderType: BranchOrderType,
 ): BranchOrderStatus {
   if (current === "pending_logistics") return "approved";
+  // Older manual requests may still be waiting on the product specialist.
+  if (current === "pending_ps" && orderType === "manual") return "pending_tl";
 
   const chain = getOrderApprovalChain(orderType);
   const idx = chain.findIndex((step) => step.status === current);
@@ -75,6 +81,9 @@ export function canApproveOrder(
   if (status === "pending_logistics" && roleSlugs.includes("logistics")) {
     return true;
   }
+  if (status === "pending_ps" && orderType === "manual" && roleSlugs.includes("ps")) {
+    return true;
+  }
 
   const step = getOrderApprovalChain(orderType).find((s) => s.status === status);
   if (!step) return false;
@@ -82,6 +91,14 @@ export function canApproveOrder(
     return SUPPLY_PLANNING_APPROVER_SLUGS.some((slug) => roleSlugs.includes(slug));
   }
   return roleSlugs.includes(step.roleSlug);
+}
+
+/** SP's no on the signed sheet is Cancel Request. Earlier steps stay a rejection. */
+export function declineOrderStatus(
+  status: BranchOrderStatus,
+  orderType: BranchOrderType,
+): "cancelled" | "rejected" {
+  return isSupplyPlanningApprovalStep(status, orderType) ? "cancelled" : "rejected";
 }
 
 export function isSupplyPlanningApprovalStep(
@@ -183,7 +200,7 @@ export function isOrderEditable(status: BranchOrderStatus): boolean {
 }
 
 export const ORDER_WORKFLOW_DESCRIPTION =
-  "Auto-replenish: TL → SP. Manual: PS → TL → SP. Special: TL creates → SP. Approved orders queue logistics delivery (DIT → Stock).";
+  "Manual: PS submits, TL reviews, SP approves or cancels. Special: TL submits, SP approves or cancels. Auto-replenish: TL then SP. Approval opens a delivery. It does not move stock.";
 
 export function getOrderStatusLabel(status: BranchOrderStatus): string {
   return BRANCH_ORDER_STATUS_LABELS[status] ?? status;
@@ -218,7 +235,7 @@ export function getAfterApproveHint(
 ): string {
   const nextStatus = nextStatusAfterApprove(status, orderType);
   if (nextStatus === "approved") {
-    return "After approve → Approved (logistics delivery queued)";
+    return "After approve → Approved. A delivery opens. Warehouse stock stays put until logistics dispatches it.";
   }
   const step = getOrderApprovalChain(orderType).find((s) => s.status === nextStatus);
   return step ? `After approve → ${step.label}` : "";

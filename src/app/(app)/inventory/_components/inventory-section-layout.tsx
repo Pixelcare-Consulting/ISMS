@@ -34,9 +34,9 @@ function resolveInventoryDescription(pathname: string): string {
     return "Serial numbers held in warehouses. Branch shelf stock stays under Stock units.";
   }
   if (pathname.startsWith("/inventory/serial-numbers")) {
-    return "Serial master records and activity for your area of responsibility.";
+    return "Serial master records and activity for your area of responsibility. Open a serial to trace its full lifecycle across inventory, transfers, sales, pull-outs, and counts.";
   }
-  return "Serialized units by branch. Series summary mirrors the INVENTORY (QTY × SRP).";
+  return "Serialized units by branch.";
 }
 
 export function InventorySectionLayout({

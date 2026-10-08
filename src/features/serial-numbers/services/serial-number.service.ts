@@ -11,6 +11,11 @@ import {
   type SerialNumberListSortDir,
   type SerialTraceabilityRow,
 } from "@/features/serial-numbers/repositories/serial-number.repository";
+import {
+  applyWarehouseNames,
+  loadWarehouseNames,
+  warehouseCodesMissingNames,
+} from "@/features/serial-numbers/services/serial-location-names";
 import { decimalToNumberOrNull } from "@/lib/database/decimal";
 
 interface SerialActorContext {
@@ -183,7 +188,7 @@ export interface SerialNumberStatusKpi {
 }
 
 export interface SerialNumberKpis {
-  totalSerials: number;
+  totalModels: number;
   statuses: SerialNumberStatusKpi[];
 }
 
@@ -197,13 +202,37 @@ const RECORD_STATUS_ORDER = Object.keys(
 ) as LookupRecordStatus[];
 
 export const serialNumberService = {
-  list(
+  async list(
     tenantId: string,
     pagination?: { page?: number; limit?: number },
     filters?: { q?: string; status?: LookupRecordStatus },
     sort?: { field?: SerialNumberListSort; dir?: SerialNumberListSortDir },
   ) {
-    return serialNumberRepository.list(tenantId, pagination, filters, sort);
+    const page = await serialNumberRepository.list(tenantId, pagination, filters, sort);
+    const modelIds = page.items.map((item) => item.id);
+    const [modelStock, syncByModel] = await Promise.all([
+      serialNumberRepository.modelStockFigures(tenantId, modelIds),
+      serialNumberRepository.latestSapSyncByModel(tenantId, modelIds),
+    ]);
+    return {
+      ...page,
+      modelStock,
+      items: page.items.map((item) => ({
+        ...item,
+        lastSyncedAt: syncByModel[item.id]?.lastSyncedAt ?? null,
+        serialCount: syncByModel[item.id]?.serialCount ?? 0,
+        sapOnHand: modelStock[item.id]?.sapOnHand ?? null,
+      })),
+    };
+  },
+
+  async listModelSerials(tenantId: string, modelId: string, page = 1, query?: string) {
+    const listed = await serialNumberRepository.listModelSerials(tenantId, modelId, page, query);
+    const missing = warehouseCodesMissingNames(listed.items);
+    if (missing.length === 0) return listed;
+    const names = await loadWarehouseNames(tenantId, missing);
+    if (names.size === 0) return listed;
+    return { ...listed, items: applyWarehouseNames(listed.items, names) };
   },
 
   listModelOptions(tenantId: string) {
@@ -211,17 +240,19 @@ export const serialNumberService = {
   },
 
   async getKpis(tenantId: string): Promise<SerialNumberKpis> {
-    const [statusGroups, totalSerials] = await Promise.all([
-      serialNumberRepository.countByRecordStatus(tenantId),
-      serialNumberRepository.countAll(tenantId),
+    const [totalModels, active, inactive] = await Promise.all([
+      serialNumberRepository.countListedModels(tenantId),
+      serialNumberRepository.countListedModels(tenantId, "active"),
+      serialNumberRepository.countListedModels(tenantId, "inactive"),
     ]);
 
-    const countByStatus = new Map(
-      statusGroups.map((g) => [g.recordStatus, g._count.id]),
-    );
+    const countByStatus = new Map<LookupRecordStatus, number>([
+      ["active", active],
+      ["inactive", inactive],
+    ]);
 
     return {
-      totalSerials,
+      totalModels,
       statuses: RECORD_STATUS_ORDER.map((status) => ({
         code: status,
         name: RECORD_STATUS_LABELS[status],

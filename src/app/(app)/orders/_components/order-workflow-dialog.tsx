@@ -127,7 +127,11 @@ export function OrderWorkflowDialog({
 
   function handleReject() {
     if (!comment.trim()) {
-      setActionError("Please add a rejection comment before rejecting.");
+      setActionError(
+        isSpFinalStep
+          ? "Please add a comment before cancelling the request."
+          : "Please add a rejection comment before rejecting.",
+      );
       return;
     }
     setConfirmAction("reject");
@@ -146,7 +150,9 @@ export function OrderWorkflowDialog({
         <DialogHeader>
           <DialogTitle>Review order {orderNumber}</DialogTitle>
           <DialogDescription>
-            Approve to advance the workflow chain or reject to cancel.
+            {isSpFinalStep
+              ? "Supply Planning approves the request or cancels it. Approval opens a delivery and does not move stock."
+              : "PS submits a manual request, Team Leader reviews it, then Supply Planning approves or cancels."}
           </DialogDescription>
         </DialogHeader>
         <div className="grid max-h-[calc(90svh-9.5rem)] min-h-0 gap-4 overflow-hidden md:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
@@ -261,10 +267,10 @@ export function OrderWorkflowDialog({
             disabled={pending}
             onClick={handleReject}
           >
-            Reject
+            {isSpFinalStep ? "Cancel request" : "Reject"}
           </Button>
           <Button disabled={pending} onClick={handleApprove}>
-            {pending ? "Saving…" : "Approve"}
+            {pending ? "Saving…" : isSpFinalStep ? "Approve" : status === "pending_ps" ? "Submit" : "Approve"}
           </Button>
         </DialogFooter>
         </DialogContent>
@@ -273,12 +279,20 @@ export function OrderWorkflowDialog({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {confirmAction === "approve" ? "Approve this order?" : "Reject this order?"}
+              {confirmAction === "approve"
+                ? "Approve this order?"
+                : isSpFinalStep
+                  ? "Cancel this order request?"
+                  : "Reject this order?"}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {confirmAction === "approve"
-                ? "This will move the order to the next workflow step."
-                : "This will reject and cancel the order request."}
+                ? isSpFinalStep
+                  ? "Approval opens a delivery for logistics. Warehouse and branch stock stay unchanged."
+                  : "This sends the request to the next reviewer."
+                : isSpFinalStep
+                  ? "Supply Planning cancels the request. No delivery is created."
+                  : "This rejects the order request."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -288,7 +302,7 @@ export function OrderWorkflowDialog({
               onClick={handleConfirmAction}
               className={confirmAction === "reject" ? "bg-destructive text-white hover:bg-destructive/90" : undefined}
             >
-              {confirmAction === "approve" ? "Confirm approve" : "Confirm reject"}
+              {confirmAction === "approve" ? "Confirm approve" : isSpFinalStep ? "Confirm cancel" : "Confirm reject"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

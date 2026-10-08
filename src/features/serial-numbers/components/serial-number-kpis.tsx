@@ -9,8 +9,8 @@ export function SerialNumberKpisStrip({ kpis }: SerialNumberKpisStripProps) {
   return (
     <GlobalKpiCards
       items={buildStatusKpiItems({
-        totalLabel: "Total serials",
-        totalValue: kpis.totalSerials,
+        totalLabel: "Total models",
+        totalValue: kpis.totalModels,
         statuses: kpis.statuses,
       })}
     />

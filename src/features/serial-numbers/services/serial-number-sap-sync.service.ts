@@ -3,6 +3,11 @@ import { runSapSync } from "@/features/sap/services/sap-sync-engine";
 import type { SapSyncEntity } from "@/features/sap/types/sap-sync-entity";
 import type { SapSyncResult } from "@/features/sap/schemas/sap-master-sync.schema";
 import { serialNumberRepository } from "@/features/serial-numbers/repositories/serial-number.repository";
+import {
+  beginSerialOnHandRun,
+  serialOnHandBlockReason,
+  stampSerialPageOnHand,
+} from "@/features/serial-numbers/services/serial-onhand-stamp";
 
 /**
  * Serial number master data (OSRN).
@@ -21,6 +26,9 @@ import { serialNumberRepository } from "@/features/serial-numbers/repositories/s
 interface SerialRecord {
   serialNo: string;
   modelId: string;
+  itemCode: string;
+  /** OSRN.AbsEntry — the on-hand query is keyed by this, not by warehouse. */
+  docEntry: number;
 }
 
 /** Item codes ISMS knows, so a serial can be linked to the model it belongs to. */
@@ -97,17 +105,23 @@ export const serialNumberSyncEntity: SapSyncEntity<SerialRecord, ModelIndex> = {
       };
     }
 
-    return { record: { serialNo, modelId } };
+    return { record: { serialNo, modelId, itemCode, docEntry: Number(row.DocEntry) } };
   },
 
-  applyPage(tenantId, records) {
-    return serialNumberRepository.applySapSyncPage(tenantId, records);
+  async applyPage(tenantId, records) {
+    const applied = await serialNumberRepository.applySapSyncPage(
+      tenantId,
+      records.map(({ serialNo, modelId, docEntry }) => ({ serialNo, modelId, docEntry })),
+    );
+    // Flags only. This does not create branch or warehouse stock.
+    await stampSerialPageOnHand(tenantId, records);
+    return applied;
   },
 
   /**
-   * Every ISMS serial belongs to a model, and every model's item code is walked, so a
-   * completed pass has seen every serial SAP still holds for ISMS's items — anything left
-   * unstamped is gone from SAP.
+   * The walk is the models still in Master data. A completed pass removes serials whose
+   * model is no longer in Master data, unless a count, delivery, or sale is still open.
+   * Serials of a model still in Master data stay.
    */
   reconcile: {
     markSeen: (tenantId, records, passMark) =>
@@ -123,21 +137,34 @@ export const serialNumberSyncEntity: SapSyncEntity<SerialRecord, ModelIndex> = {
 
 export const serialNumberSapSyncService = {
   /**
-   * Pull serial master data from SAP into the ISMS registry.
+   * Pull serial master data from SAP into the ISMS registry, and mark which of those
+   * serials SAP still has on hand.
    *
    * One call is a slice of the work, not necessarily all of it: at ~4M rows a full pass
    * takes several runs, and `caughtUp` says whether SAP has more. The cron calls this
    * repeatedly until it does.
    *
-   * Registry only — no inventory is created. A synced serial exists with no branch or
-   * warehouse location until something in ISMS places it.
+   * No inventory is created. A synced serial stays unassigned until something in ISMS
+   * places it. If the on-hand query is unavailable, the registry sync still finishes
+   * and the result says the on-hand counts were not updated.
    */
-  syncFromSap(
+  async syncFromSap(
     tenantId: string,
     /** Null for scheduled runs — `AuditLog.userId` is nullable and means "not a person". */
     actorUserId: string | null,
     options?: { budgetMs?: number },
   ): Promise<SapSyncResult> {
-    return runSapSync(tenantId, serialNumberSyncEntity, actorUserId, options);
+    beginSerialOnHandRun(tenantId);
+    try {
+      const result = await runSapSync(tenantId, serialNumberSyncEntity, actorUserId, options);
+      const reason = serialOnHandBlockReason(tenantId);
+      if (!reason) return result;
+      return {
+        ...result,
+        notes: [`On-hand counts were not updated: ${reason}`],
+      };
+    } finally {
+      beginSerialOnHandRun(tenantId);
+    }
   },
 };

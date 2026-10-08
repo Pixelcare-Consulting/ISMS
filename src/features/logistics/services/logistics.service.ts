@@ -9,7 +9,14 @@ function nextDeliveryNo() {
 }
 
 export const logisticsService = {
-  /** Process Flow II: approved order → SAP ITR/SO → delivery synced to ISMS (MVP: auto-create pending delivery). */
+  /**
+   * Signed Process II: PS submits, TL reviews, SP approves or cancels.
+   * SP approval queues the approved_order job, which stands in for SAP
+   * "Auto Create ITR/SO" and then a copy to IT/DR. That job stores a document
+   * reference and opens this delivery header as Approved. It does not move
+   * stock, and it does not label the SAP document Consignment or Outright.
+   * Logistics dispatches warehouse serials later.
+   */
   async createDeliveryFromApprovedOrder(
     tenantId: string,
     userId: string,
@@ -23,7 +30,7 @@ export const logisticsService = {
     const statusCodeId = await reasonStatusService.requireCodeId(
       tenantId,
       "delivery_workflow",
-      "pending",
+      "approved",
     );
 
     let row;

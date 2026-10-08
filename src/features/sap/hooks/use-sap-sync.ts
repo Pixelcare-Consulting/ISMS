@@ -94,7 +94,8 @@ function summarize(result: SapSyncResult): string {
   if (result.removed > 0) parts.push(`${formatCount(result.removed)} removed`);
   const skipped = skippedCount(result);
   if (skipped > 0) parts.push(`${formatCount(skipped)} skipped`);
-  return parts.join(" · ");
+  const summary = parts.join(" · ");
+  return result.notes?.length ? [summary, ...result.notes].join(". ") : summary;
 }
 
 /** The reason behind the most rows, to lead with when nothing could be applied. */

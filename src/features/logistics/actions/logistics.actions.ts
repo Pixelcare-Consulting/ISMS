@@ -10,6 +10,7 @@ import {
   LOGISTICS_PAGE_PERMISSIONS,
 } from "@/features/logistics/constants/logistics-permissions";
 import { logisticsRepository } from "@/features/logistics/repositories/logistics.repository";
+import { deliveryPostingService } from "@/features/logistics/services/delivery-posting.service";
 import type {
   DeliveryListSort,
   LogisticsListSortDir,
@@ -222,7 +223,7 @@ export async function createDeliveryAction(input: unknown) {
   const statusCodeId = await reasonStatusService.requireCodeId(
     session.user.tenantId,
     "delivery_workflow",
-    "pending",
+    "approved",
   );
 
   const row = await prisma.branchDelivery.create({
@@ -252,6 +253,37 @@ export async function createDeliveryAction(input: unknown) {
   return { success: true as const };
 }
 
+export async function listDispatchCandidatesAction(id: string) {
+  const session = await requirePermission(LOGISTICS_MANAGE);
+  try {
+    const result = await deliveryPostingService.listDispatchCandidates(session.user.tenantId, id);
+    return { success: true as const, ...result };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to load warehouse serials" };
+  }
+}
+
+export async function dispatchDeliveryAction(id: string, input: unknown) {
+  const session = await requirePermission(LOGISTICS_MANAGE);
+  const parsed = serialIdsSchema.safeParse(input);
+  if (!parsed.success) return { error: "Select the serials to dispatch" };
+
+  try {
+    const result = await deliveryPostingService.dispatch({
+      tenantId: session.user.tenantId,
+      userId: session.user.id,
+      deliveryId: id,
+      serialNumberIds: parsed.data.serialNumberIds,
+    });
+    revalidateLogisticsPaths();
+    revalidatePath("/inventory");
+    revalidatePath("/operations");
+    return { success: true as const, movedCount: result.movedCount };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to dispatch delivery" };
+  }
+}
+
 export async function acceptDeliveryAction(id: string, input?: unknown) {
   const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
   const parsed = input
@@ -259,138 +291,43 @@ export async function acceptDeliveryAction(id: string, input?: unknown) {
     : { success: true as const, data: {} };
   if (!parsed.success) return { error: "Invalid input" };
 
-  const acceptedCodeId = await reasonStatusService.requireCodeId(
-    session.user.tenantId,
-    "delivery_workflow",
-    "accepted",
-  );
-  const ditCodeId = await reasonStatusService.requireCodeId(
-    session.user.tenantId,
-    "inventory_system",
-    "DIT",
-  );
-  const stkCodeId = await reasonStatusService.requireCodeId(
-    session.user.tenantId,
-    "inventory_system",
-    "STK",
-  );
-
-  let row;
-  let movedCount = 0;
   try {
-    const result = await prisma.$transaction(async (tx) => {
-      const existing = await tx.branchDelivery.findFirst({
-        where: { id, tenantId: session.user.tenantId },
-        include: {
-          lines: { select: { serialNumberId: true } },
-          branch: { select: { name: true } },
-          order: { select: { orderNumber: true } },
-        },
-      });
-      if (!existing) {
-        throw new Error("Delivery not found");
-      }
-
-      // Explicit input → delivery line serials → none (header-only accept)
-      const lineSerialIds = existing.lines.map((line) => line.serialNumberId);
-      const serialNumberIds = parsed.data.serialNumberIds?.length
-        ? parsed.data.serialNumberIds
-        : lineSerialIds.length
-          ? lineSerialIds
-          : null;
-
-      let moved = { count: 0 };
-      if (serialNumberIds?.length) {
-        moved = await tx.branchInventory.updateMany({
-          where: {
-            tenantId: session.user.tenantId,
-            branchId: existing.branchId,
-            statusCodeId: ditCodeId,
-            serialNumberId: { in: serialNumberIds },
-          },
-          data: { statusCodeId: stkCodeId, updatedById: session.user.id },
-        });
-        if (moved.count !== serialNumberIds.length) {
-          throw new Error("Some serials are not in-transit at this branch");
-        }
-      }
-
-      const delivery = await tx.branchDelivery.update({
-        where: { id, tenantId: session.user.tenantId },
-        data: { statusCodeId: acceptedCodeId, acceptedAt: new Date() },
-        include: {
-          branch: { select: { name: true } },
-          order: { select: { orderNumber: true } },
-        },
-      });
-
-      return { delivery, movedCount: moved.count };
+    const result = await deliveryPostingService.accept({
+      tenantId: session.user.tenantId,
+      userId: session.user.id,
+      deliveryId: id,
+      serialNumberIds: parsed.data.serialNumberIds,
     });
-    row = result.delivery;
-    movedCount = result.movedCount;
+    revalidateLogisticsPaths();
+    revalidatePath("/inventory");
+    revalidatePath("/operations");
+    return {
+      success: true as const,
+      movedCount: result.movedCount,
+      status: result.status,
+      idempotent: result.idempotent,
+    };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to accept delivery" };
   }
-
-  await auditService.log({
-    tenantId: session.user.tenantId,
-    userId: session.user.id,
-    action: "delivery.accepted",
-    entityType: "BranchDelivery",
-    entityId: id,
-    metadata: {
-      deliveryNo: row.deliveryNo,
-      branchName: row.branch.name,
-      movedCount,
-      ...(row.order ? { orderNumber: row.order.orderNumber } : {}),
-    },
-  });
-
-  revalidateLogisticsPaths();
-  revalidatePath("/inventory");
-  revalidatePath("/operations");
-  return { success: true as const, movedCount };
 }
 
 export async function rejectDeliveryAction(id: string, notes?: string) {
   const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
-  const rejectedCodeId = await reasonStatusService.requireCodeId(
-    session.user.tenantId,
-    "delivery_workflow",
-    "rejected",
-  );
-
-  let row;
   try {
-    row = await prisma.branchDelivery.update({
-      where: { id, tenantId: session.user.tenantId },
-      data: { statusCodeId: rejectedCodeId },
-      include: {
-        branch: { select: { name: true } },
-        order: { select: { orderNumber: true } },
-      },
+    const result = await deliveryPostingService.reject({
+      tenantId: session.user.tenantId,
+      userId: session.user.id,
+      deliveryId: id,
+      notes,
     });
+    revalidateLogisticsPaths();
+    revalidatePath("/inventory");
+    revalidatePath("/operations");
+    return { success: true as const, returnedCount: result.returnedCount };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to reject delivery" };
   }
-
-  await auditService.log({
-    tenantId: session.user.tenantId,
-    userId: session.user.id,
-    action: "delivery.rejected",
-    entityType: "BranchDelivery",
-    entityId: id,
-    metadata: {
-      deliveryNo: row.deliveryNo,
-      branchName: row.branch.name,
-      ...(row.order ? { orderNumber: row.order.orderNumber } : {}),
-      ...(notes ? { notes } : {}),
-    },
-  });
-
-  revalidateLogisticsPaths();
-  revalidatePath("/operations");
-  return { success: true as const };
 }
 
 export async function listTransfersAction(input?: {

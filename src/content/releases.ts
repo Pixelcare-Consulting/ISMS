@@ -52,6 +52,77 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.51.0",
+    date: "2026-10-08",
+    releasedAt: "2026-10-08T13:30:00+08:00",
+    title: "Serial numbers and SAP stock",
+    highlights: [
+      "Serial numbers shows how many units SAP still has on hand and how many are already on a branch that carries that model.",
+      "Quantity is the units SAP still has on hand. A dash means that count has not been recorded yet. Opening it lists those units ten at a time, with the branch and how many of that model are at the same branch.",
+      "The counts at the top match the models in the list, and each model shows when its serials were last updated.",
+      "Only models still in Master data appear. A finished sync clears serials for models that were removed, unless a count, delivery, or sale is still open.",
+      "Sync from SAP works when Service Layer already shows Connected, even if the address was saved with the login page on the end.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Serial numbers shows how many units SAP still has on hand and how many are already on a branch that carries that model.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Serial numbers lists one row per model. Opening the quantity shows the units SAP still has on hand, ten at a time, on a white list you can search by serial number, branch code, or branch name. Each unit shows the branch code and branch name from Branches when the warehouse matches that branch, or when that warehouse is linked to one branch. Branch qty is how many of that model are on hand at the same branch. A location that is not a branch shows its own code and name, and how many of that model are there. The quantity on the model row stays the total. Each serial number opens its own record, with inventory status and the usual edit actions. Each model also shows when those serials were last updated.",
+      },
+      {
+        type: "fix",
+        description:
+          "Quantity on Serial numbers is the units SAP still has in stock. Until that count has been recorded, the quantity shows a dash, and opening it says on-hand stock has not been recorded yet.",
+      },
+      {
+        type: "fix",
+        description:
+          "Only models still in Master data appear in Serial numbers. A finished sync removes serials for models that were taken out, unless a stock count, delivery, or sale is still open.",
+      },
+      {
+        type: "fix",
+        description:
+          "The counts at the top match the models in the list.",
+      },
+      {
+        type: "fix",
+        description:
+          "The quantity on each model matches the serial numbers listed when you open it.",
+      },
+      {
+        type: "fix",
+        description:
+          "Sync from SAP uses the Service Layer connection that already shows Connected. An address saved with the login page on the end still reaches SAP.",
+      },
+      {
+        type: "fix",
+        description:
+          "Opening a model shows each unit’s branch when that location is a branch, and the location’s own code and name when it is not. The quantity on the model stays the total.",
+      },
+    ],
+  },
+  {
+    version: "0.50.1",
+    date: "2026-10-08",
+    releasedAt: "2026-10-08T11:00:00+08:00",
+    title: "Edit dealers",
+    highlights: [
+      "You can now update a dealer’s name, SAP code, area, type, and payment mode from the dealers list.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Dealers can be edited from the list, so name, SAP code, area, type, and payment mode stay current without deleting and recreating the dealer.",
+      },
+    ],
+  },
+  {
     version: "0.50.0",
     date: "2026-10-06",
     releasedAt: "2026-10-06T06:50:00+08:00",

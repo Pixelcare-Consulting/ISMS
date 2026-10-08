@@ -8,7 +8,6 @@ import {
 import { SerialNumberKpisStrip } from "@/features/serial-numbers/components/serial-number-kpis";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { requirePermission } from "@/lib/auth/permissions";
-import { SectionPageLead } from "@/components/navigation/section-page-lead";
 import { SerialNumberTable } from "@/app/(app)/inventory/serial-numbers/_components/serial-number-table";
 
 interface SerialNumbersPageProps {
@@ -52,10 +51,6 @@ export default async function SerialNumbersPage({
 
   return (
     <div className="space-y-4">
-      <SectionPageLead>
-        Every serialized unit in your organization. Open a serial to trace its
-        full lifecycle across inventory, transfers, sales, pull-outs, and counts.
-      </SectionPageLead>
       <SerialNumberKpisStrip kpis={kpis} />
       <SerialNumberTable
         result={result}
@@ -64,7 +59,7 @@ export default async function SerialNumbersPage({
         currentSearch={params.q}
         currentStatus={status}
         initialSort={params.sort ?? ""}
-        initialSortDir={params.dir ?? "desc"}
+        initialSortDir={params.dir ?? "asc"}
       />
     </div>
   );

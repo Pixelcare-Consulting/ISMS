@@ -1560,7 +1560,29 @@ model SerialNumber {
   updatedAt    DateTime           @updatedAt @map("updated_at")
   deletedAt    DateTime?          @map("deleted_at")
   /// See `ProductModel.sapSyncedAt`.
-  sapSyncedAt  DateTime?          @map("sap_synced_at")
+  sapSyncedAt       DateTime?          @map("sap_synced_at")
+  /**
+   * Last on-hand read found this serial in SAP. Stays false until that read runs,
+   * and is cleared when a later read does not find the serial on hand.
+   */
+  sapOnHand         Boolean            @default(false) @map("sap_on_hand")
+  /**
+   * When an on-hand read included this serial. Null until then, so the list can
+   * show an em dash instead of treating the default false as a counted zero.
+   */
+  sapOnHandSyncedAt DateTime?          @map("sap_on_hand_synced_at")
+  /**
+   * OSRN.AbsEntry (Service Layer DocEntry). Kept so a later on-hand read can
+   * target this serial without walking the serial master again. Null until a
+   * sync page that included the id has been saved.
+   */
+  sapAbsEntry       Int?               @map("sap_abs_entry")
+  /**
+   * Warehouse code from the last on-hand read (the same code as Branch.sapCode).
+   * Used only to show that branch on the serial list. Cleared when a later read
+   * does not find the serial on hand. This is not a stock placement.
+   */
+  sapWhsCode        String?            @map("sap_whs_code")
 
   tenant                       Tenant                          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   model                        ProductModel                    @relation(fields: [modelId], references: [id], onDelete: Cascade)

@@ -21,6 +21,18 @@ function revalidateDealers() {
   revalidatePath("/settings/dealers");
 }
 
+function dealerErrorMessage(error: unknown, fallback: string) {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code: string }).code === "P2002"
+  ) {
+    return "A dealer with this SAP code already exists";
+  }
+  return error instanceof Error ? error.message : fallback;
+}
+
 export async function listDealersAction() {
   const session = await requirePermission("dealers.manage");
   return dealerRepository.listByTenant(session.user.tenantId);
@@ -47,7 +59,7 @@ export async function createDealerAction(input: unknown) {
     revalidateDealers();
     return { success: true as const, dealer };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "Failed to create dealer" };
+    return { error: dealerErrorMessage(e, "Failed to create dealer") };
   }
 }
 
@@ -64,7 +76,7 @@ export async function updateDealerAction(input: unknown) {
     revalidateDealers();
     return { success: true as const, dealer };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "Failed to update dealer" };
+    return { error: dealerErrorMessage(e, "Failed to update dealer") };
   }
 }
 
