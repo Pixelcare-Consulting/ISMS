@@ -262,13 +262,7 @@ export const serialNumberRepository = {
   ): Promise<SapSyncApplyResult> {
     // SAP keys serials per item, so one serial number can arrive under two items within a
     // page. ISMS is unique on serialNo alone, so the first occurrence wins.
-    // Copied down to the two columns this writes: rows are spread into `create`, and any
-    // extra field a caller carries (the sync's DocEntry, say) would be rejected by Prisma.
-    const rows = [
-      ...new Map(
-        records.map(({ serialNo, modelId }) => [serialNo, { serialNo, modelId }]),
-      ).values(),
-    ];
+    const rows = [...new Map(records.map((row) => [row.serialNo, row])).values()];
 
     const existing = await prisma.serialNumber.findMany({
       where: { tenantId, serialNo: { in: rows.map((row) => row.serialNo) } },

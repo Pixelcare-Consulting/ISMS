@@ -25,7 +25,6 @@ export const BRANCH_PLANOGRAM_MODULE_GUIDE: ModuleGuideContent = {
   tips: [
     { label: "Add or remove models the branch is allowed to carry — Add model requires Allowed models first" },
     { label: "Price and date come from Models; series is the series assigned to that SKU in Master data" },
-    { label: "Add model sets Max qty automatically to the branch's Stock units for that model (synced from SAP) — no manual entry" },
     { label: "Bulk assignment uses Import on Settings → Planogram (official template: branch SAP code and SKU)" },
   ],
   storageKey: "module-guide.planogram",

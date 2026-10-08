@@ -66,9 +66,6 @@ interface PlanogramRow {
   };
 }
 
-const MAX_QTY_HINT =
-  "Set automatically to this model's Stock units at this branch (synced from SAP). Not editable.";
-
 function messageForAddEmptyReason(reason: PlanogramAddEmptyReason): string {
   switch (reason) {
     case "no_allowed_models":
@@ -308,10 +305,10 @@ function AddPlanogramDialog({
   const [pending, startTransition] = useTransition();
   const [loading, setLoading] = useState(true);
   const [models, setModels] = useState<
-    { id: string; skuCode: string; name: string; onHandQty: number }[]
+    { id: string; skuCode: string; name: string }[]
   >([]);
   const [modelId, setModelId] = useState("");
-  const selectedModel = models.find((m) => m.id === modelId);
+  const [maxQty, setMaxQty] = useState("1");
   const [emptyReason, setEmptyReason] = useState<PlanogramAddEmptyReason | null>(
     null,
   );
@@ -324,14 +321,7 @@ function AddPlanogramDialog({
       try {
         const result = await listActiveModelsForPlanogramAction(branchId);
         if (cancelled) return;
-        setModels(
-          result.models.map((m) => ({
-            id: m.id,
-            skuCode: m.skuCode,
-            name: m.name,
-            onHandQty: m.onHandQty,
-          })),
-        );
+        setModels(result.models.map((m) => ({ id: m.id, skuCode: m.skuCode, name: m.name })));
         setModelId(result.models[0]?.id ?? "");
         setEmptyReason(result.emptyReason);
       } catch (error) {
@@ -350,10 +340,17 @@ function AddPlanogramDialog({
   }, [branchId]);
 
   function submit() {
+    const parsedQty = Number.parseInt(maxQty, 10);
+    if (!Number.isInteger(parsedQty) || parsedQty < 1) {
+      toast.error("Max quantity must be at least 1");
+      return;
+    }
+
     startTransition(async () => {
       const result = await addPlanogramModelAction({
         branchId,
         modelId,
+        maxQty: parsedQty,
         daysThreshold: 30,
       });
       if ("emptyReason" in result && result.emptyReason) {
@@ -393,12 +390,13 @@ function AddPlanogramDialog({
                 <Label htmlFor="add-planogram-max-qty">Max qty</Label>
                 <Input
                   id="add-planogram-max-qty"
-                  value={selectedModel ? selectedModel.onHandQty.toLocaleString() : "—"}
-                  readOnly
-                  disabled
-                  className="tabular-nums"
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={maxQty}
+                  onChange={(e) => setMaxQty(e.target.value)}
+                  disabled={pending}
                 />
-                <p className="text-xs text-muted-foreground">{MAX_QTY_HINT}</p>
               </div>
             </>
           ) : (

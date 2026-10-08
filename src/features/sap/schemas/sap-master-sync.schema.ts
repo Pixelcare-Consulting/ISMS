@@ -52,11 +52,4 @@ export interface SapSyncResult {
   passRows: number;
   /** SAP's row count for the entity, or null if it could not be measured. */
   totalAtSource: number | null;
-
-  /**
-   * One line per follow-on step a sync ran once its pass completed — e.g. the serial sync
-   * placing Stock units, the models sync refreshing planogram on-hand. Shown after the
-   * row counts; the step's skips are merged into `skipped`.
-   */
-  notes?: string[];
 }

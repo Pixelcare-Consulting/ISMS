@@ -43,11 +43,6 @@ export type ActiveModelForAdd = {
   skuCode: string;
   name: string;
   status: string;
-  /**
-   * Stock units at the branch for this model, counted live — shown read-only as the Max
-   * qty when the model is picked, and saved as the row's `maxQty`.
-   */
-  onHandQty: number;
 };
 
 export type ActiveModelsForAddResult = {
@@ -191,8 +186,13 @@ export const planogramService = {
     actorUserId: string;
     branchId: string;
     modelId: string;
+    maxQty: number;
     daysThreshold?: number;
   }) {
+    if (input.maxQty < 1) {
+      throw new Error("Max quantity must be at least 1");
+    }
+
     const model = await masterDataRepository.findModel(input.tenantId, input.modelId);
     if (!model) throw new Error(`Model not found: ${input.modelId} (tenant: ${input.tenantId})`);
     if (model.status !== "active") throw new Error("Only active SKUs can be added to a planogram");
@@ -213,19 +213,10 @@ export const planogramService = {
     );
     if (existing) throw new Error("Model is already on this branch planogram");
 
-    // Max qty is not typed: it is the branch's Stock units for the model at the moment it
-    // is added — the same live count the Add dialog shows. 0 when the branch holds none.
-    const stock = await planogramRepository.countStockByBranchModels(
-      input.tenantId,
-      input.branchId,
-      [input.modelId],
-    );
-    const maxQty = stock.get(input.modelId) ?? 0;
-
     const entry = await planogramRepository.createEntry(input.tenantId, {
       branchId: input.branchId,
       modelId: input.modelId,
-      maxQty,
+      maxQty: input.maxQty,
     });
 
     const milDays = input.daysThreshold ?? 30;
@@ -243,7 +234,7 @@ export const planogramService = {
       action: "planogram.model_added",
       entityType: "BranchPlanogram",
       entityId: entry.id,
-      metadata: { branchId: input.branchId, modelId: input.modelId, maxQty },
+      metadata: { branchId: input.branchId, modelId: input.modelId, maxQty: input.maxQty },
     });
 
     return entry;
@@ -362,18 +353,12 @@ export const planogramService = {
     const available = allowedActive.filter((m) => !onPlanogram.has(m.id));
 
     if (available.length > 0) {
-      const onHand = await planogramRepository.countStockByBranchModels(
-        tenantId,
-        branchId,
-        available.map((m) => m.id),
-      );
       return {
         models: available.map((m) => ({
           id: m.id,
           skuCode: m.skuCode,
           name: m.name,
           status: m.status,
-          onHandQty: onHand.get(m.id) ?? 0,
         })),
         emptyReason: null,
       };
