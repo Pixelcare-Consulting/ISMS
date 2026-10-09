@@ -1,5 +1,8 @@
 import { sapText } from "@/features/sap/services/sap-master-data";
-import { sapServiceLayerClient } from "@/features/sap/services/sap-service-layer-client";
+import {
+  sapServiceLayerClient,
+  type SapServiceLayerRequestResult,
+} from "@/features/sap/services/sap-service-layer-client";
 import { sapServiceLayerService } from "@/features/sap/services/sap-service-layer.service";
 import type { SapServiceLayerCredentials } from "@/features/sap/types/sap-service-layer";
 import { logger } from "@/lib/shared/logger";
@@ -59,12 +62,13 @@ async function fetchWarehouseNames(
     `/Warehouses?$select=WarehouseCode,WarehouseName&$filter=${encodeURIComponent(filter)}`;
 
   for (let page = 0; path && page < 5; page += 1) {
-    const response = await sapServiceLayerClient.request<WarehouseNamePage>({
-      creds,
-      method: "GET",
-      path,
-      headers: { Prefer: "odata.maxpagesize=100" },
-    });
+    const response: SapServiceLayerRequestResult<WarehouseNamePage> =
+      await sapServiceLayerClient.request<WarehouseNamePage>({
+        creds,
+        method: "GET",
+        path,
+        headers: { Prefer: "odata.maxpagesize=100" },
+      });
     if (response.statusCode >= 400) {
       logger.warn(
         { statusCode: response.statusCode, codes: codes.length },
@@ -77,7 +81,8 @@ async function fetchWarehouseNames(
       const name = sapText(row.WarehouseName);
       if (code && name) found.set(code, name);
     }
-    const next = response.data?.["odata.nextLink"] ?? response.data?.["@odata.nextLink"];
+    const next: string | undefined =
+      response.data?.["odata.nextLink"] ?? response.data?.["@odata.nextLink"];
     path = next ? `/${next.replace(/^\/+/, "")}` : null;
   }
   return found;
