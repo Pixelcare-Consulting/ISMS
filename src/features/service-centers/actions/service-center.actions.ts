@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { serviceCenterRepository } from "@/features/service-centers/repositories/service-center.repository";
 import { serviceCenterSapSyncService } from "@/features/service-centers/services/service-center-sap-sync.service";
+import { SAP_MANAGE } from "@/features/sap/constants/sap-permissions";
 import { requirePermission } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/database/client";
 
@@ -87,7 +88,7 @@ export async function deleteServiceCenterLocationAction(id: string) {
 
 /** Import SAP cost centres on dimension 5 as ISMS service centres. */
 export async function syncServiceCentersFromSapAction() {
-  const session = await requirePermission("service_centers.manage");
+  const session = await requirePermission(SAP_MANAGE);
   try {
     const result = await serviceCenterSapSyncService.syncFromSap(
       session.user.tenantId,

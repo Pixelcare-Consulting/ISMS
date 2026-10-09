@@ -42,8 +42,22 @@ const LOGIN_LOCK_MAX_WAIT_MS = 8_000;
 const sessions = new Map<string, SapSessionRecord>();
 const loginLocks = new Map<string, Promise<SapSessionRecord>>();
 
+/**
+ * Service Layer root, without a trailing slash or a pasted `/Login`.
+ *
+ * The settings field is the service root (`…/b1s/v1`). Login is that root plus
+ * `/Login`. When the saved address already ends in `/Login`, appending entities
+ * calls `…/Login/SerialNumberDetails`, which SAP answers with 401
+ * "Authorization header not found" even though a company session exists.
+ */
 export function normalizeBaseUrl(baseUrl: string): string {
-  return baseUrl.trim().replace(/\/$/, "");
+  let url = baseUrl.trim();
+  let previous = "";
+  while (url !== previous) {
+    previous = url;
+    url = url.replace(/\/+$/, "").replace(/\/login$/i, "");
+  }
+  return url;
 }
 
 export function credentialsFingerprint(

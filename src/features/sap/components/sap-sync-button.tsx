@@ -29,8 +29,9 @@ interface SapSyncButtonProps {
  * Shared "Sync from SAP" control for the one-way SAP → ISMS master-data syncs.
  * The sync itself runs via `runSapSync`, outside this component's lifecycle, so leaving
  * the page (or starting another module's sync at the same time) doesn't interrupt it —
- * this button only reflects state for its own `syncKey`, and hands the sync a way to
- * refresh the page's data the moment each slice lands.
+ * this button only reflects state for its own `syncKey`. Progress is shown by the global
+ * planogram-style modal (`SapSyncProgressModals`), and each settled slice refreshes the
+ * page's data.
  */
 export function SapSyncButton({ syncKey, noun, onSync }: SapSyncButtonProps) {
   const router = useRouter();

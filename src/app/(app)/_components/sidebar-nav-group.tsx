@@ -11,7 +11,10 @@ import {
   SIDEBAR_NAV_LABEL_CLASS,
   SIDEBAR_NAV_SUB_BUTTON_WRAP_CLASS,
 } from "@/app/(app)/_components/sidebar-nav-item";
-import type { NavCountBadges } from "@/app/(app)/_components/sidebar-nav";
+import {
+  resolveNavCountBadge,
+  type NavCountBadges,
+} from "@/app/(app)/_components/sidebar-nav";
 import {
   Collapsible,
   CollapsibleContent,
@@ -98,16 +101,6 @@ export function SidebarNavGroup({
   );
 }
 
-function resolveItemCount(
-  item: NavLinkItem,
-  countBadges?: NavCountBadges,
-): number | undefined {
-  if (item.countBadgeKey === "unreadAnnouncements") {
-    return countBadges?.unreadAnnouncements;
-  }
-  return undefined;
-}
-
 function SidebarNavSubItem({
   item,
   pathname,
@@ -119,7 +112,7 @@ function SidebarNavSubItem({
 }) {
   const ItemIcon = item.icon;
   const active = isNavItemActive(pathname, item.href, item.exact);
-  const count = resolveItemCount(item, countBadges);
+  const count = resolveNavCountBadge(item.countBadgeKey, countBadges);
 
   return (
     <SidebarMenuSubItem>

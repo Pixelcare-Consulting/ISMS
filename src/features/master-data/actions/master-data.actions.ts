@@ -7,6 +7,7 @@ import { masterDataRepository } from "@/features/master-data/repositories/master
 import { modelSapSyncService } from "@/features/master-data/services/model-sap-sync.service";
 import { toClientModelRow } from "@/features/master-data/types/client-model";
 import { toClientPriceListRow } from "@/features/master-data/types/client-price-list";
+import { SAP_MANAGE } from "@/features/sap/constants/sap-permissions";
 import { requirePermission } from "@/lib/auth/permissions";
 import { cacheKey, deleteCache } from "@/lib/cache/redis";
 import { prisma } from "@/lib/database/client";
@@ -184,7 +185,7 @@ export async function deletePriceListAction(id: string) {
 }
 
 export async function syncModelsFromSapAction() {
-  const session = await requirePermission("master_data.manage");
+  const session = await requirePermission(SAP_MANAGE);
   const tenantId = session.user.tenantId;
   try {
     const result = await modelSapSyncService.syncFromSap(tenantId, session.user.id);

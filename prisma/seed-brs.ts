@@ -1,7 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
 
-import type { ReasonStatusCodeMap } from "./seed-reason-status";
-import { getReasonStatusCodeId } from "./seed-reason-status";
 import {
   DEALER1_BRANCH_MAP,
   readPlanogramCsvContent,
@@ -13,21 +11,12 @@ import {
   upsertModelsFromPlanogramRows,
 } from "@/features/planogram/services/planogram-csv-sync.service";
 import { parsePlanogramCsvFromContent } from "./seed-planogram-from-csv";
-import { seedWarehouseInventoryDemo } from "./seed-warehouse-inventory";
 
 export async function seedBrsDemoData(
   prisma: PrismaClient,
   tenantId: string,
   userIdsByEmail: Record<string, { id: string }>,
-  statusCodes?: ReasonStatusCodeMap,
 ) {
-  const resolveStatusCodeId = async (code: string) => {
-    if (statusCodes?.inventory_system[code]) {
-      return statusCodes.inventory_system[code];
-    }
-    return getReasonStatusCodeId(prisma, tenantId, "inventory_system", code);
-  };
-
   const csvContent = readPlanogramCsvContent();
   const planogramRows = parsePlanogramCsvFromContent(csvContent);
 
@@ -156,7 +145,6 @@ export async function seedBrsDemoData(
   }
 
   const makati = branchRecords.find((b) => b.sapCode === "WMK-001");
-  const recto = branchRecords.find((b) => b.sapCode === "WRC-002");
   const psUserId = userIdsByEmail["ps@demo.local"]?.id;
   const tlUserId = userIdsByEmail["tl@demo.local"]?.id;
   const spUserId = userIdsByEmail["sp@demo.local"]?.id;
@@ -178,65 +166,9 @@ export async function seedBrsDemoData(
     await prisma.aor.createMany({ data: aorCreates, skipDuplicates: true });
   }
 
-  const stkCodeId = await resolveStatusCodeId("STK");
-  const ditCodeId = await resolveStatusCodeId("DIT");
-
-  const inventorySeed: {
-    branchId: string;
-    skuCode: string;
-    serialNo: string;
-    statusCodeId: string;
-    ageDays: number;
-  }[] = [];
-
-  const makati32 = modelIdBySku.get("32STV104");
-  const recto32 = modelIdBySku.get("32STV105");
-
-  if (makati && makati32) {
-    inventorySeed.push(
-      { branchId: makati.id, skuCode: "32STV104", serialNo: "SN-WMK-001", statusCodeId: stkCodeId, ageDays: 45 },
-      { branchId: makati.id, skuCode: "32STV104", serialNo: "SN-WMK-002", statusCodeId: ditCodeId, ageDays: 0 },
-      { branchId: makati.id, skuCode: "32STV104", serialNo: "SN-WMK-003", statusCodeId: stkCodeId, ageDays: 5 },
-    );
-  }
-
-  if (recto && recto32) {
-    inventorySeed.push(
-      { branchId: recto.id, skuCode: "32STV105", serialNo: "SN-WRC-001", statusCodeId: stkCodeId, ageDays: 12 },
-      { branchId: recto.id, skuCode: "32STV105", serialNo: "SN-WRC-002", statusCodeId: ditCodeId, ageDays: 1 },
-    );
-  }
-
-  if (inventorySeed.length > 0) {
-    await prisma.$transaction(async (tx) => {
-      for (const item of inventorySeed) {
-        const modelId = modelIdBySku.get(item.skuCode);
-        if (!modelId) continue;
-
-        const stockedAt = new Date(Date.now() - item.ageDays * 24 * 60 * 60 * 1000);
-
-        const sn = await tx.serialNumber.upsert({
-          where: { tenantId_serialNo: { tenantId, serialNo: item.serialNo } },
-          create: { tenantId, modelId, serialNo: item.serialNo },
-          update: { modelId },
-        });
-
-        await tx.branchInventory.upsert({
-          where: { branchId_serialNumberId: { branchId: item.branchId, serialNumberId: sn.id } },
-          create: {
-            tenantId,
-            branchId: item.branchId,
-            serialNumberId: sn.id,
-            statusCodeId: item.statusCodeId,
-            updatedAt: stockedAt,
-          },
-          update: { statusCodeId: item.statusCodeId, updatedAt: stockedAt },
-        });
-      }
-    });
-  }
-
-  await seedWarehouseInventoryDemo(prisma, tenantId, modelIdBySku);
+  // Demo BranchInventory / warehouse SN stock is not seeded here. Run
+  // `pnpm run db:cleanup:demo-stock` to wipe leftover demo STK, and
+  // `pnpm run db:seed:warehouse-inventory` only when warehouse-only UAT serials are needed.
 
   await prisma.tenant.update({
     where: { id: tenantId },

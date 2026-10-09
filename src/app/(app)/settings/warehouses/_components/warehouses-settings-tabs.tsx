@@ -33,9 +33,11 @@ function hrefForTab(tab: WarehousesTab): string {
 export function WarehousesSettingsTabs({
   warehouses,
   activeTab,
+  canSync,
 }: {
   warehouses: WarehouseRow[];
   activeTab: WarehousesTab;
+  canSync: boolean;
 }) {
   const router = useRouter();
 
@@ -54,7 +56,7 @@ export function WarehousesSettingsTabs({
       </TabsList>
       <TabsContent value="setup" className="space-y-6">
         <WarehousesKpisStrip rows={warehouses} />
-        <WarehousesTable warehouses={warehouses} />
+        <WarehousesTable warehouses={warehouses} canSync={canSync} />
       </TabsContent>
       <TabsContent value="stock">
         <WarehousesStockPanel warehouses={warehouses} />

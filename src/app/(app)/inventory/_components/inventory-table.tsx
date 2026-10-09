@@ -212,11 +212,35 @@ export function InventoryTable({
     ? "Search serial, SKU…"
     : "Search serial, SKU, branch…";
 
+  /**
+   * Fixed layout with rem tracks on the right (not %). Mixing % cols with
+   * fixed checkbox/# widths was stretching Aging and leaving Status looking
+   * orphaned from its header. Branch / Model absorb leftover space.
+   */
+  const columnWidths = (
+    <colgroup>
+      <col className="w-10" />
+      <col className="w-12" />
+      {hideBranch ? null : <col />}
+      <col />
+      <col className="w-40" />
+      <col className="w-24" />
+      <col className="w-28" />
+      <col className="w-36" />
+      <col className="w-32" />
+      <col className="w-44" />
+    </colgroup>
+  );
+
+  const headCompact = "whitespace-nowrap px-3";
+  const cellCompact = "px-3";
+
   return (
     <>
       <GlobalDataTable
         stickyHeader
         scrollable
+        tableClassName="table-fixed"
         search={{
           value: query,
           onChange: setQuery,
@@ -266,6 +290,7 @@ export function InventoryTable({
           ) : null
         }
       >
+        {columnWidths}
         <TableHeader>
           <TableRow>
             <GlobalTableHead className="w-10">
@@ -303,6 +328,7 @@ export function InventoryTable({
               Serial
             </GlobalTableHead>
             <GlobalTableHead
+              className={headCompact}
               sortKey="dr"
               activeSortKey={sort}
               sortDirection={sortDir}
@@ -311,6 +337,7 @@ export function InventoryTable({
               DR#
             </GlobalTableHead>
             <GlobalTableHead
+              className={headCompact}
               sortKey="drDate"
               activeSortKey={sort}
               sortDirection={sortDir}
@@ -319,6 +346,7 @@ export function InventoryTable({
               DR DATE
             </GlobalTableHead>
             <GlobalTableHead
+              className={headCompact}
               sortKey="planogram"
               activeSortKey={sort}
               sortDirection={sortDir}
@@ -327,6 +355,10 @@ export function InventoryTable({
               Planogram
             </GlobalTableHead>
             <GlobalTableHead
+              className={cn(
+                headCompact,
+                "text-center [&_button]:mx-auto [&_button]:justify-center",
+              )}
               sortKey="aging"
               activeSortKey={sort}
               sortDirection={sortDir}
@@ -335,6 +367,7 @@ export function InventoryTable({
               Aging in days
             </GlobalTableHead>
             <GlobalTableHead
+              className={headCompact}
               sortKey="status"
               activeSortKey={sort}
               sortDirection={sortDir}
@@ -353,6 +386,7 @@ export function InventoryTable({
               onClick={() => openSerialDetail(r.serialNumber.id)}
             >
               <TableCell
+                className="w-10"
                 onClick={(e) => e.stopPropagation()}
               >
                 <Checkbox
@@ -365,37 +399,65 @@ export function InventoryTable({
                 index={(result.page - 1) * result.limit + index + 1}
               />
               {hideBranch ? null : (
-                <TableCell>{r.branch.name}</TableCell>
+                <TableCell className="min-w-0 truncate" title={r.branch.name}>
+                  {r.branch.name}
+                </TableCell>
               )}
-              <TableCell>
-                <span className="font-mono text-sm">{r.serialNumber.model.sku}</span>
-                <span className="block text-xs text-muted-foreground">
+              <TableCell className="min-w-0">
+                <span className="block truncate font-mono text-sm">
+                  {r.serialNumber.model.sku}
+                </span>
+                <span className="block truncate text-xs text-muted-foreground">
                   {r.serialNumber.model.name}
                 </span>
               </TableCell>
-              <TableCell className="font-mono text-sm">{r.serialNumber.serialNo}</TableCell>
-              <TableCell className="font-mono text-sm">{r.deliveryNo ?? "—"}</TableCell>
-              <TableCell className="tabular-nums text-sm">
+              <TableCell
+                className="min-w-0 truncate font-mono text-sm"
+                title={r.serialNumber.serialNo}
+              >
+                {r.serialNumber.serialNo}
+              </TableCell>
+              <TableCell
+                className={cn(cellCompact, "min-w-0 truncate font-mono text-sm")}
+              >
+                {r.deliveryNo?.trim() || "—"}
+              </TableCell>
+              <TableCell
+                className={cn(
+                  cellCompact,
+                  "min-w-0 whitespace-nowrap tabular-nums text-sm",
+                )}
+              >
                 {formatDrDate(r.deliveryDate)}
               </TableCell>
-              <TableCell>
+              <TableCell className={cn(cellCompact, "min-w-0")}>
                 {r.onPlanogram ? (
-                  <Badge variant="outline" className="border-green-600 text-green-700">
+                  <Badge
+                    variant="outline"
+                    className="whitespace-nowrap border-green-600 text-green-700"
+                  >
                     On planogram
                   </Badge>
                 ) : (
-                  <Badge variant="outline" className="border-amber-600 text-amber-700">
+                  <Badge
+                    variant="outline"
+                    className="whitespace-nowrap border-amber-600 text-amber-700"
+                  >
                     Off planogram
                   </Badge>
                 )}
               </TableCell>
-              <TableCell className="tabular-nums">{r.agingDays}</TableCell>
+              <TableCell
+                className={cn(cellCompact, "text-center tabular-nums")}
+              >
+                {r.agingDays}
+              </TableCell>
               <TableCell
                 onClick={(e) => e.stopPropagation()}
-                className={cn(pending && "opacity-70")}
+                className={cn(cellCompact, "min-w-0", pending && "opacity-70")}
               >
                 <SearchableSelect
-                  className="min-w-[10rem]"
+                  className="w-full max-w-full min-w-0"
                   options={statusOptions.map((s) => ({
                     id: s.id,
                     label: `${s.name} (${s.code})`,
@@ -405,7 +467,7 @@ export function InventoryTable({
                   searchPlaceholder="Search status…"
                   onChange={(next) => changeStatus(r.id, next)}
                 />
-                <div className="mt-1">
+                <div className="mt-1 min-w-0">
                   <StatusCodeBadge
                     code={r.statusCode.code}
                     name={r.statusCode.name}

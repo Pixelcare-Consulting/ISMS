@@ -191,4 +191,35 @@ export const returnsKpiService = {
 
     return { branch, service, approvals };
   },
+
+  /**
+   * Sidebar badge: Approvals-queue rows the viewer can evaluate / approve / complete.
+   * Branch returns are tenant-wide (same as Approvals list); SC returns respect AOR SC scope.
+   */
+  async countActionableApprovals(
+    tenantId: string,
+    serviceCenterIds: string[] | null,
+    statuses: ReturnRequestStatus[],
+  ): Promise<number> {
+    if (statuses.length === 0) return 0;
+
+    const branchWhere = {
+      tenantId,
+      status: { in: statuses },
+    };
+    const serviceWhere = {
+      tenantId,
+      status: { in: statuses },
+      sale: {
+        ...(serviceCenterIds ? { serviceCenterId: { in: serviceCenterIds } } : {}),
+      },
+    };
+
+    const [branchTotal, scTotal] = await Promise.all([
+      prisma.branchReturnRequest.count({ where: branchWhere }),
+      prisma.serviceCenterReturnRequest.count({ where: serviceWhere }),
+    ]);
+
+    return branchTotal + scTotal;
+  },
 };

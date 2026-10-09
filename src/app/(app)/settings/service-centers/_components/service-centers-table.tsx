@@ -57,7 +57,13 @@ interface CenterRow {
 
 const COL_COUNT = 4;
 
-export function ServiceCentersTable({ centers }: { centers: CenterRow[] }) {
+export function ServiceCentersTable({
+  centers,
+  canSync,
+}: {
+  centers: CenterRow[];
+  canSync: boolean;
+}) {
   const router = useRouter();
   /**
    * Local copy of the server rows so edits can show immediately, re-seeded whenever the
@@ -227,11 +233,13 @@ export function ServiceCentersTable({ centers }: { centers: CenterRow[] }) {
         }}
         toolbarActions={
           <>
-            <SapSyncButton
-              syncKey="service-center"
-              noun={{ one: "service centre", many: "service centres" }}
-              onSync={syncServiceCentersFromSapAction}
-            />
+            {canSync ? (
+              <SapSyncButton
+                syncKey="service-center"
+                noun={{ one: "service centre", many: "service centres" }}
+                onSync={syncServiceCentersFromSapAction}
+              />
+            ) : null}
             {/* DO NOT DELETE - SAP is the source of truth for service centers, so they
                 are created only by the sync above. Restoring this also needs the `Plus`
                 icon import (lucide-react).

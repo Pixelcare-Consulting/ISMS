@@ -6,10 +6,14 @@ import type { PageTutorialContent } from "@/components/page-tutorial/types";
 import { SectionLayout } from "@/components/navigation/section-layout";
 import { resolveRouteTitle } from "@/config/route-titles";
 import { INVENTORY_PAGE_TUTORIAL } from "@/content/page-tutorials/inventory";
+import { MONTHLY_SIR_PAGE_TUTORIAL } from "@/content/page-tutorials/monthly-sir";
 import { STOCK_COUNT_PAGE_TUTORIAL } from "@/content/page-tutorials/stock-count";
 import { WAREHOUSE_STOCK_PAGE_TUTORIAL } from "@/content/page-tutorials/warehouse-stock";
 
 function resolveInventoryTutorial(pathname: string): PageTutorialContent {
+  if (pathname.startsWith("/inventory/monthly-sir")) {
+    return MONTHLY_SIR_PAGE_TUTORIAL;
+  }
   if (pathname.startsWith("/inventory/stock-count")) {
     return STOCK_COUNT_PAGE_TUTORIAL;
   }
@@ -20,6 +24,9 @@ function resolveInventoryTutorial(pathname: string): PageTutorialContent {
 }
 
 function resolveInventoryDescription(pathname: string): string {
+  if (pathname.startsWith("/inventory/monthly-sir")) {
+    return "Scan branch serials, build and upload the P-COUNT workbook, then review variances.";
+  }
   if (pathname.startsWith("/inventory/stock-count")) {
     return "Physical count sessions (P-Count) to align shelf and system stock.";
   }
@@ -27,9 +34,9 @@ function resolveInventoryDescription(pathname: string): string {
     return "Serial numbers held in warehouses. Branch shelf stock stays under Stock units.";
   }
   if (pathname.startsWith("/inventory/serial-numbers")) {
-    return "Serial master records and activity for your area of responsibility.";
+    return "Serial master records and activity for your area of responsibility. Open a serial to trace its full lifecycle across inventory, transfers, sales, pull-outs, and counts.";
   }
-  return "Serialized units by branch. Series summary mirrors the INVENTORY Excel mock (QTY × SRP).";
+  return "Serialized units by branch.";
 }
 
 export function InventorySectionLayout({

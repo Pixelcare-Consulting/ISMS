@@ -8,11 +8,20 @@ import { SidebarGroup, SidebarMenu } from "@/components/ui/sidebar";
 import {
   appNavigation,
   filterNavByPermissions,
+  type NavLinkItem,
 } from "@/config/app-navigation";
 
-export type NavCountBadges = {
-  unreadAnnouncements?: number;
-};
+export type NavCountBadgeKey = NonNullable<NavLinkItem["countBadgeKey"]>;
+
+export type NavCountBadges = Partial<Record<NavCountBadgeKey, number>>;
+
+export function resolveNavCountBadge(
+  countBadgeKey: NavCountBadgeKey | undefined,
+  countBadges?: NavCountBadges,
+): number | undefined {
+  if (!countBadgeKey || !countBadges) return undefined;
+  return countBadges[countBadgeKey];
+}
 
 interface SidebarNavProps {
   permissions: string[];
@@ -46,11 +55,7 @@ export function SidebarNav({
                 pathname={pathname}
                 exact={entry.exact}
                 badge={entry.badge}
-                count={
-                  entry.countBadgeKey === "unreadAnnouncements"
-                    ? countBadges?.unreadAnnouncements
-                    : undefined
-                }
+                count={resolveNavCountBadge(entry.countBadgeKey, countBadges)}
               />
             );
           }

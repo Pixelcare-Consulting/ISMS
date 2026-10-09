@@ -52,6 +52,224 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.53.1",
+    date: "2026-10-09",
+    releasedAt: "2026-10-09T13:30:00+08:00",
+    title: "Stock units columns line up",
+    highlights: [
+      "On Stock units, column headers stay with their values — DR#, planogram, aging, and status are easier to scan, with aging centered and status filling its column.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Stock units table columns keep steady widths so DR#, planogram, aging, and status line up with their headers (aging centered; status control fills its column).",
+      },
+    ],
+  },
+  {
+    version: "0.53.0",
+    date: "2026-10-09",
+    releasedAt: "2026-10-09T13:15:00+08:00",
+    title: "Richer serial number detail",
+    highlights: [
+      "Opening a serial shows the unit at a glance in the page header — product, location, SAP code, DR#, and aging — without a separate summary card.",
+      "Product & record lists related products on the page (other same-SKU units you can open, plus same-series models at the branch) beside Location & SAP.",
+      "Related products use a compact table; “view all” opens the full same-SKU list with search, status filter, and pages — without repeating product fields already on the page.",
+      "Status stays on the page content (Product & record and Location & SAP) instead of repeating Active / Stock / SAP on hand badges in the sticky header.",
+      "The lifecycle timeline still walks the unit’s history, and empty sections stay out of the way.",
+      "From the lifecycle timeline, opening an in-stock entry now shows that branch’s units on Stock units instead of an empty list.",
+      "Monthly SIR All / For approval tabs match the same light track and white active tab used on Special orders.",
+      "Sync from SAP stays with head-office and SAP roles — branch Product Specialists no longer see that button on Serial numbers.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Serial number detail shows location, product fields, SAP on-hand status, DR# and aging, related same-SKU units, and a lifecycle timeline in one place.",
+      },
+      {
+        type: "feature",
+        description:
+          "Product & record shows related products: other serials of the same SKU at this branch (or elsewhere), with links to those units, plus same-series models stocked here.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Key unit facts sit in the page header without status badges, so Active, Stock, and SAP on hand stay in Product & record / Location & SAP instead of repeating at the top.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Related products show a short table on the page; “view all” opens every sibling unit for that SKU in a dialog with search, status filter, and pagination — without extra View more or count badges.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Monthly SIR All and For approval tabs use the same light gray track and white raised active tab as Special orders.",
+      },
+      {
+        type: "fix",
+        description:
+          "Clicking an in-stock lifecycle timeline entry opens Stock units filtered to that branch correctly, so the list matches the branch you came from.",
+      },
+      {
+        type: "fix",
+        description:
+          "Sync from SAP is hidden for branch Product Specialists and other roles without SAP access; only head-office and SAP-integration roles can run it.",
+      },
+    ],
+  },
+  {
+    version: "0.52.0",
+    date: "2026-10-09",
+    releasedAt: "2026-10-09T12:45:00+08:00",
+    title: "SAP serials fill Stock units",
+    highlights: [
+      "Syncing serials from SAP now only keeps locations that match your Branches or Warehouses list, and fills Stock units (STK) for branches that can be matched.",
+      "Sync from SAP opens a progress popup like opening a planogram — spinner, progress bar, live status under the bar, and how many records are done versus still left — and large syncs keep going until finished.",
+      "The menu shows live counts for items waiting on you — Monthly SIR for approval, order review steps, returns approvals, and logistics actions — alongside your Stock units STK total.",
+      "Sample demo stock is no longer put back when you seed; leftover demo stock can be cleared when you need a clean slate.",
+      "Opening a model’s serials lists units by branch code A–Z, and search suggests matches as you type.",
+      "Monthly SIR Open P-Count opens the count session reliably and fills empty lines when needed.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "After you sync serials from SAP, only warehouses in your Branches or Warehouses master stay on hand, and matching branch units are added to Stock units as STK.",
+      },
+      {
+        type: "feature",
+        description:
+          "Sidebar counts show how many Monthly SIR requests, orders, returns, and logistics items are waiting on your step — only for roles that can act, and only in your area when that applies.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sync from SAP shows a centered progress popup with the status line under the progress bar, friendly rotating wait messages while counts load, then live processed and remaining counts. Large syncs continue on their own; use Stop if you want to pause after the current batch.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Demo sample stock is no longer recreated on seed. You can clear leftover demo stock when you want a clean start.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Under each model, serials are sorted by branch code A–Z, and the search box suggests matches as you type.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Stock units, Monthly SIR, Orders, Returns, and Logistics use red count badges instead of static NEW labels when there is work for you.",
+      },
+      {
+        type: "fix",
+        description:
+          "Monthly SIR Open P-Count opens the linked count session correctly and fills empty lines when the list needs them.",
+      },
+    ],
+  },
+  {
+    version: "0.51.0",
+    date: "2026-10-08",
+    releasedAt: "2026-10-08T13:30:00+08:00",
+    title: "Serial numbers and SAP stock",
+    highlights: [
+      "Serial numbers shows how many units SAP still has on hand and how many are already on a branch that carries that model.",
+      "Quantity is the units SAP still has on hand. A dash means that count has not been recorded yet. Opening it lists those units ten at a time, with the branch and how many of that model are at the same branch.",
+      "The counts at the top match the models in the list, and each model shows when its serials were last updated.",
+      "Only models still in Master data appear. A finished sync clears serials for models that were removed, unless a count, delivery, or sale is still open.",
+      "Sync from SAP works when Service Layer already shows Connected, even if the address was saved with the login page on the end.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Serial numbers shows how many units SAP still has on hand and how many are already on a branch that carries that model.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Serial numbers lists one row per model. Opening the quantity shows the units SAP still has on hand, ten at a time, on a white list you can search by serial number, branch code, or branch name. Each unit shows the branch code and branch name from Branches when the warehouse matches that branch, or when that warehouse is linked to one branch. Branch qty is how many of that model are on hand at the same branch. A location that is not a branch shows its own code and name, and how many of that model are there. The quantity on the model row stays the total. Each serial number opens its own record, with inventory status and the usual edit actions. Each model also shows when those serials were last updated.",
+      },
+      {
+        type: "fix",
+        description:
+          "Quantity on Serial numbers is the units SAP still has in stock. Until that count has been recorded, the quantity shows a dash, and opening it says on-hand stock has not been recorded yet in ISMS.",
+      },
+      {
+        type: "fix",
+        description:
+          "Only models still in Master data appear in Serial numbers. A finished sync removes serials for models that were taken out, unless a stock count, delivery, or sale is still open.",
+      },
+      {
+        type: "fix",
+        description:
+          "The counts at the top match the models in the list.",
+      },
+      {
+        type: "fix",
+        description:
+          "The quantity on each model matches the serial numbers listed when you open it.",
+      },
+      {
+        type: "fix",
+        description:
+          "Sync from SAP uses the Service Layer connection that already shows Connected. An address saved with the login page on the end still reaches SAP.",
+      },
+      {
+        type: "fix",
+        description:
+          "Opening a model shows each unit’s branch when that location is a branch, and the location’s own code and name when it is not. The quantity on the model stays the total.",
+      },
+    ],
+  },
+  {
+    version: "0.50.1",
+    date: "2026-10-08",
+    releasedAt: "2026-10-08T11:00:00+08:00",
+    title: "Edit dealers",
+    highlights: [
+      "You can now update a dealer’s name, SAP code, area, type, and payment mode from the dealers list.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Dealers can be edited from the list, so name, SAP code, area, type, and payment mode stay current without deleting and recreating the dealer.",
+      },
+    ],
+  },
+  {
+    version: "0.50.0",
+    date: "2026-10-06",
+    releasedAt: "2026-10-06T06:50:00+08:00",
+    title: "Monthly SIR and Excel P-COUNT",
+    highlights: [
+      "Branches can now scan serials with a barcode scanner and build a filled P-COUNT Excel file ready for review and upload.",
+      "Approved requests can generate a ready-to-review variance workbook and continue in P-Count for investigation, posting, and closure.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Monthly SIR brings requests, approvals, barcode scanning, filled P-COUNT Excel creation, upload, and variance generation into one Inventory workspace.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Excel downloads now show a clear wait message, while uploads are checked before confirmation and show anything that needs correction.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Monthly SIR request statuses use clearer color cues so pending, approved, and disapproved rows are easier to spot in the list.",
+      },
+    ],
+  },
+  {
     version: "0.49.5",
     date: "2026-09-29",
     releasedAt: "2026-09-29T18:30:00+08:00",

@@ -46,6 +46,10 @@ interface DealerRow {
   name: string;
   sapCode: string | null;
   status: string;
+  areaId: string | null;
+  dealerTypeId: string | null;
+  dealerAreaId: string | null;
+  modeOfPaymentId: string | null;
   area: { name: string } | null;
   dealerType: { name: string } | null;
   dealerArea: { name: string } | null;
@@ -70,11 +74,13 @@ export function DealersTable({ dealers }: { dealers: DealerRow[] }) {
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
   const [deleting, setDeleting] = useState<DealerRow | null>(null);
-  const [addOpen, setAddOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<DealerRow | null>(null);
   const [importing, setImporting] = useState(false);
   const [options, setOptions] = useState<Options | null>(null);
   const [name, setName] = useState("");
   const [sapCode, setSapCode] = useState("");
+  const [status, setStatus] = useState<"active" | "inactive">("active");
   const [areaId, setAreaId] = useState("");
   const [dealerTypeId, setDealerTypeId] = useState("");
   const [dealerAreaId, setDealerAreaId] = useState("");
@@ -133,43 +139,61 @@ export function DealersTable({ dealers }: { dealers: DealerRow[] }) {
     return loaded;
   }
 
-  function resetAddForm() {
+  function resetForm() {
+    setEditing(null);
     setName("");
     setSapCode("");
+    setStatus("active");
     setAreaId("");
     setDealerTypeId("");
     setDealerAreaId("");
     setModeOfPaymentId("");
   }
 
-  function onAddOpenChange(open: boolean) {
-    setAddOpen(open);
-    if (open) {
-      void ensureOptions();
-    } else {
-      resetAddForm();
-    }
+  function onFormOpenChange(open: boolean) {
+    setFormOpen(open);
+    if (open) void ensureOptions();
   }
 
-  function handleCreate(event: React.FormEvent<HTMLFormElement>) {
+  function openCreate() {
+    resetForm();
+    onFormOpenChange(true);
+  }
+
+  function openEdit(row: DealerRow) {
+    setEditing(row);
+    setName(row.name);
+    setSapCode(row.sapCode ?? "");
+    setStatus(row.status === "inactive" ? "inactive" : "active");
+    setAreaId(row.areaId ?? "");
+    setDealerTypeId(row.dealerTypeId ?? "");
+    setDealerAreaId(row.dealerAreaId ?? "");
+    setModeOfPaymentId(row.modeOfPaymentId ?? "");
+    onFormOpenChange(true);
+  }
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const payload = {
+      name: name.trim(),
+      sapCode: sapCode.trim() || null,
+      areaId: areaId || null,
+      dealerTypeId: dealerTypeId || null,
+      dealerAreaId: dealerAreaId || null,
+      modeOfPaymentId: modeOfPaymentId || null,
+      status,
+    };
     startTransition(async () => {
       await ensureOptions();
-      const result = await createDealerAction({
-        name,
-        sapCode: sapCode || null,
-        areaId: areaId || null,
-        dealerTypeId: dealerTypeId || null,
-        dealerAreaId: dealerAreaId || null,
-        modeOfPaymentId: modeOfPaymentId || null,
-        status: "active",
-      });
+      const result = editing
+        ? await updateDealerAction({ dealerId: editing.id, ...payload })
+        : await createDealerAction(payload);
       if (result.error) {
         toast.error(String(result.error));
         return;
       }
-      toast.success("Dealer created");
-      onAddOpenChange(false);
+      toast.success(editing ? "Dealer updated" : "Dealer created");
+      onFormOpenChange(false);
       router.refresh();
     });
   }
@@ -207,7 +231,7 @@ export function DealersTable({ dealers }: { dealers: DealerRow[] }) {
               <Upload className="mr-1 size-4" />
               Import
             </Button>
-            <Button type="button" size="sm" onClick={() => onAddOpenChange(true)}>
+            <Button type="button" size="sm" onClick={openCreate}>
               <Plus className="size-3.5" />
               Add dealer
             </Button>
@@ -270,7 +294,10 @@ export function DealersTable({ dealers }: { dealers: DealerRow[] }) {
                         }}
                       />
                     </TableCell>
-                    <TableRowActions onDelete={() => setDeleting(row)} />
+                    <TableRowActions
+                      onEdit={() => openEdit(row)}
+                      onDelete={() => setDeleting(row)}
+                    />
                   </TableRow>
                 ))
               )}
@@ -279,18 +306,20 @@ export function DealersTable({ dealers }: { dealers: DealerRow[] }) {
 
       <ImportDealersDialog open={importing} onOpenChange={setImporting} />
 
-      <Sheet open={addOpen} onOpenChange={onAddOpenChange}>
+      <Sheet open={formOpen} onOpenChange={onFormOpenChange}>
         <SheetContent
           side="right"
           className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-md"
         >
           <SheetHeader className="border-b border-border/60 px-4 py-4 text-left">
-            <SheetTitle>Add dealer</SheetTitle>
+            <SheetTitle>{editing ? "Edit dealer" : "Add dealer"}</SheetTitle>
             <SheetDescription>
-              Create a dealer with optional SAP code and classification lookups.
+              {editing
+                ? "Update the dealer name, SAP code, and classification lookups."
+                : "Create a dealer with optional SAP code and classification lookups."}
             </SheetDescription>
           </SheetHeader>
-          <form onSubmit={handleCreate} className="flex min-h-0 flex-1 flex-col">
+          <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
             <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
               <div className="space-y-2">
                 <Label htmlFor="dealer-name">Name</Label>
@@ -365,17 +394,33 @@ export function DealersTable({ dealers }: { dealers: DealerRow[] }) {
                 searchPlaceholder="Search payment modes…"
                 disabled={pending}
               />
+              {editing ? (
+                <SearchableSelect
+                  label="Status"
+                  id="dealer-status"
+                  options={[
+                    { id: "active", label: "Active" },
+                    { id: "inactive", label: "Inactive" },
+                  ]}
+                  value={status}
+                  onChange={(next) =>
+                    setStatus(next === "inactive" ? "inactive" : "active")
+                  }
+                  searchPlaceholder="Search status…"
+                  disabled={pending}
+                />
+              ) : null}
             </div>
             <SheetFooter className="border-t border-border/60">
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => onAddOpenChange(false)}
+                onClick={() => onFormOpenChange(false)}
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={pending || !name}>
-                Add dealer
+              <Button type="submit" disabled={pending || !name.trim()}>
+                {editing ? "Save changes" : "Add dealer"}
               </Button>
             </SheetFooter>
           </form>

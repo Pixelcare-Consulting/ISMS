@@ -52,4 +52,10 @@ export interface SapSyncResult {
   passRows: number;
   /** SAP's row count for the entity, or null if it could not be measured. */
   totalAtSource: number | null;
+
+  /**
+   * Follow-on lines for this run, shown after the row counts. The serial sync uses
+   * this when on-hand counts could not be updated and the registry sync still finished.
+   */
+  notes?: string[];
 }

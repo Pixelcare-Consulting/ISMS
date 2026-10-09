@@ -176,6 +176,10 @@ async function processApprovedOrderJob(
   });
   if (!order) throw new Error("Order not found");
 
+  // Stand-in for Process II "Auto Create ITR/SO", then a copy toward IT/DR.
+  // The document reference is not an inventory posting and does not move units.
+  // ITR and SO are the SAP document names on the signed sheet. They are not
+  // tagged here as Consignment or Outright.
   const sapDocRef = mockSapDocRef("approved_order", orderId);
 
   await prisma.branchOrder.update({

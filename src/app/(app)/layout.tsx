@@ -18,8 +18,11 @@ import { AiCopilotLauncher } from "@/features/ai/components/ai-copilot-launcher"
 import { canUseAiAssist } from "@/features/ai/constants/ai-permissions";
 import { isAiConfigured } from "@/features/ai/lib/provider";
 import { countUnreadAnnouncementsAction } from "@/features/announcements/actions/announcement.actions";
+import { countStockUnitsStkAction } from "@/features/inventory/actions/inventory.actions";
+import { getWorkflowNavCountBadgesAction } from "@/features/nav-badges/actions/nav-count-badges.actions";
 import { countUnreadNotificationsAction } from "@/features/notifications/actions/notification.actions";
 import { NotificationsHeaderAction } from "@/features/notifications/components/notifications-header-action";
+import { SapSyncProgressModals } from "@/features/sap/components/sap-sync-progress-modal";
 import { SapSyncReportDialogs } from "@/features/sap/components/sap-sync-report-dialogs";
 import { pageMetadata } from "@/lib/shared/seo";
 
@@ -42,6 +45,8 @@ export default async function AppLayout({
     cookieStore,
     unreadAnnouncementCount,
     unreadNotificationCount,
+    stockUnitsStkCount,
+    workflowNavCounts,
   ] = await Promise.all([
     getCachedLayoutBranding(session.user.tenantId),
     getCachedLayoutProfile(session.user.tenantId, session.user.id),
@@ -49,6 +54,8 @@ export default async function AppLayout({
     cookies(),
     countUnreadAnnouncementsAction().catch(() => 0),
     countUnreadNotificationsAction().catch(() => 0),
+    countStockUnitsStkAction().catch(() => 0),
+    getWorkflowNavCountBadgesAction(),
   ]);
 
   const user = {
@@ -72,7 +79,11 @@ export default async function AppLayout({
       <AppSidebar
         branding={branding}
         user={user}
-        unreadAnnouncementCount={unreadAnnouncementCount}
+        countBadges={{
+          unreadAnnouncements: unreadAnnouncementCount,
+          stockUnitsStk: stockUnitsStkCount,
+          ...workflowNavCounts,
+        }}
       />
 
       <SidebarInset className="h-svh overflow-hidden">
@@ -91,6 +102,7 @@ export default async function AppLayout({
         </div>
       </SidebarInset>
 
+      <SapSyncProgressModals />
       <SapSyncReportDialogs />
       <AiCopilotLauncher
         canAssist={canUseAiAssist(session.user.permissions)}
