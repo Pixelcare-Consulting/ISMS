@@ -698,3 +698,177 @@ describe("listModelSerials", () => {
     });
   });
 });
+
+describe("listFlat", () => {
+  const defaultOrderBy = [
+    { sapWhsCode: { sort: "asc", nulls: "last" } },
+    { branchInventories: { _count: "desc" } },
+    { sapOnHandSyncedAt: { sort: "desc", nulls: "last" } },
+    { sapSyncedAt: { sort: "desc", nulls: "last" } },
+    { serialNo: "asc" },
+  ];
+
+  beforeEach(() => {
+    serialRows.mockResolvedValue([]);
+    serialCount.mockResolvedValue(0);
+  });
+
+  it("defaults to branch A→Z, then ISMS status, then newest sync (nulls last)", async () => {
+    await serialNumberRepository.listFlat("t1", { page: 1, limit: 10 });
+
+    expect(serialRows).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: defaultOrderBy,
+      }),
+    );
+  });
+
+  it("keeps the same multi-column order when sort=branch asc", async () => {
+    await serialNumberRepository.listFlat(
+      "t1",
+      { page: 1, limit: 10 },
+      undefined,
+      { field: "branch", dir: "asc" },
+    );
+
+    expect(serialRows).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: defaultOrderBy,
+      }),
+    );
+  });
+
+  it("reverses branch when sort=branch desc and keeps status/sync tie-breakers", async () => {
+    await serialNumberRepository.listFlat(
+      "t1",
+      { page: 1, limit: 10 },
+      undefined,
+      { field: "branch", dir: "desc" },
+    );
+
+    expect(serialRows).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [
+          { sapWhsCode: { sort: "desc", nulls: "last" } },
+          { branchInventories: { _count: "desc" } },
+          { sapOnHandSyncedAt: { sort: "desc", nulls: "last" } },
+          { sapSyncedAt: { sort: "desc", nulls: "last" } },
+          { serialNo: "asc" },
+        ],
+      }),
+    );
+  });
+
+  it("orders by last sync when that column is chosen", async () => {
+    await serialNumberRepository.listFlat(
+      "t1",
+      { page: 1, limit: 10 },
+      undefined,
+      { field: "lastSync", dir: "desc" },
+    );
+
+    expect(serialRows).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [
+          { sapOnHandSyncedAt: { sort: "desc", nulls: "last" } },
+          { sapSyncedAt: { sort: "desc", nulls: "last" } },
+          { sapWhsCode: { sort: "asc", nulls: "last" } },
+          { branchInventories: { _count: "desc" } },
+          { serialNo: "asc" },
+        ],
+      }),
+    );
+  });
+
+  it("includes branch qty for this model's on-hand units at the same branch", async () => {
+    groupBy.mockResolvedValue([
+      { modelId: "m1", sapWhsCode: "ABL001", _count: { id: 11 } },
+      { modelId: "m1", sapWhsCode: "ABE500", _count: { id: 1 } },
+      { modelId: "m2", sapWhsCode: "ABL001", _count: { id: 4 } },
+    ]);
+    branchFindMany.mockResolvedValue([
+      { id: "b-leg", sapCode: "ABL001", name: "ABENSON AYALA LEGASPI" },
+    ]);
+    serialRows.mockResolvedValue([
+      {
+        id: "s1",
+        serialNo: "SN-LEG-1",
+        recordStatus: "active",
+        sapWhsCode: "ABL001",
+        sapSyncedAt: null,
+        sapOnHandSyncedAt: new Date("2026-10-09T06:15:00.000Z"),
+        model: { id: "m1", skuCode: "32STV105", name: 'DEVANT 32" HD' },
+        branchInventories: [],
+      },
+      {
+        id: "s2",
+        serialNo: "SN-WHSE-1",
+        recordStatus: "active",
+        sapWhsCode: "ABE500",
+        sapSyncedAt: null,
+        sapOnHandSyncedAt: null,
+        model: { id: "m1", skuCode: "32STV105", name: 'DEVANT 32" HD' },
+        branchInventories: [],
+      },
+      {
+        id: "s3",
+        serialNo: "SN-NONE",
+        recordStatus: "active",
+        sapWhsCode: null,
+        sapSyncedAt: null,
+        sapOnHandSyncedAt: null,
+        model: { id: "m2", skuCode: "55QUHW01", name: "QU LED" },
+        branchInventories: [],
+      },
+    ]);
+    serialCount.mockResolvedValue(3);
+
+    const page = await serialNumberRepository.listFlat("t1", { page: 1, limit: 10 });
+
+    expect(groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        by: ["modelId", "sapWhsCode"],
+        where: expect.objectContaining({
+          tenantId: "t1",
+          modelId: { in: ["m1", "m2"] },
+          sapOnHand: true,
+        }),
+      }),
+    );
+    expect(page.items).toEqual([
+      {
+        id: "s1",
+        serialNo: "SN-LEG-1",
+        recordStatus: "active",
+        lastSyncedAt: new Date("2026-10-09T06:15:00.000Z"),
+        model: { id: "m1", skuCode: "32STV105", name: 'DEVANT 32" HD' },
+        branchCode: "ABL001",
+        branchName: "ABENSON AYALA LEGASPI",
+        branchQty: 11,
+        statusCode: null,
+      },
+      {
+        id: "s2",
+        serialNo: "SN-WHSE-1",
+        recordStatus: "active",
+        lastSyncedAt: null,
+        model: { id: "m1", skuCode: "32STV105", name: 'DEVANT 32" HD' },
+        branchCode: "ABE500",
+        branchName: null,
+        branchQty: 1,
+        statusCode: null,
+      },
+      {
+        id: "s3",
+        serialNo: "SN-NONE",
+        recordStatus: "active",
+        lastSyncedAt: null,
+        model: { id: "m2", skuCode: "55QUHW01", name: "QU LED" },
+        branchCode: null,
+        branchName: null,
+        branchQty: null,
+        statusCode: null,
+      },
+    ]);
+  });
+});

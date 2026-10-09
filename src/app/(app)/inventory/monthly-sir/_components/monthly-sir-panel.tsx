@@ -600,7 +600,7 @@ export function MonthlySirPanel({
           <DialogHeader>
             <DialogTitle>Upload P-COUNT file</DialogTitle>
             <DialogDescription>
-              Preview validates serials and status codes before completing the linked count.
+              Preview checks that each P-Count is DEF, STK, or DU. Serials that are not in the system yet are still accepted.
             </DialogDescription>
           </DialogHeader>
           <Input

@@ -7,6 +7,8 @@ import type { LookupRecordStatus } from "@prisma/client";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { serialNumberService } from "@/features/serial-numbers/services/serial-number.service";
 import type {
+  FlatSerialListSort,
+  FlatSerialListSortDir,
   SerialNumberListSort,
   SerialNumberListSortDir,
 } from "@/features/serial-numbers/repositories/serial-number.repository";
@@ -17,6 +19,14 @@ import { requirePermission } from "@/lib/auth/permissions";
 const SERIAL_NUMBERS_ROUTE = "/inventory/serial-numbers";
 
 const SERIAL_NUMBER_SORT_FIELDS = new Set<SerialNumberListSort>(["model"]);
+const FLAT_SERIAL_SORT_FIELDS = new Set<FlatSerialListSort>([
+  "serial",
+  "model",
+  "branch",
+  "status",
+  "record",
+  "lastSync",
+]);
 
 function parseSerialNumberSort(value?: string): SerialNumberListSort | undefined {
   if (value && SERIAL_NUMBER_SORT_FIELDS.has(value as SerialNumberListSort)) {
@@ -25,10 +35,20 @@ function parseSerialNumberSort(value?: string): SerialNumberListSort | undefined
   return undefined;
 }
 
-function parseSerialNumberSortDir(value?: string): SerialNumberListSortDir | undefined {
+function parseFlatSerialSort(value?: string): FlatSerialListSort | undefined {
+  if (value && FLAT_SERIAL_SORT_FIELDS.has(value as FlatSerialListSort)) {
+    return value as FlatSerialListSort;
+  }
+  return undefined;
+}
+
+function parseSerialNumberSortDir(
+  value?: string,
+): SerialNumberListSortDir | FlatSerialListSortDir | undefined {
   return value === "asc" || value === "desc" ? value : undefined;
 }
 
+/** Legacy by-model aggregated list (`?view=by-model`). */
 export async function listSerialNumbersAction(params: {
   page?: number;
   limit?: number;
@@ -47,9 +67,31 @@ export async function listSerialNumbersAction(params: {
   );
 }
 
-export async function getSerialNumberKpisAction() {
+/** Primary flat serial list — one row per serial. */
+export async function listFlatSerialNumbersAction(params: {
+  page?: number;
+  limit?: number;
+  q?: string;
+  status?: LookupRecordStatus;
+  sort?: string;
+  sortDir?: string;
+}) {
   const session = await requirePermission("inventory.view");
-  return serialNumberService.getKpis(session.user.tenantId);
+  const limit = parseTablePageSize(params.limit);
+  return serialNumberService.listFlat(
+    session.user.tenantId,
+    { page: params.page, limit },
+    { q: params.q, status: params.status },
+    {
+      field: parseFlatSerialSort(params.sort),
+      dir: parseSerialNumberSortDir(params.sortDir),
+    },
+  );
+}
+
+export async function getSerialNumberKpisAction(mode: "serials" | "models" = "serials") {
+  const session = await requirePermission("inventory.view");
+  return serialNumberService.getKpis(session.user.tenantId, mode);
 }
 
 export async function listSerialModelOptionsAction() {

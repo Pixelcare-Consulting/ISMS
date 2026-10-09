@@ -8,6 +8,8 @@ import {
 } from "@/features/serial-numbers/schemas/serial-number.schema";
 import {
   serialNumberRepository,
+  type FlatSerialListSort,
+  type FlatSerialListSortDir,
   type SerialNumberListSort,
   type SerialNumberListSortDir,
   type SerialTraceabilityRow,
@@ -537,7 +539,10 @@ export interface SerialNumberStatusKpi {
 }
 
 export interface SerialNumberKpis {
+  /** Flat list: total live serials. Legacy by-model view still uses this as model count when requested. */
   totalModels: number;
+  /** Flat serial list KPI — same value as totalModels when listing serials. */
+  totalSerials: number;
   statuses: SerialNumberStatusKpi[];
 }
 
@@ -551,6 +556,7 @@ const RECORD_STATUS_ORDER = Object.keys(
 ) as LookupRecordStatus[];
 
 export const serialNumberService = {
+  /** Legacy by-model aggregated list (`?view=by-model`). */
   async list(
     tenantId: string,
     pagination?: { page?: number; limit?: number },
@@ -575,6 +581,21 @@ export const serialNumberService = {
     };
   },
 
+  /** Primary flat serial list — one row per serial, no QTY. */
+  async listFlat(
+    tenantId: string,
+    pagination?: { page?: number; limit?: number },
+    filters?: { q?: string; status?: LookupRecordStatus },
+    sort?: { field?: FlatSerialListSort; dir?: FlatSerialListSortDir },
+  ) {
+    const page = await serialNumberRepository.listFlat(tenantId, pagination, filters, sort);
+    const missing = warehouseCodesMissingNames(page.items);
+    if (missing.length === 0) return page;
+    const names = await loadWarehouseNames(tenantId, missing);
+    if (names.size === 0) return page;
+    return { ...page, items: applyWarehouseNames(page.items, names) };
+  },
+
   async listModelSerials(tenantId: string, modelId: string, page = 1, query?: string) {
     const listed = await serialNumberRepository.listModelSerials(tenantId, modelId, page, query);
     const missing = warehouseCodesMissingNames(listed.items);
@@ -588,11 +609,37 @@ export const serialNumberService = {
     return serialNumberRepository.listModelOptions(tenantId);
   },
 
-  async getKpis(tenantId: string): Promise<SerialNumberKpis> {
-    const [totalModels, active, inactive] = await Promise.all([
-      serialNumberRepository.countListedModels(tenantId),
-      serialNumberRepository.countListedModels(tenantId, "active"),
-      serialNumberRepository.countListedModels(tenantId, "inactive"),
+  async getKpis(
+    tenantId: string,
+    mode: "serials" | "models" = "serials",
+  ): Promise<SerialNumberKpis> {
+    if (mode === "models") {
+      const [totalModels, active, inactive] = await Promise.all([
+        serialNumberRepository.countListedModels(tenantId),
+        serialNumberRepository.countListedModels(tenantId, "active"),
+        serialNumberRepository.countListedModels(tenantId, "inactive"),
+      ]);
+
+      const countByStatus = new Map<LookupRecordStatus, number>([
+        ["active", active],
+        ["inactive", inactive],
+      ]);
+
+      return {
+        totalModels,
+        totalSerials: totalModels,
+        statuses: RECORD_STATUS_ORDER.map((status) => ({
+          code: status,
+          name: RECORD_STATUS_LABELS[status],
+          count: countByStatus.get(status) ?? 0,
+        })),
+      };
+    }
+
+    const [totalSerials, active, inactive] = await Promise.all([
+      serialNumberRepository.countListedSerials(tenantId),
+      serialNumberRepository.countListedSerials(tenantId, "active"),
+      serialNumberRepository.countListedSerials(tenantId, "inactive"),
     ]);
 
     const countByStatus = new Map<LookupRecordStatus, number>([
@@ -601,7 +648,8 @@ export const serialNumberService = {
     ]);
 
     return {
-      totalModels,
+      totalModels: totalSerials,
+      totalSerials,
       statuses: RECORD_STATUS_ORDER.map((status) => ({
         code: status,
         name: RECORD_STATUS_LABELS[status],

@@ -27,6 +27,9 @@ const HEADERS = [
   "UPLOAD DATE",
 ] as const;
 
+/** First download, before upload: headers only. Parser matches these labels. */
+const BLANK_TEMPLATE_HEADERS = ["BRANCH", "SERIAL NUMBER", "P-COUNT"] as const;
+
 function valueToString(value: ExcelJS.CellValue): string {
   if (value == null) return "";
   if (typeof value === "string") return value.trim();
@@ -95,6 +98,36 @@ async function latestDeliveries(tenantId: string, serialNumberIds: string[]) {
     }
   }
   return result;
+}
+
+/** Blank P-Count sheet downloaded before the first upload. No serial rows. */
+export async function buildMonthlySirBlankTemplate(input: {
+  tenantId: string;
+  sessionId: string;
+}): Promise<{ buffer: Buffer; filename: string }> {
+  const session = await prisma.stockCountSession.findFirst({
+    where: { id: input.sessionId, tenantId: input.tenantId },
+    select: { branch: { select: { sapCode: true } } },
+  });
+  if (!session) throw new Error("Linked count session not found");
+
+  const now = new Date();
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "ISMS";
+  workbook.created = now;
+  const sheet = workbook.addWorksheet("P-COUNT");
+  sheet.addRow([...BLANK_TEMPLATE_HEADERS]);
+  sheet.getRow(1).font = { bold: true };
+  sheet.views = [{ state: "frozen", ySplit: 1 }];
+  [24, 22, 14].forEach((width, index) => {
+    sheet.getColumn(index + 1).width = width;
+  });
+  const buffer = await workbook.xlsx.writeBuffer();
+  const period = now.toISOString().slice(0, 7);
+  return {
+    buffer: Buffer.from(buffer),
+    filename: `pcount-${session.branch.sapCode}-${period}.xlsx`,
+  };
 }
 
 export async function buildMonthlySirTemplate(input: {
@@ -275,6 +308,26 @@ export interface MonthlySirUploadRow {
   pcount: string;
 }
 
+function findPcountHeader(sheet: ExcelJS.Worksheet): {
+  headerRow: number;
+  serialColumn: number;
+  pcountColumn: number;
+} {
+  const lastRow = Math.min(sheet.rowCount || 1, 30);
+  for (let rowNumber = 1; rowNumber <= lastRow; rowNumber += 1) {
+    const headerMap = new Map<string, number>();
+    sheet.getRow(rowNumber).eachCell((cell, column) => {
+      headerMap.set(valueToString(cell.value).toUpperCase(), column);
+    });
+    const serialColumn = headerMap.get("SERIAL NUMBER");
+    const pcountColumn = headerMap.get("P-COUNT");
+    if (serialColumn && pcountColumn) {
+      return { headerRow: rowNumber, serialColumn, pcountColumn };
+    }
+  }
+  throw new Error("The template must contain SERIAL NUMBER and P-COUNT columns");
+}
+
 export async function parseMonthlySirUpload(
   buffer: Buffer,
 ): Promise<MonthlySirUploadRow[]> {
@@ -286,21 +339,13 @@ export async function parseMonthlySirUpload(
   const sheet = workbook.worksheets[0];
   if (!sheet) throw new Error("The workbook has no worksheet");
 
-  const headerRow = sheet.getRow(5);
-  const headerMap = new Map<string, number>();
-  headerRow.eachCell((cell, column) => {
-    headerMap.set(valueToString(cell.value).toUpperCase(), column);
-  });
-  const serialColumn = headerMap.get("SERIAL NUMBER");
-  const pcountColumn = headerMap.get("P-COUNT");
-  if (!serialColumn || !pcountColumn) {
-    throw new Error("The template must contain SERIAL NUMBER and P-COUNT columns");
-  }
+  const header = findPcountHeader(sheet);
+  const { headerRow, serialColumn, pcountColumn } = header;
 
   const rows: MonthlySirUploadRow[] = [];
   const seen = new Set<string>();
   sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-    if (rowNumber <= 5) return;
+    if (rowNumber <= headerRow) return;
     const serialNo = valueToString(row.getCell(serialColumn).value);
     const pcount = valueToString(row.getCell(pcountColumn).value).toUpperCase();
     if (!serialNo && !pcount) return;

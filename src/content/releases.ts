@@ -52,6 +52,191 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.54.5",
+    date: "2026-10-09",
+    releasedAt: "2026-10-09T18:00:00+08:00",
+    title: "Branch qty on the serial list",
+    highlights: [
+      "The SAP Serial No. list now shows Branch qty beside each branch — how many of that model are on hand at the same place.",
+      "When a serial has no branch, Branch qty shows a dash so empty locations stay obvious.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "SAP Serial No. includes a Branch qty column so you can see how many of that model share the same branch without switching to By model.",
+      },
+    ],
+  },
+  {
+    version: "0.54.4",
+    date: "2026-10-09",
+    releasedAt: "2026-10-09T17:45:00+08:00",
+    title: "Clearer serial detail view",
+    highlights: [
+      "A serial’s detail page title shows only the serial number, without the extra “Serial” label.",
+      "Product & record and Location & SAP can be hidden or shown from the section header, like Series summary on Stock units.",
+      "Your hide/show choice is remembered the next time you open a serial.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Serial detail headings show the serial code alone so the number is easier to scan and copy.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Product & record and Location & SAP use Hide / Show on the section header; both start open, and your choice is remembered.",
+      },
+    ],
+  },
+  {
+    version: "0.54.3",
+    date: "2026-10-09",
+    releasedAt: "2026-10-09T17:30:00+08:00",
+    title: "Stock units default order and full DR#",
+    highlights: [
+      "Stock units opens sorted by Branch Name A to Z, so Abenson appears before Davao without an extra click.",
+      "Delivery receipt numbers (DR#) show in full instead of cutting off with “…”.",
+      "Off-planogram only stays off by default so you see every stock unit, including those on planogram.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Stock units lists units by Branch Name A to Z when you open the page; you can still sort from any column header.",
+      },
+      {
+        type: "improvement",
+        description:
+          "DR# shows the full delivery receipt number, wrapping when needed instead of truncating.",
+      },
+      {
+        type: "fix",
+        description:
+          "With Off-planogram only unchecked, Stock units continues to show on-planogram and off-planogram units together.",
+      },
+    ],
+  },
+  {
+    version: "0.54.2",
+    date: "2026-10-09",
+    releasedAt: "2026-10-09T17:00:00+08:00",
+    title: "SAP Serial No. sorted by branch",
+    highlights: [
+      "SAP Serial No. opens sorted by branch (A to Z), then status, with the newest sync first within the same branch and status.",
+      "Serials without a branch or status still appear at the end of that sort, and you can change the order from any column header.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "SAP Serial No. lists serials by branch A to Z first, then ISMS status, then the most recent sync — no extra click needed.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Serials with no branch or status yet stay at the end of the default order; column headers still change the sort when you need a different view.",
+      },
+    ],
+  },
+  {
+    version: "0.54.1",
+    date: "2026-10-09",
+    releasedAt: "2026-10-09T16:50:00+08:00",
+    title: "Stock units counts in the guide",
+    highlights: [
+      "On Stock units, status totals sit inside the module guide so the page is easier to scan.",
+      "Each status total uses the same colored badge as the Status column, so Stock, Sold, Defective, and the rest are easy to tell apart.",
+      "Stock units shows full branch names and model names without cut-off, with clearer column spacing.",
+      "On SAP Serial No., Serial list and By model switch from the same spot in the table toolbar.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Stock, Sold, Defective, and the other status totals now appear inside the Stock units guide instead of a separate row.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Status totals on Stock units show the same colored status badges as the table (Stock STK, Sold SLD, and so on); Total units stays a plain label.",
+      },
+      {
+        type: "improvement",
+        description:
+          "On Stock units, Branch Name and Model show the full text (wrapping when needed) instead of cutting off with “…”, and column widths give branch and serial more room.",
+      },
+      {
+        type: "improvement",
+        description:
+          "On SAP Serial No., the Serial list and By model buttons sit in the same place in the toolbar on both views.",
+      },
+      {
+        type: "fix",
+        description:
+          "Stock units no longer truncates long branch names while leaving empty space in the Model column.",
+      },
+    ],
+  },
+  {
+    version: "0.54.0",
+    date: "2026-10-09",
+    releasedAt: "2026-10-09T16:30:00+08:00",
+    title: "SAP Serial No. lists every serial",
+    highlights: [
+      "SAP Serial No. now shows one row per serial — search and page through thousands without opening a model first.",
+      "Stock units shows full model names and full serial numbers, and no longer jumps away when you click a row.",
+      "Related products lets you pick how many to show beside the search, and filter by the same inventory statuses you use in Settings.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "SAP Serial No. opens as a flat list of every serial (SKU, branch, status, last sync). Use By model if you still want the older quantity-by-SKU view.",
+      },
+      {
+        type: "improvement",
+        description:
+          "On Stock units, the full model description and serial number stay readable, and rows are not clickable links to serial details.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Related products moves Show next to Search and filters by your inventory system statuses (Stock, Sold, Defective, and the rest).",
+      },
+    ],
+  },
+  {
+    version: "0.53.2",
+    date: "2026-10-09",
+    releasedAt: "2026-10-09T16:15:00+08:00",
+    title: "Blank P-Count template",
+    highlights: [
+      "Before you upload, the P-Count download is a blank sheet with Branch, Serial Number, and P-Count only.",
+      "Upload accepts Stock (STK), Defective (DEF), and Delivered (DU), including serials that are not in the system yet.",
+      "Variance rows are marked P-COUNT: VAR after upload, using the same rules as Generate variance.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "The P-Count file you download before uploading is blank, with Branch, Serial Number, and P-Count only, so you fill in the count yourself.",
+      },
+      {
+        type: "improvement",
+        description:
+          "A P-Count upload accepts Stock (STK), Defective (DEF), and Delivered (DU), including serial numbers that are not in the system yet.",
+      },
+      {
+        type: "fix",
+        description:
+          "Variance rows are marked P-COUNT: VAR after upload, matching Generate variance, so those remarks are not left blank.",
+      },
+    ],
+  },
+  {
     version: "0.53.1",
     date: "2026-10-09",
     releasedAt: "2026-10-09T13:30:00+08:00",
