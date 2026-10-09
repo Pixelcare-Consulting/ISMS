@@ -315,7 +315,12 @@ describe("setSapOnHandFlags", () => {
   });
 
   it("does not write flags when no allow-listed model is on the page", async () => {
-    await serialNumberRepository.setSapOnHandFlags("t1", [], ["SN1"], ["SN2"]);
+    await serialNumberRepository.setSapOnHandFlags(
+      "t1",
+      [],
+      [{ serialNo: "SN1", warehouseCode: "ABL001" }],
+      ["SN2"],
+    );
     expect(updateMany).not.toHaveBeenCalled();
   });
 });
