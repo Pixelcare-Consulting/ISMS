@@ -1,6 +1,13 @@
 const mockSapRows: Record<string, unknown>[] = [];
 
 jest.mock("@/lib/database/client", () => ({ prisma: {} }));
+jest.mock("@/features/serial-numbers/services/serial-stock-replicate", () => ({
+  loadMasterWarehouseAllowList: jest.fn(),
+  partitionOnHandByMaster: jest.requireActual(
+    "@/features/serial-numbers/services/serial-stock-replicate",
+  ).partitionOnHandByMaster,
+  replicateOnHandSerialsToStk: jest.fn(),
+}));
 jest.mock("@/features/serial-numbers/repositories/serial-number.repository", () => ({
   serialNumberRepository: {
     listSapSyncModelKeys: jest.fn(),
@@ -58,6 +65,10 @@ jest.mock("@/features/sap/services/sap-sync-engine", () => ({
 import { fetchSapSerialLocations, ensureSapOnHandQuery } from "@/features/sap/services/sap-onhand-stock";
 import { sapServiceLayerService } from "@/features/sap/services/sap-service-layer.service";
 import { serialNumberRepository } from "@/features/serial-numbers/repositories/serial-number.repository";
+import {
+  loadMasterWarehouseAllowList,
+  replicateOnHandSerialsToStk,
+} from "@/features/serial-numbers/services/serial-stock-replicate";
 import { serialNumberSapSyncService } from "@/features/serial-numbers/services/serial-number-sap-sync.service";
 
 const listModels = serialNumberRepository.listSapSyncModelKeys as jest.Mock;
@@ -66,6 +77,8 @@ const setFlags = serialNumberRepository.setSapOnHandFlags as jest.Mock;
 const fetchLocations = fetchSapSerialLocations as jest.Mock;
 const ensureQuery = ensureSapOnHandQuery as jest.Mock;
 const getCredentials = sapServiceLayerService.getCredentials as jest.Mock;
+const allowList = loadMasterWarehouseAllowList as jest.Mock;
+const replicate = replicateOnHandSerialsToStk as jest.Mock;
 
 function useRows(rows: Record<string, unknown>[]) {
   mockSapRows.splice(0, mockSapRows.length, ...rows);
@@ -80,6 +93,9 @@ beforeEach(() => {
   getCredentials.mockResolvedValue({ id: "c1", companyDb: "DB" });
   ensureQuery.mockResolvedValue(undefined);
   fetchLocations.mockResolvedValue([]);
+  // B1 is a live branch/warehouse code; anything else is treated as not on hand.
+  allowList.mockResolvedValue(new Set(["B1"]));
+  replicate.mockResolvedValue({ created: 0, moved: 0, skipped: 0 });
 });
 
 it("does not insert a serial whose model is no longer in Master data", async () => {
