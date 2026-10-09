@@ -72,12 +72,17 @@ function settledDetail(progress: SapSyncProgress): string {
 
 function useRotatingMessage(messages: readonly string[], active: boolean): string {
   const [index, setIndex] = useState(0);
+  const [wasActive, setWasActive] = useState(active);
+
+  // Reset during render when the rotator stops, so the next pass starts at the
+  // first line. Doing this in an effect retriggers a render in the same turn.
+  if (active !== wasActive) {
+    setWasActive(active);
+    if (!active) setIndex(0);
+  }
 
   useEffect(() => {
-    if (!active) {
-      setIndex(0);
-      return;
-    }
+    if (!active) return;
     const timer = window.setInterval(() => {
       setIndex((prev) => (prev + 1) % messages.length);
     }, ROTATE_MS);

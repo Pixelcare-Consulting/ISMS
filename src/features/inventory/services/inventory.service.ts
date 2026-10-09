@@ -19,6 +19,8 @@ import type { PaginatedResult } from "@/lib/shared/pagination";
 export interface InventoryStatusKpi {
   code: string;
   name: string;
+  /** Palette key from ReasonStatusCode.color (masterdata). */
+  color: string | null;
   count: number;
 }
 
@@ -59,6 +61,7 @@ type InventoryStatusCodeRow = {
   id: string;
   code: string;
   name: string;
+  color: string | null;
 };
 
 async function resolveBranchIds(
@@ -235,7 +238,12 @@ export const inventoryService = {
     if (branchIds.length === 0) {
       return {
         totalUnits: 0,
-        statuses: codes.map((c) => ({ code: c.code, name: c.name, count: 0 })),
+        statuses: codes.map((c) => ({
+          code: c.code,
+          name: c.name,
+          color: c.color,
+          count: 0,
+        })),
       };
     }
 
@@ -255,6 +263,7 @@ export const inventoryService = {
       statuses: codes.map((c) => ({
         code: c.code,
         name: c.name,
+        color: c.color,
         count: countByCodeId.get(c.id) ?? 0,
       })),
     };

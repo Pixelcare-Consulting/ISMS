@@ -1,12 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, type ReactNode } from "react";
+import {
+  useMemo,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import {
   ArrowLeft,
   ArrowLeftRight,
   ArrowUpToLine,
   Box,
+  ChevronDown,
+  ChevronUp,
   ClipboardList,
   ExternalLink,
   MapPin,
@@ -56,12 +63,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { usePersistedBoolean } from "@/hooks/use-persisted-boolean";
 import { cn } from "@/utils/cn";
 
 type RelatedUnit = SerialTraceability["relatedUnits"]["sameSku"]["units"][number];
 
 const RELATED_STATUS_ALL = "__all__";
 const RELATED_MODAL_PAGE_SIZE = 10;
+const PRODUCT_CARD_EXPANDED_KEY = "inventory.serialDetail.productExpanded";
+const LOCATION_CARD_EXPANDED_KEY = "inventory.serialDetail.locationExpanded";
 
 const dateTimeFormatter = new Intl.DateTimeFormat("en-PH", {
   dateStyle: "medium",
@@ -89,16 +99,30 @@ const EVENT_META: Record<SerialEventType, { icon: LucideIcon; tint: string }> = 
   backload: { icon: Truck, tint: "bg-orange-100 text-orange-700" },
 };
 
-interface SerialDetailViewProps {
-  serial: SerialTraceability;
+export interface RelatedInventoryStatusOption {
+  id: string;
+  code: string;
+  name: string;
 }
 
-export function SerialDetailView({ serial }: SerialDetailViewProps) {
+interface SerialDetailViewProps {
+  serial: SerialTraceability;
+  /** Inventory system status masterdata for the Related products filter. */
+  inventoryStatusOptions: RelatedInventoryStatusOption[];
+}
+
+export function SerialDetailView({
+  serial,
+  inventoryStatusOptions,
+}: SerialDetailViewProps) {
   return (
     <div className="space-y-6">
       <DetailHeader serial={serial} />
       <div className="grid items-stretch gap-6 lg:grid-cols-2">
-        <DetailsCard serial={serial} />
+        <DetailsCard
+          serial={serial}
+          inventoryStatusOptions={inventoryStatusOptions}
+        />
         <LocationCard serial={serial} />
       </div>
       <TimelineCard events={serial.events} />
@@ -211,16 +235,66 @@ function BranchLocationMap({
   );
 }
 
+function CollapsibleCardHeader({
+  title,
+  expanded,
+  onToggle,
+  controlsId,
+}: {
+  title: string;
+  expanded: boolean;
+  onToggle: () => void;
+  controlsId: string;
+}) {
+  function onHeaderKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    onToggle();
+  }
+
+  return (
+    <CardHeader
+      role="button"
+      tabIndex={0}
+      className={cn(
+        "cursor-pointer pb-3 outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+        expanded && "border-b",
+      )}
+      aria-expanded={expanded}
+      aria-controls={controlsId}
+      onClick={onToggle}
+      onKeyDown={onHeaderKeyDown}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <CardTitle className="text-base">{title}</CardTitle>
+        <span
+          className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-sm text-muted-foreground"
+          aria-hidden
+        >
+          {expanded ? (
+            <>
+              <ChevronUp className="size-4" />
+              Hide
+            </>
+          ) : (
+            <>
+              <ChevronDown className="size-4" />
+              Show
+            </>
+          )}
+        </span>
+      </div>
+    </CardHeader>
+  );
+}
+
 function DetailHeader({ serial }: { serial: SerialTraceability }) {
   return (
     <div className="sticky top-0 z-20 -mx-4 space-y-3 border-b border-border/60 bg-background px-4 py-2.5 shadow-sm sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 space-y-1">
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            Serial{" "}
-            <span className="font-mono text-[1.35rem] sm:text-2xl">
-              {serial.serialNo}
-            </span>
+          <h1 className="font-mono text-[1.35rem] font-bold tracking-tight text-foreground sm:text-2xl">
+            {serial.serialNo}
           </h1>
           <p className="text-sm font-medium leading-snug">
             <span className="font-mono">{serial.model.skuCode}</span>
@@ -293,76 +367,96 @@ function HeaderField({
   );
 }
 
-function DetailsCard({ serial }: { serial: SerialTraceability }) {
+function DetailsCard({
+  serial,
+  inventoryStatusOptions,
+}: {
+  serial: SerialTraceability;
+  inventoryStatusOptions: RelatedInventoryStatusOption[];
+}) {
   const [relatedOpen, setRelatedOpen] = useState(false);
+  const [expanded, setExpanded] = usePersistedBoolean(
+    PRODUCT_CARD_EXPANDED_KEY,
+    true,
+  );
+  const bodyId = "serial-detail-product-body";
 
   return (
     <Card className="flex h-full flex-col">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base">Product & record</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-1 flex-col gap-4">
-        <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-          <DetailRow label="SKU" value={serial.model.skuCode} mono />
-          <DetailRow
-            label="Record status"
-            value={
-              <span className="inline-flex flex-wrap items-center justify-end gap-2">
-                <Badge
-                  variant={
-                    serial.recordStatus === "active" ? "default" : "secondary"
-                  }
-                >
-                  {serial.recordStatus === "active" ? "Active" : "Inactive"}
-                </Badge>
-                {serial.current?.status ? (
-                  <StatusCodeBadge
-                    code={serial.current.status.code}
-                    name={serial.current.status.name}
-                    color={serial.current.status.color}
-                  />
-                ) : null}
-              </span>
-            }
-          />
-          <DetailRow label="Brand" value={serial.model.brand ?? "—"} />
-          <DetailRow label="Series" value={serial.model.series ?? "—"} />
-          <DetailRow
-            label="SRP"
-            value={
-              serial.model.srp != null
-                ? currencyFormatter.format(serial.model.srp)
-                : "—"
-            }
-          />
-          <DetailRow label="Size" value={serial.model.size ?? "—"} />
-          <DetailRow label="Resolution" value={serial.model.resolution ?? "—"} />
-          <DetailRow label="Feature" value={serial.model.feature ?? "—"} />
-          <DetailRow
-            label="Updated"
-            value={dateTimeFormatter.format(serial.updatedAt)}
-          />
-          {serial.model.description ? (
-            <div className="sm:col-span-2">
-              <dt className="text-xs uppercase tracking-wide text-muted-foreground">
-                Description
-              </dt>
-              <dd className="mt-1 line-clamp-3 text-sm leading-relaxed">
-                {serial.model.description}
-              </dd>
-            </div>
-          ) : null}
-        </dl>
+      <CollapsibleCardHeader
+        title="Product & record"
+        expanded={expanded}
+        onToggle={() => setExpanded((prev) => !prev)}
+        controlsId={bodyId}
+      />
+      {expanded ? (
+        <CardContent id={bodyId} className="flex flex-1 flex-col gap-4">
+          <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+            <DetailRow label="SKU" value={serial.model.skuCode} mono />
+            <DetailRow
+              label="Record status"
+              value={
+                <span className="inline-flex flex-wrap items-center justify-end gap-2">
+                  <Badge
+                    variant={
+                      serial.recordStatus === "active" ? "default" : "secondary"
+                    }
+                  >
+                    {serial.recordStatus === "active" ? "Active" : "Inactive"}
+                  </Badge>
+                  {serial.current?.status ? (
+                    <StatusCodeBadge
+                      code={serial.current.status.code}
+                      name={serial.current.status.name}
+                      color={serial.current.status.color}
+                    />
+                  ) : null}
+                </span>
+              }
+            />
+            <DetailRow label="Brand" value={serial.model.brand ?? "—"} />
+            <DetailRow label="Series" value={serial.model.series ?? "—"} />
+            <DetailRow
+              label="SRP"
+              value={
+                serial.model.srp != null
+                  ? currencyFormatter.format(serial.model.srp)
+                  : "—"
+              }
+            />
+            <DetailRow label="Size" value={serial.model.size ?? "—"} />
+            <DetailRow
+              label="Resolution"
+              value={serial.model.resolution ?? "—"}
+            />
+            <DetailRow label="Feature" value={serial.model.feature ?? "—"} />
+            <DetailRow
+              label="Updated"
+              value={dateTimeFormatter.format(serial.updatedAt)}
+            />
+            {serial.model.description ? (
+              <div className="sm:col-span-2">
+                <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Description
+                </dt>
+                <dd className="mt-1 line-clamp-3 text-sm leading-relaxed">
+                  {serial.model.description}
+                </dd>
+              </div>
+            ) : null}
+          </dl>
 
-        <RelatedUnitsPreview
-          serial={serial}
-          className="mt-auto"
-          onViewAll={() => setRelatedOpen(true)}
-        />
-      </CardContent>
+          <RelatedUnitsPreview
+            serial={serial}
+            className="mt-auto"
+            onViewAll={() => setRelatedOpen(true)}
+          />
+        </CardContent>
+      ) : null}
 
       <RelatedProductsDialog
         serial={serial}
+        inventoryStatusOptions={inventoryStatusOptions}
         open={relatedOpen}
         onOpenChange={setRelatedOpen}
       />
@@ -459,10 +553,12 @@ function RelatedUnitsTable({
 
 function RelatedProductsDialog({
   serial,
+  inventoryStatusOptions,
   open,
   onOpenChange,
 }: {
   serial: SerialTraceability;
+  inventoryStatusOptions: RelatedInventoryStatusOption[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -477,17 +573,6 @@ function RelatedProductsDialog({
 
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState(RELATED_STATUS_ALL);
-
-  const statusOptions = useMemo(() => {
-    const byCode = new Map<string, string>();
-    for (const unit of units) {
-      if (!unit.status) continue;
-      byCode.set(unit.status.code, unit.status.name);
-    }
-    return Array.from(byCode.entries())
-      .map(([code, name]) => ({ code, name }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [units]);
 
   const filteredUnits = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -544,6 +629,7 @@ function RelatedProductsDialog({
           <p className="shrink-0 text-sm font-medium">{title}</p>
 
           <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
+            <TablePageSizeSelect value={pageSize} onChange={setPageSize} />
             <div className="relative min-w-0 flex-1">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -554,21 +640,23 @@ function RelatedProductsDialog({
                 aria-label="Search related serials"
               />
             </div>
-            {statusOptions.length > 0 ? (
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger size="sm" className="w-full sm:w-[10.5rem]" aria-label="Filter by status">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent align="end">
-                  <SelectItem value={RELATED_STATUS_ALL}>All statuses</SelectItem>
-                  {statusOptions.map((option) => (
-                    <SelectItem key={option.code} value={option.code}>
-                      {option.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : null}
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger
+                size="sm"
+                className="w-full sm:w-[11.5rem]"
+                aria-label="Filter by inventory status"
+              >
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent align="end">
+                <SelectItem value={RELATED_STATUS_ALL}>All statuses</SelectItem>
+                {inventoryStatusOptions.map((option) => (
+                  <SelectItem key={option.id} value={option.code}>
+                    {option.name} ({option.code})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto">
@@ -585,16 +673,13 @@ function RelatedProductsDialog({
 
           {units.length > 0 ? (
             <div className="flex shrink-0 flex-col gap-2 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-2">
-                <TablePageSizeSelect value={pageSize} onChange={setPageSize} />
-                <span className="text-xs text-muted-foreground">
-                  {total.toLocaleString()} match
-                  {total === 1 ? "" : "es"}
-                  {sameSku.total > units.length
-                    ? ` · loaded ${units.length} of ${sameSku.total}`
-                    : null}
-                </span>
-              </div>
+              <span className="text-xs text-muted-foreground">
+                {total.toLocaleString()} match
+                {total === 1 ? "" : "es"}
+                {sameSku.total > units.length
+                  ? ` · loaded ${units.length} of ${sameSku.total}`
+                  : null}
+              </span>
               {totalPages > 1 ? (
                 <TablePagination
                   total={total}
@@ -705,175 +790,190 @@ function RelatedUnitsPreview({
 
 function LocationCard({ serial }: { serial: SerialTraceability }) {
   const mapQuery = buildLocationQuery(serial);
+  const [expanded, setExpanded] = usePersistedBoolean(
+    LOCATION_CARD_EXPANDED_KEY,
+    true,
+  );
+  const bodyId = "serial-detail-location-body";
 
   return (
     <Card className="h-full">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base">Location & SAP</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {mapQuery && serial.current?.branch ? (
-          <BranchLocationMap
-            query={mapQuery}
-            title={serial.current.branch}
-            subtitle={serial.current.branchSapCode}
-          />
-        ) : null}
+      <CollapsibleCardHeader
+        title="Location & SAP"
+        expanded={expanded}
+        onToggle={() => setExpanded((prev) => !prev)}
+        controlsId={bodyId}
+      />
+      {expanded ? (
+        <CardContent id={bodyId} className="space-y-4">
+          {mapQuery && serial.current?.branch ? (
+            <BranchLocationMap
+              query={mapQuery}
+              title={serial.current.branch}
+              subtitle={serial.current.branchSapCode}
+            />
+          ) : null}
 
-        <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-          <DetailRow label="Region" value={serial.current?.region ?? "—"} />
-          <DetailRow label="Province" value={serial.current?.province ?? "—"} />
-          <DetailRow label="Dealer" value={serial.current?.dealer ?? "—"} />
-          <DetailRow
-            label="Primary warehouse"
-            value={
-              serial.current?.warehouseName
-                ? `${serial.current.warehouseName}${serial.current.warehouseCode ? ` (${serial.current.warehouseCode})` : ""}`
-                : (serial.current?.warehouseCode ?? "—")
-            }
-          />
-          <DetailRow
-            label="On planogram"
-            value={
-              serial.planogram.onPlanogram
-                ? serial.planogram.maxQty != null
-                  ? `Yes · max ${serial.planogram.maxQty}`
-                  : "Yes"
-                : "No"
-            }
-          />
-          <DetailRow
-            label="DR date"
-            value={
-              serial.deliveryReceipt.deliveryDate
-                ? dateFormatter.format(serial.deliveryReceipt.deliveryDate)
-                : "—"
-            }
-          />
-          <DetailRow
-            label="Stock updated"
-            value={
-              serial.current?.inventoryUpdatedAt
-                ? dateTimeFormatter.format(serial.current.inventoryUpdatedAt)
-                : "—"
-            }
-          />
-        </dl>
-
-        <Separator />
-
-        <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-          <DetailRow
-            label="SAP AbsEntry"
-            value={serial.sap.absEntry != null ? String(serial.sap.absEntry) : "—"}
-            mono
-          />
-          <DetailRow
-            label="SAP on hand"
-            value={
-              serial.sap.onHandSyncedAt
-                ? serial.sap.onHand
-                  ? "Yes"
+          <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+            <DetailRow label="Region" value={serial.current?.region ?? "—"} />
+            <DetailRow
+              label="Province"
+              value={serial.current?.province ?? "—"}
+            />
+            <DetailRow label="Dealer" value={serial.current?.dealer ?? "—"} />
+            <DetailRow
+              label="Primary warehouse"
+              value={
+                serial.current?.warehouseName
+                  ? `${serial.current.warehouseName}${serial.current.warehouseCode ? ` (${serial.current.warehouseCode})` : ""}`
+                  : (serial.current?.warehouseCode ?? "—")
+              }
+            />
+            <DetailRow
+              label="On planogram"
+              value={
+                serial.planogram.onPlanogram
+                  ? serial.planogram.maxQty != null
+                    ? `Yes · max ${serial.planogram.maxQty}`
+                    : "Yes"
                   : "No"
-                : "—"
-            }
-          />
-          <DetailRow
-            label="SAP warehouse"
-            value={
-              serial.sap.whsName
-                ? `${serial.sap.whsName}${serial.sap.whsCode ? ` (${serial.sap.whsCode})` : ""}`
-                : (serial.sap.whsCode ?? "—")
-            }
-          />
-          <DetailRow
-            label="Last SAP sync"
-            value={
-              serial.sap.syncedAt
-                ? dateTimeFormatter.format(serial.sap.syncedAt)
-                : "—"
-            }
-          />
-          <DetailRow
-            label="On-hand checked"
-            value={
-              serial.sap.onHandSyncedAt
-                ? dateTimeFormatter.format(serial.sap.onHandSyncedAt)
-                : "—"
-            }
-          />
-        </dl>
+              }
+            />
+            <DetailRow
+              label="DR date"
+              value={
+                serial.deliveryReceipt.deliveryDate
+                  ? dateFormatter.format(serial.deliveryReceipt.deliveryDate)
+                  : "—"
+              }
+            />
+            <DetailRow
+              label="Stock updated"
+              value={
+                serial.current?.inventoryUpdatedAt
+                  ? dateTimeFormatter.format(serial.current.inventoryUpdatedAt)
+                  : "—"
+              }
+            />
+          </dl>
 
-        {serial.warehouseLocations.length > 0 ? (
-          <>
-            <Separator />
-            <div className="space-y-2">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                Warehouse bins
-              </p>
-              <ul className="space-y-2">
-                {serial.warehouseLocations.map((loc) => (
-                  <li key={loc.id}>
-                    <Link
-                      href={loc.href}
-                      className="flex items-start justify-between gap-3 rounded-md border px-3 py-2 text-sm transition-colors hover:bg-muted/50"
-                    >
-                      <span>
-                        <span className="font-medium">{loc.warehouseName}</span>
-                        <span className="text-muted-foreground">
-                          {" "}
-                          · {loc.locationName}
-                        </span>
-                      </span>
-                      <ExternalLink className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </>
-        ) : null}
+          <Separator />
 
-        {serial.serviceCenters.length > 0 ? (
-          <>
-            <Separator />
-            <div className="space-y-2">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                Service centers
-              </p>
-              <ul className="space-y-2">
-                {serial.serviceCenters.map((sc) => (
-                  <li key={sc.id}>
-                    <Link
-                      href={sc.href}
-                      className="flex items-start justify-between gap-3 rounded-md border px-3 py-2 text-sm transition-colors hover:bg-muted/50"
-                    >
-                      <span>
-                        <span className="font-medium">{sc.name}</span>
-                        {sc.location ? (
+          <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+            <DetailRow
+              label="SAP AbsEntry"
+              value={
+                serial.sap.absEntry != null ? String(serial.sap.absEntry) : "—"
+              }
+              mono
+            />
+            <DetailRow
+              label="SAP on hand"
+              value={
+                serial.sap.onHandSyncedAt
+                  ? serial.sap.onHand
+                    ? "Yes"
+                    : "No"
+                  : "—"
+              }
+            />
+            <DetailRow
+              label="SAP warehouse"
+              value={
+                serial.sap.whsName
+                  ? `${serial.sap.whsName}${serial.sap.whsCode ? ` (${serial.sap.whsCode})` : ""}`
+                  : (serial.sap.whsCode ?? "—")
+              }
+            />
+            <DetailRow
+              label="Last SAP sync"
+              value={
+                serial.sap.syncedAt
+                  ? dateTimeFormatter.format(serial.sap.syncedAt)
+                  : "—"
+              }
+            />
+            <DetailRow
+              label="On-hand checked"
+              value={
+                serial.sap.onHandSyncedAt
+                  ? dateTimeFormatter.format(serial.sap.onHandSyncedAt)
+                  : "—"
+              }
+            />
+          </dl>
+
+          {serial.warehouseLocations.length > 0 ? (
+            <>
+              <Separator />
+              <div className="space-y-2">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Warehouse bins
+                </p>
+                <ul className="space-y-2">
+                  {serial.warehouseLocations.map((loc) => (
+                    <li key={loc.id}>
+                      <Link
+                        href={loc.href}
+                        className="flex items-start justify-between gap-3 rounded-md border px-3 py-2 text-sm transition-colors hover:bg-muted/50"
+                      >
+                        <span>
+                          <span className="font-medium">{loc.warehouseName}</span>
                           <span className="text-muted-foreground">
                             {" "}
-                            · {sc.location}
+                            · {loc.locationName}
                           </span>
-                        ) : null}
-                      </span>
-                      {sc.status ? (
-                        <StatusCodeBadge
-                          code={sc.status.code}
-                          name={sc.status.name}
-                          color={sc.status.color}
-                        />
-                      ) : (
+                        </span>
                         <ExternalLink className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-                      )}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </>
-        ) : null}
-      </CardContent>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </>
+          ) : null}
+
+          {serial.serviceCenters.length > 0 ? (
+            <>
+              <Separator />
+              <div className="space-y-2">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Service centers
+                </p>
+                <ul className="space-y-2">
+                  {serial.serviceCenters.map((sc) => (
+                    <li key={sc.id}>
+                      <Link
+                        href={sc.href}
+                        className="flex items-start justify-between gap-3 rounded-md border px-3 py-2 text-sm transition-colors hover:bg-muted/50"
+                      >
+                        <span>
+                          <span className="font-medium">{sc.name}</span>
+                          {sc.location ? (
+                            <span className="text-muted-foreground">
+                              {" "}
+                              · {sc.location}
+                            </span>
+                          ) : null}
+                        </span>
+                        {sc.status ? (
+                          <StatusCodeBadge
+                            code={sc.status.code}
+                            name={sc.status.name}
+                            color={sc.status.color}
+                          />
+                        ) : (
+                          <ExternalLink className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                        )}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </>
+          ) : null}
+        </CardContent>
+      ) : null}
     </Card>
   );
 }

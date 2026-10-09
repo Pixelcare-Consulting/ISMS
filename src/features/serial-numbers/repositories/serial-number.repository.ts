@@ -1,6 +1,12 @@
 import { Prisma, type LookupRecordStatus } from "@prisma/client";
 
 import { prisma } from "@/lib/database/client";
+import {
+  FLAT_SERIAL_DEFAULT_SORT,
+  FLAT_SERIAL_DEFAULT_SORT_DIR,
+  type FlatSerialListSort,
+  type FlatSerialListSortDir,
+} from "@/features/serial-numbers/constants/flat-serial-sort";
 import { MODEL_SERIAL_PAGE_SIZE } from "@/features/serial-numbers/constants/model-serial-page";
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
 import { SAP_SYNC_CHUNK } from "@/features/sap/services/sap-master-data";
@@ -210,9 +216,33 @@ export type SerialTraceabilityRow = Prisma.SerialNumberGetPayload<{
   include: typeof serialTraceabilityInclude;
 }>;
 
-/** The serial list is one row per model, so the only sort is that model's SKU. */
+/** Legacy by-model list sort (SKU). */
 export type SerialNumberListSort = "model";
 export type SerialNumberListSortDir = "asc" | "desc";
+
+export type { FlatSerialListSort, FlatSerialListSortDir };
+export { FLAT_SERIAL_DEFAULT_SORT, FLAT_SERIAL_DEFAULT_SORT_DIR };
+
+/** One row on the primary SAP Serial No. flat list. */
+export interface FlatSerialListRow {
+  id: string;
+  serialNo: string;
+  recordStatus: LookupRecordStatus;
+  lastSyncedAt: Date | null;
+  model: {
+    id: string;
+    skuCode: string;
+    name: string;
+  };
+  branchCode: string | null;
+  branchName: string | null;
+  /**
+   * On-hand serials of this model at the same branch, or at the same warehouse when
+   * no branch matches. Null when the row has no location. This is not the model total.
+   */
+  branchQty: number | null;
+  statusCode: { code: string; name: string; color: string | null } | null;
+}
 
 export interface SerialModelListRow {
   id: string;
@@ -474,6 +504,69 @@ async function onHandQtyByBranch(
 }
 
 /**
+ * Same branch / warehouse on-hand counts as `onHandQtyByBranch`, batched for the
+ * models on one flat-list page so each model is not queried separately.
+ */
+async function onHandQtyByBranchForModels(
+  tenantId: string,
+  modelIds: string[],
+): Promise<Map<string, { qtyByBranchId: Map<string, number>; qtyByCode: Map<string, number> }>> {
+  const result = new Map(
+    modelIds.map((modelId) => [
+      modelId,
+      { qtyByBranchId: new Map<string, number>(), qtyByCode: new Map<string, number>() },
+    ]),
+  );
+  if (modelIds.length === 0) return result;
+
+  const groups = await prisma.serialNumber.groupBy({
+    by: ["modelId", "sapWhsCode"],
+    where: {
+      tenantId,
+      modelId: { in: modelIds },
+      deletedAt: null,
+      model: { deletedAt: null },
+      sapOnHand: true,
+      sapWhsCode: { not: null },
+    },
+    _count: { id: true },
+  });
+  const codes = groups.flatMap((group) => (group.sapWhsCode ? [group.sapWhsCode] : []));
+  const { branches } = await branchesByWarehouseCode(tenantId, codes);
+
+  for (const group of groups) {
+    if (!group.sapWhsCode) continue;
+    const bucket = result.get(group.modelId);
+    if (!bucket) continue;
+    bucket.qtyByCode.set(group.sapWhsCode, group._count.id);
+    const trimmed = group.sapWhsCode.trim();
+    if (trimmed !== group.sapWhsCode) bucket.qtyByCode.set(trimmed, group._count.id);
+    const branch = branches.get(group.sapWhsCode) ?? branches.get(trimmed);
+    if (!branch) continue;
+    bucket.qtyByBranchId.set(
+      branch.id,
+      (bucket.qtyByBranchId.get(branch.id) ?? 0) + group._count.id,
+    );
+  }
+  return result;
+}
+
+/** Branch qty for one flat / model-serial row, matching listModelSerials semantics. */
+function resolveBranchQty(
+  branch: { branchId: string | null; branchCode: string | null },
+  sapWhsCode: string | null,
+  qtyByBranchId: Map<string, number>,
+  qtyByCode: Map<string, number>,
+): number | null {
+  const codeQty = sapWhsCode
+    ? (qtyByCode.get(sapWhsCode) ?? qtyByCode.get(sapWhsCode.trim()) ?? 0)
+    : null;
+  if (branch.branchId) return qtyByBranchId.get(branch.branchId) ?? 0;
+  if (branch.branchCode) return codeQty;
+  return null;
+}
+
+/**
  * Location to show on one on-hand row.
  * A stored warehouse code that matches a branch wins over a stock placement.
  * A code that matches no branch still shows that code, plus the warehouse name
@@ -517,6 +610,120 @@ function serialNumberPrismaOrderBy(
       return unreachable;
     }
   }
+}
+
+/**
+ * Flat-list orderBy. Branch uses warehouse/branch code (nulls last) — the same key
+ * the Branch column resolves into a name. Default and branch-primary sorts also
+ * tie-break by ISMS placement (status presence, empty/"—" last) then newest sync.
+ */
+function flatSerialPrismaOrderBy(
+  field: FlatSerialListSort,
+  dir: FlatSerialListSortDir,
+): Prisma.SerialNumberOrderByWithRelationInput | Prisma.SerialNumberOrderByWithRelationInput[] {
+  const branchOrder = (
+    branchDir: FlatSerialListSortDir,
+  ): Prisma.SerialNumberOrderByWithRelationInput => ({
+    sapWhsCode: { sort: branchDir, nulls: "last" },
+  });
+  /** Empty ISMS status ("—") last when ascending presence; reverses when dir is desc. */
+  const statusOrder = (
+    statusDir: FlatSerialListSortDir,
+  ): Prisma.SerialNumberOrderByWithRelationInput => ({
+    branchInventories: { _count: statusDir === "asc" ? "desc" : "asc" },
+  });
+  const syncOrder = (
+    syncDir: FlatSerialListSortDir,
+  ): Prisma.SerialNumberOrderByWithRelationInput[] => [
+    { sapOnHandSyncedAt: { sort: syncDir, nulls: "last" } },
+    { sapSyncedAt: { sort: syncDir, nulls: "last" } },
+  ];
+  const serialTie: Prisma.SerialNumberOrderByWithRelationInput = { serialNo: "asc" };
+
+  switch (field) {
+    case "serial":
+      return { serialNo: dir };
+    case "model":
+      return { model: { skuCode: dir } };
+    case "branch":
+      return [
+        branchOrder(dir),
+        statusOrder("asc"),
+        ...syncOrder("desc"),
+        serialTie,
+      ];
+    case "status":
+      return [
+        statusOrder(dir),
+        branchOrder("asc"),
+        ...syncOrder("desc"),
+        serialTie,
+      ];
+    case "record":
+      return { recordStatus: dir };
+    case "lastSync":
+      return [
+        ...syncOrder(dir),
+        branchOrder("asc"),
+        statusOrder("asc"),
+        serialTie,
+      ];
+    default: {
+      const unreachable: never = field;
+      return unreachable;
+    }
+  }
+}
+
+/**
+ * Live serials of a live model for the flat SAP Serial No. list.
+ * Search matches serial no, SKU, model name, or branch/warehouse code/name.
+ */
+function listedFlatSerialWhere(
+  tenantId: string,
+  filters?: { q?: string; status?: LookupRecordStatus },
+): Prisma.SerialNumberWhereInput {
+  const q = filters?.q?.trim();
+  const statusFilter = filters?.status ? { recordStatus: filters.status } : {};
+
+  const search: Prisma.SerialNumberWhereInput[] = q
+    ? [
+        {
+          OR: [
+            { serialNo: { contains: q, mode: "insensitive" as const } },
+            { sapWhsCode: { contains: q, mode: "insensitive" as const } },
+            {
+              model: {
+                OR: [
+                  { skuCode: { contains: q, mode: "insensitive" as const } },
+                  { name: { contains: q, mode: "insensitive" as const } },
+                ],
+              },
+            },
+            {
+              branchInventories: {
+                some: {
+                  branch: {
+                    OR: [
+                      { name: { contains: q, mode: "insensitive" as const } },
+                      { sapCode: { contains: q, mode: "insensitive" as const } },
+                    ],
+                  },
+                },
+              },
+            },
+          ],
+        },
+      ]
+    : [];
+
+  return {
+    tenantId,
+    deletedAt: null,
+    model: { deletedAt: null },
+    ...statusFilter,
+    ...(search.length > 0 ? { AND: search } : {}),
+  };
 }
 
 /** Live serials of a live model, optionally narrowed by record status. */
@@ -707,6 +914,7 @@ export const serialNumberRepository = {
   /**
    * One row per model still in Master data. Pagination totals are model counts.
    * Serials of a removed model never appear, even when a sync has not deleted them yet.
+   * Used by the legacy By model view (`?view=by-model`).
    */
   async list(
     tenantId: string,
@@ -737,6 +945,119 @@ export const serialNumberRepository = {
     ]);
 
     return toPaginatedResult(items, total, page, limit);
+  },
+
+  /**
+   * One row per serial (flat SAP Serial No. primary list). No QTY column —
+   * each serial is its own row. Branch comes from SAP warehouse code resolution
+   * with branch inventory as fallback for ISMS status.
+   */
+  async listFlat(
+    tenantId: string,
+    pagination?: { page?: number; limit?: number },
+    filters?: { q?: string; status?: LookupRecordStatus },
+    sort?: { field?: FlatSerialListSort; dir?: FlatSerialListSortDir },
+  ) {
+    const { limit, page, skip } = resolvePagination(pagination);
+    const where = listedFlatSerialWhere(tenantId, filters);
+    const orderBy = flatSerialPrismaOrderBy(
+      sort?.field ?? FLAT_SERIAL_DEFAULT_SORT,
+      sort?.dir ?? FLAT_SERIAL_DEFAULT_SORT_DIR,
+    );
+
+    const [rows, total] = await Promise.all([
+      prisma.serialNumber.findMany({
+        where,
+        select: {
+          id: true,
+          serialNo: true,
+          recordStatus: true,
+          sapWhsCode: true,
+          sapSyncedAt: true,
+          sapOnHandSyncedAt: true,
+          model: {
+            select: { id: true, skuCode: true, name: true },
+          },
+          branchInventories: {
+            orderBy: { updatedAt: "desc" },
+            take: 1,
+            select: {
+              branch: { select: { id: true, sapCode: true, name: true } },
+              statusCode: { select: { code: true, name: true, color: true } },
+            },
+          },
+        },
+        orderBy,
+        skip,
+        take: limit,
+      }),
+      prisma.serialNumber.count({ where }),
+    ]);
+
+    const warehouseCodes = rows
+      .map((row) => row.sapWhsCode)
+      .filter((code): code is string => Boolean(code));
+    const modelIds = [...new Set(rows.map((row) => row.model.id))];
+    const [{ branches: warehouseBranches, warehouseNames }, qtyByModel] =
+      await Promise.all([
+        branchesByWarehouseCode(tenantId, warehouseCodes),
+        onHandQtyByBranchForModels(tenantId, modelIds),
+      ]);
+    const emptyModelQty = {
+      qtyByBranchId: new Map<string, number>(),
+      qtyByCode: new Map<string, number>(),
+    };
+
+    const items: FlatSerialListRow[] = rows.map((row) => {
+      const current = row.branchInventories[0] ?? null;
+      const warehouseBranch = row.sapWhsCode
+        ? (warehouseBranches.get(row.sapWhsCode) ??
+          warehouseBranches.get(row.sapWhsCode.trim()))
+        : undefined;
+      const warehouseName = row.sapWhsCode
+        ? (warehouseNames.get(row.sapWhsCode) ??
+          warehouseNames.get(row.sapWhsCode.trim()) ??
+          null)
+        : null;
+      const branch = listedBranch(
+        row.sapWhsCode,
+        warehouseBranch,
+        warehouseName,
+        current?.branch ?? null,
+      );
+      const modelQty = qtyByModel.get(row.model.id) ?? emptyModelQty;
+      return {
+        id: row.id,
+        serialNo: row.serialNo,
+        recordStatus: row.recordStatus,
+        lastSyncedAt: laterTimestamp(row.sapSyncedAt, row.sapOnHandSyncedAt),
+        model: row.model,
+        branchCode: branch.branchCode,
+        branchName: branch.branchName,
+        branchQty: resolveBranchQty(
+          branch,
+          row.sapWhsCode,
+          modelQty.qtyByBranchId,
+          modelQty.qtyByCode,
+        ),
+        statusCode: current?.statusCode
+          ? {
+              code: current.statusCode.code,
+              name: current.statusCode.name,
+              color: current.statusCode.color,
+            }
+          : null,
+      };
+    });
+
+    return toPaginatedResult(items, total, page, limit);
+  },
+
+  /** Live serial counts for flat-list KPIs (total / active / inactive). */
+  async countListedSerials(tenantId: string, status?: LookupRecordStatus) {
+    return prisma.serialNumber.count({
+      where: listedFlatSerialWhere(tenantId, status ? { status } : undefined),
+    });
   },
 
   findById(tenantId: string, id: string) {
@@ -1343,20 +1664,13 @@ export const serialNumberRepository = {
           warehouseName,
           current?.branch ?? null,
         );
-        const codeQty = row.sapWhsCode
-          ? (qtyByCode.get(row.sapWhsCode) ?? qtyByCode.get(row.sapWhsCode.trim()) ?? 0)
-          : null;
         return {
           id: row.id,
           serialNo: row.serialNo,
           recordStatus: row.recordStatus,
           branchCode: branch.branchCode,
           branchName: branch.branchName,
-          branchQty: branch.branchId
-            ? (qtyByBranchId.get(branch.branchId) ?? 0)
-            : branch.branchCode
-              ? codeQty
-              : null,
+          branchQty: resolveBranchQty(branch, row.sapWhsCode, qtyByBranchId, qtyByCode),
           statusCode: current?.statusCode
             ? {
                 code: current.statusCode.code,

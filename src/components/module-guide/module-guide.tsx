@@ -7,6 +7,7 @@ import {
   useState,
   useSyncExternalStore,
   type KeyboardEvent,
+  type ReactNode,
 } from "react";
 import { ChevronDown, Info, type LucideIcon } from "lucide-react";
 
@@ -30,6 +31,8 @@ export type ModuleGuideProps = {
   className?: string;
   /** Force closed when this changes (e.g. status tab switch) */
   resetKey?: string;
+  /** Extra body content shown while the guide is open (for example status counts). */
+  children?: ReactNode;
 };
 
 const listenersByKey = new Map<string, Set<() => void>>();
@@ -119,6 +122,7 @@ export function ModuleGuide({
   storageKey,
   className,
   resetKey,
+  children,
 }: ModuleGuideProps) {
   const [open, setOpen] = usePersistedOpen(storageKey, defaultOpen);
   const prevResetKey = useRef(resetKey);
@@ -211,6 +215,7 @@ export function ModuleGuide({
               })}
             </ul>
           ) : null}
+          {children}
         </div>
       ) : null}
     </section>

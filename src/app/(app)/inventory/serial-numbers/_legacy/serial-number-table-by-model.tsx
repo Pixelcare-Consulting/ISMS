@@ -2,23 +2,28 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { Fragment, useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import type { LookupRecordStatus } from "@prisma/client";
 
+/**
+ * Legacy (v1) model-aggregated SAP Serial No. table.
+ * Kept under `_legacy/` for restore / By model view. Prefer the flat serial list.
+ */
+import {
+  ModelSerialsPanel,
+  type ModelSerialPageState,
+  type ModelSerialPanelRow,
+} from "@/app/(app)/inventory/serial-numbers/_legacy/model-serials-panel";
 import {
   createSerialNumberAction,
+  listModelBranchSerialsAction,
   setSerialNumberStatusAction,
   syncSerialNumbersFromSapAction,
   updateSerialNumberAction,
 } from "@/features/serial-numbers/actions/serial-number.actions";
-import {
-  FLAT_SERIAL_DEFAULT_SORT,
-  FLAT_SERIAL_DEFAULT_SORT_DIR,
-} from "@/features/serial-numbers/constants/flat-serial-sort";
 import { SapSyncButton } from "@/features/sap/components/sap-sync-button";
-import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import {
   TableEmptyRow,
   TableIndexCell,
@@ -31,7 +36,6 @@ import {
   type TablePageSize,
 } from "@/components/data-table/table-page-size";
 import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -57,26 +61,22 @@ interface SerialModelOption {
   name: string;
 }
 
-interface FlatSerialRow {
+interface SerialModelRow {
   id: string;
-  serialNo: string;
-  recordStatus: LookupRecordStatus;
+  skuCode: string;
+  name: string;
+  brand: { name: string } | null;
   lastSyncedAt?: Date | string | null;
-  model: {
-    id: string;
-    skuCode: string;
-    name: string;
-  };
-  branchCode: string | null;
-  branchName: string | null;
-  /** On-hand units of this model at the same branch; null when no location. */
-  branchQty: number | null;
-  statusCode: { code: string; name: string; color?: string | null } | null;
+  /**
+   * Units SAP still has on hand. Null until an on-hand read has included this model,
+   * which the Qty column shows as an em dash.
+   */
+  sapOnHand?: number | null;
 }
 
 interface SerialNumberTableProps {
   result: {
-    items: FlatSerialRow[];
+    items: SerialModelRow[];
     total: number;
     page: number;
     limit: number;
@@ -92,21 +92,20 @@ interface SerialNumberTableProps {
   initialSortDir?: string;
 }
 
-type FlatSerialSortField =
-  | "serial"
-  | "model"
-  | "branch"
-  | "status"
-  | "record"
-  | "lastSync";
-type FlatSerialSortDir = "asc" | "desc";
+type SerialNumberSortField = "model";
+type SerialNumberSortDir = "asc" | "desc";
 
-const COL_COUNT_BASE = 8;
+const COL_COUNT = 4;
 
 const lastSyncFormatter = new Intl.DateTimeFormat("en-PH", {
   dateStyle: "medium",
   timeStyle: "short",
 });
+
+function formatOnHandQty(value: number | null | undefined): string {
+  if (typeof value !== "number") return "—";
+  return value.toLocaleString();
+}
 
 function formatLastSync(value: Date | string | null | undefined): string {
   if (!value) return "—";
@@ -118,41 +117,28 @@ function formatLastSync(value: Date | string | null | undefined): string {
 function buildHref(
   page: number,
   limit: number,
-  filters: {
-    q?: string;
-    status?: LookupRecordStatus;
-    sort?: string;
-    sortDir?: string;
-  } = {},
+  filters: { q?: string; status?: LookupRecordStatus; sort?: string; sortDir?: string } = {},
 ): string {
   const params = new URLSearchParams();
+  params.set("view", "by-model");
   if (page > 1) params.set("page", String(page));
   if (limit !== DEFAULT_TABLE_PAGE_SIZE) params.set("limit", String(limit));
   if (filters.q) params.set("q", filters.q);
   if (filters.status) params.set("status", filters.status);
-  // Persist sort in the URL except the built-in default (Branch A→Z) so Clear
-  // and first load stay on a clean path while still applying that order server-side.
-  if (
-    filters.sort &&
-    (filters.sort !== FLAT_SERIAL_DEFAULT_SORT ||
-      filters.sortDir !== FLAT_SERIAL_DEFAULT_SORT_DIR)
-  ) {
-    params.set("sort", filters.sort);
-    if (filters.sortDir) params.set("dir", filters.sortDir);
-  }
-  const query = params.toString();
-  return query ? `/inventory/serial-numbers?${query}` : "/inventory/serial-numbers";
+  if (filters.sort) params.set("sort", filters.sort);
+  if (filters.sort && filters.sortDir) params.set("dir", filters.sortDir);
+  return `/inventory/serial-numbers?${params.toString()}`;
 }
 
-export function SerialNumberTable({
+export function SerialNumberTableByModel({
   result,
   modelOptions,
   canManage,
   canSync,
   currentSearch,
   currentStatus,
-  initialSort = FLAT_SERIAL_DEFAULT_SORT,
-  initialSortDir = FLAT_SERIAL_DEFAULT_SORT_DIR,
+  initialSort = "",
+  initialSortDir = "asc",
 }: SerialNumberTableProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -163,24 +149,29 @@ export function SerialNumberTable({
   const [formSerialNo, setFormSerialNo] = useState("");
   const [formModelId, setFormModelId] = useState("");
   const [pending, startTransition] = useTransition();
+  const [, startSerialLoad] = useTransition();
+  const [expandedModelId, setExpandedModelId] = useState<string | null>(null);
+  const serialPageRef = useRef<Record<string, number>>({});
+  const serialQueryRef = useRef<Record<string, string>>({});
+  const [serialsByModel, setSerialsByModel] = useState<
+    Record<string, ModelSerialPageState | "loading">
+  >({});
   const pageSize = parseTablePageSize(result.limit);
-  const sort =
-    (searchParams.get("sort") ?? initialSort) || FLAT_SERIAL_DEFAULT_SORT;
+  const sort = (searchParams.get("sort") ?? initialSort) || "";
   const sortDir = (
     (searchParams.get("dir") ?? initialSortDir) === "desc" ? "desc" : "asc"
-  ) as FlatSerialSortDir;
+  ) as SerialNumberSortDir;
 
   const rows = result.items;
-  const colCount = canManage ? COL_COUNT_BASE + 1 : COL_COUNT_BASE;
   const activeFilters = {
     q: currentSearch,
     status: currentStatus,
-    sort,
-    sortDir,
+    sort: sort || undefined,
+    sortDir: sort ? sortDir : undefined,
   };
   const hasActiveFilters = Boolean(currentSearch || currentStatus);
   const emptyMessage = hasActiveFilters
-    ? "No serial numbers match your filters."
+    ? "No models match your filters."
     : "No serial numbers yet.";
 
   const modelSelectOptions = useMemo(
@@ -195,11 +186,8 @@ export function SerialNumberTable({
   const suggestions = useMemo(
     () =>
       uniqueSearchSuggestions(
-        result.items.map((row) => row.serialNo),
-        result.items.map((row) => row.model.skuCode),
-        result.items.map((row) => row.model.name),
-        result.items.map((row) => row.branchCode),
-        result.items.map((row) => row.branchName),
+        result.items.map((row) => row.skuCode),
+        result.items.map((row) => row.name),
       ),
     [result.items],
   );
@@ -208,7 +196,7 @@ export function SerialNumberTable({
     router.push(buildHref(1, limit, activeFilters));
   }
 
-  function toggleSort(field: FlatSerialSortField) {
+  function toggleSort(field: SerialNumberSortField) {
     const next = nextTableSort(field, sort, sortDir);
     router.push(
       buildHref(1, pageSize, {
@@ -234,19 +222,72 @@ export function SerialNumberTable({
   function clearFilters() {
     setSearch("");
     setStatus("");
-    router.push("/inventory/serial-numbers");
+    router.push("/inventory/serial-numbers?view=by-model");
   }
 
-  function openEdit(serial: FlatSerialRow) {
+  async function loadSerials(modelId: string, page = 1, query?: string) {
+    const term = (query !== undefined ? query : serialQueryRef.current[modelId] ?? "").trim();
+    serialQueryRef.current[modelId] = term;
+    let hadPage = false;
+    setSerialsByModel((current) => {
+      const existing = current[modelId];
+      if (existing && existing !== "loading") {
+        hadPage = true;
+        return { ...current, [modelId]: { ...existing, loading: true } };
+      }
+      return { ...current, [modelId]: "loading" };
+    });
+    const outcome = await listModelBranchSerialsAction(modelId, page, term || undefined);
+    if ("error" in outcome) {
+      toast.error(outcome.error);
+      setSerialsByModel((current) => {
+        const existing = current[modelId];
+        if (existing && existing !== "loading") {
+          return { ...current, [modelId]: { ...existing, loading: false } };
+        }
+        const next = { ...current };
+        delete next[modelId];
+        return next;
+      });
+      if (!hadPage) {
+        setExpandedModelId((current) => (current === modelId ? null : current));
+      }
+      return;
+    }
+    serialPageRef.current[modelId] = outcome.page;
+    setSerialsByModel((current) => ({
+      ...current,
+      [modelId]: {
+        items: outcome.items,
+        total: outcome.total,
+        page: outcome.page,
+        totalPages: outcome.totalPages,
+        onHandRecorded: outcome.onHandRecorded,
+      },
+    }));
+  }
+
+  function toggleSerials(row: SerialModelRow) {
+    if (expandedModelId === row.id) {
+      setExpandedModelId(null);
+      return;
+    }
+    setExpandedModelId(row.id);
+    if (serialsByModel[row.id] && serialsByModel[row.id] !== "loading") return;
+    startSerialLoad(() => loadSerials(row.id));
+  }
+
+  function openEdit(modelId: string, serial: ModelSerialPanelRow) {
     setEditingId(serial.id);
     setFormSerialNo(serial.serialNo);
-    setFormModelId(serial.model.id);
+    setFormModelId(modelId);
     setOpen(true);
   }
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const payload = { serialNo: formSerialNo, modelId: formModelId };
+    const modelId = expandedModelId;
     startTransition(async () => {
       const outcome = editingId
         ? await updateSerialNumberAction(editingId, payload)
@@ -257,22 +298,33 @@ export function SerialNumberTable({
       }
       toast.success(editingId ? "Serial number updated" : "Serial number created");
       setOpen(false);
+      if (modelId) await loadSerials(modelId, serialPageRef.current[modelId] ?? 1);
       router.refresh();
     });
   }
 
-  function toggleStatus(serial: FlatSerialRow) {
-    const next: LookupRecordStatus =
-      serial.recordStatus === "active" ? "inactive" : "active";
+  function toggleStatus(modelId: string, serial: ModelSerialPanelRow) {
+    const next: LookupRecordStatus = serial.recordStatus === "active" ? "inactive" : "active";
     startTransition(async () => {
-      const outcome = await setSerialNumberStatusAction(serial.id, {
-        recordStatus: next,
-      });
+      const outcome = await setSerialNumberStatusAction(serial.id, { recordStatus: next });
       if (outcome.error) {
         toast.error(outcome.error);
         return;
       }
       toast.success(next === "active" ? "Serial activated" : "Serial deactivated");
+      setSerialsByModel((current) => {
+        const list = current[modelId];
+        if (!list || list === "loading") return current;
+        return {
+          ...current,
+          [modelId]: {
+            ...list,
+            items: list.items.map((row) =>
+              row.id === serial.id ? { ...row, recordStatus: next } : row,
+            ),
+          },
+        };
+      });
       router.refresh();
     });
   }
@@ -291,7 +343,7 @@ export function SerialNumberTable({
         toolbarActions={
           <>
             <Button variant="outline" size="sm" asChild>
-              <Link href="/inventory/serial-numbers?view=by-model">By model</Link>
+              <Link href="/inventory/serial-numbers">Serial list</Link>
             </Button>
             {canSync ? (
               <SapSyncButton
@@ -330,7 +382,7 @@ export function SerialNumberTable({
           total: result.total,
           page: result.page,
           totalPages: result.totalPages,
-          itemLabel: "serial",
+          itemLabel: "model",
           buildHref: (page) => buildHref(page, pageSize, activeFilters),
         }}
       >
@@ -338,157 +390,74 @@ export function SerialNumberTable({
           <TableRow className="bg-muted/30 hover:bg-muted/30">
             <TableIndexHead />
             <GlobalTableHead
-              sortKey="serial"
-              activeSortKey={sort}
-              sortDirection={sortDir}
-              onSort={(key) => toggleSort(key as FlatSerialSortField)}
-            >
-              Serial no
-            </GlobalTableHead>
-            <GlobalTableHead
               sortKey="model"
               activeSortKey={sort}
               sortDirection={sortDir}
-              onSort={(key) => toggleSort(key as FlatSerialSortField)}
+              onSort={(key) => toggleSort(key as SerialNumberSortField)}
             >
               SKU / model
             </GlobalTableHead>
-            <GlobalTableHead
-              sortKey="branch"
-              activeSortKey={sort}
-              sortDirection={sortDir}
-              onSort={(key) => toggleSort(key as FlatSerialSortField)}
-            >
-              Branch Name
-            </GlobalTableHead>
-            <GlobalTableHead className="text-right">Branch qty</GlobalTableHead>
-            <GlobalTableHead
-              sortKey="status"
-              activeSortKey={sort}
-              sortDirection={sortDir}
-              onSort={(key) => toggleSort(key as FlatSerialSortField)}
-            >
-              ISMS status
-            </GlobalTableHead>
-            <GlobalTableHead
-              sortKey="record"
-              activeSortKey={sort}
-              sortDirection={sortDir}
-              onSort={(key) => toggleSort(key as FlatSerialSortField)}
-            >
-              Record
-            </GlobalTableHead>
-            <GlobalTableHead
-              sortKey="lastSync"
-              activeSortKey={sort}
-              sortDirection={sortDir}
-              onSort={(key) => toggleSort(key as FlatSerialSortField)}
-            >
-              Last sync
-            </GlobalTableHead>
-            {canManage ? <GlobalTableHead>Actions</GlobalTableHead> : null}
+            <GlobalTableHead>Qty</GlobalTableHead>
+            <GlobalTableHead>Last sync</GlobalTableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {rows.length === 0 ? (
-            <TableEmptyRow colSpan={colCount} message={emptyMessage} />
+            <TableEmptyRow colSpan={COL_COUNT} message={emptyMessage} />
           ) : (
-            rows.map((row, index) => (
-              <TableRow
-                key={row.id}
-                className={cn(index % 2 === 1 && "bg-table-stripe")}
-              >
-                <TableIndexCell
-                  index={(result.page - 1) * result.limit + index + 1}
-                />
-                <TableCell className="whitespace-nowrap font-mono text-sm">
-                  <Link
-                    href={`/inventory/serial-numbers/${row.id}`}
-                    className="underline-offset-4 hover:underline"
-                  >
-                    {row.serialNo}
-                  </Link>
-                </TableCell>
-                <TableCell className="min-w-0">
-                  <span className="block font-mono text-sm font-medium">
-                    {row.model.skuCode}
-                  </span>
-                  <span className="block whitespace-normal wrap-break-word text-xs text-muted-foreground">
-                    {row.model.name}
-                  </span>
-                </TableCell>
-                <TableCell className="min-w-0">
-                  {row.branchCode || row.branchName ? (
-                    <div className="min-w-0">
-                      {row.branchCode ? (
-                        <span className="block font-mono text-sm">
-                          {row.branchCode}
-                        </span>
-                      ) : null}
-                      {row.branchName ? (
-                        <span className="block whitespace-normal wrap-break-word text-xs text-muted-foreground">
-                          {row.branchName}
-                        </span>
-                      ) : null}
-                    </div>
-                  ) : (
-                    "—"
-                  )}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {row.branchQty == null ? "—" : row.branchQty.toLocaleString()}
-                </TableCell>
-                <TableCell>
-                  {row.statusCode ? (
-                    <StatusCodeBadge
-                      code={row.statusCode.code}
-                      name={row.statusCode.name}
-                      color={row.statusCode.color}
-                    />
-                  ) : (
-                    "—"
-                  )}
-                </TableCell>
-                <TableCell>
-                  <Badge
-                    variant={
-                      row.recordStatus === "active" ? "default" : "secondary"
-                    }
-                  >
-                    {row.recordStatus === "active" ? "Active" : "Inactive"}
-                  </Badge>
-                </TableCell>
-                <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                  {formatLastSync(row.lastSyncedAt)}
-                </TableCell>
-                {canManage ? (
-                  <TableCell>
-                    <div className="flex justify-end gap-2 whitespace-nowrap">
+            rows.map((row, index) => {
+              const expanded = expandedModelId === row.id;
+              const onHandRecorded = typeof row.sapOnHand === "number";
+              return (
+                <Fragment key={row.id}>
+                  <TableRow className={cn(index % 2 === 1 && "bg-table-stripe")}>
+                    <TableIndexCell index={(result.page - 1) * result.limit + index + 1} />
+                    <TableCell>
+                      <div className="flex min-w-0 items-baseline gap-2">
+                        <span className="font-medium">{row.skuCode}</span>
+                        <span className="truncate text-sm text-muted-foreground">{row.name}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
                       <Button
                         type="button"
-                        size="sm"
-                        variant="outline"
-                        disabled={pending}
-                        onClick={() => openEdit(row)}
+                        variant="ghost"
+                        aria-expanded={expanded}
+                        title={
+                          onHandRecorded
+                            ? "Units SAP still has on hand"
+                            : "On-hand stock has not been recorded yet in ISMS, sync from SAP first for this model"
+                        }
+                        className="h-auto px-2 text-sm font-medium tabular-nums"
+                        onClick={() => toggleSerials(row)}
                       >
-                        Edit
+                        {formatOnHandQty(row.sapOnHand)}
                       </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        disabled={pending}
-                        onClick={() => toggleStatus(row)}
-                      >
-                        {row.recordStatus === "active"
-                          ? "Deactivate"
-                          : "Activate"}
-                      </Button>
-                    </div>
-                  </TableCell>
-                ) : null}
-              </TableRow>
-            ))
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {formatLastSync(row.lastSyncedAt)}
+                    </TableCell>
+                  </TableRow>
+                  {expanded ? (
+                    <TableRow className="hover:bg-transparent">
+                      <TableCell colSpan={COL_COUNT} className="p-2 sm:p-3">
+                        <ModelSerialsPanel
+                          skuCode={row.skuCode}
+                          modelName={row.name}
+                          page={serialsByModel[row.id]}
+                          canManage={canManage}
+                          pending={pending}
+                          onPageChange={(page) => startSerialLoad(() => loadSerials(row.id, page))}
+                          onSearch={(query) => startSerialLoad(() => loadSerials(row.id, 1, query))}
+                          onEdit={(serial) => openEdit(row.id, serial)}
+                          onToggleStatus={(serial) => toggleStatus(row.id, serial)}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                </Fragment>
+              );
+            })
           )}
         </TableBody>
       </GlobalDataTable>

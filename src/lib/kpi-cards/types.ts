@@ -23,4 +23,6 @@ export interface KpiStatusCount {
   code: string;
   name: string;
   count: number;
+  /** Palette key from ReasonStatusCode.color when available (badge fallback by code). */
+  color?: string | null;
 }

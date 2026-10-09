@@ -2,8 +2,14 @@ import type { MonthlySirRequestStatus } from "@prisma/client";
 
 import { aorService } from "@/features/aors/services/aor.service";
 import { auditService } from "@/features/audit/services/audit.service";
+import {
+  isPcountUploadStatus,
+  PCOUNT_VARIANCE_REMARK,
+  pcountRemarkForUploadedRow,
+} from "@/features/monthly-sir/constants/pcount-upload";
 import { monthlySirRepository } from "@/features/monthly-sir/repositories/monthly-sir.repository";
 import {
+  buildMonthlySirBlankTemplate,
   buildMonthlySirTemplate,
   buildMonthlySirVarianceWorkbook,
   parseMonthlySirUpload,
@@ -219,6 +225,12 @@ export const monthlySirService = {
       input.requestId,
       input.unrestricted,
     );
+    if (!request.uploadedAt) {
+      return buildMonthlySirBlankTemplate({
+        tenantId: input.tenantId,
+        sessionId: request.stockCountSessionId!,
+      });
+    }
     return buildMonthlySirTemplate({
       tenantId: input.tenantId,
       sessionId: request.stockCountSessionId!,
@@ -310,32 +322,8 @@ export const monthlySirService = {
       throw new Error("The linked count session is no longer accepting uploads");
     }
     const rows = await parseMonthlySirUpload(input.file);
-    const [serials, statuses] = await Promise.all([
-      prisma.serialNumber.findMany({
-        where: {
-          tenantId: input.tenantId,
-          OR: rows.map((row) => ({
-            serialNo: { equals: row.serialNo, mode: "insensitive" as const },
-          })),
-        },
-        select: { serialNo: true },
-      }),
-      prisma.reasonStatusCode.findMany({
-        where: {
-          tenantId: input.tenantId,
-          recordStatus: "active",
-          reasonStatus: { code: "inventory_system" },
-        },
-        select: { code: true },
-      }),
-    ]);
-    const knownSerials = new Set(serials.map((row) => row.serialNo.toUpperCase()));
-    const knownStatuses = new Set(statuses.map((row) => row.code.toUpperCase()));
-    const invalidSerials = rows
-      .filter((row) => !knownSerials.has(row.serialNo.toUpperCase()))
-      .map((row) => row.serialNo);
     const invalidStatuses = rows
-      .filter((row) => !knownStatuses.has(row.pcount))
+      .filter((row) => !isPcountUploadStatus(row.pcount))
       .map((row) => `${row.pcount} (row ${row.rowNumber})`);
     const counts = Object.entries(
       rows.reduce<Record<string, number>>((summary, row) => {
@@ -345,7 +333,7 @@ export const monthlySirService = {
     )
       .map(([status, count]) => ({ status, count }))
       .sort((a, b) => a.status.localeCompare(b.status));
-    return { rowCount: rows.length, counts, invalidSerials, invalidStatuses };
+    return { rowCount: rows.length, counts, invalidSerials: [], invalidStatuses };
   },
 
   async applyUpload(input: {
@@ -366,9 +354,6 @@ export const monthlySirService = {
       throw new Error("The linked count session is no longer accepting uploads");
     }
     const preview = await this.previewUpload(input);
-    if (preview.invalidSerials.length > 0) {
-      throw new Error(`Unknown serials: ${preview.invalidSerials.join(", ")}`);
-    }
     if (preview.invalidStatuses.length > 0) {
       throw new Error(`Invalid P-COUNT statuses: ${preview.invalidStatuses.join(", ")}`);
     }
@@ -391,6 +376,16 @@ export const monthlySirService = {
     const lineBySerial = new Map(
       session.lines.map((line) => [line.serialNumber.serialNo.toUpperCase(), line]),
     );
+    const catalog = await prisma.serialNumber.findMany({
+      where: {
+        tenantId: input.tenantId,
+        OR: rows.map((row) => ({
+          serialNo: { equals: row.serialNo, mode: "insensitive" as const },
+        })),
+      },
+      select: { serialNo: true },
+    });
+    const knownSerials = new Set(catalog.map((row) => row.serialNo.toUpperCase()));
 
     let matched = 0;
     let surplus = 0;
@@ -398,7 +393,12 @@ export const monthlySirService = {
     for (const row of rows) {
       const key = row.serialNo.toUpperCase();
       const existing = lineBySerial.get(key);
-      let lineId: string;
+      const systemCode = existing?.branchInventory?.statusCode.code.toUpperCase();
+      const remark = pcountRemarkForUploadedRow({
+        pcount: row.pcount,
+        expectedInCount: existing?.expectedInCount ?? false,
+        systemStatus: systemCode,
+      });
       if (existing) {
         if (existing.status === "pending") {
           await stockAuditService.recordCount(
@@ -410,44 +410,65 @@ export const monthlySirService = {
         } else if (existing.status !== "counted") {
           throw new Error(`Serial ${row.serialNo} cannot be counted in its current state`);
         }
-        lineId = existing.id;
+        await prisma.stockCountLine.update({
+          where: { id: existing.id },
+          data: { notes: remark },
+        });
         matched += 1;
-      } else {
-        const scanned = await stockAuditService.scanSerial(
-          input.tenantId,
-          input.userId,
-          sessionId,
-          row.serialNo,
-        );
-        lineId = scanned.lineId;
-        surplus += 1;
+        if (existing.expectedInCount && systemCode && systemCode !== row.pcount) {
+          await prisma.$transaction([
+            prisma.stockCountLine.update({
+              where: { id: existing.id },
+              data: { status: "variance" },
+            }),
+            prisma.stockVariance.create({
+              data: {
+                tenantId: input.tenantId,
+                sessionId,
+                lineId: existing.id,
+                varianceType: "status_mismatch",
+                status: "open",
+                description: `System ${systemCode}; P-COUNT ${row.pcount}`,
+              },
+            }),
+          ]);
+          statusMismatch += 1;
+        }
+        continue;
       }
 
-      await prisma.stockCountLine.update({
-        where: { id: lineId },
-        data: { notes: `P-COUNT: ${row.pcount}` },
-      });
-      const systemCode = existing?.branchInventory?.statusCode.code.toUpperCase();
-      if (existing?.expectedInCount && systemCode && systemCode !== row.pcount) {
-        await prisma.$transaction([
-          prisma.stockCountLine.update({
-            where: { id: lineId },
-            data: { status: "variance" },
-          }),
-          prisma.stockVariance.create({
-            data: {
-              tenantId: input.tenantId,
-              sessionId,
-              lineId,
-              varianceType: "status_mismatch",
-              status: "open",
-              description: `System ${systemCode}; P-COUNT ${row.pcount}`,
-            },
-          }),
-        ]);
-        statusMismatch += 1;
+      if (!knownSerials.has(key)) {
+        await prisma.stockVariance.create({
+          data: {
+            tenantId: input.tenantId,
+            sessionId,
+            varianceType: "surplus",
+            status: "open",
+            description: `Unexpected serial found during physical count (${row.serialNo})`,
+          },
+        });
+        surplus += 1;
+        continue;
       }
+
+      const scanned = await stockAuditService.scanSerial(
+        input.tenantId,
+        input.userId,
+        sessionId,
+        row.serialNo,
+      );
+      await prisma.stockCountLine.update({
+        where: { id: scanned.lineId },
+        data: { notes: remark },
+      });
+      surplus += 1;
     }
+
+    // Same missing rule as stockAuditService.completeCounting: still-pending expected lines.
+    await prisma.stockCountLine.updateMany({
+      where: { sessionId, status: "pending", expectedInCount: true },
+      data: { notes: PCOUNT_VARIANCE_REMARK },
+    });
 
     await monthlySirRepository.markUploaded(
       input.tenantId,

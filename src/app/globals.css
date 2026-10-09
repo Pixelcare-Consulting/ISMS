@@ -221,6 +221,14 @@ body:has(.app-shell) #nprogress .peg {
     gap: 1rem;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 12.5rem), 1fr));
   }
+
+  /* Tighter status counts that sit inside a module guide and wrap to a second row. */
+  .responsive-card-grid-compact {
+    display: grid;
+    align-items: stretch;
+    gap: 0.5rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 8.75rem), 1fr));
+  }
 }
 
 [data-sonner-toaster] {

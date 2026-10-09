@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 
+import { listInventoryStatusOptionsAction } from "@/features/inventory/actions/inventory.actions";
 import { getSerialTraceabilityAction } from "@/features/serial-numbers/actions/serial-number.actions";
 import { requirePermission } from "@/lib/auth/permissions";
 import { SerialDetailView } from "@/app/(app)/inventory/serial-numbers/[id]/_components/serial-detail-view";
@@ -13,10 +14,18 @@ export default async function SerialTraceabilityPage({
 }: SerialTraceabilityPageProps) {
   await requirePermission("inventory.view");
   const { id } = await params;
-  const serial = await getSerialTraceabilityAction(id);
+  const [serial, inventoryStatusOptions] = await Promise.all([
+    getSerialTraceabilityAction(id),
+    listInventoryStatusOptionsAction(),
+  ]);
   if (!serial) {
     notFound();
   }
 
-  return <SerialDetailView serial={serial} />;
+  return (
+    <SerialDetailView
+      serial={serial}
+      inventoryStatusOptions={inventoryStatusOptions}
+    />
+  );
 }
