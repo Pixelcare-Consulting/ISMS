@@ -28,6 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
   applyMonthlySirUploadAction,
@@ -345,13 +346,23 @@ export function MonthlySirPanel({
         generate the variance report.
       </p>
       <div className="flex flex-col gap-3 rounded-xl border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap gap-2">
-          <Button asChild variant={tab === "all" ? "default" : "outline"}>
-            <Link href={href({ tab: "all", page: 1 })}>ALL</Link>
-          </Button>
-          <Button asChild variant={tab === "approval" ? "default" : "outline"}>
-            <Link href={href({ tab: "approval", page: 1 })}>FOR APPROVAL</Link>
-          </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Tabs
+            value={tab}
+            onValueChange={(value) => {
+              const next = value === "approval" ? "approval" : "all";
+              if (next === tab) return;
+              startTransition(() => {
+                router.push(href({ tab: next, page: 1 }));
+              });
+            }}
+            className="w-fit"
+          >
+            <TabsList className="gap-2">
+              <TabsTrigger value="all">ALL</TabsTrigger>
+              <TabsTrigger value="approval">FOR APPROVAL</TabsTrigger>
+            </TabsList>
+          </Tabs>
           <SearchableSelect
             className="w-55"
             options={[
@@ -466,12 +477,26 @@ export function MonthlySirPanel({
                             </Button>
                           )}
                           {row.stockCountSession ? (
-                            <Button asChild size="sm" variant="ghost">
-                              <Link href={`/inventory/stock-count/${row.stockCountSession.id}`}>
+                            <Button asChild size="sm" variant="outline">
+                              <Link
+                                href={`/inventory/stock-count/${row.stockCountSession.id}`}
+                              >
                                 Open P-Count
                               </Link>
                             </Button>
-                          ) : null}
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                toast.error(
+                                  "No P-Count session is linked. Ask a Team Leader to re-approve this request.",
+                                )
+                              }
+                            >
+                              Open P-Count
+                            </Button>
+                          )}
                         </>
                       ) : null}
                     </div>

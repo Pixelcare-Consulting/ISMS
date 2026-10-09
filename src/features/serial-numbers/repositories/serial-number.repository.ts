@@ -22,19 +22,68 @@ const serialTraceabilityInclude = {
       id: true,
       skuCode: true,
       name: true,
-      brand: { select: { name: true } },
+      description: true,
+      status: true,
+      srp: true,
+      brand: { select: { id: true, name: true } },
+      series: { select: { id: true, name: true } },
+      feature: { select: { name: true } },
+      resolution: { select: { name: true } },
+      actualSize: { select: { name: true } },
     },
   },
   branchInventories: {
     orderBy: { updatedAt: "desc" },
     select: {
       id: true,
+      createdAt: true,
       updatedAt: true,
-      branch: { select: { name: true } },
+      branch: {
+        select: {
+          id: true,
+          name: true,
+          sapCode: true,
+          region: { select: { name: true } },
+          province: { select: { name: true } },
+          dealer: { select: { id: true, name: true } },
+          primaryWarehouse: {
+            select: { id: true, code: true, name: true },
+          },
+        },
+      },
+      statusCode: { select: { code: true, name: true, color: true } },
+    },
+  },
+  warehouseInventories: {
+    orderBy: { updatedAt: "desc" },
+    take: 10,
+    select: {
+      id: true,
+      systemStatus: true,
+      updatedAt: true,
+      warehouseLocation: {
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          warehouse: { select: { id: true, code: true, name: true } },
+        },
+      },
+    },
+  },
+  serviceCenterInventories: {
+    orderBy: { updatedAt: "desc" },
+    take: 10,
+    select: {
+      id: true,
+      updatedAt: true,
+      serviceCenter: { select: { id: true, sapCode: true, name: true } },
+      serviceCenterLocation: { select: { code: true, name: true } },
       statusCode: { select: { code: true, name: true, color: true } },
     },
   },
   salesDetails: {
+    orderBy: { sale: { createdAt: "desc" } },
     select: {
       id: true,
       saleAmount: true,
@@ -45,13 +94,23 @@ const serialTraceabilityInclude = {
           amount: true,
           atrStatus: true,
           createdAt: true,
-          branch: { select: { name: true } },
-          returnRequest: { select: { id: true, status: true, createdAt: true } },
+          transactionDate: true,
+          customerName: true,
+          branch: { select: { id: true, name: true, sapCode: true } },
+          returnRequest: {
+            select: {
+              id: true,
+              status: true,
+              createdAt: true,
+              actionType: true,
+            },
+          },
         },
       },
     },
   },
   transferLines: {
+    orderBy: { transfer: { createdAt: "desc" } },
     select: {
       id: true,
       transfer: {
@@ -59,14 +118,15 @@ const serialTraceabilityInclude = {
           id: true,
           transferNo: true,
           createdAt: true,
-          fromBranch: { select: { name: true } },
-          toBranch: { select: { name: true } },
+          fromBranch: { select: { id: true, name: true, sapCode: true } },
+          toBranch: { select: { id: true, name: true, sapCode: true } },
           statusCode: { select: { code: true, name: true, color: true } },
         },
       },
     },
   },
   pulloutLines: {
+    orderBy: { pullout: { createdAt: "desc" } },
     select: {
       id: true,
       pullout: {
@@ -74,14 +134,40 @@ const serialTraceabilityInclude = {
           id: true,
           pulloutNo: true,
           createdAt: true,
-          branch: { select: { name: true } },
-          warehouse: { select: { name: true } },
+          branch: { select: { id: true, name: true, sapCode: true } },
+          warehouse: { select: { id: true, code: true, name: true } },
           statusCode: { select: { code: true, name: true, color: true } },
         },
       },
     },
   },
+  deliveryLines: {
+    orderBy: { delivery: { createdAt: "desc" } },
+    select: {
+      id: true,
+      delivery: {
+        select: {
+          id: true,
+          deliveryNo: true,
+          createdAt: true,
+          acceptedAt: true,
+          sapDocRef: true,
+          branch: { select: { id: true, name: true, sapCode: true } },
+          statusCode: { select: { code: true, name: true, color: true } },
+          order: { select: { id: true, orderNumber: true } },
+        },
+      },
+      warehouseLocationFrom: {
+        select: {
+          code: true,
+          name: true,
+          warehouse: { select: { code: true, name: true } },
+        },
+      },
+    },
+  },
   stockCountLines: {
+    orderBy: { countedAt: "desc" },
     select: {
       id: true,
       status: true,
@@ -91,9 +177,31 @@ const serialTraceabilityInclude = {
           id: true,
           sessionNo: true,
           createdAt: true,
-          branch: { select: { name: true } },
+          branch: { select: { id: true, name: true, sapCode: true } },
         },
       },
+    },
+  },
+  branchBackloads: {
+    orderBy: { createdAt: "desc" },
+    take: 10,
+    select: {
+      id: true,
+      remarks: true,
+      createdAt: true,
+      branch: { select: { id: true, name: true, sapCode: true } },
+      delivery: { select: { id: true, deliveryNo: true } },
+    },
+  },
+  history: {
+    orderBy: { createdAt: "desc" },
+    take: 30,
+    select: {
+      id: true,
+      txnType: true,
+      details: true,
+      status: true,
+      createdAt: true,
     },
   },
 } satisfies Prisma.SerialNumberInclude;
@@ -642,6 +750,180 @@ export const serialNumberRepository = {
     });
   },
 
+  /**
+   * Sibling serials (same SKU) and nearby series models for the detail page.
+   * Prefers units at the same branch; falls back to other on-hand same-SKU units.
+   * Returns a short `samples` preview plus a fuller `units` list for the related modal.
+   */
+  async findRelatedUnitsPreview(
+    tenantId: string,
+    opts: {
+      excludeSerialId: string;
+      modelId: string;
+      seriesId: string | null;
+      branchId: string | null;
+    },
+  ) {
+    const previewTake = 5;
+    /** Cap for the related-products modal (same-SKU siblings at branch / elsewhere). */
+    const listTake = 200;
+    const seriesTake = 4;
+
+    const serialSampleSelect = {
+      id: true,
+      serialNo: true,
+      branchInventories: {
+        orderBy: { updatedAt: "desc" as const },
+        take: 1,
+        select: {
+          statusCode: { select: { code: true, name: true, color: true } },
+          branch: { select: { name: true, sapCode: true } },
+        },
+      },
+    };
+
+    type SeriesModelRow = {
+      id: string;
+      skuCode: string;
+      name: string;
+      _count: { serialNumbers: number };
+    };
+
+    const seriesPromise: Promise<SeriesModelRow[]> =
+      opts.seriesId && opts.branchId
+        ? prisma.productModel.findMany({
+            where: {
+              tenantId,
+              seriesId: opts.seriesId,
+              id: { not: opts.modelId },
+              deletedAt: null,
+              serialNumbers: {
+                some: {
+                  deletedAt: null,
+                  branchInventories: { some: { branchId: opts.branchId } },
+                },
+              },
+            },
+            orderBy: { skuCode: "asc" },
+            take: seriesTake,
+            select: {
+              id: true,
+              skuCode: true,
+              name: true,
+              _count: {
+                select: {
+                  serialNumbers: {
+                    where: {
+                      deletedAt: null,
+                      branchInventories: {
+                        some: { branchId: opts.branchId },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          })
+        : Promise.resolve([]);
+
+    const mapSeriesModels = (models: SeriesModelRow[]) =>
+      models.map((model) => ({
+        id: model.id,
+        skuCode: model.skuCode,
+        name: model.name,
+        qtyAtBranch: model._count.serialNumbers,
+      }));
+
+    type SameSkuUnit = {
+      id: string;
+      serialNo: string;
+      statusCode: { code: string; name: string; color: string | null } | null;
+      branchName: string | null;
+      branchSapCode: string | null;
+    };
+
+    const toSameSkuResult = (
+      total: number,
+      scope: "branch" | "elsewhere",
+      units: SameSkuUnit[],
+      seriesModels: SeriesModelRow[],
+    ) => ({
+      sameSku: {
+        total,
+        scope,
+        samples: units.slice(0, previewTake),
+        units,
+      },
+      seriesModels: mapSeriesModels(seriesModels),
+    });
+
+    if (opts.branchId) {
+      const branchWhere: Prisma.BranchInventoryWhereInput = {
+        tenantId,
+        branchId: opts.branchId,
+        serialNumberId: { not: opts.excludeSerialId },
+        serialNumber: { modelId: opts.modelId, deletedAt: null },
+      };
+
+      const [branchTotal, branchRows, seriesModels] = await Promise.all([
+        prisma.branchInventory.count({ where: branchWhere }),
+        prisma.branchInventory.findMany({
+          where: branchWhere,
+          orderBy: { updatedAt: "desc" },
+          take: listTake,
+          select: {
+            serialNumber: { select: { id: true, serialNo: true } },
+            statusCode: { select: { code: true, name: true, color: true } },
+          },
+        }),
+        seriesPromise,
+      ]);
+
+      if (branchTotal > 0) {
+        const units: SameSkuUnit[] = branchRows.map((row) => ({
+          id: row.serialNumber.id,
+          serialNo: row.serialNumber.serialNo,
+          statusCode: row.statusCode,
+          branchName: null,
+          branchSapCode: null,
+        }));
+        return toSameSkuResult(branchTotal, "branch", units, seriesModels);
+      }
+    }
+
+    const elsewhereWhere: Prisma.SerialNumberWhereInput = {
+      tenantId,
+      modelId: opts.modelId,
+      deletedAt: null,
+      id: { not: opts.excludeSerialId },
+      OR: [{ sapOnHand: true }, { branchInventories: { some: {} } }],
+    };
+
+    const [elsewhereTotal, elsewhereRows, seriesModels] = await Promise.all([
+      prisma.serialNumber.count({ where: elsewhereWhere }),
+      prisma.serialNumber.findMany({
+        where: elsewhereWhere,
+        orderBy: { serialNo: "asc" },
+        take: listTake,
+        select: serialSampleSelect,
+      }),
+      seriesPromise,
+    ]);
+
+    const units: SameSkuUnit[] = elsewhereRows.map((row) => {
+      const inv = row.branchInventories[0] ?? null;
+      return {
+        id: row.id,
+        serialNo: row.serialNo,
+        statusCode: inv?.statusCode ?? null,
+        branchName: inv?.branch?.name ?? null,
+        branchSapCode: inv?.branch?.sapCode ?? null,
+      };
+    });
+
+    return toSameSkuResult(elsewhereTotal, "elsewhere", units, seriesModels);
+  },
+
   findModelInTenant(tenantId: string, modelId: string) {
     return prisma.productModel.findFirst({
       where: { id: modelId, tenantId },
@@ -1034,7 +1316,10 @@ export const serialNumberRepository = {
           },
         },
       },
-      orderBy: { serialNo: "asc" },
+      orderBy: [
+        { sapWhsCode: { sort: "asc", nulls: "last" } },
+        { serialNo: "asc" },
+      ],
       skip: (currentPage - 1) * MODEL_SERIAL_PAGE_SIZE,
       take: MODEL_SERIAL_PAGE_SIZE,
     });

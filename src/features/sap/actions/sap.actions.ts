@@ -8,6 +8,7 @@ import type {
   SapJobListSort,
   SapJobListSortDir,
 } from "@/features/sap/repositories/sap-integration.repository";
+import { SAP_MANAGE } from "@/features/sap/constants/sap-permissions";
 import { requirePermission } from "@/lib/auth/permissions";
 import { logger } from "@/lib/shared/logger";
 
@@ -58,7 +59,7 @@ export async function getSapConnectionStateAction(): Promise<{
   state: "no_config" | "idle" | "connected";
   expiresAt?: number;
 }> {
-  const session = await requirePermission("sap.manage");
+  const session = await requirePermission(SAP_MANAGE);
   try {
     const status = await sapServiceLayerService.getSessionStatus(
       session.user.tenantId,
@@ -83,7 +84,7 @@ export async function listSapJobsAction(input?: {
   sort?: string;
   sortDir?: string;
 }) {
-  const session = await requirePermission("sap.manage");
+  const session = await requirePermission(SAP_MANAGE);
   return sapService.listJobs(
     session.user.tenantId,
     { page: input?.page },
@@ -92,7 +93,7 @@ export async function listSapJobsAction(input?: {
 }
 
 export async function processSapQueueAction() {
-  const session = await requirePermission("sap.manage");
+  const session = await requirePermission(SAP_MANAGE);
   const results = await sapService.processPendingJobs(
     session.user.tenantId,
     session.user.id,
@@ -102,7 +103,7 @@ export async function processSapQueueAction() {
 }
 
 export async function syncInventoryFromSapAction(input?: { warehouseCode?: string }) {
-  const session = await requirePermission("sap.manage");
+  const session = await requirePermission(SAP_MANAGE);
   await sapService.syncInventoryFromSap(session.user.tenantId, {
     warehouseCode: input?.warehouseCode,
   });

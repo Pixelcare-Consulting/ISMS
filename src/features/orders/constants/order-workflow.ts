@@ -190,6 +190,23 @@ export function getOrderQueueStatuses(
 }
 
 /**
+ * Sidebar badge: only approval/review steps this role can act on (never drafts).
+ * Oversight roles see every live pending step except draft.
+ */
+export function getOrderActionableQueueStatuses(
+  orderType: BranchOrderType,
+  roleSlugs: string[],
+): BranchOrderStatus[] {
+  if (isOrderQueueOversightRole(roleSlugs)) {
+    return ORDER_QUEUE_STATUSES.filter((status) => status !== "draft");
+  }
+  return ORDER_QUEUE_STATUSES.filter(
+    (status) =>
+      status !== "draft" && canApproveOrder(status, orderType, roleSlugs),
+  );
+}
+
+/**
  * Whether a branch may still edit an order's lines. Only drafts are editable;
  * once submitted for review the order is frozen until approval workflow finishes
  * (or the order is rejected/cancelled). Editing also requires the branch to be

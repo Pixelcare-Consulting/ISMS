@@ -1,6 +1,6 @@
 {
   "name": "isms",
-  "version": "0.51.0",
+  "version": "0.53.1",
   "private": true,
   "packageManager": "pnpm@11.6.0",
   "scripts": {
@@ -30,6 +30,7 @@
     "db:seed:branches": "dotenv -e .env.local -- node scripts/seed-profile.mjs branches",
     "db:seed:psg": "dotenv -e .env.local -- node scripts/seed-profile.mjs psg",
     "db:seed:warehouse-inventory": "dotenv -e .env.local -- node scripts/seed-profile.mjs warehouse",
+    "db:cleanup:demo-stock": "dotenv -e .env.local -- node scripts/seed-profile.mjs cleanup-stock",
     "db:seed:notifications": "dotenv -e .env.local -- node scripts/seed-profile.mjs notifications",
     "db:seed:inventory-demo": "dotenv -e .env.local -- tsx scripts/seed-inventory-demo.ts",
     "demo:warehouse-receive": "dotenv -e .env.local -- tsx scripts/receive-demo-warehouse.ts",

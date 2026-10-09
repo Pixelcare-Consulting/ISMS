@@ -117,7 +117,10 @@ export async function reviewMonthlySirRequestAction(input: unknown) {
       remarks: parsed.data.remarks,
     });
     revalidateMonthlySir(request.stockCountSessionId ?? undefined);
-    return { success: true as const };
+    return {
+      success: true as const,
+      stockCountSessionId: request.stockCountSessionId ?? undefined,
+    };
   } catch (error) {
     return actionError(error, "Failed to review Monthly SIR request");
   }

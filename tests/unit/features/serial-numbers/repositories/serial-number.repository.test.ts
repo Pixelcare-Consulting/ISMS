@@ -449,7 +449,10 @@ describe("listModelSerials", () => {
           model: { deletedAt: null },
           sapOnHand: true,
         },
-        orderBy: { serialNo: "asc" },
+        orderBy: [
+          { sapWhsCode: { sort: "asc", nulls: "last" } },
+          { serialNo: "asc" },
+        ],
         skip: MODEL_SERIAL_PAGE_SIZE,
         take: MODEL_SERIAL_PAGE_SIZE,
       }),

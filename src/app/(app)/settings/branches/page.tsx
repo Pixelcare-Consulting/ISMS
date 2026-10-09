@@ -1,4 +1,5 @@
 import { listBranchesAction } from "@/features/branches/actions/branch.actions";
+import { canSyncFromSap } from "@/features/sap/constants/sap-permissions";
 import { requirePermission } from "@/lib/auth/permissions";
 import { BRANCHES_PAGE_TUTORIAL } from "@/content/page-tutorials/branches";
 import { PageHeader } from "@/app/(app)/_components/page-header";
@@ -6,7 +7,7 @@ import { BranchesKpisStrip } from "@/app/(app)/settings/branches/_components/bra
 import { BranchesTable } from "@/app/(app)/settings/branches/_components/branches-table";
 
 export default async function SettingsBranchesPage() {
-  await requirePermission("branches.manage");
+  const session = await requirePermission("branches.manage");
   const branches = await listBranchesAction();
 
   return (
@@ -18,7 +19,10 @@ export default async function SettingsBranchesPage() {
         sticky={false}
       />
       <BranchesKpisStrip rows={branches} />
-      <BranchesTable branches={branches} />
+      <BranchesTable
+        branches={branches}
+        canSync={canSyncFromSap(session.user.permissions)}
+      />
     </div>
   );
 }

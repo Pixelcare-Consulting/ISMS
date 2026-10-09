@@ -1,5 +1,6 @@
 import { auditService } from "@/features/audit/services/audit.service";
 import { aorService } from "@/features/aors/services/aor.service";
+import { branchRepository } from "@/features/branches/repositories/branch.repository";
 import {
   inventoryRepository,
   type InventoryListFilters,
@@ -66,11 +67,8 @@ async function resolveBranchIds(
   isUnrestricted: boolean,
 ): Promise<string[]> {
   if (isUnrestricted) {
-    const { branchRepository } = await import(
-      "@/features/branches/repositories/branch.repository"
-    );
     const branches = await branchRepository.listByTenant(tenantId);
-    return branches.map((b: { id: string }) => b.id);
+    return branches.map((b) => b.id);
   }
   return aorService.getBranchIdsForUser(tenantId, userId);
 }
@@ -210,6 +208,16 @@ export const inventoryService = {
       totalQty: summaryRows.reduce((sum, r) => sum + r.qty, 0),
       totalValue: summaryRows.reduce((sum, r) => sum + r.value, 0),
     };
+  },
+
+  /** AOR-scoped STK count matching Stock units list scoping. */
+  async countStkForUser(
+    tenantId: string,
+    userId: string,
+    isUnrestricted: boolean,
+  ): Promise<number> {
+    const branchIds = await resolveBranchIds(tenantId, userId, isUnrestricted);
+    return inventoryRepository.countStockUnits(tenantId, branchIds);
   },
 
   async getKpis(

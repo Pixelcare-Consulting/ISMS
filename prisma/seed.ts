@@ -8,6 +8,7 @@ import { seedRegionsAndProvincesForAllTenants } from "./seed-ph-geo";
 import { seedPsgBranchesForAllTenants } from "./seed-psg-branches";
 import { seedPsgModelAndOutgoing } from "./seed-psg";
 import { seedReasonStatusesForTenant } from "./seed-reason-status";
+import { cleanupDemoStock } from "./seed-cleanup-demo-stock";
 import { seedWarehouseInventoryDemo } from "./seed-warehouse-inventory";
 
 const prisma = createPrismaClient();
@@ -47,8 +48,8 @@ async function runProfile(profile: SeedProfile) {
 
   if (profile === "brs") {
     const { demoTenant, usersByEmail } = await loadDemoContext();
-    const statusCodes = await seedReasonStatusesForTenant(prisma, demoTenant.id);
-    await seedBrsDemoData(prisma, demoTenant.id, usersByEmail, statusCodes);
+    await seedReasonStatusesForTenant(prisma, demoTenant.id);
+    await seedBrsDemoData(prisma, demoTenant.id, usersByEmail);
     console.log(`Seed [brs] done in ${Date.now() - started}ms`);
     return;
   }
@@ -83,6 +84,13 @@ async function runProfile(profile: SeedProfile) {
     return;
   }
 
+  if (profile === "cleanup-stock") {
+    const { demoTenant } = await loadDemoContext();
+    await cleanupDemoStock(prisma, demoTenant.id);
+    console.log(`Seed [cleanup-stock] done in ${Date.now() - started}ms`);
+    return;
+  }
+
   if (profile === "notifications") {
     const { demoTenant, usersByEmail } = await loadDemoContext();
     await seedDemoNotifications(prisma, demoTenant.id, usersByEmail);
@@ -93,11 +101,11 @@ async function runProfile(profile: SeedProfile) {
   const { demoTenant, usersByEmail } = await seedCore(prisma);
   console.log("Seeding regions/provinces for all tenants…");
   await seedRegionsAndProvincesForAllTenants(prisma);
-  const statusCodes = await seedReasonStatusesForTenant(prisma, demoTenant.id);
+  await seedReasonStatusesForTenant(prisma, demoTenant.id);
   await seedDemoNotifications(prisma, demoTenant.id, usersByEmail);
 
   if (profile === "full") {
-    await seedBrsDemoData(prisma, demoTenant.id, usersByEmail, statusCodes);
+    await seedBrsDemoData(prisma, demoTenant.id, usersByEmail);
     await seedBranchSchedules(prisma, demoTenant.id);
     console.log("Seeding PSG branches for all tenants (may take a bit for ~1k rows)…");
     await seedPsgBranchesForAllTenants(prisma);

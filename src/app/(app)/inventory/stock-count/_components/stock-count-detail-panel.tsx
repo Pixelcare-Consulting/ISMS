@@ -23,6 +23,7 @@ import {
   STOCK_COUNT_SESSION_LABELS,
   STOCK_VARIANCE_STATUS_LABELS,
 } from "@/features/stock-audit/constants/stock-count-workflow";
+import type { StockCountSessionDetailDto } from "@/features/stock-audit/services/stock-count-session-detail";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -38,33 +39,7 @@ import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 
 interface StockCountDetailPanelProps {
-  session: {
-    id: string;
-    sessionNo: string;
-    status: keyof typeof STOCK_COUNT_SESSION_LABELS;
-    branch: { name: string; sapCode: string };
-    lines: {
-      id: string;
-      status: string;
-      expectedInCount: boolean;
-      serialNumber: { serialNo: string };
-      model: { skuCode: string; name: string; brand: { name: string } | null };
-      countedBy: { name: string | null; email: string } | null;
-    }[];
-    variances: {
-      id: string;
-      varianceType: string;
-      status: keyof typeof STOCK_VARIANCE_STATUS_LABELS;
-      description: string | null;
-      investigationNotes: string | null;
-      sapDocRef: string | null;
-      line: {
-        id: string;
-        serialNumber: { serialNo: string };
-        model: { skuCode: string; name: string };
-      } | null;
-    }[];
-  };
+  session: StockCountSessionDetailDto;
 }
 
 export function StockCountDetailPanel({ session }: StockCountDetailPanelProps) {

@@ -9,11 +9,19 @@ jest.mock("@/features/sap/services/sap-onhand-stock", () => ({
 jest.mock("@/features/sap/services/sap-service-layer.service", () => ({
   sapServiceLayerService: { getCredentials: jest.fn() },
 }));
+jest.mock("@/features/serial-numbers/services/serial-stock-replicate", () => ({
+  loadMasterWarehouseAllowList: jest.fn(),
+  partitionOnHandByMaster: jest.requireActual(
+    "@/features/serial-numbers/services/serial-stock-replicate",
+  ).partitionOnHandByMaster,
+  replicateOnHandSerialsToStk: jest.fn(),
+}));
 
 import {
   onHandDocRanges,
   serialsOnHandFromLocations,
 } from "@/features/serial-numbers/services/serial-onhand-stamp";
+import { partitionOnHandByMaster } from "@/features/serial-numbers/services/serial-stock-replicate";
 
 describe("onHandDocRanges", () => {
   it("keeps a tight page as one window", () => {
@@ -59,6 +67,27 @@ describe("serialsOnHandFromLocations", () => {
     ).toEqual({
       onHand: [{ serialNo: "SN1", warehouseCode: "ABL001" }],
       notOnHand: ["SN2"],
+    });
+  });
+});
+
+describe("partitionOnHandByMaster", () => {
+  it("keeps codes in Branch/Warehouse master and clears the rest", () => {
+    expect(
+      partitionOnHandByMaster(
+        [
+          { serialNo: "SN1", warehouseCode: "ABL001" },
+          { serialNo: "SN2", warehouseCode: "UNKNOWN" },
+          { serialNo: "SN3", warehouseCode: "PASIG-MAIN" },
+        ],
+        new Set(["ABL001", "PASIG-MAIN"]),
+      ),
+    ).toEqual({
+      known: [
+        { serialNo: "SN1", warehouseCode: "ABL001" },
+        { serialNo: "SN3", warehouseCode: "PASIG-MAIN" },
+      ],
+      unknownSerialNos: ["SN2"],
     });
   });
 });

@@ -79,6 +79,8 @@ interface SerialNumberTableProps {
   };
   modelOptions: SerialModelOption[];
   canManage: boolean;
+  /** Sync from SAP — requires `sap.manage` (not branch PS / view-only roles). */
+  canSync: boolean;
   currentSearch?: string;
   currentStatus?: LookupRecordStatus;
   initialSort?: string;
@@ -127,6 +129,7 @@ export function SerialNumberTable({
   result,
   modelOptions,
   canManage,
+  canSync,
   currentSearch,
   currentStatus,
   initialSort = "",
@@ -334,11 +337,13 @@ export function SerialNumberTable({
         }}
         toolbarActions={
           <>
-            <SapSyncButton
-              syncKey="serial-number"
-              noun={{ one: "serial number", many: "serial numbers" }}
-              onSync={syncSerialNumbersFromSapAction}
-            />
+            {canSync ? (
+              <SapSyncButton
+                syncKey="serial-number"
+                noun={{ one: "serial number", many: "serial numbers" }}
+                onSync={syncSerialNumbersFromSapAction}
+              />
+            ) : null}
             <SearchableSelect
               id="serial-status"
               className="sm:w-40"
@@ -413,7 +418,7 @@ export function SerialNumberTable({
                         title={
                           onHandRecorded
                             ? "Units SAP still has on hand"
-                            : "On-hand stock has not been recorded yet"
+                            : "On-hand stock has not been recorded yet in ISMS, sync from SAP first for this model"
                         }
                         className="h-auto px-2 text-sm font-medium tabular-nums"
                         onClick={() => toggleSerials(row)}

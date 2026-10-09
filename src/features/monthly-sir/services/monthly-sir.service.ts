@@ -47,6 +47,21 @@ export const monthlySirService = {
     return monthlySirRepository.list(tenantId, { ...filters, branchIds });
   },
 
+  /** Sidebar: For approval requests the reviewer can act on (AOR-scoped). */
+  async countPendingForUser(
+    tenantId: string,
+    userId: string,
+    unrestricted: boolean,
+  ): Promise<number> {
+    const branchIds = unrestricted
+      ? undefined
+      : await aorService.getBranchIdsForUser(tenantId, userId);
+    return monthlySirRepository.countByStatus(tenantId, {
+      branchIds,
+      status: "pending",
+    });
+  },
+
   async createRequest(input: {
     tenantId: string;
     userId: string;
@@ -131,10 +146,17 @@ export const monthlySirService = {
         userId: input.userId,
         branchId: request.branchId,
       });
-      if (!countSession) throw new Error("Count session could not be created");
+      if (!countSession?.id) {
+        throw new Error("Count session could not be created");
+      }
       await stockAuditService.startCounting(
         input.tenantId,
         input.userId,
+        countSession.id,
+      );
+      // Backfill expected lines if STK arrived after session create (empty open).
+      await stockAuditService.ensureExpectedLinesFromStk(
+        input.tenantId,
         countSession.id,
       );
       const approved = await monthlySirRepository.finishApproval(
@@ -146,6 +168,9 @@ export const monthlySirService = {
           reviewRemarks: input.remarks,
         },
       );
+      if (!approved.stockCountSessionId) {
+        throw new Error("Count session was not linked to this request");
+      }
       await auditService.log({
         tenantId: input.tenantId,
         userId: input.userId,

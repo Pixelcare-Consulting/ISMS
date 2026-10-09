@@ -1,11 +1,12 @@
 import { listServiceCentersAction } from "@/features/service-centers/actions/service-center.actions";
+import { canSyncFromSap } from "@/features/sap/constants/sap-permissions";
 import { requirePermission } from "@/lib/auth/permissions";
 import { SERVICE_CENTERS_PAGE_TUTORIAL } from "@/content/page-tutorials/service-centers";
 import { PageHeader } from "@/app/(app)/_components/page-header";
 import { ServiceCentersTable } from "@/app/(app)/settings/service-centers/_components/service-centers-table";
 
 export default async function SettingsServiceCentersPage() {
-  await requirePermission("service_centers.manage");
+  const session = await requirePermission("service_centers.manage");
   const centers = await listServiceCentersAction();
 
   return (
@@ -16,7 +17,10 @@ export default async function SettingsServiceCentersPage() {
         description="Service center master data and nested locations (ops workflows later)."
         sticky={false}
       />
-      <ServiceCentersTable centers={centers} />
+      <ServiceCentersTable
+        centers={centers}
+        canSync={canSyncFromSap(session.user.permissions)}
+      />
     </div>
   );
 }

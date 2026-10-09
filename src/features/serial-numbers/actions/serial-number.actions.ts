@@ -11,6 +11,7 @@ import type {
   SerialNumberListSortDir,
 } from "@/features/serial-numbers/repositories/serial-number.repository";
 import { serialNumberSapSyncService } from "@/features/serial-numbers/services/serial-number-sap-sync.service";
+import { SAP_MANAGE } from "@/features/sap/constants/sap-permissions";
 import { requirePermission } from "@/lib/auth/permissions";
 
 const SERIAL_NUMBERS_ROUTE = "/inventory/serial-numbers";
@@ -132,7 +133,7 @@ export async function setSerialNumberStatusAction(id: string, input: unknown) {
  * A short budget keeps the button responsive.
  */
 export async function syncSerialNumbersFromSapAction() {
-  const session = await requirePermission("inventory.manage");
+  const session = await requirePermission(SAP_MANAGE);
   try {
     const result = await serialNumberSapSyncService.syncFromSap(
       session.user.tenantId,

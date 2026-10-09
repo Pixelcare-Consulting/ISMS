@@ -1,17 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Barcode } from "lucide-react";
 
 import type { LookupRecordStatus } from "@prisma/client";
 
 import { TablePagination } from "@/components/data-table/table-pagination";
+import {
+  TableSearchBar,
+  uniqueSearchSuggestions,
+} from "@/components/data-table/table-search-bar";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { MODEL_SERIAL_PAGE_SIZE } from "@/features/serial-numbers/constants/model-serial-page";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/utils/cn";
 
 export interface ModelSerialPanelRow {
@@ -64,11 +67,28 @@ export function ModelSerialsPanel({
   const count = loaded?.total ?? 0;
   const startIndex = loaded ? (loaded.page - 1) * MODEL_SERIAL_PAGE_SIZE : 0;
 
+  const suggestions = useMemo(
+    () =>
+      loaded
+        ? uniqueSearchSuggestions(
+            loaded.items.map((row) => row.serialNo),
+            loaded.items.map((row) => row.branchCode),
+            loaded.items.map((row) => row.branchName),
+          )
+        : [],
+    [loaded],
+  );
+
+  function applySearch(next: string) {
+    const term = next.trim();
+    setDraft(term);
+    setAppliedQuery(term);
+    onSearch(term);
+  }
+
   function submitSearch(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const next = draft.trim();
-    setAppliedQuery(next);
-    onSearch(next);
+    applySearch(draft);
   }
 
   return (
@@ -90,12 +110,13 @@ export function ModelSerialsPanel({
         ) : null}
         {loaded?.onHandRecorded ? (
           <form onSubmit={submitSearch} className="ml-auto flex w-full gap-2 sm:w-auto">
-            <Input
+            <TableSearchBar
               value={draft}
-              onChange={(event) => setDraft(event.target.value)}
+              onChange={setDraft}
               placeholder="Search serial no., branch code, or name…"
-              aria-label="Search serial number, branch code, or branch name"
-              className="h-8 bg-white sm:w-64"
+              suggestions={suggestions}
+              onSuggestionSelect={applySearch}
+              className="bg-white sm:w-64"
             />
             <Button type="submit" size="sm" variant="outline" className="bg-white" disabled={loaded.loading}>
               Search
@@ -110,7 +131,7 @@ export function ModelSerialsPanel({
         </p>
       ) : !loaded.onHandRecorded ? (
         <p className="rounded-md border border-dashed border-border/70 bg-white px-3 py-2.5 text-sm text-muted-foreground">
-          On-hand stock for {skuCode} has not been recorded yet.
+          On-hand stock for {skuCode} has not been recorded yet in ISMS, sync from SAP first for this model.
         </p>
       ) : count === 0 ? (
         <p className="rounded-md border border-dashed border-border/70 bg-white px-3 py-2.5 text-sm text-muted-foreground">

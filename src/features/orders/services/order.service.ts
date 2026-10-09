@@ -654,4 +654,20 @@ export const orderService = {
       "pending_logistics",
     ]);
   },
+
+  /** Sidebar: orders at approval steps this user can act on (AOR-scoped when not full access). */
+  async countActionableQueue(
+    tenantId: string,
+    userId: string,
+    hasFullAccess: boolean,
+    orderType: BranchOrderType,
+    statuses: BranchOrderStatus[],
+  ): Promise<number> {
+    if (statuses.length === 0) return 0;
+    const branchIds = hasFullAccess ? null : await getUserBranchIds(tenantId, userId);
+    if (!hasFullAccess && branchIds !== null && branchIds.length === 0) {
+      return 0;
+    }
+    return orderRepository.countAll(tenantId, branchIds, orderType, statuses);
+  },
 };

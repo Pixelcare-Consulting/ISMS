@@ -49,6 +49,25 @@ export const monthlySirRepository = {
     ]).then(([items, total]) => toPaginatedResult(items, total, page, limit));
   },
 
+  /** AOR-scoped count for a single status (sidebar For approval badge). */
+  countByStatus(
+    tenantId: string,
+    filters: {
+      branchIds?: string[];
+      status: MonthlySirRequestStatus;
+    },
+  ) {
+    if (filters.branchIds && filters.branchIds.length === 0) {
+      return Promise.resolve(0);
+    }
+    const where: Prisma.MonthlySirRequestWhereInput = {
+      tenantId,
+      status: filters.status,
+      ...(filters.branchIds ? { branchId: { in: filters.branchIds } } : {}),
+    };
+    return prisma.monthlySirRequest.count({ where });
+  },
+
   findById(tenantId: string, id: string) {
     return prisma.monthlySirRequest.findFirst({
       where: { id, tenantId },

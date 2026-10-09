@@ -1,5 +1,10 @@
 import { serialNumberRepository } from "@/features/serial-numbers/repositories/serial-number.repository";
 import {
+  loadMasterWarehouseAllowList,
+  partitionOnHandByMaster,
+  replicateOnHandSerialsToStk,
+} from "@/features/serial-numbers/services/serial-stock-replicate";
+import {
   ensureSapOnHandQuery,
   fetchSapSerialLocations,
   type SapSerialLocation,
@@ -190,8 +195,12 @@ export async function stampSerialPageOnHand(
       locations.push(...found);
     }
     const { onHand, notOnHand } = serialsOnHandFromLocations(page, locations);
+    const allowList = await loadMasterWarehouseAllowList(tenantId);
+    const { known, unknownSerialNos } = partitionOnHandByMaster(onHand, allowList);
+    const cleared = [...notOnHand, ...unknownSerialNos];
     const modelIds = [...new Set(page.map((row) => row.modelId))];
-    await serialNumberRepository.setSapOnHandFlags(tenantId, modelIds, onHand, notOnHand);
+    await serialNumberRepository.setSapOnHandFlags(tenantId, modelIds, known, cleared);
+    await replicateOnHandSerialsToStk(tenantId, known);
   } catch (error) {
     block(tenantId, error);
   }

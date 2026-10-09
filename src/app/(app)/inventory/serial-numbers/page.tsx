@@ -7,7 +7,8 @@ import {
 } from "@/features/serial-numbers/actions/serial-number.actions";
 import { SerialNumberKpisStrip } from "@/features/serial-numbers/components/serial-number-kpis";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
-import { requirePermission } from "@/lib/auth/permissions";
+import { canSyncFromSap } from "@/features/sap/constants/sap-permissions";
+import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import { SerialNumberTable } from "@/app/(app)/inventory/serial-numbers/_components/serial-number-table";
 
 interface SerialNumbersPageProps {
@@ -29,7 +30,9 @@ export default async function SerialNumbersPage({
   searchParams,
 }: SerialNumbersPageProps) {
   const session = await requirePermission("inventory.view");
-  const canManage = session.user.permissions?.includes("inventory.manage") ?? false;
+  const permissions = session.user.permissions;
+  const canManage = hasPermission(permissions, "inventory.manage");
+  const canSync = canSyncFromSap(permissions);
 
   const params = await searchParams;
   const page = Number(params.page) || 1;
@@ -56,6 +59,7 @@ export default async function SerialNumbersPage({
         result={result}
         modelOptions={modelOptions}
         canManage={canManage}
+        canSync={canSync}
         currentSearch={params.q}
         currentStatus={status}
         initialSort={params.sort ?? ""}

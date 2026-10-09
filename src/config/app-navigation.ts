@@ -45,9 +45,20 @@ export interface NavLinkItem {
   badge?: "new";
   /**
    * When set, sidebar can show a live numeric count badge for this href
-   * (e.g. unread announcements on Overview).
+   * (e.g. unread announcements on Overview, STK qty on Stock units,
+   * pending approval queues on Monthly SIR / Orders / Returns / Logistics).
    */
-  countBadgeKey?: "unreadAnnouncements";
+  countBadgeKey?:
+    | "unreadAnnouncements"
+    | "stockUnitsStk"
+    | "monthlySirPending"
+    | "ordersManualQueue"
+    | "ordersSpecialQueue"
+    | "ordersAutoReplenishQueue"
+    | "returnsApprovals"
+    | "logisticsDeliveries"
+    | "logisticsTransfers"
+    | "logisticsPullouts";
 }
 
 export interface NavLinkEntry extends NavLinkItem {
@@ -175,7 +186,7 @@ export const appNavigation: NavEntry[] = [
           "orders.create",
           "orders.approve",
         ],
-        badge: "new",
+        countBadgeKey: "ordersManualQueue",
       },
       {
         href: "/orders/special",
@@ -189,7 +200,7 @@ export const appNavigation: NavEntry[] = [
           "orders.create",
           "orders.approve",
         ],
-        badge: "new",
+        countBadgeKey: "ordersSpecialQueue",
       },
       {
         href: "/orders/auto-replenish",
@@ -203,7 +214,7 @@ export const appNavigation: NavEntry[] = [
           "orders.create",
           "orders.approve",
         ],
-        badge: "new",
+        countBadgeKey: "ordersAutoReplenishQueue",
       },
     ],
   },
@@ -231,6 +242,7 @@ export const appNavigation: NavEntry[] = [
           "returns.approve",
           "returns.complete",
         ],
+        countBadgeKey: "returnsApprovals",
       },
     ],
   },
@@ -244,18 +256,21 @@ export const appNavigation: NavEntry[] = [
         label: "Deliveries",
         icon: Truck,
         anyPermissions: ["logistics.view", "logistics.create", "logistics.manage"],
+        countBadgeKey: "logisticsDeliveries",
       },
       {
         href: "/logistics/transfers",
         label: "Transfers",
         icon: ArrowLeftRight,
         anyPermissions: ["logistics.view", "logistics.create", "logistics.manage"],
+        countBadgeKey: "logisticsTransfers",
       },
       {
         href: "/logistics/pickups",
         label: "Pull-outs",
         icon: ArrowUpToLine,
         anyPermissions: ["logistics.view", "logistics.create", "logistics.manage"],
+        countBadgeKey: "logisticsPullouts",
       },
     ],
   },
@@ -269,7 +284,7 @@ export const appNavigation: NavEntry[] = [
         label: "Monthly SIR",
         icon: ClipboardList,
         permission: "inventory.view",
-        badge: "new",
+        countBadgeKey: "monthlySirPending",
       },
       {
         href: "/inventory",
@@ -277,7 +292,7 @@ export const appNavigation: NavEntry[] = [
         icon: Package,
         exact: true,
         permission: "inventory.view",
-        badge: "new",
+        countBadgeKey: "stockUnitsStk",
       },
       // { DO NOT UNCOMMENT THIS, NO NEED TO SHOW IN THE NAVIGATION
       //   href: "/inventory/stock-count",
@@ -288,7 +303,7 @@ export const appNavigation: NavEntry[] = [
       // },
       {
         href: "/inventory/serial-numbers",
-        label: "Serial No.",
+        label: "SAP Serial No.",
         icon: Barcode,
         permission: "inventory.view",
         badge: "new",

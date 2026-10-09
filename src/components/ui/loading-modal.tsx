@@ -1,7 +1,7 @@
 "use client";
 
 import { CheckCircle2, Circle, Loader2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import {
   Dialog,
@@ -27,6 +27,15 @@ interface LoadingModalProps {
   feedItems?: LoadingFeedItem[];
   /** Defaults to `feed` when feedItems are present, otherwise `minimal`. */
   variant?: LoadingModalVariant;
+  /**
+   * Determinate fill for the minimal progress bar (0–100). When omitted or null, the
+   * bar stays indeterminate (planogram-style shimmer).
+   */
+  progress?: number | null;
+  /** Optional stats line under the progress bar (e.g. processed / remaining counts). */
+  detail?: string;
+  /** Optional footer actions under the status line (e.g. Stop). */
+  actions?: ReactNode;
 }
 
 export function LoadingModal({
@@ -35,6 +44,9 @@ export function LoadingModal({
   description = "Processing your request...",
   feedItems = [],
   variant,
+  progress = null,
+  detail,
+  actions,
 }: LoadingModalProps) {
   const resolvedVariant: LoadingModalVariant =
     variant ?? (feedItems.length > 0 ? "feed" : "minimal");
@@ -73,6 +85,11 @@ export function LoadingModal({
     return index;
   }, [elapsedSeconds, feedItems]);
 
+  const determinate =
+    typeof progress === "number" && Number.isFinite(progress)
+      ? Math.max(0, Math.min(100, progress))
+      : null;
+
   return (
     <Dialog open={open}>
       <DialogContent
@@ -107,11 +124,27 @@ export function LoadingModal({
               </DialogDescription>
             </DialogHeader>
             <div
-              aria-hidden
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={determinate ?? undefined}
               className="mt-6 h-1 w-full overflow-hidden rounded-full bg-primary/15"
             >
-              <div className="h-full w-1/3 animate-[loading-bar_1.35s_ease-in-out_infinite] rounded-full bg-primary" />
+              {determinate != null ? (
+                <div
+                  className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out"
+                  style={{ width: `${Math.max(determinate, determinate > 0 ? 2 : 0)}%` }}
+                />
+              ) : (
+                <div className="h-full w-1/3 animate-[loading-bar_1.35s_ease-in-out_infinite] rounded-full bg-primary" />
+              )}
             </div>
+            {detail ? (
+              <p className="mt-4 text-sm font-medium tabular-nums text-foreground">
+                {detail}
+              </p>
+            ) : null}
+            {actions ? <div className="mt-5 w-full">{actions}</div> : null}
           </div>
         ) : (
           <>

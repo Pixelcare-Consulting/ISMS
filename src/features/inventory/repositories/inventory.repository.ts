@@ -483,6 +483,18 @@ export const inventoryRepository = {
     });
   },
 
+  /** Live STK units in scope — same status filter as the Stock units list. */
+  countStockUnits(tenantId: string, branchIds: string[]) {
+    if (branchIds.length === 0) return Promise.resolve(0);
+    return prisma.branchInventory.count({
+      where: {
+        tenantId,
+        branchId: { in: branchIds },
+        statusCode: { code: { in: [...STOCK_UNITS_LIST_STATUS_CODES] } },
+      },
+    });
+  },
+
   countByStatus(tenantId: string, branchIds: string[]) {
     if (branchIds.length === 0) return Promise.resolve([]);
     return prisma.branchInventory.groupBy({
