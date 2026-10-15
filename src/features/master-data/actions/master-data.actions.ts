@@ -131,6 +131,32 @@ export async function updateModelStatusAction(input: unknown) {
   }
 }
 
+const modelSeriesSchema = z.object({
+  modelId: z.string().min(1),
+  seriesId: z.string().min(1).nullable(),
+});
+
+export async function updateModelSeriesAction(input: unknown) {
+  const session = await requirePermission("master_data.manage");
+  const parsed = modelSeriesSchema.safeParse(input);
+  if (!parsed.success) return { error: "Invalid input" };
+  try {
+    const { masterDataService } = await import(
+      "@/features/master-data/services/master-data.service"
+    );
+    await masterDataService.updateModelSeries({
+      tenantId: session.user.tenantId,
+      actorUserId: session.user.id,
+      modelId: parsed.data.modelId,
+      seriesId: parsed.data.seriesId,
+    });
+    revalidateMasterData();
+    return { success: true as const };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to update series" };
+  }
+}
+
 export async function listModelFormLookupsAction() {
   const session = await requirePermission("master_data.manage");
   const tenantId = session.user.tenantId;

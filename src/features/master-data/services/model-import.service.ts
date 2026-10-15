@@ -1,6 +1,5 @@
 import type { CreateAuditLogInput } from "@/features/audit/repositories/audit-log.repository";
 import { auditService } from "@/features/audit/services/audit.service";
-import { masterDataRepository } from "@/features/master-data/repositories/master-data.repository";
 import type {
   ModelImportChunkProgress,
   ModelImportFieldChange,
@@ -310,7 +309,7 @@ async function buildPlan(tenantId: string, sheet: SheetRows): Promise<ImportPlan
       prisma.brand.findMany({ where: { tenantId }, select: { id: true, name: true } }),
       prisma.series.findMany({
         where: { tenantId },
-        select: { id: true, name: true, code: true },
+        select: { id: true, name: true, code: true, recordStatus: true },
       }),
       prisma.feature.findMany({ where: { tenantId }, select: { id: true, name: true } }),
       prisma.resolution.findMany({ where: { tenantId }, select: { id: true, name: true } }),
@@ -326,11 +325,16 @@ async function buildPlan(tenantId: string, sheet: SheetRows): Promise<ImportPlan
   // differ. SAP gets what ISMS actually calls the brand, or the file's spelling when
   // this import is what creates it.
   const brandLabelByName = new Map(brands.map((b) => [lookupKey(b.name), b.name]));
-  const seriesByName = new Map(seriesList.map((s) => [lookupKey(s.name), s.id]));
-  const seriesByCode = new Map<string, string>();
+  // Inactive series stay in these maps so a row naming one is reported as inactive,
+  // instead of falling through to "new name" and creating a duplicate.
+  type SeriesMatch = (typeof seriesList)[number];
+  const seriesByName = new Map<string, SeriesMatch>(
+    seriesList.map((s) => [lookupKey(s.name), s]),
+  );
+  const seriesByCode = new Map<string, SeriesMatch>();
   for (const series of seriesList) {
     if (series.code?.trim() && !seriesByCode.has(lookupKey(series.code))) {
-      seriesByCode.set(lookupKey(series.code), series.id);
+      seriesByCode.set(lookupKey(series.code), series);
     }
   }
   const featureByName = new Map(features.map((f) => [lookupKey(f.name), f.id]));
@@ -433,6 +437,15 @@ async function buildPlan(tenantId: string, sheet: SheetRows): Promise<ImportPlan
       }
     }
 
+    const seriesMatch =
+      seriesByName.get(lookupKey(series)) ?? seriesByCode.get(lookupKey(series)) ?? null;
+    if (seriesMatch && seriesMatch.recordStatus !== "active") {
+      pushError(
+        `Series "${seriesMatch.name}" is inactive. Activate it in Master data or use an active series.`,
+      );
+      rowOk = false;
+    }
+
     if (!rowOk) continue;
 
     // Import only updates: models are created by the SAP sync, never from a file.
@@ -454,11 +467,7 @@ async function buildPlan(tenantId: string, sheet: SheetRows): Promise<ImportPlan
     });
 
     const brandId = brandByName.get(lookupKey(brand)) ?? null;
-    const seriesId =
-      seriesByName.get(lookupKey(series)) ??
-      seriesByCode.get(lookupKey(series)) ??
-      seriesByCode.get(lookupKey(sku)) ??
-      null;
+    const seriesId = seriesMatch?.id ?? null;
     const featureLabel = featureProvided ? featureRaw!.trim() : null;
     const resolutionLabel = resolutionProvided ? resolutionRaw!.trim() : null;
     const actualSizeLabel = actualSizeProvided ? actualSizeRaw!.trim() : null;
@@ -590,7 +599,6 @@ async function applyWriteSlice(
     seriesId:
       row.seriesId ??
       seriesIdByKey.get(lookupKey(row.seriesName)) ??
-      seriesIdByKey.get(lookupKey(row.sku)) ??
       null,
   });
 
@@ -613,7 +621,6 @@ async function applyWriteSlice(
   );
 
   const auditRows: CreateAuditLogInput[] = [];
-  const writtenIds: string[] = [];
 
   let modelsCreated = 0;
   if (toCreate.length > 0) {
@@ -636,7 +643,6 @@ async function applyWriteSlice(
       select: { id: true, skuCode: true },
     });
     modelsCreated = created.length;
-    writtenIds.push(...created.map((model) => model.id));
     for (const model of created) {
       auditRows.push({
         tenantId,
@@ -667,7 +673,6 @@ async function applyWriteSlice(
       });
     });
     modelsUpdated = toUpdate.length;
-    writtenIds.push(...toUpdate.map((row) => row.modelId));
     for (const row of toUpdate) {
       auditRows.push({
         tenantId,
@@ -686,12 +691,6 @@ async function applyWriteSlice(
 
   if (auditRows.length > 0) {
     await auditService.logMany(auditRows);
-  }
-
-  if (writtenIds.length > 0) {
-    await masterDataRepository.linkUnassignedModelsToSeriesByCode(tenantId, {
-      modelIds: writtenIds,
-    });
   }
 
   return { modelsCreated, modelsUpdated, brandsCreated, seriesCreated };

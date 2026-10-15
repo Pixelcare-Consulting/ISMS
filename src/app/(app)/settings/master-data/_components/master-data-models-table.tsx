@@ -17,6 +17,7 @@ import { SapSyncButton } from "@/features/sap/components/sap-sync-button";
 import type { ClientModelRow } from "@/features/master-data/types/client-model";
 import { ImportModelsDialog } from "@/app/(app)/settings/master-data/_components/import-models-dialog";
 import { ModelPriceSheet } from "@/app/(app)/settings/master-data/_components/model-price-sheet";
+import { ModelSeriesSheet } from "@/app/(app)/settings/master-data/_components/model-series-sheet";
 import {
   DataTableEmptyState,
   TableEmptyRow,
@@ -67,6 +68,7 @@ export function MasterDataModelsTable({
   const [optimisticRows, setOptimisticRows] = useState<ClientModelRow[]>([]);
   const [statusOverrides, setStatusOverrides] = useState<Record<string, string>>({});
   const [priceModel, setPriceModel] = useState<ClientModelRow | null>(null);
+  const [seriesModel, setSeriesModel] = useState<ClientModelRow | null>(null);
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
   const [addOpen, setAddOpen] = useState(false);
@@ -214,7 +216,7 @@ export function MasterDataModelsTable({
             effectivePrice: null,
             cbm: null,
             brand: selectedBrand ? { name: selectedBrand.name } : null,
-            series: selectedSeries ? { name: selectedSeries.name } : null,
+            series: selectedSeries ? { id: selectedSeries.id, name: selectedSeries.name } : null,
             priceLists: [],
           },
           ...currentRows,
@@ -353,7 +355,21 @@ export function MasterDataModelsTable({
                       <TableCell className="font-mono text-sm">{m.skuCode}</TableCell>
                       <TableCell className="font-medium">{m.name}</TableCell>
                       <TableCell>{m.brand?.name ?? "—"}</TableCell>
-                      <TableCell>{m.series?.name ?? "—"}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1.5">
+                          <span>{m.series?.name ?? "—"}</span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="size-6 text-muted-foreground hover:text-foreground"
+                            aria-label={`Change series for ${m.skuCode}`}
+                            onClick={() => setSeriesModel(m)}
+                          >
+                            <Pencil className="size-3.5" />
+                          </Button>
+                        </div>
+                      </TableCell>
                       <TableCell className="text-right tabular-nums">
                         <div className="flex items-center justify-end gap-1.5">
                           {m.effectivePrice != null ? (
@@ -519,6 +535,16 @@ export function MasterDataModelsTable({
           }}
           model={priceModel}
           packageTypes={packageTypes}
+        />
+      ) : null}
+
+      {seriesModel ? (
+        <ModelSeriesSheet
+          open
+          onOpenChange={(open) => {
+            if (!open) setSeriesModel(null);
+          }}
+          model={seriesModel}
         />
       ) : null}
 

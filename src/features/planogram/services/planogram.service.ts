@@ -97,25 +97,11 @@ export const planogramService = {
   },
 
   async listPlanogram(tenantId: string, branchId: string): Promise<PlanogramRow[]> {
-    const [initialEntries, milSettings, ditCode] = await Promise.all([
+    const [entries, milSettings, ditCode] = await Promise.all([
       planogramRepository.listByBranch(tenantId, branchId),
       planogramRepository.listMilByBranch(tenantId, branchId),
       reasonStatusRepository.findCodeId(tenantId, "inventory_system", "DIT"),
     ]);
-    let entries = initialEntries;
-
-    const unlinkedModelIds = entries
-      .filter((entry: { model: { series: { name: string } | null } }) => entry.model.series == null)
-      .map((entry: { modelId: string }) => entry.modelId);
-    if (unlinkedModelIds.length > 0) {
-      const linked = await masterDataRepository.linkUnassignedModelsToSeriesByCode(
-        tenantId,
-        { modelIds: unlinkedModelIds },
-      );
-      if (linked > 0) {
-        entries = await planogramRepository.listByBranch(tenantId, branchId);
-      }
-    }
 
     const milByModel = new Map(
       milSettings.map((m: { modelId: string; daysThreshold: number }) => [
@@ -393,19 +379,7 @@ export const planogramService = {
   },
 
   async listAllowedModelsForBranch(tenantId: string, branchId: string) {
-    let rows = await planogramRepository.listAllowedModelsForBranch(tenantId, branchId);
-    const unlinkedModelIds = rows
-      .filter((row: { model: { series: { name: string } | null } }) => row.model.series == null)
-      .map((row: { modelId: string }) => row.modelId);
-    if (unlinkedModelIds.length > 0) {
-      const linked = await masterDataRepository.linkUnassignedModelsToSeriesByCode(
-        tenantId,
-        { modelIds: unlinkedModelIds },
-      );
-      if (linked > 0) {
-        rows = await planogramRepository.listAllowedModelsForBranch(tenantId, branchId);
-      }
-    }
+    const rows = await planogramRepository.listAllowedModelsForBranch(tenantId, branchId);
     return rows.map((r) => {
       const price = resolveDisplayPriceList(r.model.priceLists);
       return {

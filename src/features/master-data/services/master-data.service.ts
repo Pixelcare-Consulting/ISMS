@@ -123,4 +123,38 @@ export const masterDataService = {
 
     return model;
   },
+
+  async updateModelSeries(input: {
+    tenantId: string;
+    actorUserId: string;
+    modelId: string;
+    seriesId: string | null;
+  }) {
+    const existing = await masterDataRepository.findModel(input.tenantId, input.modelId);
+    if (!existing) throw new Error("Model not found");
+    if (existing.seriesId === input.seriesId) {
+      throw new Error("Series is unchanged");
+    }
+    if (input.seriesId) {
+      const series = await masterDataRepository.findSeries(input.tenantId, input.seriesId);
+      if (!series) throw new Error("Series not found");
+    }
+
+    const model = await masterDataRepository.updateModelSeries(
+      input.tenantId,
+      input.modelId,
+      input.seriesId,
+    );
+
+    await auditService.log({
+      tenantId: input.tenantId,
+      userId: input.actorUserId,
+      action: "model.series_updated",
+      entityType: "ProductModel",
+      entityId: model.id,
+      metadata: { skuCode: model.skuCode, from: existing.seriesId, to: input.seriesId },
+    });
+
+    return model;
+  },
 };
