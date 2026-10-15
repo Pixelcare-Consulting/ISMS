@@ -14,6 +14,7 @@ import {
 import {
   demandPlanOverrideSchema,
   demandPlanRunIdSchema,
+  demandPlanRunIdsSchema,
   generateDemandPlanSchema,
 } from "@/features/demand-planning/schemas/demand-planning-run.schema";
 import { demandPlanningReleaseService } from "@/features/demand-planning/services/demand-planning-release.service";
@@ -225,5 +226,45 @@ export async function exportDemandPlanRunAction(runId: string) {
     };
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Export failed" };
+  }
+}
+
+export async function deleteDemandPlanRunAction(runId: string) {
+  const session = await requireManage();
+  const parsed = demandPlanRunIdSchema.safeParse({ runId });
+  if (!parsed.success) return { error: "Invalid run" };
+  try {
+    const result = await demandPlanningRunService.deleteRun(
+      session.user.tenantId,
+      session.user.id,
+      parsed.data.runId,
+    );
+    revalidateDemandPlanning(parsed.data.runId);
+    return { success: true as const, ...result };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to delete run" };
+  }
+}
+
+export async function deleteDemandPlanRunsAction(runIds: string[]) {
+  const session = await requireManage();
+  const parsed = demandPlanRunIdsSchema.safeParse({ runIds });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Select at least one run to delete" };
+  }
+  try {
+    const result = await demandPlanningRunService.deleteRuns(
+      session.user.tenantId,
+      session.user.id,
+      parsed.data.runIds,
+    );
+    for (const runId of parsed.data.runIds) {
+      revalidateDemandPlanning(runId);
+    }
+    return { success: true as const, ...result };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Failed to delete runs",
+    };
   }
 }

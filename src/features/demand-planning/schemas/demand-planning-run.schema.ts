@@ -50,5 +50,9 @@ export const demandPlanRunIdSchema = z.object({
   runId: z.string().min(1),
 });
 
+export const demandPlanRunIdsSchema = z.object({
+  runIds: z.array(z.string().min(1)).min(1, "Select at least one run to delete"),
+});
+
 export type GenerateDemandPlanInput = z.infer<typeof generateDemandPlanSchema>;
 export type DemandPlanOverrideInput = z.infer<typeof demandPlanOverrideSchema>;

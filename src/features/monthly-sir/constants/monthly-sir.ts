@@ -18,7 +18,7 @@ export const MONTHLY_SIR_VARIANCE_LABELS = {
   matched: "IN FILE AND IN STK",
   surplus: "IN FILE NOT IN STK",
   missing: "STK NOT IN FILE",
-  status_mismatch: "STATUS MISMATCH",
+  status_mismatch: "IN FILE NOT IN STK",
 } as const;
 
 export const MONTHLY_SIR_SYSTEM_FILL = "FFFF00";

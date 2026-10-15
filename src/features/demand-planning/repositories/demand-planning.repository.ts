@@ -180,6 +180,20 @@ export const demandPlanningRepository = {
     });
   },
 
+  findRunStatus(tenantId: string, runId: string) {
+    return prisma.demandPlanningRun.findFirst({
+      where: { id: runId, tenantId },
+      select: { id: true, documentNumber: true, status: true, name: true },
+    });
+  },
+
+  /** Hard-delete run; branches, lines, and overrides cascade via schema. */
+  deleteRun(tenantId: string, runId: string) {
+    return prisma.demandPlanningRun.deleteMany({
+      where: { id: runId, tenantId },
+    });
+  },
+
   listLinesForRunBranch(tenantId: string, runBranchId: string) {
     return prisma.demandPlanningLine.findMany({
       where: { tenantId, runBranchId },

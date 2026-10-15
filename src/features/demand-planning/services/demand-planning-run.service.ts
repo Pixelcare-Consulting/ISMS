@@ -1,6 +1,7 @@
 import { auditService } from "@/features/audit/services/audit.service";
 import { calendarMonthBoundsFromLabel } from "@/features/demand-planning/lib/planning-period-dates";
 import { resolveHistoryWindow, toDateInputValue } from "@/features/demand-planning/lib/history-window";
+import { isDemandPlanningRunDeletable } from "@/features/demand-planning/lib/run-lifecycle";
 import { parseRunParameters, parseRunScope } from "@/features/demand-planning/lib/run-snapshot";
 import {
   skuInputFromPersistableLine,
@@ -495,5 +496,66 @@ export const demandPlanningRunService = {
         branchLabel: branchLabel.get(line.runBranchId) ?? "",
       })),
     };
+  },
+
+  async deleteRun(tenantId: string, actorUserId: string, runId: string) {
+    const run = await demandPlanningRepository.findRunStatus(tenantId, runId);
+    if (!run) throw new Error("Supply planning run not found");
+    if (!isDemandPlanningRunDeletable(run.status)) {
+      throw new Error("Released runs cannot be deleted");
+    }
+
+    const result = await demandPlanningRepository.deleteRun(tenantId, runId);
+    if (result.count === 0) throw new Error("Supply planning run not found");
+
+    await auditService.log({
+      tenantId,
+      userId: actorUserId,
+      action: "demand_planning.run_deleted",
+      entityType: "DemandPlanningRun",
+      entityId: runId,
+      metadata: {
+        documentNumber: run.documentNumber,
+        status: run.status,
+        name: run.name,
+      },
+    });
+
+    return { runId, documentNumber: run.documentNumber };
+  },
+
+  /**
+   * Best-effort bulk delete: each id is validated like single delete.
+   * Released / missing runs are skipped so the rest can still succeed.
+   */
+  async deleteRuns(tenantId: string, actorUserId: string, runIds: string[]) {
+    const uniqueIds = [...new Set(runIds.filter(Boolean))];
+    if (uniqueIds.length === 0) {
+      throw new Error("Select at least one run to delete");
+    }
+
+    let deleted = 0;
+    let skipped = 0;
+    const documentNumbers: string[] = [];
+
+    for (const runId of uniqueIds) {
+      try {
+        const result = await this.deleteRun(tenantId, actorUserId, runId);
+        deleted += 1;
+        documentNumbers.push(result.documentNumber);
+      } catch {
+        skipped += 1;
+      }
+    }
+
+    if (deleted === 0) {
+      throw new Error(
+        skipped > 0
+          ? "No runs were deleted. Released runs cannot be deleted."
+          : "No runs were deleted",
+      );
+    }
+
+    return { deleted, skipped, documentNumbers };
   },
 };

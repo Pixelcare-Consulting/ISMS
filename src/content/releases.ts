@@ -52,6 +52,81 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.55.4",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T16:45:00+08:00",
+    title: "Bulk delete draft Supply Planning runs",
+    highlights: [
+      "Select several draft Supply Planning runs and delete them together from the list.",
+      "Released runs stay protected and cannot be selected for delete.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Select and delete multiple draft Supply Planning runs at once from the list after confirming.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Select all only includes deletable draft runs on the current page; Released runs stay unchecked.",
+      },
+    ],
+  },
+  {
+    version: "0.55.3",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T16:30:00+08:00",
+    title: "Planogram tabs restored",
+    highlights: [
+      "Planogram again shows Allowed models and Planogram as separate tabs.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Planogram again shows Allowed models and Planogram as separate tabs — add models to Allowed models first, then to the branch plan.",
+      },
+    ],
+  },
+  {
+    version: "0.55.2",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T16:15:00+08:00",
+    title: "Delete draft Supply Planning runs",
+    highlights: [
+      "You can delete draft Supply Planning runs (Generated or Recalculated) from the list after confirming.",
+      "Released runs stay protected and cannot be deleted.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Delete draft Supply Planning runs from the runs list — confirm first; Generated and Recalculated runs can be removed.",
+      },
+      {
+        type: "improvement",
+        description: "Released Supply Planning runs stay protected so live plans are not removed by mistake.",
+      },
+    ],
+  },
+  {
+    version: "0.55.1",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T16:00:00+08:00",
+    title: "Clearer P-Count variance labels",
+    highlights: [
+      "P-Count variance report shows IN FILE NOT IN STK when system status and P-COUNT status differ.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Generated P-Count variance report shows IN FILE NOT IN STK when system status and P-COUNT status differ (no more STATUS MISMATCH).",
+      },
+    ],
+  },
+  {
     version: "0.55.0",
     date: "2026-10-14",
     releasedAt: "2026-10-14T09:30:00+08:00",
