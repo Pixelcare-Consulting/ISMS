@@ -2,7 +2,7 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.54.5`
+**Current version:** `0.55.0`
 
 ## Stack
 
@@ -22,7 +22,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | **Planning** | Period switcher + clickable cards; in-page Add/Edit/Remove branch revenue targets; official Forecast template download + import (bulk; period as MMM-YY e.g. Dec-25); allocation; Supply Planning runs (`/settings/planning`, `/settings/planning/runs`) |
 | **Planogram** | Clickable cards filter branches with a planogram or none yet; branch list shows allowed SKUs as tags; Open a branch shows a wait message with the branch name; per-branch SKU assignment; current or latest model price and date; editable max qty; Allowed models uses the same table; official Excel template download + import (branch SAP + SKU); Add model requires Allowed models first |
 | **Policies** | Full document control (ISO track) |
-| **Inventory** | Serialized stock (STK on Stock units), **SAP Serial No.** flat serial list (`/inventory/serial-numbers`; legacy by-model via `?view=by-model`), **warehouse stock** SN list (`/inventory/warehouse-stock`; also Settings → Warehouses → Stock), AOR-scoped lists, series QTY/VALUE + DR#/date/aging, **physical stock count / P-Count** (`/inventory/stock-count`) — scan serials, surplus/missing variances, Post differences (local STK + SAP Inventory Posting when SL connected); **Monthly SIR** (`/inventory/monthly-sir`) — request/approve, Excel P-COUNT upload, and variance workbook |
+| **Inventory** | **Stock units** (`/inventory`) — grouped **By branch** / **By model** / **All serials**, AOR-scoped lists, series QTY/VALUE + DR#/date/aging (defective units via Sales returns STK/DEF, not from Stock units); **SAP Serial No.** flat serial list (`/inventory/serial-numbers`; legacy by-model via `?view=by-model`), **warehouse stock** SN list (`/inventory/warehouse-stock`; also Settings → Warehouses → Stock), **physical stock count / P-Count** (`/inventory/stock-count`) — scan serials, surplus/missing variances, Post differences (local STK + SAP Inventory Posting when SL connected); **Monthly SIR** (`/inventory/monthly-sir`) — request/approve, Excel P-COUNT upload, and variance workbook |
 | **Orders** | Nav group: Manual / Special / Auto replenish (`/orders/manual` etc.); per-type Module guide; Manual/Special tabs **Orders \| Order Analytics \| Order History** (`?tab=`); Auto replenish **Orders \| Order History** (no Analytics); Orders tab is a role work queue (PS / TL / SP / Logistics see their step; admins see the live pipeline) and omits approved / rejected / cancelled (those stay in Order History); pipeline counts sit under Orders as KPI cards for the queue; Analytics filter card (search for a branch, then brand on the card; assigned branch is selected for you; Clear; DII / inventory KPI cards after both are set); Create optional brand (cleared = all SKUs), extras below the table with multi-add, row numbers, delete a wrong line; per-branch create workspace (multi-line); Create shows a placeholder SKU grid while models load; Create submit shows a please-wait overlay; Auto replenish has no Create — use Suggested orders / Replenishment; drafts use **Submit for review** before TL; per-type `orders.manual`, `orders.special`, `orders.auto_replenish` with view/create/approve; PS → TL → SP; SO#, processed orders, delivery-due auto-reschedule |
 | **Logistics** | Deliveries (accept/reject), transfers, pull-outs with SN movement; gated by `logistics.view` / `create` / `manage` |
 | **Sales** | Encode at `/sales/new` (CTA from `/sales`); PS auto-branch; TL `sales.create` + branch picker; package detail modal (qty → N sets), reserved (RSV) sales; list + KPIs show Sold / Official Sold / TO FOLLOW only (return workflow on Returns); line Edit only for TO-FOLLOW; Accounting `sales.update` edits transaction headers; Process Return per serial line from Sale details (document type, STK/DEF, problems, Return or Replacement) |
@@ -50,7 +50,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/dashboard/site-traffic` | `users.manage` or `audit_logs.view` — Site Traffic KPIs and activity tabs |
 | `/announcements` | `announcements.view` / `announcements.manage` |
 | `/competitors` | `competitors.view` / `competitors.manage` |
-| `/inventory` | `inventory.view` (Stock units: STK only, series summary, DR#/date/aging; Sold etc. in Sales) |
+| `/inventory` | `inventory.view` (Stock units: grouped by branch/model or all serials; series summary, DR#/date/aging; Sold etc. in Sales) |
 | `/inventory/serial-numbers` | `inventory.view` — SAP Serial No. flat list (one row per serial); `?view=by-model` for legacy model+QTY UI; Sync from SAP needs `sap.manage` |
 | `/inventory/warehouse-stock` | `inventory.view` or `warehouses.manage` (read-only warehouse SNs; AOR-scoped; `?warehouse=` / `?location=` / `?q=`) |
 | `/inventory/stock-count` | `inventory.view` (nav alias: P-Count) |
@@ -93,6 +93,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | Doc | Purpose |
 |-----|---------|
 | [`docs/CLIENT_WORKFLOW.md`](docs/CLIENT_WORKFLOW.md) | Client-facing How ISMS works (Mermaid master + role swimlanes) |
+| [`docs/END_USER_STOCK_AND_RETURNS_GUIDE.md`](docs/END_USER_STOCK_AND_RETURNS_GUIDE.md) | Branch staff guide — Stock units, sell STK, defective returns via Process Return (DEF); [`STOCK_UNITS_AND_DEFECTIVE_RETURNS_WORKFLOW.md`](docs/STOCK_UNITS_AND_DEFECTIVE_RETURNS_WORKFLOW.md) points here |
 | [`docs/FINDEN_ISMS_End_User_Process_Flow.docx`](docs/FINDEN_ISMS_End_User_Process_Flow.docx) | Shareable end-user Process Flow (Word) — plain-language narrative + sales/returns steps |
 | [`docs/FINDEN_ISMS_End_User_Process_Flow.xlsx`](docs/FINDEN_ISMS_End_User_Process_Flow.xlsx) | Shareable end-user Process Flow (Excel) — multi-sheet matrices & menu map |
 | [`docs/FINDEN_ISMS_SAP_B1_Automation_Proposal.docx`](docs/FINDEN_ISMS_SAP_B1_Automation_Proposal.docx) | Stakeholder proposal — SAP B1 automation phases, keep vs retire guidance |

@@ -99,6 +99,7 @@ export interface SerialTraceability {
     size: string | null;
   };
   current: {
+    branchInventoryId: string | null;
     branchId: string | null;
     branch: string | null;
     branchSapCode: string | null;
@@ -727,6 +728,7 @@ export const serialNumberService = {
       },
       current: currentInv
         ? {
+            branchInventoryId: currentInv.id,
             branchId: branch?.id ?? null,
             branch: branch?.name ?? null,
             branchSapCode: branch?.sapCode ?? null,
@@ -741,6 +743,7 @@ export const serialNumberService = {
           }
         : row.sapWhsCode
           ? {
+              branchInventoryId: null,
               branchId: null,
               branch: null,
               branchSapCode: null,

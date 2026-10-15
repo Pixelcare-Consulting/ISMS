@@ -7,6 +7,11 @@ import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { auditService } from "@/features/audit/services/audit.service";
 import { aorService } from "@/features/aors/services/aor.service";
 import {
+  assertSerialSellableAtStockSource,
+  assertSerialsSellableForSale,
+  sellableStkDefectReportsFilter,
+} from "@/features/inventory/services/inventory-sellable-guards";
+import {
   markSerialSoldFromStockSource,
   restoreSerialToStockSource,
 } from "@/features/inventory/services/inventory-serial-moves";
@@ -825,6 +830,7 @@ export async function listStockSourceBranchesForSalesAction(branchId: string) {
       tenantId,
       branchId: { in: candidateIds },
       statusCodeId: stkCodeId,
+      defectReports: sellableStkDefectReportsFilter,
     },
     _count: { id: true },
   });
@@ -909,6 +915,7 @@ export async function listSaleableSerialsAction(
       tenantId: session.user.tenantId,
       branchId,
       statusCodeId: stkCodeId,
+      defectReports: sellableStkDefectReportsFilter,
       ...(modelId
         ? { serialNumber: { modelId } }
         : {}),
@@ -1071,6 +1078,23 @@ export async function createSaleAction(input: unknown) {
       )
     : null;
   const fwCodeId = fwCodeRow?.id ?? null;
+
+  if (hasRealSerials && stkCodeId) {
+    try {
+      await assertSerialsSellableForSale(
+        session.user.tenantId,
+        realSerialIds.map((serialNumberId) => ({
+          serialNumberId,
+          stockBranchId,
+        })),
+        stkCodeId,
+      );
+    } catch (e) {
+      return {
+        error: e instanceof Error ? e.message : "Serial is not sellable",
+      };
+    }
+  }
 
   let row;
   try {
@@ -2186,6 +2210,22 @@ async function completeReplacementCore(input: {
     };
   }
 
+  try {
+    await assertSerialSellableAtStockSource(prisma, {
+      tenantId,
+      serialNumberId: replacementInv.serialNumberId,
+      stockBranchId: soldBranchId,
+      stkCodeId,
+    });
+  } catch (e) {
+    return {
+      error:
+        e instanceof Error
+          ? e.message
+          : "Replacement serial is not sellable",
+    };
+  }
+
   const scopedDetails = row.saleDetailId
     ? row.sale.details.filter((d) => d.id === row.saleDetailId)
     : row.sale.details;
@@ -2900,6 +2940,21 @@ export async function updateSaleSerialAction(input: unknown) {
       )
     : null;
   const fwCodeId = fwCodeRow?.id ?? null;
+
+  if (nextSerialId) {
+    try {
+      await assertSerialSellableAtStockSource(prisma, {
+        tenantId: session.user.tenantId,
+        serialNumberId: nextSerialId,
+        stockBranchId,
+        stkCodeId,
+      });
+    } catch (e) {
+      return {
+        error: e instanceof Error ? e.message : "Serial is not sellable",
+      };
+    }
+  }
 
   try {
     await prisma.$transaction(async (tx) => {

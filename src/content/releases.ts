@@ -52,6 +52,33 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.55.0",
+    date: "2026-10-14",
+    releasedAt: "2026-10-14T09:30:00+08:00",
+    title: "Stock units by branch or model",
+    highlights: [
+      "Stock units opens in a grouped view — by branch or by model — so you can expand only what you need instead of scrolling one long serial list.",
+      "Defective units still come from Sales returns (STK/DEF restore); encode sale and reserve stay blocked for Defective serials.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Stock units offers By branch, By model, and All serials views with counts for available stock, defective, and reserved units.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The Stock units status dropdown no longer sets Defective directly — use Sales → Process Return when a unit should be marked defective.",
+      },
+      {
+        type: "fix",
+        description:
+          "Encode sale and reserve actions stop when a serial is already Defective.",
+      },
+    ],
+  },
+  {
     version: "0.54.5",
     date: "2026-10-09",
     releasedAt: "2026-10-09T18:00:00+08:00",

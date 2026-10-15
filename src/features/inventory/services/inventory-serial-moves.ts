@@ -1,3 +1,4 @@
+import { assertSerialSellableAtStockSource } from "@/features/inventory/services/inventory-sellable-guards";
 import { assertSerialsNotFrozenInStockCount } from "@/features/stock-audit/services/stock-count-freeze";
 import { prisma } from "@/lib/database/client";
 
@@ -20,6 +21,7 @@ export async function markSerialSoldFromStockSource(
     updatedById: string;
   },
 ) {
+  await assertSerialSellableAtStockSource(tx, input);
   await assertSerialsNotFrozenInStockCount(input.tenantId, [input.serialNumberId]);
 
   const relocate = input.stockBranchId !== input.soldBranchId;

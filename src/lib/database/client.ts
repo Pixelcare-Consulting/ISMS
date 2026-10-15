@@ -12,7 +12,7 @@ const globalForPrisma = globalThis as unknown as {
  * Next keeps `globalThis.prisma` across hot reload, so a migration applied
  * while `pnpm run dev` is up would otherwise keep querying the old client.
  */
-const prismaSchemaStamp = "20261008170000_serial_sap_whs_code";
+const prismaSchemaStamp = "20261014100000_branch_defect_reports";
 
 if (globalForPrisma.prismaSchemaStamp !== prismaSchemaStamp) {
   void globalForPrisma.prisma?.$disconnect();

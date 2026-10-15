@@ -1,20 +1,31 @@
 import { auditService } from "@/features/audit/services/audit.service";
 import { aorService } from "@/features/aors/services/aor.service";
 import { branchRepository } from "@/features/branches/repositories/branch.repository";
+import type {
+  StockUnitsGroupBy,
+  StockUnitsGroupChildLevel,
+} from "@/features/inventory/constants/stock-units-group";
 import {
   inventoryRepository,
+  type InventoryGroupBranchRow,
+  type InventoryGroupListFilters,
+  type InventoryGroupModelRow,
   type InventoryListFilters,
   type InventoryListRow,
   type InventoryListSort,
   type InventoryListSortDir,
 } from "@/features/inventory/repositories/inventory.repository";
+import type { InventoryGroupAggregates } from "@/features/inventory/utils/stock-units-group-aggregates";
 import {
   deriveSkuSeries,
   wholeDaysBetween,
 } from "@/features/inventory/utils/sku-series";
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
 import { decimalToNumber } from "@/lib/database/decimal";
-import type { PaginatedResult } from "@/lib/shared/pagination";
+import {
+  resolvePagination,
+  type PaginatedResult,
+} from "@/lib/shared/pagination";
 
 export interface InventoryStatusKpi {
   code: string;
@@ -50,11 +61,40 @@ export type InventoryListOptions = {
   sortDir?: InventoryListSortDir;
 };
 
+export type InventoryGroupListOptions = {
+  branchId?: string;
+  skuCode?: string;
+  statusCodeId?: string;
+  offPlanogramOnly?: boolean;
+  q?: string;
+};
+
+export type InventoryGroupBranchSummary = {
+  branch: { id: string; name: string; sapCode: string };
+  counts: InventoryGroupAggregates;
+};
+
+export type InventoryGroupModelSummary = {
+  model: {
+    id: string;
+    sku: string;
+    name: string;
+    brand: { name: string } | null;
+  };
+  counts: InventoryGroupAggregates;
+};
+
+export type InventoryGroupBranchInModelSummary = {
+  branch: { id: string; name: string; sapCode: string };
+  counts: InventoryGroupAggregates;
+};
+
 export type InventoryListEnrichedItem = InventoryListRow & {
   onPlanogram: boolean;
   deliveryNo: string | null;
   deliveryDate: Date | null;
   agingDays: number;
+  pendingDefectInspection: boolean;
 };
 
 type InventoryStatusCodeRow = {
@@ -85,7 +125,170 @@ function toListFilters(filters?: InventoryListOptions): InventoryListFilters {
   };
 }
 
+function toGroupListFilters(
+  filters?: InventoryGroupListOptions,
+): InventoryGroupListFilters {
+  return {
+    branchId: filters?.branchId,
+    skuCode: filters?.skuCode,
+    statusCodeId: filters?.statusCodeId,
+    offPlanogramOnly: filters?.offPlanogramOnly,
+    q: filters?.q,
+  };
+}
+
+function branchRowToSummary(row: InventoryGroupBranchRow): InventoryGroupBranchSummary {
+  const { branchId, branchName, branchSapCode, ...counts } = row;
+  return {
+    branch: { id: branchId, name: branchName, sapCode: branchSapCode },
+    counts,
+  };
+}
+
+function modelRowToSummary(row: InventoryGroupModelRow): InventoryGroupModelSummary {
+  const { modelId, skuCode, modelName, brandName, ...counts } = row;
+  return {
+    model: {
+      id: modelId,
+      sku: skuCode,
+      name: modelName,
+      brand: brandName ? { name: brandName } : null,
+    },
+    counts,
+  };
+}
+
 export const inventoryService = {
+  async listGroupsForUser(
+    tenantId: string,
+    userId: string,
+    isUnrestricted: boolean,
+    groupBy: StockUnitsGroupBy,
+    pagination?: { page?: number; limit?: number },
+    filters?: InventoryGroupListOptions,
+  ): Promise<
+    PaginatedResult<InventoryGroupBranchSummary | InventoryGroupModelSummary>
+  > {
+    const branchIds = await resolveBranchIds(tenantId, userId, isUnrestricted);
+    const groupFilters = toGroupListFilters(filters);
+    const result =
+      groupBy === "by-branch"
+        ? await inventoryRepository.listBranchGroups(
+            tenantId,
+            branchIds,
+            pagination,
+            groupFilters,
+          )
+        : await inventoryRepository.listModelGroups(
+            tenantId,
+            branchIds,
+            pagination,
+            groupFilters,
+          );
+
+    return {
+      ...result,
+      items:
+        groupBy === "by-branch"
+          ? (result.items as InventoryGroupBranchRow[]).map(branchRowToSummary)
+          : (result.items as InventoryGroupModelRow[]).map(modelRowToSummary),
+    };
+  },
+
+  async listGroupChildrenForUser(
+    tenantId: string,
+    userId: string,
+    isUnrestricted: boolean,
+    input: {
+      groupBy: StockUnitsGroupBy;
+      level: StockUnitsGroupChildLevel;
+      branchId?: string;
+      modelId?: string;
+      pagination?: { page?: number; limit?: number };
+      filters?: InventoryGroupListOptions;
+    },
+  ): Promise<
+    PaginatedResult<
+      | InventoryGroupModelSummary
+      | InventoryGroupBranchInModelSummary
+      | InventoryListEnrichedItem
+    >
+  > {
+    const branchIds = await resolveBranchIds(tenantId, userId, isUnrestricted);
+    const groupFilters = toGroupListFilters(input.filters);
+
+    if (input.level === "serials") {
+      if (!input.branchId || !input.modelId) {
+        const { limit, page } = resolvePagination(input.pagination);
+        return {
+          items: [],
+          total: 0,
+          page,
+          limit,
+          totalPages: 1,
+        };
+      }
+      const result = await inventoryRepository.listGroupSerials(
+        tenantId,
+        branchIds,
+        input.pagination,
+        {
+          ...groupFilters,
+          branchId: input.branchId,
+          modelId: input.modelId,
+        },
+      );
+      const withPlanogram = await this.enrichWithPlanogramFlags(tenantId, result);
+      const withAging = await this.enrichWithDeliveryAging(tenantId, withPlanogram);
+      return this.enrichWithPendingDefectFlags(tenantId, withAging);
+    }
+
+    if (input.groupBy === "by-branch" && input.level === "models") {
+      if (!input.branchId) {
+        const { limit, page } = resolvePagination(input.pagination);
+        return { items: [], total: 0, page, limit, totalPages: 1 };
+      }
+      const result = await inventoryRepository.listModelsInBranchGroup(
+        tenantId,
+        branchIds,
+        input.branchId,
+        input.pagination,
+        groupFilters,
+      );
+      return {
+        ...result,
+        items: result.items.map(modelRowToSummary),
+      };
+    }
+
+    if (input.groupBy === "by-model" && input.level === "branches") {
+      if (!input.modelId) {
+        const { limit, page } = resolvePagination(input.pagination);
+        return { items: [], total: 0, page, limit, totalPages: 1 };
+      }
+      const result = await inventoryRepository.listBranchesInModelGroup(
+        tenantId,
+        branchIds,
+        input.modelId,
+        input.pagination,
+        groupFilters,
+      );
+      return {
+        ...result,
+        items: result.items.map((row) => {
+          const { branchId, branchName, branchSapCode, ...counts } = row;
+          return {
+            branch: { id: branchId, name: branchName, sapCode: branchSapCode },
+            counts,
+          };
+        }),
+      };
+    }
+
+    const { limit, page } = resolvePagination(input.pagination);
+    return { items: [], total: 0, page, limit, totalPages: 1 };
+  },
+
   async listForUser(
     tenantId: string,
     userId: string,
@@ -102,7 +305,8 @@ export const inventoryService = {
       { field: filters?.sort, dir: filters?.sortDir },
     );
     const withPlanogram = await this.enrichWithPlanogramFlags(tenantId, result);
-    return this.enrichWithDeliveryAging(tenantId, withPlanogram);
+    const withAging = await this.enrichWithDeliveryAging(tenantId, withPlanogram);
+    return this.enrichWithPendingDefectFlags(tenantId, withAging);
   },
 
   async enrichWithPlanogramFlags<
@@ -167,6 +371,26 @@ export const inventoryService = {
           agingDays: wholeDaysBetween(agingAnchor),
         };
       }),
+    };
+  },
+
+  async enrichWithPendingDefectFlags<TItem extends { id: string }>(
+    tenantId: string,
+    result: PaginatedResult<TItem>,
+  ): Promise<PaginatedResult<TItem & { pendingDefectInspection: boolean }>> {
+    const { defectRepository } = await import(
+      "@/features/inventory/repositories/defect.repository"
+    );
+    const pendingIds = await defectRepository.findOpenPendingBranchInventoryIds(
+      tenantId,
+      result.items.map((item) => item.id),
+    );
+    return {
+      ...result,
+      items: result.items.map((item) => ({
+        ...item,
+        pendingDefectInspection: pendingIds.has(item.id),
+      })),
     };
   },
 
@@ -282,6 +506,25 @@ export const inventoryService = {
     const target = codes.find((c) => c.id === input.statusCodeId);
     if (!target) {
       throw new Error("Invalid inventory status code");
+    }
+
+    const current = await inventoryRepository.findByIdWithStatus(
+      input.tenantId,
+      input.inventoryId,
+    );
+    if (!current) {
+      throw new Error("Inventory unit not found");
+    }
+
+    const currentCode = current.statusCode.code;
+    const targetCode = target.code;
+    if (
+      (currentCode === "STK" && targetCode === "DEF") ||
+      (currentCode === "DEF" && targetCode === "STK")
+    ) {
+      throw new Error(
+        "Use the defect inspection workflow to change between STK and DEF",
+      );
     }
 
     const item = await inventoryRepository.updateStatus(
