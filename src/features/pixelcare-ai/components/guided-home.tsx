@@ -3,7 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
+  ClipboardCheck,
   ClipboardList,
+  FileSpreadsheet,
   LineChart,
   PackageSearch,
   RotateCcw,
@@ -24,6 +26,8 @@ const TASK_ICONS: Record<PixelcareAiTaskId, typeof Warehouse> = {
   "track-order": ClipboardList,
   "help-return": RotateCcw,
   "review-planning": LineChart,
+  "pcount-status": ClipboardCheck,
+  "monthly-sir-status": FileSpreadsheet,
 };
 
 export function GuidedHome(props: {

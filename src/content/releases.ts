@@ -66,6 +66,42 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.68.0",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T01:45:00+08:00",
+    audience: "internal",
+    title: "Pixelcare AI: workflows & ops status",
+    highlights: [
+      "Ask how P-Count, Monthly SIR, SAP, deliveries, and other major modules work — clear steps without inventing process details.",
+      "Check open P-Count sessions, Monthly SIR requests, Operations inbox items, and delivery status for stores you can access.",
+      "Admins with SAP access can see connection state (never credentials); guided tasks cover P-Count and Monthly SIR.",
+      "Replies stay on the workflow and numbers — no more \"from docs\" vs \"live\" side comments.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Pixelcare AI explains major ISMS workflows (including P-Count, Monthly SIR, and SAP) with verified steps — not invented process details.",
+      },
+      {
+        type: "feature",
+        description:
+          "Read-only status for P-Count, Monthly SIR, Operations inbox, and delivery lookup matches your store access; SAP connection overview is admin-only.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Guided home adds Check P-Count status and Check Monthly SIR; answers still cannot write, sync, or invent SAP internals.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Answers explain ISMS workflows and data naturally — without saying whether something came from Help or live tools.",
+      },
+    ],
+  },
+
+  {
     version: "0.67.1",
     date: "2026-10-16",
     releasedAt: "2026-10-16T01:15:00+08:00",

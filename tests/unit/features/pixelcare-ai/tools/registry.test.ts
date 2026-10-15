@@ -6,19 +6,25 @@ import { listPixelcareAiToolNames } from "@/features/pixelcare-ai/constants/tool
 
 const EXPECTED_READ_TOOLS = [
   "checkBranchStock",
+  "explainIsmsWorkflow",
   "explainReturns",
   "explainShelfGaps",
+  "findDeliveryStatus",
   "findOrderStatus",
   "findReturnStatus",
   "getCoverageMonitor",
   "getDashboardSnapshot",
   "getDemandPlanningRun",
   "getLogisticsKpis",
+  "getPcountStatus",
   "getPlanogramAlerts",
+  "getSapIntegrationOverview",
   "listAllocationGaps",
   "listBranchQuotas",
   "listDemandPlanningRuns",
   "listDraftSuggestedOrders",
+  "listMonthlySirStatus",
+  "listOpsInbox",
   "listPermittedBranches",
 ].sort();
 

@@ -19,6 +19,22 @@ const TOOL_LABELS: Record<string, string> = {
   explainShelfGaps: "Reviewing shelf gaps…",
   findOrderStatus: "Looking up order status…",
   explainReturns: "Checking returns guidance…",
+  explainIsmsWorkflow: "Looking up verified workflow guidance…",
+  getDashboardSnapshot: "Reading dashboard numbers…",
+  listDemandPlanningRuns: "Listing planning runs…",
+  getDemandPlanningRun: "Loading planning run…",
+  getCoverageMonitor: "Reading coverage monitor…",
+  listAllocationGaps: "Listing allocation gaps…",
+  listDraftSuggestedOrders: "Listing draft suggested orders…",
+  listBranchQuotas: "Listing branch quotas…",
+  getPlanogramAlerts: "Reading planogram alerts…",
+  findReturnStatus: "Looking up return status…",
+  getLogisticsKpis: "Reading logistics KPIs…",
+  getPcountStatus: "Checking P-Count status…",
+  listMonthlySirStatus: "Listing Monthly SIR status…",
+  listOpsInbox: "Checking Operations inbox…",
+  findDeliveryStatus: "Looking up delivery status…",
+  getSapIntegrationOverview: "Checking SAP connection…",
 };
 
 function toolNameFromPartType(type: string): string | null {

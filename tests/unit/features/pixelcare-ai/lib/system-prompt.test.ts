@@ -37,6 +37,19 @@ describe("buildPixelcareAiSystemPrompt", () => {
     expect(prompt).toContain("listAllocationGaps");
     expect(prompt).toContain("listDraftSuggestedOrders");
     expect(prompt).toContain("do not invent another forecast");
+    expect(prompt).toContain("explainIsmsWorkflow");
+    expect(prompt).toContain("getPcountStatus");
+    expect(prompt).toContain("listMonthlySirStatus");
+    expect(prompt).toContain("Never invent process steps");
+    expect(prompt).toContain("Do NOT narrate how you sourced the answer");
+    expect(prompt).toContain("retrieved live");
+    expect(prompt).toContain("not from docs");
+    expect(prompt).toContain("from Help");
+    expect(prompt).toContain("from documentation");
+    expect(prompt).toContain("from the corpus");
+    expect(prompt).toContain("present the facts and tables directly");
+    expect(prompt).toContain("do not announce retrieval");
+    expect(prompt).toContain("without lecturing about docs vs tools");
   });
 
   it("reminds sample mode cannot place live orders", () => {

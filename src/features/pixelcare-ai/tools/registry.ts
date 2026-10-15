@@ -1,11 +1,6 @@
 import { tool } from "ai";
 import { z } from "zod";
 
-import {
-  formatHelpHitsForPrompt,
-  searchHelpCorpus,
-} from "@/features/ai/services/help-corpus.service";
-import { RETURNS_MODULE_GUIDE } from "@/content/module-guides/returns";
 import { PIXELCARE_AI_LIMITS } from "@/features/pixelcare-ai/constants/limits";
 import { isPixelcareAiSampleMode } from "@/features/pixelcare-ai/constants/permissions";
 import { computeSugQty } from "@/features/pixelcare-ai/lib/sug";
@@ -25,6 +20,7 @@ import {
   retrievedAt,
   truncatePayload,
 } from "@/features/pixelcare-ai/tools/tool-payload";
+import { buildWorkflowOpsTools } from "@/features/pixelcare-ai/tools/workflow-ops-tools";
 import { inventoryService } from "@/features/inventory/services/inventory.service";
 import { BRANCH_ORDER_STATUS_LABELS } from "@/features/orders/constants/order-status";
 import { hasAnyOrderPermission } from "@/features/orders/constants/order-permissions";
@@ -48,11 +44,6 @@ export function buildPixelcareAiTools(
     hasPermission(permissions, "planogram.view") ||
     hasPermission(permissions, "planogram.manage") ||
     hasAnyOrderPermission(permissions, "view");
-  const canReturns =
-    hasPermission(permissions, "returns.view") ||
-    hasPermission(permissions, "returns.branch.view") ||
-    hasPermission(permissions, "returns.service.view") ||
-    hasPermission(permissions, "sales.return.view");
 
   function resolveBranchArg(branchId?: string | null): string | null {
     const explicit = branchId?.trim();
@@ -62,6 +53,7 @@ export function buildPixelcareAiTools(
 
   return {
     ...buildPlanningOpsTools(session),
+    ...buildWorkflowOpsTools(session, { defaultBranchId }),
 
     listPermittedBranches: tool({
       description:
@@ -397,54 +389,6 @@ export function buildPixelcareAiTools(
       },
     }),
 
-    explainReturns: tool({
-      description:
-        "Explain how Returns / Replacement works using verified Help and the Returns module guide. Does not invent ATR steps.",
-      inputSchema: z.object({
-        query: z
-          .string()
-          .min(2)
-          .max(200)
-          .default("returns replacement ATR")
-          .describe("What the user wants explained about returns"),
-      }),
-      execute: async ({ query }) => {
-        if (!canReturns && !sampleMode) {
-          return {
-            error:
-              "You do not have Returns access. Ask an admin for returns permissions, or open Help.",
-            sourceHref: "/help",
-          };
-        }
-
-        const hits = searchHelpCorpus(query, 6).filter(
-          (hit) =>
-            hit.href?.includes("/returns") ||
-            hit.title.toLowerCase().includes("return") ||
-            hit.excerpt.toLowerCase().includes("return"),
-        );
-
-        return truncatePayload({
-          sample: sampleMode,
-          label: sampleMode ? "SAMPLE / HELP CORPUS ONLY" : undefined,
-          retrievedAt: retrievedAt(),
-          sourceHref: "/returns",
-          moduleGuide: {
-            title: RETURNS_MODULE_GUIDE.title,
-            description: RETURNS_MODULE_GUIDE.description,
-            tips: RETURNS_MODULE_GUIDE.tips.map((tip) => tip.label),
-          },
-          helpHits: hits.map((hit) => ({
-            title: hit.title,
-            href: hit.href,
-            excerpt: hit.excerpt,
-          })),
-          formatted: formatHelpHitsForPrompt(hits.length > 0 ? hits : searchHelpCorpus("returns", 4)),
-          limitation:
-            "For a specific ATR / RS / transaction number, call findReturnStatus. Open /returns for full queues.",
-        });
-      },
-    }),
   };
 }
 

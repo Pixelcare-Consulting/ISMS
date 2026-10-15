@@ -97,6 +97,54 @@ describe("tableFromToolOutput", () => {
     expect(table?.columns.find((c) => c.key === "shelfMax")?.label).toBe("Shelf max");
   });
 
+  it("builds a P-Count sessions table", () => {
+    const table = tableFromToolOutput("getPcountStatus", {
+      sessions: [
+        {
+          sessionNo: "PC-1",
+          statusLabel: "Counting (open)",
+          counting: "Counting (open)",
+          posting: "—",
+        },
+      ],
+    });
+    expect(table?.caption).toBe("P-Count sessions");
+    expect(table?.columns.map((c) => c.key)).toEqual([
+      "sessionNo",
+      "statusLabel",
+      "counting",
+      "posting",
+    ]);
+  });
+
+  it("builds Monthly SIR and ops inbox tables", () => {
+    const sir = tableFromToolOutput("listMonthlySirStatus", {
+      requests: [
+        {
+          statusLabel: "For approval",
+          branchName: "Sample",
+          purpose: "Count",
+          sessionNo: null,
+        },
+      ],
+    });
+    expect(sir?.caption).toBe("Monthly SIR");
+
+    const inbox = tableFromToolOutput("listOpsInbox", {
+      deliveries: [
+        {
+          deliveryNo: "DLV-1",
+          statusName: "Pending",
+          branchName: "Sample",
+        },
+      ],
+      transfers: [],
+      pullouts: [],
+    });
+    expect(inbox?.caption).toBe("Operations inbox");
+    expect(inbox?.rows[0]?.kind).toBe("Delivery");
+  });
+
   it("returns null on tool errors or empty rows", () => {
     expect(tableFromToolOutput("checkBranchStock", { error: "denied" })).toBeNull();
     expect(tableFromToolOutput("checkBranchStock", { items: [] })).toBeNull();

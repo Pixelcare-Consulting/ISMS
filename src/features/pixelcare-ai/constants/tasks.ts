@@ -3,7 +3,9 @@ export type PixelcareAiTaskId =
   | "review-shelf-gaps"
   | "track-order"
   | "help-return"
-  | "review-planning";
+  | "review-planning"
+  | "pcount-status"
+  | "monthly-sir-status";
 
 export interface PixelcareAiTask {
   id: PixelcareAiTaskId;
@@ -37,9 +39,9 @@ export const PIXELCARE_AI_TASKS: PixelcareAiTask[] = [
   {
     id: "help-return",
     title: "Help with a return",
-    description: "Explain how Returns / Replacement works from verified Help guides.",
+    description: "Explain how Returns / Replacement works and what to do next.",
     starterPrompt:
-      "Help me with a return. Explain the Returns / Replacement workflow from verified Help only.",
+      "Help me with a return. Explain the Returns / Replacement workflow and point me to the right screens.",
   },
   {
     id: "review-planning",
@@ -48,5 +50,21 @@ export const PIXELCARE_AI_TASKS: PixelcareAiTask[] = [
       "See recent planning runs, coverage, allocation gaps, and draft suggested orders you can access.",
     starterPrompt:
       "Help me review planning and forecast linkage. Use the planning tools for runs, coverage, allocation gaps, and draft suggested orders — do not invent formulas.",
+  },
+  {
+    id: "pcount-status",
+    title: "Check P-Count status",
+    description:
+      "See open or recent physical count sessions for a branch you can access.",
+    starterPrompt:
+      "Help me check P-Count status. Use explainIsmsWorkflow for how it works if needed, then getPcountStatus for the Active branch or ask which branch.",
+  },
+  {
+    id: "monthly-sir-status",
+    title: "Check Monthly SIR",
+    description:
+      "See recent Monthly SIR requests and upload allowance for stores you can access.",
+    starterPrompt:
+      "Help me with Monthly SIR. Use explainIsmsWorkflow for the verified flow if needed, then listMonthlySirStatus for recent requests.",
   },
 ];

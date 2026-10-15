@@ -11,6 +11,10 @@ const TABLE_TOOLS = [
   "listBranchQuotas",
   "findReturnStatus",
   "getPlanogramAlerts",
+  "getPcountStatus",
+  "listMonthlySirStatus",
+  "listOpsInbox",
+  "findDeliveryStatus",
 ] as const;
 
 type TableToolName = (typeof TABLE_TOOLS)[number];
@@ -204,6 +208,87 @@ export function tableFromToolOutput(
           { key: "alertType", label: "Alert" },
           { key: "branchName", label: "Branch", wrap: true },
           { key: "count", label: "Count", align: "right" },
+        ],
+        rows,
+      };
+    }
+    case "getPcountStatus": {
+      const rows = asRowArray(data.sessions).map((row) => ({
+        ...row,
+        branchName: row.branchName ?? undefined,
+      }));
+      if (rows.length === 0) return null;
+      const hasBranch = rows.some((row) => row.branchName !== undefined);
+      return {
+        caption: "P-Count sessions",
+        columns: [
+          { key: "sessionNo", label: "Session", mono: true },
+          { key: "statusLabel", label: "Status" },
+          ...(hasBranch
+            ? [{ key: "branchName", label: "Branch", wrap: true as const }]
+            : []),
+          { key: "counting", label: "Counting" },
+          { key: "posting", label: "Posting" },
+        ],
+        rows,
+      };
+    }
+    case "listMonthlySirStatus": {
+      const rows = asRowArray(data.requests);
+      if (rows.length === 0) return null;
+      return {
+        caption: "Monthly SIR",
+        columns: [
+          { key: "statusLabel", label: "Status" },
+          { key: "branchName", label: "Branch", wrap: true },
+          { key: "purpose", label: "Purpose", wrap: true },
+          { key: "sessionNo", label: "Session", mono: true },
+        ],
+        rows,
+      };
+    }
+    case "listOpsInbox": {
+      const deliveries = asRowArray(data.deliveries).map((row) => ({
+        ...row,
+        kind: "Delivery",
+        reference: row.deliveryNo,
+        branchOrRoute: row.branchName,
+      }));
+      const transfers = asRowArray(data.transfers).map((row) => ({
+        ...row,
+        kind: "Transfer",
+        reference: row.transferNo,
+        branchOrRoute: `${String(row.fromBranch ?? "")} → ${String(row.toBranch ?? "")}`,
+      }));
+      const pullouts = asRowArray(data.pullouts).map((row) => ({
+        ...row,
+        kind: "Pull-out",
+        reference: row.pulloutNo,
+        branchOrRoute: row.branchName,
+      }));
+      const rows = [...deliveries, ...transfers, ...pullouts];
+      if (rows.length === 0) return null;
+      return {
+        caption: "Operations inbox",
+        columns: [
+          { key: "kind", label: "Type" },
+          { key: "reference", label: "Reference", mono: true },
+          { key: "statusName", label: "Status" },
+          { key: "branchOrRoute", label: "Branch / route", wrap: true },
+        ],
+        rows,
+      };
+    }
+    case "findDeliveryStatus": {
+      const rows = asRowArray(data.deliveries);
+      if (rows.length === 0) return null;
+      return {
+        caption: "Deliveries",
+        columns: [
+          { key: "deliveryNo", label: "Delivery #", mono: true },
+          { key: "statusName", label: "Status" },
+          { key: "branchName", label: "Branch", wrap: true },
+          { key: "sapCode", label: "SAP", mono: true },
         ],
         rows,
       };

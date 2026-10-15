@@ -360,3 +360,137 @@ export const SAMPLE_LOGISTICS_KPIS = {
     { label: "Open Deliveries", href: "/logistics/deliveries" },
   ],
 };
+
+export const SAMPLE_PCOUNT_STATUS = {
+  sample: true as const,
+  label: "SAMPLE DATA — not live P-Count",
+  retrievedAt: "2026-10-15T00:00:00.000Z",
+  sourceHref: "/inventory/stock-count",
+  branch: SAMPLE_BRANCH_LABEL,
+  currentCounting: "Counting (open)",
+  currentPosting: "—",
+  latestSessionId: "sample-pcount-session",
+  canPostDifferences: false,
+  sessions: [
+    {
+      id: "sample-pcount-session",
+      sessionNo: "PC-SAMPLE-001",
+      status: "in_progress",
+      statusLabel: "Counting (open)",
+      counting: "Counting (open)",
+      posting: "—",
+      createdAt: "2026-10-01T00:00:00.000Z",
+      closedAt: null,
+    },
+  ],
+  nextSteps: [
+    { label: "Open P-Count", href: "/inventory/stock-count" },
+    { label: "Open P-Count Dashboard", href: "/dashboard/pcount" },
+  ],
+};
+
+export const SAMPLE_MONTHLY_SIR_STATUS = {
+  sample: true as const,
+  label: "SAMPLE DATA — not live Monthly SIR",
+  retrievedAt: "2026-10-15T00:00:00.000Z",
+  sourceHref: "/inventory/monthly-sir",
+  branch: {
+    id: "sample-branch",
+    name: SAMPLE_BRANCH_LABEL.name,
+    sapCode: SAMPLE_BRANCH_LABEL.sapCode,
+  },
+  total: 1,
+  requests: [
+    {
+      id: "sample-sir",
+      status: "pending",
+      statusLabel: "For approval",
+      purpose: "Sample monthly count",
+      branchId: "sample-branch",
+      branchName: SAMPLE_BRANCH_LABEL.name,
+      sapCode: SAMPLE_BRANCH_LABEL.sapCode,
+      sessionNo: null,
+      createdAt: "2026-10-01T00:00:00.000Z",
+    },
+  ],
+  allowance: {
+    canDirectUpload: true,
+    role: "tl",
+    message: null,
+    slotsRemainingMonth: 1,
+    slotsRemainingToday: 1,
+  },
+  nextSteps: [
+    { label: "Open Monthly SIR", href: "/inventory/monthly-sir" },
+  ],
+};
+
+export const SAMPLE_OPS_INBOX = {
+  sample: true as const,
+  label: "SAMPLE DATA — not live Operations inbox",
+  retrievedAt: "2026-10-15T00:00:00.000Z",
+  sourceHref: "/operations",
+  deliveries: [
+    {
+      id: "sample-delivery",
+      deliveryNo: "DLV-SAMPLE-001",
+      statusCode: "pending",
+      statusName: "Pending acceptance",
+      branchName: SAMPLE_BRANCH_LABEL.name,
+      sapCode: SAMPLE_BRANCH_LABEL.sapCode,
+      href: "/operations",
+    },
+  ],
+  transfers: [],
+  pullouts: [],
+  nextSteps: [{ label: "Open Operations", href: "/operations" }],
+};
+
+export const SAMPLE_DELIVERY_STATUS = {
+  sample: true as const,
+  label: "SAMPLE DATA — not a live delivery",
+  retrievedAt: "2026-10-15T00:00:00.000Z",
+  sourceHref: "/operations",
+  deliveries: [
+    {
+      id: "sample-delivery",
+      deliveryNo: "DLV-SAMPLE-001",
+      statusCode: "pending",
+      statusName: "Pending acceptance",
+      branchId: "sample-branch",
+      branchName: SAMPLE_BRANCH_LABEL.name,
+      sapCode: SAMPLE_BRANCH_LABEL.sapCode,
+      href: "/operations",
+      updatedAt: "2026-10-01T00:00:00.000Z",
+    },
+  ],
+  nextSteps: [
+    { label: "Open Operations", href: "/operations" },
+    { label: "Open Logistics deliveries", href: "/logistics/deliveries" },
+  ],
+};
+
+export const SAMPLE_SAP_INTEGRATION_OVERVIEW = {
+  sample: true as const,
+  label: "SAMPLE DATA — not live SAP connection",
+  retrievedAt: "2026-10-15T00:00:00.000Z",
+  sourceHref: "/settings/sap-integration",
+  connection: {
+    state: "idle" as const,
+    expiresAt: null,
+  },
+  whatSyncs: [
+    "Branches — SAP Code and Branch Name via Sync from SAP.",
+    "Inventory / serials (STK) when Service Layer is connected.",
+    "Orders and logistics handoff may sync or queue when connected.",
+    "P-Count Post differences posts or queues Inventory Posting honestly.",
+  ],
+  limitation:
+    "Never invents IDoc/API mappings, schedules, or credentials. Does not connect or process the queue.",
+  nextSteps: [
+    {
+      label: "Open SAP integration settings",
+      href: "/settings/sap-integration",
+    },
+  ],
+};

@@ -4,6 +4,7 @@ export const PIXELCARE_AI_READ_ONLY_TOOLS = [
   "explainShelfGaps",
   "findOrderStatus",
   "explainReturns",
+  "explainIsmsWorkflow",
   "getDashboardSnapshot",
   "listDemandPlanningRuns",
   "getDemandPlanningRun",
@@ -14,6 +15,11 @@ export const PIXELCARE_AI_READ_ONLY_TOOLS = [
   "getPlanogramAlerts",
   "findReturnStatus",
   "getLogisticsKpis",
+  "getPcountStatus",
+  "listMonthlySirStatus",
+  "listOpsInbox",
+  "findDeliveryStatus",
+  "getSapIntegrationOverview",
 ] as const;
 
 export type PixelcareAiToolName = (typeof PIXELCARE_AI_READ_ONLY_TOOLS)[number];
