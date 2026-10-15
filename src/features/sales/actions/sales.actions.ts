@@ -344,15 +344,12 @@ async function assertStockLocationReadable(
 }
 
 /**
- * Stock source may be: the sold branch, an AlternateWarehouse of the sold branch,
- * or any other branch the user can read via AOR.
+ * Stock source may be the sold branch, or an alternate branch saved on it.
  */
 async function assertValidStockSource(
   tenantId: string,
-  userId: string,
   soldBranchId: string,
   alternateBranchId: string,
-  permissions: string[] | undefined,
 ) {
   if (alternateBranchId === soldBranchId) return;
 
@@ -361,17 +358,15 @@ async function assertValidStockSource(
       branchId: soldBranchId,
       alternateBranchId,
       branch: { tenantId },
+      alternateBranch: { deletedAt: null, status: "active" },
     },
     select: { id: true },
   });
-  if (alt) return;
-
-  await assertStockLocationReadable(
-    tenantId,
-    userId,
-    alternateBranchId,
-    permissions,
-  );
+  if (!alt) {
+    throw new Error(
+      "Stock source must be the sold branch or one of its alternate branches",
+    );
+  }
 }
 
 const SALES_SORT_FIELDS = new Set<SalesListSort>([
@@ -794,53 +789,32 @@ export async function listStockSourceBranchesForSalesAction(branchId: string) {
   );
 
   const tenantId = session.user.tenantId;
-  const unrestricted =
-    hasPermission(session.user.permissions, "branches.manage") ||
-    hasPermission(session.user.permissions, "master_data.manage");
-
-  // AOR-scoped branches first (same scope as Branch sold).
-  const byId = new Map<string, string>();
-  if (unrestricted) {
-    const all = await prisma.branch.findMany({
-      where: { tenantId, deletedAt: null, status: "active" },
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    });
-    for (const b of all) byId.set(b.id, b.name);
-  } else {
-    const aors = await aorService.listAorsForUser(tenantId, session.user.id);
-    for (const aor of aors) {
-      if (aor.branch?.id) {
-        byId.set(aor.branch.id, aor.branch.name);
-      }
-    }
-  }
 
   const branch = await prisma.branch.findFirst({
-    where: { id: branchId, tenantId },
+    where: { id: branchId, tenantId, deletedAt: null },
     select: {
       id: true,
       name: true,
       alternateWarehouses: {
         select: {
-          alternateBranch: { select: { id: true, name: true } },
+          alternateBranch: {
+            select: { id: true, name: true, status: true, deletedAt: true },
+          },
         },
       },
     },
   });
   if (!branch) return [];
 
-  // Ensure sold branch is present even if AOR rows were incomplete.
+  // Sold branch, plus only the alternate branches saved on that branch.
+  const byId = new Map<string, string>();
   byId.set(branch.id, branch.name);
 
-  // Alternate warehouses of the sold branch (may sit outside AOR).
   for (const row of branch.alternateWarehouses) {
-    if (row.alternateBranch.id === branch.id) continue;
-    if (byId.has(row.alternateBranch.id)) continue;
-    byId.set(
-      row.alternateBranch.id,
-      `${row.alternateBranch.name} (alternate)`,
-    );
+    const alt = row.alternateBranch;
+    if (alt.id === branch.id) continue;
+    if (alt.deletedAt || alt.status !== "active") continue;
+    byId.set(alt.id, `${alt.name} (alternate)`);
   }
 
   const candidateIds = [...byId.keys()];
@@ -1020,10 +994,8 @@ export async function createSaleAction(input: unknown) {
     );
     await assertValidStockSource(
       session.user.tenantId,
-      session.user.id,
       parsed.data.branchId,
       parsed.data.alternateBranchId,
-      session.user.permissions,
     );
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Access denied" };
@@ -2657,10 +2629,8 @@ export async function updateSaleHeaderAction(input: unknown) {
     );
     await assertValidStockSource(
       session.user.tenantId,
-      session.user.id,
       data.branchId,
       data.alternateBranchId,
-      session.user.permissions,
     );
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Access denied" };
