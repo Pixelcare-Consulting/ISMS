@@ -4,53 +4,21 @@ import {
   STOCK_UNITS_DEFAULT_SORT_DIR,
 } from "@/features/inventory/constants/stock-units-sort";
 import { prisma } from "@/lib/database/client";
+import { inventoryGroupRepository } from "@/features/inventory/repositories/inventory-group.repository";
+import {
+  inventoryListInclude,
+  type InventoryListRow,
+} from "@/features/inventory/repositories/inventory-list.include";
 import {
   resolvePagination,
   toPaginatedResult,
   type PaginatedResult,
 } from "@/lib/shared/pagination";
 
-const inventoryListInclude = {
-  branch: { select: { id: true, name: true, sapCode: true } },
-  statusCode: { select: { id: true, code: true, name: true, color: true } },
-  serialNumber: {
-    include: {
-      model: {
-        select: {
-          id: true,
-          skuCode: true,
-          name: true,
-          srp: true,
-          brand: { select: { name: true } },
-        },
-      },
-    },
-  },
-} as const;
-
-/** Explicit list row (include shape) so PaginatedResult stays typed end-to-end. */
-export type InventoryListRow = {
-  id: string;
-  tenantId: string;
-  branchId: string;
-  serialNumberId: string;
-  statusCodeId: string;
-  createdAt: Date;
-  updatedAt: Date;
-  branch: { id: string; name: string; sapCode: string };
-  statusCode: { id: string; code: string; name: string; color: string | null };
-  serialNumber: {
-    id: string;
-    serialNo: string;
-    model: {
-      id: string;
-      skuCode: string;
-      name: string;
-      srp: unknown;
-      brand: { name: string } | null;
-    };
-  };
-};
+export {
+  inventoryListInclude,
+  type InventoryListRow,
+} from "@/features/inventory/repositories/inventory-list.include";
 
 export type InventoryListSort =
   | "updatedAt"
@@ -508,6 +476,15 @@ export const inventoryRepository = {
     });
   },
 
+  findByIdWithStatus(tenantId: string, id: string) {
+    return prisma.branchInventory.findFirst({
+      where: { id, tenantId },
+      include: {
+        statusCode: { select: { id: true, code: true, name: true } },
+      },
+    });
+  },
+
   updateStatus(
     tenantId: string,
     id: string,
@@ -526,4 +503,12 @@ export const inventoryRepository = {
       where: { tenantId, branchId: { in: branchIds }, statusCodeId },
     });
   },
+
+  ...inventoryGroupRepository,
 };
+
+export type {
+  InventoryGroupBranchRow,
+  InventoryGroupListFilters,
+  InventoryGroupModelRow,
+} from "@/features/inventory/repositories/inventory-group.repository";

@@ -4,6 +4,7 @@ import type { ObjectStorage } from "@/lib/storage/types";
 
 export const POLICY_DOCUMENTS_PREFIX = "policy-documents";
 export const AUDIT_ARCHIVES_PREFIX = "audit-archives";
+export const DEFECT_REPORT_PHOTOS_PREFIX = "defect-report-photos";
 
 export function getObjectStorage(): ObjectStorage {
   // Vercel's deployed functions have a read-only filesystem (aside from /tmp,
@@ -32,6 +33,16 @@ export function buildAuditArchivePath(input: {
   const year = input.cutoffDate.getUTCFullYear();
   const month = String(input.cutoffDate.getUTCMonth() + 1).padStart(2, "0");
   return `${AUDIT_ARCHIVES_PREFIX}/tenants/${input.tenantId}/archives/${year}/${month}/audit-${input.batchId}.json`;
+}
+
+export function buildDefectReportPhotoPath(input: {
+  tenantId: string;
+  reportId: string;
+  fileId: string;
+  fileName: string;
+}) {
+  const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+  return `${DEFECT_REPORT_PHOTOS_PREFIX}/tenants/${input.tenantId}/reports/${input.reportId}/${input.fileId}-${safeName}`;
 }
 
 export type { ObjectStorage, StorageDownloadResult, StorageUploadInput } from "@/lib/storage/types";

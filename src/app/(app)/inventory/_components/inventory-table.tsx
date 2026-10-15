@@ -2,22 +2,22 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
-import { toast } from "sonner";
+import { useMemo, useState } from "react";
 
-import { updateInventoryStatusAction } from "@/features/inventory/actions/inventory.actions";
-import type {
-  InventoryListItem,
-  InventoryStatusOption,
-} from "@/features/inventory/actions/inventory.actions";
+import type { InventoryListItem } from "@/features/inventory/actions/inventory.actions";
 import {
   STOCK_UNITS_DEFAULT_SORT,
   STOCK_UNITS_DEFAULT_SORT_DIR,
 } from "@/features/inventory/constants/stock-units-sort";
-import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
+import { formatInventoryDrDate } from "@/app/(app)/inventory/_components/inventory-list-format";
+import {
+  buildStockUnitsHref,
+  stockUnitsHrefForView,
+} from "@/app/(app)/inventory/_components/stock-units-url";
+import { StockUnitsViewSwitch } from "@/app/(app)/inventory/_components/stock-units-view-switch";
+import { InventoryUnitStatusCell } from "@/features/inventory/components/inventory-unit-status-cell";
 import { TableIndexCell, TableIndexHead } from "@/components/data-table";
 import {
-  DEFAULT_TABLE_PAGE_SIZE,
   parseTablePageSize,
   type TablePageSize,
 } from "@/components/data-table/table-page-size";
@@ -29,7 +29,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   TableBody,
   TableCell,
@@ -52,7 +51,6 @@ type InventorySortDir = "asc" | "desc";
 
 interface InventoryTableProps {
   result: PaginatedResult<InventoryListItem>;
-  statusOptions: InventoryStatusOption[];
   initialOffPlanogram?: boolean;
   initialSort?: string;
   initialSortDir?: string;
@@ -60,44 +58,8 @@ interface InventoryTableProps {
   hideBranch?: boolean;
 }
 
-function buildInventoryHref(opts: {
-  page: number;
-  limit: number;
-  offPlanogram: boolean;
-  sort?: string;
-  sortDir?: string;
-  filters?: { branch?: string; sku?: string };
-}): string {
-  const params = new URLSearchParams();
-  if (opts.page > 1) params.set("page", String(opts.page));
-  if (opts.limit !== DEFAULT_TABLE_PAGE_SIZE) params.set("limit", String(opts.limit));
-  // Checked = off-planogram only; unchecked / absent = show everything.
-  if (opts.offPlanogram) params.set("offPlanogram", "1");
-  // Persist sort in the URL except Branch Name A→Z so first load stays clean.
-  if (
-    opts.sort &&
-    (opts.sort !== STOCK_UNITS_DEFAULT_SORT ||
-      opts.sortDir !== STOCK_UNITS_DEFAULT_SORT_DIR)
-  ) {
-    params.set("sort", opts.sort);
-    if (opts.sortDir) params.set("dir", opts.sortDir);
-  }
-  if (opts.filters?.branch) params.set("branch", opts.filters.branch);
-  if (opts.filters?.sku) params.set("sku", opts.filters.sku);
-  const qs = params.toString();
-  return qs ? `/inventory?${qs}` : "/inventory";
-}
-
-function formatDrDate(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString();
-}
-
 export function InventoryTable({
   result,
-  statusOptions,
   initialOffPlanogram = false,
   initialSort = STOCK_UNITS_DEFAULT_SORT,
   initialSortDir = STOCK_UNITS_DEFAULT_SORT_DIR,
@@ -107,7 +69,6 @@ export function InventoryTable({
   const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
   const [offPlanogramOnly, setOffPlanogramOnly] = useState(initialOffPlanogram);
-  const [pending, startTransition] = useTransition();
   const pageSize = parseTablePageSize(result.limit);
 
   const branchFilter = searchParams.get("branch") ?? "";
@@ -130,7 +91,8 @@ export function InventoryTable({
     sortDir?: string;
   } = {}) {
     router.push(
-      buildInventoryHref({
+      buildStockUnitsHref({
+        view: "all",
         page: overrides.page ?? 1,
         limit: overrides.limit ?? pageSize,
         offPlanogram: overrides.offPlanogram ?? offPlanogramOnly,
@@ -188,18 +150,6 @@ export function InventoryTable({
     pushHref({ sort: next.sort, sortDir: next.dir, page: 1 });
   }
 
-  function changeStatus(id: string, nextStatusCodeId: string) {
-    startTransition(async () => {
-      const updateResult = await updateInventoryStatusAction(id, nextStatusCodeId);
-      if (updateResult.error) {
-        toast.error("Could not update status");
-        return;
-      }
-      toast.success("Status updated");
-      router.refresh();
-    });
-  }
-
   const filterBanner =
     branchFilter || skuFilter ? (
       <div className="border-b px-4 py-2 text-sm text-muted-foreground">
@@ -207,7 +157,7 @@ export function InventoryTable({
         {branchFilter ? " · branch" : ""}
         {skuFilter ? ` · SKU ${skuFilter}` : ""}
         <Button variant="link" className="ml-2 h-auto p-0" asChild>
-          <Link href="/inventory">Clear</Link>
+          <Link href={buildStockUnitsHref({ view: "all" })}>Clear</Link>
         </Button>
       </div>
     ) : null;
@@ -250,6 +200,20 @@ export function InventoryTable({
           placeholder: searchPlaceholder,
           suggestions,
         }}
+        toolbarLeading={
+          <StockUnitsViewSwitch
+            current="all"
+            hrefForView={(view) =>
+              stockUnitsHrefForView(view, {
+                pageSize,
+                offPlanogram: offPlanogramOnly,
+                sort,
+                sortDir,
+                filters: urlFilters,
+              })
+            }
+          />
+        }
         toolbarActions={
           <>
             {selection.selectedCount > 0 ? (
@@ -278,7 +242,8 @@ export function InventoryTable({
           totalPages: result.totalPages,
           itemLabel: "unit",
           buildHref: (page) =>
-            buildInventoryHref({
+            buildStockUnitsHref({
+              view: "all",
               page,
               limit: pageSize,
               offPlanogram: offPlanogramOnly,
@@ -433,7 +398,7 @@ export function InventoryTable({
                   "min-w-0 whitespace-nowrap tabular-nums text-sm",
                 )}
               >
-                {formatDrDate(r.deliveryDate)}
+                {formatInventoryDrDate(r.deliveryDate)}
               </TableCell>
               <TableCell className={cn(cellCompact, "min-w-0")}>
                 {r.onPlanogram ? (
@@ -457,28 +422,8 @@ export function InventoryTable({
               >
                 {r.agingDays}
               </TableCell>
-              <TableCell
-                className={cn(cellCompact, "min-w-0", pending && "opacity-70")}
-              >
-                <SearchableSelect
-                  className="w-full max-w-full min-w-0"
-                  options={statusOptions.map((s) => ({
-                    id: s.id,
-                    label: `${s.name} (${s.code})`,
-                  }))}
-                  value={r.statusCode.id}
-                  disabled={pending}
-                  searchPlaceholder="Search status…"
-                  onChange={(next) => changeStatus(r.id, next)}
-                />
-                <div className="mt-1 min-w-0">
-                  <StatusCodeBadge
-                    code={r.statusCode.code}
-                    name={r.statusCode.name}
-                    color={r.statusCode.color}
-                    showCode
-                  />
-                </div>
+              <TableCell className={cn(cellCompact, "min-w-0")}>
+                <InventoryUnitStatusCell row={r} />
               </TableCell>
             </TableRow>
           ))}

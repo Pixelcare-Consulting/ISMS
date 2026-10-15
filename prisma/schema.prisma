@@ -172,6 +172,13 @@ enum SerialHistoryTxnType {
   return
   replacement
   pcount
+  defect
+}
+
+enum BranchDefectReportStatus {
+  pending_inspection
+  approved
+  rejected
 }
 
 model Tenant {
@@ -230,6 +237,7 @@ model Tenant {
   aors                        Aor[]
   serialNumbers               SerialNumber[]
   branchInventories           BranchInventory[]
+  branchDefectReports         BranchDefectReport[]
   branchPlanograms            BranchPlanogram[]
   branchMilSettings           BranchMilSetting[]
   branchAllowedModels         BranchAllowedModel[]
@@ -308,6 +316,9 @@ model User {
   branchOrdersApproved               BranchOrder[]                 @relation("BranchOrderApprovedBy")
   branchOrderApprovals               BranchOrderApprovalLevel[]    @relation("BranchOrderApprovalLevelApprovedBy")
   branchInventoriesUpdated           BranchInventory[]             @relation("BranchInventoryUpdatedBy")
+  branchDefectReportsReported        BranchDefectReport[]          @relation("BranchDefectReportReporter")
+  branchDefectReportsDecided         BranchDefectReport[]          @relation("BranchDefectReportDecider")
+  branchDefectReportPhotosUploaded   BranchDefectReportPhoto[]     @relation("BranchDefectReportPhotoUploadedBy")
   branchPulloutsCreated              BranchPullout[]               @relation("BranchPulloutCreatedBy")
   serialNumbersCreated               SerialNumber[]                @relation("SerialNumberCreatedBy")
   branchTransfersCreated             BranchTransfer[]              @relation("BranchTransferCreatedBy")
@@ -652,6 +663,7 @@ model ProductModel {
   resolution                         Resolution?                    @relation(fields: [resolutionId], references: [id], onDelete: SetNull)
   actualSize                         ActualSize?                    @relation(fields: [actualSizeId], references: [id], onDelete: SetNull)
   serialNumbers                      SerialNumber[]
+  branchDefectReports                BranchDefectReport[]
   branchPlanograms                   BranchPlanogram[]
   branchMilSettings                  BranchMilSetting[]
   branchAllowedModels                BranchAllowedModel[]
@@ -1245,6 +1257,7 @@ model Branch {
   alternateOf               AlternateWarehouse[]      @relation("BranchIsAlternateOf")
   aors                      Aor[]
   branchInventories         BranchInventory[]
+  branchDefectReports       BranchDefectReport[]
   branchPlanograms          BranchPlanogram[]
   branchMilSettings         BranchMilSetting[]
   branchAllowedModels       BranchAllowedModel[]
@@ -1588,6 +1601,7 @@ model SerialNumber {
   model                        ProductModel                    @relation(fields: [modelId], references: [id], onDelete: Cascade)
   createdBy                    User?                           @relation("SerialNumberCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   branchInventories            BranchInventory[]
+  branchDefectReports          BranchDefectReport[]
   transferLines                BranchTransferLine[]
   pulloutLines                 BranchPulloutLine[]
   stockCountLines              StockCountLine[]
@@ -1624,12 +1638,64 @@ model BranchInventory {
   branch          Branch           @relation(fields: [branchId], references: [id], onDelete: Cascade)
   serialNumber    SerialNumber     @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
   statusCode      ReasonStatusCode @relation(fields: [statusCodeId], references: [id])
-  updatedBy       User?            @relation("BranchInventoryUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedBy       User?                @relation("BranchInventoryUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
   stockCountLines StockCountLine[]
+  defectReports   BranchDefectReport[]
 
   @@unique([branchId, serialNumberId])
   @@index([tenantId, branchId, statusCodeId])
   @@map("branch_inventories")
+}
+
+model BranchDefectReport {
+  id                String                   @id @default(cuid())
+  tenantId          String                   @map("tenant_id")
+  branchInventoryId String                   @map("branch_inventory_id")
+  serialNumberId    String                   @map("serial_number_id")
+  branchId          String                   @map("branch_id")
+  modelId           String                   @map("model_id")
+  status            BranchDefectReportStatus @default(pending_inspection)
+  reason            String
+  remarks           String?
+  reporterUserId    String                   @map("reporter_user_id")
+  reportedAt        DateTime                 @default(now()) @map("reported_at")
+  deciderUserId     String?                  @map("decider_user_id")
+  decidedAt         DateTime?                @map("decided_at")
+  decisionRemarks   String?                  @map("decision_remarks")
+  createdAt         DateTime                 @default(now()) @map("created_at")
+  updatedAt         DateTime                 @updatedAt @map("updated_at")
+
+  tenant          Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branchInventory BranchInventory           @relation(fields: [branchInventoryId], references: [id], onDelete: Cascade)
+  serialNumber    SerialNumber              @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
+  branch          Branch                    @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  model           ProductModel              @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  reporter        User                      @relation("BranchDefectReportReporter", fields: [reporterUserId], references: [id])
+  decider         User?                     @relation("BranchDefectReportDecider", fields: [deciderUserId], references: [id], onDelete: SetNull)
+  photos          BranchDefectReportPhoto[]
+
+  @@index([tenantId, status, reportedAt])
+  @@index([tenantId, branchId, status])
+  @@index([branchInventoryId])
+  @@map("branch_defect_reports")
+}
+
+model BranchDefectReportPhoto {
+  id           String   @id @default(cuid())
+  reportId     String   @map("report_id")
+  fileName     String   @map("file_name")
+  storagePath  String   @map("storage_path")
+  mimeType     String   @map("mime_type")
+  sizeBytes    Int      @map("size_bytes")
+  sortOrder    Int      @default(0) @map("sort_order")
+  uploadedById String   @map("uploaded_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  report     BranchDefectReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  uploadedBy User               @relation("BranchDefectReportPhotoUploadedBy", fields: [uploadedById], references: [id])
+
+  @@index([reportId])
+  @@map("branch_defect_report_photos")
 }
 
 model BranchPlanogram {
