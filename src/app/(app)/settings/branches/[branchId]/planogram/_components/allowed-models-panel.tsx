@@ -139,9 +139,6 @@ export function AllowedModelsPanel({
     if (!addOpen) return;
 
     let cancelled = false;
-    setLoadingCandidates(true);
-    setSelectedIds(new Set());
-    setCandidateQuery("");
 
     void (async () => {
       try {
@@ -165,10 +162,15 @@ export function AllowedModelsPanel({
   function handleAddOpenChange(next: boolean) {
     if (pending) return;
     setAddOpen(next);
-    if (!next) {
-      setCandidateQuery("");
+    if (next) {
+      setLoadingCandidates(true);
       setSelectedIds(new Set());
+      setCandidateQuery("");
+      setCandidates([]);
+      return;
     }
+    setCandidateQuery("");
+    setSelectedIds(new Set());
   }
 
   function toggleCandidate(id: string, checked: boolean) {
@@ -252,7 +254,7 @@ export function AllowedModelsPanel({
                 size="sm"
                 variant="outline"
                 type="button"
-                onClick={() => setAddOpen(true)}
+                onClick={() => handleAddOpenChange(true)}
               >
                 Add to allow-list
               </Button>

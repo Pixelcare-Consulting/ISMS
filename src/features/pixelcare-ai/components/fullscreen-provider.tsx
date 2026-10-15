@@ -4,51 +4,48 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
-  useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 
-import {
-  readPixelcareAiFullscreenPreference,
-  writePixelcareAiFullscreenPreference,
-} from "@/features/pixelcare-ai/lib/fullscreen-storage";
+import { PIXELCARE_AI_FULLSCREEN_STORAGE_KEY } from "@/features/pixelcare-ai/lib/fullscreen-storage";
+import { usePersistedBoolean } from "@/hooks/use-persisted-boolean";
 
 type PixelcareAiFullscreenContextValue = {
   /** Prefer embedded (ISMS chrome visible). Default false. */
   fullscreen: boolean;
   setFullscreen: (value: boolean) => void;
   toggleFullscreen: () => void;
-  /** True after localStorage has been read on the client. */
+  /** True after the client store is active (SSR snapshot uses the default). */
   hydrated: boolean;
 };
 
 const PixelcareAiFullscreenContext =
   createContext<PixelcareAiFullscreenContextValue | null>(null);
 
+function subscribeNoop() {
+  return () => undefined;
+}
+
 export function PixelcareAiFullscreenProvider(props: { children: ReactNode }) {
-  // Default embedded so SSR + first paint match FAB / hard-refresh expectation.
-  const [fullscreen, setFullscreenState] = useState(false);
-  const [hydrated, setHydrated] = useState(false);
+  // SSR + first paint stay embedded (false); client snapshot reads localStorage.
+  const [fullscreen, setPersistedFullscreen] = usePersistedBoolean(
+    PIXELCARE_AI_FULLSCREEN_STORAGE_KEY,
+    false,
+  );
+  const hydrated = useSyncExternalStore(subscribeNoop, () => true, () => false);
 
-  useEffect(() => {
-    setFullscreenState(readPixelcareAiFullscreenPreference());
-    setHydrated(true);
-  }, []);
-
-  const setFullscreen = useCallback((value: boolean) => {
-    setFullscreenState(value);
-    writePixelcareAiFullscreenPreference(value);
-  }, []);
+  const setFullscreen = useCallback(
+    (value: boolean) => {
+      setPersistedFullscreen(value);
+    },
+    [setPersistedFullscreen],
+  );
 
   const toggleFullscreen = useCallback(() => {
-    setFullscreenState((prev) => {
-      const next = !prev;
-      writePixelcareAiFullscreenPreference(next);
-      return next;
-    });
-  }, []);
+    setPersistedFullscreen((prev) => !prev);
+  }, [setPersistedFullscreen]);
 
   const value = useMemo(
     () => ({ fullscreen, setFullscreen, toggleFullscreen, hydrated }),
