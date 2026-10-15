@@ -437,8 +437,8 @@ export const stockAuditRepository = {
       prisma.stockCountSession.count({ where }),
     ]).then(([items, total]) => {
       const mapped = items.map((session) => {
-        const countedCount = session.lines.filter((l) => l.countedAt != null).length;
-        const { lines: _lines, ...rest } = session;
+        const { lines, ...rest } = session;
+        const countedCount = lines.filter((l) => l.countedAt != null).length;
         return {
           ...rest,
           countedCount,

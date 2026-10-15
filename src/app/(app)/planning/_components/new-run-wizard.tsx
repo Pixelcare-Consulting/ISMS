@@ -163,6 +163,8 @@ export function NewRunWizard({
   );
 
   const previewKey = useMemo(() => JSON.stringify(payload), [payload]);
+  /** Stale while payload changed; avoid setState sync in the fetch effect. */
+  const displayedPreview = previewKey === loadedPreviewKey ? preview : null;
 
   const copy = STEP_COPY[step];
   const minLevelPeso =
@@ -180,7 +182,6 @@ export function NewRunWizard({
     if (previewKey === loadedPreviewKey) return;
 
     let cancelled = false;
-    setPreview(null);
 
     startTransition(async () => {
       const result = await previewDemandPlanSourcesAction(payload);
@@ -218,7 +219,7 @@ export function NewRunWizard({
       return Boolean(periodId) && branchIds.length > 0 && historyDatesValid;
     }
     if (step === 2) return Number.isFinite(monthBasisDays) && monthBasisDays > 0;
-    if (step === 3) return Boolean(preview);
+    if (step === 3) return Boolean(displayedPreview);
     return Boolean(run);
   }
 
@@ -349,7 +350,9 @@ export function NewRunWizard({
           onFloorAllocationAtZero={setFloorAllocationAtZero}
         />
       ) : null}
-      {step === 3 ? <WizardStepSources preview={preview} loading={!preview} /> : null}
+      {step === 3 ? (
+        <WizardStepSources preview={displayedPreview} loading={!displayedPreview} />
+      ) : null}
       {step === 4 && run ? <WizardStepReview run={run} /> : null}
     </DemandPlanningWizardShell>
   );

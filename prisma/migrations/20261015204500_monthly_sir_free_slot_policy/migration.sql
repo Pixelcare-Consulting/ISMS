@@ -25,5 +25,6 @@ UPDATE "monthly_sir_requests"
 SET "uses_free_slot" = true
 WHERE "review_remarks" = 'Direct upload allowance';
 
-CREATE INDEX "monthly_sir_requests_tenant_id_requested_by_id_branch_id_uses_free_slot_created_at_idx"
+-- Final short name (matches schema @@index); avoid creating a long name then renaming.
+CREATE INDEX "monthly_sir_requests_tenant_id_requested_by_id_branch_id_us_idx"
 ON "monthly_sir_requests"("tenant_id", "requested_by_id", "branch_id", "uses_free_slot", "created_at");
