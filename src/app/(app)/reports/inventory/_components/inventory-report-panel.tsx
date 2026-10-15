@@ -9,16 +9,32 @@ import { Label } from "@/components/ui/label";
 import { SearchableMultiSelect } from "@/components/ui/searchable-multi-select";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
-  exportInventoryReportCsvAction,
+  exportInventoryReportXlsxAction,
   listInventoryReportBranchesAction,
   listInventoryReportStatusOptionsAction,
 } from "@/features/reports/actions/reports.actions";
-import { downloadCsvFile } from "@/lib/shared/download-csv";
 
 const DEFAULT_STATUS_CODES = ["STK"];
 
 type BranchOption = { id: string; name: string };
 type StatusOption = { id: string; code: string; name: string };
+
+function downloadWorkbook(base64: string, filename: string) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  const blob = new Blob([bytes], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 export function InventoryReportPanel() {
   const [pending, startTransition] = useTransition();
@@ -50,7 +66,7 @@ export function InventoryReportPanel() {
 
   function handleExport() {
     startTransition(async () => {
-      const result = await exportInventoryReportCsvAction({
+      const result = await exportInventoryReportXlsxAction({
         from: from || undefined,
         to: to || undefined,
         sku: sku.trim() || undefined,
@@ -62,12 +78,12 @@ export function InventoryReportPanel() {
         toast.error(result.error);
         return;
       }
-      if (!("success" in result) || !result.success) {
+      if (!("success" in result) || !result.success || !result.base64) {
         toast.error("Export failed");
         return;
       }
-      downloadCsvFile(result.csv, result.filename);
-      toast.success("Inventory report CSV downloaded");
+      downloadWorkbook(result.base64, result.filename);
+      toast.success("Excel downloaded");
     });
   }
 
@@ -85,9 +101,10 @@ export function InventoryReportPanel() {
     <div className="max-w-xl space-y-4 rounded-xl border bg-card p-4 shadow-sm sm:p-6">
       <p className="text-sm text-muted-foreground">
         Branch stock units with dealer classification and delivery validation
-        columns (serial, status, DR#, aging). CSV includes a summary count block
-        then serial detail. Date filter uses DR date when present, otherwise last
-        inventory update. Scoped to your assigned branch(es).
+        columns (serial, status, DR#, aging). Excel includes a Summary sheet of
+        quantities and a Detail sheet of serials. Date filter uses DR date when
+        present, otherwise last inventory update. Scoped to your assigned
+        branch(es).
       </p>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
@@ -142,7 +159,7 @@ export function InventoryReportPanel() {
         disabled={!refsLoaded}
       />
       <Button disabled={pending || !refsLoaded} onClick={handleExport}>
-        {pending ? "Exporting…" : "Download CSV"}
+        {pending ? "Exporting…" : "Export"}
       </Button>
     </div>
   );

@@ -52,6 +52,22 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.64.0",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T22:15:00+08:00",
+    title: "Inventory Report Excel download",
+    highlights: [
+      "Inventory Report downloads as an Excel file with separate Summary and Detail tabs and colored headers.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Reports → Inventory Report exports Excel with a Summary tab of quantities by branch, SKU, and status, and a Detail tab of serial rows—headers stay visible and are color-coded so each sheet is easy to scan.",
+      },
+    ],
+  },
+  {
     version: "0.63.0",
     date: "2026-10-15",
     releasedAt: "2026-10-15T21:55:00+08:00",

@@ -161,7 +161,7 @@ export async function listInventoryReportStatusOptionsAction() {
   }));
 }
 
-export async function exportInventoryReportCsvAction(input?: unknown) {
+export async function exportInventoryReportXlsxAction(input?: unknown) {
   const session = await requireAnyPermission([...INVENTORY_REPORT_ACCESS]);
   const parsed = exportInventoryReportSchema.safeParse(input ?? {});
   if (!parsed.success) {
@@ -185,20 +185,23 @@ export async function exportInventoryReportCsvAction(input?: unknown) {
   const statusCodes =
     parsed.data.statusCodes === undefined ? ["STK"] : parsed.data.statusCodes;
 
-  const csv = await inventoryReportService.generateCsv(session.user.tenantId, {
-    from: parsed.data.from ? new Date(parsed.data.from) : undefined,
-    to: parsed.data.to
-      ? new Date(`${parsed.data.to}T23:59:59.999Z`)
-      : undefined,
-    branchIds,
-    sku: parsed.data.sku?.trim() || undefined,
-    statusCodes,
-  });
+  const buffer = await inventoryReportService.generateWorkbook(
+    session.user.tenantId,
+    {
+      from: parsed.data.from ? new Date(parsed.data.from) : undefined,
+      to: parsed.data.to
+        ? new Date(`${parsed.data.to}T23:59:59.999Z`)
+        : undefined,
+      branchIds,
+      sku: parsed.data.sku?.trim() || undefined,
+      statusCodes,
+    },
+  );
 
   const stamp = new Date().toISOString().slice(0, 10);
   return {
     success: true as const,
-    csv,
-    filename: `inventory-report-${stamp}.csv`,
+    base64: buffer.toString("base64"),
+    filename: `inventory-report-${stamp}.xlsx`,
   };
 }

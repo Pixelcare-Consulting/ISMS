@@ -10,7 +10,7 @@ export const INVENTORY_MODULE_GUIDE: ModuleGuideContent = {
     { label: "Series summary groups QTY and value by SKU — click to expand" },
     {
       label:
-        "To validate order STK, use By model here or Reports → Inventory Report (SKU / status / branch filters + CSV summary) — All serials is AOR-wide, not one branch",
+        "To validate order STK, use By model here or Reports → Inventory Report (SKU / status / branch filters + Excel Summary and Detail tabs) — All serials is AOR-wide, not one branch",
     },
     { label: "Off planogram means the SKU is not on that branch’s authorized list" },
     { label: "Search by serial, SKU, or branch" },

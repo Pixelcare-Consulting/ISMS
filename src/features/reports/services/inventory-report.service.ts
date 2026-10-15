@@ -1,6 +1,7 @@
 import { inventoryRepository } from "@/features/inventory/repositories/inventory.repository";
 import { wholeDaysBetween } from "@/features/inventory/utils/sku-series";
 import { buildInventoryReportSectionedCsv } from "@/features/reports/utils/inventory-report-csv";
+import { buildInventoryReportWorkbook } from "@/features/reports/utils/inventory-report.workbook";
 import { prisma } from "@/lib/database/client";
 
 export interface InventoryReportFilters {
@@ -16,6 +17,13 @@ export interface InventoryReportFilters {
    */
   statusCodes?: string[];
 }
+
+export type InventoryReportCell = string | number | null | undefined;
+
+export type InventoryReportRows = {
+  summaryRows: InventoryReportCell[][];
+  detailRows: InventoryReportCell[][];
+};
 
 const DELIVERY_LOOKUP_CHUNK = 500;
 
@@ -56,136 +64,159 @@ async function findLatestDeliveriesChunked(
   return results;
 }
 
+/**
+ * Build SUMMARY qty rows and DETAIL serial rows for the Inventory Report.
+ * Date filter uses DR date when present, otherwise inventory `updatedAt`.
+ */
+export async function buildInventoryReportRows(
+  tenantId: string,
+  filters: InventoryReportFilters = {},
+): Promise<InventoryReportRows> {
+  const branchScope =
+    filters.branchIds && filters.branchIds.length > 0
+      ? { branchId: { in: filters.branchIds } }
+      : {};
+
+  const skuTrimmed = filters.sku?.trim();
+  const skuScope = skuTrimmed
+    ? {
+        serialNumber: {
+          model: {
+            skuCode: { contains: skuTrimmed, mode: "insensitive" as const },
+          },
+        },
+      }
+    : {};
+
+  const statusCodes = filters.statusCodes?.filter((c) => c.trim().length > 0);
+  const statusScope =
+    statusCodes && statusCodes.length > 0
+      ? { statusCode: { code: { in: statusCodes } } }
+      : {};
+
+  const rows = await prisma.branchInventory.findMany({
+    where: {
+      tenantId,
+      ...branchScope,
+      ...skuScope,
+      ...statusScope,
+    },
+    include: {
+      statusCode: { select: { code: true, name: true } },
+      serialNumber: {
+        select: {
+          serialNo: true,
+          model: { select: { skuCode: true, name: true } },
+        },
+      },
+      branch: {
+        select: {
+          name: true,
+          area: { select: { name: true } },
+          branchArea: { select: { name: true } },
+          dealer: {
+            select: {
+              name: true,
+              dealerType: { select: { name: true } },
+              modeOfPayment: { select: { name: true } },
+              dealerArea: { select: { name: true } },
+            },
+          },
+        },
+      },
+    },
+    orderBy: [
+      { branch: { name: "asc" } },
+      { serialNumber: { serialNo: "asc" } },
+    ],
+  });
+
+  const deliveries = await findLatestDeliveriesChunked(
+    tenantId,
+    rows.map((r) => r.serialNumberId),
+  );
+  const deliveryBySerial = new Map(
+    deliveries.map((d) => [d.serialNumberId, d] as const),
+  );
+
+  const detailRows: InventoryReportCell[][] = [];
+  const summaryCounts = new Map<string, number>();
+
+  for (const item of rows) {
+    const delivery = deliveryBySerial.get(item.serialNumberId);
+    const filterDate = delivery?.deliveryDate ?? item.updatedAt;
+    if (!inDateRange(filterDate, filters.from, filters.to)) continue;
+
+    const agingAnchor = delivery?.deliveryDate ?? item.createdAt;
+    const dealer = item.branch.dealer;
+    const statusLabel = item.statusCode.name ?? item.statusCode.code;
+    const sku = item.serialNumber.model.skuCode;
+    const branchName = item.branch.name;
+
+    const summaryKey = `${branchName}\u0000${sku}\u0000${statusLabel}`;
+    summaryCounts.set(summaryKey, (summaryCounts.get(summaryKey) ?? 0) + 1);
+
+    detailRows.push([
+      dealer?.name ?? "",
+      branchName,
+      dealer?.dealerType?.name ?? "",
+      dealer?.modeOfPayment?.name ?? "",
+      item.branch.area?.name ?? "",
+      dealer?.dealerArea?.name ?? "",
+      item.branch.branchArea?.name ?? "",
+      item.serialNumber.serialNo,
+      sku,
+      item.serialNumber.model.name,
+      statusLabel,
+      delivery?.deliveryNo ?? "",
+      formatDate(delivery?.deliveryDate),
+      wholeDaysBetween(agingAnchor),
+    ]);
+  }
+
+  const summaryRows = [...summaryCounts.entries()]
+    .map(([key, qty]) => {
+      const [branch, sku, status] = key.split("\u0000");
+      return [branch, sku, status, qty] as InventoryReportCell[];
+    })
+    .sort((a, b) => {
+      const branchCmp = String(a[0]).localeCompare(String(b[0]));
+      if (branchCmp !== 0) return branchCmp;
+      const skuCmp = String(a[1]).localeCompare(String(b[1]));
+      if (skuCmp !== 0) return skuCmp;
+      return String(a[2]).localeCompare(String(b[2]));
+    });
+
+  return { summaryRows, detailRows };
+}
+
 export const inventoryReportService = {
   /**
    * Branch inventory CSV with dealer/branch classification columns and
-   * serial validation columns (status, DR#, aging). Date filter uses DR date
-   * when present, otherwise inventory `updatedAt`.
+   * serial validation columns (status, DR#, aging).
    *
-   * Output starts with a `# SUMMARY` block (BRANCH / SKU / STATUS / QTY)
-   * followed by `# DETAIL` serial-level rows.
+   * Kept for unit tests of the sectioned CSV shape; export uses Excel.
    */
   async generateCsv(tenantId: string, filters: InventoryReportFilters = {}) {
-    const branchScope =
-      filters.branchIds && filters.branchIds.length > 0
-        ? { branchId: { in: filters.branchIds } }
-        : {};
-
-    const skuTrimmed = filters.sku?.trim();
-    const skuScope = skuTrimmed
-      ? {
-          serialNumber: {
-            model: {
-              skuCode: { contains: skuTrimmed, mode: "insensitive" as const },
-            },
-          },
-        }
-      : {};
-
-    const statusCodes = filters.statusCodes?.filter((c) => c.trim().length > 0);
-    const statusScope =
-      statusCodes && statusCodes.length > 0
-        ? { statusCode: { code: { in: statusCodes } } }
-        : {};
-
-    const rows = await prisma.branchInventory.findMany({
-      where: {
-        tenantId,
-        ...branchScope,
-        ...skuScope,
-        ...statusScope,
-      },
-      include: {
-        statusCode: { select: { code: true, name: true } },
-        serialNumber: {
-          select: {
-            serialNo: true,
-            model: { select: { skuCode: true, name: true } },
-          },
-        },
-        branch: {
-          select: {
-            name: true,
-            area: { select: { name: true } },
-            branchArea: { select: { name: true } },
-            dealer: {
-              select: {
-                name: true,
-                dealerType: { select: { name: true } },
-                modeOfPayment: { select: { name: true } },
-                dealerArea: { select: { name: true } },
-              },
-            },
-          },
-        },
-      },
-      orderBy: [
-        { branch: { name: "asc" } },
-        { serialNumber: { serialNo: "asc" } },
-      ],
-    });
-
-    const deliveries = await findLatestDeliveriesChunked(
+    const { summaryRows, detailRows } = await buildInventoryReportRows(
       tenantId,
-      rows.map((r) => r.serialNumberId),
+      filters,
     );
-    const deliveryBySerial = new Map(
-      deliveries.map((d) => [d.serialNumberId, d] as const),
-    );
-
-    const detailRows: (string | number | null | undefined)[][] = [];
-    const summaryCounts = new Map<string, number>();
-
-    for (const item of rows) {
-      const delivery = deliveryBySerial.get(item.serialNumberId);
-      const filterDate = delivery?.deliveryDate ?? item.updatedAt;
-      if (!inDateRange(filterDate, filters.from, filters.to)) continue;
-
-      const agingAnchor = delivery?.deliveryDate ?? item.createdAt;
-      const dealer = item.branch.dealer;
-      const statusLabel = item.statusCode.name ?? item.statusCode.code;
-      const sku = item.serialNumber.model.skuCode;
-      const branchName = item.branch.name;
-
-      const summaryKey = `${branchName}\u0000${sku}\u0000${statusLabel}`;
-      summaryCounts.set(summaryKey, (summaryCounts.get(summaryKey) ?? 0) + 1);
-
-      detailRows.push([
-        dealer?.name ?? "",
-        branchName,
-        dealer?.dealerType?.name ?? "",
-        dealer?.modeOfPayment?.name ?? "",
-        item.branch.area?.name ?? "",
-        dealer?.dealerArea?.name ?? "",
-        item.branch.branchArea?.name ?? "",
-        item.serialNumber.serialNo,
-        sku,
-        item.serialNumber.model.name,
-        statusLabel,
-        delivery?.deliveryNo ?? "",
-        formatDate(delivery?.deliveryDate),
-        wholeDaysBetween(agingAnchor),
-      ]);
-    }
-
-    const summaryRows = [...summaryCounts.entries()]
-      .map(([key, qty]) => {
-        const [branch, sku, status] = key.split("\u0000");
-        return [branch, sku, status, qty] as (
-          | string
-          | number
-          | null
-          | undefined
-        )[];
-      })
-      .sort((a, b) => {
-        const branchCmp = String(a[0]).localeCompare(String(b[0]));
-        if (branchCmp !== 0) return branchCmp;
-        const skuCmp = String(a[1]).localeCompare(String(b[1]));
-        if (skuCmp !== 0) return skuCmp;
-        return String(a[2]).localeCompare(String(b[2]));
-      });
-
     return buildInventoryReportSectionedCsv(summaryRows, detailRows);
+  },
+
+  /**
+   * Branch inventory Excel workbook (SUMMARY + DETAIL sheets) with dealer/
+   * branch classification and serial validation columns.
+   */
+  async generateWorkbook(
+    tenantId: string,
+    filters: InventoryReportFilters = {},
+  ): Promise<Buffer> {
+    const { summaryRows, detailRows } = await buildInventoryReportRows(
+      tenantId,
+      filters,
+    );
+    return buildInventoryReportWorkbook(summaryRows, detailRows);
   },
 };

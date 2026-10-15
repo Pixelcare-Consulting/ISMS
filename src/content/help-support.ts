@@ -691,7 +691,7 @@ export const HELP_FAQ_CATEGORIES: HelpFaqCategory[] = [
         id: "sales-6",
         question: "How do I check branch stock without counting every serial page?",
         answer:
-          "Use Reports → Inventory Report with SKU, status (STK by default), and branch filters. The CSV opens with a SUMMARY of quantities by branch, SKU, and status, then the serial DETAIL rows.",
+          "Use Reports → Inventory Report with SKU, status (STK by default), and branch filters. The Excel download has a Summary sheet of quantities by branch, SKU, and status, and a Detail sheet of serial rows.",
       },
     ],
   },
