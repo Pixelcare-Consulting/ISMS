@@ -167,7 +167,7 @@ export function DemandPlanningRunList({
         const runId = deleteTarget.item.id;
         startTransition(async () => {
           const result = await deleteDemandPlanRunAction(runId);
-          if (result.error) {
+          if (!("success" in result)) {
             toast.error(result.error);
             return;
           }
@@ -188,7 +188,7 @@ export function DemandPlanningRunList({
 
         startTransition(async () => {
           const result = await deleteDemandPlanRunsAction(runIds);
-          if (result.error) {
+          if (!("success" in result)) {
             toast.error(result.error);
             return;
           }
