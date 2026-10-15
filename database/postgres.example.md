@@ -39,8 +39,7 @@ docker compose exec -T postgres psql -U isms -d isms < database/extensions.sql
 | `ALLOW_PUBLIC_REGISTER` | Set `true` to enable public `/register` (local/demo only; off by default) |
 | `OPENAI_API_KEY` | Optional. Turns on ISMS Assist (Help questions + Dashboard briefing) |
 | `AI_MODEL` | Optional OpenAI model id (default `gpt-4o-mini`) |
-| `PIXELCARE_AI_ENABLED` | Optional. Set `true` to enable Pixelcare AI at `/internal/ai` for signed-in users (off by default) |
-| `PIXELCARE_AI_USER_IDS` | Optional. Leave empty for all signed-in users. If set, comma-separated user ids/emails restrict access |
+| `PIXELCARE_AI_USER_IDS` | Optional. Leave empty for all signed-in users. If set, comma-separated user ids/emails restrict access. Pixelcare AI is on by default |
 | `PIXELCARE_AI_SAMPLE_MODE` | Optional. Set `true` for labeled sample fixtures only (no live tool mix) |
 | `QWEN_API_KEY` | Optional. Model Studio / Qwen API key for Pixelcare AI |
 | `QWEN_BASE_URL` | Optional. OpenAI-compatible base URL (`…/compatible-mode/v1`) |

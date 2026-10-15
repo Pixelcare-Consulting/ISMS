@@ -7,32 +7,19 @@ import {
 } from "@/features/pixelcare-ai/constants/permissions";
 
 describe("pixelcare-ai access", () => {
-  it("fails closed when the feature flag is off", () => {
-    expect(
-      canUsePixelcareAi({
-        userId: "user-1",
-        permissions: [PIXELCARE_AI_PERMISSION],
-        enabled: false,
-        allowlist: [],
-      }),
-    ).toBe(false);
-    expect(
-      evaluatePixelcareAiAccess({
-        userId: "user-1",
-        permissions: [],
-        enabled: false,
-        allowlist: [],
-      }).reason,
-    ).toBe("disabled");
+  it("is always enabled (no kill switch)", () => {
+    expect(isPixelcareAiEnabled()).toBe(true);
+    expect(isPixelcareAiEnabled("false")).toBe(true);
+    expect(isPixelcareAiEnabled("true")).toBe(true);
+    expect(isPixelcareAiEnabled(undefined)).toBe(true);
   });
 
-  it("allows any authenticated user when enabled and allowlist is empty", () => {
+  it("allows any authenticated user when allowlist is empty", () => {
     expect(
       canUsePixelcareAi({
         userId: "user-1",
         email: "anyone@example.com",
         permissions: [],
-        enabled: true,
         allowlist: [],
       }),
     ).toBe(true);
@@ -43,7 +30,6 @@ describe("pixelcare-ai access", () => {
       canUsePixelcareAi({
         userId: "user-42",
         permissions: [],
-        enabled: true,
         allowlist: ["user-42"],
       }),
     ).toBe(true);
@@ -51,7 +37,6 @@ describe("pixelcare-ai access", () => {
       canUsePixelcareAi({
         userId: "user-9",
         permissions: [],
-        enabled: true,
         allowlist: ["user-42"],
       }),
     ).toBe(false);
@@ -63,7 +48,6 @@ describe("pixelcare-ai access", () => {
         userId: "user-9",
         email: "Support@Example.com",
         permissions: [],
-        enabled: true,
         allowlist: ["support@example.com"],
       }),
     ).toBe(true);
@@ -74,7 +58,6 @@ describe("pixelcare-ai access", () => {
       canUsePixelcareAi({
         userId: "user-1",
         permissions: [PIXELCARE_AI_PERMISSION],
-        enabled: true,
         allowlist: ["someone-else"],
       }),
     ).toBe(true);
@@ -86,13 +69,12 @@ describe("pixelcare-ai access", () => {
         userId: "user-9",
         email: "other@example.com",
         permissions: ["ai.assist"],
-        enabled: true,
         allowlist: ["user-42"],
       }),
     ).toEqual({ ok: false, reason: "allowlist" });
   });
 
-  it("parses allowlist and enabled flag helpers", () => {
+  it("parses allowlist helpers", () => {
     expect(parsePixelcareAiUserAllowlist(" a,b , ,c ")).toEqual(["a", "b", "c"]);
     expect(parsePixelcareAiUserAllowlist('"user-1","support@example.com"')).toEqual([
       "user-1",
@@ -100,7 +82,5 @@ describe("pixelcare-ai access", () => {
     ]);
     expect(parsePixelcareAiUserAllowlist("")).toEqual([]);
     expect(parsePixelcareAiUserAllowlist(undefined)).toEqual([]);
-    expect(isPixelcareAiEnabled("true")).toBe(true);
-    expect(isPixelcareAiEnabled("false")).toBe(false);
   });
 });

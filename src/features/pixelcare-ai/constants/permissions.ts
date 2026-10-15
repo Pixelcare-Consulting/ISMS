@@ -12,8 +12,8 @@ function stripWrappingQuotes(value: string): string {
 
 /**
  * Optional staging lockdown. Empty / unset = every authenticated user may use
- * Pixelcare AI when `PIXELCARE_AI_ENABLED=true`. Non-empty = only matching
- * user ids or emails (case-insensitive), unless the user has `ai.internal`.
+ * Pixelcare AI. Non-empty = only matching user ids or emails (case-insensitive),
+ * unless the user has `ai.internal`.
  */
 export function parsePixelcareAiUserAllowlist(
   raw: string | undefined = process.env.PIXELCARE_AI_USER_IDS,
@@ -24,10 +24,9 @@ export function parsePixelcareAiUserAllowlist(
     .filter(Boolean);
 }
 
-export function isPixelcareAiEnabled(
-  flag: string | undefined = process.env.PIXELCARE_AI_ENABLED,
-): boolean {
-  return flag?.trim() === "true";
+/** @deprecated Always on — kept for callers; ignore env. */
+export function isPixelcareAiEnabled(_flag?: string | undefined): boolean {
+  return true;
 }
 
 export function isPixelcareAiSampleMode(
@@ -50,28 +49,20 @@ function allowlistMatches(
   return false;
 }
 
-export type PixelcareAiAccessReason =
-  | "ok"
-  | "disabled"
-  | "allowlist";
+export type PixelcareAiAccessReason = "ok" | "allowlist";
 
 /**
- * Access rules (fail closed on the kill switch):
- * 1. `PIXELCARE_AI_ENABLED` must be `true`
- * 2. Caller must already be authenticated (enforced by access helpers)
- * 3. Empty allowlist → all authenticated users
- * 4. Non-empty allowlist → match user id/email, or hold `ai.internal`
+ * Access rules (always available when signed in):
+ * 1. Caller must already be authenticated (enforced by access helpers)
+ * 2. Empty allowlist → all authenticated users
+ * 3. Non-empty allowlist → match user id/email, or hold `ai.internal`
  */
 export function evaluatePixelcareAiAccess(input: {
   userId: string;
   email?: string | null;
   permissions: string[] | undefined;
-  enabled?: boolean;
   allowlist?: string[];
-}): { ok: true; reason: "ok" } | { ok: false; reason: Exclude<PixelcareAiAccessReason, "ok"> } {
-  const enabled = input.enabled ?? isPixelcareAiEnabled();
-  if (!enabled) return { ok: false, reason: "disabled" };
-
+}): { ok: true; reason: "ok" } | { ok: false; reason: "allowlist" } {
   const allowlist = input.allowlist ?? parsePixelcareAiUserAllowlist();
   if (allowlist.length === 0) return { ok: true, reason: "ok" };
 
@@ -91,7 +82,6 @@ export function canUsePixelcareAi(input: {
   userId: string;
   email?: string | null;
   permissions: string[] | undefined;
-  enabled?: boolean;
   allowlist?: string[];
 }): boolean {
   return evaluatePixelcareAiAccess(input).ok;

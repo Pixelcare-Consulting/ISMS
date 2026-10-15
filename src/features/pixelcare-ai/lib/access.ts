@@ -10,8 +10,8 @@ export type PixelcareAiPageAccess =
   | { ok: false; reason: "allowlist"; session: AppSession };
 
 /**
- * Page gate: kill switch → 404 (feature hidden). Optional allowlist miss →
- * structured denial so the UI can explain why (still fail closed).
+ * Page gate: optional allowlist miss → structured denial so the UI can explain
+ * why (still fail closed). Pixelcare AI is always available when signed in.
  */
 export async function resolvePixelcareAiPageAccess(): Promise<PixelcareAiPageAccess> {
   const session = await requireAuth();
@@ -23,10 +23,6 @@ export async function resolvePixelcareAiPageAccess(): Promise<PixelcareAiPageAcc
 
   if (result.ok) {
     return { ok: true, session };
-  }
-
-  if (result.reason === "disabled") {
-    notFound();
   }
 
   logger.info(
@@ -68,9 +64,8 @@ export async function requirePixelcareAiApiAccess(): Promise<
     return { ok: true, session };
   }
 
-  switch (result.reason) {
-    case "disabled":
-      return { ok: false, status: 403, error: "Pixelcare AI is disabled." };
+  const reason: "allowlist" = result.reason;
+  switch (reason) {
     case "allowlist":
       return {
         ok: false,
@@ -79,7 +74,7 @@ export async function requirePixelcareAiApiAccess(): Promise<
           "Pixelcare AI allowlist does not include this account. Clear PIXELCARE_AI_USER_IDS or add your user id/email.",
       };
     default: {
-      const _exhaustive: never = result;
+      const _exhaustive: never = reason;
       return { ok: false, status: 403, error: `Pixelcare AI access denied (${_exhaustive}).` };
     }
   }

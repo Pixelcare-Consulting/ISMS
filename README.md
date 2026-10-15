@@ -2,7 +2,7 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.68.0`
+**Current version:** `0.68.1`
 
 ## Stack
 
@@ -14,7 +14,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 |------|----------|
 | **Auth** | Email/password (Better Auth), tenant-scoped sessions, demo seed users; public `/register` off unless `ALLOW_PUBLIC_REGISTER=true` |
 | **Help** | Workflow guides, FAQs, page tutorials; **ISMS Assist** (ask in plain language over Help content; sources shown) |
-| **Pixelcare AI** | Internal assistant at `/internal/ai` (guided tasks + chat workspace + in-page Ask AI). Off by default; enable with `PIXELCARE_AI_ENABLED=true` for all signed-in users. Optional `PIXELCARE_AI_USER_IDS` lockdown; tools still enforce AOR/tenant/module permissions. Uses Qwen (Model Studio); separate from OpenAI ISMS Assist |
+| **Pixelcare AI** | Internal assistant at `/internal/ai` (guided tasks + chat workspace + in-page Ask AI). On by default for all signed-in users. Optional `PIXELCARE_AI_USER_IDS` lockdown; tools still enforce AOR/tenant/module permissions. Uses Qwen (Model Studio); separate from OpenAI ISMS Assist |
 | **Provider** | Platform console at `/provider/*` for platform operators only (provider role on the `isPlatform` Pixelcare tenant): customer summaries, create org + first Tenant Admin, org branding edit, full user/admin management, soft-disable/restore, global permissions |
 | **Dashboard** | Nav group: **Overview** (announcements only — defaults to New/unread, falls back to All when caught up; unread count badge in the menu), **Operations** (Today’s briefing + ops KPI cards / inventory / planning / order pipeline; role-gated), **Sales** (Today’s briefing + sales overview; role-gated), **P-Count Dashboard**, **Site Traffic**, **Market Survey** → Competitors. Sidebar also shows role-scoped red count badges for Monthly SIR for-approval, order review queues, returns approvals, and logistics actions (plus Stock units STK). Header: What’s new beside the sidebar drawer; notifications bell on the right (paginated inbox). Announcement CRUD stays under Announcements. |
 | **Announcements** | Tenant posts with rich body (formatting, links, images, tables); list + CRUD (`/announcements`); publishing a live announcement also sends a tenant-wide in-app notification (header bell → Overview); Overview feed defaults to New (unread) and falls back to All when everything is read; mark-as-read, likes, comments (latest 3 + show all; edit own / managers delete any), reader avatar stack (max 5), and All / New / Earlier + title search filters |
@@ -44,7 +44,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/provider/tenants` | Platform operator — customer list (status filters) / create / detail (org branding + users) / disable / restore |
 | `/provider/permissions` | Platform operator — global permissions catalog |
 | `/help` | Authenticated — Help & Support; Assist when `ai.assist` |
-| `/internal/ai` | Pixelcare AI — requires `PIXELCARE_AI_ENABLED=true` and a signed-in session (optional `PIXELCARE_AI_USER_IDS` lockdown; hidden from normal nav) |
+| `/internal/ai` | Pixelcare AI — signed-in session (optional `PIXELCARE_AI_USER_IDS` lockdown; hidden from normal nav) |
 | `/dashboard` | Authenticated tenant app — Overview announcement feed only (platform operators redirect to `/provider`) |
 | `/dashboard/operations` | Inventory / orders / logistics / planning access — ops cards + Today’s briefing (no announcements) |
 | `/dashboard/sales` | `sales.*` / returns access — Sales overview + Today’s briefing (no announcements) |
@@ -152,7 +152,7 @@ src/
 ### Pixelcare AI (optional)
 
 1. Copy Qwen / Pixelcare AI placeholders from [`.env.example`](.env.example) into `.env.local`
-2. Set `PIXELCARE_AI_ENABLED=true` — any signed-in user can open `/internal/ai`
+2. Pixelcare AI is on by default for any signed-in user at `/internal/ai`
 3. Leave `PIXELCARE_AI_USER_IDS` empty for everyone. Only set it (comma-separated user ids/emails) if you need a temporary lockdown. Optional `ai.internal` still bypasses a non-empty allowlist.
 4. Set `QWEN_API_KEY`, `QWEN_BASE_URL` (Model Studio compatible-mode URL), and optional `QWEN_MODEL` (default `qwen-plus`)
 5. Apply the `ai_conversations` / `ai_messages` migration (`pnpm run db:migrate` or `pnpm run db:deploy`), then open `/internal/ai`

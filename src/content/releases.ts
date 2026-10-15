@@ -66,6 +66,30 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.68.1",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T02:10:00+08:00",
+    audience: "internal",
+    title: "Pixelcare AI available by default",
+    highlights: [
+      "Pixelcare AI opens for signed-in users without a separate on/off switch.",
+      "Optional allowlist still limits who can use it when you need a temporary lockdown.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Pixelcare AI is available by default for signed-in users — no separate enable flag required.",
+      },
+      {
+        type: "fix",
+        description:
+          "Staging no longer shows a missing page for Pixelcare AI when the old enable flag was unset.",
+      },
+    ],
+  },
+
+  {
     version: "0.68.0",
     date: "2026-10-16",
     releasedAt: "2026-10-16T01:45:00+08:00",
