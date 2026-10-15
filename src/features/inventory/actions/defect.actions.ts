@@ -33,7 +33,7 @@ export async function uploadDefectReportPhotoAction(formData: FormData) {
       return { error: "No file selected" as const };
     }
 
-    const storage = getObjectStorage();
+    const storage = await getObjectStorage();
     const uploaded: Array<{
       storagePath: string;
       fileName: string;
@@ -219,7 +219,7 @@ export async function uploadDefectReportPhotoDraftAction(formData: FormData) {
       return { error: "No file selected" as const };
     }
 
-    const storage = getObjectStorage();
+    const storage = await getObjectStorage();
     const uploaded: Array<{
       storagePath: string;
       fileName: string;

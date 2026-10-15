@@ -953,7 +953,7 @@ export async function uploadSaleProofAction(formData: FormData) {
       return { error: "No file selected" as const };
     }
 
-    const storage = getObjectStorage();
+    const storage = await getObjectStorage();
     const paths: string[] = [];
     for (const file of files) {
       const fileId = crypto.randomUUID();

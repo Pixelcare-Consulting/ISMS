@@ -66,6 +66,30 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.67.1",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T01:15:00+08:00",
+    audience: "internal",
+    title: "Deploy build: local file storage path fix",
+    highlights: [
+      "Production builds no longer fail when preparing on-server file storage.",
+      "Staging and Docker keep using the mounted uploads folder as before.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Production builds no longer fail when preparing on-server file storage.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Staging and Docker keep using the mounted uploads folder as before.",
+      },
+    ],
+  },
+
+  {
     version: "0.67.0",
     date: "2026-10-16",
     releasedAt: "2026-10-16T00:56:00+08:00",

@@ -265,7 +265,7 @@ The image never changes — production pulls the same `sha-…` tag staging ran.
 
 ## Differences from Vercel
 
-- **Storage**: `src/lib/storage` uses the local filesystem whenever `VERCEL` is unset; Supabase Storage is no longer required.
+- **Storage**: `src/lib/storage` defaults to local filesystem (`STORAGE_ROOT=/app/data/uploads` in the image). Supabase Storage is opt-in only via `STORAGE_DRIVER=supabase` and is not used for staging.
 - **Cron**: the `cron` sidecar calls `/api/cron/sap-check` with `CRON_SECRET` every `SAP_CHECK_INTERVAL_SECONDS` (default 10 min). It only checks SAP and notifies users; SAP syncs stay manual (the Sync button on each module). Develop on Vercel has no cron.
 - **Redis**: the app talks to Upstash over REST only; there is no Redis container. Leave `UPSTASH_*` unset for the in-memory fallback.
 - **URL**: `APP_URL` (runtime) replaces `NEXT_PUBLIC_APP_URL` (build-time) for auth trusted origins and email links.

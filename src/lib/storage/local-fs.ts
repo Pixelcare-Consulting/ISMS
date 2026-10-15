@@ -3,14 +3,25 @@ import path from "node:path";
 
 import type { ObjectStorage, StorageDownloadResult, StorageUploadInput } from "@/lib/storage/types";
 
-/** Resolves STORAGE_ROOT; default is statically scoped for Turbopack FS tracing. */
+/**
+ * Resolves the local storage root for Docker/Ubuntu staging and local dev.
+ *
+ * - Default (no env): statically scoped `path.join(process.cwd(), ".data", "uploads")`
+ *   so Turbopack FS tracing never sees a dynamic segment under cwd.
+ * - Docker: set absolute `STORAGE_ROOT` (e.g. `/app/data/uploads`). Absolute values
+ *   are returned as-is — no `path.join(cwd, …)`.
+ * - Relative `STORAGE_ROOT` is rejected (would require `path.join(cwd, dynamicVar)`).
+ */
 function getStorageRoot(): string {
   const configured = process.env.STORAGE_ROOT?.trim();
   if (configured) {
-    if (path.isAbsolute(configured)) {
-      return configured;
+    if (!path.isAbsolute(configured)) {
+      throw new Error(
+        `STORAGE_ROOT must be an absolute path (got relative: ${configured}). ` +
+          `For Docker use e.g. STORAGE_ROOT=/app/data/uploads; for local omit it to use .data/uploads.`,
+      );
     }
-    return path.join(/* turbopackIgnore: true */ process.cwd(), configured);
+    return configured;
   }
   return path.join(process.cwd(), ".data", "uploads");
 }
