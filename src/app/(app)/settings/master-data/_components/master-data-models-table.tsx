@@ -17,7 +17,7 @@ import { SapSyncButton } from "@/features/sap/components/sap-sync-button";
 import type { ClientModelRow } from "@/features/master-data/types/client-model";
 import { ImportModelsDialog } from "@/app/(app)/settings/master-data/_components/import-models-dialog";
 import { ModelPriceSheet } from "@/app/(app)/settings/master-data/_components/model-price-sheet";
-import { ModelSeriesSheet } from "@/app/(app)/settings/master-data/_components/model-series-sheet";
+import { ModelEditSheet } from "@/app/(app)/settings/master-data/_components/model-edit-sheet";
 import {
   DataTableEmptyState,
   TableEmptyRow,
@@ -53,7 +53,7 @@ import { formatPeso } from "@/utils/format-currency";
 import { matchesTableSearch } from "@/utils/match-table-search";
 import { cn } from "@/utils/cn";
 
-const COL_COUNT = 8;
+const COL_COUNT = 9;
 
 export function MasterDataModelsTable({
   models,
@@ -68,7 +68,7 @@ export function MasterDataModelsTable({
   const [optimisticRows, setOptimisticRows] = useState<ClientModelRow[]>([]);
   const [statusOverrides, setStatusOverrides] = useState<Record<string, string>>({});
   const [priceModel, setPriceModel] = useState<ClientModelRow | null>(null);
-  const [seriesModel, setSeriesModel] = useState<ClientModelRow | null>(null);
+  const [editModel, setEditModel] = useState<ClientModelRow | null>(null);
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
   const [addOpen, setAddOpen] = useState(false);
@@ -215,8 +215,12 @@ export function MasterDataModelsTable({
             status: result.model.status,
             effectivePrice: null,
             cbm: null,
-            brand: selectedBrand ? { name: selectedBrand.name } : null,
+            brand: selectedBrand ? { id: selectedBrand.id, name: selectedBrand.name } : null,
             series: selectedSeries ? { id: selectedSeries.id, name: selectedSeries.name } : null,
+            category: null,
+            feature: null,
+            resolution: null,
+            actualSize: null,
             priceLists: [],
           },
           ...currentRows,
@@ -331,6 +335,9 @@ export function MasterDataModelsTable({
                     Price
                   </GlobalTableHead>
                   <GlobalTableHead {...sort.sortProps("status")}>Status</GlobalTableHead>
+                  <GlobalTableHead className="w-12">
+                    <span className="sr-only">Actions</span>
+                  </GlobalTableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -355,21 +362,7 @@ export function MasterDataModelsTable({
                       <TableCell className="font-mono text-sm">{m.skuCode}</TableCell>
                       <TableCell className="font-medium">{m.name}</TableCell>
                       <TableCell>{m.brand?.name ?? "—"}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1.5">
-                          <span>{m.series?.name ?? "—"}</span>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="size-6 text-muted-foreground hover:text-foreground"
-                            aria-label={`Change series for ${m.skuCode}`}
-                            onClick={() => setSeriesModel(m)}
-                          >
-                            <Pencil className="size-3.5" />
-                          </Button>
-                        </div>
-                      </TableCell>
+                      <TableCell>{m.series?.name ?? "—"}</TableCell>
                       <TableCell className="text-right tabular-nums">
                         <div className="flex items-center justify-end gap-1.5">
                           {m.effectivePrice != null ? (
@@ -403,6 +396,19 @@ export function MasterDataModelsTable({
                             router.refresh();
                           }}
                         />
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="size-8 text-muted-foreground hover:bg-muted hover:text-foreground"
+                          aria-label={`Edit ${m.skuCode}`}
+                          title="Edit model"
+                          onClick={() => setEditModel(m)}
+                        >
+                          <Pencil className="size-3.5" />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))
@@ -538,13 +544,13 @@ export function MasterDataModelsTable({
         />
       ) : null}
 
-      {seriesModel ? (
-        <ModelSeriesSheet
+      {editModel ? (
+        <ModelEditSheet
           open
           onOpenChange={(open) => {
-            if (!open) setSeriesModel(null);
+            if (!open) setEditModel(null);
           }}
-          model={seriesModel}
+          model={editModel}
         />
       ) : null}
 

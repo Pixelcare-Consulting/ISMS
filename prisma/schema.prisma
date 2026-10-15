@@ -617,7 +617,8 @@ model Category {
   createdAt    DateTime           @default(now()) @map("created_at")
   updatedAt    DateTime           @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  models ProductModel[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -629,6 +630,7 @@ model ProductModel {
   tenantId     String    @map("tenant_id")
   brandId      String?   @map("brand_id")
   seriesId     String?   @map("series_id")
+  categoryId   String?   @map("category_id")
   featureId    String?   @map("feature_id")
   resolutionId String?   @map("resolution_id")
   actualSizeId String?   @map("actual_size_id")
@@ -648,6 +650,7 @@ model ProductModel {
   tenant                             Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   brand                              Brand?                         @relation(fields: [brandId], references: [id], onDelete: SetNull)
   series                             Series?                        @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+  category                           Category?                      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   feature                            Feature?                       @relation(fields: [featureId], references: [id], onDelete: SetNull)
   resolution                         Resolution?                    @relation(fields: [resolutionId], references: [id], onDelete: SetNull)
   actualSize                         ActualSize?                    @relation(fields: [actualSizeId], references: [id], onDelete: SetNull)
@@ -668,6 +671,7 @@ model ProductModel {
   @@unique([tenantId, skuCode])
   @@index([tenantId])
   @@index([brandId])
+  @@index([categoryId])
   @@map("product_models")
 }
 

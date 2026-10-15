@@ -4,8 +4,11 @@
  * Sheet "Models" — form-aligned columns. Template-only: foreign layouts
  * (e.g. PSG ItemNo / ItemName) are rejected.
  *
- * Unknown SKUs are created; existing SKUs are updated when fields differ.
- * Unchanged rows are skipped. Nothing is deleted.
+ * Update-only: unknown SKUs are rejected (SAP creates models), existing SKUs are
+ * updated when fields differ, unchanged rows are skipped. Nothing is deleted.
+ *
+ * Brand, category, feature, resolution and actual size must already exist in ISMS
+ * (matched by name, code, or id); a row naming one that does not is an error.
  */
 
 export const MODEL_SHEET_NAME = "Models";
@@ -15,6 +18,7 @@ export const MODEL_SHEET_HEADERS = [
   "name",
   "brand",
   "series",
+  "category",
   "feature",
   "resolution",
   "actual_size",
@@ -31,6 +35,8 @@ export const MODEL_IMPORT_ALIAS_MAP: Record<string, string> = {
   brandname: "brand",
   series: "series",
   seriesname: "series",
+  category: "category",
+  categoryname: "category",
   feature: "feature",
   featurename: "feature",
   resolution: "resolution",
@@ -46,6 +52,7 @@ export const MODEL_IMPORT_FIELD_LABELS: Record<string, string> = {
   name: "Name",
   brand: "Brand",
   series: "Series",
+  category: "Category",
   feature: "Feature",
   resolution: "Resolution",
   actualSize: "Actual size",
@@ -72,6 +79,7 @@ export interface ModelImportRowPlan {
   name: string;
   brand: string;
   series: string;
+  category: string | null;
   feature: string | null;
   resolution: string | null;
   actualSize: string | null;
@@ -112,7 +120,6 @@ export interface ModelImportResult {
   modelsCreated: number;
   modelsUpdated: number;
   modelsUnchanged: number;
-  brandsCreated: number;
   seriesCreated: number;
   /** SAP items whose `U_Brand` was written. */
   sapBrandsUpdated: number;
@@ -134,7 +141,6 @@ export interface ModelImportChunkProgress {
   /** Counts written in this chunk only — client accumulates across the loop. */
   modelsCreated: number;
   modelsUpdated: number;
-  brandsCreated: number;
   seriesCreated: number;
   /** SAP `U_Brand` outcomes for this chunk only — also accumulated by the client. */
   sapBrandsUpdated: number;

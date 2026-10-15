@@ -111,6 +111,10 @@ export const masterDataRepository = {
           include: {
             brand: true,
             series: true,
+            category: { select: { id: true, name: true } },
+            feature: { select: { id: true, name: true } },
+            resolution: { select: { id: true, name: true } },
+            actualSize: { select: { id: true, name: true } },
             priceLists: {
               select: {
                 id: true,
@@ -141,12 +145,31 @@ export const masterDataRepository = {
     });
   },
 
-  async updateModelSeries(tenantId: string, id: string, seriesId: string | null) {
-    const model = await prisma.productModel.update({
-      where: { id, tenantId },
-      data: { seriesId },
-    });
-    await invalidateModelsCache(tenantId);
+  /** Callers validate every id first; this only writes and clears the list caches. */
+  async updateModelDetails(
+    tenantId: string,
+    id: string,
+    data: {
+      brandId: string;
+      seriesId: string | null;
+      categoryId: string | null;
+      featureId: string | null;
+      resolutionId: string | null;
+      actualSizeId: string | null;
+    },
+    previousBrandId: string | null,
+  ) {
+    const model = await prisma.productModel.update({ where: { id, tenantId }, data });
+    // The list is also cached per brand, and a brand change moves the model between two.
+    const brandScopes = new Set(
+      [previousBrandId, data.brandId].filter((brandId): brandId is string => !!brandId),
+    );
+    await Promise.all([
+      invalidateModelsCache(tenantId),
+      ...[...brandScopes].map((brandId) =>
+        deleteCache(cacheKey("tenant", tenantId, "master-data", "models", brandId)),
+      ),
+    ]);
     return model;
   },
 
