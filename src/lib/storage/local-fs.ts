@@ -29,8 +29,9 @@ function getStorageRoot(): string {
 function resolveSafePath(storagePath: string): string {
   const root = getStorageRoot();
   const normalized = storagePath.replace(/^[/\\]+/, "").replace(/\0/g, "");
-  const full = path.resolve(root, normalized);
-  const rootResolved = path.resolve(root);
+  // Runtime-only paths (STORAGE_ROOT or cwd/.data/uploads) — do not NFT-trace.
+  const full = path.resolve(/* turbopackIgnore: true */ root, normalized);
+  const rootResolved = path.resolve(/* turbopackIgnore: true */ root);
   if (full !== rootResolved && !full.startsWith(rootResolved + path.sep)) {
     throw new Error("Invalid storage path");
   }
@@ -40,22 +41,23 @@ function resolveSafePath(storagePath: string): string {
 export const localFsStorage: ObjectStorage = {
   async upload(input: StorageUploadInput): Promise<void> {
     const fullPath = resolveSafePath(input.path);
-    await mkdir(path.dirname(fullPath), { recursive: true });
+    const dir = path.dirname(fullPath);
+    await mkdir(/* turbopackIgnore: true */ dir, { recursive: true });
     const body =
       typeof input.body === "string" ? Buffer.from(input.body, "utf8") : input.body;
-    await writeFile(fullPath, body);
+    await writeFile(/* turbopackIgnore: true */ fullPath, body);
   },
 
   async download(storagePath: string): Promise<StorageDownloadResult> {
     const fullPath = resolveSafePath(storagePath);
-    const buffer = await readFile(fullPath);
+    const buffer = await readFile(/* turbopackIgnore: true */ fullPath);
     return { buffer };
   },
 
   async remove(storagePath: string): Promise<void> {
     const fullPath = resolveSafePath(storagePath);
     try {
-      await unlink(fullPath);
+      await unlink(/* turbopackIgnore: true */ fullPath);
     } catch (error) {
       const code =
         typeof error === "object" && error !== null && "code" in error

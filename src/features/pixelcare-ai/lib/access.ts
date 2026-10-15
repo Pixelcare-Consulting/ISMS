@@ -79,7 +79,7 @@ export async function requirePixelcareAiApiAccess(): Promise<
           "Pixelcare AI allowlist does not include this account. Clear PIXELCARE_AI_USER_IDS or add your user id/email.",
       };
     default: {
-      const _exhaustive: never = result.reason;
+      const _exhaustive: never = result;
       return { ok: false, status: 403, error: `Pixelcare AI access denied (${_exhaustive}).` };
     }
   }

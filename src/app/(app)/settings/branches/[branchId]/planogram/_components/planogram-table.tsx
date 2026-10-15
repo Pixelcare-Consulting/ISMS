@@ -506,13 +506,14 @@ function AddPlanogramDialog({
         return;
       }
 
-      if (!("added" in result)) {
+      if (!("added" in result) || typeof result.added !== "number") {
         toast.error("Failed to add models");
         return;
       }
 
+      const added = result.added;
       const notAllowed = result.errors?.find((e) => e.emptyReason);
-      if (result.added === 0 && notAllowed?.emptyReason) {
+      if (added === 0 && notAllowed?.emptyReason) {
         setEmptyReason(notAllowed.emptyReason);
         return;
       }
@@ -523,11 +524,11 @@ function AddPlanogramDialog({
         );
       } else {
         toast.success(
-          `${result.added} model${result.added === 1 ? "" : "s"} added to planogram`,
+          `${added} model${added === 1 ? "" : "s"} added to planogram`,
         );
       }
 
-      if (result.added > 0) {
+      if (added > 0) {
         onAdded();
       }
     });
