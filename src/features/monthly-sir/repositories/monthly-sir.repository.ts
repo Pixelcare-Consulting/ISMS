@@ -85,6 +85,8 @@ export const monthlySirRepository = {
     reviewedAt?: Date;
     reviewRemarks?: string;
     stockCountSessionId?: string;
+    /** True for free/direct Start; false for request/approval extras. */
+    usesFreeSlot?: boolean;
   }) {
     return prisma.monthlySirRequest.create({
       data: {
@@ -97,19 +99,23 @@ export const monthlySirRepository = {
         reviewedAt: data.reviewedAt,
         reviewRemarks: data.reviewRemarks,
         stockCountSessionId: data.stockCountSessionId,
+        usesFreeSlot: data.usesFreeSlot ?? false,
       },
       include: requestInclude,
     });
   },
 
-  /** Count successful P-COUNT uploads (`uploadedAt` set) for allowance windows. */
-  countUploadedByRequester(
+  /**
+   * Count free/direct Starts (`usesFreeSlot`) by createdAt window.
+   * Request+approval extras are excluded so they do not consume free slots.
+   */
+  countFreeSlotStartsByRequester(
     tenantId: string,
     filters: {
       requestedById: string;
       branchId: string;
-      uploadedAtFrom: Date;
-      uploadedAtToExclusive: Date;
+      createdAtFrom: Date;
+      createdAtToExclusive: Date;
     },
   ) {
     return prisma.monthlySirRequest.count({
@@ -117,9 +123,10 @@ export const monthlySirRepository = {
         tenantId,
         requestedById: filters.requestedById,
         branchId: filters.branchId,
-        uploadedAt: {
-          gte: filters.uploadedAtFrom,
-          lt: filters.uploadedAtToExclusive,
+        usesFreeSlot: true,
+        createdAt: {
+          gte: filters.createdAtFrom,
+          lt: filters.createdAtToExclusive,
         },
       },
     });

@@ -233,6 +233,7 @@ model Tenant {
   branchDeliverySchedules     BranchDeliverySchedule[]
   frequencyCodes              FrequencyCode[]
   orderingPolicy              OrderingPolicy?
+  monthlySirPolicy            MonthlySirPolicy?
   warehouses                  Warehouse[]
   aors                        Aor[]
   serialNumbers               SerialNumber[]
@@ -2264,6 +2265,24 @@ model StockCountSession {
   @@map("stock_count_sessions")
 }
 
+/// Tenant-wide Monthly SIR / P-COUNT free-slot budgets (TL/PS).
+/// Code falls back to defaults when no row exists (no Users UI).
+model MonthlySirPolicy {
+  id                 String   @id @default(cuid())
+  tenantId           String   @unique @map("tenant_id")
+  /// Free direct Upload P-COUNT starts per TL per branch per Manila month.
+  tlMonthlyFreeSlots Int      @default(1) @map("tl_monthly_free_slots")
+  /// Free direct Upload P-COUNT starts per PS per branch per Manila month
+  /// (split across days 1–15 and 16–end).
+  psMonthlyFreeSlots Int      @default(2) @map("ps_monthly_free_slots")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("monthly_sir_policies")
+}
+
 model MonthlySirRequest {
   id                  String                  @id @default(cuid())
   tenantId            String                  @map("tenant_id")
@@ -2275,6 +2294,9 @@ model MonthlySirRequest {
   reviewedById        String?                 @map("reviewed_by_id")
   reviewedAt          DateTime?               @map("reviewed_at")
   stockCountSessionId String?                 @unique @map("stock_count_session_id")
+  /// True when this row was started on the free/direct path (consumes a free slot
+  /// at Start). Extra request+approval uploads stay false.
+  usesFreeSlot        Boolean                 @default(false) @map("uses_free_slot")
   uploadedAt          DateTime?               @map("uploaded_at")
   uploadedById        String?                 @map("uploaded_by_id")
   createdAt           DateTime                @default(now()) @map("created_at")
@@ -2289,6 +2311,7 @@ model MonthlySirRequest {
 
   @@index([tenantId, status])
   @@index([tenantId, branchId])
+  @@index([tenantId, requestedById, branchId, usesFreeSlot, createdAt])
   @@map("monthly_sir_requests")
 }
 

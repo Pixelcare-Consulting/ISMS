@@ -218,7 +218,7 @@ export function MonthlySirPanel({
       );
       setPurpose("");
       setRequestOpen(false);
-      // Refresh allowance after starting (slot not consumed until upload succeeds).
+      // Refresh allowance after free Start (slot consumed immediately).
       if (selectedBranchId) {
         const next = await getPcountUploadAllowanceAction({
           branchId: selectedBranchId,
@@ -449,22 +449,24 @@ export function MonthlySirPanel({
           />
         </div>
         <div className="flex flex-col items-stretch gap-1 sm:items-end">
-          <Button
-            disabled={!selectedBranchId || allowanceLoading}
-            onClick={() => setRequestOpen(true)}
-          >
-            {canDirectUpload ? "Upload P-COUNT" : "Request to upload P-COUNT"}
-          </Button>
-          {allowanceForBranch?.message ? (
-            <p className="max-w-md text-right text-xs text-muted-foreground">
-              {allowanceForBranch.unlimited
-                ? "Unlimited direct uploads"
-                : allowanceForBranch.slotsRemainingMonth != null &&
-                    allowanceForBranch.slotsTotalMonth != null
-                  ? `${allowanceForBranch.message} (${allowanceForBranch.slotsRemainingMonth}/${allowanceForBranch.slotsTotalMonth} free left this month)`
-                  : allowanceForBranch.message}
-            </p>
-          ) : null}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {allowanceForBranch &&
+            !allowanceForBranch.unlimited &&
+            (allowanceForBranch.role === "tl" ||
+              allowanceForBranch.role === "ps") ? (
+              <Badge variant="outline" className="font-normal text-muted-foreground">
+                {(allowanceForBranch.slotsRemainingToday ?? 0) > 0
+                  ? `${allowanceForBranch.slotsRemainingToday} of ${allowanceForBranch.slotsTotalMonth} free left`
+                  : "0 free · request needed"}
+              </Badge>
+            ) : null}
+            <Button
+              disabled={!selectedBranchId || allowanceLoading}
+              onClick={() => setRequestOpen(true)}
+            >
+              {canDirectUpload ? "Upload P-COUNT" : "Request to upload P-COUNT"}
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -621,7 +623,7 @@ export function MonthlySirPanel({
             </DialogTitle>
             <DialogDescription>
               {canDirectUpload
-                ? "Start a free P-COUNT for this branch. Your monthly slot is used only after a successful upload."
+                ? "Start a free P-COUNT for this branch. Starting uses one free slot right away."
                 : "Submit a branch P-COUNT request for inventory approval."}
             </DialogDescription>
           </DialogHeader>
@@ -636,10 +638,37 @@ export function MonthlySirPanel({
             searchPlaceholder="Search branches…"
             emptyMessage="No assigned branches."
           />
-          {allowanceForBranch?.message ? (
-            <p className="rounded-lg border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-              {allowanceForBranch.message}
-            </p>
+          {allowanceForBranch && !allowanceForBranch.unlimited ? (
+            <div className="space-y-1.5 rounded-lg border bg-muted/30 px-3 py-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Slots
+              </p>
+              <p className="text-sm font-medium text-foreground">
+                {(allowanceForBranch.slotsRemainingToday ?? 0) > 0
+                  ? `${allowanceForBranch.slotsRemainingToday} remaining`
+                  : "No free slots left today"}
+              </p>
+              {allowanceForBranch.role === "ps" ? (
+                <p className="text-xs text-muted-foreground">
+                  This period:{" "}
+                  {allowanceForBranch.activeHalf === "h1"
+                    ? "days 1–15"
+                    : "days 16–end"}{" "}
+                  · {allowanceForBranch.slotsTotalMonth} free per month
+                </p>
+              ) : null}
+              {allowanceForBranch.role === "tl" ? (
+                <p className="text-xs text-muted-foreground">
+                  {allowanceForBranch.slotsTotalMonth} free per month for this
+                  branch
+                </p>
+              ) : null}
+              {allowanceForBranch.mustRequest ? (
+                <p className="text-xs font-medium text-amber-800 dark:text-amber-200">
+                  Extra upload needs approval first
+                </p>
+              ) : null}
+            </div>
           ) : null}
           <Textarea
             value={purpose}

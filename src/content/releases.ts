@@ -52,6 +52,44 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.59.4",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T22:50:00+08:00",
+    title: "Monthly SIR free slots on Start",
+    highlights: [
+      "Starting a free Upload P-COUNT on Monthly SIR uses one free slot right away—you do not need to finish the Excel upload first.",
+      "When that free slot is used, further uploads for the same branch and period go through Request to upload for approval.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "On Monthly SIR, a free Team Leader or Product Specialist Upload P-COUNT uses a free slot as soon as you start, so remaining slots update immediately.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Extra uploads still use Request to upload and approval; they do not take another free slot.",
+      },
+    ],
+  },
+  {
+    version: "0.59.3",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T22:45:00+08:00",
+    title: "Clearer Monthly SIR free slots",
+    highlights: [
+      "On Monthly SIR, see how many free P-COUNT uploads you have left at a glance—next to the button and in a simple Slots summary when you start.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Monthly SIR shows a short free-slot badge by Upload / Request, and a Slots card in the start dialog with remaining today, your period rules, and when an extra upload needs approval.",
+      },
+    ],
+  },
+  {
     version: "0.59.2",
     date: "2026-10-15",
     releasedAt: "2026-10-15T22:30:00+08:00",

@@ -1,0 +1,2 @@
+-- RenameIndex
+ALTER INDEX "monthly_sir_requests_tenant_id_requested_by_id_branch_id_uses_f" RENAME TO "monthly_sir_requests_tenant_id_requested_by_id_branch_id_us_idx";

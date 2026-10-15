@@ -2,6 +2,7 @@ import type { MonthlySirRequestStatus } from "@prisma/client";
 
 import { aorService } from "@/features/aors/services/aor.service";
 import { auditService } from "@/features/audit/services/audit.service";
+import { DIRECT_UPLOAD_REVIEW_REMARKS } from "@/features/monthly-sir/constants/monthly-sir";
 import {
   isPcountUploadStatus,
   PCOUNT_VARIANCE_REMARK,
@@ -16,6 +17,7 @@ import {
   type PcountUploadAllowance,
 } from "@/features/monthly-sir/lib/pcount-upload-allowance";
 import { monthlySirRepository } from "@/features/monthly-sir/repositories/monthly-sir.repository";
+import { monthlySirPolicyService } from "@/features/monthly-sir/services/monthly-sir-policy.service";
 import {
   buildMonthlySirBlankTemplate,
   buildMonthlySirTemplate,
@@ -43,7 +45,7 @@ async function assertBranchAccess(
   }
 }
 
-async function loadUploadCountsForAllowance(input: {
+async function loadFreeSlotCountsForAllowance(input: {
   tenantId: string;
   userId: string;
   branchId: string;
@@ -56,35 +58,51 @@ async function loadUploadCountsForAllowance(input: {
   switch (role) {
     case "unlimited":
     case "none":
-      return { windows, tlUploadedInMonth: 0, psUploadedH1: 0, psUploadedH2: 0 };
+      return {
+        windows,
+        tlFreeStartsInMonth: 0,
+        psFreeStartsH1: 0,
+        psFreeStartsH2: 0,
+      };
     case "tl": {
-      const tlUploadedInMonth = await monthlySirRepository.countUploadedByRequester(
-        input.tenantId,
-        {
-          requestedById: input.userId,
-          branchId: input.branchId,
-          uploadedAtFrom: windows.monthStart,
-          uploadedAtToExclusive: windows.monthEndExclusive,
-        },
-      );
-      return { windows, tlUploadedInMonth, psUploadedH1: 0, psUploadedH2: 0 };
+      const tlFreeStartsInMonth =
+        await monthlySirRepository.countFreeSlotStartsByRequester(
+          input.tenantId,
+          {
+            requestedById: input.userId,
+            branchId: input.branchId,
+            createdAtFrom: windows.monthStart,
+            createdAtToExclusive: windows.monthEndExclusive,
+          },
+        );
+      return {
+        windows,
+        tlFreeStartsInMonth,
+        psFreeStartsH1: 0,
+        psFreeStartsH2: 0,
+      };
     }
     case "ps": {
-      const [psUploadedH1, psUploadedH2] = await Promise.all([
-        monthlySirRepository.countUploadedByRequester(input.tenantId, {
+      const [psFreeStartsH1, psFreeStartsH2] = await Promise.all([
+        monthlySirRepository.countFreeSlotStartsByRequester(input.tenantId, {
           requestedById: input.userId,
           branchId: input.branchId,
-          uploadedAtFrom: windows.h1Start,
-          uploadedAtToExclusive: windows.h1EndExclusive,
+          createdAtFrom: windows.h1Start,
+          createdAtToExclusive: windows.h1EndExclusive,
         }),
-        monthlySirRepository.countUploadedByRequester(input.tenantId, {
+        monthlySirRepository.countFreeSlotStartsByRequester(input.tenantId, {
           requestedById: input.userId,
           branchId: input.branchId,
-          uploadedAtFrom: windows.h2Start,
-          uploadedAtToExclusive: windows.h2EndExclusive,
+          createdAtFrom: windows.h2Start,
+          createdAtToExclusive: windows.h2EndExclusive,
         }),
       ]);
-      return { windows, tlUploadedInMonth: 0, psUploadedH1, psUploadedH2 };
+      return {
+        windows,
+        tlFreeStartsInMonth: 0,
+        psFreeStartsH1,
+        psFreeStartsH2,
+      };
     }
     default: {
       const _exhaustive: never = role;
@@ -169,19 +187,24 @@ export const monthlySirService = {
     const role = resolvePcountAllowanceRole(input.permissions, input.roleSlugs, {
       unrestricted: input.unrestricted,
     });
-    const counts = await loadUploadCountsForAllowance({
-      tenantId: input.tenantId,
-      userId: input.userId,
-      branchId: input.branchId,
-      role,
-      at: input.at,
-    });
+    const [counts, policy] = await Promise.all([
+      loadFreeSlotCountsForAllowance({
+        tenantId: input.tenantId,
+        userId: input.userId,
+        branchId: input.branchId,
+        role,
+        at: input.at,
+      }),
+      monthlySirPolicyService.getPolicy(input.tenantId),
+    ]);
     return resolvePcountUploadAllowance({
       role,
       manilaDay: counts.windows.day,
-      tlUploadedInMonth: counts.tlUploadedInMonth,
-      psUploadedH1: counts.psUploadedH1,
-      psUploadedH2: counts.psUploadedH2,
+      tlFreeStartsInMonth: counts.tlFreeStartsInMonth,
+      psFreeStartsH1: counts.psFreeStartsH1,
+      psFreeStartsH2: counts.psFreeStartsH2,
+      tlMonthlyFreeSlots: policy.tlMonthlyFreeSlots,
+      psMonthlyFreeSlots: policy.psMonthlyFreeSlots,
     });
   },
 
@@ -240,6 +263,7 @@ export const monthlySirService = {
   /**
    * Direct path while TL/PS free slots remain (or unlimited manage roles):
    * creates an already-approved request and linked in-progress count session.
+   * TL/PS free Starts set `usesFreeSlot` immediately (slot consumed on Start).
    */
   async startDirectUpload(input: {
     tenantId: string;
@@ -271,6 +295,9 @@ export const monthlySirService = {
       );
     }
 
+    const usesFreeSlot =
+      allowance.role === "tl" || allowance.role === "ps";
+
     const countSession = await createLinkedCountSession({
       tenantId: input.tenantId,
       userId: input.userId,
@@ -284,8 +311,9 @@ export const monthlySirService = {
       status: "approved",
       reviewedById: input.userId,
       reviewedAt: new Date(),
-      reviewRemarks: "Direct upload allowance",
+      reviewRemarks: DIRECT_UPLOAD_REVIEW_REMARKS,
       stockCountSessionId: countSession.id,
+      usesFreeSlot,
     });
     if (!request.stockCountSessionId) {
       throw new Error("Count session was not linked to this request");
@@ -300,6 +328,7 @@ export const monthlySirService = {
         branchId: input.branchId,
         stockCountSessionId: countSession.id,
         allowanceRole: allowance.role,
+        usesFreeSlot,
       },
     });
     return request;

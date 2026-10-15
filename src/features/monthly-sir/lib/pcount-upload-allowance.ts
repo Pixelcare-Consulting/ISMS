@@ -1,3 +1,7 @@
+import {
+  DEFAULT_PS_MONTHLY_FREE_SLOTS,
+  DEFAULT_TL_MONTHLY_FREE_SLOTS,
+} from "@/features/monthly-sir/constants/monthly-sir";
 import { manilaMonthWindow } from "@/features/orders/utils/manila-calendar";
 
 export type PcountAllowanceRole = "unlimited" | "tl" | "ps" | "none";
@@ -38,15 +42,39 @@ export interface ResolvePcountUploadAllowanceInput {
   role: PcountAllowanceRole;
   /** Manila calendar day of month (1–31). */
   manilaDay: number;
-  /** Successful uploads (`uploadedAt` set) in the whole Manila month (TL). */
-  tlUploadedInMonth?: number;
-  /** Successful uploads with `uploadedAt` in days 1–15 (PS). */
-  psUploadedH1?: number;
-  /** Successful uploads with `uploadedAt` in days 16–end (PS). */
-  psUploadedH2?: number;
+  /**
+   * Free/direct Starts (`usesFreeSlot`) in the whole Manila month (TL).
+   * Does not include request+approval extras.
+   */
+  tlFreeStartsInMonth?: number;
+  /** Free/direct Starts with `createdAt` in days 1–15 (PS). */
+  psFreeStartsH1?: number;
+  /** Free/direct Starts with `createdAt` in days 16–end (PS). */
+  psFreeStartsH2?: number;
+  /** Tenant TL monthly free-slot budget (defaults to 1). */
+  tlMonthlyFreeSlots?: number;
+  /** Tenant PS monthly free-slot budget (defaults to 2; split across halves). */
+  psMonthlyFreeSlots?: number;
 }
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/** Split a PS monthly budget across H1 (ceil) and H2 (floor). */
+export function splitPsMonthlyFreeSlots(monthlyFreeSlots: number): {
+  h1Quota: number;
+  h2Quota: number;
+} {
+  const total = Math.max(0, Math.floor(monthlyFreeSlots));
+  return {
+    h1Quota: Math.ceil(total / 2),
+    h2Quota: Math.floor(total / 2),
+  };
+}
+
+function sanitizeSlotBudget(value: number | undefined, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.max(0, Math.floor(value));
+}
 
 /** Resolve Manila month + PS half-month windows for allowance checks. */
 export function pcountMonthWindows(at: Date = new Date()): PcountMonthWindows {
@@ -116,13 +144,13 @@ function noneAllowance(): PcountUploadAllowance {
     slotsRemainingMonth: 0,
     slotsTotalMonth: 0,
     activeHalf: null,
-    message: "Your role has no free P-COUNT uploads. Submit a request for approval.",
+    message: "No free uploads. Submit a request for approval.",
   };
 }
 
 /**
  * Pure allowance math for TL / PS Manila calendars.
- * Slot consumption is counted from successful uploads only (callers pass counts).
+ * Slot consumption is counted from free/direct Starts only (callers pass counts).
  */
 export function resolvePcountUploadAllowance(
   input: ResolvePcountUploadAllowanceInput,
@@ -133,8 +161,12 @@ export function resolvePcountUploadAllowance(
   if (role === "none") return noneAllowance();
 
   if (role === "tl") {
-    const uploaded = Math.max(0, input.tlUploadedInMonth ?? 0);
-    const remaining = Math.max(0, 1 - uploaded);
+    const budget = sanitizeSlotBudget(
+      input.tlMonthlyFreeSlots,
+      DEFAULT_TL_MONTHLY_FREE_SLOTS,
+    );
+    const used = Math.max(0, input.tlFreeStartsInMonth ?? 0);
+    const remaining = Math.max(0, budget - used);
     const canDirectUpload = remaining > 0;
     return {
       role: "tl",
@@ -143,19 +175,24 @@ export function resolvePcountUploadAllowance(
       mustRequest: !canDirectUpload,
       slotsRemainingToday: remaining,
       slotsRemainingMonth: remaining,
-      slotsTotalMonth: 1,
+      slotsTotalMonth: budget,
       activeHalf: null,
       message: canDirectUpload
-        ? "You have 1 free P-COUNT upload this month for this branch."
-        : "Your free monthly P-COUNT upload is used. Submit a request for an extra upload.",
+        ? `${budget} free upload${budget === 1 ? "" : "s"} this month for this branch.`
+        : "Free upload used. Request an extra upload.",
     };
   }
 
   // role === "ps"
-  const uploadedH1 = Math.max(0, input.psUploadedH1 ?? 0);
-  const uploadedH2 = Math.max(0, input.psUploadedH2 ?? 0);
-  const h1Remaining = Math.max(0, 1 - uploadedH1);
-  const h2Remaining = Math.max(0, 1 - uploadedH2);
+  const monthlyBudget = sanitizeSlotBudget(
+    input.psMonthlyFreeSlots,
+    DEFAULT_PS_MONTHLY_FREE_SLOTS,
+  );
+  const { h1Quota, h2Quota } = splitPsMonthlyFreeSlots(monthlyBudget);
+  const usedH1 = Math.max(0, input.psFreeStartsH1 ?? 0);
+  const usedH2 = Math.max(0, input.psFreeStartsH2 ?? 0);
+  const h1Remaining = Math.max(0, h1Quota - usedH1);
+  const h2Remaining = Math.max(0, h2Quota - usedH2);
   const slotsRemainingMonth = h1Remaining + h2Remaining;
   const activeHalf: PcountHalfWindow = manilaDay <= 15 ? "h1" : "h2";
   const activeRemaining = activeHalf === "h1" ? h1Remaining : h2Remaining;
@@ -166,19 +203,18 @@ export function resolvePcountUploadAllowance(
   if (canDirectUpload) {
     message =
       activeHalf === "h1"
-        ? "You can upload once during days 1–15 for this branch."
-        : "You can upload once during days 16–end of month for this branch.";
+        ? `${activeRemaining} free upload${activeRemaining === 1 ? "" : "s"} in days 1–15.`
+        : `${activeRemaining} free upload${activeRemaining === 1 ? "" : "s"} in days 16–end.`;
     if (otherRemaining > 0 && activeHalf === "h1") {
-      message += " Your second free slot opens on the 16th.";
+      message += " More open on the 16th.";
     }
   } else if (otherRemaining > 0) {
     message =
       activeHalf === "h1"
-        ? "Your days 1–15 free upload is used. Your second free slot opens on the 16th, or submit a request for an extra upload now."
-        : "Your days 16–end free upload is used. Your first-half slot cannot be used after the 15th — submit a request for an extra upload.";
+        ? "Days 1–15 used. Next free slot opens on the 16th, or request an extra now."
+        : "Days 16–end used. Request an extra upload.";
   } else {
-    message =
-      "Both free P-COUNT uploads this month are used. Submit a request for an extra upload.";
+    message = "Both free uploads used. Request an extra upload.";
   }
 
   return {
@@ -188,7 +224,7 @@ export function resolvePcountUploadAllowance(
     mustRequest: !canDirectUpload,
     slotsRemainingToday: activeRemaining,
     slotsRemainingMonth,
-    slotsTotalMonth: 2,
+    slotsTotalMonth: monthlyBudget,
     activeHalf,
     message,
   };

@@ -2,6 +2,7 @@ import {
   pcountMonthWindows,
   resolvePcountAllowanceRole,
   resolvePcountUploadAllowance,
+  splitPsMonthlyFreeSlots,
 } from "@/features/monthly-sir/lib/pcount-upload-allowance";
 
 /** Build a UTC instant that is `day` of `month`/`year` at noon Asia/Manila. */
@@ -45,12 +46,21 @@ describe("pcountMonthWindows", () => {
   });
 });
 
+describe("splitPsMonthlyFreeSlots", () => {
+  it("splits even and odd monthly budgets across halves", () => {
+    expect(splitPsMonthlyFreeSlots(2)).toEqual({ h1Quota: 1, h2Quota: 1 });
+    expect(splitPsMonthlyFreeSlots(4)).toEqual({ h1Quota: 2, h2Quota: 2 });
+    expect(splitPsMonthlyFreeSlots(3)).toEqual({ h1Quota: 2, h2Quota: 1 });
+    expect(splitPsMonthlyFreeSlots(1)).toEqual({ h1Quota: 1, h2Quota: 0 });
+  });
+});
+
 describe("resolvePcountUploadAllowance — TL", () => {
-  it("allows one direct upload per month then becomes request-only", () => {
+  it("allows direct starts up to the monthly free budget then becomes request-only", () => {
     const open = resolvePcountUploadAllowance({
       role: "tl",
       manilaDay: 12,
-      tlUploadedInMonth: 0,
+      tlFreeStartsInMonth: 0,
     });
     expect(open.canDirectUpload).toBe(true);
     expect(open.mustRequest).toBe(false);
@@ -61,7 +71,7 @@ describe("resolvePcountUploadAllowance — TL", () => {
     const exhausted = resolvePcountUploadAllowance({
       role: "tl",
       manilaDay: 28,
-      tlUploadedInMonth: 1,
+      tlFreeStartsInMonth: 1,
     });
     expect(exhausted.canDirectUpload).toBe(false);
     expect(exhausted.mustRequest).toBe(true);
@@ -69,15 +79,27 @@ describe("resolvePcountUploadAllowance — TL", () => {
     expect(exhausted.slotsRemainingMonth).toBe(0);
     expect(exhausted.message).toMatch(/request/i);
   });
+
+  it("honors a higher tenant TL free-slot budget", () => {
+    const mid = resolvePcountUploadAllowance({
+      role: "tl",
+      manilaDay: 5,
+      tlFreeStartsInMonth: 1,
+      tlMonthlyFreeSlots: 2,
+    });
+    expect(mid.canDirectUpload).toBe(true);
+    expect(mid.slotsRemainingToday).toBe(1);
+    expect(mid.slotsTotalMonth).toBe(2);
+  });
 });
 
 describe("resolvePcountUploadAllowance — PS windows", () => {
-  it("allows H1 direct upload only on days 1–15", () => {
+  it("allows H1 direct start only on days 1–15", () => {
     const early = resolvePcountUploadAllowance({
       role: "ps",
       manilaDay: 5,
-      psUploadedH1: 0,
-      psUploadedH2: 0,
+      psFreeStartsH1: 0,
+      psFreeStartsH2: 0,
     });
     expect(early.activeHalf).toBe("h1");
     expect(early.canDirectUpload).toBe(true);
@@ -88,8 +110,8 @@ describe("resolvePcountUploadAllowance — PS windows", () => {
     const h1UsedInH1 = resolvePcountUploadAllowance({
       role: "ps",
       manilaDay: 10,
-      psUploadedH1: 1,
-      psUploadedH2: 0,
+      psFreeStartsH1: 1,
+      psFreeStartsH2: 0,
     });
     expect(h1UsedInH1.canDirectUpload).toBe(false);
     expect(h1UsedInH1.mustRequest).toBe(true);
@@ -98,12 +120,12 @@ describe("resolvePcountUploadAllowance — PS windows", () => {
     expect(h1UsedInH1.message).toMatch(/16th/);
   });
 
-  it("allows H2 direct upload only on days 16–end", () => {
+  it("allows H2 direct start only on days 16–end", () => {
     const late = resolvePcountUploadAllowance({
       role: "ps",
       manilaDay: 20,
-      psUploadedH1: 0,
-      psUploadedH2: 0,
+      psFreeStartsH1: 0,
+      psFreeStartsH2: 0,
     });
     expect(late.activeHalf).toBe("h2");
     expect(late.canDirectUpload).toBe(true);
@@ -114,39 +136,53 @@ describe("resolvePcountUploadAllowance — PS windows", () => {
     const h2Used = resolvePcountUploadAllowance({
       role: "ps",
       manilaDay: 22,
-      psUploadedH1: 0,
-      psUploadedH2: 1,
+      psFreeStartsH1: 0,
+      psFreeStartsH2: 1,
     });
     expect(h2Used.canDirectUpload).toBe(false);
     expect(h2Used.mustRequest).toBe(true);
     expect(h2Used.slotsRemainingToday).toBe(0);
-    expect(h2Used.message).toMatch(/first-half|request/i);
+    expect(h2Used.message).toMatch(/request/i);
   });
 
-  it("becomes request-only when both PS slots are consumed", () => {
+  it("becomes request-only when both PS free starts are consumed", () => {
     const both = resolvePcountUploadAllowance({
       role: "ps",
       manilaDay: 18,
-      psUploadedH1: 1,
-      psUploadedH2: 1,
+      psFreeStartsH1: 1,
+      psFreeStartsH2: 1,
     });
     expect(both.canDirectUpload).toBe(false);
     expect(both.mustRequest).toBe(true);
     expect(both.slotsRemainingMonth).toBe(0);
-    expect(both.message).toMatch(/Both free/i);
+    expect(both.message).toMatch(/Both free uploads used/i);
   });
 
   it("does not let an unused H2 slot be used during H1", () => {
     const mid = resolvePcountUploadAllowance({
       role: "ps",
       manilaDay: 15,
-      psUploadedH1: 1,
-      psUploadedH2: 0,
+      psFreeStartsH1: 1,
+      psFreeStartsH2: 0,
     });
     expect(mid.activeHalf).toBe("h1");
     expect(mid.canDirectUpload).toBe(false);
     expect(mid.slotsRemainingToday).toBe(0);
     expect(mid.slotsRemainingMonth).toBe(1);
+  });
+
+  it("honors a higher tenant PS free-slot budget across halves", () => {
+    const open = resolvePcountUploadAllowance({
+      role: "ps",
+      manilaDay: 8,
+      psFreeStartsH1: 1,
+      psFreeStartsH2: 0,
+      psMonthlyFreeSlots: 4,
+    });
+    expect(open.slotsTotalMonth).toBe(4);
+    expect(open.slotsRemainingToday).toBe(1); // H1 quota 2, used 1
+    expect(open.canDirectUpload).toBe(true);
+    expect(open.slotsRemainingMonth).toBe(3);
   });
 });
 
