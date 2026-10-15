@@ -33,7 +33,8 @@ const modelSchema = z.object({
 
 const priceListSchema = z.object({
   modelId: z.string().min(1),
-  amount: z.coerce.number().positive(),
+  // 0 is allowed for free items; negatives are not. No coerce: "" / null would become 0.
+  amount: z.number().nonnegative(),
   periodStart: z.string().min(1),
   periodEnd: z.string().min(1),
   packageTypeId: z.string().optional().nullable(),
