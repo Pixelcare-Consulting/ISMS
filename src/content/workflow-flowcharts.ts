@@ -195,6 +195,7 @@ export const WORKFLOW_SWIMLANE_CHARTS: WorkflowChart[] = [
       "Manual: Product Specialist submits → Supply Planning (Team Leader may optionally edit).",
       "Auto replenish: Team Leader → Supply Planning.",
       "Special: Team Leader creates → Supply Planning.",
+      "After SP approval, ISMS queues SAP ITR (Inventory Transfer Request) and SO (Sales Order); a local delivery opens as Process III.A entry.",
     ],
   },
   {
@@ -227,7 +228,11 @@ export const WORKFLOW_SWIMLANE_CHARTS: WorkflowChart[] = [
       { from: "dispatch", to: "receive" },
       { from: "receive", to: "resolve" },
     ],
-    callouts: ["Units move In transit → On hand when the branch accepts."],
+    callouts: [
+      "Process III.A entry is the local delivery opened after approved order → ITR/SO.",
+      "Units move In transit → On hand when the branch accepts.",
+      "Partial accept then return-to-warehouse queues Inventory Transfer (OWTR) for SAP (mock until live).",
+    ],
   },
   {
     id: "transfers",

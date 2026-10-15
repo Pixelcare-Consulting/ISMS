@@ -122,6 +122,7 @@ enum SapIntegrationJobType {
   inventory_adjustment
   inventory_posting
   delivery_sync_inbound
+  delivery_partial_return
 }
 
 enum ReturnRequestStatus {

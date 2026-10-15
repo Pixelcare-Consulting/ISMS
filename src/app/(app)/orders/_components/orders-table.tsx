@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { useOrdersCreateWorkspace } from "@/app/(app)/orders/_components/orders-create-workspace-context";
 import {
+  adminBulkCancelOrdersAction,
   approveOrderAction,
   deleteDraftOrderAction,
   rejectOrderAction,
@@ -16,6 +17,7 @@ import {
   canApproveOrder,
   canEditOrderLines,
   isOrderPendingApproval,
+  isSuperAdminOrderOverride,
 } from "@/features/orders/constants/order-workflow";
 import { OrderDetailsDialog } from "@/app/(app)/orders/_components/order-details-dialog";
 import { OrderWorkflowDialog } from "@/app/(app)/orders/_components/order-workflow-dialog";
@@ -167,6 +169,7 @@ export function OrdersTable({
   const [detailsOrder, setDetailsOrder] = useState<OrderRow | null>(null);
   const [editingOrder, setEditingOrder] = useState<EditableOrder | null>(null);
   const [draftToDelete, setDraftToDelete] = useState<OrderRow | null>(null);
+  const [bulkCancelOpen, setBulkCancelOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [processingAction, setProcessingAction] = useState<"approve" | "reject" | null>(
     null,
@@ -211,6 +214,11 @@ export function OrdersTable({
   );
 
   const selection = useTableSelection(filtered.map((o) => o.id));
+  const canSuperAdminBulkCancel = isSuperAdminOrderOverride(viewerRoleSlugs);
+  const selectedOrderIds = useMemo(() => {
+    const visibleIds = new Set(filtered.map((o) => o.id));
+    return selection.selectedIds.filter((id) => visibleIds.has(id));
+  }, [filtered, selection.selectedIds]);
 
   function handleApprove(input?: {
     comment?: string;
@@ -272,9 +280,21 @@ export function OrdersTable({
         toolbarActions={
           <>
             {selection.selectedCount > 0 ? (
-              <Button variant="secondary" onClick={selection.clearSelection}>
-                {selection.selectedCount} selected
-              </Button>
+              <>
+                <Button variant="secondary" onClick={selection.clearSelection}>
+                  {selection.selectedCount} selected
+                </Button>
+                {canSuperAdminBulkCancel ? (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    disabled={pending}
+                    onClick={() => setBulkCancelOpen(true)}
+                  >
+                    Cancel selected
+                  </Button>
+                ) : null}
+              </>
             ) : null}
             {canAccessSuggestedOrders ? (
               <Button variant="outline" asChild>
@@ -518,6 +538,59 @@ export function OrdersTable({
               }
               toast.success("Draft discarded");
               setDraftToDelete(null);
+              router.refresh();
+            });
+          }}
+        />
+      ) : null}
+      {bulkCancelOpen ? (
+        <DeleteConfirmDialog
+          open
+          onOpenChange={(open) => {
+            if (!open && !pending) setBulkCancelOpen(false);
+          }}
+          title="Cancel selected orders?"
+          description={`This applies to ${selection.selectedCount} selected order${selection.selectedCount === 1 ? "" : "s"}. Unsubmitted drafts are discarded permanently. Pending orders are marked Cancelled and move to Order History. Approved, rejected, cancelled, or delivery-linked orders are skipped.`}
+          pending={pending}
+          confirmLabel="Cancel selected"
+          onConfirm={() => {
+            const orderIds = selectedOrderIds;
+            if (orderIds.length === 0) return;
+            startTransition(async () => {
+              const result = await adminBulkCancelOrdersAction(orderIds);
+              if (!("success" in result)) {
+                toast.error(result.error);
+                return;
+              }
+              const parts: string[] = [];
+              if (result.discarded > 0) {
+                parts.push(
+                  `Discarded ${result.discarded} draft${result.discarded === 1 ? "" : "s"}`,
+                );
+              }
+              if (result.cancelled > 0) {
+                parts.push(
+                  `Cancelled ${result.cancelled} order${result.cancelled === 1 ? "" : "s"}`,
+                );
+              }
+              const summary = parts.join("; ");
+              if (result.skipped.length > 0) {
+                const skipDetail = result.skipped
+                  .slice(0, 3)
+                  .map((s) => `${s.orderNumber}: ${s.reason}`)
+                  .join(" · ");
+                const more =
+                  result.skipped.length > 3
+                    ? ` (+${result.skipped.length - 3} more)`
+                    : "";
+                toast.success(summary, {
+                  description: `Skipped: ${skipDetail}${more}`,
+                });
+              } else {
+                toast.success(summary);
+              }
+              setBulkCancelOpen(false);
+              selection.clearSelection();
               router.refresh();
             });
           }}

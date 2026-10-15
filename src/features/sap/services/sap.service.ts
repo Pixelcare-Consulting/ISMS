@@ -1,5 +1,5 @@
 import { auditService } from "@/features/audit/services/audit.service";
-import { logisticsService } from "@/features/logistics/services/logistics.service";
+import { resolveSapOutboundPort } from "@/features/sap/adapters/resolve-sap-outbound";
 import { SAP_REFERENCE_TYPES } from "@/features/sap/constants/sap-job-types";
 import {
   sapIntegrationRepository,
@@ -13,10 +13,6 @@ import { prisma } from "@/lib/database/client";
 import type { Prisma, SapIntegrationJob } from "@prisma/client";
 
 const RETRY_DELAY_MS = 30_000;
-
-function mockSapDocRef(jobType: string, referenceId: string) {
-  return `SAP-${jobType.toUpperCase().slice(0, 3)}-${referenceId.slice(-8).toUpperCase()}`;
-}
 
 export interface InventoryPostingLinePayload {
   varianceId: string;
@@ -155,77 +151,6 @@ async function postInventoryPostingViaServiceLayer(
   return `IP-${docEntry}`;
 }
 
-async function processApprovedOrderJob(
-  tenantId: string,
-  userId: string | undefined,
-  job: SapIntegrationJob,
-) {
-  const orderId = job.referenceId;
-  if (!orderId) throw new Error("Missing order reference");
-
-  const order = await prisma.branchOrder.findFirst({
-    where: { id: orderId, tenantId },
-    include: {
-      branch: { select: { name: true, sapCode: true } },
-      details: {
-        include: {
-          model: { select: { skuCode: true, name: true, cbm: true } },
-        },
-      },
-    },
-  });
-  if (!order) throw new Error("Order not found");
-
-  // Stand-in for Process II "Auto Create ITR/SO", then a copy toward IT/DR.
-  // The document reference is not an inventory posting and does not move units.
-  // ITR and SO are the SAP document names on the signed sheet. They are not
-  // tagged here as Consignment or Outright.
-  const sapDocRef = mockSapDocRef("approved_order", orderId);
-
-  await prisma.branchOrder.update({
-    where: { id: orderId },
-    data: { sapDocRef },
-  });
-
-  let delivery = await prisma.branchDelivery.findFirst({
-    where: { tenantId, orderId },
-  });
-
-  if (!delivery && userId) {
-    delivery = await logisticsService.createDeliveryFromApprovedOrder(tenantId, userId, {
-      id: order.id,
-      branchId: order.branchId,
-      branchName: order.branch.name,
-      orderNumber: order.orderNumber,
-    });
-  }
-
-  if (delivery) {
-    await prisma.branchDelivery.update({
-      where: { id: delivery.id },
-      data: { sapDocRef },
-    });
-  }
-
-  await sapIntegrationRepository.markCompleted(job.id, sapDocRef);
-
-  await auditService.log({
-    tenantId,
-    userId,
-    action: "sap.order_processed",
-    entityType: SAP_REFERENCE_TYPES.BranchOrder,
-    entityId: orderId,
-    metadata: {
-      sapDocRef,
-      orderNumber: order.orderNumber,
-      deliveryId: delivery?.id,
-      jobId: job.id,
-    },
-  });
-
-  return sapDocRef;
-}
-
 /**
  * Process a queued Inventory Posting only when Service Layer is live.
  * Never fabricates a success doc ref.
@@ -289,21 +214,14 @@ async function processInventoryPostingJob(
   return sapDocRef;
 }
 
-async function processStubJob(
+async function processLegacyStubJob(
   tenantId: string,
   userId: string | undefined,
   job: SapIntegrationJob,
   entityType: string,
 ) {
   const refId = job.referenceId ?? job.id;
-  const sapDocRef = mockSapDocRef(job.jobType, refId);
-
-  if (job.referenceType === SAP_REFERENCE_TYPES.BranchPullout && job.referenceId) {
-    await prisma.branchPullout.update({
-      where: { id: job.referenceId, tenantId },
-      data: { sapDocRef },
-    });
-  }
+  const sapDocRef = `SAP-${job.jobType.toUpperCase().slice(0, 3)}-${refId.slice(-8).toUpperCase()}`;
 
   await sapIntegrationRepository.markCompleted(job.id, sapDocRef);
 
@@ -328,7 +246,7 @@ export const sapService = {
     return sapIntegrationRepository.listJobs(tenantId, pagination, sort);
   },
 
-  /** CSV step 11 — emit approved order to SAP queue. */
+  /** Process II — enqueue ITR (OWTQ) / SO (ORDR) after SP approval. */
   async emitApprovedOrder(
     tenantId: string,
     order: {
@@ -356,7 +274,7 @@ export const sapService = {
     });
   },
 
-  /** Process D — pull-out ITR sync (stub). */
+  /** Pull-out → Inventory Transfer Request (ITR / OWTQ). */
   async emitPulloutItr(
     tenantId: string,
     pullout: { id: string; pulloutNo: string; branchId: string; warehouseId: string },
@@ -368,6 +286,37 @@ export const sapService = {
       referenceType: SAP_REFERENCE_TYPES.BranchPullout,
       referenceId: pullout.id,
       payload: pullout,
+    });
+  },
+
+  /**
+   * Partial / rejected delivery return-to-warehouse → Inventory Transfer (OWTR).
+   * Queue only; local STK/DIT behavior is unchanged in delivery-posting.
+   */
+  async emitPartialDeliveryReturn(
+    tenantId: string,
+    input: {
+      deliveryId: string;
+      deliveryNo?: string;
+      branchId: string;
+      returnedSerialIds: string[];
+      priorStatus: string;
+    },
+  ) {
+    return enqueueJob({
+      tenantId,
+      jobType: "delivery_partial_return",
+      idempotencyKey: `delivery_partial_return:${input.deliveryId}:${input.returnedSerialIds.length}`,
+      referenceType: SAP_REFERENCE_TYPES.BranchDelivery,
+      referenceId: input.deliveryId,
+      payload: {
+        deliveryId: input.deliveryId,
+        deliveryNo: input.deliveryNo ?? null,
+        branchId: input.branchId,
+        returnedSerialIds: input.returnedSerialIds,
+        priorStatus: input.priorStatus,
+        sapDocument: "Inventory Transfer (OWTR)",
+      },
     });
   },
 
@@ -473,10 +422,11 @@ export const sapService = {
     };
   },
 
-  /** Process pending/failed jobs with retry handling. */
+  /** Process pending/failed jobs with retry handling via SapOutboundPort. */
   async processPendingJobs(tenantId: string, userId?: string, limit = 10) {
     const jobs = await sapIntegrationRepository.claimPendingJobsSafe(tenantId, limit);
     const results: { jobId: string; status: string; sapDocRef?: string; error?: string }[] = [];
+    const outbound = resolveSapOutboundPort();
 
     for (const job of jobs) {
       const updated = job;
@@ -484,7 +434,25 @@ export const sapService = {
         let sapDocRef: string;
         switch (updated.jobType) {
           case "approved_order":
-            sapDocRef = await processApprovedOrderJob(tenantId, userId, updated);
+            sapDocRef = await outbound.createApprovedOrderItrAndSo({
+              tenantId,
+              userId,
+              job: updated,
+            });
+            break;
+          case "pullout_itr":
+            sapDocRef = await outbound.createPulloutItr({
+              tenantId,
+              userId,
+              job: updated,
+            });
+            break;
+          case "delivery_partial_return":
+            sapDocRef = await outbound.createPartialDeliveryInventoryTransfer({
+              tenantId,
+              userId,
+              job: updated,
+            });
             break;
           case "inventory_posting":
             sapDocRef = await processInventoryPostingJob(tenantId, userId, updated);
@@ -493,18 +461,10 @@ export const sapService = {
             throw new Error(
               "Legacy inventory_adjustment jobs no longer auto-complete with a mock SAP document. Re-post the count session or process via inventory_posting once Service Layer is connected.",
             );
-          case "pullout_itr":
-            sapDocRef = await processStubJob(
-              tenantId,
-              userId,
-              updated,
-              SAP_REFERENCE_TYPES.BranchPullout,
-            );
-            break;
           case "sales_summary":
           case "inventory_sync_inbound":
           case "delivery_sync_inbound":
-            sapDocRef = await processStubJob(tenantId, userId, updated, updated.jobType);
+            sapDocRef = await processLegacyStubJob(tenantId, userId, updated, updated.jobType);
             break;
           default: {
             const _exhaustive: never = updated.jobType;

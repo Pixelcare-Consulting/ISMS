@@ -26,6 +26,7 @@ import {
   canApproveOrder,
   canEditOrderLines,
   getOrderQueueStatuses,
+  isSuperAdminOrderOverride,
 } from "@/features/orders/constants/order-workflow";
 import {
   hasPermission,
@@ -361,6 +362,34 @@ export async function deleteDraftOrderAction(orderId: string) {
     return { success: true as const };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to delete draft order" };
+  }
+}
+
+export async function adminBulkCancelOrdersAction(orderIds: string[]) {
+  const session = await requireAuth();
+  const roleSlugs = session.user.roleSlugs ?? [];
+  if (!isSuperAdminOrderOverride(roleSlugs)) {
+    return { error: "Only Super Admin can cancel selected orders in bulk." };
+  }
+
+  const uniqueIds = [...new Set(orderIds.filter(Boolean))];
+  if (uniqueIds.length === 0) {
+    return { error: "Select at least one order." };
+  }
+
+  try {
+    const result = await orderService.adminBulkCancelOrDiscard(
+      session.user.tenantId,
+      session.user.id,
+      uniqueIds,
+      { roleSlugs },
+    );
+    revalidateOrderPaths();
+    return { success: true as const, ...result };
+  } catch (e) {
+    return {
+      error: e instanceof Error ? e.message : "Failed to cancel or discard selected orders",
+    };
   }
 }
 

@@ -296,6 +296,37 @@ export const orderRepository = {
     });
   },
 
+  findManyByIds(tenantId: string, ids: string[]) {
+    if (ids.length === 0) return Promise.resolve([]);
+    return prisma.branchOrder.findMany({
+      where: { tenantId, id: { in: ids } },
+      include: {
+        branch: { select: { name: true } },
+        details: { include: { model: { select: { skuCode: true } } } },
+        deliveries: { select: { id: true }, take: 1 },
+      },
+    });
+  },
+
+  /** Race-safe pending → cancelled when still unlinked (Super Admin bulk cancel). */
+  forceCancelFromPending(
+    tenantId: string,
+    orderId: string,
+    fromStatus: BranchOrderStatus,
+  ) {
+    return prisma.branchOrder.updateMany({
+      where: {
+        id: orderId,
+        tenantId,
+        status: fromStatus,
+        processedAt: null,
+        sapDocRef: null,
+        deliveries: { none: {} },
+      },
+      data: { status: "cancelled" },
+    });
+  },
+
   updateStatus(
     tenantId: string,
     id: string,

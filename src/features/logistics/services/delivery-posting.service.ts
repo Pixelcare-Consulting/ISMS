@@ -11,15 +11,17 @@ import {
   type DeliveryPostingView,
   type WarehouseHold,
 } from "@/features/logistics/services/delivery-posting.planner";
+import { sapService } from "@/features/sap/services/sap.service";
 
 /**
  * ISMS warehouse and branch movements for a delivery.
  *
  * Process II ends when Supply Planning approves: the approved_order job is the
- * stand-in for SAP "Auto Create ITR/SO" and only stores a document reference.
- * It does not move stock. These posts run later, in one transaction each:
- * dispatch (warehouse → DIT), accept (DIT → STK), and reject-after-dispatch
- * (unaccepted DIT back to the warehouse location stored on the line).
+ * stand-in for SAP ITR (OWTQ) + SO (ORDR) and only stores a document reference.
+ * Local BranchDelivery is Process III.A entry. These posts run later, in one
+ * transaction each: dispatch (warehouse → DIT), accept (DIT → STK), and
+ * reject-after-dispatch (unaccepted DIT back to the warehouse location on the
+ * line). Return-to-warehouse also queues Inventory Transfer (OWTR) for SAP.
  */
 
 async function workflowCodeId(
@@ -416,6 +418,8 @@ export const deliveryPostingService = {
       currentCode,
     );
 
+    let deliveryNo: string | undefined;
+
     try {
     await prisma.$transaction(async (tx) => {
       const claimed = await tx.branchDelivery.updateMany({
@@ -457,6 +461,7 @@ export const deliveryPostingService = {
           where: { id: input.deliveryId, tenantId: input.tenantId },
           select: { deliveryNo: true },
         });
+        deliveryNo = header?.deliveryNo;
         await tx.serialNumberHistory.createMany({
           data: plan.returns.map((row) => ({
             tenantId: input.tenantId,
@@ -485,6 +490,18 @@ export const deliveryPostingService = {
     });
     } catch (error) {
       throw claimError(error);
+    }
+
+    // Queue SAP Inventory Transfer (OWTR) for return-to-warehouse (mock until live).
+    // Does not change local STK/DIT outcome above.
+    if (plan.returns.length > 0) {
+      await sapService.emitPartialDeliveryReturn(input.tenantId, {
+        deliveryId: input.deliveryId,
+        deliveryNo,
+        branchId: preview.branchId,
+        returnedSerialIds: plan.returns.map((row) => row.serialNumberId),
+        priorStatus: preview.status,
+      });
     }
 
     return { returnedCount: plan.returns.length, idempotent: false };

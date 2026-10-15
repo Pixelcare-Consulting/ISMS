@@ -1,6 +1,7 @@
 import type { BranchOrderStatus } from "@prisma/client";
 
 import {
+  canAdminForceCancelOrder,
   canDeleteDraftOrder,
   canEditOrderLines,
   canOptionallyEditManualOrder,
@@ -8,6 +9,7 @@ import {
   getInitialOrderStatus,
   getOrderQueueStatuses,
   isOrderEditable,
+  isSuperAdminOrderOverride,
   nextStatusAfterApprove,
 } from "@/features/orders/constants/order-workflow";
 
@@ -79,5 +81,23 @@ describe("Process II order path", () => {
       if (status === "draft") continue;
       expect(canDeleteDraftOrder({ status })).toBe(false);
     }
+  });
+
+  it("enables Super Admin bulk override only for super_admin", () => {
+    expect(isSuperAdminOrderOverride(["super_admin"])).toBe(true);
+    expect(isSuperAdminOrderOverride(["super_admin", "tenant_admin"])).toBe(true);
+    expect(isSuperAdminOrderOverride(["tenant_admin"])).toBe(false);
+    expect(isSuperAdminOrderOverride(["sp"])).toBe(false);
+  });
+
+  it("allows admin force-cancel only for live pending queue statuses", () => {
+    expect(canAdminForceCancelOrder({ status: "pending_ps" })).toBe(true);
+    expect(canAdminForceCancelOrder({ status: "pending_tl" })).toBe(true);
+    expect(canAdminForceCancelOrder({ status: "pending_sp" })).toBe(true);
+    expect(canAdminForceCancelOrder({ status: "pending_logistics" })).toBe(true);
+    expect(canAdminForceCancelOrder({ status: "draft" })).toBe(false);
+    expect(canAdminForceCancelOrder({ status: "approved" })).toBe(false);
+    expect(canAdminForceCancelOrder({ status: "rejected" })).toBe(false);
+    expect(canAdminForceCancelOrder({ status: "cancelled" })).toBe(false);
   });
 });

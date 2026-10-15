@@ -14,6 +14,10 @@ export const MANUAL_ORDERS_MODULE_GUIDE: ModuleGuideContent = {
     },
     { label: "Product Specialists and Team Leaders can Edit while Pending SP; only Supply Planning Reviews" },
     { label: "After SP approval, logistics schedules delivery; accept stock in Operations" },
+    {
+      label:
+        "Super Admin: select rows on Orders and use Cancel selected to discard drafts or cancel pending orders (they move to Order History)",
+    },
   ],
   storageKey: "module-guide.orders.manual",
 };

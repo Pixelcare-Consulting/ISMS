@@ -2,7 +2,7 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.61.1`
+**Current version:** `0.63.0`
 
 ## Stack
 
@@ -29,7 +29,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | **Returns / Replacement** | `/returns` with Branch \| Service \| Approvals tabs gated by `returns.branch.view` / `returns.service.view` / evaluate·approve·complete (umbrella `returns.view` sees all); ATR workflow via `returns.*` (legacy `sales.return.*` / `service_centers.return.*` still work); Branch table includes report columns + ATR/ODRF download; **Service Return / Replacement** Document Types appear under Service Returns (with SC-sale returns); Dealer Initiated types need TL after CS; other types go Approved after CS; approved Return restores STK/DEF for the selected serial only; approved Replacement Same Invoice shows original TRN (read-only) and updates that sale line, or New Invoice creates a new sale |
 | **Service** | Service center ops (AOR-scoped): inventory + manual stock-in, sales encode + request return, orders, deliveries (backload → STK), pull-outs under `/service-centers/*` |
 | **Reports** | Processed orders, daily stock, transfers, sales CSV (`/reports/sales`), **Inventory Report** CSV (`/reports/inventory` — dealer/branch classification + serial/DR#/aging; date filter; AOR-scoped), **P-Count** (`/reports/pcount`), **Official Sales** dealer-template staging — Action Key process (`ADD` / `WHSE_ADD` / `DEL` → Official Sold; already-OFS ADD is idempotent; DEL restores STK at Branch Sold; stock adjustments appear in Serial Number Logs; process summarizes failed serials), progress popup, View details, and ? quick guide (`/reports/official-sales`) |
-| **SAP** | Outbound job queue + mock processor; **Service Layer** settings (encrypted credentials) + shared Redis-backed B1 session (L1 in-memory fallback) with status UI (Connect/Logout) and refresh-on-401 |
+| **SAP** | Outbound job queue + swappable outbound port (mock ITR/SO/OWTR by default; Service Layer adapter opt-in); **Service Layer** settings (encrypted credentials) + shared Redis-backed B1 session (L1 in-memory fallback) with status UI (Connect/Logout) and refresh-on-401; P-Count Inventory Posting live when SL connected |
 | **RBAC** | ISO + BRS roles (PS, TL, SP/SPA, Logistics, AE, Accounting); shared action vocabulary + module allowlists; Roles simple checklist + module×action matrix; Super Admins see built-in system roles and can adjust grants (rename/delete stay locked); Returns / Replacement uses `returns.view` (all tabs), `returns.branch.view` / `returns.service.view` (tabs), plus `request` / `evaluate` / `approve` / `complete` (Approvals tab uses evaluate/approve/complete — no separate approvals.view); legacy `sales.return.*` / SC return aliases still work; sale header Edit uses `sales.update`; Logistics uses `logistics.view` / `create` / `manage`; Service uses `service_centers.*` ops perms; ISMS Assist uses `ai.assist` |
 
 ### App routes

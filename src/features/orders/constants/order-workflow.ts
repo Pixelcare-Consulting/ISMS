@@ -14,7 +14,7 @@ export interface OrderApprovalStep {
  * - PS creates Manual Orders; they go straight to Supply Planning.
  *   Team Leaders may optionally edit while Pending SP (no TL approval gate).
  * - A special order is created and submitted by TL, then SP.
- * - SP approves or cancels. Approval queues the SAP stand-in for Auto Create ITR/SO.
+ * - SP approves or cancels. Approval queues the SAP stand-in for ITR (OWTQ) + SO (ORDR).
  *   That job does not move stock. A date outside the delivery window is rescheduled.
  * - Auto-replenish still starts with TL, then SP.
  * Logistics fulfills after SP approval. It is not an order approval gate.
@@ -253,6 +253,16 @@ export function isOrderEditable(
 /** Hard-delete is allowed only for unsubmitted draft rows (e.g. Suggested auto-replenish). */
 export function canDeleteDraftOrder(opts: { status: BranchOrderStatus }): boolean {
   return opts.status === "draft";
+}
+
+/** Super Admin bulk cancel / discard on the Orders list (not Tenant Admin). */
+export function isSuperAdminOrderOverride(roleSlugs: string[]): boolean {
+  return roleSlugs.includes("super_admin");
+}
+
+/** Live pending queue rows a Super Admin may force to Cancelled (Order History). */
+export function canAdminForceCancelOrder(opts: { status: BranchOrderStatus }): boolean {
+  return isOrderPendingApproval(opts.status);
 }
 
 export const ORDER_WORKFLOW_DESCRIPTION =

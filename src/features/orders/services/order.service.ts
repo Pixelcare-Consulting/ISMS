@@ -6,6 +6,7 @@ import {
   BRANCH_ORDER_TYPE_LABELS,
 } from "@/features/orders/constants/order-status";
 import {
+  canAdminForceCancelOrder,
   canApproveOrder,
   canDeleteDraftOrder,
   declineOrderStatus,
@@ -13,6 +14,7 @@ import {
   getInitialOrderStatus,
   getRoleSlugForApproval,
   isOrderEditable,
+  isSuperAdminOrderOverride,
   nextStatusAfterApprove,
 } from "@/features/orders/constants/order-workflow";
 import { orderRepository } from "@/features/orders/repositories/order.repository";
@@ -495,6 +497,124 @@ export const orderService = {
         status: order.status,
       },
     });
+  },
+
+  async adminBulkCancelOrDiscard(
+    tenantId: string,
+    userId: string,
+    orderIds: string[],
+    opts: { roleSlugs: string[] },
+  ) {
+    if (!isSuperAdminOrderOverride(opts.roleSlugs)) {
+      throw new Error("Only Super Admin can bulk cancel or discard orders.");
+    }
+
+    const uniqueIds = [...new Set(orderIds.filter(Boolean))];
+    if (uniqueIds.length === 0) {
+      throw new Error("Select at least one order.");
+    }
+
+    const orders = await orderRepository.findManyByIds(tenantId, uniqueIds);
+    const byId = new Map(orders.map((order) => [order.id, order]));
+
+    let discarded = 0;
+    let cancelled = 0;
+    const skipped: { id: string; orderNumber: string; reason: string }[] = [];
+
+    const adminCancelComment = "Cancelled by Super Admin";
+
+    for (const id of uniqueIds) {
+      const order = byId.get(id);
+      if (!order) {
+        skipped.push({ id, orderNumber: id, reason: "Order not found" });
+        continue;
+      }
+
+      const linked = Boolean(
+        order.processedAt || order.sapDocRef || order.deliveries.length > 0,
+      );
+      if (linked) {
+        skipped.push({
+          id: order.id,
+          orderNumber: order.orderNumber,
+          reason: "Linked to a delivery or SAP",
+        });
+        continue;
+      }
+
+      if (canDeleteDraftOrder({ status: order.status })) {
+        try {
+          await this.deleteDraft(tenantId, userId, order.id, { hasFullAccess: true });
+          discarded += 1;
+        } catch (error) {
+          skipped.push({
+            id: order.id,
+            orderNumber: order.orderNumber,
+            reason: error instanceof Error ? error.message : "Could not discard draft",
+          });
+        }
+        continue;
+      }
+
+      if (!canAdminForceCancelOrder({ status: order.status })) {
+        skipped.push({
+          id: order.id,
+          orderNumber: order.orderNumber,
+          reason: "Already approved, rejected, or cancelled",
+        });
+        continue;
+      }
+
+      const fromStatus = order.status;
+      const update = await orderRepository.forceCancelFromPending(
+        tenantId,
+        order.id,
+        fromStatus,
+      );
+      if (update.count === 0) {
+        skipped.push({
+          id: order.id,
+          orderNumber: order.orderNumber,
+          reason: "Already processed or status changed",
+        });
+        continue;
+      }
+
+      const level = getApprovalLevelForStatus(fromStatus, order.orderType);
+      const roleSlug = getRoleSlugForApproval(fromStatus, order.orderType);
+      await orderRepository.addRejection(order.id, {
+        level,
+        roleSlug,
+        approvedById: userId,
+        comment: adminCancelComment,
+      });
+
+      await auditService.log({
+        tenantId,
+        userId,
+        action: "order.admin_cancelled",
+        entityType: "BranchOrder",
+        entityId: order.id,
+        metadata: {
+          ...orderAuditMetadata(order),
+          from: fromStatus,
+          to: "cancelled",
+          comment: adminCancelComment,
+        },
+      });
+
+      cancelled += 1;
+    }
+
+    if (discarded === 0 && cancelled === 0) {
+      throw new Error(
+        skipped.length > 0
+          ? "No orders were cancelled or discarded. Check the skipped reasons."
+          : "No orders were cancelled or discarded.",
+      );
+    }
+
+    return { discarded, cancelled, skipped };
   },
 
   async approve(

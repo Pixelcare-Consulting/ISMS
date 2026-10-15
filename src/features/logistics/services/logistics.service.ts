@@ -10,12 +10,13 @@ function nextDeliveryNo() {
 
 export const logisticsService = {
   /**
-   * Signed Process II: PS submits, TL reviews, SP approves or cancels.
-   * SP approval queues the approved_order job, which stands in for SAP
-   * "Auto Create ITR/SO" and then a copy to IT/DR. That job stores a document
-   * reference and opens this delivery header as Approved. It does not move
-   * stock, and it does not label the SAP document Consignment or Outright.
-   * Logistics dispatches warehouse serials later.
+   * Signed Process II → III.A entry: Manual → Pending SP (TL may optionally
+   * edit); Special TL→SP; Auto TL→SP. SP approval queues the approved_order
+   * job (stand-in for SAP ITR/OWTQ + SO/ORDR per mapping PDF). That job stores
+   * a document reference and opens this delivery header as Approved — local
+   * III.A entry before live Inventory Transfer (OWTR) / Delivery Note (ODLN).
+   * It does not move stock, and it does not label the SAP document Consignment
+   * or Outright. Logistics dispatches warehouse serials later.
    */
   async createDeliveryFromApprovedOrder(
     tenantId: string,

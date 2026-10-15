@@ -52,6 +52,50 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.63.0",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T21:55:00+08:00",
+    title: "SAP order handoff and clearer Special create",
+    highlights: [
+      "Approved orders prepare a cleaner handoff toward SAP Inventory Transfer Request and Sales Order documents, including returns when a delivery is only partly accepted.",
+      "Role templates and Help make it clearer that Team Leaders create Special orders, while Product Specialists focus on Manual.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "After Supply Planning approves an order, ISMS queues the SAP Inventory Transfer Request and Sales Order steps more cleanly, opens the local delivery for logistics, and can queue a warehouse Inventory Transfer when units are returned from a partial delivery.",
+      },
+      {
+        type: "improvement",
+        description:
+          "New Manager and Branch staff role templates match Special vs Manual ownership, and Help explains how to grant Special create on Team Leader roles if it is missing.",
+      },
+    ],
+  },
+  {
+    version: "0.62.0",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T23:00:00+08:00",
+    title: "Super Admin bulk cancel on Orders",
+    highlights: [
+      "Super Admin can cancel several selected orders at once from Manual, Special, or Auto replenish lists.",
+      "Drafts are discarded; pending orders become Cancelled in Order History. Approved or delivery-linked rows are skipped.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "On Orders, Super Admin sees Cancel selected when rows are checked — confirm to discard drafts or cancel pending requests in bulk.",
+      },
+      {
+        type: "improvement",
+        description:
+          "After bulk cancel, a summary toast shows how many were discarded or cancelled and why any rows were skipped.",
+      },
+    ],
+  },
+  {
     version: "0.61.1",
     date: "2026-10-15",
     releasedAt: "2026-10-15T22:30:00+08:00",

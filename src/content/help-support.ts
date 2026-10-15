@@ -552,6 +552,12 @@ export const HELP_FAQ_CATEGORIES: HelpFaqCategory[] = [
           "Auto-replenish is system-suggested replenishment (Team Leader then Supply Planning). Manual is created by the Product Specialist and goes to Supply Planning (Team Leader may optionally edit). Special is initiated by the Team Leader for non-standard requests.",
       },
       {
+        id: "orders-special-create",
+        question: "Why can’t a Team Leader create Special orders?",
+        answer:
+          "Special create is a role permission. Ask an admin to open Settings → Roles and grant Create on Special orders for the Team Leader role. New roles from the Manager template include it; existing roles are not changed automatically.",
+      },
+      {
         id: "orders-6",
         question: "Why don’t I see every order on the Orders tab?",
         answer:
@@ -568,6 +574,12 @@ export const HELP_FAQ_CATEGORIES: HelpFaqCategory[] = [
         question: "What is Shelf max on planogram?",
         answer:
           "Shelf max is how many units a branch should hold for a model. Suggested order qty (SUG) is Shelf max minus on-hand stock. Set it when you add or edit a model on Settings → Planogram for that branch.",
+      },
+      {
+        id: "orders-super-admin-bulk-cancel",
+        question: "How does Super Admin cancel multiple orders at once?",
+        answer:
+          "On Manual, Special, or Auto replenish Orders, select the rows and choose Cancel selected. Drafts are discarded. Pending orders are marked Cancelled and appear in Order History. Approved, rejected, cancelled, or delivery-linked orders are left unchanged.",
       },
     ],
   },
