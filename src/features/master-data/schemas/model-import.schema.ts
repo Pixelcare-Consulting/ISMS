@@ -23,6 +23,7 @@ export const MODEL_SHEET_HEADERS = [
   "resolution",
   "actual_size",
   "status",
+  "cbm",
 ] as const;
 
 /** Normalized header → canonical key for our template columns only. */
@@ -44,6 +45,10 @@ export const MODEL_IMPORT_ALIAS_MAP: Record<string, string> = {
   actual_size: "actual_size",
   size: "actual_size",
   status: "status",
+  cbm: "cbm",
+  cubicmeter: "cbm",
+  cubicmetres: "cbm",
+  cubicmeters: "cbm",
 };
 
 export const MODEL_IMPORT_REQUIRED_COLUMNS = ["sku", "name", "brand", "series"] as const;
@@ -57,7 +62,58 @@ export const MODEL_IMPORT_FIELD_LABELS: Record<string, string> = {
   resolution: "Resolution",
   actualSize: "Actual size",
   status: "Status",
+  cbm: "CBM",
 };
+
+/**
+ * Optional CBM cell for Models import.
+ * Blank / dash → leave existing on update (null on create). Invalid → reject.
+ */
+export type ModelImportCbmParse =
+  | { kind: "blank" }
+  | { kind: "value"; value: number }
+  | { kind: "error"; message: string };
+
+function isBlankOrDashCbm(value: string | undefined | null): boolean {
+  if (value == null) return true;
+  const trimmed = value.trim();
+  return !trimmed || trimmed === "-";
+}
+
+/** Parse an optional cbm column value (Decimal(10, 4) compatible). */
+export function parseModelImportCbm(raw: string | undefined | null): ModelImportCbmParse {
+  if (isBlankOrDashCbm(raw)) return { kind: "blank" };
+  const trimmed = (raw ?? "").trim();
+  const normalized = trimmed.replace(/,/g, "");
+  const parsed = Number.parseFloat(normalized);
+  if (!Number.isFinite(parsed)) {
+    return {
+      kind: "error",
+      message: `Invalid cbm "${trimmed}". Use a number (e.g. 0.1234).`,
+    };
+  }
+  if (parsed < 0) {
+    return {
+      kind: "error",
+      message: `Invalid cbm "${trimmed}". CBM cannot be negative.`,
+    };
+  }
+  // Match Prisma Decimal(10, 4): 4 fractional digits, absolute value < 1_000_000.
+  const rounded = Math.round(parsed * 10_000) / 10_000;
+  if (rounded >= 1_000_000) {
+    return {
+      kind: "error",
+      message: `Invalid cbm "${trimmed}". Value is too large.`,
+    };
+  }
+  return { kind: "value", value: rounded };
+}
+
+/** Display helper for CBM diffs and template cells. */
+export function formatModelImportCbm(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "";
+  return value.toFixed(4);
+}
 
 export interface ModelImportRowError {
   sheet: string;
@@ -84,6 +140,8 @@ export interface ModelImportRowPlan {
   resolution: string | null;
   actualSize: string | null;
   status: "active" | "hold" | "retired";
+  /** Effective CBM after blank-cell merge; null when unset. */
+  cbm: number | null;
   action: "create" | "update" | "skip";
   changes: ModelImportFieldChange[];
 }

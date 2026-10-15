@@ -45,6 +45,7 @@ const existingModel = {
   skuCode: "55A6K",
   name: "HISENSE 55 A6K",
   status: "active" as const,
+  cbm: 0.25,
   brandId: "b-hisense",
   seriesId: "s-a6",
   categoryId: null,
@@ -80,7 +81,8 @@ function seedLookups() {
   db.actualSize.findMany.mockResolvedValue([{ id: "a-55", name: "55\"", recordStatus: "active" }]);
 }
 
-const HEADER = "sku,name,brand,series,category,feature,resolution,actual_size,status";
+const HEADER =
+  "sku,name,brand,series,category,feature,resolution,actual_size,status,cbm";
 
 function csv(...rows: string[]): Buffer {
   return Buffer.from([HEADER, ...rows].join("\n"), "utf8");
@@ -94,6 +96,35 @@ async function preview(...rows: string[]) {
 beforeEach(() => {
   jest.clearAllMocks();
   seedLookups();
+});
+
+describe("model import cbm", () => {
+  it("leaves existing cbm alone when the cell is blank", async () => {
+    // category,feature,resolution,actual_size,status,cbm — all blank
+    const result = await preview("55A6K,HISENSE 55 A6K,HISENSE,A6,,,,,,");
+    expect(result.errors).toEqual([]);
+    expect(result.unchangedCount).toBe(1);
+    expect(result.rows[0].cbm).toBe(0.25);
+  });
+
+  it("plans a cbm update when the value differs", async () => {
+    const result = await preview("55A6K,HISENSE 55 A6K,HISENSE,A6,,,,,,0.5");
+    expect(result.errors).toEqual([]);
+    expect(result.canApply).toBe(true);
+    expect(result.updateCount).toBe(1);
+    expect(result.rows[0].cbm).toBe(0.5);
+    expect(result.rows[0].changes).toEqual([
+      { field: "cbm", label: "CBM", from: "0.2500", to: "0.5000" },
+    ]);
+  });
+
+  it("rejects an invalid cbm cell", async () => {
+    const result = await preview("55A6K,HISENSE 55 A6K,HISENSE,A6,,,,,,nope");
+    expect(result.canApply).toBe(false);
+    expect(result.errors.map((e) => e.message)).toEqual([
+      'Invalid cbm "nope". Use a number (e.g. 0.1234).',
+    ]);
+  });
 });
 
 describe("model import foreign keys", () => {

@@ -259,7 +259,7 @@ export const orderRepository = {
       await tx.branchOrderApprovalLevel.deleteMany({ where: { orderId } });
 
       return tx.branchOrder.update({
-        where: { id: orderId, tenantId },
+        where: { id: orderId, tenantId, status: "draft" },
         data: {
           status: initialStatus,
           approvedById: null,
@@ -279,6 +279,20 @@ export const orderRepository = {
           approvalLevels: true,
         },
       });
+    });
+  },
+
+  /** Hard-delete a draft row when it has no logistics/SAP links (race-safe predicate). */
+  async deleteDraft(tenantId: string, orderId: string) {
+    return prisma.branchOrder.deleteMany({
+      where: {
+        id: orderId,
+        tenantId,
+        status: "draft",
+        processedAt: null,
+        sapDocRef: null,
+        deliveries: { none: {} },
+      },
     });
   },
 

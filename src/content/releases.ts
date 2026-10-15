@@ -52,6 +52,126 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.61.1",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T22:30:00+08:00",
+    title: "Clearer Shelf max and SUG on orders",
+    highlights: [
+      "Planogram now shows Shelf max on each model so you can see and edit the branch stock ceiling.",
+      "On Create order, SUG explains it is shelf gap — not Planning forecast — and Shelf full appears when Manual cannot order more.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Add model and the planogram table use Shelf max with a short note that suggested order qty is Shelf max minus on-hand.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Create order keeps SUG, adds a hover/accessibility hint for shelf gap, and shows Shelf full under a locked Manual quantity.",
+      },
+    ],
+  },
+  {
+    version: "0.61.0",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T22:00:00+08:00",
+    title: "Discard unsubmitted Auto replenish drafts",
+    highlights: [
+      "You can remove a draft auto-replenish order from the list before it goes to Team Leader review.",
+      "Submitted and approved orders still follow the usual Review, reject, and cancel paths — nothing changes there.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "On Auto replenish Orders, Delete lets you discard an unsubmitted draft (for example from Suggested orders) after you confirm.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Submit for review and Delete cannot both succeed on the same draft, so you will not accidentally leave a half-submitted order behind.",
+      },
+    ],
+  },
+  {
+    version: "0.60.1",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T21:30:00+08:00",
+    title: "Clearer Special stock, CBM import, and Inventory Report",
+    highlights: [
+      "When you add an extra model on a Special order, stock on hand matches the branch — not a blank zero.",
+      "Models import can include CBM so Manual and Special order volume totals stay accurate.",
+      "Inventory Report can filter by SKU, status, and branch, and the CSV starts with a short quantity summary.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "On Special create, additional lines show real branch stock so Inventory amount and STK match what you see for planogram models.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Models import accepts an optional CBM column so order Total CBM can use the cubic meter you set on each SKU.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Inventory Report lets you narrow by SKU, status (STK by default), and branch; the download includes a SUMMARY count block before the serial DETAIL rows.",
+      },
+      {
+        type: "fix",
+        description:
+          "If a model has no SRP, adding it on Create order warns that the line amount stays ₱0 until the price is set in master data.",
+      },
+    ],
+  },
+  {
+    version: "0.60.0",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T21:20:00+08:00",
+    title: "Manual orders go straight to Supply Planning",
+    highlights: [
+      "Manual orders now go to Supply Planning right away after you submit — no Team Leader approval step in between.",
+      "Team Leaders can still open and edit a Manual order while it is waiting for Supply Planning.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Submitting a Manual order sends it to Pending SP immediately so Supply Planning can approve or cancel.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Product Specialists and Team Leaders can still edit Manual order lines while Supply Planning reviews; the Review button stays with Supply Planning.",
+      },
+      {
+        type: "fix",
+        description:
+          "Manual requests that were still waiting on Team Leader now show as Pending SP so they match the new path.",
+      },
+    ],
+  },
+  {
+    version: "0.59.5",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T21:15:00+08:00",
+    title: "Process Return action matches document type",
+    highlights: [
+      "On Process Return, Return shows only for Return document types, and Replacement only for Replacement types.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Process Return no longer shows both Return and Replacement at once — the button matches the Document Type you pick (for example BRANCH RETURN vs BRANCH REPLACEMENT).",
+      },
+    ],
+  },
+  {
     version: "0.59.4",
     date: "2026-10-15",
     releasedAt: "2026-10-15T22:50:00+08:00",

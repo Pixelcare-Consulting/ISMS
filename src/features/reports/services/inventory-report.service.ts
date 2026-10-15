@@ -1,31 +1,21 @@
 import { inventoryRepository } from "@/features/inventory/repositories/inventory.repository";
 import { wholeDaysBetween } from "@/features/inventory/utils/sku-series";
+import { buildInventoryReportSectionedCsv } from "@/features/reports/utils/inventory-report-csv";
 import { prisma } from "@/lib/database/client";
-import { buildCsvContent } from "@/lib/shared/csv";
 
 export interface InventoryReportFilters {
   from?: Date;
   to?: Date;
-  /** Empty / omitted = no branch restriction (tenant-wide). */
+  /** Empty / omitted = no branch restriction (tenant-wide or full AOR). */
   branchIds?: string[];
+  /** Case-insensitive SKU contains. Empty / omitted = no SKU filter. */
+  sku?: string;
+  /**
+   * Inventory status codes. Omitted → no status filter (caller should default).
+   * Empty array → no status filter. Non-empty → match any listed code.
+   */
+  statusCodes?: string[];
 }
-
-const HEADERS = [
-  "DEALER NAME",
-  "BRANCH NAME",
-  "DEALER TYPE",
-  "MODE OF PAYMENT",
-  "AREA",
-  "DEALER AREA",
-  "BRANCH AREA",
-  "SERIAL NO",
-  "SKU",
-  "MODEL",
-  "STATUS",
-  "DR#",
-  "DR DATE",
-  "AGING DAYS",
-];
 
 const DELIVERY_LOOKUP_CHUNK = 500;
 
@@ -71,6 +61,9 @@ export const inventoryReportService = {
    * Branch inventory CSV with dealer/branch classification columns and
    * serial validation columns (status, DR#, aging). Date filter uses DR date
    * when present, otherwise inventory `updatedAt`.
+   *
+   * Output starts with a `# SUMMARY` block (BRANCH / SKU / STATUS / QTY)
+   * followed by `# DETAIL` serial-level rows.
    */
   async generateCsv(tenantId: string, filters: InventoryReportFilters = {}) {
     const branchScope =
@@ -78,10 +71,29 @@ export const inventoryReportService = {
         ? { branchId: { in: filters.branchIds } }
         : {};
 
+    const skuTrimmed = filters.sku?.trim();
+    const skuScope = skuTrimmed
+      ? {
+          serialNumber: {
+            model: {
+              skuCode: { contains: skuTrimmed, mode: "insensitive" as const },
+            },
+          },
+        }
+      : {};
+
+    const statusCodes = filters.statusCodes?.filter((c) => c.trim().length > 0);
+    const statusScope =
+      statusCodes && statusCodes.length > 0
+        ? { statusCode: { code: { in: statusCodes } } }
+        : {};
+
     const rows = await prisma.branchInventory.findMany({
       where: {
         tenantId,
         ...branchScope,
+        ...skuScope,
+        ...statusScope,
       },
       include: {
         statusCode: { select: { code: true, name: true } },
@@ -121,7 +133,8 @@ export const inventoryReportService = {
       deliveries.map((d) => [d.serialNumberId, d] as const),
     );
 
-    const csvRows: (string | number | null | undefined)[][] = [];
+    const detailRows: (string | number | null | undefined)[][] = [];
+    const summaryCounts = new Map<string, number>();
 
     for (const item of rows) {
       const delivery = deliveryBySerial.get(item.serialNumberId);
@@ -130,25 +143,49 @@ export const inventoryReportService = {
 
       const agingAnchor = delivery?.deliveryDate ?? item.createdAt;
       const dealer = item.branch.dealer;
+      const statusLabel = item.statusCode.name ?? item.statusCode.code;
+      const sku = item.serialNumber.model.skuCode;
+      const branchName = item.branch.name;
 
-      csvRows.push([
+      const summaryKey = `${branchName}\u0000${sku}\u0000${statusLabel}`;
+      summaryCounts.set(summaryKey, (summaryCounts.get(summaryKey) ?? 0) + 1);
+
+      detailRows.push([
         dealer?.name ?? "",
-        item.branch.name,
+        branchName,
         dealer?.dealerType?.name ?? "",
         dealer?.modeOfPayment?.name ?? "",
         item.branch.area?.name ?? "",
         dealer?.dealerArea?.name ?? "",
         item.branch.branchArea?.name ?? "",
         item.serialNumber.serialNo,
-        item.serialNumber.model.skuCode,
+        sku,
         item.serialNumber.model.name,
-        item.statusCode.name ?? item.statusCode.code,
+        statusLabel,
         delivery?.deliveryNo ?? "",
         formatDate(delivery?.deliveryDate),
         wholeDaysBetween(agingAnchor),
       ]);
     }
 
-    return buildCsvContent(HEADERS, csvRows);
+    const summaryRows = [...summaryCounts.entries()]
+      .map(([key, qty]) => {
+        const [branch, sku, status] = key.split("\u0000");
+        return [branch, sku, status, qty] as (
+          | string
+          | number
+          | null
+          | undefined
+        )[];
+      })
+      .sort((a, b) => {
+        const branchCmp = String(a[0]).localeCompare(String(b[0]));
+        if (branchCmp !== 0) return branchCmp;
+        const skuCmp = String(a[1]).localeCompare(String(b[1]));
+        if (skuCmp !== 0) return skuCmp;
+        return String(a[2]).localeCompare(String(b[2]));
+      });
+
+    return buildInventoryReportSectionedCsv(summaryRows, detailRows);
   },
 };

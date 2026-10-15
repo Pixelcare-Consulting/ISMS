@@ -24,6 +24,7 @@ export interface ModelTemplateRow {
   resolution: string;
   actualSize: string;
   status: string;
+  cbm: string;
 }
 
 const EMPTY_SHEET: SheetRows = { present: false, columns: new Set(), rows: [] };
@@ -148,6 +149,7 @@ export async function buildModelTemplateWorkbook(
       model.resolution,
       model.actualSize,
       model.status,
+      model.cbm,
     ]);
   }
   if (models.length === 0) {
@@ -161,9 +163,10 @@ export async function buildModelTemplateWorkbook(
       "",
       "",
       "active",
+      "",
     ]);
   }
-  styleHeader(sheet, [14, 40, 14, 16, 14, 14, 14, 14, 10]);
+  styleHeader(sheet, [14, 40, 14, 16, 14, 14, 14, 14, 10, 10]);
 
   const buffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(buffer);

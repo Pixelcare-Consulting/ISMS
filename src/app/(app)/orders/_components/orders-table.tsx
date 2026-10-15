@@ -7,13 +7,14 @@ import { toast } from "sonner";
 import { useOrdersCreateWorkspace } from "@/app/(app)/orders/_components/orders-create-workspace-context";
 import {
   approveOrderAction,
+  deleteDraftOrderAction,
   rejectOrderAction,
   submitDraftOrderAction,
 } from "@/features/orders/actions/order.actions";
 import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
 import {
   canApproveOrder,
-  isOrderEditable,
+  canEditOrderLines,
   isOrderPendingApproval,
 } from "@/features/orders/constants/order-workflow";
 import { OrderDetailsDialog } from "@/app/(app)/orders/_components/order-details-dialog";
@@ -41,6 +42,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { DeleteConfirmDialog } from "@/components/data-table/delete-confirm-dialog";
 import { LoadingModal } from "@/components/ui/loading-modal";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
@@ -164,6 +166,7 @@ export function OrdersTable({
   const [workflowOrder, setWorkflowOrder] = useState<OrderRow | null>(null);
   const [detailsOrder, setDetailsOrder] = useState<OrderRow | null>(null);
   const [editingOrder, setEditingOrder] = useState<EditableOrder | null>(null);
+  const [draftToDelete, setDraftToDelete] = useState<OrderRow | null>(null);
   const [pending, startTransition] = useTransition();
   const [processingAction, setProcessingAction] = useState<"approve" | "reject" | null>(
     null,
@@ -404,7 +407,22 @@ export function OrdersTable({
                       Submit for review
                     </Button>
                   ) : null}
-                  {canEdit && isOrderEditable(o.status as BranchOrderStatus) ? (
+                  {canEdit && o.status === "draft" ? (
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      disabled={pending}
+                      onClick={() => setDraftToDelete(o)}
+                    >
+                      Delete
+                    </Button>
+                  ) : null}
+                  {canEditOrderLines({
+                    status: o.status as BranchOrderStatus,
+                    orderType: o.orderType as BranchOrderType,
+                    roleSlugs: viewerRoleSlugs,
+                    hasCreatePermission: canEdit,
+                  }) ? (
                     <Button
                       size="sm"
                       variant="ghost"
@@ -479,6 +497,31 @@ export function OrdersTable({
       ) : null}
       {editingOrder ? (
         <EditOrderDialog order={editingOrder} onClose={() => setEditingOrder(null)} />
+      ) : null}
+      {draftToDelete ? (
+        <DeleteConfirmDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setDraftToDelete(null);
+          }}
+          title="Delete draft order"
+          description={`Discard unsubmitted draft ${draftToDelete.orderNumber}? This cannot be undone. Orders already submitted for review cannot be deleted — use Review to reject or cancel instead.`}
+          pending={pending}
+          confirmLabel="Discard draft"
+          onConfirm={() => {
+            const orderId = draftToDelete.id;
+            startTransition(async () => {
+              const result = await deleteDraftOrderAction(orderId);
+              if ("error" in result && result.error) {
+                toast.error(result.error);
+                return;
+              }
+              toast.success("Draft discarded");
+              setDraftToDelete(null);
+              router.refresh();
+            });
+          }}
+        />
       ) : null}
       <LoadingModal
         open={pending && processingAction !== null}

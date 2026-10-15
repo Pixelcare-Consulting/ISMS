@@ -9,8 +9,10 @@ import type {
   ModelImportRowPlan,
 } from "@/features/master-data/schemas/model-import.schema";
 import {
+  formatModelImportCbm,
   MODEL_IMPORT_FIELD_LABELS,
   MODEL_SHEET_NAME,
+  parseModelImportCbm,
 } from "@/features/master-data/schemas/model-import.schema";
 import {
   modelBrandSapPushService,
@@ -30,6 +32,7 @@ import {
   type SheetRows,
 } from "@/features/master-data/services/model-import.workbook";
 import { prisma } from "@/lib/database/client";
+import { decimalToNumberOrNull } from "@/lib/database/decimal";
 import { mapWithConcurrency } from "@/lib/shared/concurrency";
 import {
   getCachedPlan,
@@ -59,6 +62,7 @@ type ExistingModel = {
   skuCode: string;
   name: string;
   status: "active" | "hold" | "retired";
+  cbm: number | null;
   brandId: string | null;
   seriesId: string | null;
   categoryId: string | null;
@@ -84,6 +88,7 @@ interface RowPlanInternal extends ModelImportRowPlan {
   actualSizeId: string | null;
   seriesName: string;
   statusProvided: boolean;
+  cbmProvided: boolean;
 }
 
 /** What one applied slice of database writes did. The SAP counts are tracked apart. */
@@ -142,6 +147,22 @@ function pushChange(
   });
 }
 
+function pushCbmChange(
+  changes: ModelImportFieldChange[],
+  from: number | null | undefined,
+  to: number | null | undefined,
+) {
+  const fromDisplay = formatModelImportCbm(from) || "—";
+  const toDisplay = formatModelImportCbm(to) || "—";
+  if (fromDisplay === toDisplay) return;
+  changes.push({
+    field: "cbm",
+    label: MODEL_IMPORT_FIELD_LABELS.cbm,
+    from: fromDisplay,
+    to: toDisplay,
+  });
+}
+
 /** Foreign keys change by id, so a casing-only difference in the file is not a change. */
 function pushLookupChange(
   changes: ModelImportFieldChange[],
@@ -161,6 +182,7 @@ async function loadTemplateRows(tenantId: string): Promise<ModelTemplateRow[]> {
       skuCode: true,
       name: true,
       status: true,
+      cbm: true,
       brand: { select: { name: true } },
       series: { select: { name: true } },
       category: { select: { name: true } },
@@ -182,6 +204,7 @@ async function loadTemplateRows(tenantId: string): Promise<ModelTemplateRow[]> {
     resolution: model.resolution?.name ?? "",
     actualSize: model.actualSize?.name ?? "",
     status: model.status,
+    cbm: formatModelImportCbm(decimalToNumberOrNull(model.cbm)),
   }));
 }
 
@@ -256,6 +279,7 @@ async function buildPlan(tenantId: string, sheet: SheetRows): Promise<ImportPlan
         skuCode: true,
         name: true,
         status: true,
+        cbm: true,
         brandId: true,
         seriesId: true,
         categoryId: true,
@@ -279,7 +303,10 @@ async function buildPlan(tenantId: string, sheet: SheetRows): Promise<ImportPlan
 
   const existingBySku = new Map<string, ExistingModel>();
   for (const model of existingModels) {
-    existingBySku.set(lookupKey(model.skuCode), model);
+    existingBySku.set(lookupKey(model.skuCode), {
+      ...model,
+      cbm: decimalToNumberOrNull(model.cbm),
+    });
   }
   // Inactive series stay in these maps so a row naming one is reported as inactive,
   // instead of falling through to "new name" and creating a duplicate.
@@ -345,6 +372,14 @@ async function buildPlan(tenantId: string, sheet: SheetRows): Promise<ImportPlan
       }
       status = mapped;
     }
+
+    const cbmParsed = parseModelImportCbm(row.values.cbm);
+    if (cbmParsed.kind === "error") {
+      pushError(cbmParsed.message);
+      continue;
+    }
+    const cbmProvided = cbmParsed.kind === "value";
+    const cbmValue = cbmParsed.kind === "value" ? cbmParsed.value : null;
 
     const skuKey = lookupKey(sku);
     if (seenInFile.has(skuKey)) {
@@ -422,6 +457,7 @@ async function buildPlan(tenantId: string, sheet: SheetRows): Promise<ImportPlan
 
     // Blank optional cells leave existing values untouched.
     const nextStatus = statusProvided ? status : existing.status;
+    const nextCbm = cbmProvided ? cbmValue : existing.cbm;
     const nextCategoryId = categoryMatch ? categoryMatch.id : existing.categoryId;
     const nextFeatureId = featureMatch ? featureMatch.id : existing.featureId;
     const nextResolutionId = resolutionMatch ? resolutionMatch.id : existing.resolutionId;
@@ -468,6 +504,9 @@ async function buildPlan(tenantId: string, sheet: SheetRows): Promise<ImportPlan
     if (statusProvided) {
       pushChange(changes, "status", existing.status, nextStatus);
     }
+    if (cbmProvided) {
+      pushCbmChange(changes, existing.cbm, nextCbm);
+    }
 
     // A new series name has no id yet — it is created at apply time.
     const seriesChanged = seriesMatch ? seriesMatch.id !== existing.seriesId : true;
@@ -480,6 +519,7 @@ async function buildPlan(tenantId: string, sheet: SheetRows): Promise<ImportPlan
       series: seriesMatch?.name ?? series,
       ...labels,
       status: nextStatus,
+      cbm: nextCbm,
       action: "skip",
       changes: [],
     };
@@ -503,6 +543,7 @@ async function buildPlan(tenantId: string, sheet: SheetRows): Promise<ImportPlan
       actualSizeId: nextActualSizeId,
       seriesName: series,
       statusProvided,
+      cbmProvided,
     };
     updateCount += 1;
     writes.push(plan);
@@ -584,6 +625,8 @@ async function applyWriteSlice(
         resolutionId: row.resolutionId,
         actualSizeId: row.actualSizeId,
         status: row.status,
+        // Blank cbm on create → null; a provided value is written as planned.
+        cbm: row.cbmProvided ? row.cbm : null,
       })),
       skipDuplicates: true,
       select: { id: true, skuCode: true },
@@ -615,6 +658,8 @@ async function applyWriteSlice(
           resolutionId: row.resolutionId,
           actualSizeId: row.actualSizeId,
           status: row.status,
+          // nextCbm already merged blank→existing at plan time.
+          cbm: row.cbm,
         },
       });
     });

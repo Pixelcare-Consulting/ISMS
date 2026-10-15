@@ -60,6 +60,9 @@ export interface OrderWorkspaceAdditionalModel {
   brandId: string | null;
   srp: number;
   cbm: number;
+  inventory: OrderInventoryStatusCount[];
+  stkQty: number;
+  ditQty: number;
   onPlanogram: boolean;
   remainingCapacity: number;
 }

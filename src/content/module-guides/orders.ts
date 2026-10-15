@@ -4,11 +4,15 @@ import type { BranchOrderType } from "@prisma/client";
 export const MANUAL_ORDERS_MODULE_GUIDE: ModuleGuideContent = {
   title: "Manual orders",
   description:
-    "Create a live branch request, then send it through Product Specialist → Team Leader → Supply Planning. Orders shows only requests waiting for your role. Use Order Analytics to check stock and suggested quantities, and Order History for approved and past SO#s. Logistics fulfills only after Supply Planning’s final approval.",
+    "Create a live branch request; it goes straight to Supply Planning. Team Leaders may optionally edit while it is Pending SP. Orders shows requests waiting for your role (including optional edit). Use Order Analytics to check stock and suggested quantities, and Order History for approved and past SO#s. Logistics fulfills only after Supply Planning’s final approval.",
   tips: [
     { label: "Open Order Analytics, pick a branch and brand, then Proceed to order — or use Create order" },
     { label: "Enter a quantity of 1 or more per model; extras come from other planogram models at the branch" },
-    { label: "Review when it is your role’s turn — finished approvals live in Order History" },
+    {
+      label:
+        "SUG is the shelf gap from planogram Shelf max (Shelf max − STK) — not the Planning forecast. Confirm stock on Stock units → By model or Reports → Inventory Report; set CBM on Models import so Total CBM is correct",
+    },
+    { label: "Product Specialists and Team Leaders can Edit while Pending SP; only Supply Planning Reviews" },
     { label: "After SP approval, logistics schedules delivery; accept stock in Operations" },
   ],
   storageKey: "module-guide.orders.manual",
@@ -21,6 +25,10 @@ export const SPECIAL_ORDERS_MODULE_GUIDE: ModuleGuideContent = {
   tips: [
     { label: "Open Order Analytics, pick a branch and brand, then Proceed to order — or use Create order" },
     { label: "Leave brand empty to see every model, or pick a brand to narrow the list; extras can be off the planogram" },
+    {
+      label:
+        "Additional lines show real branch STK. SUG is shelf gap from planogram Shelf max, not forecast — validate with By model or Inventory Report; fill CBM on Models import for volume",
+    },
     { label: "Review when it is your role’s turn — Supply Planning can adjust quantities or a delivery date" },
     { label: "After SP approval, logistics schedules delivery; accept stock in Operations" },
   ],
@@ -33,6 +41,10 @@ export const AUTO_REPLENISH_ORDERS_MODULE_GUIDE: ModuleGuideContent = {
     "Review suggested restock from Settings → Planning. This page shows Orders and Order History only — there is no Create order or Order Analytics here. Approval is Team Leader → Supply Planning. Logistics fulfills only after Supply Planning’s final approval.",
   tips: [
     { label: "Orders from Supply Planning Release land here already waiting for Team Leader" },
+    {
+      label:
+        "Draft rows from Suggested orders can be discarded with Delete before Submit for review — submitted orders use Review to reject or cancel instead",
+    },
     { label: "Release confirmation lists branches with no sales history, no Drop 1, or an open Auto Replenish before you proceed" },
     { label: "Use Orders for requests waiting for your role, and Order History for approved and past SO#s" },
     { label: "Review when it is your role’s turn — Supply Planning can adjust quantities or a delivery date" },

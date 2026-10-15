@@ -26,6 +26,10 @@ export const SUGGESTED_ORDERS_MODULE_GUIDE: ModuleGuideContent = {
     "Draft auto-replenish requests from allocation gaps. They are not live branch orders until you submit them into the approval path.",
   tips: [
     { label: "Review draft lines and gaps by branch before submitting" },
+    {
+      label:
+        "On Auto replenish, Delete removes an unsubmitted draft you no longer need — only while status is Draft",
+    },
     { label: "Submit for TL review, then SP approval on Branch orders" },
     { label: "To create or refresh drafts, run allocation on Planning and generate from the popup" },
   ],

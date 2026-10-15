@@ -7,6 +7,7 @@ import {
 } from "@/features/orders/constants/order-status";
 import {
   canApproveOrder,
+  canDeleteDraftOrder,
   declineOrderStatus,
   getApprovalLevelForStatus,
   getInitialOrderStatus,
@@ -74,8 +75,8 @@ function pendingApprovalEmail(status: BranchOrderStatus, orderType: BranchOrderT
     return "Special order submitted — pending Supply Planning approval.";
   }
   if (status === "pending_ps") return "Manual order is still with the product specialist.";
-  if (orderType === "manual" && status === "pending_tl") {
-    return "Manual order submitted — pending Team Leader review.";
+  if (orderType === "manual" && status === "pending_sp") {
+    return "Manual order submitted — pending Supply Planning approval.";
   }
   if (status === "pending_tl") return "Order pending Team Leader review.";
   if (status === "pending_sp") return "Order pending Supply Planning approval.";
@@ -341,7 +342,7 @@ export const orderService = {
   ) {
     const order = await orderRepository.findById(tenantId, orderId);
     if (!order) throw new Error("Order not found");
-    if (!isOrderEditable(order.status)) {
+    if (!isOrderEditable(order.status, order.orderType)) {
       throw new Error("This order can no longer be edited.");
     }
 
@@ -450,6 +451,50 @@ export const orderService = {
     });
 
     return updated;
+  },
+
+  async deleteDraft(
+    tenantId: string,
+    userId: string,
+    orderId: string,
+    opts: { hasFullAccess: boolean },
+  ) {
+    const order = await orderRepository.findById(tenantId, orderId);
+    if (!order) throw new Error("Order not found");
+    if (!canDeleteDraftOrder({ status: order.status })) {
+      throw new Error("Only unsubmitted draft orders can be deleted.");
+    }
+
+    if (!opts.hasFullAccess) {
+      const branchIds = await getUserBranchIds(tenantId, userId);
+      if (branchIds && !branchIds.includes(order.branchId)) {
+        throw new Error("You can only delete draft orders for your own branch.");
+      }
+    }
+
+    if (order.processedAt || order.sapDocRef) {
+      throw new Error("This draft is linked or processed and cannot be deleted.");
+    }
+
+    const auditMetadata = orderAuditMetadata(order);
+    const result = await orderRepository.deleteDraft(tenantId, orderId);
+    if (result.count === 0) {
+      throw new Error(
+        "This draft was already submitted for review, removed, or cannot be deleted.",
+      );
+    }
+
+    await auditService.log({
+      tenantId,
+      userId,
+      action: "order.draft_deleted",
+      entityType: "BranchOrder",
+      entityId: orderId,
+      metadata: {
+        ...auditMetadata,
+        status: order.status,
+      },
+    });
   },
 
   async approve(

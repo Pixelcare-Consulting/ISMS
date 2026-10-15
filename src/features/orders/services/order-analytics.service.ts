@@ -255,6 +255,34 @@ export const orderAnalyticsService = {
   },
 };
 
+function toAdditionalModel(input: {
+  id: string;
+  skuCode: string;
+  name: string;
+  brandId: string | null;
+  srp: number;
+  cbm: number;
+  onPlanogram: boolean;
+  remainingCapacity: number;
+  inv: Map<string, number>;
+}): OrderWorkspaceAdditionalModel {
+  const stkQty = input.inv.get("STK") ?? 0;
+  const ditQty = input.inv.get("DIT") ?? 0;
+  return {
+    id: input.id,
+    skuCode: input.skuCode,
+    name: input.name,
+    brandId: input.brandId,
+    srp: input.srp,
+    cbm: input.cbm,
+    inventory: sortInventoryCounts(input.inv),
+    stkQty,
+    ditQty,
+    onPlanogram: input.onPlanogram,
+    remainingCapacity: input.remainingCapacity,
+  };
+}
+
 async function loadAdditionalModels(
   tenantId: string,
   branchId: string,
@@ -264,9 +292,20 @@ async function loadAdditionalModels(
   switch (orderType) {
     case "special": {
       const models = await masterDataRepository.listModels(tenantId);
-      return models
-        .filter((m) => m.status === "active" && !onGrid.has(m.id))
-        .map((m) => ({
+      const extras = models.filter((m) => m.status === "active" && !onGrid.has(m.id));
+      const extraIds = extras.map((m) => m.id);
+      const invByModel =
+        extraIds.length > 0
+          ? await planogramRepository.countInventoryByStatusForBranchModels(
+              tenantId,
+              branchId,
+              extraIds,
+            )
+          : new Map<string, Map<string, number>>();
+
+      return extras.map((m) => {
+        const inv = invByModel.get(m.id) ?? new Map<string, number>();
+        return toAdditionalModel({
           id: m.id,
           skuCode: m.skuCode,
           name: m.name,
@@ -275,7 +314,9 @@ async function loadAdditionalModels(
           cbm: decimalToNumber(m.cbm),
           onPlanogram: false,
           remainingCapacity: Number.MAX_SAFE_INTEGER,
-        }));
+          inv,
+        });
+      });
     }
     case "manual":
     case "auto_replenish": {
@@ -295,8 +336,9 @@ async function loadAdditionalModels(
           : new Map<string, Map<string, number>>();
 
       return extraEntries.map((entry) => {
-        const stkQty = invByModel.get(entry.model.id)?.get("STK") ?? 0;
-        return {
+        const inv = invByModel.get(entry.model.id) ?? new Map<string, number>();
+        const stkQty = inv.get("STK") ?? 0;
+        return toAdditionalModel({
           id: entry.model.id,
           skuCode: entry.model.skuCode,
           name: entry.model.name,
@@ -305,7 +347,8 @@ async function loadAdditionalModels(
           cbm: decimalToNumber(entry.model.cbm),
           onPlanogram: true,
           remainingCapacity: Math.max(0, entry.maxQty - stkQty),
-        };
+          inv,
+        });
       });
     }
     default: {

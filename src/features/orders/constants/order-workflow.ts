@@ -11,8 +11,9 @@ export interface OrderApprovalStep {
 
 /**
  * Signed FINDEN Process II (Ordering):
- * - PS reviews Manual Orders and submits the request.
- * - TL reviews. A special order is created and submitted by TL. Anything else goes to SP.
+ * - PS creates Manual Orders; they go straight to Supply Planning.
+ *   Team Leaders may optionally edit while Pending SP (no TL approval gate).
+ * - A special order is created and submitted by TL, then SP.
  * - SP approves or cancels. Approval queues the SAP stand-in for Auto Create ITR/SO.
  *   That job does not move stock. A date outside the delivery window is rescheduled.
  * - Auto-replenish still starts with TL, then SP.
@@ -28,11 +29,7 @@ export function getOrderApprovalChain(orderType: BranchOrderType): OrderApproval
         { level: 2, roleSlug: "sp", status: "pending_sp", label: "Supply Planning" },
       ];
     case "manual":
-      return [
-        { level: 1, roleSlug: "ps", status: "pending_ps", label: "Product Specialist" },
-        { level: 2, roleSlug: "tl", status: "pending_tl", label: "Team Leader" },
-        { level: 3, roleSlug: "sp", status: "pending_sp", label: "Supply Planning" },
-      ];
+      return [{ level: 1, roleSlug: "sp", status: "pending_sp", label: "Supply Planning" }];
     default:
       return [
         { level: 1, roleSlug: "tl", status: "pending_tl", label: "Team Leader" },
@@ -42,8 +39,8 @@ export function getOrderApprovalChain(orderType: BranchOrderType): OrderApproval
 }
 
 export function getInitialOrderStatus(orderType: BranchOrderType): BranchOrderStatus {
-  // Process II: submitting a manual request sends it to Team Leader review.
-  if (orderType === "manual") return "pending_tl";
+  // Manual requests go straight to Supply Planning (TL may optionally edit).
+  if (orderType === "manual") return "pending_sp";
   return getOrderApprovalChain(orderType)[0]?.status ?? "pending_tl";
 }
 
@@ -52,8 +49,8 @@ export function nextStatusAfterApprove(
   orderType: BranchOrderType,
 ): BranchOrderStatus {
   if (current === "pending_logistics") return "approved";
-  // Older manual requests may still be waiting on the product specialist.
-  if (current === "pending_ps" && orderType === "manual") return "pending_tl";
+  // Older manual requests may still be waiting on the product specialist — skip TL.
+  if (current === "pending_ps" && orderType === "manual") return "pending_sp";
 
   const chain = getOrderApprovalChain(orderType);
   const idx = chain.findIndex((step) => step.status === current);
@@ -91,6 +88,31 @@ export function canApproveOrder(
     return SUPPLY_PLANNING_APPROVER_SLUGS.some((slug) => roleSlugs.includes(slug));
   }
   return roleSlugs.includes(step.roleSlug);
+}
+
+/** PS / TL may optionally edit Manual orders while they await Supply Planning. */
+export function canOptionallyEditManualOrder(roleSlugs: string[]): boolean {
+  return roleSlugs.includes("ps") || roleSlugs.includes("tl");
+}
+
+/**
+ * Whether the viewer may edit order lines for this status/type.
+ * Create permission covers drafts (and Manual pending_sp for PS creators).
+ * Optional Manual editors (PS/TL) can edit Manual pending_sp without create.
+ */
+export function canEditOrderLines(opts: {
+  status: BranchOrderStatus;
+  orderType: BranchOrderType;
+  roleSlugs: string[];
+  hasCreatePermission: boolean;
+}): boolean {
+  if (!isOrderEditable(opts.status, opts.orderType)) return false;
+  if (opts.hasCreatePermission) return true;
+  return (
+    opts.orderType === "manual" &&
+    opts.status === "pending_sp" &&
+    canOptionallyEditManualOrder(opts.roleSlugs)
+  );
 }
 
 /** SP's no on the signed sheet is Cancel Request. Earlier steps stay a rejection. */
@@ -172,6 +194,7 @@ export function isOrderQueueOversightRole(roleSlugs: string[]): boolean {
 /**
  * Statuses shown on the Orders tab for this viewer.
  * Workflow roles only see the step they can review (plus drafts if they can create).
+ * For Manual, PS/TL also see pending_sp so they can optionally edit before SP decides.
  * Tenant / Super Admin see the full live pipeline. Approved / rejected / cancelled stay in History.
  */
 export function getOrderQueueStatuses(
@@ -185,13 +208,19 @@ export function getOrderQueueStatuses(
 
   return ORDER_QUEUE_STATUSES.filter((status) => {
     if (status === "draft") return Boolean(options?.includeDraft);
-    return canApproveOrder(status, orderType, roleSlugs);
+    if (canApproveOrder(status, orderType, roleSlugs)) return true;
+    return (
+      orderType === "manual" &&
+      status === "pending_sp" &&
+      canOptionallyEditManualOrder(roleSlugs)
+    );
   });
 }
 
 /**
  * Sidebar badge: only approval/review steps this role can act on (never drafts).
  * Oversight roles see every live pending step except draft.
+ * Optional Manual edit visibility does not inflate the badge.
  */
 export function getOrderActionableQueueStatuses(
   orderType: BranchOrderType,
@@ -207,17 +236,27 @@ export function getOrderActionableQueueStatuses(
 }
 
 /**
- * Whether a branch may still edit an order's lines. Only drafts are editable;
- * once submitted for review the order is frozen until approval workflow finishes
- * (or the order is rejected/cancelled). Editing also requires the branch to be
- * within its ordering window (enforced separately in the order service).
+ * Whether a branch may still edit an order's lines.
+ * Drafts are always editable. Manual orders stay editable while Pending SP
+ * so PS/TL can adjust before Supply Planning decides. Freeze after SP acts.
+ * Editing also requires the branch to be within its ordering window
+ * (enforced separately in the order service).
  */
-export function isOrderEditable(status: BranchOrderStatus): boolean {
-  return status === "draft";
+export function isOrderEditable(
+  status: BranchOrderStatus,
+  orderType?: BranchOrderType,
+): boolean {
+  if (status === "draft") return true;
+  return orderType === "manual" && status === "pending_sp";
+}
+
+/** Hard-delete is allowed only for unsubmitted draft rows (e.g. Suggested auto-replenish). */
+export function canDeleteDraftOrder(opts: { status: BranchOrderStatus }): boolean {
+  return opts.status === "draft";
 }
 
 export const ORDER_WORKFLOW_DESCRIPTION =
-  "Manual: PS submits, TL reviews, SP approves or cancels. Special: TL submits, SP approves or cancels. Auto-replenish: TL then SP. Approval opens a delivery. It does not move stock.";
+  "Manual: PS submits → Pending SP (TL may optionally edit) → Supply Planning approves or cancels. Special: TL submits, SP approves or cancels. Auto-replenish: TL then SP. Approval opens a delivery. It does not move stock.";
 
 export function getOrderStatusLabel(status: BranchOrderStatus): string {
   return BRANCH_ORDER_STATUS_LABELS[status] ?? status;
@@ -257,4 +296,3 @@ export function getAfterApproveHint(
   const step = getOrderApprovalChain(orderType).find((s) => s.status === nextStatus);
   return step ? `After approve → ${step.label}` : "";
 }
-

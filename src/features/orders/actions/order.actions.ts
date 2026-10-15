@@ -24,6 +24,7 @@ import {
 } from "@/features/orders/constants/order-permissions";
 import {
   canApproveOrder,
+  canEditOrderLines,
   getOrderQueueStatuses,
 } from "@/features/orders/constants/order-workflow";
 import {
@@ -295,7 +296,20 @@ export async function updateOrderAction(
   if (!existing) {
     return { error: "Order not found" };
   }
-  if (!hasOrderPermission(session.user.permissions, existing.orderType, "create")) {
+  const roleSlugs = session.user.roleSlugs ?? [];
+  const hasCreatePermission = hasOrderPermission(
+    session.user.permissions,
+    existing.orderType,
+    "create",
+  );
+  if (
+    !canEditOrderLines({
+      status: existing.status,
+      orderType: existing.orderType,
+      roleSlugs,
+      hasCreatePermission,
+    })
+  ) {
     redirect("/dashboard?error=forbidden");
   }
   try {
@@ -327,6 +341,26 @@ export async function submitDraftOrderAction(orderId: string) {
     return { success: true as const };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to submit order for review" };
+  }
+}
+
+export async function deleteDraftOrderAction(orderId: string) {
+  const session = await requireAuth();
+  const existing = await orderRepository.findById(session.user.tenantId, orderId);
+  if (!existing) {
+    return { error: "Order not found" };
+  }
+  if (!hasOrderPermission(session.user.permissions, existing.orderType, "create")) {
+    redirect("/dashboard?error=forbidden");
+  }
+  try {
+    await orderService.deleteDraft(session.user.tenantId, session.user.id, orderId, {
+      hasFullAccess: hasFullOrderAccess(session.user.permissions),
+    });
+    revalidateOrderPaths(existing.orderType);
+    return { success: true as const };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to delete draft order" };
   }
 }
 
