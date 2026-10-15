@@ -29,6 +29,17 @@ import type { DemandPlanningSourcePreview } from "@/features/demand-planning/typ
 import { decimalToNumber } from "@/lib/database/decimal";
 import type { PaginationInput } from "@/lib/shared/pagination";
 
+const DOCUMENT_NUMBER_CREATE_ATTEMPTS = 5;
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code: string }).code === "P2002"
+  );
+}
+
 function periodStartDate(period: {
   label: string;
   startDate: Date | null;
@@ -241,26 +252,45 @@ export const demandPlanningRunService = {
       input.historyFrom,
       input.historyTo,
     );
-    const documentNumber = await demandPlanningRepository.nextDocumentNumber(tenantId, start);
     const parameters = toRunParameters(input);
     const scope = {
       dealerIds: input.dealerIds,
       branchIds: branches.map((branch) => branch.id),
     };
 
-    const run = await demandPlanningRepository.createRun(tenantId, {
-      periodId: period.id,
-      documentNumber,
-      version,
-      status: "draft",
-      name: input.name?.trim() || null,
-      scope,
-      parameters,
-      historyFrom,
-      historyTo,
-      createdById: actorUserId,
-      supersedesRunId: input.supersedesRunId ?? null,
-    });
+    let run: Awaited<ReturnType<typeof demandPlanningRepository.createRun>> | null = null;
+    let documentNumber = "";
+    for (let attempt = 0; attempt < DOCUMENT_NUMBER_CREATE_ATTEMPTS; attempt++) {
+      documentNumber = await demandPlanningRepository.nextDocumentNumber(tenantId, start);
+      try {
+        run = await demandPlanningRepository.createRun(tenantId, {
+          periodId: period.id,
+          documentNumber,
+          version,
+          status: "draft",
+          name: input.name?.trim() || null,
+          scope,
+          parameters,
+          historyFrom,
+          historyTo,
+          createdById: actorUserId,
+          supersedesRunId: input.supersedesRunId ?? null,
+        });
+        break;
+      } catch (error) {
+        if (!isUniqueConstraintError(error)) throw error;
+        if (attempt === DOCUMENT_NUMBER_CREATE_ATTEMPTS - 1) {
+          throw new Error(
+            "Could not allocate a unique document number. Please try generating the plan again.",
+          );
+        }
+      }
+    }
+    if (!run) {
+      throw new Error(
+        "Could not allocate a unique document number. Please try generating the plan again.",
+      );
+    }
 
     const { assembled, stamps, onHandAsAt } = await demandPlanningFactsService.assembleBranches({
       tenantId,

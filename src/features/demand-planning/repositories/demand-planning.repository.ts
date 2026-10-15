@@ -1,7 +1,11 @@
 import type { DemandPlanningRunStatus, Prisma } from "@prisma/client";
 
 import { periodDateFieldsFromLabel } from "@/features/demand-planning/lib/planning-period-dates";
-import { formatDemandPlanningDocumentNumber } from "@/features/demand-planning/lib/document-number";
+import {
+  documentNumberPrefixesForPeriod,
+  formatDemandPlanningDocumentNumber,
+  parseDocumentSequence,
+} from "@/features/demand-planning/lib/document-number";
 import type { PersistableRunBranch } from "@/features/demand-planning/lib/line-mapper";
 import { ORDER_QUEUE_STATUSES } from "@/features/orders/constants/order-workflow";
 import {
@@ -70,20 +74,25 @@ export const demandPlanningRepository = {
     });
   },
 
+  /**
+   * Next DP-YYYYMM-nnn for the tenant/period month, from max existing sequence
+   * (not row count). Also considers mis-issued SP-YYYYMM-nnn so retries after
+   * deletes or the SP-prefix bug do not reuse a live number.
+   */
   async nextDocumentNumber(tenantId: string, periodStart: Date): Promise<string> {
-    const year = periodStart.getUTCFullYear();
-    const month = String(periodStart.getUTCMonth() + 1).padStart(2, "0");
-    const prefix = `DP-${year}${month}-`;
-    const latest = await prisma.demandPlanningRun.findFirst({
-      where: { tenantId, documentNumber: { startsWith: prefix } },
-      orderBy: { documentNumber: "desc" },
-      select: { documentNumber: true },
-    });
-    const lastSeq = latest
-      ? Number.parseInt(latest.documentNumber.slice(prefix.length), 10)
-      : 0;
-    const nextSeq = Number.isFinite(lastSeq) ? lastSeq + 1 : 1;
-    return formatDemandPlanningDocumentNumber(periodStart, nextSeq);
+    const prefixes = documentNumberPrefixesForPeriod(periodStart);
+    let maxSeq = 0;
+    for (const prefix of prefixes) {
+      const latest = await prisma.demandPlanningRun.findFirst({
+        where: { tenantId, documentNumber: { startsWith: prefix } },
+        orderBy: { documentNumber: "desc" },
+        select: { documentNumber: true },
+      });
+      if (!latest) continue;
+      const seq = parseDocumentSequence(latest.documentNumber, prefix);
+      if (Number.isFinite(seq) && seq > maxSeq) maxSeq = seq;
+    }
+    return formatDemandPlanningDocumentNumber(periodStart, maxSeq + 1);
   },
 
   createRun(

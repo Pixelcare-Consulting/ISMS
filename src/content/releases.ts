@@ -52,6 +52,22 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.55.5",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T16:55:00+08:00",
+    title: "Supply Planning new runs after deletes",
+    highlights: [
+      "Creating a new Supply Planning run no longer fails after deleting earlier runs or when document numbers would have duplicated.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Creating a new Supply Planning run no longer fails after deleting earlier runs or when a document number was already taken.",
+      },
+    ],
+  },
+  {
     version: "0.55.4",
     date: "2026-10-15",
     releasedAt: "2026-10-15T16:45:00+08:00",

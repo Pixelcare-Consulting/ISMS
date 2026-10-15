@@ -1,19 +1,61 @@
 /**
  * Supply Planning document numbers: DP-YYYYMM-nnn (sequence is 1-based).
  * Legacy DP-YYYYMMDD-nnn numbers stay unchanged.
+ * Brief SP-YYYYMM-nnn numbers (mis-issued while the formatter used SP) are still
+ * counted when allocating the next sequence so creates do not collide.
  */
-export function formatDemandPlanningDocumentNumber(
-  periodStart: Date,
-  sequence: number,
-): string {
-  const year = periodStart.getUTCFullYear();
-  const month = String(periodStart.getUTCMonth() + 1).padStart(2, "0");
-  const nnn = String(Math.max(1, Math.trunc(sequence))).padStart(3, "0");
-  return `SP-${year}${month}-${nnn}`;
-}
+
+export const DEMAND_PLANNING_DOCUMENT_PREFIX = "DP" as const;
+/** Mis-issued prefix kept only for sequence allocation / collision avoidance. */
+export const LEGACY_SP_DOCUMENT_PREFIX = "SP" as const;
 
 export function yearMonthKeyFromDate(date: Date): string {
   const year = date.getUTCFullYear();
   const month = String(date.getUTCMonth() + 1).padStart(2, "0");
   return `${year}${month}`;
+}
+
+export function formatDemandPlanningDocumentNumber(
+  periodStart: Date,
+  sequence: number,
+): string {
+  const yearMonth = yearMonthKeyFromDate(periodStart);
+  const nnn = String(Math.max(1, Math.trunc(sequence))).padStart(3, "0");
+  return `${DEMAND_PLANNING_DOCUMENT_PREFIX}-${yearMonth}-${nnn}`;
+}
+
+/** Prefixes whose sequences share one allocator for a planning month. */
+export function documentNumberPrefixesForPeriod(periodStart: Date): string[] {
+  const yearMonth = yearMonthKeyFromDate(periodStart);
+  return [
+    `${DEMAND_PLANNING_DOCUMENT_PREFIX}-${yearMonth}-`,
+    `${LEGACY_SP_DOCUMENT_PREFIX}-${yearMonth}-`,
+  ];
+}
+
+/**
+ * Parse the trailing sequence from a document number given its known prefix.
+ * Returns NaN when the suffix is not a finite integer.
+ */
+export function parseDocumentSequence(documentNumber: string, prefix: string): number {
+  if (!documentNumber.startsWith(prefix)) return Number.NaN;
+  return Number.parseInt(documentNumber.slice(prefix.length), 10);
+}
+
+/**
+ * Next 1-based sequence after the highest sequence found under any of the prefixes.
+ * Pure helper for unit tests; repository applies the same rule against the DB.
+ */
+export function nextDocumentSequence(
+  documentNumbers: string[],
+  prefixes: string[],
+): number {
+  let maxSeq = 0;
+  for (const documentNumber of documentNumbers) {
+    for (const prefix of prefixes) {
+      const seq = parseDocumentSequence(documentNumber, prefix);
+      if (Number.isFinite(seq) && seq > maxSeq) maxSeq = seq;
+    }
+  }
+  return maxSeq + 1;
 }
