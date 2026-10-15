@@ -54,6 +54,8 @@ export interface PriceListImportRowError {
   sheet: string;
   rowNumber: number;
   sku: string;
+  /** Package type as typed in the file, or "—" when the row has none. */
+  packageType: string;
   message: string;
 }
 

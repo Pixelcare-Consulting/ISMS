@@ -7,6 +7,7 @@ import type {
   ModelImportPreview,
   ModelImportResult,
 } from "@/features/master-data/schemas/model-import.schema";
+import { invalidateSeriesCache } from "@/features/master-data/repositories/master-data.repository";
 import { modelImportService } from "@/features/master-data/services/model-import.service";
 import { requirePermission } from "@/lib/auth/permissions";
 import { cacheKey, deleteCache } from "@/lib/cache/redis";
@@ -104,6 +105,7 @@ export async function applyModelImportChunkAction(
     });
     if (progress.done) {
       await invalidateModelsCache(session.user.tenantId);
+      await invalidateSeriesCache(session.user.tenantId);
       revalidatePath("/settings/master-data/models");
       revalidatePath("/settings/master-data/brands");
       revalidatePath("/settings/master-data/series");
@@ -130,6 +132,7 @@ export async function applyModelImportAction(
       file,
     });
     await invalidateModelsCache(session.user.tenantId);
+    await invalidateSeriesCache(session.user.tenantId);
     revalidatePath("/settings/master-data/models");
     revalidatePath("/settings/master-data/brands");
     revalidatePath("/settings/master-data/series");

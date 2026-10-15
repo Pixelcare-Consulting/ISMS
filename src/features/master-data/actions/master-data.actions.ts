@@ -33,7 +33,8 @@ const modelSchema = z.object({
 
 const priceListSchema = z.object({
   modelId: z.string().min(1),
-  amount: z.coerce.number().positive(),
+  // 0 is allowed for free items; negatives are not. No coerce: "" / null would become 0.
+  amount: z.number().nonnegative(),
   periodStart: z.string().min(1),
   periodEnd: z.string().min(1),
   packageTypeId: z.string().optional().nullable(),
@@ -131,16 +132,50 @@ export async function updateModelStatusAction(input: unknown) {
   }
 }
 
+const optionalLookupId = z.string().min(1).nullable();
+const modelDetailsSchema = z.object({
+  modelId: z.string().min(1),
+  brandId: z.string().min(1, "Brand is required"),
+  seriesId: optionalLookupId,
+  categoryId: optionalLookupId,
+  featureId: optionalLookupId,
+  resolutionId: optionalLookupId,
+  actualSizeId: optionalLookupId,
+});
+
+export async function updateModelDetailsAction(input: unknown) {
+  const session = await requirePermission("master_data.manage");
+  const parsed = modelDetailsSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+  try {
+    const { masterDataService } = await import(
+      "@/features/master-data/services/master-data.service"
+    );
+    const { sapWarning } = await masterDataService.updateModelDetails({
+      tenantId: session.user.tenantId,
+      actorUserId: session.user.id,
+      ...parsed.data,
+    });
+    revalidateMasterData();
+    return { success: true as const, sapWarning };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to update model" };
+  }
+}
+
 export async function listModelFormLookupsAction() {
   const session = await requirePermission("master_data.manage");
   const tenantId = session.user.tenantId;
-  const [features, resolutions, actualSizes, packageTypes] = await Promise.all([
+  const [categories, features, resolutions, actualSizes, packageTypes] = await Promise.all([
+    prisma.category.findMany({ where: { tenantId }, orderBy: { name: "asc" } }),
     prisma.feature.findMany({ where: { tenantId }, orderBy: { name: "asc" } }),
     prisma.resolution.findMany({ where: { tenantId }, orderBy: { name: "asc" } }),
     prisma.actualSize.findMany({ where: { tenantId }, orderBy: { name: "asc" } }),
     prisma.packageType.findMany({ where: { tenantId }, orderBy: { name: "asc" } }),
   ]);
-  return { features, resolutions, actualSizes, packageTypes };
+  return { categories, features, resolutions, actualSizes, packageTypes };
 }
 
 export async function listPriceListsAction(modelId?: string) {

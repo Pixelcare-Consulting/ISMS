@@ -17,9 +17,8 @@ import type { SkuStatus } from "@/lib/database/generated/prisma/client";
  * NOT NULL), `status` (SAP Active → `active`, Inactive → `retired` and soft-deleted) and
  * `brand`. A soft-deleted model SAP returns as active again is restored. Feature,
  * resolution, size, SRP and CBM are ISMS-only and are never touched. Series is also
- * ISMS-only: a sync does not create series rows, but a new or unlinked model is attached
- * to an existing series when the SKU matches that series code. An already-set series is
- * left alone.
+ * ISMS-only: the sync never sets or changes it. A new model has no series until someone
+ * sets it from the Models table or the Models import.
  *
  * Runs before serial numbers in the sync registry: a serial cannot be stored without its
  * model, so syncing items first is what lets the same cron pass link them.

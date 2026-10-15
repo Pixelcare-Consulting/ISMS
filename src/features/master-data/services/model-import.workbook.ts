@@ -19,6 +19,7 @@ export interface ModelTemplateRow {
   name: string;
   brand: string;
   series: string;
+  category: string;
   feature: string;
   resolution: string;
   actualSize: string;
@@ -142,6 +143,7 @@ export async function buildModelTemplateWorkbook(
       model.name,
       model.brand,
       model.series,
+      model.category,
       model.feature,
       model.resolution,
       model.actualSize,
@@ -157,10 +159,11 @@ export async function buildModelTemplateWorkbook(
       "",
       "",
       "",
+      "",
       "active",
     ]);
   }
-  styleHeader(sheet, [14, 40, 14, 16, 14, 14, 14, 10]);
+  styleHeader(sheet, [14, 40, 14, 16, 14, 14, 14, 14, 10]);
 
   const buffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(buffer);

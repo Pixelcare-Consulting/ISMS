@@ -11,6 +11,11 @@ export interface ClientModelPriceListRow {
   packageType: { id: string; name: string; quantity: number } | null;
 }
 
+export interface ClientLookupRef {
+  id: string;
+  name: string;
+}
+
 export interface ClientModelRow {
   id: string;
   skuCode: string;
@@ -18,8 +23,12 @@ export interface ClientModelRow {
   status: string;
   effectivePrice: number | null;
   cbm: number | null;
-  brand: { name: string } | null;
-  series: { name: string } | null;
+  brand: ClientLookupRef | null;
+  series: ClientLookupRef | null;
+  category: ClientLookupRef | null;
+  feature: ClientLookupRef | null;
+  resolution: ClientLookupRef | null;
+  actualSize: ClientLookupRef | null;
   priceLists: ClientModelPriceListRow[];
 }
 
@@ -29,8 +38,13 @@ type PrismaModelRow = {
   name: string;
   status: string;
   cbm: { toString(): string } | number | null;
-  brand: { name: string } | null;
-  series: { name: string } | null;
+  brand: ClientLookupRef | null;
+  series: ClientLookupRef | null;
+  // Optional: rows cached before these relations were selected do not carry them.
+  category?: ClientLookupRef | null;
+  feature?: ClientLookupRef | null;
+  resolution?: ClientLookupRef | null;
+  actualSize?: ClientLookupRef | null;
   priceLists?: {
     id: string;
     amount: { toString(): string } | number;
@@ -40,6 +54,10 @@ type PrismaModelRow = {
     packageType: { id: string; name: string; quantity: number } | null;
   }[];
 };
+
+function toRef(row: ClientLookupRef | null | undefined): ClientLookupRef | null {
+  return row ? { id: row.id, name: row.name } : null;
+}
 
 export function toClientModelRow(model: PrismaModelRow): ClientModelRow {
   const priceLists: ClientModelPriceListRow[] = (model.priceLists ?? []).map((row) => ({
@@ -60,8 +78,12 @@ export function toClientModelRow(model: PrismaModelRow): ClientModelRow {
     status: model.status,
     effectivePrice: activeRow ? activeRow.amount : null,
     cbm: decimalToNumberOrNull(model.cbm),
-    brand: model.brand ? { name: model.brand.name } : null,
-    series: model.series ? { name: model.series.name } : null,
+    brand: toRef(model.brand),
+    series: toRef(model.series),
+    category: toRef(model.category),
+    feature: toRef(model.feature),
+    resolution: toRef(model.resolution),
+    actualSize: toRef(model.actualSize),
     priceLists,
   };
 }

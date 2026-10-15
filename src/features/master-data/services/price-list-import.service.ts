@@ -107,13 +107,17 @@ function parseCalendarDay(raw: string): { ymd: string; at: Date } | null {
   return { ymd, at: new Date(Date.UTC(year, month - 1, day)) };
 }
 
-function parsePositiveAmount(raw: string | undefined): number | { error: string } {
+/** 0 is valid (free items); only blank, non-numeric and negative amounts are rejected. */
+function parseNonNegativeAmount(raw: string | undefined): number | { error: string } {
   if (raw == null || isBlankOrDash(raw)) {
     return { error: "Amount is required." };
   }
   const parsed = Number.parseFloat(raw.replace(/,/g, "").trim());
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return { error: "Amount must be a positive number." };
+  if (!Number.isFinite(parsed)) {
+    return { error: "Amount must be a number." };
+  }
+  if (parsed < 0) {
+    return { error: "Amount cannot be negative." };
   }
   return money(parsed);
 }
@@ -223,6 +227,7 @@ async function buildPlan(tenantId: string, sheet: SheetRows): Promise<ImportPlan
         sheet: PRICE_LIST_SHEET_NAME,
         rowNumber: row.rowNumber,
         sku: sku || "—",
+        packageType: isBlankOrDash(packageRaw) ? "—" : packageRaw!.trim(),
         message,
       });
     };
@@ -242,7 +247,7 @@ async function buildPlan(tenantId: string, sheet: SheetRows): Promise<ImportPlan
       continue;
     }
 
-    const amount = parsePositiveAmount(amountRaw);
+    const amount = parseNonNegativeAmount(amountRaw);
     if (typeof amount === "object") {
       pushError(amount.error);
       continue;
