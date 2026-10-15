@@ -80,10 +80,48 @@ export const monthlySirRepository = {
     branchId: string;
     requestedById: string;
     purpose: string;
+    status?: MonthlySirRequestStatus;
+    reviewedById?: string;
+    reviewedAt?: Date;
+    reviewRemarks?: string;
+    stockCountSessionId?: string;
   }) {
     return prisma.monthlySirRequest.create({
-      data,
+      data: {
+        tenantId: data.tenantId,
+        branchId: data.branchId,
+        requestedById: data.requestedById,
+        purpose: data.purpose,
+        status: data.status ?? "pending",
+        reviewedById: data.reviewedById,
+        reviewedAt: data.reviewedAt,
+        reviewRemarks: data.reviewRemarks,
+        stockCountSessionId: data.stockCountSessionId,
+      },
       include: requestInclude,
+    });
+  },
+
+  /** Count successful P-COUNT uploads (`uploadedAt` set) for allowance windows. */
+  countUploadedByRequester(
+    tenantId: string,
+    filters: {
+      requestedById: string;
+      branchId: string;
+      uploadedAtFrom: Date;
+      uploadedAtToExclusive: Date;
+    },
+  ) {
+    return prisma.monthlySirRequest.count({
+      where: {
+        tenantId,
+        requestedById: filters.requestedById,
+        branchId: filters.branchId,
+        uploadedAt: {
+          gte: filters.uploadedAtFrom,
+          lt: filters.uploadedAtToExclusive,
+        },
+      },
     });
   },
 

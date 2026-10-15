@@ -3,7 +3,13 @@
 import { Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useRef, useState, useTransition } from "react";
+import {
+  FormEvent,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { toast } from "sonner";
 
 import { TableIndexCell, TableIndexHead } from "@/components/data-table";
@@ -36,6 +42,7 @@ import {
   createMonthlySirRequestAction,
   downloadMonthlySirTemplateAction,
   generateMonthlySirVarianceAction,
+  getPcountUploadAllowanceAction,
   previewMonthlySirUploadAction,
   reviewMonthlySirRequestAction,
   validateMonthlySirScansAction,
@@ -44,6 +51,7 @@ import {
   MONTHLY_SIR_STATUS_LABELS,
   MONTHLY_SIR_STATUS_VARIANTS,
 } from "@/features/monthly-sir/constants/monthly-sir";
+import type { PcountUploadAllowance } from "@/features/monthly-sir/lib/pcount-upload-allowance";
 import { cn } from "@/utils/cn";
 
 const XLSX_MIME =
@@ -79,6 +87,8 @@ interface MonthlySirPanelProps {
   tab: "all" | "approval";
   branchId: string;
   canManage: boolean;
+  initialAllowance?: PcountUploadAllowance | null;
+  initialAllowanceBranchId?: string;
 }
 
 interface UploadPreview {
@@ -117,12 +127,22 @@ export function MonthlySirPanel({
   tab,
   branchId,
   canManage,
+  initialAllowance = null,
+  initialAllowanceBranchId = "",
 }: MonthlySirPanelProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [requestOpen, setRequestOpen] = useState(false);
-  const [selectedBranchId, setSelectedBranchId] = useState(branches[0]?.id ?? "");
+  const [selectedBranchId, setSelectedBranchId] = useState(
+    () => branchId || branches[0]?.id || "",
+  );
   const [purpose, setPurpose] = useState("");
+  const [allowance, setAllowance] = useState<PcountUploadAllowance | null>(
+    () => initialAllowance,
+  );
+  const [allowanceBranchId, setAllowanceBranchId] = useState(
+    () => initialAllowanceBranchId,
+  );
   const [reviewRow, setReviewRow] = useState<MonthlySirRow | null>(null);
   const [remarks, setRemarks] = useState("");
   const [uploadRow, setUploadRow] = useState<MonthlySirRow | null>(null);
@@ -133,6 +153,37 @@ export function MonthlySirPanel({
   const [scanInput, setScanInput] = useState("");
   const [scans, setScans] = useState<ScannedSerial[]>([]);
   const nextScanId = useRef(1);
+  const allowanceForBranch =
+    selectedBranchId && allowanceBranchId === selectedBranchId
+      ? allowance
+      : null;
+  const allowanceLoading = Boolean(
+    selectedBranchId && allowanceBranchId !== selectedBranchId,
+  );
+  const canDirectUpload = allowanceForBranch?.canDirectUpload ?? false;
+  const startMode = canDirectUpload ? "direct" : "request";
+
+  useEffect(() => {
+    if (!selectedBranchId || allowanceBranchId === selectedBranchId) return;
+
+    const branchIdForLoad = selectedBranchId;
+    let cancelled = false;
+    void getPcountUploadAllowanceAction({ branchId: branchIdForLoad }).then(
+      (result) => {
+        if (cancelled) return;
+        if ("error" in result) {
+          setAllowance(null);
+          setAllowanceBranchId(branchIdForLoad);
+          return;
+        }
+        setAllowance(result.allowance);
+        setAllowanceBranchId(branchIdForLoad);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedBranchId, allowanceBranchId]);
 
   function href(next: {
     tab?: "all" | "approval";
@@ -149,19 +200,34 @@ export function MonthlySirPanel({
     return query ? `/inventory/monthly-sir?${query}` : "/inventory/monthly-sir";
   }
 
-  function submitRequest() {
+  function submitStart() {
     startTransition(async () => {
       const result = await createMonthlySirRequestAction({
         branchId: selectedBranchId,
         purpose,
+        mode: startMode,
       });
       if ("error" in result) {
         toast.error(result.error);
         return;
       }
-      toast.success("Monthly SIR request submitted");
+      toast.success(
+        startMode === "direct"
+          ? "P-COUNT upload started — scan or upload when ready"
+          : "Monthly SIR request submitted",
+      );
       setPurpose("");
       setRequestOpen(false);
+      // Refresh allowance after starting (slot not consumed until upload succeeds).
+      if (selectedBranchId) {
+        const next = await getPcountUploadAllowanceAction({
+          branchId: selectedBranchId,
+        });
+        if (!("error" in next)) {
+          setAllowance(next.allowance);
+          setAllowanceBranchId(selectedBranchId);
+        }
+      }
       router.refresh();
     });
   }
@@ -373,15 +439,33 @@ export function MonthlySirPanel({
               })),
             ]}
             value={branchId}
-            onChange={(value) => router.push(href({ branch: value, page: 1 }))}
+            onChange={(value) => {
+              if (value) setSelectedBranchId(value);
+              router.push(href({ branch: value, page: 1 }));
+            }}
             placeholder="All branches"
             searchPlaceholder="Search branches…"
             emptyMessage="No branches found."
           />
         </div>
-        <Button onClick={() => setRequestOpen(true)}>
-          Request to upload P-COUNT
-        </Button>
+        <div className="flex flex-col items-stretch gap-1 sm:items-end">
+          <Button
+            disabled={!selectedBranchId || allowanceLoading}
+            onClick={() => setRequestOpen(true)}
+          >
+            {canDirectUpload ? "Upload P-COUNT" : "Request to upload P-COUNT"}
+          </Button>
+          {allowanceForBranch?.message ? (
+            <p className="max-w-md text-right text-xs text-muted-foreground">
+              {allowanceForBranch.unlimited
+                ? "Unlimited direct uploads"
+                : allowanceForBranch.slotsRemainingMonth != null &&
+                    allowanceForBranch.slotsTotalMonth != null
+                  ? `${allowanceForBranch.message} (${allowanceForBranch.slotsRemainingMonth}/${allowanceForBranch.slotsTotalMonth} free left this month)`
+                  : allowanceForBranch.message}
+            </p>
+          ) : null}
+        </div>
       </div>
 
       <div className="overflow-x-auto rounded-xl border bg-card">
@@ -532,9 +616,13 @@ export function MonthlySirPanel({
       <Dialog open={requestOpen} onOpenChange={setRequestOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Request Monthly SIR</DialogTitle>
+            <DialogTitle>
+              {canDirectUpload ? "Upload P-COUNT" : "Request Monthly SIR"}
+            </DialogTitle>
             <DialogDescription>
-              Submit a branch P-COUNT request for Team Leader approval.
+              {canDirectUpload
+                ? "Start a free P-COUNT for this branch. Your monthly slot is used only after a successful upload."
+                : "Submit a branch P-COUNT request for inventory approval."}
             </DialogDescription>
           </DialogHeader>
           <SearchableSelect
@@ -548,6 +636,11 @@ export function MonthlySirPanel({
             searchPlaceholder="Search branches…"
             emptyMessage="No assigned branches."
           />
+          {allowanceForBranch?.message ? (
+            <p className="rounded-lg border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+              {allowanceForBranch.message}
+            </p>
+          ) : null}
           <Textarea
             value={purpose}
             onChange={(event) => setPurpose(event.target.value)}
@@ -556,8 +649,16 @@ export function MonthlySirPanel({
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => setRequestOpen(false)}>Cancel</Button>
-            <Button disabled={pending || !selectedBranchId || purpose.trim().length < 3} onClick={submitRequest}>
-              Submit request
+            <Button
+              disabled={
+                pending ||
+                allowanceLoading ||
+                !selectedBranchId ||
+                purpose.trim().length < 3
+              }
+              onClick={submitStart}
+            >
+              {canDirectUpload ? "Start upload" : "Submit request"}
             </Button>
           </DialogFooter>
         </DialogContent>

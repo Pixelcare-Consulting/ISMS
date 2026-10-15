@@ -4,6 +4,7 @@ import { ORDER_VIEW_REPORT_PERMISSIONS } from "@/features/orders/constants/order
 import { reportsService } from "@/features/reports/services/reports.service";
 import { requirePermission } from "@/lib/auth/permissions";
 import { dailyStockReportService } from "@/features/reports/services/daily-stock-report.service";
+import { inventoryReportService } from "@/features/reports/services/inventory-report.service";
 import { processedOrdersReportService } from "@/features/reports/services/processed-orders-report.service";
 import { transferReportService } from "@/features/reports/services/transfer-report.service";
 import { salesReportService } from "@/features/reports/services/sales-report.service";
@@ -128,5 +129,26 @@ export async function exportSalesReportCsvAction(input?: { from?: string; to?: s
     success: true as const,
     csv,
     filename: `sales-report-${new Date().toISOString().slice(0, 10)}.csv`,
+  };
+}
+
+export async function exportInventoryReportCsvAction(input?: {
+  from?: string;
+  to?: string;
+}) {
+  const session = await requireAnyPermission(["reports.view", "inventory.view"]);
+  const branchIds = await resolveReportBranchIds(session.user.tenantId, session.user.id);
+
+  const csv = await inventoryReportService.generateCsv(session.user.tenantId, {
+    from: input?.from ? new Date(input.from) : undefined,
+    to: input?.to ? new Date(`${input.to}T23:59:59.999Z`) : undefined,
+    branchIds,
+  });
+
+  const stamp = new Date().toISOString().slice(0, 10);
+  return {
+    success: true as const,
+    csv,
+    filename: `inventory-report-${stamp}.csv`,
   };
 }

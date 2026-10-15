@@ -9,6 +9,7 @@ import {
   createMonthlySirRequestSchema,
   monthlySirScansSchema,
   monthlySirUploadSchema,
+  pcountUploadAllowanceSchema,
   reviewMonthlySirRequestSchema,
 } from "@/features/monthly-sir/schemas/monthly-sir.schema";
 import { monthlySirService } from "@/features/monthly-sir/services/monthly-sir.service";
@@ -83,6 +84,27 @@ export async function listMonthlySirBranchesAction() {
     .map(({ id, name, sapCode }) => ({ id, name, sapCode }));
 }
 
+export async function getPcountUploadAllowanceAction(input: unknown) {
+  const session = await requirePermission("inventory.view");
+  const parsed = pcountUploadAllowanceSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid branch" };
+  }
+  try {
+    const allowance = await monthlySirService.getUploadAllowance({
+      tenantId: session.user.tenantId,
+      userId: session.user.id,
+      branchId: parsed.data.branchId,
+      permissions: session.user.permissions,
+      roleSlugs: session.user.roleSlugs,
+      unrestricted: isUnrestricted(session.user.permissions),
+    });
+    return { success: true as const, allowance };
+  } catch (error) {
+    return actionError(error, "Failed to load P-COUNT upload allowance");
+  }
+}
+
 export async function createMonthlySirRequestAction(input: unknown) {
   const session = await requirePermission("inventory.view");
   const parsed = createMonthlySirRequestSchema.safeParse(input);
@@ -94,12 +116,24 @@ export async function createMonthlySirRequestAction(input: unknown) {
       tenantId: session.user.tenantId,
       userId: session.user.id,
       unrestricted: isUnrestricted(session.user.permissions),
+      permissions: session.user.permissions,
+      roleSlugs: session.user.roleSlugs,
       ...parsed.data,
     });
-    revalidateMonthlySir();
-    return { success: true as const, requestId: request.id };
+    revalidateMonthlySir(request.stockCountSessionId ?? undefined);
+    return {
+      success: true as const,
+      requestId: request.id,
+      mode: parsed.data.mode,
+      stockCountSessionId: request.stockCountSessionId ?? undefined,
+    };
   } catch (error) {
-    return actionError(error, "Failed to create Monthly SIR request");
+    return actionError(
+      error,
+      parsed.data.mode === "direct"
+        ? "Failed to start P-COUNT upload"
+        : "Failed to create Monthly SIR request",
+    );
   }
 }
 

@@ -165,16 +165,23 @@ export function DemandPlanningRunDocument({
               });
             }}
           >
-            <div className="flex flex-wrap items-end justify-between gap-3">
-              <div className="min-w-0 space-y-2">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1 space-y-2">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                   Branches
                 </p>
-                <TabsList variant="line" className="max-w-full flex-wrap">
+                <TabsList
+                  variant="line"
+                  className="h-auto w-full max-w-full flex-wrap items-start justify-start gap-x-1 gap-y-1.5 group-data-[orientation=horizontal]/tabs:h-auto"
+                >
                   {run.branches.map((branch) => {
                     const statusCaption = branchPlanStatusCaption(branch.planStatus);
                     return (
-                      <TabsTrigger key={branch.id} value={branch.id} className="max-w-[16rem] shrink-0">
+                      <TabsTrigger
+                        key={branch.id}
+                        value={branch.id}
+                        className="h-8 max-w-[16rem] flex-none shrink-0"
+                      >
                         <span className="truncate font-medium">
                           {branch.sapCode} · {branch.name}
                         </span>
@@ -188,7 +195,7 @@ export function DemandPlanningRunDocument({
                   })}
                 </TabsList>
               </div>
-              <div className="flex items-center gap-2 pb-1">
+              <div className="flex shrink-0 items-center gap-2 pt-6">
                 <Switch
                   id="run-document-show-nil"
                   checked={showNil}

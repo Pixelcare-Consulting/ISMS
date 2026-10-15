@@ -75,9 +75,9 @@ export const demandPlanningRepository = {
   },
 
   /**
-   * Next DP-YYYYMM-nnn for the tenant/period month, from max existing sequence
-   * (not row count). Also considers mis-issued SP-YYYYMM-nnn so retries after
-   * deletes or the SP-prefix bug do not reuse a live number.
+   * Next SP-YYYYMM-nnn for the tenant/period month, from max existing sequence
+   * (not row count). Also considers legacy DP-YYYYMM-nnn so retries after
+   * deletes do not reuse a live number.
    */
   async nextDocumentNumber(tenantId: string, periodStart: Date): Promise<string> {
     const prefixes = documentNumberPrefixesForPeriod(periodStart);
@@ -285,6 +285,8 @@ export const demandPlanningRepository = {
       historyFrom: Date;
       historyTo: Date;
       onHandAsAt: Date;
+      /** When set (e.g. after excluding no-history dealers), persists the narrowed scope. */
+      scope?: Prisma.InputJsonValue;
       stamps: {
         historySkuCount: number;
         historyPeso: number;
@@ -300,6 +302,26 @@ export const demandPlanningRepository = {
     },
   ) {
     await prisma.$transaction(async (tx) => {
+      await tx.demandPlanningRun.update({
+        where: { id: runId },
+        data: {
+          status: input.status,
+          historyFrom: input.historyFrom,
+          historyTo: input.historyTo,
+          onHandAsAt: input.onHandAsAt,
+          ...(input.scope !== undefined ? { scope: input.scope } : {}),
+          historySkuCount: input.stamps.historySkuCount,
+          historyPeso: input.stamps.historyPeso,
+          planogramYCount: input.stamps.planogramYCount,
+          planogramSkuCount: input.stamps.planogramSkuCount,
+          forecastUnitCount: input.stamps.forecastUnitCount,
+          forecastPeso: input.stamps.forecastPeso,
+          onHandUnitCount: input.stamps.onHandUnitCount,
+          onHandPeso: input.stamps.onHandPeso,
+          displayUnitsCount: input.stamps.displayUnitsCount,
+        },
+      });
+
       await tx.demandPlanningRunBranch.deleteMany({ where: { tenantId, runId } });
 
       for (const branch of input.branches) {
@@ -365,25 +387,6 @@ export const demandPlanningRepository = {
           })),
         });
       }
-
-      await tx.demandPlanningRun.update({
-        where: { id: runId },
-        data: {
-          status: input.status,
-          historyFrom: input.historyFrom,
-          historyTo: input.historyTo,
-          onHandAsAt: input.onHandAsAt,
-          historySkuCount: input.stamps.historySkuCount,
-          historyPeso: input.stamps.historyPeso,
-          planogramYCount: input.stamps.planogramYCount,
-          planogramSkuCount: input.stamps.planogramSkuCount,
-          forecastUnitCount: input.stamps.forecastUnitCount,
-          forecastPeso: input.stamps.forecastPeso,
-          onHandUnitCount: input.stamps.onHandUnitCount,
-          onHandPeso: input.stamps.onHandPeso,
-          displayUnitsCount: input.stamps.displayUnitsCount,
-        },
-      });
     });
   },
 

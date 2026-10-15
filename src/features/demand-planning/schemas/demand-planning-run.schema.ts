@@ -16,6 +16,12 @@ export const generateDemandPlanSchema = z
     /** Optional sales-history window (`YYYY-MM-DD` or ISO). Defaults to 3 months before the period. */
     historyFrom: z.string().min(1).optional().nullable(),
     historyTo: z.string().min(1).optional().nullable(),
+    /**
+     * When true (default), dealers with engine `no_history` for the history window
+     * are left out of the generated run. New-run wizard always sends true;
+     * recalculate may pass false to preserve an existing run scope.
+     */
+    excludeNoHistoryBranches: z.boolean().default(true),
     supersedesRunId: z.string().min(1).optional().nullable(),
   })
   .superRefine((value, ctx) => {

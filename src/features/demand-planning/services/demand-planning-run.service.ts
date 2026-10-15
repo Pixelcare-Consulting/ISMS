@@ -1,5 +1,6 @@
 import { auditService } from "@/features/audit/services/audit.service";
 import { calendarMonthBoundsFromLabel } from "@/features/demand-planning/lib/planning-period-dates";
+import { partitionBranchesBySalesHistory } from "@/features/demand-planning/lib/exclude-no-history";
 import { resolveHistoryWindow, toDateInputValue } from "@/features/demand-planning/lib/history-window";
 import { isDemandPlanningRunDeletable } from "@/features/demand-planning/lib/run-lifecycle";
 import { parseRunParameters, parseRunScope } from "@/features/demand-planning/lib/run-snapshot";
@@ -300,16 +301,36 @@ export const demandPlanningRunService = {
       historyTo,
       parameters,
     });
-    const persistable = demandPlanningFactsService.computePersistableBranches(
+    const computed = demandPlanningFactsService.computePersistableBranches(
       assembled,
       parameters,
     );
+
+    let persistable = computed;
+    let excludedNoHistoryCount = 0;
+    let narrowedScope: typeof scope | undefined;
+    if (input.excludeNoHistoryBranches) {
+      const { kept, excluded } = partitionBranchesBySalesHistory(computed);
+      excludedNoHistoryCount = excluded.length;
+      if (kept.length === 0) {
+        await demandPlanningRepository.deleteRun(tenantId, run.id);
+        throw new Error(
+          "Every dealer in scope has no sales history for the Date from–Date to range. Widen the dates or add sales, then generate again.",
+        );
+      }
+      persistable = kept;
+      narrowedScope = {
+        dealerIds: scope.dealerIds,
+        branchIds: kept.map((branch) => branch.branchId),
+      };
+    }
 
     await demandPlanningRepository.replaceRunComputation(tenantId, run.id, {
       status: "generated",
       historyFrom,
       historyTo,
       onHandAsAt,
+      scope: narrowedScope,
       stamps,
       branches: persistable,
     });
@@ -324,10 +345,12 @@ export const demandPlanningRunService = {
         documentNumber,
         branchCount: persistable.length,
         plannedCount: persistable.filter((branch) => branch.planStatus === "planned").length,
+        excludedNoHistoryCount,
+        excludeNoHistoryBranches: input.excludeNoHistoryBranches,
       },
     });
 
-    return { runId: run.id, documentNumber };
+    return { runId: run.id, documentNumber, excludedNoHistoryCount };
   },
 
   async recalculateRun(tenantId: string, actorUserId: string, runId: string) {
@@ -349,6 +372,8 @@ export const demandPlanningRunService = {
         frequencyOverride: parameters.frequencyOverride,
         historyFrom: run.historyFrom ? toDateInputValue(run.historyFrom) : null,
         historyTo: run.historyTo ? toDateInputValue(run.historyTo) : null,
+        /** Preserve whatever is already on the run (already filtered or intentionally kept). */
+        excludeNoHistoryBranches: false,
         supersedesRunId: run.id,
       });
     }

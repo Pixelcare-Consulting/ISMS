@@ -43,6 +43,8 @@ const BANDS: Array<{ id: DemandPlanningGridBandId; label: string }> = [
 const DROP1_CELL = "bg-primary/5";
 const DOCUMENT_NUMERIC = "px-1.5 py-1.5 text-right text-xs tabular-nums";
 const DOCUMENT_HEAD = "px-1.5 py-1.5 text-right text-[11px] font-medium uppercase tracking-wide";
+const QTY_INPUT_CELL = "px-1.5 py-1.5 align-middle";
+const QTY_INPUT_CELL_WORKBENCH = "border-b px-2 align-middle";
 
 function isNilRow(line: DemandPlanningGridProps["lines"][number]): boolean {
   return (
@@ -71,21 +73,26 @@ function QtyInput({
 }) {
   const [draft, setDraft] = useState(String(value));
   return (
-    <Input
-      type="number"
-      min={0}
-      step={1}
-      aria-label={ariaLabel}
-      disabled={disabled}
-      value={draft}
-      onChange={(event) => setDraft(event.target.value)}
-      onBlur={() => {
-        const next = Math.max(0, Math.trunc(Number(draft) || 0));
-        setDraft(String(next));
-        if (next !== value) onCommit(next);
-      }}
-      className={cn("h-8 px-1.5 text-right tabular-nums", compact ? "w-14 text-xs" : "w-16")}
-    />
+    <div className="flex w-full items-center justify-end">
+      <Input
+        type="number"
+        min={0}
+        step={1}
+        aria-label={ariaLabel}
+        disabled={disabled}
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={() => {
+          const next = Math.max(0, Math.trunc(Number(draft) || 0));
+          setDraft(String(next));
+          if (next !== value) onCommit(next);
+        }}
+        className={cn(
+          "h-7 px-1.5 text-right tabular-nums leading-none",
+          compact ? "w-14 text-xs" : "w-16 text-sm",
+        )}
+      />
+    </div>
   );
 }
 
@@ -172,9 +179,9 @@ function DocumentPlanningTable({
                   <TableCell className={DOCUMENT_NUMERIC}>{formatDemandShare(line.adjHmix)}</TableCell>
                   <TableCell className={DOCUMENT_NUMERIC}>{line.milQty}</TableCell>
                   <TableCell className={DOCUMENT_NUMERIC}>{formatDemandPeso(line.milPeso)}</TableCell>
-                  <TableCell className="px-1.5 py-1.5">
+                  <TableCell className={readOnly || !onSaveOverride ? DOCUMENT_NUMERIC : QTY_INPUT_CELL}>
                     {readOnly || !onSaveOverride ? (
-                      <span className="block text-right text-xs tabular-nums">{line.displayUnits}</span>
+                      line.displayUnits
                     ) : (
                       <QtyInput
                         compact
@@ -193,9 +200,9 @@ function DocumentPlanningTable({
                     )}
                   </TableCell>
                   <TableCell className={DOCUMENT_NUMERIC}>{line.onHandQty}</TableCell>
-                  <TableCell className="px-1.5 py-1.5">
+                  <TableCell className={readOnly || !onSaveOverride ? DOCUMENT_NUMERIC : QTY_INPUT_CELL}>
                     {readOnly || !onSaveOverride ? (
-                      <span className="block text-right text-xs tabular-nums">{line.forecastQty}</span>
+                      line.forecastQty
                     ) : (
                       <QtyInput
                         compact
@@ -496,9 +503,15 @@ export function DemandPlanningGrid({
                     ) : null}
                     {open("onHand") ? (
                       <>
-                        <TableCell className="border-b px-2">
+                        <TableCell
+                          className={
+                            readOnly || !onSaveOverride
+                              ? "border-b px-2 text-right tabular-nums"
+                              : QTY_INPUT_CELL_WORKBENCH
+                          }
+                        >
                           {readOnly || !onSaveOverride ? (
-                            <span className="block text-right tabular-nums">{line.displayUnits}</span>
+                            line.displayUnits
                           ) : (
                             <QtyInput
                               key={`${line.id}-du-${line.displayUnits}`}
@@ -520,9 +533,15 @@ export function DemandPlanningGrid({
                     ) : null}
                     {open("forecast") ? (
                       <>
-                        <TableCell className="border-b px-2">
+                        <TableCell
+                          className={
+                            readOnly || !onSaveOverride
+                              ? "border-b px-2 text-right tabular-nums"
+                              : QTY_INPUT_CELL_WORKBENCH
+                          }
+                        >
                           {readOnly || !onSaveOverride ? (
-                            <span className="block text-right tabular-nums">{line.forecastQty}</span>
+                            line.forecastQty
                           ) : (
                             <QtyInput
                               key={`${line.id}-fc-${line.forecastQty}`}

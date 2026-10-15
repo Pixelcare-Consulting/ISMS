@@ -52,6 +52,180 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.59.2",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T22:30:00+08:00",
+    title: "Supply Planning history filter automatic",
+    highlights: [
+      "New Supply Planning runs always leave out dealers with no sales in your Date from–Date to range — no checkbox to turn on.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "On Supply Planning → New run → Scope, dealers with no sales history are skipped automatically; you still see how many were left out after generate.",
+      },
+    ],
+  },
+  {
+    version: "0.59.1",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T21:35:00+08:00",
+    title: "Supply Planning grid alignment",
+    highlights: [
+      "Display units and forecast quantity boxes on a Supply Planning run line up with their column headers and totals.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "On Supply Planning run documents, DU and FC qty inputs sit under their headers and align with neighboring values and the totals row.",
+      },
+    ],
+  },
+  {
+    version: "0.59.0",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T21:20:00+08:00",
+    title: "Supply Planning skips empty history",
+    highlights: [
+      "New run can leave out dealers with no sales in your Date from–Date to range so the plan list stays focused.",
+      "The option is on by default; turn it off when you still need new or forecast-only dealers in the run.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "On Supply Planning → New run → Scope, Exclude dealers with no sales history (on by default) drops those dealers from the generated plan and tells you how many were left out.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Uncheck the option when you are planning new dealers or relying on forecast only without past sales in the history window.",
+      },
+      {
+        type: "improvement",
+        description:
+          "On Confirm data sources, a short placeholder shows while history, planogram, forecast, and on-hand counts load.",
+      },
+      {
+        type: "fix",
+        description:
+          "After you go Back and change branches, period, or history dates, Confirm data sources reloads so the counts match your latest choices.",
+      },
+    ],
+  },
+  {
+    version: "0.58.0",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T20:45:00+08:00",
+    title: "Inventory Report CSV",
+    highlights: [
+      "Download an Inventory Report spreadsheet from Reports with dealer and branch details plus serial, status, DR#, and aging columns.",
+      "Choose a from/to date range; results stay limited to the branches you can see.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Reports → Inventory Report lets you download a CSV of branch stock with dealer classification and delivery validation columns (serial, status, DR#, aging).",
+      },
+      {
+        type: "improvement",
+        description:
+          "Optional from/to dates narrow the export; your assigned branches stay in scope so you only see what you should.",
+      },
+    ],
+  },
+  {
+    version: "0.57.0",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T20:40:00+08:00",
+    title: "P-Count upload allowances",
+    highlights: [
+      "Team Leaders get one free P-COUNT upload per branch each month; Product Specialists get two (first half and second half of the month).",
+      "When a free slot is available, Upload P-COUNT starts right away; when slots are used up, Request to upload still needs approval.",
+      "Monthly SIR shows how many free uploads you have left for the branch you pick.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "On Monthly SIR, Team Leaders can upload one free P-COUNT per branch per month, and Product Specialists two (days 1–15 and 16–end), without waiting for approval first.",
+      },
+      {
+        type: "improvement",
+        description:
+          "When free uploads are used up—or the Product Specialist half-month window is not open yet—the button switches to Request to upload P-COUNT so extras still go through review.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The page shows remaining free uploads for the selected branch so you know whether you can upload now or need to request.",
+      },
+    ],
+  },
+  {
+    version: "0.56.0",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T20:35:00+08:00",
+    title: "Branch Quota Import",
+    highlights: [
+      "Import branch quotas from Excel on Branch Quotas—download a template, preview changes, then apply.",
+      "Matching branch, brand, and month rows update or create; unchanged rows are skipped and problem rows are flagged before import.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Settings → Branch Quotas has Import: download a spreadsheet template of your current quotas, preview creates and updates, then apply in one go.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Import matches existing quotas by branch, brand, and month—updates or creates as needed, skips rows that already match, and lists spreadsheet problems before you apply.",
+      },
+    ],
+  },
+  {
+    version: "0.55.7",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T20:20:00+08:00",
+    title: "Supply Planning branch list spacing",
+    highlights: [
+      "On Supply Planning run details with many branches, the branch tags wrap into full rows and the planning table sits fully below them.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "On Supply Planning run details with many branches, the branch tags wrap into full rows and the planning table sits fully below them.",
+      },
+    ],
+  },
+  {
+    version: "0.55.6",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T20:15:00+08:00",
+    title: "Supply Planning layout and document numbers",
+    highlights: [
+      "When a Supply Planning run has many branches, the branch list wraps cleanly and no longer covers the planning table.",
+      "New Supply Planning runs are numbered with SP again (for example SP-202612-007).",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "When a Supply Planning run has many branches, the branch list wraps cleanly and no longer covers the planning table.",
+      },
+      {
+        type: "fix",
+        description:
+          "New Supply Planning runs use the SP document number prefix again instead of DP.",
+      },
+    ],
+  },
+  {
     version: "0.55.5",
     date: "2026-10-15",
     releasedAt: "2026-10-15T16:55:00+08:00",

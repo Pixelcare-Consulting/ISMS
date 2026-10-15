@@ -428,6 +428,12 @@ export const appNavigation: NavEntry[] = [
         anyPermissions: ["forecast.view", "forecast.manage"],
       },
       {
+        href: "/reports/inventory",
+        label: "Inventory report",
+        icon: Package,
+        anyPermissions: ["reports.view", "inventory.view"],
+      },
+      {
         href: "/reports/aging",
         label: "Aging",
         icon: Clock,

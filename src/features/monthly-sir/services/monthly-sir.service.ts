@@ -7,6 +7,14 @@ import {
   PCOUNT_VARIANCE_REMARK,
   pcountRemarkForUploadedRow,
 } from "@/features/monthly-sir/constants/pcount-upload";
+import {
+  assertPcountAllowanceRole,
+  pcountMonthWindows,
+  resolvePcountAllowanceRole,
+  resolvePcountUploadAllowance,
+  type PcountAllowanceRole,
+  type PcountUploadAllowance,
+} from "@/features/monthly-sir/lib/pcount-upload-allowance";
 import { monthlySirRepository } from "@/features/monthly-sir/repositories/monthly-sir.repository";
 import {
   buildMonthlySirBlankTemplate,
@@ -33,6 +41,81 @@ async function assertBranchAccess(
   if (!branchIds.includes(branchId)) {
     throw new Error("Branch is outside your area of responsibility");
   }
+}
+
+async function loadUploadCountsForAllowance(input: {
+  tenantId: string;
+  userId: string;
+  branchId: string;
+  role: PcountAllowanceRole;
+  at?: Date;
+}) {
+  const windows = pcountMonthWindows(input.at);
+  const role = assertPcountAllowanceRole(input.role);
+
+  switch (role) {
+    case "unlimited":
+    case "none":
+      return { windows, tlUploadedInMonth: 0, psUploadedH1: 0, psUploadedH2: 0 };
+    case "tl": {
+      const tlUploadedInMonth = await monthlySirRepository.countUploadedByRequester(
+        input.tenantId,
+        {
+          requestedById: input.userId,
+          branchId: input.branchId,
+          uploadedAtFrom: windows.monthStart,
+          uploadedAtToExclusive: windows.monthEndExclusive,
+        },
+      );
+      return { windows, tlUploadedInMonth, psUploadedH1: 0, psUploadedH2: 0 };
+    }
+    case "ps": {
+      const [psUploadedH1, psUploadedH2] = await Promise.all([
+        monthlySirRepository.countUploadedByRequester(input.tenantId, {
+          requestedById: input.userId,
+          branchId: input.branchId,
+          uploadedAtFrom: windows.h1Start,
+          uploadedAtToExclusive: windows.h1EndExclusive,
+        }),
+        monthlySirRepository.countUploadedByRequester(input.tenantId, {
+          requestedById: input.userId,
+          branchId: input.branchId,
+          uploadedAtFrom: windows.h2Start,
+          uploadedAtToExclusive: windows.h2EndExclusive,
+        }),
+      ]);
+      return { windows, tlUploadedInMonth: 0, psUploadedH1, psUploadedH2 };
+    }
+    default: {
+      const _exhaustive: never = role;
+      return _exhaustive;
+    }
+  }
+}
+
+async function createLinkedCountSession(input: {
+  tenantId: string;
+  userId: string;
+  branchId: string;
+}) {
+  const countSession = await stockAuditService.createSession({
+    tenantId: input.tenantId,
+    userId: input.userId,
+    branchId: input.branchId,
+  });
+  if (!countSession?.id) {
+    throw new Error("Count session could not be created");
+  }
+  await stockAuditService.startCounting(
+    input.tenantId,
+    input.userId,
+    countSession.id,
+  );
+  await stockAuditService.ensureExpectedLinesFromStk(
+    input.tenantId,
+    countSession.id,
+  );
+  return countSession;
 }
 
 export const monthlySirService = {
@@ -68,19 +151,75 @@ export const monthlySirService = {
     });
   },
 
-  async createRequest(input: {
+  async getUploadAllowance(input: {
     tenantId: string;
     userId: string;
     branchId: string;
-    purpose: string;
+    permissions: string[] | undefined;
+    roleSlugs: string[] | undefined;
     unrestricted: boolean;
-  }) {
+    at?: Date;
+  }): Promise<PcountUploadAllowance> {
     await assertBranchAccess(
       input.tenantId,
       input.userId,
       input.branchId,
       input.unrestricted,
     );
+    const role = resolvePcountAllowanceRole(input.permissions, input.roleSlugs, {
+      unrestricted: input.unrestricted,
+    });
+    const counts = await loadUploadCountsForAllowance({
+      tenantId: input.tenantId,
+      userId: input.userId,
+      branchId: input.branchId,
+      role,
+      at: input.at,
+    });
+    return resolvePcountUploadAllowance({
+      role,
+      manilaDay: counts.windows.day,
+      tlUploadedInMonth: counts.tlUploadedInMonth,
+      psUploadedH1: counts.psUploadedH1,
+      psUploadedH2: counts.psUploadedH2,
+    });
+  },
+
+  async createRequest(input: {
+    tenantId: string;
+    userId: string;
+    branchId: string;
+    purpose: string;
+    unrestricted: boolean;
+    permissions: string[] | undefined;
+    roleSlugs: string[] | undefined;
+    mode?: "direct" | "request";
+  }) {
+    const mode = input.mode ?? "request";
+    if (mode === "direct") {
+      return this.startDirectUpload(input);
+    }
+
+    await assertBranchAccess(
+      input.tenantId,
+      input.userId,
+      input.branchId,
+      input.unrestricted,
+    );
+    const allowance = await this.getUploadAllowance({
+      tenantId: input.tenantId,
+      userId: input.userId,
+      branchId: input.branchId,
+      permissions: input.permissions,
+      roleSlugs: input.roleSlugs,
+      unrestricted: input.unrestricted,
+    });
+    if (allowance.canDirectUpload) {
+      throw new Error(
+        "You still have a free P-COUNT upload slot. Use Upload P-COUNT instead of requesting.",
+      );
+    }
+
     const request = await monthlySirRepository.create({
       tenantId: input.tenantId,
       branchId: input.branchId,
@@ -93,7 +232,75 @@ export const monthlySirService = {
       action: "monthly_sir.requested",
       entityType: "MonthlySirRequest",
       entityId: request.id,
-      metadata: { branchId: input.branchId },
+      metadata: { branchId: input.branchId, mode: "request" },
+    });
+    return request;
+  },
+
+  /**
+   * Direct path while TL/PS free slots remain (or unlimited manage roles):
+   * creates an already-approved request and linked in-progress count session.
+   */
+  async startDirectUpload(input: {
+    tenantId: string;
+    userId: string;
+    branchId: string;
+    purpose: string;
+    unrestricted: boolean;
+    permissions: string[] | undefined;
+    roleSlugs: string[] | undefined;
+  }) {
+    await assertBranchAccess(
+      input.tenantId,
+      input.userId,
+      input.branchId,
+      input.unrestricted,
+    );
+    const allowance = await this.getUploadAllowance({
+      tenantId: input.tenantId,
+      userId: input.userId,
+      branchId: input.branchId,
+      permissions: input.permissions,
+      roleSlugs: input.roleSlugs,
+      unrestricted: input.unrestricted,
+    });
+    if (!allowance.canDirectUpload) {
+      throw new Error(
+        allowance.message ??
+          "No free P-COUNT upload slot available. Submit a request instead.",
+      );
+    }
+
+    const countSession = await createLinkedCountSession({
+      tenantId: input.tenantId,
+      userId: input.userId,
+      branchId: input.branchId,
+    });
+    const request = await monthlySirRepository.create({
+      tenantId: input.tenantId,
+      branchId: input.branchId,
+      requestedById: input.userId,
+      purpose: input.purpose,
+      status: "approved",
+      reviewedById: input.userId,
+      reviewedAt: new Date(),
+      reviewRemarks: "Direct upload allowance",
+      stockCountSessionId: countSession.id,
+    });
+    if (!request.stockCountSessionId) {
+      throw new Error("Count session was not linked to this request");
+    }
+    await auditService.log({
+      tenantId: input.tenantId,
+      userId: input.userId,
+      action: "monthly_sir.direct_upload_started",
+      entityType: "MonthlySirRequest",
+      entityId: request.id,
+      metadata: {
+        branchId: input.branchId,
+        stockCountSessionId: countSession.id,
+        allowanceRole: allowance.role,
+      },
     });
     return request;
   },
@@ -147,24 +354,11 @@ export const monthlySirService = {
     }
 
     try {
-      const countSession = await stockAuditService.createSession({
+      const countSession = await createLinkedCountSession({
         tenantId: input.tenantId,
         userId: input.userId,
         branchId: request.branchId,
       });
-      if (!countSession?.id) {
-        throw new Error("Count session could not be created");
-      }
-      await stockAuditService.startCounting(
-        input.tenantId,
-        input.userId,
-        countSession.id,
-      );
-      // Backfill expected lines if STK arrived after session create (empty open).
-      await stockAuditService.ensureExpectedLinesFromStk(
-        input.tenantId,
-        countSession.id,
-      );
       const approved = await monthlySirRepository.finishApproval(
         input.tenantId,
         request.id,
