@@ -13,9 +13,14 @@ import {
   syncSerialNumbersFromSapAction,
   updateSerialNumberAction,
 } from "@/features/serial-numbers/actions/serial-number.actions";
+import {
+  FLAT_SERIAL_DEFAULT_SORT,
+  FLAT_SERIAL_DEFAULT_SORT_DIR,
+} from "@/features/serial-numbers/constants/flat-serial-sort";
 import { SapSyncButton } from "@/features/sap/components/sap-sync-button";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import {
+  TableEmptyRow,
   TableIndexCell,
   TableIndexHead,
   uniqueSearchSuggestions,
@@ -44,6 +49,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { cn } from "@/utils/cn";
 
 interface SerialModelOption {
   id: string;
@@ -51,22 +57,26 @@ interface SerialModelOption {
   name: string;
 }
 
-interface SerialInventorySnapshot {
-  branch: { id: string; name: string } | null;
-  statusCode: { id: string; code: string; name: string; color?: string | null } | null;
-}
-
-interface SerialNumberRow {
+interface FlatSerialRow {
   id: string;
   serialNo: string;
   recordStatus: LookupRecordStatus;
-  model: { id: string; skuCode: string; name: string; brand: { name: string } | null };
-  branchInventories: SerialInventorySnapshot[];
+  lastSyncedAt?: Date | string | null;
+  model: {
+    id: string;
+    skuCode: string;
+    name: string;
+  };
+  branchCode: string | null;
+  branchName: string | null;
+  /** On-hand units of this model at the same branch; null when no location. */
+  branchQty: number | null;
+  statusCode: { code: string; name: string; color?: string | null } | null;
 }
 
 interface SerialNumberTableProps {
   result: {
-    items: SerialNumberRow[];
+    items: FlatSerialRow[];
     total: number;
     page: number;
     limit: number;
@@ -74,27 +84,62 @@ interface SerialNumberTableProps {
   };
   modelOptions: SerialModelOption[];
   canManage: boolean;
+  /** Sync from SAP — requires `sap.manage` (not branch PS / view-only roles). */
+  canSync: boolean;
   currentSearch?: string;
   currentStatus?: LookupRecordStatus;
   initialSort?: string;
   initialSortDir?: string;
 }
 
-type SerialNumberSortField = "serialNo" | "model" | "recordStatus";
-type SerialNumberSortDir = "asc" | "desc";
+type FlatSerialSortField =
+  | "serial"
+  | "model"
+  | "branch"
+  | "status"
+  | "record"
+  | "lastSync";
+type FlatSerialSortDir = "asc" | "desc";
+
+const COL_COUNT_BASE = 8;
+
+const lastSyncFormatter = new Intl.DateTimeFormat("en-PH", {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
+
+function formatLastSync(value: Date | string | null | undefined): string {
+  if (!value) return "—";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return lastSyncFormatter.format(date);
+}
 
 function buildHref(
   page: number,
   limit: number,
-  filters: { q?: string; status?: LookupRecordStatus; sort?: string; sortDir?: string } = {},
+  filters: {
+    q?: string;
+    status?: LookupRecordStatus;
+    sort?: string;
+    sortDir?: string;
+  } = {},
 ): string {
   const params = new URLSearchParams();
   if (page > 1) params.set("page", String(page));
   if (limit !== DEFAULT_TABLE_PAGE_SIZE) params.set("limit", String(limit));
   if (filters.q) params.set("q", filters.q);
   if (filters.status) params.set("status", filters.status);
-  if (filters.sort) params.set("sort", filters.sort);
-  if (filters.sort && filters.sortDir) params.set("dir", filters.sortDir);
+  // Persist sort in the URL except the built-in default (Branch A→Z) so Clear
+  // and first load stay on a clean path while still applying that order server-side.
+  if (
+    filters.sort &&
+    (filters.sort !== FLAT_SERIAL_DEFAULT_SORT ||
+      filters.sortDir !== FLAT_SERIAL_DEFAULT_SORT_DIR)
+  ) {
+    params.set("sort", filters.sort);
+    if (filters.sortDir) params.set("dir", filters.sortDir);
+  }
   const query = params.toString();
   return query ? `/inventory/serial-numbers?${query}` : "/inventory/serial-numbers";
 }
@@ -103,40 +148,67 @@ export function SerialNumberTable({
   result,
   modelOptions,
   canManage,
+  canSync,
   currentSearch,
   currentStatus,
-  initialSort = "",
-  initialSortDir = "desc",
+  initialSort = FLAT_SERIAL_DEFAULT_SORT,
+  initialSortDir = FLAT_SERIAL_DEFAULT_SORT_DIR,
 }: SerialNumberTableProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [search, setSearch] = useState(currentSearch ?? "");
   const [status, setStatus] = useState<string>(currentStatus ?? "");
   const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<SerialNumberRow | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [formSerialNo, setFormSerialNo] = useState("");
   const [formModelId, setFormModelId] = useState("");
   const [pending, startTransition] = useTransition();
   const pageSize = parseTablePageSize(result.limit);
-  const sort = (searchParams.get("sort") ?? initialSort) || "";
+  const sort =
+    (searchParams.get("sort") ?? initialSort) || FLAT_SERIAL_DEFAULT_SORT;
   const sortDir = (
-    (searchParams.get("dir") ?? initialSortDir) === "asc" ? "asc" : "desc"
-  ) as SerialNumberSortDir;
+    (searchParams.get("dir") ?? initialSortDir) === "desc" ? "desc" : "asc"
+  ) as FlatSerialSortDir;
 
   const rows = result.items;
+  const colCount = canManage ? COL_COUNT_BASE + 1 : COL_COUNT_BASE;
   const activeFilters = {
     q: currentSearch,
     status: currentStatus,
-    sort: sort || undefined,
-    sortDir: sort ? sortDir : undefined,
+    sort,
+    sortDir,
   };
   const hasActiveFilters = Boolean(currentSearch || currentStatus);
+  const emptyMessage = hasActiveFilters
+    ? "No serial numbers match your filters."
+    : "No serial numbers yet.";
+
+  const modelSelectOptions = useMemo(
+    () =>
+      modelOptions.map((model) => ({
+        id: model.id,
+        label: `${model.skuCode} — ${model.name}`,
+      })),
+    [modelOptions],
+  );
+
+  const suggestions = useMemo(
+    () =>
+      uniqueSearchSuggestions(
+        result.items.map((row) => row.serialNo),
+        result.items.map((row) => row.model.skuCode),
+        result.items.map((row) => row.model.name),
+        result.items.map((row) => row.branchCode),
+        result.items.map((row) => row.branchName),
+      ),
+    [result.items],
+  );
 
   function handlePageSizeChange(limit: TablePageSize) {
     router.push(buildHref(1, limit, activeFilters));
   }
 
-  function toggleSort(field: SerialNumberSortField) {
+  function toggleSort(field: FlatSerialSortField) {
     const next = nextTableSort(field, sort, sortDir);
     router.push(
       buildHref(1, pageSize, {
@@ -147,26 +219,6 @@ export function SerialNumberTable({
       }),
     );
   }
-
-  // 11k+ models: build the label map and the select options once, not on every
-  // render, and keep a stable array identity so the select can memoize too
-  const modelSelectOptions = useMemo(
-    () =>
-      modelOptions.map((m) => ({
-        id: m.id,
-        label: `${m.skuCode} — ${m.name}`,
-      })),
-    [modelOptions],
-  );
-  const suggestions = useMemo(
-    () =>
-      uniqueSearchSuggestions(
-        result.items.map((row) => row.serialNo),
-        result.items.map((row) => row.model.skuCode),
-        result.items.map((row) => row.model.name),
-      ),
-    [result.items],
-  );
 
   function applyFilters() {
     router.push(
@@ -185,18 +237,10 @@ export function SerialNumberTable({
     router.push("/inventory/serial-numbers");
   }
 
-  // DO NOT DELETE - backs the commented-out "Add serial" button below.
-  // function openCreate() {
-  //   setEditing(null);
-  //   setFormSerialNo("");
-  //   setFormModelId("");
-  //   setOpen(true);
-  // }
-
-  function openEdit(row: SerialNumberRow) {
-    setEditing(row);
-    setFormSerialNo(row.serialNo);
-    setFormModelId(row.model.id);
+  function openEdit(serial: FlatSerialRow) {
+    setEditingId(serial.id);
+    setFormSerialNo(serial.serialNo);
+    setFormModelId(serial.model.id);
     setOpen(true);
   }
 
@@ -204,24 +248,24 @@ export function SerialNumberTable({
     event.preventDefault();
     const payload = { serialNo: formSerialNo, modelId: formModelId };
     startTransition(async () => {
-      const outcome = editing
-        ? await updateSerialNumberAction(editing.id, payload)
+      const outcome = editingId
+        ? await updateSerialNumberAction(editingId, payload)
         : await createSerialNumberAction(payload);
       if (outcome.error) {
         toast.error(outcome.error);
         return;
       }
-      toast.success(editing ? "Serial number updated" : "Serial number created");
+      toast.success(editingId ? "Serial number updated" : "Serial number created");
       setOpen(false);
       router.refresh();
     });
   }
 
-  function toggleStatus(row: SerialNumberRow) {
+  function toggleStatus(serial: FlatSerialRow) {
     const next: LookupRecordStatus =
-      row.recordStatus === "active" ? "inactive" : "active";
+      serial.recordStatus === "active" ? "inactive" : "active";
     startTransition(async () => {
-      const outcome = await setSerialNumberStatusAction(row.id, {
+      const outcome = await setSerialNumberStatusAction(serial.id, {
         recordStatus: next,
       });
       if (outcome.error) {
@@ -246,11 +290,16 @@ export function SerialNumberTable({
         }}
         toolbarActions={
           <>
-            <SapSyncButton
-              syncKey="serial-number"
-              noun={{ one: "serial number", many: "serial numbers" }}
-              onSync={syncSerialNumbersFromSapAction}
-            />
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/inventory/serial-numbers?view=by-model">By model</Link>
+            </Button>
+            {canSync ? (
+              <SapSyncButton
+                syncKey="serial-number"
+                noun={{ one: "serial number", many: "serial numbers" }}
+                onSync={syncSerialNumbersFromSapAction}
+              />
+            ) : null}
             <SearchableSelect
               id="serial-status"
               className="sm:w-40"
@@ -272,14 +321,8 @@ export function SerialNumberTable({
               </Button>
             </div>
             {/* DO NOT DELETE - SAP is the source of truth for serial numbers, so they
-                are created only by the sync above. Restoring this also needs the `Plus`
-                icon import (lucide-react) and the `openCreate` handler
-                uncommented.
-            {canManage ? (
-              <Button onClick={openCreate}>
-                <Plus className="size-4" /> Add serial
-              </Button>
-            ) : null} */}
+                are created only by the sync above. Restoring an Add serial button also
+                needs the Plus icon import (lucide-react) and a create dialog. */}
           </>
         }
         pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
@@ -290,121 +333,164 @@ export function SerialNumberTable({
           itemLabel: "serial",
           buildHref: (page) => buildHref(page, pageSize, activeFilters),
         }}
-        footer={
-          rows.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              {hasActiveFilters
-                ? "No serial numbers match your filters."
-                : "No serial numbers yet."}
-            </p>
-          ) : null
-        }
       >
-        {rows.length > 0 ? (
-          <>
-            <TableHeader>
-              <TableRow>
-                <TableIndexHead />
-                <GlobalTableHead
-                  sortKey="serialNo"
-                  activeSortKey={sort}
-                  sortDirection={sortDir}
-                  onSort={(key) => toggleSort(key as SerialNumberSortField)}
-                >
-                  Serial no
-                </GlobalTableHead>
-                <GlobalTableHead
-                  sortKey="model"
-                  activeSortKey={sort}
-                  sortDirection={sortDir}
-                  onSort={(key) => toggleSort(key as SerialNumberSortField)}
-                >
-                  Model
-                </GlobalTableHead>
-                <GlobalTableHead>Current branch</GlobalTableHead>
-                <GlobalTableHead>Current status</GlobalTableHead>
-                <GlobalTableHead
-                  sortKey="recordStatus"
-                  activeSortKey={sort}
-                  sortDirection={sortDir}
-                  onSort={(key) => toggleSort(key as SerialNumberSortField)}
-                >
-                  Record
-                </GlobalTableHead>
-                {canManage ? <GlobalTableHead className="w-48" /> : null}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-                {rows.map((row, index) => {
-                  const current = row.branchInventories[0] ?? null;
-                  return (
-                    <TableRow key={row.id}>
-                      <TableIndexCell index={(result.page - 1) * result.limit + index + 1} />
-                      <TableCell className="font-medium">
-                        <Link
-                          href={`/inventory/serial-numbers/${row.id}`}
-                          className="font-mono text-sm underline-offset-4 hover:underline"
-                        >
-                          {row.serialNo}
-                        </Link>
-                      </TableCell>
-                      <TableCell>
-                        <div className="font-medium">{row.model.skuCode}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {row.model.name}
-                        </div>
-                      </TableCell>
-                      <TableCell>{current?.branch?.name ?? "—"}</TableCell>
-                      <TableCell>
-                        {current?.statusCode ? (
-                          <StatusCodeBadge
-                            code={current.statusCode.code}
-                            name={current.statusCode.name}
-                            color={current.statusCode.color}
-                          />
-                        ) : (
-                          "—"
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            row.recordStatus === "active" ? "default" : "secondary"
-                          }
-                        >
-                          {row.recordStatus === "active" ? "Active" : "Inactive"}
-                        </Badge>
-                      </TableCell>
-                      {canManage ? (
-                        <TableCell>
-                          <div className="flex justify-end gap-2 whitespace-nowrap">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={pending}
-                              onClick={() => openEdit(row)}
-                            >
-                              Edit
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={pending}
-                              onClick={() => toggleStatus(row)}
-                            >
-                              {row.recordStatus === "active"
-                                ? "Deactivate"
-                                : "Activate"}
-                            </Button>
-                          </div>
-                        </TableCell>
+        <TableHeader>
+          <TableRow className="bg-muted/30 hover:bg-muted/30">
+            <TableIndexHead />
+            <GlobalTableHead
+              sortKey="serial"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as FlatSerialSortField)}
+            >
+              Serial no
+            </GlobalTableHead>
+            <GlobalTableHead
+              sortKey="model"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as FlatSerialSortField)}
+            >
+              SKU / model
+            </GlobalTableHead>
+            <GlobalTableHead
+              sortKey="branch"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as FlatSerialSortField)}
+            >
+              Branch Name
+            </GlobalTableHead>
+            <GlobalTableHead className="text-right">Branch qty</GlobalTableHead>
+            <GlobalTableHead
+              sortKey="status"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as FlatSerialSortField)}
+            >
+              ISMS status
+            </GlobalTableHead>
+            <GlobalTableHead
+              sortKey="record"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as FlatSerialSortField)}
+            >
+              Record
+            </GlobalTableHead>
+            <GlobalTableHead
+              sortKey="lastSync"
+              activeSortKey={sort}
+              sortDirection={sortDir}
+              onSort={(key) => toggleSort(key as FlatSerialSortField)}
+            >
+              Last sync
+            </GlobalTableHead>
+            {canManage ? <GlobalTableHead>Actions</GlobalTableHead> : null}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.length === 0 ? (
+            <TableEmptyRow colSpan={colCount} message={emptyMessage} />
+          ) : (
+            rows.map((row, index) => (
+              <TableRow
+                key={row.id}
+                className={cn(index % 2 === 1 && "bg-table-stripe")}
+              >
+                <TableIndexCell
+                  index={(result.page - 1) * result.limit + index + 1}
+                />
+                <TableCell className="whitespace-nowrap font-mono text-sm">
+                  <Link
+                    href={`/inventory/serial-numbers/${row.id}`}
+                    className="underline-offset-4 hover:underline"
+                  >
+                    {row.serialNo}
+                  </Link>
+                </TableCell>
+                <TableCell className="min-w-0">
+                  <span className="block font-mono text-sm font-medium">
+                    {row.model.skuCode}
+                  </span>
+                  <span className="block whitespace-normal wrap-break-word text-xs text-muted-foreground">
+                    {row.model.name}
+                  </span>
+                </TableCell>
+                <TableCell className="min-w-0">
+                  {row.branchCode || row.branchName ? (
+                    <div className="min-w-0">
+                      {row.branchCode ? (
+                        <span className="block font-mono text-sm">
+                          {row.branchCode}
+                        </span>
                       ) : null}
-                    </TableRow>
-                  );
-                })}
-            </TableBody>
-          </>
-        ) : null}
+                      {row.branchName ? (
+                        <span className="block whitespace-normal wrap-break-word text-xs text-muted-foreground">
+                          {row.branchName}
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : (
+                    "—"
+                  )}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {row.branchQty == null ? "—" : row.branchQty.toLocaleString()}
+                </TableCell>
+                <TableCell>
+                  {row.statusCode ? (
+                    <StatusCodeBadge
+                      code={row.statusCode.code}
+                      name={row.statusCode.name}
+                      color={row.statusCode.color}
+                    />
+                  ) : (
+                    "—"
+                  )}
+                </TableCell>
+                <TableCell>
+                  <Badge
+                    variant={
+                      row.recordStatus === "active" ? "default" : "secondary"
+                    }
+                  >
+                    {row.recordStatus === "active" ? "Active" : "Inactive"}
+                  </Badge>
+                </TableCell>
+                <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
+                  {formatLastSync(row.lastSyncedAt)}
+                </TableCell>
+                {canManage ? (
+                  <TableCell>
+                    <div className="flex justify-end gap-2 whitespace-nowrap">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={pending}
+                        onClick={() => openEdit(row)}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={pending}
+                        onClick={() => toggleStatus(row)}
+                      >
+                        {row.recordStatus === "active"
+                          ? "Deactivate"
+                          : "Activate"}
+                      </Button>
+                    </div>
+                  </TableCell>
+                ) : null}
+              </TableRow>
+            ))
+          )}
+        </TableBody>
       </GlobalDataTable>
 
       {canManage ? (
@@ -412,7 +498,7 @@ export function SerialNumberTable({
           <DialogContent className="sm:max-w-lg">
             <DialogHeader>
               <DialogTitle>
-                {editing ? "Edit serial number" : "Add serial number"}
+                {editingId ? "Edit serial number" : "Add serial number"}
               </DialogTitle>
             </DialogHeader>
             <form onSubmit={submit} className="space-y-4">
@@ -421,7 +507,7 @@ export function SerialNumberTable({
                 <Input
                   id="serial-no"
                   value={formSerialNo}
-                  onChange={(e) => setFormSerialNo(e.target.value)}
+                  onChange={(event) => setFormSerialNo(event.target.value)}
                   className="font-mono"
                   required
                 />
@@ -438,7 +524,7 @@ export function SerialNumberTable({
               />
               <DialogFooter>
                 <Button type="submit" disabled={pending || !formModelId}>
-                  {editing ? "Save changes" : "Create"}
+                  {editingId ? "Save changes" : "Create"}
                 </Button>
               </DialogFooter>
             </form>

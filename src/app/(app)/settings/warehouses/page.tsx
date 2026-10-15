@@ -1,4 +1,5 @@
 import { listWarehousesAction } from "@/features/warehouses/actions/warehouse.actions";
+import { canSyncFromSap } from "@/features/sap/constants/sap-permissions";
 import { requirePermission } from "@/lib/auth/permissions";
 import { WAREHOUSES_PAGE_TUTORIAL } from "@/content/page-tutorials/warehouses";
 import { PageHeader } from "@/app/(app)/_components/page-header";
@@ -18,7 +19,7 @@ function parseTab(value?: string): WarehousesTab {
 export default async function SettingsWarehousesPage({
   searchParams,
 }: SettingsWarehousesPageProps) {
-  await requirePermission("warehouses.manage");
+  const session = await requirePermission("warehouses.manage");
   const params = await searchParams;
   const warehouses = await listWarehousesAction();
 
@@ -33,6 +34,7 @@ export default async function SettingsWarehousesPage({
       <WarehousesSettingsTabs
         warehouses={warehouses}
         activeTab={parseTab(params.tab)}
+        canSync={canSyncFromSap(session.user.permissions)}
       />
     </div>
   );

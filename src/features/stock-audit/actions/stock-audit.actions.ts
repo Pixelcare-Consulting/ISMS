@@ -119,7 +119,7 @@ export async function getStockCountKpisAction() {
 
 export async function getStockCountSessionAction(sessionId: string) {
   const session = await requirePermission("inventory.view");
-  return stockAuditService.getSession(session.user.tenantId, sessionId);
+  return stockAuditService.getSessionDetail(session.user.tenantId, sessionId);
 }
 
 const createSessionSchema = z.object({ branchId: z.string().min(1) });

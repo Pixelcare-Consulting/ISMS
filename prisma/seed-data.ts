@@ -576,6 +576,7 @@ export type SeedProfile =
   | "branches"
   | "psg"
   | "warehouse"
+  | "cleanup-stock"
   | "notifications";
 
 export function resolveSeedProfile(): SeedProfile {
@@ -589,6 +590,7 @@ export function resolveSeedProfile(): SeedProfile {
     raw === "branches" ||
     raw === "psg" ||
     raw === "warehouse" ||
+    raw === "cleanup-stock" ||
     raw === "notifications" ||
     raw === "minimal"
   ) {

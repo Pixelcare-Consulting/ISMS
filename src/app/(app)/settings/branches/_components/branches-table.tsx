@@ -52,7 +52,13 @@ interface BranchRow {
   } | null;
 }
 
-export function BranchesTable({ branches }: { branches: BranchRow[] }) {
+export function BranchesTable({
+  branches,
+  canSync,
+}: {
+  branches: BranchRow[];
+  canSync: boolean;
+}) {
   const router = useRouter();
   const [rows, setRows] = useState(branches);
   const [prevBranches, setPrevBranches] = useState(branches);
@@ -123,11 +129,13 @@ export function BranchesTable({ branches }: { branches: BranchRow[] }) {
               {/* Branches as SAP actually holds them: warehouses typed `Branch`. The
                   commented-out button above reads SAP's separate multi-branch (OBRA)
                   entity and is kept for whenever that source is wanted again. */}
-              <SapSyncButton
-                syncKey="branch-from-warehouse"
-                noun={{ one: "branch", many: "branches" }}
-                onSync={syncBranchesFromSapWarehousesAction}
-              />
+              {canSync ? (
+                <SapSyncButton
+                  syncKey="branch-from-warehouse"
+                  noun={{ one: "branch", many: "branches" }}
+                  onSync={syncBranchesFromSapWarehousesAction}
+                />
+              ) : null}
               <Button variant="outline" size="sm" onClick={() => setImporting(true)}>
                 <Upload className="mr-1 size-4" />
                 Import

@@ -11,7 +11,11 @@ import type {
   InventoryListSortDir,
 } from "@/features/inventory/repositories/inventory.repository";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
-import { hasPermission, requirePermission } from "@/lib/auth/permissions";
+import {
+  hasPermission,
+  requireAuth,
+  requirePermission,
+} from "@/lib/auth/permissions";
 import type { PaginatedResult } from "@/lib/shared/pagination";
 
 /** DTO row returned by listInventoryAction (ISO dates, sku alias). */
@@ -171,6 +175,20 @@ export async function getInventoryKpisAction() {
   const session = await requirePermission("inventory.view");
   const unrestricted = isUnrestricted(session.user.permissions);
   return inventoryService.getKpis(
+    session.user.tenantId,
+    session.user.id,
+    unrestricted,
+  );
+}
+
+/** Sidebar badge: live STK qty in the caller's Stock units scope (0 when unauthorized). */
+export async function countStockUnitsStkAction(): Promise<number> {
+  const session = await requireAuth();
+  if (!hasPermission(session.user.permissions, "inventory.view")) {
+    return 0;
+  }
+  const unrestricted = isUnrestricted(session.user.permissions);
+  return inventoryService.countStkForUser(
     session.user.tenantId,
     session.user.id,
     unrestricted,

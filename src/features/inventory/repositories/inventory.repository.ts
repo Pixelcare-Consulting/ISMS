@@ -1,4 +1,8 @@
 import { Prisma } from "@prisma/client";
+import {
+  STOCK_UNITS_DEFAULT_SORT,
+  STOCK_UNITS_DEFAULT_SORT_DIR,
+} from "@/features/inventory/constants/stock-units-sort";
 import { prisma } from "@/lib/database/client";
 import {
   resolvePagination,
@@ -216,8 +220,8 @@ export const inventoryRepository = {
       return toPaginatedResult<InventoryListRow>([], 0, page, limit);
     }
 
-    const sortField = sort?.field ?? "updatedAt";
-    const sortDir = sort?.dir ?? "desc";
+    const sortField = sort?.field ?? STOCK_UNITS_DEFAULT_SORT;
+    const sortDir = sort?.dir ?? STOCK_UNITS_DEFAULT_SORT_DIR;
 
     if (PRISMA_ORDERABLE_SORTS.has(sortField)) {
       const [items, total] = await Promise.all([
@@ -480,6 +484,18 @@ export const inventoryRepository = {
     if (branchIds.length === 0) return Promise.resolve(0);
     return prisma.branchInventory.count({
       where: { tenantId, branchId: { in: branchIds } },
+    });
+  },
+
+  /** Live STK units in scope — same status filter as the Stock units list. */
+  countStockUnits(tenantId: string, branchIds: string[]) {
+    if (branchIds.length === 0) return Promise.resolve(0);
+    return prisma.branchInventory.count({
+      where: {
+        tenantId,
+        branchId: { in: branchIds },
+        statusCode: { code: { in: [...STOCK_UNITS_LIST_STATUS_CODES] } },
+      },
     });
   },
 

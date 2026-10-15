@@ -6,6 +6,8 @@ import { toast } from "sonner";
 
 import {
   acceptDeliveryAction,
+  dispatchDeliveryAction,
+  listDispatchCandidatesAction,
   rejectDeliveryAction,
 } from "@/features/logistics/actions/logistics.actions";
 import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
@@ -31,6 +33,14 @@ import {
 import { TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   buildLogisticsPageHref,
   LOGISTICS_DELIVERIES_PATH,
@@ -76,7 +86,15 @@ type PendingConfirm = {
   branchName: string;
   orderNumber?: string;
   action: "accept" | "reject";
+  statusCode: string;
 };
+
+interface DispatchCandidate {
+  id: string;
+  serialNo: string;
+  warehouseCode: string;
+  locationCode: string;
+}
 
 export function DeliveriesPanel({
   deliveries,
@@ -89,6 +107,10 @@ export function DeliveriesPanel({
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
+  const [dispatchTarget, setDispatchTarget] = useState<DeliveryRow | null>(null);
+  const [dispatchSerials, setDispatchSerials] = useState<DispatchCandidate[]>([]);
+  const [dispatchRequired, setDispatchRequired] = useState(0);
+  const [dispatchSelected, setDispatchSelected] = useState<string[]>([]);
   const pageSize = parseTablePageSize(deliveries.limit);
   const sort = (searchParams.get("sort") ?? initialSort) || "";
   const sortDir = (
@@ -147,9 +169,9 @@ export function DeliveriesPanel({
           return;
         }
         toast.success(
-          result.movedCount
-            ? "Delivery accepted — DIT moved to Stock"
-            : "Delivery accepted",
+          result.status === "partial"
+            ? `Accepted ${result.movedCount} serial${result.movedCount === 1 ? "" : "s"}. The rest stay in transit.`
+            : `Accepted ${result.movedCount} serial${result.movedCount === 1 ? "" : "s"} into branch stock.`,
         );
       } else {
         const result = await rejectDeliveryAction(id);
@@ -157,9 +179,44 @@ export function DeliveriesPanel({
           toast.error(result.error);
           return;
         }
-        toast.success("Delivery rejected");
+        toast.success(
+          result.returnedCount
+            ? `Delivery rejected. ${result.returnedCount} serial${result.returnedCount === 1 ? "" : "s"} returned to the warehouse.`
+            : "Delivery rejected. Warehouse quantity is unchanged.",
+        );
       }
       setPendingConfirm(null);
+      router.refresh();
+    });
+  }
+
+  function openDispatch(row: DeliveryRow) {
+    startTransition(async () => {
+      const result = await listDispatchCandidatesAction(row.id);
+      if (!("success" in result)) {
+        toast.error(result.error);
+        return;
+      }
+      const chosen = result.serials.slice(0, result.requiredQty).map((serial) => serial.id);
+      setDispatchTarget(row);
+      setDispatchSerials(result.serials);
+      setDispatchRequired(result.requiredQty);
+      setDispatchSelected(chosen);
+    });
+  }
+
+  function confirmDispatch() {
+    if (!dispatchTarget) return;
+    startTransition(async () => {
+      const result = await dispatchDeliveryAction(dispatchTarget.id, {
+        serialNumberIds: dispatchSelected,
+      });
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success(`Dispatched ${result.movedCount} serial${result.movedCount === 1 ? "" : "s"}. Delivery is pending acceptance.`);
+      setDispatchTarget(null);
       router.refresh();
     });
   }
@@ -262,42 +319,52 @@ export function DeliveriesPanel({
                     />
                   </TableCell>
                   <TableCell className="space-x-2 text-right">
-                    {d.statusCode.code === "pending" &&
+                    {d.statusCode.code === "approved" && capabilities.canManage ? (
+                      <Button size="sm" disabled={pending} onClick={() => openDispatch(d)}>
+                        Dispatch
+                      </Button>
+                    ) : null}
+                    {(d.statusCode.code === "approved" ||
+                      d.statusCode.code === "pending" ||
+                      d.statusCode.code === "partial") &&
+                    (d.statusCode.code === "approved" ? capabilities.canManage : capabilities.canAcceptDelivery) ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={pending}
+                        onClick={() =>
+                          setPendingConfirm({
+                            id: d.id,
+                            deliveryNo: d.deliveryNo,
+                            branchName: d.branch.name,
+                            orderNumber: d.order?.orderNumber,
+                            action: "reject",
+                            statusCode: d.statusCode.code,
+                          })
+                        }
+                      >
+                        Reject
+                      </Button>
+                    ) : null}
+                    {(d.statusCode.code === "pending" || d.statusCode.code === "partial") &&
                     capabilities.canAcceptDelivery ? (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={pending}
-                          onClick={() =>
-                            setPendingConfirm({
-                              id: d.id,
-                              deliveryNo: d.deliveryNo,
-                              branchName: d.branch.name,
-                              orderNumber: d.order?.orderNumber,
-                              action: "reject",
-                            })
-                          }
-                        >
-                          Reject
-                        </Button>
-                        <Button
-                          size="sm"
-                          disabled={pending}
-                          className="bg-emerald-600 text-white hover:bg-emerald-700"
-                          onClick={() =>
-                            setPendingConfirm({
-                              id: d.id,
-                              deliveryNo: d.deliveryNo,
-                              branchName: d.branch.name,
-                              orderNumber: d.order?.orderNumber,
-                              action: "accept",
-                            })
-                          }
-                        >
-                          Accept DIT
-                        </Button>
-                      </>
+                      <Button
+                        size="sm"
+                        disabled={pending}
+                        className="bg-emerald-600 text-white hover:bg-emerald-700"
+                        onClick={() =>
+                          setPendingConfirm({
+                            id: d.id,
+                            deliveryNo: d.deliveryNo,
+                            branchName: d.branch.name,
+                            orderNumber: d.order?.orderNumber,
+                            action: "accept",
+                            statusCode: d.statusCode.code,
+                          })
+                        }
+                      >
+                        {d.statusCode.code === "partial" ? "Accept remaining" : "Accept"}
+                      </Button>
                     ) : null}
                   </TableCell>
                 </TableRow>
@@ -327,19 +394,22 @@ export function DeliveriesPanel({
                     {pendingConfirm.orderNumber ? (
                       <> (order {pendingConfirm.orderNumber})</>
                     ) : null}{" "}
-                    at {pendingConfirm.branchName}. DIT inventory is unchanged.
+                    at {pendingConfirm.branchName}.{" "}
+                    {pendingConfirm.statusCode === "approved"
+                      ? "Nothing has been dispatched, so warehouse quantity stays the same."
+                      : "Serials still in transit go back to the warehouse. Units already accepted stay at the branch."}
                   </>
                 ) : (
                   <>
-                    Confirm acceptance of{" "}
+                    Accept{" "}
                     <span className="font-medium text-foreground">
                       {pendingConfirm.deliveryNo}
                     </span>
                     {pendingConfirm.orderNumber ? (
                       <> (order {pendingConfirm.orderNumber})</>
                     ) : null}{" "}
-                    at {pendingConfirm.branchName}. Linked in-transit units move to
-                    Stock when present.
+                    at {pendingConfirm.branchName}. In-transit serials move into branch stock.
+                    Nothing is accepted when the delivery has no serials.
                   </>
                 )
               ) : null}
@@ -364,6 +434,63 @@ export function DeliveriesPanel({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog
+        open={dispatchTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !pending) setDispatchTarget(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Dispatch {dispatchTarget?.deliveryNo}</DialogTitle>
+            <DialogDescription>
+              Choose {dispatchRequired} warehouse serial{dispatchRequired === 1 ? "" : "s"} for{" "}
+              {dispatchTarget?.branch.name}. Dispatch moves them into transit. Warehouse quantity
+              drops by the same number.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-80 space-y-2 overflow-y-auto">
+            {dispatchSerials.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No warehouse serials are available for this order.</p>
+            ) : (
+              dispatchSerials.map((serial) => {
+                const checked = dispatchSelected.includes(serial.id);
+                return (
+                  <label key={serial.id} className="flex items-center gap-3 rounded-md border px-3 py-2 text-sm">
+                    <Checkbox
+                      checked={checked}
+                      onCheckedChange={(value) => {
+                        setDispatchSelected((current) =>
+                          value === true
+                            ? [...current, serial.id]
+                            : current.filter((id) => id !== serial.id),
+                        );
+                      }}
+                      aria-label={`Allocate ${serial.serialNo}`}
+                    />
+                    <span className="font-mono">{serial.serialNo}</span>
+                    <span className="text-muted-foreground">
+                      {serial.warehouseCode} / {serial.locationCode}
+                    </span>
+                  </label>
+                );
+              })
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" disabled={pending} onClick={() => setDispatchTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={pending || dispatchSelected.length !== dispatchRequired || dispatchRequired === 0}
+              onClick={confirmDispatch}
+            >
+              Dispatch {dispatchSelected.length}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

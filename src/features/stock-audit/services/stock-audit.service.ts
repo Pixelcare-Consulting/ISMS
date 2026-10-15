@@ -14,6 +14,11 @@ import {
   STOCK_COUNT_SESSION_LABELS,
   VARIANCE_TYPES,
 } from "@/features/stock-audit/constants/stock-count-workflow";
+import {
+  shouldRefreshExpectedLines,
+  toStockCountSessionDetailDto,
+  type StockCountSessionDetailDto,
+} from "@/features/stock-audit/services/stock-count-session-detail";
 import { prisma } from "@/lib/database/client";
 
 function nextSessionNo() {
@@ -99,6 +104,77 @@ export const stockAuditService = {
   },
 
   async getSession(tenantId: string, sessionId: string) {
+    return stockAuditRepository.findSessionById(tenantId, sessionId);
+  },
+
+  /**
+   * Load a session for the detail page: backfill expected STK lines when an
+   * in-progress Monthly SIR count was opened before stock existed, then return
+   * a plain DTO safe to pass into the client panel.
+   */
+  async getSessionDetail(
+    tenantId: string,
+    sessionId: string,
+  ): Promise<StockCountSessionDetailDto | null> {
+    const session = await this.ensureExpectedLinesFromStk(tenantId, sessionId);
+    if (!session) return null;
+    return toStockCountSessionDetailDto(session);
+  },
+
+  /**
+   * When counting is open but expected lines are empty, seed them from current
+   * branch STK (e.g. approve ran before SAP→Stock replicate).
+   */
+  async ensureExpectedLinesFromStk(tenantId: string, sessionId: string) {
+    const session = await stockAuditRepository.findSessionById(
+      tenantId,
+      sessionId,
+    );
+    if (!session || !shouldRefreshExpectedLines(session)) {
+      return session;
+    }
+
+    const stkCode = await reasonStatusRepository.findCodeId(
+      tenantId,
+      "inventory_system",
+      "STK",
+    );
+    if (!stkCode) return session;
+
+    const existingSerialIds = new Set(
+      session.lines.map((line) => line.serialNumber.id),
+    );
+    const inventory = await prisma.branchInventory.findMany({
+      where: {
+        tenantId,
+        branchId: session.branchId,
+        statusCodeId: stkCode.id,
+      },
+      select: {
+        id: true,
+        serialNumberId: true,
+        statusCodeId: true,
+        serialNumber: { select: { modelId: true } },
+      },
+    });
+
+    const toAdd = inventory.filter(
+      (item) => !existingSerialIds.has(item.serialNumberId),
+    );
+    if (toAdd.length === 0) return session;
+
+    await stockAuditRepository.createLines(
+      toAdd.map((item) => ({
+        sessionId: session.id,
+        branchInventoryId: item.id,
+        serialNumberId: item.serialNumberId,
+        modelId: item.serialNumber.modelId,
+        systemStatusCodeId: item.statusCodeId,
+        expectedInCount: true,
+        status: "pending",
+      })),
+    );
+
     return stockAuditRepository.findSessionById(tenantId, sessionId);
   },
 
@@ -351,7 +427,8 @@ export const stockAuditService = {
     const surplusLines = session.lines.filter(
       (l) => l.status === "counted" && !l.expectedInCount,
     );
-    const varianceCount = missingLines.length + surplusLines.length;
+    const varianceCount =
+      missingLines.length + surplusLines.length + session.variances.length;
     const nextStatus: StockCountSessionStatus =
       varianceCount > 0 ? "variances_under_investigation" : "counting_complete";
 

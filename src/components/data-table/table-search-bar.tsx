@@ -48,6 +48,8 @@ interface TableSearchBarProps {
   className?: string;
   /** Client-side suggestion labels from loaded row data. */
   suggestions?: string[];
+  /** Called after a suggestion is applied (fills value via onChange first). */
+  onSuggestionSelect?: (label: string) => void;
 }
 
 export function TableSearchBar({
@@ -56,6 +58,7 @@ export function TableSearchBar({
   placeholder = "Search…",
   className,
   suggestions,
+  onSuggestionSelect,
 }: TableSearchBarProps) {
   const listId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -87,6 +90,7 @@ export function TableSearchBar({
 
   function applySuggestion(label: string) {
     onChange(label);
+    onSuggestionSelect?.(label);
     setOpen(false);
     setHighlight(-1);
   }

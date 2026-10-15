@@ -1,5 +1,6 @@
 import { auditService } from "@/features/audit/services/audit.service";
 import { aorService } from "@/features/aors/services/aor.service";
+import { branchRepository } from "@/features/branches/repositories/branch.repository";
 import {
   inventoryRepository,
   type InventoryListFilters,
@@ -18,6 +19,8 @@ import type { PaginatedResult } from "@/lib/shared/pagination";
 export interface InventoryStatusKpi {
   code: string;
   name: string;
+  /** Palette key from ReasonStatusCode.color (masterdata). */
+  color: string | null;
   count: number;
 }
 
@@ -58,6 +61,7 @@ type InventoryStatusCodeRow = {
   id: string;
   code: string;
   name: string;
+  color: string | null;
 };
 
 async function resolveBranchIds(
@@ -66,11 +70,8 @@ async function resolveBranchIds(
   isUnrestricted: boolean,
 ): Promise<string[]> {
   if (isUnrestricted) {
-    const { branchRepository } = await import(
-      "@/features/branches/repositories/branch.repository"
-    );
     const branches = await branchRepository.listByTenant(tenantId);
-    return branches.map((b: { id: string }) => b.id);
+    return branches.map((b) => b.id);
   }
   return aorService.getBranchIdsForUser(tenantId, userId);
 }
@@ -212,6 +213,16 @@ export const inventoryService = {
     };
   },
 
+  /** AOR-scoped STK count matching Stock units list scoping. */
+  async countStkForUser(
+    tenantId: string,
+    userId: string,
+    isUnrestricted: boolean,
+  ): Promise<number> {
+    const branchIds = await resolveBranchIds(tenantId, userId, isUnrestricted);
+    return inventoryRepository.countStockUnits(tenantId, branchIds);
+  },
+
   async getKpis(
     tenantId: string,
     userId: string,
@@ -227,7 +238,12 @@ export const inventoryService = {
     if (branchIds.length === 0) {
       return {
         totalUnits: 0,
-        statuses: codes.map((c) => ({ code: c.code, name: c.name, count: 0 })),
+        statuses: codes.map((c) => ({
+          code: c.code,
+          name: c.name,
+          color: c.color,
+          count: 0,
+        })),
       };
     }
 
@@ -247,6 +263,7 @@ export const inventoryService = {
       statuses: codes.map((c) => ({
         code: c.code,
         name: c.name,
+        color: c.color,
         count: countByCodeId.get(c.id) ?? 0,
       })),
     };

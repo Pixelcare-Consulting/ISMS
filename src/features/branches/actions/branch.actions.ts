@@ -6,6 +6,7 @@ import { branchSapSyncService } from "@/features/branches/services/branch-sap-sy
 import { branchWarehouseSapSyncService } from "@/features/branches/services/branch-warehouse-sap-sync.service";
 import { branchService } from "@/features/branches/services/branch.service";
 import { branchScheduleSchema } from "@/features/branches/schemas/branch.schema";
+import { SAP_MANAGE } from "@/features/sap/constants/sap-permissions";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 
 const branchInputSchema = z.object({
@@ -76,7 +77,7 @@ export async function updateBranchAction(input: unknown) {
 }
 
 export async function syncBranchesFromSapAction() {
-  const session = await requirePermission("branches.manage");
+  const session = await requirePermission(SAP_MANAGE);
   try {
     const result = await branchSapSyncService.syncFromSap(
       session.user.tenantId,
@@ -97,7 +98,7 @@ export async function syncBranchesFromSapAction() {
  * other's rows.
  */
 export async function syncBranchesFromSapWarehousesAction() {
-  const session = await requirePermission("branches.manage");
+  const session = await requirePermission(SAP_MANAGE);
   try {
     const result = await branchWarehouseSapSyncService.syncFromSap(
       session.user.tenantId,

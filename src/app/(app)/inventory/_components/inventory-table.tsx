@@ -10,6 +10,10 @@ import type {
   InventoryListItem,
   InventoryStatusOption,
 } from "@/features/inventory/actions/inventory.actions";
+import {
+  STOCK_UNITS_DEFAULT_SORT,
+  STOCK_UNITS_DEFAULT_SORT_DIR,
+} from "@/features/inventory/constants/stock-units-sort";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { TableIndexCell, TableIndexHead } from "@/components/data-table";
 import {
@@ -67,9 +71,17 @@ function buildInventoryHref(opts: {
   const params = new URLSearchParams();
   if (opts.page > 1) params.set("page", String(opts.page));
   if (opts.limit !== DEFAULT_TABLE_PAGE_SIZE) params.set("limit", String(opts.limit));
+  // Checked = off-planogram only; unchecked / absent = show everything.
   if (opts.offPlanogram) params.set("offPlanogram", "1");
-  if (opts.sort) params.set("sort", opts.sort);
-  if (opts.sortDir) params.set("dir", opts.sortDir);
+  // Persist sort in the URL except Branch Name A→Z so first load stays clean.
+  if (
+    opts.sort &&
+    (opts.sort !== STOCK_UNITS_DEFAULT_SORT ||
+      opts.sortDir !== STOCK_UNITS_DEFAULT_SORT_DIR)
+  ) {
+    params.set("sort", opts.sort);
+    if (opts.sortDir) params.set("dir", opts.sortDir);
+  }
   if (opts.filters?.branch) params.set("branch", opts.filters.branch);
   if (opts.filters?.sku) params.set("sku", opts.filters.sku);
   const qs = params.toString();
@@ -87,8 +99,8 @@ export function InventoryTable({
   result,
   statusOptions,
   initialOffPlanogram = false,
-  initialSort = "",
-  initialSortDir = "desc",
+  initialSort = STOCK_UNITS_DEFAULT_SORT,
+  initialSortDir = STOCK_UNITS_DEFAULT_SORT_DIR,
   hideBranch = false,
 }: InventoryTableProps) {
   const router = useRouter();
@@ -100,9 +112,10 @@ export function InventoryTable({
 
   const branchFilter = searchParams.get("branch") ?? "";
   const skuFilter = searchParams.get("sku") ?? "";
-  const sort = (searchParams.get("sort") ?? initialSort) || "";
+  const sort =
+    (searchParams.get("sort") ?? initialSort) || STOCK_UNITS_DEFAULT_SORT;
   const sortDir = (
-    (searchParams.get("dir") ?? initialSortDir) === "asc" ? "asc" : "desc"
+    (searchParams.get("dir") ?? initialSortDir) === "desc" ? "desc" : "asc"
   ) as InventorySortDir;
   const urlFilters = {
     branch: branchFilter || undefined,
@@ -121,13 +134,8 @@ export function InventoryTable({
         page: overrides.page ?? 1,
         limit: overrides.limit ?? pageSize,
         offPlanogram: overrides.offPlanogram ?? offPlanogramOnly,
-        sort: overrides.sort !== undefined ? overrides.sort || undefined : sort || undefined,
-        sortDir:
-          overrides.sortDir !== undefined
-            ? overrides.sortDir || undefined
-            : sort
-              ? sortDir
-              : undefined,
+        sort: overrides.sort !== undefined ? overrides.sort : sort,
+        sortDir: overrides.sortDir !== undefined ? overrides.sortDir : sortDir,
         filters: urlFilters,
       }),
     );
@@ -192,10 +200,6 @@ export function InventoryTable({
     });
   }
 
-  function openSerialDetail(serialNumberId: string) {
-    router.push(`/inventory/serial-numbers/${serialNumberId}`);
-  }
-
   const filterBanner =
     branchFilter || skuFilter ? (
       <div className="border-b px-4 py-2 text-sm text-muted-foreground">
@@ -212,11 +216,34 @@ export function InventoryTable({
     ? "Search serial, SKU…"
     : "Search serial, SKU, branch…";
 
+  /**
+   * Fixed layout: Branch Name + DR# wrap full text (no ellipsis truncate);
+   * Model/Serial stay readable; rem tracks on the right stay steady.
+   */
+  const columnWidths = (
+    <colgroup>
+      <col className="w-10" />
+      <col className="w-12" />
+      {hideBranch ? null : <col className="w-[16rem]" />}
+      <col className="w-[14rem]" />
+      <col className="w-[14rem]" />
+      <col className="w-[11rem]" />
+      <col className="w-28" />
+      <col className="w-36" />
+      <col className="w-32" />
+      <col className="w-44" />
+    </colgroup>
+  );
+
+  const headCompact = "whitespace-nowrap px-3";
+  const cellCompact = "px-3";
+
   return (
     <>
       <GlobalDataTable
         stickyHeader
         scrollable
+        tableClassName="table-fixed"
         search={{
           value: query,
           onChange: setQuery,
@@ -255,8 +282,8 @@ export function InventoryTable({
               page,
               limit: pageSize,
               offPlanogram: offPlanogramOnly,
-              sort: sort || undefined,
-              sortDir: sort ? sortDir : undefined,
+              sort,
+              sortDir,
               filters: urlFilters,
             }),
         }}
@@ -266,6 +293,7 @@ export function InventoryTable({
           ) : null
         }
       >
+        {columnWidths}
         <TableHeader>
           <TableRow>
             <GlobalTableHead className="w-10">
@@ -278,15 +306,17 @@ export function InventoryTable({
             <TableIndexHead />
             {hideBranch ? null : (
               <GlobalTableHead
+                className="whitespace-normal"
                 sortKey="branch"
                 activeSortKey={sort}
                 sortDirection={sortDir}
                 onSort={(key) => toggleSort(key as InventorySortField)}
               >
-                Branch
+                Branch Name
               </GlobalTableHead>
             )}
             <GlobalTableHead
+              className="whitespace-normal"
               sortKey="model"
               activeSortKey={sort}
               sortDirection={sortDir}
@@ -295,6 +325,7 @@ export function InventoryTable({
               Model
             </GlobalTableHead>
             <GlobalTableHead
+              className="whitespace-nowrap"
               sortKey="serial"
               activeSortKey={sort}
               sortDirection={sortDir}
@@ -303,6 +334,7 @@ export function InventoryTable({
               Serial
             </GlobalTableHead>
             <GlobalTableHead
+              className={headCompact}
               sortKey="dr"
               activeSortKey={sort}
               sortDirection={sortDir}
@@ -311,6 +343,7 @@ export function InventoryTable({
               DR#
             </GlobalTableHead>
             <GlobalTableHead
+              className={headCompact}
               sortKey="drDate"
               activeSortKey={sort}
               sortDirection={sortDir}
@@ -319,6 +352,7 @@ export function InventoryTable({
               DR DATE
             </GlobalTableHead>
             <GlobalTableHead
+              className={headCompact}
               sortKey="planogram"
               activeSortKey={sort}
               sortDirection={sortDir}
@@ -327,6 +361,10 @@ export function InventoryTable({
               Planogram
             </GlobalTableHead>
             <GlobalTableHead
+              className={cn(
+                headCompact,
+                "text-center [&_button]:mx-auto [&_button]:justify-center",
+              )}
               sortKey="aging"
               activeSortKey={sort}
               sortDirection={sortDir}
@@ -335,6 +373,7 @@ export function InventoryTable({
               Aging in days
             </GlobalTableHead>
             <GlobalTableHead
+              className={headCompact}
               sortKey="status"
               activeSortKey={sort}
               sortDirection={sortDir}
@@ -349,12 +388,8 @@ export function InventoryTable({
             <TableRow
               key={r.id}
               data-state={selection.isRowSelected(r.id) ? "selected" : undefined}
-              className="cursor-pointer"
-              onClick={() => openSerialDetail(r.serialNumber.id)}
             >
-              <TableCell
-                onClick={(e) => e.stopPropagation()}
-              >
+              <TableCell className="w-10">
                 <Checkbox
                   checked={selection.isRowSelected(r.id)}
                   onCheckedChange={(checked) => selection.toggleRow(r.id, checked === true)}
@@ -365,37 +400,68 @@ export function InventoryTable({
                 index={(result.page - 1) * result.limit + index + 1}
               />
               {hideBranch ? null : (
-                <TableCell>{r.branch.name}</TableCell>
+                <TableCell
+                  className="min-w-0 whitespace-normal break-words wrap-break-word px-2 text-sm"
+                  title={r.branch.name}
+                >
+                  {r.branch.name}
+                </TableCell>
               )}
-              <TableCell>
-                <span className="font-mono text-sm">{r.serialNumber.model.sku}</span>
-                <span className="block text-xs text-muted-foreground">
+              <TableCell className="min-w-0 px-2">
+                <span className="block whitespace-normal break-words wrap-break-word font-mono text-sm">
+                  {r.serialNumber.model.sku}
+                </span>
+                <span className="block whitespace-normal break-words wrap-break-word text-xs text-muted-foreground">
                   {r.serialNumber.model.name}
                 </span>
               </TableCell>
-              <TableCell className="font-mono text-sm">{r.serialNumber.serialNo}</TableCell>
-              <TableCell className="font-mono text-sm">{r.deliveryNo ?? "—"}</TableCell>
-              <TableCell className="tabular-nums text-sm">
+              <TableCell className="whitespace-nowrap px-2 font-mono text-sm">
+                {r.serialNumber.serialNo}
+              </TableCell>
+              <TableCell
+                className={cn(
+                  cellCompact,
+                  "min-w-0 whitespace-normal break-words wrap-break-word font-mono text-sm",
+                )}
+                title={r.deliveryNo?.trim() || undefined}
+              >
+                {r.deliveryNo?.trim() || "—"}
+              </TableCell>
+              <TableCell
+                className={cn(
+                  cellCompact,
+                  "min-w-0 whitespace-nowrap tabular-nums text-sm",
+                )}
+              >
                 {formatDrDate(r.deliveryDate)}
               </TableCell>
-              <TableCell>
+              <TableCell className={cn(cellCompact, "min-w-0")}>
                 {r.onPlanogram ? (
-                  <Badge variant="outline" className="border-green-600 text-green-700">
+                  <Badge
+                    variant="outline"
+                    className="whitespace-nowrap border-green-600 text-green-700"
+                  >
                     On planogram
                   </Badge>
                 ) : (
-                  <Badge variant="outline" className="border-amber-600 text-amber-700">
+                  <Badge
+                    variant="outline"
+                    className="whitespace-nowrap border-amber-600 text-amber-700"
+                  >
                     Off planogram
                   </Badge>
                 )}
               </TableCell>
-              <TableCell className="tabular-nums">{r.agingDays}</TableCell>
               <TableCell
-                onClick={(e) => e.stopPropagation()}
-                className={cn(pending && "opacity-70")}
+                className={cn(cellCompact, "text-center tabular-nums")}
+              >
+                {r.agingDays}
+              </TableCell>
+              <TableCell
+                className={cn(cellCompact, "min-w-0", pending && "opacity-70")}
               >
                 <SearchableSelect
-                  className="min-w-[10rem]"
+                  className="w-full max-w-full min-w-0"
                   options={statusOptions.map((s) => ({
                     id: s.id,
                     label: `${s.name} (${s.code})`,
@@ -405,7 +471,7 @@ export function InventoryTable({
                   searchPlaceholder="Search status…"
                   onChange={(next) => changeStatus(r.id, next)}
                 />
-                <div className="mt-1">
+                <div className="mt-1 min-w-0">
                   <StatusCodeBadge
                     code={r.statusCode.code}
                     name={r.statusCode.name}

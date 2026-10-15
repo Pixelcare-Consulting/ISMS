@@ -126,13 +126,21 @@ function manilaCalendarYmd(value: Date | string): string | null {
 function formatRelative(value: Date | string): string {
   const d = typeof value === "string" ? new Date(value) : value;
   if (Number.isNaN(d.getTime())) return "—";
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Manila",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(d);
+  // Assembled from parts rather than `.format()`: how a date is joined to its time
+  // ("Sep 28, 08:11 PM" vs "Sep 28 at 08:11 PM") depends on the runtime's ICU data, which
+  // differs between Node and browsers — and a mismatch breaks hydration.
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Manila",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+      .formatToParts(d)
+      .map((part) => [part.type, part.value]),
+  );
+  return `${parts.month} ${parts.day}, ${parts.hour}:${parts.minute} ${parts.dayPeriod}`;
 }
 
 function wasCommentEdited(

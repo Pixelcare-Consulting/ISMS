@@ -4,6 +4,7 @@ export const INVENTORY_MODULE_GUIDE: ModuleGuideContent = {
   title: "Stock units",
   description:
     "Serialized branch stock scoped by your areas of responsibility. Look up units, spot off-planogram exceptions, and open a serial for detail.",
+  /** Kept for Help. Stock units renders status counts in the guide instead of these chips. */
   tips: [
     { label: "Lists Stock (STK) units only — sold and other statuses live in Sales / Logistics" },
     { label: "Series summary groups QTY and value by SKU — click to expand" },

@@ -74,11 +74,27 @@ yarn-error.log*
 .cursor-aor-restore-backup/*
 /cursor-aor-restore-backup/
 /cursor-aor-restore-backup/*
+
+.windsurf
+.windsurf/*
+
 .data/
 .data/*
 /data/
 /data/*
 
+/seed-users.md
+/seed-users.md/*
+/postgres.example.md
+/postgres.example.md/*
+.seed-users.md/*
+.postgres.example.md/*
+
+.agents/*
+.agents/*/*
+
+.claude/*
+.claude/*/*
 .claude/
 _bmad/
 _bmad-output/
@@ -94,3 +110,6 @@ public/BRS Planogram & Forecast.xlsx
 /playwright-report
 /test-results
 /blob-report
+
+# pnpm is the package manager; keep npm from recreating a stale lockfile
+package-lock.json

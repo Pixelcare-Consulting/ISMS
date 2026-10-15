@@ -123,6 +123,27 @@ export const logisticsRepository = {
     return prisma.branchPullout.count({ where: { tenantId } });
   },
 
+  countDeliveriesByStatusCodes(tenantId: string, codes: string[]) {
+    if (codes.length === 0) return Promise.resolve(0);
+    return prisma.branchDelivery.count({
+      where: { tenantId, statusCode: { code: { in: codes } } },
+    });
+  },
+
+  countTransfersByStatusCodes(tenantId: string, codes: string[]) {
+    if (codes.length === 0) return Promise.resolve(0);
+    return prisma.branchTransfer.count({
+      where: { tenantId, statusCode: { code: { in: codes } } },
+    });
+  },
+
+  countPulloutsByStatusCodes(tenantId: string, codes: string[]) {
+    if (codes.length === 0) return Promise.resolve(0);
+    return prisma.branchPullout.count({
+      where: { tenantId, statusCode: { code: { in: codes } } },
+    });
+  },
+
   async listDeliveries(
     tenantId: string,
     pagination?: { page?: number; limit?: number },

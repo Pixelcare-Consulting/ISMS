@@ -30,7 +30,7 @@ export default async function DeliveriesPage({ searchParams }: DeliveriesPagePro
   return (
     <div className="space-y-4">
       <SectionPageLead>
-        Deliveries sync from approved orders (SAP ITR/SO). Branch PS accepts DIT → Stock.
+        After Supply Planning approves, a delivery opens. Logistics dispatches warehouse serials into transit, and the branch accepts them into stock. Approval itself does not move units.
       </SectionPageLead>
       <DeliveryKpisStrip kpis={kpis} />
       <DeliveriesPanel

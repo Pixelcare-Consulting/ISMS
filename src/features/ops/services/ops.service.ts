@@ -1,6 +1,6 @@
 import { auditService } from "@/features/audit/services/audit.service";
+import { deliveryPostingService } from "@/features/logistics/services/delivery-posting.service";
 import { opsRepository } from "@/features/ops/repositories/ops.repository";
-import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 
 export const opsService = {
   listDeliveries(tenantId: string, branchIds?: string[]) {
@@ -20,36 +20,11 @@ export const opsService = {
     actorUserId: string;
     deliveryId: string;
   }) {
-    const [acceptedCodeId, ditCodeId, stkCodeId] = await Promise.all([
-      reasonStatusService.requireCodeId(input.tenantId, "delivery_workflow", "accepted"),
-      reasonStatusService.requireCodeId(input.tenantId, "inventory_system", "DIT"),
-      reasonStatusService.requireCodeId(input.tenantId, "inventory_system", "STK"),
-    ]);
-
-    const delivery = await opsRepository.acceptDelivery(
-      input.tenantId,
-      input.deliveryId,
-      input.actorUserId,
-      acceptedCodeId,
-      ditCodeId,
-      stkCodeId,
-    );
-
-    await auditService.log({
+    return deliveryPostingService.accept({
       tenantId: input.tenantId,
       userId: input.actorUserId,
-      action: "delivery.accepted",
-      entityType: "BranchDelivery",
-      entityId: delivery.id,
-      metadata: {
-        deliveryNo: delivery.deliveryNo,
-        branchName: delivery.branch.name,
-        movedCount: delivery.movedCount,
-        ...(delivery.order ? { orderNumber: delivery.order.orderNumber } : {}),
-      },
+      deliveryId: input.deliveryId,
     });
-
-    return delivery;
   },
 
   async rejectDelivery(input: {
@@ -57,25 +32,11 @@ export const opsService = {
     actorUserId: string;
     deliveryId: string;
   }) {
-    const delivery = await opsRepository.rejectDelivery(
-      input.tenantId,
-      input.deliveryId,
-    );
-
-    await auditService.log({
+    return deliveryPostingService.reject({
       tenantId: input.tenantId,
       userId: input.actorUserId,
-      action: "delivery.rejected",
-      entityType: "BranchDelivery",
-      entityId: delivery.id,
-      metadata: {
-        deliveryNo: delivery.deliveryNo,
-        branchName: delivery.branch.name,
-        ...(delivery.order ? { orderNumber: delivery.order.orderNumber } : {}),
-      },
+      deliveryId: input.deliveryId,
     });
-
-    return delivery;
   },
 
   async createTransfer(input: {

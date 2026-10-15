@@ -1,5 +1,8 @@
 import { SidebarBrand } from "@/app/(app)/_components/sidebar-brand";
-import { SidebarNav } from "@/app/(app)/_components/sidebar-nav";
+import {
+  SidebarNav,
+  type NavCountBadges,
+} from "@/app/(app)/_components/sidebar-nav";
 import { UserNav } from "@/app/(app)/_components/user-nav";
 import {
   Sidebar,
@@ -21,13 +24,13 @@ interface AppSidebarProps {
     permissions: string[];
     isPlatformOperator: boolean;
   };
-  unreadAnnouncementCount?: number;
+  countBadges?: NavCountBadges;
 }
 
 export function AppSidebar({
   branding,
   user,
-  unreadAnnouncementCount = 0,
+  countBadges,
 }: AppSidebarProps) {
   return (
     <Sidebar collapsible="icon" className="app-sidebar">
@@ -43,7 +46,7 @@ export function AppSidebar({
         <SidebarNav
           permissions={user.permissions}
           isPlatformOperator={user.isPlatformOperator}
-          countBadges={{ unreadAnnouncements: unreadAnnouncementCount }}
+          countBadges={countBadges}
         />
       </SidebarContent>
 

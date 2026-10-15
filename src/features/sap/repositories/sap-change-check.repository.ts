@@ -72,8 +72,8 @@ export const sapChangeCheckRepository = {
   },
 
   /**
-   * Every model SKU, live or not — the serial sync links a serial to any model ISMS
-   * holds (`listSapSyncModelKeys`), so the check counts the same ones.
+   * Every model SKU the tenant has stored, including ones removed from Master data.
+   * The serial sync walks only models still in Master data; this check stays wider.
    */
   async listModelSkus(tenantId: string) {
     const rows = await prisma.productModel.findMany({

@@ -57,9 +57,11 @@ const COL_COUNT = 8;
 export function MasterDataModelsTable({
   models,
   packageTypes,
+  canSync,
 }: {
   models: ClientModelRow[];
   packageTypes: { id: string; name: string }[];
+  canSync: boolean;
 }) {
   const router = useRouter();
   const [optimisticRows, setOptimisticRows] = useState<ClientModelRow[]>([]);
@@ -228,11 +230,13 @@ export function MasterDataModelsTable({
       {rows.length === 0 ? (
         <div className="space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
-            <SapSyncButton
-              syncKey="product-model"
-              noun={{ one: "model", many: "models" }}
-              onSync={syncModelsFromSapAction}
-            />
+            {canSync ? (
+              <SapSyncButton
+                syncKey="product-model"
+                noun={{ one: "model", many: "models" }}
+                onSync={syncModelsFromSapAction}
+              />
+            ) : null}
             <Button
               type="button"
               variant="outline"
@@ -271,11 +275,13 @@ export function MasterDataModelsTable({
                 onClear={selection.clearSelection}
                 size="sm"
               />
-              <SapSyncButton
-                syncKey="product-model"
-                noun={{ one: "model", many: "models" }}
-                onSync={syncModelsFromSapAction}
-              />
+              {canSync ? (
+                <SapSyncButton
+                  syncKey="product-model"
+                  noun={{ one: "model", many: "models" }}
+                  onSync={syncModelsFromSapAction}
+                />
+              ) : null}
               <Button
                 type="button"
                 variant="outline"

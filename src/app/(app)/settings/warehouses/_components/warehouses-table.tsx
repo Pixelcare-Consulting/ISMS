@@ -52,7 +52,13 @@ interface WarehouseRow {
 
 const COL_COUNT = 6;
 
-export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) {
+export function WarehousesTable({
+  warehouses,
+  canSync,
+}: {
+  warehouses: WarehouseRow[];
+  canSync: boolean;
+}) {
   const router = useRouter();
   const [rows, setRows] = useState(warehouses);
   const [rowsSource, setRowsSource] = useState(warehouses);
@@ -180,11 +186,13 @@ export function WarehousesTable({ warehouses }: { warehouses: WarehouseRow[] }) 
         }}
         toolbarActions={
           <>
-              <SapSyncButton
-                syncKey="warehouse"
-                noun={{ one: "warehouse", many: "warehouses" }}
-                onSync={syncWarehousesFromSapAction}
-              />
+              {canSync ? (
+                <SapSyncButton
+                  syncKey="warehouse"
+                  noun={{ one: "warehouse", many: "warehouses" }}
+                  onSync={syncWarehousesFromSapAction}
+                />
+              ) : null}
               {/* DO NOT DELETE - SAP is the source of truth for warehouses, so they are
                   created only by the sync above. Restoring this also needs the `Plus`
                   icon, `Input`, and `createWarehouseAction` imports, the `newCode`/`newName`

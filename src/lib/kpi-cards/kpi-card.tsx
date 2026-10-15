@@ -40,7 +40,9 @@ export function KpiCard({
   const content = (
     <>
       <div className="flex items-start justify-between gap-2">
-        <p className="min-w-0 text-sm leading-snug text-muted-foreground">{label}</p>
+        <div className="min-w-0 text-sm leading-snug text-muted-foreground">
+          {label}
+        </div>
         {icon ? (
           <span className="shrink-0 text-muted-foreground [&_svg]:size-4">{icon}</span>
         ) : null}

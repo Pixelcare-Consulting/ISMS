@@ -18,6 +18,7 @@ export const DEALERS_PAGE_TUTORIAL: PageTutorialContent = {
       title: "How to use it",
       bullets: [
         "Create dealers before or alongside their branches.",
+        "Use Edit on a dealer row to update the name, SAP code, area, type, and payment mode.",
         "Keep SAP codes and area assignments aligned with master-data lookups.",
         "Mode of payment and dealer type feed downstream sales/ops forms where used.",
       ],

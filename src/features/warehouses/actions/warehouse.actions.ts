@@ -6,6 +6,7 @@ import { z } from "zod";
 import { warehouseSapSyncService } from "@/features/warehouses/services/warehouse-sap-sync.service";
 import { warehouseService } from "@/features/warehouses/services/warehouse.service";
 import { warehouseRepository } from "@/features/warehouses/repositories/warehouse.repository";
+import { SAP_MANAGE } from "@/features/sap/constants/sap-permissions";
 import { requirePermission } from "@/lib/auth/permissions";
 
 const warehouseSchema = z.object({
@@ -67,7 +68,7 @@ export async function updateWarehouseAction(input: unknown) {
 }
 
 export async function syncWarehousesFromSapAction() {
-  const session = await requirePermission("warehouses.manage");
+  const session = await requirePermission(SAP_MANAGE);
   try {
     const result = await warehouseSapSyncService.syncFromSap(
       session.user.tenantId,
