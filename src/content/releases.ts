@@ -27,9 +27,18 @@
  * - No file names, SQL, FK, schema fields, migration names, reseed steps, or RBAC jargon dumps
  * - Avoid technical jargon (hydration, pool timeout, GROUP BY, slugs, etc.)
  * - Keep highlights short; order changes as feature → improvement → fix
+ *
+ * Audience / What's New visibility:
+ * - Omit `audience` (or set `"end_user"`) for notes that appear in the in-app What's New dialog
+ * - Set `audience: "internal"` for Pixelcare AI / internal-only notes (kept in this file for the
+ *   team; filtered out of What's New). From v0.65.0 onward, AI-focused entries use `"internal"`.
+ * - Keep updating AI notes here as usual; they stay in source and stay hidden from end users.
  */
 
 export type ReleaseChangeType = "feature" | "fix" | "improvement";
+
+/** Who can see this note in the product What's New UI. Default: end_user. */
+export type ReleaseAudience = "end_user" | "internal";
 
 export interface ReleaseChange {
   type: ReleaseChangeType;
@@ -48,9 +57,315 @@ export interface ReleaseNote {
   title: string;
   highlights: string[];
   changes?: ReleaseChange[];
+  /**
+   * `"internal"` = keep in this file for the team, hide from What's New.
+   * Omit or `"end_user"` = show in What's New (default).
+   */
+  audience?: ReleaseAudience;
 }
 
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "0.67.0",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T00:56:00+08:00",
+    title: "Planogram: add several models at once",
+    highlights: [
+      "Add several models to a branch planogram in one step, each with its own Shelf max.",
+      "Adding models to the allow-list opens a popup instead of an inline dropdown.",
+      "Suggested order qty still means Shelf max minus on-hand stock — not Planning Drop 1.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Add several models to a branch planogram at once, each with its own Shelf max.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Adding models to the allow-list opens a popup instead of an inline dropdown.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Suggested order qty stays Shelf max minus on-hand (STK), separate from Planning Drop 1.",
+      },
+    ],
+  },
+
+  {
+    version: "0.66.0",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T00:45:00+08:00",
+    audience: "internal",
+    title: "Pixelcare AI: planning, quotas & ops answers",
+    highlights: [
+      "Ask about planning runs, coverage, allocation gaps, and draft suggested orders — Pixelcare AI reads the same ISMS data you can see.",
+      "Dashboard snapshot, branch quotas (your stores), planogram Shelf max alerts, live return lookup, and logistics counts are available when you have access.",
+      "A new guided task helps review planning & forecast without inventing formulas.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Pixelcare AI can read planning runs, coverage, allocation gaps, draft suggested orders, dashboard numbers, branch quotas, planogram alerts, return status, and logistics KPIs — matching your permissions.",
+      },
+      {
+        type: "feature",
+        description:
+          "Guided home includes “Review planning & forecast” so the assistant starts with the right tools.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Answers explain planning linkage from live ISMS reads and keep Shelf max wording; the assistant still cannot run allocation or place orders.",
+      },
+    ],
+  },
+
+  {
+    version: "0.65.4",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T00:40:00+08:00",
+    audience: "internal",
+    title: "Pixelcare AI: softer sparkle on the corner button",
+    highlights: [
+      "The teal sparkle button gently glows and twinkles so it’s easier to notice without feeling flashy.",
+      "Motion stays calm if your system prefers reduced motion.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "The corner AI sparkle button uses a soft teal pulse and occasional icon twinkle, with a light hover scale.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sparkle motion turns off or simplifies when reduced motion is preferred.",
+      },
+    ],
+  },
+
+  {
+    version: "0.65.3",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T00:30:00+08:00",
+    audience: "internal",
+    title: "Pixelcare AI: guided chats start talking & scroll follows replies",
+    highlights: [
+      "Tap a guided task and the assistant starts the conversation for you — no empty thread to type into first.",
+      "Chat follows the latest reply while it’s writing; if you scroll up, a Scroll to latest button brings you back.",
+      "Pin and delete stay out of the way until you hover or focus a chat in history.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Guided tasks open a chat and send the starter question right away so the assistant begins answering immediately.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Pin and delete on chat history only appear when you hover, focus, or select a row — cleaner on desktop, still easy on touch.",
+      },
+      {
+        type: "fix",
+        description:
+          "The message list scrolls with new replies and drafting status again, and stays put if you’re reading earlier messages.",
+      },
+    ],
+  },
+
+  {
+    version: "0.65.2",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T00:25:00+08:00",
+    audience: "internal",
+    title: "Pixelcare AI: pin, safer delete & Shelf max",
+    highlights: [
+      "Pin important Pixelcare AI chats so they stay at the top of your history.",
+      "Deleting a chat asks for confirmation first, so an accidental click won’t clear it.",
+      "Shelf gaps and SUG answers now say Shelf max — the same wording as Planogram.",
+      "Conversation list and answer tables have a bit more breathing room.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Pin or unpin any Pixelcare AI conversation so your favorites stay at the top of the sidebar.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Chat history rows and tables in answers have clearer spacing, so titles and actions are easier to tap.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Pixelcare AI shelf-gap answers, order hints, and the daily stock report use Shelf max (SUG = Shelf max − on-hand), matching Planogram.",
+      },
+      {
+        type: "fix",
+        description:
+          "Trash on a conversation now asks “Delete this conversation?” before removing it from your history.",
+      },
+    ],
+  },
+
+  {
+    version: "0.65.1",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T00:10:00+08:00",
+    audience: "internal",
+    title: "Pixelcare AI chat polish",
+    highlights: [
+      "Stock, shelf gaps, and similar lists in Pixelcare AI show as clear tables instead of hard-to-read spaced columns.",
+      "Only the teal sparkle button appears in the corner — the extra Ask AI label behind it is gone.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Pixelcare AI answers for stock, shelf gaps, orders, and your branches use readable tables (and scroll on small screens), so Quick Recap and row lists are easier to scan.",
+      },
+      {
+        type: "fix",
+        description:
+          "Inventory, Orders, Returns, and Planogram no longer show a second Ask AI button under the teal sparkle. Use the sparkle to open Pixelcare AI.",
+      },
+    ],
+  },
+
+  {
+    version: "0.65.0",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T23:59:00+08:00",
+    audience: "internal",
+    title: "Pixelcare AI assistant",
+    highlights: [
+      "Pixelcare AI helps check stock, shelf gaps, orders, and returns with read-only answers when the feature is turned on.",
+      "Any signed-in teammate can open it — no invite list required for normal use.",
+      "Ask AI opens beside Inventory, Orders, Returns, and Planogram; the sparkle button goes to the Pixelcare AI workspace when enabled.",
+      "Opens inside the normal ISMS menu by default, with an optional fullscreen mode, a clear Back to ISMS exit, and a chat layout that keeps the composer in place while messages scroll.",
+      "With a Context branch set, stock and shelf-gap answers use that store; you can also ask which stores you can access, and a short reminder above the message box notes that answers can be wrong.",
+      "Store access in Pixelcare AI matches Stock Units for admins, and if you ask to place an order the assistant points you to Orders → Analytics or Create order instead of claiming it can submit one.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Pixelcare AI is available as an internal assistant with guided tasks and saved chats for stock, shelf gaps, orders, and returns.",
+      },
+      {
+        type: "feature",
+        description:
+          "On Inventory, Orders, Returns, and Planogram, you can open Ask AI with the current page context already filled in.",
+      },
+      {
+        type: "feature",
+        description:
+          "Pixelcare AI opens with the normal ISMS sidebar. Use Fullscreen when you want a distraction-free workspace; your choice is remembered on this device.",
+      },
+      {
+        type: "improvement",
+        description:
+          "When Pixelcare AI is enabled, every signed-in user can use it. An optional allowlist is only for temporary lockdowns.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Shelf-gap answers use the same suggested quantity formula as Order Analytics, so the assistant does not invent its own math.",
+      },
+      {
+        type: "improvement",
+        description:
+          "When Pixelcare AI is on, the sparkle button opens the full assistant workspace instead of the small help chat.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Back to ISMS sits once in the assistant header so you can return to the portal without duplicate exit buttons.",
+      },
+      {
+        type: "improvement",
+        description:
+          "In chat, the conversation list, title bar, and message box stay put while only the messages scroll — similar to a familiar chat app.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The chat playground no longer pushes you into Stock units, Order Analytics, or Returns with a launcher bar above the message box — you stay in the conversation.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Branch context uses the store name (and SAP code) instead of a long internal id, including in assistant replies about the active branch.",
+      },
+      {
+        type: "improvement",
+        description:
+          "When the assistant finds an order or stock for a specific store, the Context branch updates to that store for the next questions.",
+      },
+      {
+        type: "improvement",
+        description:
+          "You can ask which stores you can access, and the assistant lists them from your allowed branches instead of sending you to a made-up settings menu.",
+      },
+      {
+        type: "improvement",
+        description:
+          "People who can browse all stores in Stock Units see the same stores in Pixelcare AI — no false “outside your area” block for admins.",
+      },
+      {
+        type: "improvement",
+        description:
+          "If you ask Pixelcare AI to place a live order, it points you to Orders → Order Analytics (Proceed to order) or Create order, and reminds you it cannot submit orders itself.",
+      },
+      {
+        type: "improvement",
+        description:
+          "A short note above the message box reminds you that Pixelcare AI cannot place orders and that important info should be checked.",
+      },
+      {
+        type: "fix",
+        description:
+          "With a Context branch selected, stock and shelf-gap questions use that store right away — you do not need to retype the SAP code.",
+      },
+      {
+        type: "fix",
+        description:
+          "Store lookups accept the correct SAP code (and close mistypes within your allowed branches) instead of failing as if the store were outside your area.",
+      },
+      {
+        type: "fix",
+        description:
+          "When a store code is mistyped or missing from your list, the message says it was not found among your stores — separate from having no stores assigned at all.",
+      },
+      {
+        type: "fix",
+        description:
+          "Leaving Pixelcare AI for the dashboard keeps the main ISMS sidebar visible right away — no hard refresh needed.",
+      },
+      {
+        type: "fix",
+        description:
+          "If an optional allowlist blocks your account, you see a clear access message instead of a blank missing page.",
+      },
+      {
+        type: "fix",
+        description:
+          "After you sign in, the sparkle button opens the Pixelcare AI workspace instead of a missing page.",
+      },
+      {
+        type: "fix",
+        description:
+          "The Context bar no longer shows the same branch twice (dropdown plus duplicate chip).",
+      },
+    ],
+  },
+
   {
     version: "0.64.0",
     date: "2026-10-15",

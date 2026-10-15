@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import {
-  addPlanogramModelAction,
+  addPlanogramModelsAction,
   listActiveModelsForPlanogramAction,
   removePlanogramModelAction,
   updatePlanogramMaxQtyAction,
@@ -35,9 +35,16 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Table,
   TableBody,
@@ -385,8 +392,9 @@ function AddPlanogramDialog({
   const [models, setModels] = useState<
     { id: string; skuCode: string; name: string }[]
   >([]);
-  const [modelId, setModelId] = useState("");
-  const [maxQty, setMaxQty] = useState("1");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [maxQtyByModel, setMaxQtyByModel] = useState<Record<string, string>>({});
+  const [candidateQuery, setCandidateQuery] = useState("");
   const [emptyReason, setEmptyReason] = useState<PlanogramAddEmptyReason | null>(
     null,
   );
@@ -400,7 +408,8 @@ function AddPlanogramDialog({
         const result = await listActiveModelsForPlanogramAction(branchId);
         if (cancelled) return;
         setModels(result.models.map((m) => ({ id: m.id, skuCode: m.skuCode, name: m.name })));
-        setModelId(result.models[0]?.id ?? "");
+        setSelectedIds(new Set());
+        setMaxQtyByModel({});
         setEmptyReason(result.emptyReason);
       } catch (error) {
         if (cancelled) return;
@@ -417,88 +426,247 @@ function AddPlanogramDialog({
     };
   }, [branchId]);
 
+  const filteredModels = useMemo(
+    () => models.filter((m) => matchesTableSearch(candidateQuery, [m.skuCode, m.name])),
+    [models, candidateQuery],
+  );
+
+  const selectedModels = useMemo(
+    () => models.filter((m) => selectedIds.has(m.id)),
+    [models, selectedIds],
+  );
+
+  const allFilteredSelected =
+    filteredModels.length > 0 && filteredModels.every((m) => selectedIds.has(m.id));
+
+  const shelfMaxValid =
+    selectedModels.length > 0 &&
+    selectedModels.every((m) => {
+      const parsed = Number.parseInt(maxQtyByModel[m.id] ?? "1", 10);
+      return Number.isInteger(parsed) && parsed >= 1;
+    });
+
+  function toggleModel(id: string, checked: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+    if (checked) {
+      setMaxQtyByModel((prev) => (prev[id] != null ? prev : { ...prev, [id]: "1" }));
+    }
+  }
+
+  function toggleSelectAllFiltered(checked: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const m of filteredModels) {
+        if (checked) next.add(m.id);
+        else next.delete(m.id);
+      }
+      return next;
+    });
+    if (checked) {
+      setMaxQtyByModel((prev) => {
+        const next = { ...prev };
+        for (const m of filteredModels) {
+          if (next[m.id] == null) next[m.id] = "1";
+        }
+        return next;
+      });
+    }
+  }
+
+  function handleOpenChange(next: boolean) {
+    if (pending) return;
+    if (!next) onClose();
+  }
+
   function submit() {
-    const parsedQty = Number.parseInt(maxQty, 10);
-    if (!Number.isInteger(parsedQty) || parsedQty < 1) {
-      toast.error("Shelf max must be at least 1");
+    if (!shelfMaxValid) {
+      toast.error("Shelf max must be at least 1 for each selected model");
       return;
     }
 
+    const items = selectedModels.map((m) => ({
+      modelId: m.id,
+      maxQty: Number.parseInt(maxQtyByModel[m.id] ?? "1", 10),
+    }));
+
     startTransition(async () => {
-      const result = await addPlanogramModelAction({
+      const result = await addPlanogramModelsAction({
         branchId,
-        modelId,
-        maxQty: parsedQty,
+        items,
         daysThreshold: 30,
       });
-      if ("emptyReason" in result && result.emptyReason) {
-        setEmptyReason(result.emptyReason);
-        return;
-      }
-      if ("error" in result && result.error) {
+
+      if ("error" in result && result.error && !("added" in result)) {
         toast.error(result.error);
         return;
       }
-      toast.success("Model added to planogram");
-      onAdded();
+
+      if (!("added" in result)) {
+        toast.error("Failed to add models");
+        return;
+      }
+
+      const notAllowed = result.errors?.find((e) => e.emptyReason);
+      if (result.added === 0 && notAllowed?.emptyReason) {
+        setEmptyReason(notAllowed.emptyReason);
+        return;
+      }
+
+      if (result.errors && result.errors.length > 0) {
+        toast.error(
+          `${result.errors.length} of ${items.length} model${items.length === 1 ? "" : "s"} failed to add`,
+        );
+      } else {
+        toast.success(
+          `${result.added} model${result.added === 1 ? "" : "s"} added to planogram`,
+        );
+      }
+
+      if (result.added > 0) {
+        onAdded();
+      }
     });
   }
 
+  const showCannotAdd = emptyReason !== null;
+  const showPicker = !showCannotAdd;
+
   return (
     <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-        <div className="w-full max-w-md space-y-4 rounded-xl border bg-card p-6 shadow-lg">
-          <h3 className="font-medium">Add model to planogram</h3>
-          {loading ? (
-            <p className="text-sm text-muted-foreground">Loading active SKUs…</p>
-          ) : models.length > 0 ? (
-            <>
-              <SearchableSelect
-                label="Model"
-                options={models.map((m) => ({
-                  id: m.id,
-                  label: `${m.skuCode} — ${m.name}`,
-                }))}
-                value={modelId}
-                onChange={setModelId}
-                placeholder="Select model…"
-                searchPlaceholder="Search models…"
-              />
-              <div className="space-y-2">
-                <Label htmlFor="add-planogram-max-qty">Shelf max</Label>
+      <Dialog open={showPicker} onOpenChange={handleOpenChange}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Add models to planogram</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {loading ? (
+              <p className="text-sm text-muted-foreground">Loading active SKUs…</p>
+            ) : models.length > 0 ? (
+              <>
                 <Input
-                  id="add-planogram-max-qty"
-                  type="number"
-                  min={1}
-                  step={1}
-                  value={maxQty}
-                  onChange={(e) => setMaxQty(e.target.value)}
+                  placeholder="Search models…"
+                  value={candidateQuery}
+                  onChange={(e) => setCandidateQuery(e.target.value)}
+                  className="h-8"
                   disabled={pending}
                 />
-                <p className="text-xs text-muted-foreground">
-                  How many units this branch should hold for this model. Suggested
-                  order qty = Shelf max − on-hand (STK).
-                </p>
-              </div>
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              No active SKUs available to add.
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={onClose}>
+                <div className="flex items-center gap-2 rounded-md border bg-muted/30 px-3 py-2">
+                  <Checkbox
+                    checked={allFilteredSelected}
+                    onCheckedChange={(checked) =>
+                      toggleSelectAllFiltered(Boolean(checked))
+                    }
+                    disabled={filteredModels.length === 0 || pending}
+                    aria-label="Select all filtered models"
+                  />
+                  <Label className="text-xs text-muted-foreground">
+                    Select all ({filteredModels.length})
+                  </Label>
+                </div>
+                <div className="max-h-48 overflow-y-auto rounded-md border">
+                  {filteredModels.length === 0 ? (
+                    <p className="px-3 py-4 text-sm text-muted-foreground">
+                      No matching models.
+                    </p>
+                  ) : (
+                    filteredModels.map((m) => (
+                      <label
+                        key={m.id}
+                        className="flex cursor-pointer items-center gap-2 border-b px-3 py-2 text-sm last:border-b-0 hover:bg-muted/40"
+                      >
+                        <Checkbox
+                          checked={selectedIds.has(m.id)}
+                          onCheckedChange={(checked) =>
+                            toggleModel(m.id, Boolean(checked))
+                          }
+                          disabled={pending}
+                          aria-label={`Select ${m.skuCode}`}
+                        />
+                        <span className="min-w-0 flex-1 truncate">
+                          <span className="font-mono">{m.skuCode}</span> — {m.name}
+                        </span>
+                      </label>
+                    ))
+                  )}
+                </div>
+
+                {selectedModels.length > 0 ? (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Selected models</p>
+                    <div className="max-h-48 space-y-2 overflow-y-auto rounded-md border p-3">
+                      {selectedModels.map((m) => (
+                        <div
+                          key={m.id}
+                          className="flex flex-wrap items-center gap-3 text-sm"
+                        >
+                          <span className="min-w-0 flex-1 truncate">
+                            <span className="font-mono">{m.skuCode}</span> — {m.name}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <Label
+                              htmlFor={`shelf-max-${m.id}`}
+                              className="shrink-0 text-xs text-muted-foreground"
+                            >
+                              Shelf max
+                            </Label>
+                            <Input
+                              id={`shelf-max-${m.id}`}
+                              type="number"
+                              min={1}
+                              step={1}
+                              className="h-8 w-20 tabular-nums"
+                              value={maxQtyByModel[m.id] ?? "1"}
+                              onChange={(e) =>
+                                setMaxQtyByModel((prev) => ({
+                                  ...prev,
+                                  [m.id]: e.target.value,
+                                }))
+                              }
+                              disabled={pending}
+                              aria-label={`Shelf max for ${m.skuCode}`}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      How many units this branch should hold for each model. Suggested
+                      order qty = Shelf max − on-hand (STK).
+                    </p>
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No active SKUs available to add.
+              </p>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={onClose} disabled={pending}>
               Cancel
             </Button>
-            <Button disabled={pending || loading || !modelId} onClick={submit}>
-              Add
+            <Button
+              disabled={pending || loading || !shelfMaxValid}
+              onClick={submit}
+            >
+              {selectedModels.length > 0
+                ? `Add ${selectedModels.length} model${selectedModels.length === 1 ? "" : "s"}`
+                : "Add models"}
             </Button>
-          </div>
-        </div>
-      </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog
-        open={emptyReason !== null}
+        open={showCannotAdd}
         onOpenChange={(open) => {
           if (!open) {
             setEmptyReason(null);

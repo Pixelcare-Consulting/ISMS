@@ -124,7 +124,7 @@ async function validateOrderLines(
     const remainingCapacity = Math.max(0, planogram.maxQty - stockCount);
     if (line.quantity > remainingCapacity) {
       throw new Error(
-        `Quantity for ${model.skuCode} exceeds shelf capacity (${remainingCapacity} remaining of ${planogram.maxQty} max)`,
+        `Quantity for ${model.skuCode} exceeds shelf capacity (${remainingCapacity} remaining of Shelf max ${planogram.maxQty})`,
       );
     }
   }

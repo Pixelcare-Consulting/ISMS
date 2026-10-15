@@ -282,6 +282,7 @@ model Tenant {
   notifications               Notification[]
   competitorObservations      CompetitorObservation[]
   officialSalesImportBatches  OfficialSalesImportBatch[]
+  aiConversations             AiConversation[]
 
   @@index([isPlatform])
   @@map("tenants")
@@ -356,6 +357,7 @@ model User {
   officialSalesImportBatchesUploaded OfficialSalesImportBatch[]    @relation("OfficialSalesImportBatchUploadedBy")
   demandPlanningRunsCreated          DemandPlanningRun[]           @relation("DemandPlanningRunCreatedBy")
   demandPlanningOverrides            DemandPlanningOverride[]      @relation("DemandPlanningOverrideActor")
+  aiConversations                    AiConversation[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -3206,4 +3208,41 @@ model ServiceCenterPulloutApprovalLevel {
 
   @@unique([pulloutId, level])
   @@map("service_center_pullout_approval_levels")
+}
+
+/// Pixelcare AI — private internal assistant conversations (per-user ownership).
+model AiConversation {
+  id          String    @id @default(cuid())
+  tenantId    String    @map("tenant_id")
+  userId      String    @map("user_id")
+  title       String    @default("New conversation")
+  contextJson Json?     @map("context_json")
+  /// When set, conversation is pinned; newest pin sorts first among pinned.
+  pinnedAt    DateTime? @map("pinned_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  tenant   Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages AiMessage[]
+
+  @@index([tenantId, userId, updatedAt])
+  @@index([tenantId, userId, pinnedAt])
+  @@map("ai_conversations")
+}
+
+model AiMessage {
+  id             String   @id @default(cuid())
+  conversationId String   @map("conversation_id")
+  role           String
+  content        String
+  toolName       String?  @map("tool_name")
+  toolPayload    Json?    @map("tool_payload")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("ai_messages")
 }

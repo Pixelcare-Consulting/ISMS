@@ -172,7 +172,7 @@ export function EditOrderDialog({
                   label="Add SKU"
                   options={availableToAdd.map((m) => ({
                     id: m.id,
-                    label: `${m.skuCode} — ${m.name}${m.maxQty != null ? ` (max ${m.maxQty})` : ""}`,
+                    label: `${m.skuCode} — ${m.name}${m.maxQty != null ? ` (Shelf max ${m.maxQty})` : ""}`,
                   }))}
                   value={addModelId}
                   onChange={setAddModelId}

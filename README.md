@@ -2,7 +2,7 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.64.0`
+**Current version:** `0.67.0`
 
 ## Stack
 
@@ -14,13 +14,14 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 |------|----------|
 | **Auth** | Email/password (Better Auth), tenant-scoped sessions, demo seed users; public `/register` off unless `ALLOW_PUBLIC_REGISTER=true` |
 | **Help** | Workflow guides, FAQs, page tutorials; **ISMS Assist** (ask in plain language over Help content; sources shown) |
+| **Pixelcare AI** | Internal assistant at `/internal/ai` (guided tasks + chat workspace + in-page Ask AI). Off by default; enable with `PIXELCARE_AI_ENABLED=true` for all signed-in users. Optional `PIXELCARE_AI_USER_IDS` lockdown; tools still enforce AOR/tenant/module permissions. Uses Qwen (Model Studio); separate from OpenAI ISMS Assist |
 | **Provider** | Platform console at `/provider/*` for platform operators only (provider role on the `isPlatform` Pixelcare tenant): customer summaries, create org + first Tenant Admin, org branding edit, full user/admin management, soft-disable/restore, global permissions |
 | **Dashboard** | Nav group: **Overview** (announcements only — defaults to New/unread, falls back to All when caught up; unread count badge in the menu), **Operations** (Today’s briefing + ops KPI cards / inventory / planning / order pipeline; role-gated), **Sales** (Today’s briefing + sales overview; role-gated), **P-Count Dashboard**, **Site Traffic**, **Market Survey** → Competitors. Sidebar also shows role-scoped red count badges for Monthly SIR for-approval, order review queues, returns approvals, and logistics actions (plus Stock units STK). Header: What’s new beside the sidebar drawer; notifications bell on the right (paginated inbox). Announcement CRUD stays under Announcements. |
 | **Announcements** | Tenant posts with rich body (formatting, links, images, tables); list + CRUD (`/announcements`); publishing a live announcement also sends a tenant-wide in-app notification (header bell → Overview); Overview feed defaults to New (unread) and falls back to All when everything is read; mark-as-read, likes, comments (latest 3 + show all; edit own / managers delete any), reader avatar stack (max 5), and All / New / Earlier + title search filters |
 | **Competitors** | Market observations with master Competitor + Competitor brand/model lookups, AOR-bound branch, optional promotion; KPIs + CRUD (`/competitors`) |
 | **Settings** | Company, users, departments, roles, permissions catalog (`roles.manage`; assign via Roles), branches, warehouses, dealers, service centers, AORs (branches / warehouses / service centers assign + sync), master data (incl. Series / Categories, Competitors / Competitor brands), status codes (per-module tabs + badge colors); collapsible Module guides on complex settings/ops pages |
 | **Planning** | Period switcher + clickable cards; in-page Add/Edit/Remove branch revenue targets; official Forecast template download + import (bulk; period as MMM-YY e.g. Dec-25); allocation; Supply Planning runs (`/settings/planning`, `/settings/planning/runs`) |
-| **Planogram** | Clickable cards filter branches with a planogram or none yet; branch list shows allowed SKUs as tags; Open a branch shows a wait message with the branch name; per-branch SKU assignment; current or latest model price and date; editable Shelf max; Allowed models uses the same table; official Excel template download + import (branch SAP + SKU); Add model requires Allowed models first |
+| **Planogram** | Clickable cards filter branches with a planogram or none yet; branch list shows allowed SKUs as tags; Open a branch shows a wait message with the branch name; per-branch SKU assignment; current or latest model price and date; editable Shelf max; multi-select Add models (per-SKU Shelf max) and allow-list popup; Allowed models uses the same table; official Excel template download + import (branch SAP + SKU); Add model requires Allowed models first |
 | **Policies** | Full document control (ISO track) |
 | **Inventory** | **Stock units** (`/inventory`) — grouped **By branch** / **By model** / **All serials**, AOR-scoped lists, series QTY/VALUE + DR#/date/aging (defective units via Sales returns STK/DEF, not from Stock units); **SAP Serial No.** flat serial list (`/inventory/serial-numbers`; legacy by-model via `?view=by-model`), **warehouse stock** SN list (`/inventory/warehouse-stock`; also Settings → Warehouses → Stock), **physical stock count / P-Count** (`/inventory/stock-count`) — scan serials, surplus/missing variances, Post differences (local STK + SAP Inventory Posting when SL connected); **Monthly SIR** (`/inventory/monthly-sir`) — TL/PS free P-COUNT upload slots (Manila calendar; free slot used when you Start Upload; extras via Request to upload), approve when needed, Excel P-COUNT upload, and variance workbook |
 | **Orders** | Nav group: Manual / Special / Auto replenish (`/orders/manual` etc.); per-type Module guide; Manual/Special tabs **Orders \| Order Analytics \| Order History** (`?tab=`); Auto replenish **Orders \| Order History** (no Analytics); Orders tab is a role work queue (PS / TL / SP / Logistics see their step; admins see the live pipeline) and omits approved / rejected / cancelled (those stay in Order History); pipeline counts sit under Orders as KPI cards for the queue; Analytics filter card (search for a branch, then brand on the card; assigned branch is selected for you; Clear; DII / inventory KPI cards after both are set); Create optional brand (cleared = all SKUs), extras below the table with multi-add, row numbers, delete a wrong line; per-branch create workspace (multi-line); Create shows a placeholder SKU grid while models load; Create submit shows a please-wait overlay; Auto replenish has no Create — use Suggested orders / Replenishment; drafts use **Submit for review** before TL; per-type `orders.manual`, `orders.special`, `orders.auto_replenish` with view/create/approve; Manual → Pending SP (TL optional edit) → SP; Special TL→SP; Auto TL→SP; SO#, processed orders, delivery-due auto-reschedule |
@@ -43,6 +44,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/provider/tenants` | Platform operator — customer list (status filters) / create / detail (org branding + users) / disable / restore |
 | `/provider/permissions` | Platform operator — global permissions catalog |
 | `/help` | Authenticated — Help & Support; Assist when `ai.assist` |
+| `/internal/ai` | Pixelcare AI — requires `PIXELCARE_AI_ENABLED=true` and a signed-in session (optional `PIXELCARE_AI_USER_IDS` lockdown; hidden from normal nav) |
 | `/dashboard` | Authenticated tenant app — Overview announcement feed only (platform operators redirect to `/provider`) |
 | `/dashboard/operations` | Inventory / orders / logistics / planning access — ops cards + Today’s briefing (no announcements) |
 | `/dashboard/sales` | `sales.*` / returns access — Sales overview + Today’s briefing (no announcements) |
@@ -120,8 +122,9 @@ src/
 │   ├── (marketing)/     # Public landing
 │   ├── (auth)/          # Login, register
 │   ├── (app)/           # Tenant app (dashboard, inventory, orders, logistics, settings, reports)
+│   ├── (internal)/      # Private Pixelcare AI shell (no ISMS sidebar)
 │   ├── (provider)/      # Platform Provider console (customer tenants, permissions)
-│   └── api/             # Auth, exports, policy attachments
+│   └── api/             # Auth, exports, policy attachments, internal AI
 ├── components/          # Shared UI (ShadCN, data-table)
 ├── config/              # app-navigation, app-modules
 ├── content/             # releases.ts, page-tutorials, module-guides
@@ -145,6 +148,16 @@ src/
 5. (Optional) Policy / audit files land under `STORAGE_ROOT` (default `.data/uploads`)
 6. (Optional) Workflow email: Resend
 7. Dev: `pnpm run dev`
+
+### Pixelcare AI (optional)
+
+1. Copy Qwen / Pixelcare AI placeholders from [`.env.example`](.env.example) into `.env.local`
+2. Set `PIXELCARE_AI_ENABLED=true` — any signed-in user can open `/internal/ai`
+3. Leave `PIXELCARE_AI_USER_IDS` empty for everyone. Only set it (comma-separated user ids/emails) if you need a temporary lockdown. Optional `ai.internal` still bypasses a non-empty allowlist.
+4. Set `QWEN_API_KEY`, `QWEN_BASE_URL` (Model Studio compatible-mode URL), and optional `QWEN_MODEL` (default `qwen-plus`)
+5. Apply the `ai_conversations` / `ai_messages` migration (`pnpm run db:migrate` or `pnpm run db:deploy`), then open `/internal/ai`
+6. Optional: `PIXELCARE_AI_SAMPLE_MODE=true` for labeled sample fixtures only (never mix with live decisions)
+7. Restart `pnpm run dev` after changing `.env.local` so Next.js reloads env
 
 See [`database/postgres.example.md`](database/postgres.example.md) for connection details and cutover notes.
 
