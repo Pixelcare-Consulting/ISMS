@@ -3,9 +3,16 @@ import path from "node:path";
 
 import type { ObjectStorage, StorageDownloadResult, StorageUploadInput } from "@/lib/storage/types";
 
+/** Resolves STORAGE_ROOT; default is statically scoped for Turbopack FS tracing. */
 function getStorageRoot(): string {
-  const root = process.env.STORAGE_ROOT?.trim() || ".data/uploads";
-  return path.isAbsolute(root) ? root : path.join(process.cwd(), root);
+  const configured = process.env.STORAGE_ROOT?.trim();
+  if (configured) {
+    if (path.isAbsolute(configured)) {
+      return configured;
+    }
+    return path.join(/* turbopackIgnore: true */ process.cwd(), configured);
+  }
+  return path.join(process.cwd(), ".data", "uploads");
 }
 
 function resolveSafePath(storagePath: string): string {
