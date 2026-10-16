@@ -6,6 +6,7 @@ export const PLANNING_MODULE_GUIDE: ModuleGuideContent = {
     "Import the SFE forecast for Target Quota, keep planogram and sales history ready, then use Supply Planning to generate and release Auto Replenish to Team Leader.",
   tips: [
     { label: "Before Supply Planning: branches, SKUs, and price list (SRP may be 0 / FREE), planogram per branch, SFE import for the period, and sales history in the Date from–Date to range when you can" },
+    { label: "New run automatically leaves out dealers with no sales in your Date from–Date to range so empty No history branches stay out of the plan" },
     { label: "0 SRP means FREE — Import forecast still sets Target Quota to ₱0 and shows a warning; it does not block Apply" },
     { label: "Use the Active period list at the top to switch periods — that period becomes the one used on the dashboard" },
     { label: "Click the cards to jump to Target Quota or Supply Planning (Settings → Planning)" },
@@ -25,6 +26,10 @@ export const SUGGESTED_ORDERS_MODULE_GUIDE: ModuleGuideContent = {
     "Draft auto-replenish requests from allocation gaps. They are not live branch orders until you submit them into the approval path.",
   tips: [
     { label: "Review draft lines and gaps by branch before submitting" },
+    {
+      label:
+        "On Auto replenish, Delete removes an unsubmitted draft you no longer need — only while status is Draft",
+    },
     { label: "Submit for TL review, then SP approval on Branch orders" },
     { label: "To create or refresh drafts, run allocation on Planning and generate from the popup" },
   ],

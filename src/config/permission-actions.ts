@@ -14,6 +14,7 @@ export interface PermissionActionDef {
 export const PERMISSION_ACTION_ORDER = [
   "view",
   "assist",
+  "internal",
   "branch.view",
   "service.view",
   "create",
@@ -48,6 +49,11 @@ export const PERMISSION_ACTIONS: Record<
     value: "assist",
     label: "Assist",
     description: "Ask ISMS Assist and read the daily briefing",
+  },
+  internal: {
+    value: "internal",
+    label: "Internal AI",
+    description: "Use the private Pixelcare AI prototype",
   },
   "branch.view": {
     value: "branch.view",

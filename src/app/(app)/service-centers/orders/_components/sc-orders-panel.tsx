@@ -34,7 +34,6 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import {
-  Table,
   TableBody,
   TableCell,
   TableHeader,

@@ -152,7 +152,7 @@ export function OrderWorkflowDialog({
           <DialogDescription>
             {isSpFinalStep
               ? "Supply Planning approves the request or cancels it. Approval opens a delivery and does not move stock."
-              : "PS submits a manual request, Team Leader reviews it, then Supply Planning approves or cancels."}
+              : "Manual requests go to Supply Planning; Team Leaders may optionally edit before SP decides. Auto-replenish still needs Team Leader then Supply Planning."}
           </DialogDescription>
         </DialogHeader>
         <div className="grid max-h-[calc(90svh-9.5rem)] min-h-0 gap-4 overflow-hidden md:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">

@@ -94,6 +94,8 @@ function lineLocked(
   return line.onPlanogram && line.remainingCapacity <= 0;
 }
 
+const SUG_HINT = "Shelf gap (Shelf max − STK). Not Planning forecast.";
+
 export function CreateOrderDialog({
   onClose,
   fixedOrderType,
@@ -214,6 +216,10 @@ export function CreateOrderDialog({
   const submitLines = useMemo(() => lines.filter((line) => line.qty >= 1), [lines]);
   const totalAmount = submitLines.reduce((sum, line) => sum + line.qty * line.srp, 0);
   const totalCbm = submitLines.reduce((sum, line) => sum + line.qty * line.cbm, 0);
+  const inventoryAmount = useMemo(
+    () => lines.reduce((sum, line) => sum + line.stkQty * line.srp, 0),
+    [lines],
+  );
   const pickerCatalog = useMemo(() => {
     const byId = new Map<string, OrderWorkspaceAdditionalModel>();
     for (const line of workspace?.lines ?? []) {
@@ -224,6 +230,9 @@ export function CreateOrderDialog({
         brandId: line.brandId,
         srp: line.srp,
         cbm: line.cbm,
+        inventory: line.inventory,
+        stkQty: line.stkQty,
+        ditQty: line.ditQty,
         onPlanogram: line.onPlanogram,
         remainingCapacity: line.remainingCapacity,
       });
@@ -284,9 +293,9 @@ export function CreateOrderDialog({
       cbm: model.cbm,
       maxQty: 0,
       milDays: 30,
-      inventory: [{ code: "STK", count: 0 }],
-      stkQty: 0,
-      ditQty: 0,
+      inventory: model.inventory,
+      stkQty: model.stkQty,
+      ditQty: model.ditQty,
       salesQty: 0,
       salesAmount: 0,
       rate: null,
@@ -334,6 +343,15 @@ export function CreateOrderDialog({
       toast.error("That SKU is already on the grid.");
     }
     if (toAdd.length === 0) return;
+    const zeroSrp = toAdd.filter((line) => line.srp <= 0);
+    if (zeroSrp.length > 0) {
+      const labels = zeroSrp.map((line) => line.skuCode).join(", ");
+      toast.warning(
+        zeroSrp.length === 1
+          ? `${labels} has SRP = 0. Order amount for this SKU will be ₱0.`
+          : `${labels} have SRP = 0. Order amount for these SKUs will be ₱0.`,
+      );
+    }
     setLines((prev) => [...prev, ...toAdd]);
     setExtraModelIds([]);
   }
@@ -344,6 +362,15 @@ export function CreateOrderDialog({
 
   function submit() {
     startTransition(async () => {
+      const zeroSrp = submitLines.filter((line) => line.srp <= 0);
+      if (zeroSrp.length > 0) {
+        const labels = zeroSrp.map((line) => line.skuCode).join(", ");
+        toast.warning(
+          zeroSrp.length === 1
+            ? `${labels} has SRP = 0. Order amount for this SKU will be ₱0.`
+            : `${labels} have SRP = 0. Order amount for these SKUs will be ₱0.`,
+        );
+      }
       const started = Date.now();
       const result = await createOrderAction({
         branchId,
@@ -367,7 +394,7 @@ export function CreateOrderDialog({
           ? "Special order submitted for SP approval"
           : orderType === "auto_replenish"
             ? "Auto-replenish order submitted for TL review"
-            : "Manual order submitted for Team Leader review",
+            : "Manual order submitted for Supply Planning approval",
       );
       onClose();
       router.refresh();
@@ -390,7 +417,7 @@ export function CreateOrderDialog({
           <DialogTitle>Create branch order</DialogTitle>
           <DialogDescription>
             Review branch stock and suggested quantities, then enter quantities for this
-            request.
+            request. SUG is shelf gap from planogram Shelf max, not forecast.
           </DialogDescription>
         </DialogHeader>
 
@@ -466,7 +493,7 @@ export function CreateOrderDialog({
                   />
                   <KpiTile
                     label="Inventory amount"
-                    value={formatPeso(workspace?.summary.inventoryAmount ?? 0)}
+                    value={formatPeso(inventoryAmount)}
                   />
                   <KpiTile label="Total amount order" value={formatPeso(totalAmount)} />
                   <KpiTile label="Total CBM" value={totalCbm.toFixed(4)} />
@@ -513,7 +540,10 @@ export function CreateOrderDialog({
                         <th className="w-[20%] py-2 pr-2 font-medium">Model</th>
                         <th className="w-[10%] py-2 pr-2 font-medium">INV</th>
                         <th className="w-[7%] py-2 pr-2 font-medium">SALES</th>
-                        <th className="w-[7%] py-2 pr-2 font-medium">SUG</th>
+                        <th className="w-[7%] py-2 pr-2 font-medium" title={SUG_HINT}>
+                          SUG
+                          <span className="sr-only">{SUG_HINT}</span>
+                        </th>
                         <th className="w-[8%] py-2 pr-2 font-medium">CBM</th>
                         <th className="w-[12%] py-2 pr-2 font-medium">BRANCH ORD</th>
                         <th className="w-[26%] py-2 pr-2 font-medium">REMARKS</th>
@@ -545,7 +575,14 @@ export function CreateOrderDialog({
                               <InventoryStatusChips inventory={line.inventory} />
                             </td>
                             <td className="py-2 pr-2 tabular-nums">{line.salesQty}</td>
-                            <td className="py-2 pr-2 tabular-nums">{line.sugQty}</td>
+                            <td
+                              className={cn(
+                                "py-2 pr-2 tabular-nums",
+                                line.sugQty === 0 && "text-muted-foreground",
+                              )}
+                            >
+                              {line.sugQty}
+                            </td>
                             <td className="py-2 pr-2 tabular-nums">{line.cbm.toFixed(4)}</td>
                             <td className="min-w-0 py-2 pr-2">
                               <Input
@@ -563,6 +600,11 @@ export function CreateOrderDialog({
                                   setLineQty(line.modelId, Number(e.target.value))
                                 }
                               />
+                              {locked ? (
+                                <p className="mt-1 text-[10px] text-muted-foreground">
+                                  Shelf full
+                                </p>
+                              ) : null}
                             </td>
                             <td className="min-w-0 py-2 pr-2">
                               <Input
@@ -671,7 +713,10 @@ function CreateOrderSkuTableSkeleton() {
             <th className="w-[20%] py-2 pr-2 font-medium">Model</th>
             <th className="w-[10%] py-2 pr-2 font-medium">INV</th>
             <th className="w-[7%] py-2 pr-2 font-medium">SALES</th>
-            <th className="w-[7%] py-2 pr-2 font-medium">SUG</th>
+            <th className="w-[7%] py-2 pr-2 font-medium" title={SUG_HINT}>
+              SUG
+              <span className="sr-only">{SUG_HINT}</span>
+            </th>
             <th className="w-[8%] py-2 pr-2 font-medium">CBM</th>
             <th className="w-[12%] py-2 pr-2 font-medium">BRANCH ORD</th>
             <th className="w-[26%] py-2 pr-2 font-medium">REMARKS</th>

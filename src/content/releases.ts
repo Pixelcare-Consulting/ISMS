@@ -27,9 +27,18 @@
  * - No file names, SQL, FK, schema fields, migration names, reseed steps, or RBAC jargon dumps
  * - Avoid technical jargon (hydration, pool timeout, GROUP BY, slugs, etc.)
  * - Keep highlights short; order changes as feature → improvement → fix
+ *
+ * Audience / What's New visibility:
+ * - Omit `audience` (or set `"end_user"`) for notes that appear in the in-app What's New dialog
+ * - Set `audience: "internal"` for Pixelcare AI / internal-only notes (kept in this file for the
+ *   team; filtered out of What's New). From v0.65.0 onward, AI-focused entries use `"internal"`.
+ * - Keep updating AI notes here as usual; they stay in source and stay hidden from end users.
  */
 
 export type ReleaseChangeType = "feature" | "fix" | "improvement";
+
+/** Who can see this note in the product What's New UI. Default: end_user. */
+export type ReleaseAudience = "end_user" | "internal";
 
 export interface ReleaseChange {
   type: ReleaseChangeType;
@@ -48,9 +57,1048 @@ export interface ReleaseNote {
   title: string;
   highlights: string[];
   changes?: ReleaseChange[];
+  /**
+   * `"internal"` = keep in this file for the team, hide from What's New.
+   * Omit or `"end_user"` = show in What's New (default).
+   */
+  audience?: ReleaseAudience;
 }
 
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: "0.70.3",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T10:30:00+08:00",
+    title: "Order lists open again",
+    highlights: ["Manual, special, and auto replenish order lists open again."],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Those order lists open again after prices were updated.",
+      },
+    ],
+  },
+  {
+    version: "0.70.2",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T09:45:00+08:00",
+    title: "Stock serials into a warehouse location",
+    highlights: [
+      "Stock serials into a warehouse location so a delivery can be dispatched.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "On a warehouse location, choose a model and enter serial numbers. Those serials show on warehouse stock and can be dispatched when that warehouse is the branch’s primary warehouse.",
+      },
+    ],
+  },
+
+  {
+    version: "0.70.1",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T09:15:00+08:00",
+    title: "Branch orders use the current price",
+    highlights: [
+      "Branch order amounts follow the price that is current in master data.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Creating or editing a branch order, and the order history total, use the current master-data price instead of a blank model price.",
+      },
+    ],
+  },
+
+  {
+    version: "0.70.0",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T08:55:00+08:00",
+    audience: "internal",
+    title: "Pixelcare AI: workflow automations",
+    highlights: [
+      "When you already typed a sales order number, the assistant looks that order up.",
+      "Automations can send a daily briefing, review replenishment, and remind you about work still waiting.",
+      "Replenishment creates an auto replenish order only after you confirm. It starts as Pending TL and is not sent to SAP.",
+      "Scheduled automations run on the server only when the scheduler is running.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Automations cover a daily briefing, a replenishment review, and reminders for work still waiting.",
+      },
+      {
+        type: "feature",
+        description:
+          "Confirming a replenishment review creates an auto replenish order that starts as Pending TL. It is not sent to SAP.",
+      },
+      {
+        type: "improvement",
+        description:
+          "When your message already includes a sales order number, the assistant looks that order up.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Scheduled automations run on the server only when the scheduler is running.",
+      },
+    ],
+  },
+
+  {
+    version: "0.69.2",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T08:05:00+08:00",
+    audience: "internal",
+    title: "Pixelcare AI: home chat opens correctly",
+    highlights: [
+      "Typing or tapping a suggestion on the home screen opens that conversation with your message and the reply streaming right away.",
+      "Empty chats use the same centered starter layout as home — same greeting, pill message box, and quick-task chips.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "New and empty chats share the same home-style starter screen instead of a sparse blank thread.",
+      },
+      {
+        type: "fix",
+        description:
+          "Starting a chat from the home screen (typed message or quick-task chip) now lands you in that conversation with the first reply underway.",
+      },
+      {
+        type: "fix",
+        description:
+          "The first message from home still sends once the conversation opens, instead of stalling on a blank chat.",
+      },
+    ],
+  },
+
+  {
+    version: "0.69.1",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T02:35:00+08:00",
+    audience: "internal",
+    title: "Pixelcare AI: faster guided starts",
+    highlights: [
+      "Tapping a guided task opens the chat and starts the reply right away.",
+      "Empty chats show the same quick-task chips so you can jump in without typing.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Empty conversations show guided-task suggestions and clearer starter copy.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Keyboard send hints sit under the message box instead of inside it.",
+      },
+      {
+        type: "fix",
+        description:
+          "Guided-task chips from home reliably start the first assistant reply instead of leaving a blank chat.",
+      },
+    ],
+  },
+
+  {
+    version: "0.69.0",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T02:20:00+08:00",
+    audience: "internal",
+    title: "Pixelcare AI: chat-first home",
+    highlights: [
+      "Open Pixelcare AI and start typing right away — no separate launch screen.",
+      "Guided tasks appear as quick suggestion chips under the chat box.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Pixelcare AI opens straight into a chat-ready home with a greeting and message box.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Guided tasks are compact suggestion chips near the input instead of large cards.",
+      },
+    ],
+  },
+
+  {
+    version: "0.68.1",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T02:10:00+08:00",
+    audience: "internal",
+    title: "Pixelcare AI available by default",
+    highlights: [
+      "Pixelcare AI opens for signed-in users without a separate on/off switch.",
+      "Optional allowlist still limits who can use it when you need a temporary lockdown.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Pixelcare AI is available by default for signed-in users — no separate enable flag required.",
+      },
+      {
+        type: "fix",
+        description:
+          "Staging no longer shows a missing page for Pixelcare AI when the old enable flag was unset.",
+      },
+    ],
+  },
+
+  {
+    version: "0.68.0",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T01:45:00+08:00",
+    audience: "internal",
+    title: "Pixelcare AI: workflows & ops status",
+    highlights: [
+      "Ask how P-Count, Monthly SIR, SAP, deliveries, and other major modules work — clear steps without inventing process details.",
+      "Check open P-Count sessions, Monthly SIR requests, Operations inbox items, and delivery status for stores you can access.",
+      "Admins with SAP access can see connection state (never credentials); guided tasks cover P-Count and Monthly SIR.",
+      "Replies stay on the workflow and numbers — no more \"from docs\" vs \"live\" side comments.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Pixelcare AI explains major ISMS workflows (including P-Count, Monthly SIR, and SAP) with verified steps — not invented process details.",
+      },
+      {
+        type: "feature",
+        description:
+          "Read-only status for P-Count, Monthly SIR, Operations inbox, and delivery lookup matches your store access; SAP connection overview is admin-only.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Guided home adds Check P-Count status and Check Monthly SIR; answers still cannot write, sync, or invent SAP internals.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Answers explain ISMS workflows and data naturally — without saying whether something came from Help or live tools.",
+      },
+    ],
+  },
+
+  {
+    version: "0.67.1",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T01:15:00+08:00",
+    audience: "internal",
+    title: "Deploy build: local file storage path fix",
+    highlights: [
+      "Production builds no longer fail when preparing on-server file storage.",
+      "Staging and Docker keep using the mounted uploads folder as before.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Production builds no longer fail when preparing on-server file storage.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Staging and Docker keep using the mounted uploads folder as before.",
+      },
+    ],
+  },
+
+  {
+    version: "0.67.0",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T00:56:00+08:00",
+    title: "Planogram: add several models at once",
+    highlights: [
+      "Add several models to a branch planogram in one step, each with its own Shelf max.",
+      "Adding models to the allow-list opens a popup instead of an inline dropdown.",
+      "Suggested order qty still means Shelf max minus on-hand stock — not Planning Drop 1.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Add several models to a branch planogram at once, each with its own Shelf max.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Adding models to the allow-list opens a popup instead of an inline dropdown.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Suggested order qty stays Shelf max minus on-hand (STK), separate from Planning Drop 1.",
+      },
+    ],
+  },
+
+  {
+    version: "0.66.0",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T00:45:00+08:00",
+    audience: "internal",
+    title: "Pixelcare AI: planning, quotas & ops answers",
+    highlights: [
+      "Ask about planning runs, coverage, allocation gaps, and draft suggested orders — Pixelcare AI reads the same ISMS data you can see.",
+      "Dashboard snapshot, branch quotas (your stores), planogram Shelf max alerts, live return lookup, and logistics counts are available when you have access.",
+      "A new guided task helps review planning & forecast without inventing formulas.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Pixelcare AI can read planning runs, coverage, allocation gaps, draft suggested orders, dashboard numbers, branch quotas, planogram alerts, return status, and logistics KPIs — matching your permissions.",
+      },
+      {
+        type: "feature",
+        description:
+          "Guided home includes “Review planning & forecast” so the assistant starts with the right tools.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Answers explain planning linkage from live ISMS reads and keep Shelf max wording; the assistant still cannot run allocation or place orders.",
+      },
+    ],
+  },
+
+  {
+    version: "0.65.4",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T00:40:00+08:00",
+    audience: "internal",
+    title: "Pixelcare AI: softer sparkle on the corner button",
+    highlights: [
+      "The teal sparkle button gently glows and twinkles so it’s easier to notice without feeling flashy.",
+      "Motion stays calm if your system prefers reduced motion.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "The corner AI sparkle button uses a soft teal pulse and occasional icon twinkle, with a light hover scale.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Sparkle motion turns off or simplifies when reduced motion is preferred.",
+      },
+    ],
+  },
+
+  {
+    version: "0.65.3",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T00:30:00+08:00",
+    audience: "internal",
+    title: "Pixelcare AI: guided chats start talking & scroll follows replies",
+    highlights: [
+      "Tap a guided task and the assistant starts the conversation for you — no empty thread to type into first.",
+      "Chat follows the latest reply while it’s writing; if you scroll up, a Scroll to latest button brings you back.",
+      "Pin and delete stay out of the way until you hover or focus a chat in history.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Guided tasks open a chat and send the starter question right away so the assistant begins answering immediately.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Pin and delete on chat history only appear when you hover, focus, or select a row — cleaner on desktop, still easy on touch.",
+      },
+      {
+        type: "fix",
+        description:
+          "The message list scrolls with new replies and drafting status again, and stays put if you’re reading earlier messages.",
+      },
+    ],
+  },
+
+  {
+    version: "0.65.2",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T00:25:00+08:00",
+    audience: "internal",
+    title: "Pixelcare AI: pin, safer delete & Shelf max",
+    highlights: [
+      "Pin important Pixelcare AI chats so they stay at the top of your history.",
+      "Deleting a chat asks for confirmation first, so an accidental click won’t clear it.",
+      "Shelf gaps and SUG answers now say Shelf max — the same wording as Planogram.",
+      "Conversation list and answer tables have a bit more breathing room.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Pin or unpin any Pixelcare AI conversation so your favorites stay at the top of the sidebar.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Chat history rows and tables in answers have clearer spacing, so titles and actions are easier to tap.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Pixelcare AI shelf-gap answers, order hints, and the daily stock report use Shelf max (SUG = Shelf max − on-hand), matching Planogram.",
+      },
+      {
+        type: "fix",
+        description:
+          "Trash on a conversation now asks “Delete this conversation?” before removing it from your history.",
+      },
+    ],
+  },
+
+  {
+    version: "0.65.1",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T00:10:00+08:00",
+    audience: "internal",
+    title: "Pixelcare AI chat polish",
+    highlights: [
+      "Stock, shelf gaps, and similar lists in Pixelcare AI show as clear tables instead of hard-to-read spaced columns.",
+      "Only the teal sparkle button appears in the corner — the extra Ask AI label behind it is gone.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Pixelcare AI answers for stock, shelf gaps, orders, and your branches use readable tables (and scroll on small screens), so Quick Recap and row lists are easier to scan.",
+      },
+      {
+        type: "fix",
+        description:
+          "Inventory, Orders, Returns, and Planogram no longer show a second Ask AI button under the teal sparkle. Use the sparkle to open Pixelcare AI.",
+      },
+    ],
+  },
+
+  {
+    version: "0.65.0",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T23:59:00+08:00",
+    audience: "internal",
+    title: "Pixelcare AI assistant",
+    highlights: [
+      "Pixelcare AI helps check stock, shelf gaps, orders, and returns with read-only answers when the feature is turned on.",
+      "Any signed-in teammate can open it — no invite list required for normal use.",
+      "Ask AI opens beside Inventory, Orders, Returns, and Planogram; the sparkle button goes to the Pixelcare AI workspace when enabled.",
+      "Opens inside the normal ISMS menu by default, with an optional fullscreen mode, a clear Back to ISMS exit, and a chat layout that keeps the composer in place while messages scroll.",
+      "With a Context branch set, stock and shelf-gap answers use that store; you can also ask which stores you can access, and a short reminder above the message box notes that answers can be wrong.",
+      "Store access in Pixelcare AI matches Stock Units for admins, and if you ask to place an order the assistant points you to Orders → Analytics or Create order instead of claiming it can submit one.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Pixelcare AI is available as an internal assistant with guided tasks and saved chats for stock, shelf gaps, orders, and returns.",
+      },
+      {
+        type: "feature",
+        description:
+          "On Inventory, Orders, Returns, and Planogram, you can open Ask AI with the current page context already filled in.",
+      },
+      {
+        type: "feature",
+        description:
+          "Pixelcare AI opens with the normal ISMS sidebar. Use Fullscreen when you want a distraction-free workspace; your choice is remembered on this device.",
+      },
+      {
+        type: "improvement",
+        description:
+          "When Pixelcare AI is enabled, every signed-in user can use it. An optional allowlist is only for temporary lockdowns.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Shelf-gap answers use the same suggested quantity formula as Order Analytics, so the assistant does not invent its own math.",
+      },
+      {
+        type: "improvement",
+        description:
+          "When Pixelcare AI is on, the sparkle button opens the full assistant workspace instead of the small help chat.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Back to ISMS sits once in the assistant header so you can return to the portal without duplicate exit buttons.",
+      },
+      {
+        type: "improvement",
+        description:
+          "In chat, the conversation list, title bar, and message box stay put while only the messages scroll — similar to a familiar chat app.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The chat playground no longer pushes you into Stock units, Order Analytics, or Returns with a launcher bar above the message box — you stay in the conversation.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Branch context uses the store name (and SAP code) instead of a long internal id, including in assistant replies about the active branch.",
+      },
+      {
+        type: "improvement",
+        description:
+          "When the assistant finds an order or stock for a specific store, the Context branch updates to that store for the next questions.",
+      },
+      {
+        type: "improvement",
+        description:
+          "You can ask which stores you can access, and the assistant lists them from your allowed branches instead of sending you to a made-up settings menu.",
+      },
+      {
+        type: "improvement",
+        description:
+          "People who can browse all stores in Stock Units see the same stores in Pixelcare AI — no false “outside your area” block for admins.",
+      },
+      {
+        type: "improvement",
+        description:
+          "If you ask Pixelcare AI to place a live order, it points you to Orders → Order Analytics (Proceed to order) or Create order, and reminds you it cannot submit orders itself.",
+      },
+      {
+        type: "improvement",
+        description:
+          "A short note above the message box reminds you that Pixelcare AI cannot place orders and that important info should be checked.",
+      },
+      {
+        type: "fix",
+        description:
+          "With a Context branch selected, stock and shelf-gap questions use that store right away — you do not need to retype the SAP code.",
+      },
+      {
+        type: "fix",
+        description:
+          "Store lookups accept the correct SAP code (and close mistypes within your allowed branches) instead of failing as if the store were outside your area.",
+      },
+      {
+        type: "fix",
+        description:
+          "When a store code is mistyped or missing from your list, the message says it was not found among your stores — separate from having no stores assigned at all.",
+      },
+      {
+        type: "fix",
+        description:
+          "Leaving Pixelcare AI for the dashboard keeps the main ISMS sidebar visible right away — no hard refresh needed.",
+      },
+      {
+        type: "fix",
+        description:
+          "If an optional allowlist blocks your account, you see a clear access message instead of a blank missing page.",
+      },
+      {
+        type: "fix",
+        description:
+          "After you sign in, the sparkle button opens the Pixelcare AI workspace instead of a missing page.",
+      },
+      {
+        type: "fix",
+        description:
+          "The Context bar no longer shows the same branch twice (dropdown plus duplicate chip).",
+      },
+    ],
+  },
+
+  {
+    version: "0.64.0",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T22:15:00+08:00",
+    title: "Inventory Report Excel download",
+    highlights: [
+      "Inventory Report downloads as an Excel file with separate Summary and Detail tabs and colored headers.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Reports → Inventory Report exports Excel with a Summary tab of quantities by branch, SKU, and status, and a Detail tab of serial rows—headers stay visible and are color-coded so each sheet is easy to scan.",
+      },
+    ],
+  },
+  {
+    version: "0.63.0",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T21:55:00+08:00",
+    title: "SAP order handoff and clearer Special create",
+    highlights: [
+      "Approved orders prepare a cleaner handoff toward SAP Inventory Transfer Request and Sales Order documents, including returns when a delivery is only partly accepted.",
+      "Role templates and Help make it clearer that Team Leaders create Special orders, while Product Specialists focus on Manual.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "After Supply Planning approves an order, ISMS queues the SAP Inventory Transfer Request and Sales Order steps more cleanly, opens the local delivery for logistics, and can queue a warehouse Inventory Transfer when units are returned from a partial delivery.",
+      },
+      {
+        type: "improvement",
+        description:
+          "New Manager and Branch staff role templates match Special vs Manual ownership, and Help explains how to grant Special create on Team Leader roles if it is missing.",
+      },
+    ],
+  },
+  {
+    version: "0.62.0",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T23:00:00+08:00",
+    title: "Super Admin bulk cancel on Orders",
+    highlights: [
+      "Super Admin can cancel several selected orders at once from Manual, Special, or Auto replenish lists.",
+      "Drafts are discarded; pending orders become Cancelled in Order History. Approved or delivery-linked rows are skipped.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "On Orders, Super Admin sees Cancel selected when rows are checked — confirm to discard drafts or cancel pending requests in bulk.",
+      },
+      {
+        type: "improvement",
+        description:
+          "After bulk cancel, a summary toast shows how many were discarded or cancelled and why any rows were skipped.",
+      },
+    ],
+  },
+  {
+    version: "0.61.1",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T22:30:00+08:00",
+    title: "Clearer Shelf max and SUG on orders",
+    highlights: [
+      "Planogram now shows Shelf max on each model so you can see and edit the branch stock ceiling.",
+      "On Create order, SUG explains it is shelf gap — not Planning forecast — and Shelf full appears when Manual cannot order more.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Add model and the planogram table use Shelf max with a short note that suggested order qty is Shelf max minus on-hand.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Create order keeps SUG, adds a hover/accessibility hint for shelf gap, and shows Shelf full under a locked Manual quantity.",
+      },
+    ],
+  },
+  {
+    version: "0.61.0",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T22:00:00+08:00",
+    title: "Discard unsubmitted Auto replenish drafts",
+    highlights: [
+      "You can remove a draft auto-replenish order from the list before it goes to Team Leader review.",
+      "Submitted and approved orders still follow the usual Review, reject, and cancel paths — nothing changes there.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "On Auto replenish Orders, Delete lets you discard an unsubmitted draft (for example from Suggested orders) after you confirm.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Submit for review and Delete cannot both succeed on the same draft, so you will not accidentally leave a half-submitted order behind.",
+      },
+    ],
+  },
+  {
+    version: "0.60.1",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T21:30:00+08:00",
+    title: "Clearer Special stock, CBM import, and Inventory Report",
+    highlights: [
+      "When you add an extra model on a Special order, stock on hand matches the branch — not a blank zero.",
+      "Models import can include CBM so Manual and Special order volume totals stay accurate.",
+      "Inventory Report can filter by SKU, status, and branch, and the CSV starts with a short quantity summary.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "On Special create, additional lines show real branch stock so Inventory amount and STK match what you see for planogram models.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Models import accepts an optional CBM column so order Total CBM can use the cubic meter you set on each SKU.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Inventory Report lets you narrow by SKU, status (STK by default), and branch; the download includes a SUMMARY count block before the serial DETAIL rows.",
+      },
+      {
+        type: "fix",
+        description:
+          "If a model has no SRP, adding it on Create order warns that the line amount stays ₱0 until the price is set in master data.",
+      },
+    ],
+  },
+  {
+    version: "0.60.0",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T21:20:00+08:00",
+    title: "Manual orders go straight to Supply Planning",
+    highlights: [
+      "Manual orders now go to Supply Planning right away after you submit — no Team Leader approval step in between.",
+      "Team Leaders can still open and edit a Manual order while it is waiting for Supply Planning.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Submitting a Manual order sends it to Pending SP immediately so Supply Planning can approve or cancel.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Product Specialists and Team Leaders can still edit Manual order lines while Supply Planning reviews; the Review button stays with Supply Planning.",
+      },
+      {
+        type: "fix",
+        description:
+          "Manual requests that were still waiting on Team Leader now show as Pending SP so they match the new path.",
+      },
+    ],
+  },
+  {
+    version: "0.59.5",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T21:15:00+08:00",
+    title: "Process Return action matches document type",
+    highlights: [
+      "On Process Return, Return shows only for Return document types, and Replacement only for Replacement types.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Process Return no longer shows both Return and Replacement at once — the button matches the Document Type you pick (for example BRANCH RETURN vs BRANCH REPLACEMENT).",
+      },
+    ],
+  },
+  {
+    version: "0.59.4",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T22:50:00+08:00",
+    title: "Monthly SIR free slots on Start",
+    highlights: [
+      "Starting a free Upload P-COUNT on Monthly SIR uses one free slot right away—you do not need to finish the Excel upload first.",
+      "When that free slot is used, further uploads for the same branch and period go through Request to upload for approval.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "On Monthly SIR, a free Team Leader or Product Specialist Upload P-COUNT uses a free slot as soon as you start, so remaining slots update immediately.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Extra uploads still use Request to upload and approval; they do not take another free slot.",
+      },
+    ],
+  },
+  {
+    version: "0.59.3",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T22:45:00+08:00",
+    title: "Clearer Monthly SIR free slots",
+    highlights: [
+      "On Monthly SIR, see how many free P-COUNT uploads you have left at a glance—next to the button and in a simple Slots summary when you start.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Monthly SIR shows a short free-slot badge by Upload / Request, and a Slots card in the start dialog with remaining today, your period rules, and when an extra upload needs approval.",
+      },
+    ],
+  },
+  {
+    version: "0.59.2",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T22:30:00+08:00",
+    title: "Supply Planning history filter automatic",
+    highlights: [
+      "New Supply Planning runs always leave out dealers with no sales in your Date from–Date to range — no checkbox to turn on.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "On Supply Planning → New run → Scope, dealers with no sales history are skipped automatically; you still see how many were left out after generate.",
+      },
+    ],
+  },
+  {
+    version: "0.59.1",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T21:35:00+08:00",
+    title: "Supply Planning grid alignment",
+    highlights: [
+      "Display units and forecast quantity boxes on a Supply Planning run line up with their column headers and totals.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "On Supply Planning run documents, DU and FC qty inputs sit under their headers and align with neighboring values and the totals row.",
+      },
+    ],
+  },
+  {
+    version: "0.59.0",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T21:20:00+08:00",
+    title: "Supply Planning skips empty history",
+    highlights: [
+      "New run can leave out dealers with no sales in your Date from–Date to range so the plan list stays focused.",
+      "The option is on by default; turn it off when you still need new or forecast-only dealers in the run.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "On Supply Planning → New run → Scope, Exclude dealers with no sales history (on by default) drops those dealers from the generated plan and tells you how many were left out.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Uncheck the option when you are planning new dealers or relying on forecast only without past sales in the history window.",
+      },
+      {
+        type: "improvement",
+        description:
+          "On Confirm data sources, a short placeholder shows while history, planogram, forecast, and on-hand counts load.",
+      },
+      {
+        type: "fix",
+        description:
+          "After you go Back and change branches, period, or history dates, Confirm data sources reloads so the counts match your latest choices.",
+      },
+    ],
+  },
+  {
+    version: "0.58.0",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T20:45:00+08:00",
+    title: "Inventory Report CSV",
+    highlights: [
+      "Download an Inventory Report spreadsheet from Reports with dealer and branch details plus serial, status, DR#, and aging columns.",
+      "Choose a from/to date range; results stay limited to the branches you can see.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Reports → Inventory Report lets you download a CSV of branch stock with dealer classification and delivery validation columns (serial, status, DR#, aging).",
+      },
+      {
+        type: "improvement",
+        description:
+          "Optional from/to dates narrow the export; your assigned branches stay in scope so you only see what you should.",
+      },
+    ],
+  },
+  {
+    version: "0.57.0",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T20:40:00+08:00",
+    title: "P-Count upload allowances",
+    highlights: [
+      "Team Leaders get one free P-COUNT upload per branch each month; Product Specialists get two (first half and second half of the month).",
+      "When a free slot is available, Upload P-COUNT starts right away; when slots are used up, Request to upload still needs approval.",
+      "Monthly SIR shows how many free uploads you have left for the branch you pick.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "On Monthly SIR, Team Leaders can upload one free P-COUNT per branch per month, and Product Specialists two (days 1–15 and 16–end), without waiting for approval first.",
+      },
+      {
+        type: "improvement",
+        description:
+          "When free uploads are used up—or the Product Specialist half-month window is not open yet—the button switches to Request to upload P-COUNT so extras still go through review.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The page shows remaining free uploads for the selected branch so you know whether you can upload now or need to request.",
+      },
+    ],
+  },
+  {
+    version: "0.56.0",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T20:35:00+08:00",
+    title: "Branch Quota Import",
+    highlights: [
+      "Import branch quotas from Excel on Branch Quotas—download a template, preview changes, then apply.",
+      "Matching branch, brand, and month rows update or create; unchanged rows are skipped and problem rows are flagged before import.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Settings → Branch Quotas has Import: download a spreadsheet template of your current quotas, preview creates and updates, then apply in one go.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Import matches existing quotas by branch, brand, and month—updates or creates as needed, skips rows that already match, and lists spreadsheet problems before you apply.",
+      },
+    ],
+  },
+  {
+    version: "0.55.7",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T20:20:00+08:00",
+    title: "Supply Planning branch list spacing",
+    highlights: [
+      "On Supply Planning run details with many branches, the branch tags wrap into full rows and the planning table sits fully below them.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "On Supply Planning run details with many branches, the branch tags wrap into full rows and the planning table sits fully below them.",
+      },
+    ],
+  },
+  {
+    version: "0.55.6",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T20:15:00+08:00",
+    title: "Supply Planning layout and document numbers",
+    highlights: [
+      "When a Supply Planning run has many branches, the branch list wraps cleanly and no longer covers the planning table.",
+      "New Supply Planning runs are numbered with SP again (for example SP-202612-007).",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "When a Supply Planning run has many branches, the branch list wraps cleanly and no longer covers the planning table.",
+      },
+      {
+        type: "fix",
+        description:
+          "New Supply Planning runs use the SP document number prefix again instead of DP.",
+      },
+    ],
+  },
+  {
+    version: "0.55.5",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T16:55:00+08:00",
+    title: "Supply Planning new runs after deletes",
+    highlights: [
+      "Creating a new Supply Planning run no longer fails after deleting earlier runs or when document numbers would have duplicated.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Creating a new Supply Planning run no longer fails after deleting earlier runs or when a document number was already taken.",
+      },
+    ],
+  },
+  {
+    version: "0.55.4",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T16:45:00+08:00",
+    title: "Bulk delete draft Supply Planning runs",
+    highlights: [
+      "Select several draft Supply Planning runs and delete them together from the list.",
+      "Released runs stay protected and cannot be selected for delete.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Select and delete multiple draft Supply Planning runs at once from the list after confirming.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Select all only includes deletable draft runs on the current page; Released runs stay unchecked.",
+      },
+    ],
+  },
+  {
+    version: "0.55.3",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T16:30:00+08:00",
+    title: "Planogram tabs restored",
+    highlights: [
+      "Planogram again shows Allowed models and Planogram as separate tabs.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Planogram again shows Allowed models and Planogram as separate tabs — add models to Allowed models first, then to the branch plan.",
+      },
+    ],
+  },
+  {
+    version: "0.55.2",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T16:15:00+08:00",
+    title: "Delete draft Supply Planning runs",
+    highlights: [
+      "You can delete draft Supply Planning runs (Generated or Recalculated) from the list after confirming.",
+      "Released runs stay protected and cannot be deleted.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Delete draft Supply Planning runs from the runs list — confirm first; Generated and Recalculated runs can be removed.",
+      },
+      {
+        type: "improvement",
+        description: "Released Supply Planning runs stay protected so live plans are not removed by mistake.",
+      },
+    ],
+  },
+  {
+    version: "0.55.1",
+    date: "2026-10-15",
+    releasedAt: "2026-10-15T16:00:00+08:00",
+    title: "Clearer P-Count variance labels",
+    highlights: [
+      "P-Count variance report shows IN FILE NOT IN STK when system status and P-COUNT status differ.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Generated P-Count variance report shows IN FILE NOT IN STK when system status and P-COUNT status differ (no more STATUS MISMATCH).",
+      },
+    ],
+  },
   {
     version: "0.55.0",
     date: "2026-10-14",

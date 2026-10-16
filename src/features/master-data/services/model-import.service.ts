@@ -1,6 +1,5 @@
 import type { CreateAuditLogInput } from "@/features/audit/repositories/audit-log.repository";
 import { auditService } from "@/features/audit/services/audit.service";
-import { masterDataRepository } from "@/features/master-data/repositories/master-data.repository";
 import type {
   ModelImportChunkProgress,
   ModelImportFieldChange,
@@ -10,14 +9,22 @@ import type {
   ModelImportRowPlan,
 } from "@/features/master-data/schemas/model-import.schema";
 import {
+  formatModelImportCbm,
   MODEL_IMPORT_FIELD_LABELS,
   MODEL_SHEET_NAME,
+  parseModelImportCbm,
 } from "@/features/master-data/schemas/model-import.schema";
 import {
   modelBrandSapPushService,
-  type BrandPushOutcome,
   type BrandPushRow,
 } from "@/features/master-data/services/model-brand-sap-push.service";
+import {
+  loadModelLookupIndexes,
+  lookupInactiveMessage,
+  lookupNotAvailableMessage,
+  type ModelLookupField,
+  type ModelLookupMatch,
+} from "@/features/master-data/services/model-lookup-index";
 import {
   buildModelTemplateWorkbook,
   readModelImportWorkbook,
@@ -25,6 +32,7 @@ import {
   type SheetRows,
 } from "@/features/master-data/services/model-import.workbook";
 import { prisma } from "@/lib/database/client";
+import { decimalToNumberOrNull } from "@/lib/database/decimal";
 import { mapWithConcurrency } from "@/lib/shared/concurrency";
 import {
   getCachedPlan,
@@ -54,13 +62,16 @@ type ExistingModel = {
   skuCode: string;
   name: string;
   status: "active" | "hold" | "retired";
+  cbm: number | null;
   brandId: string | null;
   seriesId: string | null;
+  categoryId: string | null;
   featureId: string | null;
   resolutionId: string | null;
   actualSizeId: string | null;
   brand: { name: string } | null;
   series: { name: string } | null;
+  category: { name: string } | null;
   feature: { name: string } | null;
   resolution: { name: string } | null;
   actualSize: { name: string } | null;
@@ -68,20 +79,22 @@ type ExistingModel = {
 
 interface RowPlanInternal extends ModelImportRowPlan {
   modelId: string | null;
-  brandId: string | null;
+  /** Always resolved at plan time — brands must already exist in ISMS. */
+  brandId: string;
   seriesId: string | null;
+  categoryId: string | null;
   featureId: string | null;
   resolutionId: string | null;
   actualSizeId: string | null;
-  brandName: string;
   seriesName: string;
   statusProvided: boolean;
+  cbmProvided: boolean;
 }
 
 /** What one applied slice of database writes did. The SAP counts are tracked apart. */
 type ModelWriteCounts = Pick<
   ModelImportResult,
-  "modelsCreated" | "modelsUpdated" | "brandsCreated" | "seriesCreated"
+  "modelsCreated" | "modelsUpdated" | "seriesCreated"
 >;
 
 interface ImportPlan {
@@ -134,6 +147,34 @@ function pushChange(
   });
 }
 
+function pushCbmChange(
+  changes: ModelImportFieldChange[],
+  from: number | null | undefined,
+  to: number | null | undefined,
+) {
+  const fromDisplay = formatModelImportCbm(from) || "—";
+  const toDisplay = formatModelImportCbm(to) || "—";
+  if (fromDisplay === toDisplay) return;
+  changes.push({
+    field: "cbm",
+    label: MODEL_IMPORT_FIELD_LABELS.cbm,
+    from: fromDisplay,
+    to: toDisplay,
+  });
+}
+
+/** Foreign keys change by id, so a casing-only difference in the file is not a change. */
+function pushLookupChange(
+  changes: ModelImportFieldChange[],
+  field: ModelLookupField,
+  fromId: string | null,
+  fromName: string | null | undefined,
+  next: ModelLookupMatch | null,
+) {
+  if (!next || next.id === fromId) return;
+  pushChange(changes, field, fromName, next.name);
+}
+
 async function loadTemplateRows(tenantId: string): Promise<ModelTemplateRow[]> {
   const models = await prisma.productModel.findMany({
     where: { tenantId },
@@ -141,8 +182,10 @@ async function loadTemplateRows(tenantId: string): Promise<ModelTemplateRow[]> {
       skuCode: true,
       name: true,
       status: true,
+      cbm: true,
       brand: { select: { name: true } },
       series: { select: { name: true } },
+      category: { select: { name: true } },
       feature: { select: { name: true } },
       resolution: { select: { name: true } },
       actualSize: { select: { name: true } },
@@ -156,129 +199,71 @@ async function loadTemplateRows(tenantId: string): Promise<ModelTemplateRow[]> {
     name: model.name,
     brand: model.brand?.name ?? "",
     series: model.series?.name ?? "",
+    category: model.category?.name ?? "",
     feature: model.feature?.name ?? "",
     resolution: model.resolution?.name ?? "",
     actualSize: model.actualSize?.name ?? "",
     status: model.status,
+    cbm: formatModelImportCbm(decimalToNumberOrNull(model.cbm)),
   }));
 }
 
 /**
- * Resolve every brand/series a chunk needs in a fixed handful of statements.
+ * Resolve every new series a chunk needs in a fixed handful of statements.
  *
- * The old path did `findUnique` + `create` per row per column — up to 4 round trips
- * a row. Both tables are tenant-scoped lookup tables of tens of rows, so reading
- * them whole and matching in memory is cheaper than a query per name, and it keeps
- * the case-insensitive matching the plan already uses.
+ * Series is the one lookup the import may still create: `series` is a tenant-scoped
+ * table of tens of rows, so reading it whole and matching in memory is cheaper than a
+ * query per name, and it keeps the case-insensitive matching the plan already uses.
+ * Brands are never created here — the plan rejects a brand ISMS does not have.
  */
-async function resolveBrandSeriesIdsForChunk(
+async function resolveSeriesIdsForChunk(
   tenantId: string,
   writes: RowPlanInternal[],
-): Promise<{
-  brandIdByKey: Map<string, string>;
-  seriesIdByKey: Map<string, string>;
-  brandsCreated: number;
-  seriesCreated: number;
-}> {
+): Promise<{ seriesIdByKey: Map<string, string>; seriesCreated: number }> {
   // Keep the first spelling seen for each name so a new row creates it as written.
-  const wantedBrands = new Map<string, string>();
   const wantedSeries = new Map<string, string>();
   for (const row of writes) {
-    if (!row.brandId) {
-      const key = lookupKey(row.brandName);
-      if (key && !wantedBrands.has(key)) wantedBrands.set(key, row.brandName.trim());
-    }
-    if (!row.seriesId) {
-      const key = lookupKey(row.seriesName);
-      if (key && !wantedSeries.has(key)) wantedSeries.set(key, row.seriesName.trim());
-    }
+    if (row.seriesId) continue;
+    const key = lookupKey(row.seriesName);
+    if (key && !wantedSeries.has(key)) wantedSeries.set(key, row.seriesName.trim());
   }
 
-  const brandIdByKey = new Map<string, string>();
   const seriesIdByKey = new Map<string, string>();
-  if (wantedBrands.size === 0 && wantedSeries.size === 0) {
-    return { brandIdByKey, seriesIdByKey, brandsCreated: 0, seriesCreated: 0 };
-  }
+  if (wantedSeries.size === 0) return { seriesIdByKey, seriesCreated: 0 };
 
-  const [brands, seriesRows] = await Promise.all([
-    wantedBrands.size > 0
-      ? prisma.brand.findMany({ where: { tenantId }, select: { id: true, name: true } })
-      : Promise.resolve([]),
-    wantedSeries.size > 0
-      ? prisma.series.findMany({
-          where: { tenantId },
-          select: { id: true, name: true, code: true },
-        })
-      : Promise.resolve([]),
-  ]);
-  for (const brand of brands) brandIdByKey.set(lookupKey(brand.name), brand.id);
-  for (const series of seriesRows) {
-    seriesIdByKey.set(lookupKey(series.name), series.id);
-    if (series.code?.trim() && !seriesIdByKey.has(lookupKey(series.code))) {
-      seriesIdByKey.set(lookupKey(series.code), series.id);
-    }
-  }
-
-  const missingBrands = [...wantedBrands].filter(([key]) => !brandIdByKey.has(key));
-  const missingSeries = [...wantedSeries].filter(([key]) => !seriesIdByKey.has(key));
-
-  let brandsCreated = 0;
-  let seriesCreated = 0;
-
-  if (missingBrands.length > 0) {
-    const created = await prisma.brand.createManyAndReturn({
-      data: missingBrands.map(([, name]) => ({
-        tenantId,
-        name,
-        code: name.slice(0, 4).toUpperCase(),
-      })),
-      skipDuplicates: true,
-      select: { id: true, name: true },
+  const readSeries = async () => {
+    const rows = await prisma.series.findMany({
+      where: { tenantId },
+      select: { id: true, name: true, code: true },
     });
-    for (const brand of created) brandIdByKey.set(lookupKey(brand.name), brand.id);
-    brandsCreated = created.length;
-  }
-
-  if (missingSeries.length > 0) {
-    const created = await prisma.series.createManyAndReturn({
-      data: missingSeries.map(([, name]) => ({
-        tenantId,
-        name,
-        recordStatus: "active" as const,
-      })),
-      skipDuplicates: true,
-      select: { id: true, name: true },
-    });
-    for (const series of created) seriesIdByKey.set(lookupKey(series.name), series.id);
-    seriesCreated = created.length;
-  }
-
-  // `skipDuplicates` swallows rows a concurrent import already inserted, so they
-  // come back unresolved. Re-read only when that actually happened.
-  const stillMissingBrand = missingBrands.some(([key]) => !brandIdByKey.has(key));
-  const stillMissingSeries = missingSeries.some(([key]) => !seriesIdByKey.has(key));
-  if (stillMissingBrand || stillMissingSeries) {
-    const [brandsAfter, seriesAfter] = await Promise.all([
-      stillMissingBrand
-        ? prisma.brand.findMany({ where: { tenantId }, select: { id: true, name: true } })
-        : Promise.resolve([]),
-      stillMissingSeries
-        ? prisma.series.findMany({
-            where: { tenantId },
-            select: { id: true, name: true, code: true },
-          })
-        : Promise.resolve([]),
-    ]);
-    for (const brand of brandsAfter) brandIdByKey.set(lookupKey(brand.name), brand.id);
-    for (const series of seriesAfter) {
+    for (const series of rows) {
       seriesIdByKey.set(lookupKey(series.name), series.id);
       if (series.code?.trim() && !seriesIdByKey.has(lookupKey(series.code))) {
         seriesIdByKey.set(lookupKey(series.code), series.id);
       }
     }
-  }
+  };
 
-  return { brandIdByKey, seriesIdByKey, brandsCreated, seriesCreated };
+  await readSeries();
+  const missingSeries = [...wantedSeries].filter(([key]) => !seriesIdByKey.has(key));
+  if (missingSeries.length === 0) return { seriesIdByKey, seriesCreated: 0 };
+
+  const created = await prisma.series.createManyAndReturn({
+    data: missingSeries.map(([, name]) => ({
+      tenantId,
+      name,
+      recordStatus: "active" as const,
+    })),
+    skipDuplicates: true,
+    select: { id: true, name: true },
+  });
+  for (const series of created) seriesIdByKey.set(lookupKey(series.name), series.id);
+
+  // `skipDuplicates` swallows rows a concurrent import already inserted, so they
+  // come back unresolved. Re-read only when that actually happened.
+  if (missingSeries.some(([key]) => !seriesIdByKey.has(key))) await readSeries();
+
+  return { seriesIdByKey, seriesCreated: created.length };
 }
 
 async function buildPlan(tenantId: string, sheet: SheetRows): Promise<ImportPlan> {
@@ -286,56 +271,55 @@ async function buildPlan(tenantId: string, sheet: SheetRows): Promise<ImportPlan
     throw new Error(`Too many rows (max ${MAX_ROWS}). Split the file and try again.`);
   }
 
-  const [existingModels, brands, seriesList, features, resolutions, actualSizes] =
-    await Promise.all([
-      prisma.productModel.findMany({
-        where: { tenantId },
-        select: {
-          id: true,
-          skuCode: true,
-          name: true,
-          status: true,
-          brandId: true,
-          seriesId: true,
-          featureId: true,
-          resolutionId: true,
-          actualSizeId: true,
-          brand: { select: { name: true } },
-          series: { select: { name: true } },
-          feature: { select: { name: true } },
-          resolution: { select: { name: true } },
-          actualSize: { select: { name: true } },
-        },
-      }),
-      prisma.brand.findMany({ where: { tenantId }, select: { id: true, name: true } }),
-      prisma.series.findMany({
-        where: { tenantId },
-        select: { id: true, name: true, code: true },
-      }),
-      prisma.feature.findMany({ where: { tenantId }, select: { id: true, name: true } }),
-      prisma.resolution.findMany({ where: { tenantId }, select: { id: true, name: true } }),
-      prisma.actualSize.findMany({ where: { tenantId }, select: { id: true, name: true } }),
-    ]);
+  const [existingModels, seriesList, lookups] = await Promise.all([
+    prisma.productModel.findMany({
+      where: { tenantId },
+      select: {
+        id: true,
+        skuCode: true,
+        name: true,
+        status: true,
+        cbm: true,
+        brandId: true,
+        seriesId: true,
+        categoryId: true,
+        featureId: true,
+        resolutionId: true,
+        actualSizeId: true,
+        brand: { select: { name: true } },
+        series: { select: { name: true } },
+        category: { select: { name: true } },
+        feature: { select: { name: true } },
+        resolution: { select: { name: true } },
+        actualSize: { select: { name: true } },
+      },
+    }),
+    prisma.series.findMany({
+      where: { tenantId },
+      select: { id: true, name: true, code: true, recordStatus: true },
+    }),
+    loadModelLookupIndexes(tenantId),
+  ]);
 
   const existingBySku = new Map<string, ExistingModel>();
   for (const model of existingModels) {
-    existingBySku.set(lookupKey(model.skuCode), model);
+    existingBySku.set(lookupKey(model.skuCode), {
+      ...model,
+      cbm: decimalToNumberOrNull(model.cbm),
+    });
   }
-  const brandByName = new Map(brands.map((b) => [lookupKey(b.name), b.id]));
-  // Brand matching is case-insensitive, so the file's spelling and the stored one can
-  // differ. SAP gets what ISMS actually calls the brand, or the file's spelling when
-  // this import is what creates it.
-  const brandLabelByName = new Map(brands.map((b) => [lookupKey(b.name), b.name]));
-  const seriesByName = new Map(seriesList.map((s) => [lookupKey(s.name), s.id]));
-  const seriesByCode = new Map<string, string>();
+  // Inactive series stay in these maps so a row naming one is reported as inactive,
+  // instead of falling through to "new name" and creating a duplicate.
+  type SeriesMatch = (typeof seriesList)[number];
+  const seriesByName = new Map<string, SeriesMatch>(
+    seriesList.map((s) => [lookupKey(s.name), s]),
+  );
+  const seriesByCode = new Map<string, SeriesMatch>();
   for (const series of seriesList) {
     if (series.code?.trim() && !seriesByCode.has(lookupKey(series.code))) {
-      seriesByCode.set(lookupKey(series.code), series.id);
+      seriesByCode.set(lookupKey(series.code), series);
     }
   }
-  const featureByName = new Map(features.map((f) => [lookupKey(f.name), f.id]));
-  const resolutionByName = new Map(resolutions.map((r) => [lookupKey(r.name), r.id]));
-  const actualSizeByName = new Map(actualSizes.map((a) => [lookupKey(a.name), a.id]));
 
   const errors: ModelImportRowError[] = [];
   const previewRows: ModelImportRowPlan[] = [];
@@ -350,14 +334,8 @@ async function buildPlan(tenantId: string, sheet: SheetRows): Promise<ImportPlan
     const name = (row.values.name ?? "").trim();
     const brand = (row.values.brand ?? "").trim();
     const series = (row.values.series ?? "").trim();
-    const featureRaw = row.values.feature;
-    const resolutionRaw = row.values.resolution;
-    const actualSizeRaw = row.values.actual_size;
     const statusRaw = row.values.status;
     const statusProvided = !isBlankOrDash(statusRaw);
-    const featureProvided = !isBlankOrDash(featureRaw);
-    const resolutionProvided = !isBlankOrDash(resolutionRaw);
-    const actualSizeProvided = !isBlankOrDash(actualSizeRaw);
 
     const pushError = (message: string) => {
       errors.push({
@@ -395,6 +373,14 @@ async function buildPlan(tenantId: string, sheet: SheetRows): Promise<ImportPlan
       status = mapped;
     }
 
+    const cbmParsed = parseModelImportCbm(row.values.cbm);
+    if (cbmParsed.kind === "error") {
+      pushError(cbmParsed.message);
+      continue;
+    }
+    const cbmProvided = cbmParsed.kind === "value";
+    const cbmValue = cbmParsed.kind === "value" ? cbmParsed.value : null;
+
     const skuKey = lookupKey(sku);
     if (seenInFile.has(skuKey)) {
       pushError(`Duplicate SKU in this file ("${sku}"). Keep one row per SKU.`);
@@ -402,41 +388,59 @@ async function buildPlan(tenantId: string, sheet: SheetRows): Promise<ImportPlan
     }
     seenInFile.add(skuKey);
 
-    let featureId: string | null = null;
-    let resolutionId: string | null = null;
-    let actualSizeId: string | null = null;
+    const existing = existingBySku.get(skuKey) ?? null;
+    const currentIds: Record<ModelLookupField, string | null> = {
+      brand: existing?.brandId ?? null,
+      category: existing?.categoryId ?? null,
+      feature: existing?.featureId ?? null,
+      resolution: existing?.resolutionId ?? null,
+      actualSize: existing?.actualSizeId ?? null,
+    };
     let rowOk = true;
 
-    if (featureProvided) {
-      featureId = featureByName.get(lookupKey(featureRaw!)) ?? null;
-      if (!featureId) {
-        pushError(`Feature "${featureRaw}" was not found. Create it in Master data first.`);
+    /**
+     * Resolve one foreign-key cell against ISMS. `null` = blank cell (leave the model's
+     * value alone); `undefined` = the value is unusable and the row has been failed.
+     * An inactive value the model already carries is accepted, so re-uploading the
+     * downloaded template does not fail on lookups deactivated since.
+     */
+    const resolveCell = (
+      field: ModelLookupField,
+      raw: string | undefined,
+    ): ModelLookupMatch | null | undefined => {
+      if (raw == null || isBlankOrDash(raw)) return null;
+      const match = lookups[field].find(raw);
+      if (!match) {
+        pushError(lookupNotAvailableMessage(field, raw));
         rowOk = false;
+        return undefined;
       }
-    }
-    if (resolutionProvided) {
-      resolutionId = resolutionByName.get(lookupKey(resolutionRaw!)) ?? null;
-      if (!resolutionId) {
-        pushError(
-          `Resolution "${resolutionRaw}" was not found. Create it in Master data first.`,
-        );
+      if (!match.active && match.id !== currentIds[field]) {
+        pushError(lookupInactiveMessage(field, match.name));
         rowOk = false;
+        return undefined;
       }
-    }
-    if (actualSizeProvided) {
-      actualSizeId = actualSizeByName.get(lookupKey(actualSizeRaw!)) ?? null;
-      if (!actualSizeId) {
-        pushError(
-          `Actual size "${actualSizeRaw}" was not found. Create it in Master data first.`,
-        );
-        rowOk = false;
-      }
+      return match;
+    };
+
+    const brandMatch = resolveCell("brand", brand);
+    const categoryMatch = resolveCell("category", row.values.category);
+    const featureMatch = resolveCell("feature", row.values.feature);
+    const resolutionMatch = resolveCell("resolution", row.values.resolution);
+    const actualSizeMatch = resolveCell("actualSize", row.values.actual_size);
+
+    const seriesMatch =
+      seriesByName.get(lookupKey(series)) ?? seriesByCode.get(lookupKey(series)) ?? null;
+    if (seriesMatch && seriesMatch.recordStatus !== "active") {
+      pushError(
+        `Series "${seriesMatch.name}" is inactive. Activate it in Master data or use an active series.`,
+      );
+      rowOk = false;
     }
 
-    if (!rowOk) continue;
+    if (!rowOk || !brandMatch) continue;
 
     // Import only updates: models are created by the SAP sync, never from a file.
-    const existing = existingBySku.get(skuKey) ?? null;
     if (!existing) {
       pushError(
         `Model "${sku}" does not exist. Import only updates existing models — sync new ones from SAP.`,
@@ -447,99 +451,99 @@ async function buildPlan(tenantId: string, sheet: SheetRows): Promise<ImportPlan
     // Every row the file keeps carries its brand to SAP, including ones ISMS is
     // about to skip: "unchanged" is measured against ISMS, and says nothing about
     // what SAP holds. Re-uploading the file is how a stale or blank `U_Brand` gets
-    // repaired, so the push set cannot be limited to the planned writes.
-    sapPushes.push({
-      sku,
-      brand: brandLabelByName.get(lookupKey(brand)) ?? brand,
-    });
+    // repaired, so the push set cannot be limited to the planned writes. SAP gets
+    // ISMS's spelling of the brand, not the file's.
+    sapPushes.push({ sku, brand: brandMatch.name });
 
-    const brandId = brandByName.get(lookupKey(brand)) ?? null;
-    const seriesId =
-      seriesByName.get(lookupKey(series)) ??
-      seriesByCode.get(lookupKey(series)) ??
-      seriesByCode.get(lookupKey(sku)) ??
-      null;
-    const featureLabel = featureProvided ? featureRaw!.trim() : null;
-    const resolutionLabel = resolutionProvided ? resolutionRaw!.trim() : null;
-    const actualSizeLabel = actualSizeProvided ? actualSizeRaw!.trim() : null;
-
-    // Update path — blank optional cells leave existing values untouched.
+    // Blank optional cells leave existing values untouched.
     const nextStatus = statusProvided ? status : existing.status;
-    const nextFeatureId = featureProvided ? featureId : existing.featureId;
-    const nextResolutionId = resolutionProvided ? resolutionId : existing.resolutionId;
-    const nextActualSizeId = actualSizeProvided ? actualSizeId : existing.actualSizeId;
-    const nextFeatureLabel = featureProvided
-      ? featureLabel
-      : (existing.feature?.name ?? null);
-    const nextResolutionLabel = resolutionProvided
-      ? resolutionLabel
-      : (existing.resolution?.name ?? null);
-    const nextActualSizeLabel = actualSizeProvided
-      ? actualSizeLabel
-      : (existing.actualSize?.name ?? null);
+    const nextCbm = cbmProvided ? cbmValue : existing.cbm;
+    const nextCategoryId = categoryMatch ? categoryMatch.id : existing.categoryId;
+    const nextFeatureId = featureMatch ? featureMatch.id : existing.featureId;
+    const nextResolutionId = resolutionMatch ? resolutionMatch.id : existing.resolutionId;
+    const nextActualSizeId = actualSizeMatch ? actualSizeMatch.id : existing.actualSizeId;
+    const labels = {
+      category: categoryMatch?.name ?? existing.category?.name ?? null,
+      feature: featureMatch?.name ?? existing.feature?.name ?? null,
+      resolution: resolutionMatch?.name ?? existing.resolution?.name ?? null,
+      actualSize: actualSizeMatch?.name ?? existing.actualSize?.name ?? null,
+    };
 
     const changes: ModelImportFieldChange[] = [];
     pushChange(changes, "name", existing.name, name);
-    pushChange(changes, "brand", existing.brand?.name, brand);
-    pushChange(changes, "series", existing.series?.name, series);
-    if (featureProvided) {
-      pushChange(changes, "feature", existing.feature?.name, featureLabel);
-    }
-    if (resolutionProvided) {
-      pushChange(changes, "resolution", existing.resolution?.name, resolutionLabel);
-    }
-    if (actualSizeProvided) {
-      pushChange(changes, "actualSize", existing.actualSize?.name, actualSizeLabel);
-    }
+    pushLookupChange(changes, "brand", existing.brandId, existing.brand?.name, brandMatch);
+    pushChange(changes, "series", existing.series?.name, seriesMatch?.name ?? series);
+    pushLookupChange(
+      changes,
+      "category",
+      existing.categoryId,
+      existing.category?.name,
+      categoryMatch ?? null,
+    );
+    pushLookupChange(
+      changes,
+      "feature",
+      existing.featureId,
+      existing.feature?.name,
+      featureMatch ?? null,
+    );
+    pushLookupChange(
+      changes,
+      "resolution",
+      existing.resolutionId,
+      existing.resolution?.name,
+      resolutionMatch ?? null,
+    );
+    pushLookupChange(
+      changes,
+      "actualSize",
+      existing.actualSizeId,
+      existing.actualSize?.name,
+      actualSizeMatch ?? null,
+    );
     if (statusProvided) {
       pushChange(changes, "status", existing.status, nextStatus);
     }
+    if (cbmProvided) {
+      pushCbmChange(changes, existing.cbm, nextCbm);
+    }
 
-    // Brand/series id may still be null if names are new — treat as a change when names differ.
-    const brandNameChanged =
-      lookupKey(existing.brand?.name ?? "") !== lookupKey(brand);
-    const seriesNameChanged =
-      lookupKey(existing.series?.name ?? "") !== lookupKey(series);
+    // A new series name has no id yet — it is created at apply time.
+    const seriesChanged = seriesMatch ? seriesMatch.id !== existing.seriesId : true;
 
-    if (changes.length === 0 && !brandNameChanged && !seriesNameChanged) {
+    const rowPreview: ModelImportRowPlan = {
+      rowNumber: row.rowNumber,
+      sku,
+      name,
+      brand: brandMatch.name,
+      series: seriesMatch?.name ?? series,
+      ...labels,
+      status: nextStatus,
+      cbm: nextCbm,
+      action: "skip",
+      changes: [],
+    };
+
+    if (changes.length === 0 && !seriesChanged) {
       unchangedCount += 1;
-      previewRows.push({
-        rowNumber: row.rowNumber,
-        sku,
-        name,
-        brand,
-        series,
-        feature: nextFeatureLabel,
-        resolution: nextResolutionLabel,
-        actualSize: nextActualSizeLabel,
-        status: nextStatus,
-        action: "skip",
-        changes: [],
-      });
+      previewRows.push(rowPreview);
       continue;
     }
 
     const plan: RowPlanInternal = {
-      rowNumber: row.rowNumber,
-      sku,
-      name,
-      brand,
-      series,
-      feature: nextFeatureLabel,
-      resolution: nextResolutionLabel,
-      actualSize: nextActualSizeLabel,
-      status: nextStatus,
+      ...rowPreview,
       action: "update",
       changes,
       modelId: existing.id,
-      brandId,
-      seriesId,
+      brandId: brandMatch.id,
+      seriesId: seriesMatch?.id ?? null,
+      categoryId: nextCategoryId,
       featureId: nextFeatureId,
       resolutionId: nextResolutionId,
       actualSizeId: nextActualSizeId,
-      brandName: brand,
       seriesName: series,
       statusProvided,
+      cbmProvided,
     };
     updateCount += 1;
     writes.push(plan);
@@ -579,20 +583,13 @@ async function applyWriteSlice(
   writes: RowPlanInternal[],
 ): Promise<ModelWriteCounts> {
   if (writes.length === 0) {
-    return { modelsCreated: 0, modelsUpdated: 0, brandsCreated: 0, seriesCreated: 0 };
+    return { modelsCreated: 0, modelsUpdated: 0, seriesCreated: 0 };
   }
 
-  const { brandIdByKey, seriesIdByKey, brandsCreated, seriesCreated } =
-    await resolveBrandSeriesIdsForChunk(tenantId, writes);
+  const { seriesIdByKey, seriesCreated } = await resolveSeriesIdsForChunk(tenantId, writes);
 
-  const resolveIds = (row: RowPlanInternal) => ({
-    brandId: row.brandId ?? brandIdByKey.get(lookupKey(row.brandName)) ?? null,
-    seriesId:
-      row.seriesId ??
-      seriesIdByKey.get(lookupKey(row.seriesName)) ??
-      seriesIdByKey.get(lookupKey(row.sku)) ??
-      null,
-  });
+  const resolveSeriesId = (row: RowPlanInternal) =>
+    row.seriesId ?? seriesIdByKey.get(lookupKey(row.seriesName)) ?? null;
 
   // One existence check for the whole chunk. Re-running Apply after a failure must
   // converge, so a planned create whose SKU now exists is skipped, not duplicated.
@@ -613,30 +610,28 @@ async function applyWriteSlice(
   );
 
   const auditRows: CreateAuditLogInput[] = [];
-  const writtenIds: string[] = [];
 
   let modelsCreated = 0;
   if (toCreate.length > 0) {
     const created = await prisma.productModel.createManyAndReturn({
-      data: toCreate.map((row) => {
-        const { brandId, seriesId } = resolveIds(row);
-        return {
-          tenantId,
-          skuCode: row.sku,
-          name: row.name,
-          brandId,
-          seriesId,
-          featureId: row.featureId,
-          resolutionId: row.resolutionId,
-          actualSizeId: row.actualSizeId,
-          status: row.status,
-        };
-      }),
+      data: toCreate.map((row) => ({
+        tenantId,
+        skuCode: row.sku,
+        name: row.name,
+        brandId: row.brandId,
+        seriesId: resolveSeriesId(row),
+        categoryId: row.categoryId,
+        featureId: row.featureId,
+        resolutionId: row.resolutionId,
+        actualSizeId: row.actualSizeId,
+        status: row.status,
+        // Blank cbm on create → null; a provided value is written as planned.
+        cbm: row.cbmProvided ? row.cbm : null,
+      })),
       skipDuplicates: true,
       select: { id: true, skuCode: true },
     });
     modelsCreated = created.length;
-    writtenIds.push(...created.map((model) => model.id));
     for (const model of created) {
       auditRows.push({
         tenantId,
@@ -652,22 +647,23 @@ async function applyWriteSlice(
   let modelsUpdated = 0;
   if (toUpdate.length > 0) {
     await mapWithConcurrency(toUpdate, WRITE_CONCURRENCY, async (row) => {
-      const { brandId, seriesId } = resolveIds(row);
       await prisma.productModel.update({
         where: { id: row.modelId },
         data: {
           name: row.name,
-          brandId,
-          seriesId,
+          brandId: row.brandId,
+          seriesId: resolveSeriesId(row),
+          categoryId: row.categoryId,
           featureId: row.featureId,
           resolutionId: row.resolutionId,
           actualSizeId: row.actualSizeId,
           status: row.status,
+          // nextCbm already merged blank→existing at plan time.
+          cbm: row.cbm,
         },
       });
     });
     modelsUpdated = toUpdate.length;
-    writtenIds.push(...toUpdate.map((row) => row.modelId));
     for (const row of toUpdate) {
       auditRows.push({
         tenantId,
@@ -688,68 +684,7 @@ async function applyWriteSlice(
     await auditService.logMany(auditRows);
   }
 
-  if (writtenIds.length > 0) {
-    await masterDataRepository.linkUnassignedModelsToSeriesByCode(tenantId, {
-      modelIds: writtenIds,
-    });
-  }
-
-  return { modelsCreated, modelsUpdated, brandsCreated, seriesCreated };
-}
-
-function emptySapOutcome(aborted?: string): BrandPushOutcome {
-  return { updated: 0, matched: 0, missing: 0, failed: 0, failures: [], aborted };
-}
-
-/**
- * Reconcile one slice of the file's brands with SAP's `U_Brand`.
- *
- * Runs after the ISMS writes and never throws: SAP being down, unconfigured, or
- * missing the UDF leaves the import itself intact and is reported back as a notice.
- */
-async function applySapSlice(
-  tenantId: string,
-  actorUserId: string,
-  rows: BrandPushRow[],
-): Promise<BrandPushOutcome> {
-  if (rows.length === 0) return emptySapOutcome();
-
-  const creds = await modelBrandSapPushService.getCredentials(tenantId);
-  if (!creds) return emptySapOutcome(modelBrandSapPushService.noConnectionMessage());
-
-  let outcome: BrandPushOutcome;
-  try {
-    outcome = await modelBrandSapPushService.pushBrands(creds, rows);
-  } catch (error) {
-    outcome = emptySapOutcome(
-      error instanceof Error ? error.message : "SAP brand update failed.",
-    );
-  }
-
-  // Writing into another system is worth a record even when nothing changed hands,
-  // but a chunk that only found agreement is not news.
-  if (outcome.updated > 0 || outcome.failed > 0 || outcome.aborted) {
-    await auditService.logMany([
-      {
-        tenantId,
-        userId: actorUserId,
-        action: "product_model.sap_brand_push",
-        entityType: "ProductModel",
-        metadata: {
-          source: "model-import",
-          attempted: rows.length,
-          updated: outcome.updated,
-          matched: outcome.matched,
-          missing: outcome.missing,
-          failed: outcome.failed,
-          failures: outcome.failures,
-          ...(outcome.aborted ? { aborted: outcome.aborted } : {}),
-        },
-      },
-    ]);
-  }
-
-  return outcome;
+  return { modelsCreated, modelsUpdated, seriesCreated };
 }
 
 function emptyChunkProgress(
@@ -765,7 +700,6 @@ function emptyChunkProgress(
     phase: "database",
     modelsCreated: 0,
     modelsUpdated: 0,
-    brandsCreated: 0,
     seriesCreated: 0,
     sapBrandsUpdated: 0,
     sapBrandsMatched: 0,
@@ -778,7 +712,6 @@ function emptyChunkProgress(
       modelsCreated: 0,
       modelsUpdated: 0,
       modelsUnchanged: unchangedCount,
-      brandsCreated: 0,
       seriesCreated: 0,
       sapBrandsUpdated: 0,
       sapBrandsFailed: 0,
@@ -796,7 +729,6 @@ function planExpiredProgress(offset: number): ModelImportChunkProgress {
     phase: "database",
     modelsCreated: 0,
     modelsUpdated: 0,
-    brandsCreated: 0,
     seriesCreated: 0,
     sapBrandsUpdated: 0,
     sapBrandsMatched: 0,
@@ -908,7 +840,6 @@ export const modelImportService = {
         phase: "database",
         modelsCreated: written.modelsCreated,
         modelsUpdated: written.modelsUpdated,
-        brandsCreated: written.brandsCreated,
         seriesCreated: written.seriesCreated,
         sapBrandsUpdated: 0,
         sapBrandsMatched: 0,
@@ -925,7 +856,6 @@ export const modelImportService = {
               modelsCreated: written.modelsCreated,
               modelsUpdated: written.modelsUpdated,
               modelsUnchanged: unchangedCount,
-              brandsCreated: written.brandsCreated,
               seriesCreated: written.seriesCreated,
               sapBrandsUpdated: 0,
               sapBrandsFailed: 0,
@@ -936,7 +866,12 @@ export const modelImportService = {
 
     const sapOffset = input.offset - dbTotal;
     const sapChunk = sapPushes.slice(sapOffset, sapOffset + SAP_PUSH_CHUNK);
-    const outcome = await applySapSlice(input.tenantId, input.actorUserId, sapChunk);
+    const outcome = await modelBrandSapPushService.pushAndAudit({
+      tenantId: input.tenantId,
+      actorUserId: input.actorUserId,
+      rows: sapChunk,
+      source: "model-import",
+    });
 
     // An abort applies to the whole tenant, not this slice — walking the remaining
     // chunks would repeat the same failure and the same message per chunk.
@@ -952,7 +887,6 @@ export const modelImportService = {
       phase: "sap",
       modelsCreated: 0,
       modelsUpdated: 0,
-      brandsCreated: 0,
       seriesCreated: 0,
       sapBrandsUpdated: outcome.updated,
       sapBrandsMatched: outcome.matched,
@@ -967,7 +901,6 @@ export const modelImportService = {
             modelsCreated: 0,
             modelsUpdated: 0,
             modelsUnchanged: unchangedCount,
-            brandsCreated: 0,
             seriesCreated: 0,
             sapBrandsUpdated: outcome.updated,
             sapBrandsFailed: outcome.failed,
@@ -989,7 +922,6 @@ export const modelImportService = {
     let planKey: string | undefined;
     let modelsCreated = 0;
     let modelsUpdated = 0;
-    let brandsCreated = 0;
     let seriesCreated = 0;
     let modelsUnchanged = 0;
     let sapBrandsUpdated = 0;
@@ -1009,7 +941,6 @@ export const modelImportService = {
       }
       modelsCreated += progress.modelsCreated;
       modelsUpdated += progress.modelsUpdated;
-      brandsCreated += progress.brandsCreated;
       seriesCreated += progress.seriesCreated;
       sapBrandsUpdated += progress.sapBrandsUpdated;
       sapBrandsFailed += progress.sapBrandsFailed;
@@ -1018,7 +949,6 @@ export const modelImportService = {
           modelsCreated,
           modelsUpdated,
           modelsUnchanged,
-          brandsCreated,
           seriesCreated,
           sapBrandsUpdated,
           sapBrandsFailed,

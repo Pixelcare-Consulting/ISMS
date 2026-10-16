@@ -447,6 +447,14 @@ export const planogramRepository = {
             cbm: true,
             brandId: true,
             brand: { select: { id: true, name: true } },
+            priceLists: {
+              select: {
+                amount: true,
+                periodStart: true,
+                periodEnd: true,
+                packageTypeId: true,
+              },
+            },
           },
         },
       },

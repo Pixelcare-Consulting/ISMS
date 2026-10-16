@@ -8,6 +8,10 @@ export const ROLES_MODULE_GUIDE: ModuleGuideContent = {
     { label: "Toggle access in plain language, then assign roles under Users" },
     { label: "Use the permission matrix for a module × action view" },
     { label: "If a menu item is missing, check the person’s role first" },
+    {
+      label:
+        "If Team Leaders cannot create Special orders, grant Create on Special orders for their role under Settings → Roles (templates do not change live roles)",
+    },
     { label: "Super Admins see system roles and can adjust access (rename/delete stay locked)" },
   ],
   storageKey: "module-guide.roles",

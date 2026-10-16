@@ -12,7 +12,7 @@ const HEADERS = [
   "BRANCH",
   "SKU",
   "MODEL NAME",
-  "PLANOGRAM MAX",
+  "SHELF MAX",
   "INV",
   "SOLD",
 ];

@@ -97,25 +97,11 @@ export const planogramService = {
   },
 
   async listPlanogram(tenantId: string, branchId: string): Promise<PlanogramRow[]> {
-    const [initialEntries, milSettings, ditCode] = await Promise.all([
+    const [entries, milSettings, ditCode] = await Promise.all([
       planogramRepository.listByBranch(tenantId, branchId),
       planogramRepository.listMilByBranch(tenantId, branchId),
       reasonStatusRepository.findCodeId(tenantId, "inventory_system", "DIT"),
     ]);
-    let entries = initialEntries;
-
-    const unlinkedModelIds = entries
-      .filter((entry: { model: { series: { name: string } | null } }) => entry.model.series == null)
-      .map((entry: { modelId: string }) => entry.modelId);
-    if (unlinkedModelIds.length > 0) {
-      const linked = await masterDataRepository.linkUnassignedModelsToSeriesByCode(
-        tenantId,
-        { modelIds: unlinkedModelIds },
-      );
-      if (linked > 0) {
-        entries = await planogramRepository.listByBranch(tenantId, branchId);
-      }
-    }
 
     const milByModel = new Map(
       milSettings.map((m: { modelId: string; daysThreshold: number }) => [
@@ -190,7 +176,7 @@ export const planogramService = {
     daysThreshold?: number;
   }) {
     if (input.maxQty < 1) {
-      throw new Error("Max quantity must be at least 1");
+      throw new Error("Shelf max must be at least 1");
     }
 
     const model = await masterDataRepository.findModel(input.tenantId, input.modelId);
@@ -240,13 +226,64 @@ export const planogramService = {
     return entry;
   },
 
+  async addModels(input: {
+    tenantId: string;
+    actorUserId: string;
+    branchId: string;
+    items: { modelId: string; maxQty: number }[];
+    daysThreshold?: number;
+  }): Promise<{
+    added: number;
+    errors: { modelId: string; error: string; emptyReason?: PlanogramAddEmptyReason }[];
+  }> {
+    if (input.items.length === 0) {
+      throw new Error("Select at least one model");
+    }
+
+    let added = 0;
+    const errors: {
+      modelId: string;
+      error: string;
+      emptyReason?: PlanogramAddEmptyReason;
+    }[] = [];
+
+    for (const item of input.items) {
+      try {
+        await planogramService.addModel({
+          tenantId: input.tenantId,
+          actorUserId: input.actorUserId,
+          branchId: input.branchId,
+          modelId: item.modelId,
+          maxQty: item.maxQty,
+          daysThreshold: input.daysThreshold,
+        });
+        added += 1;
+      } catch (e) {
+        if (e instanceof PlanogramModelNotAllowedError) {
+          errors.push({
+            modelId: item.modelId,
+            error: e.message,
+            emptyReason: e.emptyReason,
+          });
+        } else {
+          errors.push({
+            modelId: item.modelId,
+            error: e instanceof Error ? e.message : "Failed to add model",
+          });
+        }
+      }
+    }
+
+    return { added, errors };
+  },
+
   async updateMaxQty(input: {
     tenantId: string;
     actorUserId: string;
     planogramId: string;
     maxQty: number;
   }) {
-    if (input.maxQty < 1) throw new Error("Max quantity must be at least 1");
+    if (input.maxQty < 1) throw new Error("Shelf max must be at least 1");
 
     const entry = await planogramRepository.findPlanogramEntryById(
       input.tenantId,
@@ -393,19 +430,7 @@ export const planogramService = {
   },
 
   async listAllowedModelsForBranch(tenantId: string, branchId: string) {
-    let rows = await planogramRepository.listAllowedModelsForBranch(tenantId, branchId);
-    const unlinkedModelIds = rows
-      .filter((row: { model: { series: { name: string } | null } }) => row.model.series == null)
-      .map((row: { modelId: string }) => row.modelId);
-    if (unlinkedModelIds.length > 0) {
-      const linked = await masterDataRepository.linkUnassignedModelsToSeriesByCode(
-        tenantId,
-        { modelIds: unlinkedModelIds },
-      );
-      if (linked > 0) {
-        rows = await planogramRepository.listAllowedModelsForBranch(tenantId, branchId);
-      }
-    }
+    const rows = await planogramRepository.listAllowedModelsForBranch(tenantId, branchId);
     return rows.map((r) => {
       const price = resolveDisplayPriceList(r.model.priceLists);
       return {
@@ -730,7 +755,7 @@ export const planogramService = {
       const remainingCapacity = Math.max(0, entry.maxQty - stockCount);
       if (line.quantity > remainingCapacity) {
         throw new Error(
-          `Quantity for ${model.skuCode} exceeds shelf capacity (${remainingCapacity} remaining of ${entry.maxQty} max)`,
+          `Quantity for ${model.skuCode} exceeds shelf capacity (${remainingCapacity} remaining of Shelf max ${entry.maxQty})`,
         );
       }
     }

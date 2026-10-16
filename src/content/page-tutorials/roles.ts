@@ -20,6 +20,7 @@ export const ROLES_PAGE_TUTORIAL: PageTutorialContent = {
         "Create a custom role, then toggle permissions in plain language.",
         "Super Admins see built-in system roles and can adjust their access; renaming and deleting those roles stay locked.",
         "Prefer least privilege — only grant modules required for the job.",
+        "If Team Leaders cannot create Special orders, grant Create on Special orders for their role here — role templates only affect new roles you create from a template.",
       ],
     },
     {

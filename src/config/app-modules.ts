@@ -33,8 +33,9 @@ export const appModules: AppModule[] = [
     route: "/help",
     slugPrefix: "ai",
     navPermission: "ai.assist",
-    description: "Ask ISMS for help and a daily briefing on Operations or Sales",
-    actions: permissionActions("assist"),
+    description:
+      "Ask ISMS for help and a daily briefing on Operations or Sales; Internal AI gates the private Pixelcare AI prototype",
+    actions: permissionActions("assist", "internal"),
   },
   {
     id: "company",

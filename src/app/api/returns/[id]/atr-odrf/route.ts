@@ -71,7 +71,7 @@ export async function GET(_request: Request, context: RouteContext) {
   }
 
   try {
-    const storage = getObjectStorage();
+    const storage = await getObjectStorage();
     const file = await storage.download(row.atrOdrfPdfPath);
     const safeTrn = (row.sale.transactionNo || row.id)
       .replace(/[^a-zA-Z0-9-_]+/g, "-")

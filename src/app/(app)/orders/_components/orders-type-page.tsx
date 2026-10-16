@@ -46,7 +46,7 @@ function ordersTypePageDescription(orderType: BranchOrderType): string {
     case "auto_replenish":
       return "Showing auto replenish requests waiting for your role. Approved orders are in Order History. Suggestions are generated under Settings → Planning.";
     case "manual":
-      return "Showing manual requests waiting for your role. Approved orders are in Order History. Review path: Product Specialist → Team Leader → Supply Planning.";
+      return "Showing manual requests waiting for your role. Approved orders are in Order History. Path: Product Specialist submits → Pending SP (Team Leader may optionally edit) → Supply Planning approves.";
     case "special":
       return "Showing special requests waiting for your role. Approved orders are in Order History. Team Leaders create these requests; Supply Planning gives final approval.";
     default: {

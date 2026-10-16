@@ -432,7 +432,7 @@ export const policyService = {
       throw new Error("Policy version not found");
     }
 
-    const storage = getObjectStorage();
+    const storage = await getObjectStorage();
 
     const fileId = crypto.randomUUID();
     const storagePath = buildPolicyAttachmentPath({
@@ -490,7 +490,7 @@ export const policyService = {
       throw new Error("Attachment not found");
     }
 
-    const storage = getObjectStorage();
+    const storage = await getObjectStorage();
     try {
       const { buffer } = await storage.download(attachment.storagePath);
       return {

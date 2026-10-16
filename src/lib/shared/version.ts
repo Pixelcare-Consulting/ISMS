@@ -132,6 +132,16 @@ export function getAllReleases(): ReleaseNote[] {
   return RELEASES;
 }
 
+/** True when the note should appear in the end-user What's New dialog. */
+export function isVisibleInWhatsNew(release: ReleaseNote): boolean {
+  return release.audience !== "internal";
+}
+
+/** End-user What's New list (excludes `audience: "internal"` notes). */
+export function getWhatsNewReleases(): ReleaseNote[] {
+  return RELEASES.filter(isVisibleInWhatsNew);
+}
+
 export function isReleaseManifestInSync(): boolean {
   return RELEASES.some((release) => release.version === APP_VERSION);
 }

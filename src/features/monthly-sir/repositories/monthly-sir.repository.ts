@@ -80,10 +80,55 @@ export const monthlySirRepository = {
     branchId: string;
     requestedById: string;
     purpose: string;
+    status?: MonthlySirRequestStatus;
+    reviewedById?: string;
+    reviewedAt?: Date;
+    reviewRemarks?: string;
+    stockCountSessionId?: string;
+    /** True for free/direct Start; false for request/approval extras. */
+    usesFreeSlot?: boolean;
   }) {
     return prisma.monthlySirRequest.create({
-      data,
+      data: {
+        tenantId: data.tenantId,
+        branchId: data.branchId,
+        requestedById: data.requestedById,
+        purpose: data.purpose,
+        status: data.status ?? "pending",
+        reviewedById: data.reviewedById,
+        reviewedAt: data.reviewedAt,
+        reviewRemarks: data.reviewRemarks,
+        stockCountSessionId: data.stockCountSessionId,
+        usesFreeSlot: data.usesFreeSlot ?? false,
+      },
       include: requestInclude,
+    });
+  },
+
+  /**
+   * Count free/direct Starts (`usesFreeSlot`) by createdAt window.
+   * Request+approval extras are excluded so they do not consume free slots.
+   */
+  countFreeSlotStartsByRequester(
+    tenantId: string,
+    filters: {
+      requestedById: string;
+      branchId: string;
+      createdAtFrom: Date;
+      createdAtToExclusive: Date;
+    },
+  ) {
+    return prisma.monthlySirRequest.count({
+      where: {
+        tenantId,
+        requestedById: filters.requestedById,
+        branchId: filters.branchId,
+        usesFreeSlot: true,
+        createdAt: {
+          gte: filters.createdAtFrom,
+          lt: filters.createdAtToExclusive,
+        },
+      },
     });
   },
 

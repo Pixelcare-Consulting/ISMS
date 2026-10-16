@@ -3,6 +3,7 @@ import {
   planAccept,
   planDispatch,
   planReject,
+  selectDispatchCandidates,
   type DeliveryPostingView,
   type WarehouseHold,
 } from "@/features/logistics/services/delivery-posting.planner";
@@ -164,5 +165,39 @@ describe("planReject", () => {
   it("is a no-op when the delivery is already rejected", () => {
     const plan = planReject(delivery({ status: "rejected" }));
     expect(plan).toEqual({ ok: true, idempotent: true, returns: [] });
+  });
+});
+
+describe("selectDispatchCandidates", () => {
+  const rows = [
+    {
+      serialNo: "SN-IN-PRIMARY",
+      modelId: "model-1",
+      deleted: false,
+      warehouseId: "wh-primary",
+    },
+    {
+      serialNo: "SN-OTHER-WAREHOUSE",
+      modelId: "model-1",
+      deleted: false,
+      warehouseId: "wh-other",
+    },
+    {
+      serialNo: "SN-OTHER-MODEL",
+      modelId: "model-2",
+      deleted: false,
+      warehouseId: "wh-primary",
+    },
+    {
+      serialNo: "SN-RETIRED",
+      modelId: "model-1",
+      deleted: true,
+      warehouseId: "wh-primary",
+    },
+  ];
+
+  it("lists a serial stocked into the branch primary warehouse for the ordered model", () => {
+    const listed = selectDispatchCandidates(rows, ["model-1"], "wh-primary");
+    expect(listed.map((row) => row.serialNo)).toEqual(["SN-IN-PRIMARY"]);
   });
 });

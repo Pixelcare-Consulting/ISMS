@@ -109,8 +109,8 @@ export function modelBrandKey(name: string): string {
  *   updated (a brand ISMS doesn't have yet counts as different: the sync would create it);
  * - SAP item now unbranded (`unbrandedSkus`) while still live in ISMS → removed.
  *
- * `seriesId` is left out on purpose: the sync fills it from ISMS's own series codes, not
- * from SAP, so it is never SAP news.
+ * `seriesId` is left out on purpose: series is ISMS-only and set by hand or by the Models
+ * import, never by SAP, so it is never SAP news.
  */
 export function compareModels(
   sapRecords: SapModelRecord[],

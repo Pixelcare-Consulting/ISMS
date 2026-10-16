@@ -35,9 +35,9 @@ export function WarehousesStockPanel({
       <div className="space-y-1">
         <h2 className="text-base font-medium">Warehouse stock</h2>
         <p className="text-sm text-muted-foreground">
-          Browse serial numbers held in warehouse locations. Setup (codes and
-          aisles) stays on the Warehouses tab — stock is a read-only Inventory
-          list.
+          Browse serial numbers held in warehouse locations. Stock in from a
+          location on the Warehouses tab. This list stays a read-only inventory
+          view.
         </p>
       </div>
 

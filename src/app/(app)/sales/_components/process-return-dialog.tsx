@@ -24,6 +24,8 @@ import {
   type ProcessReturnPayload,
 } from "@/features/sales/actions/sales.actions";
 import {
+  isReplacementDocumentTypeName,
+  isReturnDocumentTypeName,
   isServiceDocumentTypeName,
   RETURN_CLASSIFICATION_OPTIONS,
   RETURN_NATURE_OF_TRANSACTION_OPTIONS,
@@ -96,6 +98,10 @@ export function ProcessReturnDialog({
 
   const selectedDocType = documentTypes.find((d) => d.id === documentTypeId);
   const showServiceExtras = isServiceDocumentTypeName(selectedDocType?.name);
+  const showReturnAction = isReturnDocumentTypeName(selectedDocType?.name);
+  const showReplacementAction = isReplacementDocumentTypeName(
+    selectedDocType?.name,
+  );
 
   const filteredProblems = useMemo(() => {
     const q = problemQuery.trim().toLowerCase();
@@ -152,6 +158,14 @@ export function ProcessReturnDialog({
       toast.error(error);
       return;
     }
+    if (actionType === "return" && !showReturnAction) {
+      toast.error("Selected document type requires Replacement, not Return");
+      return;
+    }
+    if (actionType === "replacement" && !showReplacementAction) {
+      toast.error("Selected document type requires Return, not Replacement");
+      return;
+    }
 
     const payload: ProcessReturnPayload = {
       saleDetailId,
@@ -196,8 +210,8 @@ export function ProcessReturnDialog({
         <DialogHeader className="shrink-0 pr-8 text-left">
           <DialogTitle>Process Return</DialogTitle>
           <DialogDescription>
-            Capture document type, stock status, and problems, then choose
-            Return or Replacement.
+            Capture document type, stock status, and problems. The Return or
+            Replacement button matches the document type you select.
           </DialogDescription>
         </DialogHeader>
 
@@ -406,21 +420,24 @@ export function ProcessReturnDialog({
           >
             Cancel
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={pending || loading}
-            onClick={() => submit("return")}
-          >
-            {pending ? "Working…" : "Return"}
-          </Button>
-          <Button
-            type="button"
-            disabled={pending || loading}
-            onClick={() => submit("replacement")}
-          >
-            {pending ? "Working…" : "Replacement"}
-          </Button>
+          {showReturnAction ? (
+            <Button
+              type="button"
+              disabled={pending || loading}
+              onClick={() => submit("return")}
+            >
+              {pending ? "Working…" : "Return"}
+            </Button>
+          ) : null}
+          {showReplacementAction ? (
+            <Button
+              type="button"
+              disabled={pending || loading}
+              onClick={() => submit("replacement")}
+            >
+              {pending ? "Working…" : "Replacement"}
+            </Button>
+          ) : null}
         </DialogFooter>
       </DialogContent>
     </Dialog>

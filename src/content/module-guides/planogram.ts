@@ -7,6 +7,10 @@ export const PLANOGRAM_MODULE_GUIDE: ModuleGuideContent = {
   tips: [
     { label: "Click the cards to list branches with a planogram or none yet — click the same card again or Total branches to clear" },
     { label: "Each row shows allowed SKUs as tags — Open a branch to add or remove one SKU; the wait message names that branch" },
+    {
+      label:
+        "Shelf max is the target stock ceiling for that model at the branch — Manual orders cannot order more than Shelf max minus on-hand (STK)",
+    },
     { label: "Use Import for many branches at once: download the template, then upload the same file to preview and apply" },
     { label: "Each import row is a branch SAP code plus a SKU" },
     { label: "SKUs must already exist — this file does not create products" },
@@ -24,6 +28,10 @@ export const BRANCH_PLANOGRAM_MODULE_GUIDE: ModuleGuideContent = {
     "Authorized models this branch may carry.",
   tips: [
     { label: "Add or remove models the branch is allowed to carry — Add model requires Allowed models first" },
+    {
+      label:
+        "Shelf max is how many units this branch should hold for that model — Manual orders cannot exceed Shelf max − STK",
+    },
     { label: "Price and date come from Models; series is the series assigned to that SKU in Master data" },
     { label: "Bulk assignment uses Import on Settings → Planogram (official template: branch SAP code and SKU)" },
   ],

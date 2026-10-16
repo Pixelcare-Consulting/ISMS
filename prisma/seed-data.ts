@@ -34,6 +34,7 @@ export const DEMO_USERS = [
 export const PERMISSIONS = [
   { slug: "dashboard.manage", name: "Manage Dashboard" },
   { slug: "ai.assist", name: "Use ISMS Assist" },
+  { slug: "ai.internal", name: "Use Pixelcare AI (internal)" },
   { slug: "company.view", name: "View company settings" },
   { slug: "company.manage", name: "Manage company settings" },
   { slug: "users.view", name: "View users" },

@@ -394,7 +394,7 @@ export const appNavigation: NavEntry[] = [
         items: [
           {
             href: "/inventory",
-            label: "Stock units",
+            label: "Branch Inventory",
             icon: Package,
             exact: true,
             permission: "inventory.view",
@@ -426,6 +426,12 @@ export const appNavigation: NavEntry[] = [
         label: "Supply Planning",
         icon: ChartColumn,
         anyPermissions: ["forecast.view", "forecast.manage"],
+      },
+      {
+        href: "/reports/inventory",
+        label: "Inventory report",
+        icon: Package,
+        anyPermissions: ["reports.view", "inventory.view"],
       },
       {
         href: "/reports/aging",

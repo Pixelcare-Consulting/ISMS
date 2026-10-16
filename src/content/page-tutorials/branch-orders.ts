@@ -34,7 +34,7 @@ export const BRANCH_ORDERS_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "Order types & review",
       bullets: [
-        "Manual — create the order → Product Specialist review → Team Leader review → Supply Planning approval.",
+        "Manual — create the order → Pending SP (Team Leader may optionally edit) → Supply Planning approval.",
         "Special — Team Leader creates the request → Supply Planning approval.",
         "Auto replenish — Team Leader review → Supply Planning approval. Planning still builds the suggestion list.",
         "Open Review when it is your role’s turn. Supply Planning can adjust quantities or an optional delivery date.",

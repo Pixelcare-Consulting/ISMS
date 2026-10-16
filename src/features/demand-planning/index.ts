@@ -28,7 +28,10 @@ export {
   periodDateFieldsFromLabel,
 } from "./lib/planning-period-dates";
 export {
+  documentNumberPrefixesForPeriod,
   formatDemandPlanningDocumentNumber,
+  nextDocumentSequence,
+  parseDocumentSequence,
   yearMonthKeyFromDate,
 } from "./lib/document-number";
 export { planogramFlagFor } from "./lib/planogram-flag";

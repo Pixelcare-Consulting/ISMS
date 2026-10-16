@@ -122,6 +122,7 @@ enum SapIntegrationJobType {
   inventory_adjustment
   inventory_posting
   delivery_sync_inbound
+  delivery_partial_return
 }
 
 enum ReturnRequestStatus {
@@ -233,6 +234,7 @@ model Tenant {
   branchDeliverySchedules     BranchDeliverySchedule[]
   frequencyCodes              FrequencyCode[]
   orderingPolicy              OrderingPolicy?
+  monthlySirPolicy            MonthlySirPolicy?
   warehouses                  Warehouse[]
   aors                        Aor[]
   serialNumbers               SerialNumber[]
@@ -280,6 +282,10 @@ model Tenant {
   notifications               Notification[]
   competitorObservations      CompetitorObservation[]
   officialSalesImportBatches  OfficialSalesImportBatch[]
+  aiConversations             AiConversation[]
+  aiAutomations               AiAutomation[]
+  aiAutomationRuns            AiAutomationRun[]
+  aiReplenishmentProposals    AiReplenishmentProposal[]
 
   @@index([isPlatform])
   @@map("tenants")
@@ -354,6 +360,10 @@ model User {
   officialSalesImportBatchesUploaded OfficialSalesImportBatch[]    @relation("OfficialSalesImportBatchUploadedBy")
   demandPlanningRunsCreated          DemandPlanningRun[]           @relation("DemandPlanningRunCreatedBy")
   demandPlanningOverrides            DemandPlanningOverride[]      @relation("DemandPlanningOverrideActor")
+  aiConversations                    AiConversation[]
+  aiAutomationsOwned                 AiAutomation[]                @relation("AiAutomationOwner")
+  aiAutomationRunsActed              AiAutomationRun[]             @relation("AiAutomationRunActor")
+  aiReplenishmentProposalsConfirmed  AiReplenishmentProposal[]     @relation("AiReplenishmentProposalConfirmedBy")
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -628,7 +638,8 @@ model Category {
   createdAt    DateTime           @default(now()) @map("created_at")
   updatedAt    DateTime           @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  models ProductModel[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -640,6 +651,7 @@ model ProductModel {
   tenantId     String    @map("tenant_id")
   brandId      String?   @map("brand_id")
   seriesId     String?   @map("series_id")
+  categoryId   String?   @map("category_id")
   featureId    String?   @map("feature_id")
   resolutionId String?   @map("resolution_id")
   actualSizeId String?   @map("actual_size_id")
@@ -659,6 +671,7 @@ model ProductModel {
   tenant                             Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   brand                              Brand?                         @relation(fields: [brandId], references: [id], onDelete: SetNull)
   series                             Series?                        @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+  category                           Category?                      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   feature                            Feature?                       @relation(fields: [featureId], references: [id], onDelete: SetNull)
   resolution                         Resolution?                    @relation(fields: [resolutionId], references: [id], onDelete: SetNull)
   actualSize                         ActualSize?                    @relation(fields: [actualSizeId], references: [id], onDelete: SetNull)
@@ -680,6 +693,7 @@ model ProductModel {
   @@unique([tenantId, skuCode])
   @@index([tenantId])
   @@index([brandId])
+  @@index([categoryId])
   @@map("product_models")
 }
 
@@ -1279,6 +1293,7 @@ model Branch {
   branchQuotas              BranchQuota[]
   salesReplacements         SalesReplacement[]
   competitorObservations    CompetitorObservation[]
+  aiReplenishmentProposals  AiReplenishmentProposal[]
 
   @@unique([tenantId, sapCode])
   @@index([tenantId])
@@ -1563,15 +1578,15 @@ model ReasonStatusCode {
 // --- BRS inventory ---
 
 model SerialNumber {
-  id           String             @id @default(cuid())
-  tenantId     String             @map("tenant_id")
-  serialNo     String             @map("serial_no")
-  modelId      String             @map("model_id")
-  recordStatus LookupRecordStatus @default(active) @map("record_status")
-  createdById  String?            @map("created_by_id")
-  createdAt    DateTime           @default(now()) @map("created_at")
-  updatedAt    DateTime           @updatedAt @map("updated_at")
-  deletedAt    DateTime?          @map("deleted_at")
+  id                String             @id @default(cuid())
+  tenantId          String             @map("tenant_id")
+  serialNo          String             @map("serial_no")
+  modelId           String             @map("model_id")
+  recordStatus      LookupRecordStatus @default(active) @map("record_status")
+  createdById       String?            @map("created_by_id")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+  deletedAt         DateTime?          @map("deleted_at")
   /// See `ProductModel.sapSyncedAt`.
   sapSyncedAt       DateTime?          @map("sap_synced_at")
   /**
@@ -1634,10 +1649,10 @@ model BranchInventory {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  branch          Branch           @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  serialNumber    SerialNumber     @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
-  statusCode      ReasonStatusCode @relation(fields: [statusCodeId], references: [id])
+  tenant          Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch          Branch               @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  serialNumber    SerialNumber         @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
+  statusCode      ReasonStatusCode     @relation(fields: [statusCodeId], references: [id])
   updatedBy       User?                @relation("BranchInventoryUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
   stockCountLines StockCountLine[]
   defectReports   BranchDefectReport[]
@@ -2022,15 +2037,16 @@ model BranchOrder {
   createdAt       DateTime          @default(now()) @map("created_at")
   updatedAt       DateTime          @updatedAt @map("updated_at")
 
-  tenant         Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  branch         Branch                     @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  brand          Brand?                     @relation(fields: [brandId], references: [id], onDelete: SetNull)
-  packageType    PackageType?               @relation(fields: [packageTypeId], references: [id], onDelete: SetNull)
-  createdBy      User                       @relation("BranchOrderCreatedBy", fields: [createdById], references: [id])
-  approvedBy     User?                      @relation("BranchOrderApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
-  details        BranchOrderDetail[]
-  approvalLevels BranchOrderApprovalLevel[]
-  deliveries     BranchDelivery[]
+  tenant                   Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch                   Branch                     @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  brand                    Brand?                     @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  packageType              PackageType?               @relation(fields: [packageTypeId], references: [id], onDelete: SetNull)
+  createdBy                User                       @relation("BranchOrderCreatedBy", fields: [createdById], references: [id])
+  approvedBy               User?                      @relation("BranchOrderApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  details                  BranchOrderDetail[]
+  approvalLevels           BranchOrderApprovalLevel[]
+  deliveries               BranchDelivery[]
+  aiReplenishmentProposals AiReplenishmentProposal[]
 
   @@unique([tenantId, orderNumber])
   @@index([tenantId, branchId, status])
@@ -2260,6 +2276,24 @@ model StockCountSession {
   @@map("stock_count_sessions")
 }
 
+/// Tenant-wide Monthly SIR / P-COUNT free-slot budgets (TL/PS).
+/// Code falls back to defaults when no row exists (no Users UI).
+model MonthlySirPolicy {
+  id                 String   @id @default(cuid())
+  tenantId           String   @unique @map("tenant_id")
+  /// Free direct Upload P-COUNT starts per TL per branch per Manila month.
+  tlMonthlyFreeSlots Int      @default(1) @map("tl_monthly_free_slots")
+  /// Free direct Upload P-COUNT starts per PS per branch per Manila month
+  /// (split across days 1–15 and 16–end).
+  psMonthlyFreeSlots Int      @default(2) @map("ps_monthly_free_slots")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("monthly_sir_policies")
+}
+
 model MonthlySirRequest {
   id                  String                  @id @default(cuid())
   tenantId            String                  @map("tenant_id")
@@ -2271,6 +2305,9 @@ model MonthlySirRequest {
   reviewedById        String?                 @map("reviewed_by_id")
   reviewedAt          DateTime?               @map("reviewed_at")
   stockCountSessionId String?                 @unique @map("stock_count_session_id")
+  /// True when this row was started on the free/direct path (consumes a free slot
+  /// at Start). Extra request+approval uploads stay false.
+  usesFreeSlot        Boolean                 @default(false) @map("uses_free_slot")
   uploadedAt          DateTime?               @map("uploaded_at")
   uploadedById        String?                 @map("uploaded_by_id")
   createdAt           DateTime                @default(now()) @map("created_at")
@@ -2285,6 +2322,7 @@ model MonthlySirRequest {
 
   @@index([tenantId, status])
   @@index([tenantId, branchId])
+  @@index([tenantId, requestedById, branchId, usesFreeSlot, createdAt])
   @@map("monthly_sir_requests")
 }
 
@@ -3178,4 +3216,150 @@ model ServiceCenterPulloutApprovalLevel {
 
   @@unique([pulloutId, level])
   @@map("service_center_pullout_approval_levels")
+}
+
+/// Pixelcare AI — private internal assistant conversations (per-user ownership).
+model AiConversation {
+  id          String    @id @default(cuid())
+  tenantId    String    @map("tenant_id")
+  userId      String    @map("user_id")
+  title       String    @default("New conversation")
+  contextJson Json?     @map("context_json")
+  /// When set, conversation is pinned; newest pin sorts first among pinned.
+  pinnedAt    DateTime? @map("pinned_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  tenant   Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages AiMessage[]
+
+  @@index([tenantId, userId, updatedAt])
+  @@index([tenantId, userId, pinnedAt])
+  @@map("ai_conversations")
+}
+
+model AiMessage {
+  id             String   @id @default(cuid())
+  conversationId String   @map("conversation_id")
+  role           String
+  content        String
+  toolName       String?  @map("tool_name")
+  toolPayload    Json?    @map("tool_payload")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("ai_messages")
+}
+
+enum AiAutomationTemplate {
+  daily_briefing
+  replenishment_review
+  pending_work_reminder
+}
+
+enum AiAutomationRunTrigger {
+  schedule
+  manual
+  preview
+}
+
+enum AiAutomationRunStatus {
+  running
+  succeeded
+  failed
+}
+
+enum AiReplenishmentProposalStatus {
+  proposed
+  confirmed
+  superseded
+}
+
+/// Scheduled Pixelcare assistant job. Starts paused (`enabled` false).
+/// `ownerUserId` is the permission-recheck hook: later runs use this user's
+/// current access. Weekdays are 0=Sun … 6=Sat in `timezone`.
+model AiAutomation {
+  id               String               @id @default(cuid())
+  tenantId         String               @map("tenant_id")
+  ownerUserId      String               @map("owner_user_id")
+  template         AiAutomationTemplate
+  enabled          Boolean              @default(false)
+  timezone         String               @default("Asia/Manila")
+  /// Minutes from midnight in `timezone` (0–1439).
+  timeOfDayMinutes Int                  @map("time_of_day_minutes")
+  weekdays         Int[]                @default([])
+  branchIds        String[]             @default([]) @map("branch_ids")
+  thresholds       Json                 @default("{}")
+  recipientUserIds String[]             @default([]) @map("recipient_user_ids")
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+
+  tenant Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  owner  User              @relation("AiAutomationOwner", fields: [ownerUserId], references: [id])
+  runs   AiAutomationRun[]
+
+  @@index([enabled])
+  @@index([tenantId, enabled])
+  @@index([ownerUserId])
+  @@map("ai_automations")
+}
+
+/// One attempt to run an automation. `(automationId, slot)` stops overlapping
+/// cron ticks from running the same scheduled occurrence twice.
+model AiAutomationRun {
+  id           String                 @id @default(cuid())
+  tenantId     String                 @map("tenant_id")
+  automationId String                 @map("automation_id")
+  trigger      AiAutomationRunTrigger
+  actorUserId  String?                @map("actor_user_id")
+  status       AiAutomationRunStatus
+  result       Json?
+  error        String?
+  /// Scheduled slot is the local calendar day plus time of day, e.g. `2026-10-16T08:00`.
+  slot         String
+  startedAt    DateTime               @default(now()) @map("started_at")
+  finishedAt   DateTime?              @map("finished_at")
+
+  tenant     Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  automation AiAutomation              @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  actor      User?                     @relation("AiAutomationRunActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  proposals  AiReplenishmentProposal[]
+
+  @@unique([automationId, slot])
+  @@index([tenantId, startedAt])
+  @@index([automationId, startedAt])
+  @@map("ai_automation_runs")
+}
+
+/// Shelf-gap proposal. `orderId` stays null until a person confirms.
+/// Lines are a snapshot: `{ sku, shelfMax, stk, sug, exceptions }[]`.
+/// One open (`proposed`) row per tenant + branch + local day — partial unique
+/// index `ai_replenishment_proposals_one_open_per_branch_day` in the migration.
+model AiReplenishmentProposal {
+  id            String                        @id @default(cuid())
+  tenantId      String                        @map("tenant_id")
+  runId         String                        @map("run_id")
+  branchId      String                        @map("branch_id")
+  localDay      DateTime                      @map("local_day") @db.Date
+  lines         Json
+  status        AiReplenishmentProposalStatus @default(proposed)
+  orderId       String?                       @unique @map("order_id")
+  confirmedById String?                       @map("confirmed_by_id")
+  confirmedAt   DateTime?                     @map("confirmed_at")
+  createdAt     DateTime                      @default(now()) @map("created_at")
+  updatedAt     DateTime                      @updatedAt @map("updated_at")
+
+  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  run         AiAutomationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  branch      Branch          @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  order       BranchOrder?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  confirmedBy User?           @relation("AiReplenishmentProposalConfirmedBy", fields: [confirmedById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, branchId, localDay])
+  @@index([runId])
+  @@map("ai_replenishment_proposals")
 }

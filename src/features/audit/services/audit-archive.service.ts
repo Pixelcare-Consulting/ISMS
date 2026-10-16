@@ -29,7 +29,7 @@ export const auditArchiveService = {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - hotDays);
 
-    const storage = getObjectStorage();
+    const storage = await getObjectStorage();
 
     let archivedCount = 0;
     let batches = 0;

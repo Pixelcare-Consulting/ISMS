@@ -1,7 +1,11 @@
 import type { DemandPlanningRunStatus, Prisma } from "@prisma/client";
 
 import { periodDateFieldsFromLabel } from "@/features/demand-planning/lib/planning-period-dates";
-import { formatDemandPlanningDocumentNumber } from "@/features/demand-planning/lib/document-number";
+import {
+  documentNumberPrefixesForPeriod,
+  formatDemandPlanningDocumentNumber,
+  parseDocumentSequence,
+} from "@/features/demand-planning/lib/document-number";
 import type { PersistableRunBranch } from "@/features/demand-planning/lib/line-mapper";
 import { ORDER_QUEUE_STATUSES } from "@/features/orders/constants/order-workflow";
 import {
@@ -70,20 +74,25 @@ export const demandPlanningRepository = {
     });
   },
 
+  /**
+   * Next SP-YYYYMM-nnn for the tenant/period month, from max existing sequence
+   * (not row count). Also considers legacy DP-YYYYMM-nnn so retries after
+   * deletes do not reuse a live number.
+   */
   async nextDocumentNumber(tenantId: string, periodStart: Date): Promise<string> {
-    const year = periodStart.getUTCFullYear();
-    const month = String(periodStart.getUTCMonth() + 1).padStart(2, "0");
-    const prefix = `DP-${year}${month}-`;
-    const latest = await prisma.demandPlanningRun.findFirst({
-      where: { tenantId, documentNumber: { startsWith: prefix } },
-      orderBy: { documentNumber: "desc" },
-      select: { documentNumber: true },
-    });
-    const lastSeq = latest
-      ? Number.parseInt(latest.documentNumber.slice(prefix.length), 10)
-      : 0;
-    const nextSeq = Number.isFinite(lastSeq) ? lastSeq + 1 : 1;
-    return formatDemandPlanningDocumentNumber(periodStart, nextSeq);
+    const prefixes = documentNumberPrefixesForPeriod(periodStart);
+    let maxSeq = 0;
+    for (const prefix of prefixes) {
+      const latest = await prisma.demandPlanningRun.findFirst({
+        where: { tenantId, documentNumber: { startsWith: prefix } },
+        orderBy: { documentNumber: "desc" },
+        select: { documentNumber: true },
+      });
+      if (!latest) continue;
+      const seq = parseDocumentSequence(latest.documentNumber, prefix);
+      if (Number.isFinite(seq) && seq > maxSeq) maxSeq = seq;
+    }
+    return formatDemandPlanningDocumentNumber(periodStart, maxSeq + 1);
   },
 
   createRun(
@@ -180,6 +189,20 @@ export const demandPlanningRepository = {
     });
   },
 
+  findRunStatus(tenantId: string, runId: string) {
+    return prisma.demandPlanningRun.findFirst({
+      where: { id: runId, tenantId },
+      select: { id: true, documentNumber: true, status: true, name: true },
+    });
+  },
+
+  /** Hard-delete run; branches, lines, and overrides cascade via schema. */
+  deleteRun(tenantId: string, runId: string) {
+    return prisma.demandPlanningRun.deleteMany({
+      where: { id: runId, tenantId },
+    });
+  },
+
   listLinesForRunBranch(tenantId: string, runBranchId: string) {
     return prisma.demandPlanningLine.findMany({
       where: { tenantId, runBranchId },
@@ -262,6 +285,8 @@ export const demandPlanningRepository = {
       historyFrom: Date;
       historyTo: Date;
       onHandAsAt: Date;
+      /** When set (e.g. after excluding no-history dealers), persists the narrowed scope. */
+      scope?: Prisma.InputJsonValue;
       stamps: {
         historySkuCount: number;
         historyPeso: number;
@@ -277,6 +302,26 @@ export const demandPlanningRepository = {
     },
   ) {
     await prisma.$transaction(async (tx) => {
+      await tx.demandPlanningRun.update({
+        where: { id: runId },
+        data: {
+          status: input.status,
+          historyFrom: input.historyFrom,
+          historyTo: input.historyTo,
+          onHandAsAt: input.onHandAsAt,
+          ...(input.scope !== undefined ? { scope: input.scope } : {}),
+          historySkuCount: input.stamps.historySkuCount,
+          historyPeso: input.stamps.historyPeso,
+          planogramYCount: input.stamps.planogramYCount,
+          planogramSkuCount: input.stamps.planogramSkuCount,
+          forecastUnitCount: input.stamps.forecastUnitCount,
+          forecastPeso: input.stamps.forecastPeso,
+          onHandUnitCount: input.stamps.onHandUnitCount,
+          onHandPeso: input.stamps.onHandPeso,
+          displayUnitsCount: input.stamps.displayUnitsCount,
+        },
+      });
+
       await tx.demandPlanningRunBranch.deleteMany({ where: { tenantId, runId } });
 
       for (const branch of input.branches) {
@@ -342,25 +387,6 @@ export const demandPlanningRepository = {
           })),
         });
       }
-
-      await tx.demandPlanningRun.update({
-        where: { id: runId },
-        data: {
-          status: input.status,
-          historyFrom: input.historyFrom,
-          historyTo: input.historyTo,
-          onHandAsAt: input.onHandAsAt,
-          historySkuCount: input.stamps.historySkuCount,
-          historyPeso: input.stamps.historyPeso,
-          planogramYCount: input.stamps.planogramYCount,
-          planogramSkuCount: input.stamps.planogramSkuCount,
-          forecastUnitCount: input.stamps.forecastUnitCount,
-          forecastPeso: input.stamps.forecastPeso,
-          onHandUnitCount: input.stamps.onHandUnitCount,
-          onHandPeso: input.stamps.onHandPeso,
-          displayUnitsCount: input.stamps.displayUnitsCount,
-        },
-      });
     });
   },
 

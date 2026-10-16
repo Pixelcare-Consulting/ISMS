@@ -34,10 +34,16 @@ docker compose exec -T postgres psql -U isms -d isms < database/extensions.sql
 | `DIRECT_URL` | Migrations / Prisma CLI (same as `DATABASE_URL` without a pooler) |
 | `AUTH_SECRET` / `BETTER_AUTH_SECRET` | Session signing + SAP credential encryption |
 | `BETTER_AUTH_URL` / `AUTH_URL` | App origin for Better Auth callbacks |
-| `STORAGE_ROOT` | Local uploads root (default `.data/uploads`) |
+| `STORAGE_ROOT` | Absolute uploads root for Docker (e.g. `/app/data/uploads`); omit locally to use `.data/uploads` |
+| `STORAGE_DRIVER` | Optional. Default local-fs. Set `supabase` only to opt into Supabase Storage |
 | `ALLOW_PUBLIC_REGISTER` | Set `true` to enable public `/register` (local/demo only; off by default) |
 | `OPENAI_API_KEY` | Optional. Turns on ISMS Assist (Help questions + Dashboard briefing) |
 | `AI_MODEL` | Optional OpenAI model id (default `gpt-4o-mini`) |
+| `PIXELCARE_AI_USER_IDS` | Optional. Leave empty for all signed-in users. If set, comma-separated user ids/emails restrict access. Pixelcare AI is on by default |
+| `PIXELCARE_AI_SAMPLE_MODE` | Optional. Set `true` for labeled sample fixtures only (no live tool mix) |
+| `QWEN_API_KEY` | Optional. Model Studio / Qwen API key for Pixelcare AI |
+| `QWEN_BASE_URL` | Optional. OpenAI-compatible base URL (`…/compatible-mode/v1`) |
+| `QWEN_MODEL` | Optional. Qwen model id (default `qwen-plus`) |
 
 Without a connection pooler, `DATABASE_URL` and `DIRECT_URL` can be identical.
 
@@ -63,7 +69,7 @@ No Prisma schema rewrite is required for connection cutover alone.
 
 ## Object storage
 
-Policy attachments and audit archives use the local filesystem under `STORAGE_ROOT` (default `.data/uploads`). Paths stay `tenants/{tenantId}/…` so existing `storagePath` rows remain valid after switching off Supabase Storage.
+Policy attachments and audit archives use the local filesystem by default (Docker/Ubuntu staging and local). Set absolute `STORAGE_ROOT` in Docker (e.g. `/app/data/uploads`); omit it locally to use `.data/uploads`. Supabase Storage is opt-in only via `STORAGE_DRIVER=supabase`.
 
 ## Migrations (Prisma)
 

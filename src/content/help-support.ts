@@ -188,6 +188,7 @@ export const HELP_WORKFLOW_GUIDES: HelpWorkflowGuide[] = [
     ],
     tips: [
       "Suggested orders feed the Auto replenish path (Team Leader → Supply Planning)—not Manual or Special.",
+      "On Auto replenish, Delete discards an unsubmitted draft; after Submit for review, use Review to reject or cancel instead.",
     ],
   },
   {
@@ -204,7 +205,7 @@ export const HELP_WORKFLOW_GUIDES: HelpWorkflowGuide[] = [
       },
       {
         label:
-          "Manual: create the order → Product Specialist review → Team Leader review → Supply Planning approval.",
+          "Manual: create the order → Pending SP (Team Leader may optionally edit) → Supply Planning approval.",
       },
       {
         label:
@@ -530,7 +531,7 @@ export const HELP_FAQ_CATEGORIES: HelpFaqCategory[] = [
         id: "orders-2",
         question: "Why is my manual order taking longer than auto-replenish?",
         answer:
-          "Manual orders include an extra Product Specialist review before Team Leader and Supply Planning approval.",
+          "Manual orders go to Supply Planning right away. Team Leaders may still edit before SP decides; that optional edit can add a little wait time versus auto-replenish.",
       },
       {
         id: "orders-3",
@@ -548,13 +549,37 @@ export const HELP_FAQ_CATEGORIES: HelpFaqCategory[] = [
         id: "orders-5",
         question: "What are auto-replenish, manual, and special orders?",
         answer:
-          "Auto-replenish is system-suggested replenishment. Manual adds a Product Specialist review step. Special is initiated by the Team Leader for non-standard requests.",
+          "Auto-replenish is system-suggested replenishment (Team Leader then Supply Planning). Manual is created by the Product Specialist and goes to Supply Planning (Team Leader may optionally edit). Special is initiated by the Team Leader for non-standard requests.",
+      },
+      {
+        id: "orders-special-create",
+        question: "Why can’t a Team Leader create Special orders?",
+        answer:
+          "Special create is a role permission. Ask an admin to open Settings → Roles and grant Create on Special orders for the Team Leader role. New roles from the Manager template include it; existing roles are not changed automatically.",
       },
       {
         id: "orders-6",
         question: "Why don’t I see every order on the Orders tab?",
         answer:
           "Orders only lists requests waiting for your role. Approved, rejected, and cancelled SO#s are in Order History so the live list stays as your work queue.",
+      },
+      {
+        id: "orders-7",
+        question: "Is SUG on Create order the same as the Planning forecast?",
+        answer:
+          "No. SUG is the shelf gap for that branch — Shelf max minus on-hand (STK) — not Drop 1 / Target Quota from Planning. When BRANCH ORD shows Shelf full, stock already meets Shelf max so Manual cannot order more. Confirm stock on Stock units → By model or Reports → Inventory Report. For order volume (Total CBM), fill the optional CBM column on Models import.",
+      },
+      {
+        id: "orders-8",
+        question: "What is Shelf max on planogram?",
+        answer:
+          "Shelf max is how many units a branch should hold for a model. Suggested order qty (SUG) is Shelf max minus on-hand stock. Set it when you add or edit a model on Settings → Planogram for that branch.",
+      },
+      {
+        id: "orders-super-admin-bulk-cancel",
+        question: "How does Super Admin cancel multiple orders at once?",
+        answer:
+          "On Manual, Special, or Auto replenish Orders, select the rows and choose Cancel selected. Drafts are discarded. Pending orders are marked Cancelled and appear in Order History. Approved, rejected, cancelled, or delivery-linked orders are left unchanged.",
       },
     ],
   },
@@ -661,6 +686,12 @@ export const HELP_FAQ_CATEGORIES: HelpFaqCategory[] = [
         question: "Are reports editable?",
         answer:
           "No. Reports are read-only. Make changes in the operational module (Orders, Inventory, Logistics, Sales), then refresh the report.",
+      },
+      {
+        id: "sales-6",
+        question: "How do I check branch stock without counting every serial page?",
+        answer:
+          "Use Reports → Inventory Report with SKU, status (STK by default), and branch filters. The Excel download has a Summary sheet of quantities by branch, SKU, and status, and a Detail sheet of serial rows.",
       },
     ],
   },

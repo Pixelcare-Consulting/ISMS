@@ -28,7 +28,7 @@ export default async function SettingsWarehousesPage({
       <PageHeader
         title="Warehouses"
         tutorial={WAREHOUSES_PAGE_TUTORIAL}
-        description="Manage warehouse locations and storage aisles, or open warehouse stock serials (CSV step 4)."
+        description="Manage warehouse locations and storage aisles, stock serials into a location, or open warehouse stock serials (CSV step 4)."
         sticky={false}
       />
       <WarehousesSettingsTabs
