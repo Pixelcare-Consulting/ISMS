@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { BackToIsms } from "@/features/pixelcare-ai/components/back-to-isms";
 import { ChatComposer } from "@/features/pixelcare-ai/components/chat-composer";
+import { ChatLandingHero } from "@/features/pixelcare-ai/components/chat-landing-hero";
 import { ChatMessages } from "@/features/pixelcare-ai/components/chat-messages";
 import { ContextBar } from "@/features/pixelcare-ai/components/context-bar";
 import {
@@ -15,6 +16,16 @@ import {
   type ConversationListItem,
 } from "@/features/pixelcare-ai/components/conversation-sidebar";
 import { PixelcareAiFullscreenToggle } from "@/features/pixelcare-ai/components/fullscreen-toggle";
+import {
+  PIXELCARE_AI_TASKS,
+  type PixelcareAiTaskId,
+} from "@/features/pixelcare-ai/constants/tasks";
+import {
+  clearAutostartQueue,
+  clearAutostartSession,
+  clearAutostartUrlParams,
+  resolveAutostartPrompt,
+} from "@/features/pixelcare-ai/lib/autostart-handoff";
 import { sortConversationListItems } from "@/features/pixelcare-ai/lib/conversation-list-sort";
 import type { PixelcareAiContext } from "@/features/pixelcare-ai/schemas/context.schema";
 
@@ -51,9 +62,24 @@ export function ChatWorkspace(props: {
   );
   const [draftOnError, setDraftOnError] = useState<string | null>(null);
   const [context, setContext] = useState<PixelcareAiContext | null>(props.initialContext);
-  const [list, setList] = useState(props.conversationList);
+  const [list, setList] = useState(() => {
+    const existing = props.conversationList;
+    if (existing.some((item) => item.id === props.conversationId)) {
+      return existing;
+    }
+    // Soft-nav can briefly serve a stale list right after create from home.
+    return sortConversationListItems([
+      {
+        id: props.conversationId,
+        title: props.initialTitle,
+        updatedAt: new Date().toISOString(),
+        pinnedAt: null,
+      },
+      ...existing,
+    ]);
+  });
   const [localError, setLocalError] = useState<string | null>(null);
-  const autostartDone = useRef(false);
+  const sendMessageRef = useRef<(opts: { text: string }) => Promise<void>>(async () => undefined);
 
   const transport = useMemo(
     () =>
@@ -78,41 +104,69 @@ export function ChatWorkspace(props: {
     transport,
   });
 
+  // Latest sender for autostart. Written in an effect so render never touches the ref.
+  // The autostart effect yields a microtask before calling this, so the assignment
+  // is in place even when sendMessage's identity changes between renders.
+  useEffect(() => {
+    sendMessageRef.current = (opts) => sendMessage(opts);
+  }, [sendMessage]);
+
   const streaming = status === "streaming" || status === "submitted";
   const error =
     localError ??
     (chatError ? chatError.message || "Chat failed." : null);
   const prevStreaming = useRef(streaming);
+  const isEmptyThread = props.initialMessages.length === 0 && messages.length === 0;
 
-  // Guided tasks: land in chat and immediately stream the starter user message.
+  // Guided tasks / home composer: land in chat and stream the starter ASAP.
+  // sendMessage is read via ref so identity churn cannot abort + block retry.
   useEffect(() => {
-    if (!props.autostart || autostartDone.current) return;
-    const prompt = props.starterPrompt?.trim();
-    if (!prompt || props.initialMessages.length > 0) return;
-    autostartDone.current = true;
-
-    // Drop autostart query params without remounting (keeps the in-flight stream).
-    if (typeof window !== "undefined") {
-      const url = new URL(window.location.href);
-      url.searchParams.delete("autostart");
-      url.searchParams.delete("task");
-      url.searchParams.delete("prompt");
-      const next = `${url.pathname}${url.searchParams.toString() ? `?${url.searchParams}` : ""}`;
-      window.history.replaceState(window.history.state, "", next);
+    if (props.initialMessages.length > 0) {
+      clearAutostartQueue(props.conversationId);
+      return;
     }
 
-    void sendMessage({ text: prompt }).catch((err: unknown) => {
-      const message = err instanceof Error ? err.message : "Chat failed.";
-      setLocalError(message);
-      setDraftOnError(prompt);
-      setInput(prompt);
+    const prompt = resolveAutostartPrompt({
+      conversationId: props.conversationId,
+      serverAutostart: props.autostart,
+      serverStarterPrompt: props.starterPrompt,
     });
+    if (!prompt) return;
+
+    // Drop session copy early; keep memory + URL until the user message appears.
+    clearAutostartSession(props.conversationId);
+
+    let cancelled = false;
+    void (async () => {
+      // Yield so React Strict Mode cleanup can cancel before the first send.
+      await Promise.resolve();
+      if (cancelled) return;
+      try {
+        await sendMessageRef.current({ text: prompt });
+      } catch (err: unknown) {
+        if (cancelled) return;
+        const message = err instanceof Error ? err.message : "Chat failed.";
+        setLocalError(message);
+        setDraftOnError(prompt);
+        setInput(prompt);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [
     props.autostart,
     props.starterPrompt,
+    props.conversationId,
     props.initialMessages.length,
-    sendMessage,
   ]);
+
+  // Once the thread has content, drop handoff leftovers (incl. URL params).
+  useEffect(() => {
+    if (messages.length === 0 && props.initialMessages.length === 0) return;
+    clearAutostartQueue(props.conversationId);
+  }, [messages.length, props.initialMessages.length, props.conversationId]);
 
   // After a reply finishes, reload context so the Branch control matches tool results.
   useEffect(() => {
@@ -159,6 +213,7 @@ export function ChatWorkspace(props: {
     const data = (await response.json()) as { conversation?: { id: string } };
     if (data.conversation?.id) {
       router.push(`/internal/ai?c=${data.conversation.id}`);
+      router.refresh();
     }
   }
 
@@ -217,6 +272,7 @@ export function ChatWorkspace(props: {
     setLocalError(null);
     setDraftOnError(null);
     setInput("");
+    clearAutostartUrlParams();
     void sendMessage({ text }).catch((err: unknown) => {
       const message = err instanceof Error ? err.message : "Chat failed.";
       setLocalError(message);
@@ -224,6 +280,25 @@ export function ChatWorkspace(props: {
       setInput(text);
     });
   }
+
+  function handleGuidedTask(taskId: PixelcareAiTaskId) {
+    if (streaming || messages.length > 0) return;
+    const task = PIXELCARE_AI_TASKS.find((item) => item.id === taskId);
+    const prompt = task?.starterPrompt?.trim();
+    if (!prompt) return;
+    setLocalError(null);
+    setDraftOnError(null);
+    setInput("");
+    clearAutostartUrlParams();
+    void sendMessage({ text: prompt }).catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : "Chat failed.";
+      setLocalError(message);
+      setDraftOnError(prompt);
+      setInput(prompt);
+    });
+  }
+
+  const chatDisabled = !props.providerConfigured && !props.sampleMode;
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
@@ -260,42 +335,11 @@ export function ChatWorkspace(props: {
           ) : null}
         </div>
 
-        <ChatMessages
-          key={props.conversationId}
-          messages={messages}
-          streaming={streaming}
-        />
-
-        <div className="shrink-0 space-y-2 border-t px-4 py-3">
-          {error ? (
-            <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
-              {error}
-              <div className="mt-2 flex gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    setLocalError(null);
-                    if (draftOnError) setInput(draftOnError);
-                  }}
-                >
-                  Restore draft
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => {
-                    setLocalError(null);
-                    handleSubmit();
-                  }}
-                >
-                  Retry
-                </Button>
-              </div>
-            </div>
-          ) : null}
-          <ChatComposer
+        {isEmptyThread ? (
+          <ChatLandingHero
+            // Context bar already surfaces provider / sample notices.
+            providerConfigured
+            sampleMode={false}
             value={draftOnError ?? input}
             onChange={(value) => {
               setDraftOnError(null);
@@ -303,10 +347,62 @@ export function ChatWorkspace(props: {
             }}
             onSubmit={handleSubmit}
             onStop={() => void stop()}
+            onSelectTask={handleGuidedTask}
             streaming={streaming}
-            disabled={!props.providerConfigured && !props.sampleMode}
+            disabled={chatDisabled}
+            error={error}
           />
-        </div>
+        ) : (
+          <>
+            <ChatMessages
+              key={props.conversationId}
+              messages={messages}
+              streaming={streaming}
+            />
+
+            <div className="shrink-0 space-y-2 border-t px-4 py-3">
+              {error ? (
+                <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
+                  {error}
+                  <div className="mt-2 flex gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setLocalError(null);
+                        if (draftOnError) setInput(draftOnError);
+                      }}
+                    >
+                      Restore draft
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => {
+                        setLocalError(null);
+                        handleSubmit();
+                      }}
+                    >
+                      Retry
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+              <ChatComposer
+                value={draftOnError ?? input}
+                onChange={(value) => {
+                  setDraftOnError(null);
+                  setInput(value);
+                }}
+                onSubmit={handleSubmit}
+                onStop={() => void stop()}
+                streaming={streaming}
+                disabled={chatDisabled}
+              />
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

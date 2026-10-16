@@ -66,6 +66,88 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.69.2",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T08:05:00+08:00",
+    audience: "internal",
+    title: "Pixelcare AI: home chat opens correctly",
+    highlights: [
+      "Typing or tapping a suggestion on the home screen opens that conversation with your message and the reply streaming right away.",
+      "Empty chats use the same centered starter layout as home — same greeting, pill message box, and quick-task chips.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "New and empty chats share the same home-style starter screen instead of a sparse blank thread.",
+      },
+      {
+        type: "fix",
+        description:
+          "Starting a chat from the home screen (typed message or quick-task chip) now lands you in that conversation with the first reply underway.",
+      },
+      {
+        type: "fix",
+        description:
+          "The first message from home still sends once the conversation opens, instead of stalling on a blank chat.",
+      },
+    ],
+  },
+
+  {
+    version: "0.69.1",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T02:35:00+08:00",
+    audience: "internal",
+    title: "Pixelcare AI: faster guided starts",
+    highlights: [
+      "Tapping a guided task opens the chat and starts the reply right away.",
+      "Empty chats show the same quick-task chips so you can jump in without typing.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Empty conversations show guided-task suggestions and clearer starter copy.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Keyboard send hints sit under the message box instead of inside it.",
+      },
+      {
+        type: "fix",
+        description:
+          "Guided-task chips from home reliably start the first assistant reply instead of leaving a blank chat.",
+      },
+    ],
+  },
+
+  {
+    version: "0.69.0",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T02:20:00+08:00",
+    audience: "internal",
+    title: "Pixelcare AI: chat-first home",
+    highlights: [
+      "Open Pixelcare AI and start typing right away — no separate launch screen.",
+      "Guided tasks appear as quick suggestion chips under the chat box.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Pixelcare AI opens straight into a chat-ready home with a greeting and message box.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Guided tasks are compact suggestion chips near the input instead of large cards.",
+      },
+    ],
+  },
+
+  {
     version: "0.68.1",
     date: "2026-10-16",
     releasedAt: "2026-10-16T02:10:00+08:00",

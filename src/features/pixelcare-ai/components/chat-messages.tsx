@@ -176,15 +176,9 @@ export function ChatMessages(props: {
   if (props.messages.length === 0) {
     return (
       <div
-        className={cn(
-          "relative flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-6 text-sm text-muted-foreground",
-          props.className,
-        )}
-      >
-        Ask about stock, shelf gaps, orders, or returns. Pixelcare AI cannot place
-        orders; use Orders → Create order / Analytics. Answers use read-only ISMS
-        tools for data you can already access.
-      </div>
+        className={cn("relative min-h-0 flex-1", props.className)}
+        aria-hidden
+      />
     );
   }
 

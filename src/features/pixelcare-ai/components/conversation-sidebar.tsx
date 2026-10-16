@@ -118,7 +118,7 @@ export function ConversationSidebar(props: {
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-2.5">
         {props.items.length === 0 ? (
           <p className="px-2 py-4 text-xs text-muted-foreground">
-            No saved chats yet. Start from a guided task or send a message.
+            No saved chats yet. Pick a suggestion or send a message.
           </p>
         ) : (
           <>

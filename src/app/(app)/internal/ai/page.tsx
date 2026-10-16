@@ -11,6 +11,9 @@ import { isPixelcareAiProviderConfigured } from "@/features/pixelcare-ai/lib/pro
 import type { PixelcareAiContext } from "@/features/pixelcare-ai/schemas/context.schema";
 import { conversationService } from "@/features/pixelcare-ai/services/conversation.service";
 
+/** Always load a fresh conversation list after create-from-home navigations. */
+export const dynamic = "force-dynamic";
+
 interface AiPageProps {
   searchParams: Promise<{
     c?: string;
@@ -63,7 +66,11 @@ export default async function PixelcareAiPage({ searchParams }: AiPageProps) {
 
   if (!params.c) {
     return (
-      <GuidedHome providerConfigured={providerConfigured} sampleMode={sampleMode} />
+      <GuidedHome
+        providerConfigured={providerConfigured}
+        sampleMode={sampleMode}
+        conversationList={conversationList}
+      />
     );
   }
 
@@ -75,12 +82,17 @@ export default async function PixelcareAiPage({ searchParams }: AiPageProps) {
 
   if (!conversation) {
     return (
-      <GuidedHome providerConfigured={providerConfigured} sampleMode={sampleMode} />
+      <GuidedHome
+        providerConfigured={providerConfigured}
+        sampleMode={sampleMode}
+        conversationList={conversationList}
+      />
     );
   }
 
   return (
     <ChatWorkspace
+      key={conversation.id}
       conversationId={conversation.id}
       initialTitle={conversation.title}
       initialMessages={conversation.messages.map((message) => ({
