@@ -8,10 +8,16 @@ import { sanitizeMarkdownHref } from "@/features/pixelcare-ai/lib/sanitize-markd
 import { cn } from "@/utils/cn";
 
 const markdownComponents: Components = {
+  img: () => null,
   a: ({ href, children }) => {
     const cleanHref = sanitizeMarkdownHref(href);
+    if (!cleanHref) return <span>{children}</span>;
+    const external = cleanHref.startsWith("https://");
     return (
-      <a href={cleanHref} target="_blank" rel="noreferrer noopener">
+      <a
+        href={cleanHref}
+        {...(external ? { target: "_blank", rel: "noreferrer noopener" } : {})}
+      >
         {children}
       </a>
     );

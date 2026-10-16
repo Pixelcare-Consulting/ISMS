@@ -2,12 +2,14 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
-import Link from "next/link";
+// Temporarily hidden with the Automations button.
+// import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { BackToIsms } from "@/features/pixelcare-ai/components/back-to-isms";
+// Temporarily hidden with the Back to ISMS button.
+// import { BackToIsms } from "@/features/pixelcare-ai/components/back-to-isms";
 import { ChatComposer } from "@/features/pixelcare-ai/components/chat-composer";
 import { ChatLandingHero } from "@/features/pixelcare-ai/components/chat-landing-hero";
 import { ChatMessages } from "@/features/pixelcare-ai/components/chat-messages";
@@ -27,6 +29,7 @@ import {
   clearAutostartUrlParams,
   resolveAutostartPrompt,
 } from "@/features/pixelcare-ai/lib/autostart-handoff";
+import { formatAssistantApiError } from "@/features/pixelcare-ai/lib/chat-api-error";
 import { sortConversationListItems } from "@/features/pixelcare-ai/lib/conversation-list-sort";
 import type { PixelcareAiContext } from "@/features/pixelcare-ai/schemas/context.schema";
 
@@ -113,9 +116,9 @@ export function ChatWorkspace(props: {
   }, [sendMessage]);
 
   const streaming = status === "streaming" || status === "submitted";
-  const error =
-    localError ??
-    (chatError ? chatError.message || "Chat failed." : null);
+  const error = formatAssistantApiError(
+    localError ?? (chatError ? chatError.message || "Chat failed." : null),
+  );
   const prevStreaming = useRef(streaming);
   const isEmptyThread = props.initialMessages.length === 0 && messages.length === 0;
 
@@ -317,10 +320,12 @@ export function ChatWorkspace(props: {
             <p className="text-xs text-muted-foreground">Pixelcare AI Assistant (BETA)</p>
             <h1 className="truncate text-lg font-semibold">{props.initialTitle}</h1>
           </div>
+          {/* Temporarily hidden — restore by uncommenting.
           <Button asChild variant="outline" size="sm">
             <Link href="/internal/ai/automations">Automations</Link>
           </Button>
           <BackToIsms />
+          */}
           {/* DO NOT UNCOMMENT <Button asChild variant="ghost" size="sm">
             <Link href="/internal/ai">Guided home</Link>
           </Button> */}

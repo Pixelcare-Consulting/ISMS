@@ -169,10 +169,10 @@ function AutomationCard(props: {
     });
   }
 
-  function onConfirm(proposalId: string) {
+  function onConfirm(proposalId: string, confirmationToken: string) {
     startTransition(async () => {
       setError(null);
-      const result = await confirmProposalAction(proposalId);
+      const result = await confirmProposalAction({ proposalId, confirmationToken });
       if (!result.ok) {
         setError(result.error);
         return;
@@ -367,7 +367,7 @@ function CheckboxGroup(props: {
 function ProposalList(props: {
   proposals: AutomationProposalView[];
   pending: boolean;
-  onConfirm: (proposalId: string) => void;
+  onConfirm: (proposalId: string, confirmationToken: string) => void;
 }) {
   if (props.proposals.length === 0) return null;
   return (
@@ -390,8 +390,11 @@ function ProposalList(props: {
                 <Button
                   type="button"
                   size="sm"
-                  disabled={props.pending}
-                  onClick={() => props.onConfirm(proposal.id)}
+                  disabled={props.pending || !proposal.confirmationToken}
+                  onClick={() => {
+                    if (!proposal.confirmationToken) return;
+                    props.onConfirm(proposal.id, proposal.confirmationToken);
+                  }}
                 >
                   Confirm order
                 </Button>

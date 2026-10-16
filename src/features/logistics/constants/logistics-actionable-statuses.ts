@@ -33,14 +33,17 @@ export function getTransferActionableStatusCodes(
   return uniqueCodes(codes);
 }
 
-/** Pull-out workflow codes the viewer can TL-approve, schedule, release, or complete. */
+/**
+ * Pull-out codes the viewer can approve or finish on the logistics list.
+ * In transit is not actionable: warehouse receipt is not available.
+ */
 export function getPulloutActionableStatusCodes(
   capabilities: LogisticsActionCapabilities,
 ): string[] {
   const codes: string[] = [];
   if (capabilities.canApproveTl) codes.push("pending_tl");
-  if (capabilities.canSchedulePullout) codes.push("for_pullout");
-  if (capabilities.canReleasePullout) codes.push("pending_logistics");
-  if (capabilities.canCompletePullout) codes.push("in_transit");
+  if (capabilities.canSchedulePullout || capabilities.canManage) {
+    codes.push("for_pullout", "pending_logistics");
+  }
   return uniqueCodes(codes);
 }

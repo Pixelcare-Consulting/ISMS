@@ -219,5 +219,9 @@ describe("sanitizeMarkdownHref", () => {
       "/orders/manual?tab=analytics",
     );
     expect(sanitizeMarkdownHref("/returns")).toBe("/returns");
+    expect(sanitizeMarkdownHref("https://example.com/help")).toBe("https://example.com/help");
+    expect(sanitizeMarkdownHref("javascript:alert(1)")).toBeUndefined();
+    expect(sanitizeMarkdownHref("data:text/html,hi")).toBeUndefined();
+    expect(sanitizeMarkdownHref("//evil.example")).toBeUndefined();
   });
 });

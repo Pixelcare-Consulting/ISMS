@@ -50,18 +50,21 @@ describe("logistics actionable status codes", () => {
     ).toEqual(["in_transit"]);
   });
 
-  it("maps pull-out TL / schedule / release / complete gates", () => {
+  it("maps pull-out TL and logistics list gates, and leaves in-transit closed", () => {
     expect(
       getPulloutActionableStatusCodes(caps({ canApproveTl: true })),
     ).toEqual(["pending_tl"]);
     expect(
       getPulloutActionableStatusCodes(caps({ canSchedulePullout: true })),
-    ).toEqual(["for_pullout"]);
+    ).toEqual(["for_pullout", "pending_logistics"]);
     expect(
       getPulloutActionableStatusCodes(caps({ canReleasePullout: true })),
-    ).toEqual(["pending_logistics"]);
+    ).toEqual([]);
     expect(
       getPulloutActionableStatusCodes(caps({ canCompletePullout: true })),
-    ).toEqual(["in_transit"]);
+    ).toEqual([]);
+    expect(
+      getPulloutActionableStatusCodes(caps({ canManage: true })),
+    ).toEqual(["for_pullout", "pending_logistics"]);
   });
 });

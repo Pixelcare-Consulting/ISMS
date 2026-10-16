@@ -2,8 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 
+import { AI_ASSISTANT_FAILED_MESSAGE } from "@/features/ai/constants/assistant-limits";
+import { AssistantUserError, publicAssistantError } from "@/features/ai/lib/assistant-messages";
+import { AutomationAccessError } from "@/features/pixelcare-ai/automations/owner-access";
 import { saveAutomationSettings, runOwnerAutomation } from "@/features/pixelcare-ai/automations/automation.service";
-import { confirmReplenishmentProposal } from "@/features/pixelcare-ai/automations/replenishment";
+import {
+  confirmReplenishmentWithToken,
+  issueReplenishmentConfirmation,
+} from "@/features/pixelcare-ai/automations/confirmation";
 import { resolvePixelcareAiPageAccess } from "@/features/pixelcare-ai/lib/access";
 import type { AppSession } from "@/lib/auth/session";
 
@@ -18,7 +24,10 @@ async function requirePixelcareSession(): Promise<
 }
 
 function failure(error: unknown): { ok: false; error: string } {
-  return { ok: false, error: error instanceof Error ? error.message : "Something went wrong." };
+  if (error instanceof AutomationAccessError || error instanceof AssistantUserError) {
+    return { ok: false, error: publicAssistantError(error, error.message) };
+  }
+  return { ok: false, error: AI_ASSISTANT_FAILED_MESSAGE };
 }
 
 export async function saveAutomationAction(input: {
@@ -57,14 +66,36 @@ export async function runAutomationAction(input: {
   }
 }
 
-export async function confirmProposalAction(proposalId: string) {
+export async function issueReplenishmentConfirmationAction(proposalId: string) {
   const access = await requirePixelcareSession();
   if (!access.ok) return access;
   try {
-    const result = await confirmReplenishmentProposal({
+    const issued = await issueReplenishmentConfirmation({
+      tenantId: access.session.user.tenantId,
+      userId: access.session.user.id,
+      proposalId,
+    });
+    return { ok: true as const, token: issued.token };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function confirmProposalAction(input: {
+  proposalId: string;
+  confirmationToken: string;
+}) {
+  const access = await requirePixelcareSession();
+  if (!access.ok) return access;
+  if (!input.confirmationToken.trim()) {
+    return { ok: false as const, error: "Confirm this proposal from the Confirm order button." };
+  }
+  try {
+    const result = await confirmReplenishmentWithToken({
       tenantId: access.session.user.tenantId,
       actorUserId: access.session.user.id,
-      proposalId,
+      proposalId: input.proposalId,
+      confirmationToken: input.confirmationToken,
     });
     revalidatePath("/internal/ai/automations");
     revalidatePath("/orders/auto-replenish");

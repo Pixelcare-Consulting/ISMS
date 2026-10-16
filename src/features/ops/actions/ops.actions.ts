@@ -1,10 +1,35 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
+
 import { opsService } from "@/features/ops/services/ops.service";
 import { aorService } from "@/features/aors/services/aor.service";
 import { branchService } from "@/features/branches/services/branch.service";
-import { hasPermission, requirePermission } from "@/lib/auth/permissions";
+import {
+  LOGISTICS_CREATE,
+  LOGISTICS_MANAGE,
+} from "@/features/logistics/constants/logistics-permissions";
+import { hasPermission, requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
+
+const OPS_CREATE_PERMISSIONS = [LOGISTICS_CREATE, LOGISTICS_MANAGE, "orders.create"] as const;
+
+const transferSchema = z.object({
+  fromBranchId: z.string().min(1),
+  toBranchId: z.string().min(1),
+  modelId: z.string().min(1),
+  quantity: z.number().int().positive(),
+  serialNumberIds: z.array(z.string().min(1)).min(1),
+  notes: z.string().optional(),
+});
+
+const pulloutSchema = z.object({
+  branchId: z.string().min(1),
+  warehouseId: z.string().min(1),
+  reasonStatusCodeId: z.string().min(1),
+  serialNumberIds: z.array(z.string().min(1)).min(1),
+  notes: z.string().optional(),
+});
 
 async function resolveBranchIds(session: {
   user: { id: string; tenantId: string; permissions?: string[] };
@@ -77,35 +102,45 @@ export async function rejectDeliveryAction(deliveryId: string) {
   }
 }
 
-export async function createTransferAction(formData: FormData) {
-  const session = await requirePermission("orders.create");
+export async function createTransferAction(input: unknown) {
+  const session = await requireAnyPermission([...OPS_CREATE_PERMISSIONS]);
+  const parsed = transferSchema.safeParse(input);
+  if (!parsed.success) return { error: "Choose branches, a model, and the serials to transfer" };
   try {
-    await opsService.createTransfer({
-      tenantId: session.user.tenantId,
-      actorUserId: session.user.id,
-      fromBranchId: String(formData.get("fromBranchId") ?? ""),
-      toBranchId: String(formData.get("toBranchId") ?? ""),
-      notes: (formData.get("notes") as string) || undefined,
-    });
+    const row = await opsService.createTransfer(
+      {
+        tenantId: session.user.tenantId,
+        userId: session.user.id,
+        permissions: session.user.permissions,
+      },
+      parsed.data,
+    );
     revalidatePath("/operations");
-    return { success: true };
+    revalidatePath("/logistics/transfers");
+    revalidatePath("/inventory");
+    return { success: true as const, id: row.id, transferNo: row.transferNo };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to create transfer" };
   }
 }
 
-export async function createPulloutAction(formData: FormData) {
-  const session = await requirePermission("orders.create");
+export async function createPulloutAction(input: unknown) {
+  const session = await requireAnyPermission([...OPS_CREATE_PERMISSIONS]);
+  const parsed = pulloutSchema.safeParse(input);
+  if (!parsed.success) return { error: "Choose a branch, warehouse, reason, and serials" };
   try {
-    await opsService.createPullout({
-      tenantId: session.user.tenantId,
-      actorUserId: session.user.id,
-      branchId: String(formData.get("branchId") ?? ""),
-      warehouseId: String(formData.get("warehouseId") ?? ""),
-      notes: (formData.get("notes") as string) || undefined,
-    });
+    const row = await opsService.createPullout(
+      {
+        tenantId: session.user.tenantId,
+        userId: session.user.id,
+        permissions: session.user.permissions,
+      },
+      parsed.data,
+    );
     revalidatePath("/operations");
-    return { success: true };
+    revalidatePath("/logistics/pickups");
+    revalidatePath("/inventory");
+    return { success: true as const, id: row.id, pulloutNo: row.pulloutNo };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to create pull-out" };
   }

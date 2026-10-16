@@ -11,6 +11,9 @@ import {
 } from "@/features/logistics/constants/logistics-permissions";
 import { logisticsRepository } from "@/features/logistics/repositories/logistics.repository";
 import { deliveryPostingService } from "@/features/logistics/services/delivery-posting.service";
+import { pulloutPostingService } from "@/features/logistics/services/pullout-posting.service";
+import { transferPostingService } from "@/features/logistics/services/transfer-posting.service";
+import type { PostingActor } from "@/features/logistics/services/posting-support";
 import type {
   DeliveryListSort,
   LogisticsListSortDir,
@@ -18,7 +21,6 @@ import type {
   TransferListSort,
 } from "@/features/logistics/repositories/logistics.repository";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
-import { assertSerialsNotFrozenInStockCount } from "@/features/stock-audit/services/stock-count-freeze";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/database/client";
@@ -75,13 +77,23 @@ const deliverySchema = z.object({ branchId: z.string().min(1) });
 const transferSchema = z.object({
   fromBranchId: z.string().min(1),
   toBranchId: z.string().min(1),
-  serialNumberIds: z.array(z.string().min(1)).optional(),
+  modelId: z.string().min(1),
+  quantity: z.number().int().positive(),
+  serialNumberIds: z.array(z.string().min(1)).min(1),
+  notes: z.string().optional(),
 });
 const pulloutSchema = z.object({
   branchId: z.string().min(1),
   warehouseId: z.string().min(1),
-  reasonStatusCodeId: z.string().optional(),
-  serialNumberIds: z.array(z.string().min(1)).optional(),
+  reasonStatusCodeId: z.string().min(1),
+  serialNumberIds: z.array(z.string().min(1)).min(1),
+  notes: z.string().optional(),
+});
+const pulloutListSchema = z.object({
+  warehouseId: z.string().min(1),
+  waybillNo: z.string().optional(),
+  notes: z.string().optional(),
+  serialNumberIds: z.array(z.string().min(1)).min(1),
 });
 
 const serialIdsSchema = z.object({
@@ -99,50 +111,18 @@ function revalidateLogisticsPaths() {
   revalidatePath("/logistics/pickups");
 }
 
-async function requireFirstCodeId(
-  tenantId: string,
-  category: "transfer_workflow" | "pullout_workflow" | "delivery_workflow",
-  codes: string[],
-) {
-  for (const code of codes) {
-    const row = await prisma.reasonStatusCode.findFirst({
-      where: {
-        tenantId,
-        code,
-        reasonStatus: { category },
-      },
-      select: { id: true },
-    });
-    if (row) return row.id;
-  }
-  throw new Error(`Status code not configured: ${category}/${codes[0]}`);
+function postingActor(session: {
+  user: { tenantId: string; id: string; permissions?: string[] };
+}): PostingActor {
+  return {
+    tenantId: session.user.tenantId,
+    userId: session.user.id,
+    permissions: session.user.permissions,
+  };
 }
 
-async function updateInventoryStatusForSerials(input: {
-  tenantId: string;
-  branchId: string;
-  serialNumberIds: string[];
-  statusCodeId: string;
-  userId: string;
-  requiredCurrentCodeId?: string;
-}) {
-  await assertSerialsNotFrozenInStockCount(input.tenantId, input.serialNumberIds);
-
-  const where = {
-    tenantId: input.tenantId,
-    branchId: input.branchId,
-    serialNumberId: { in: input.serialNumberIds },
-    ...(input.requiredCurrentCodeId ? { statusCodeId: input.requiredCurrentCodeId } : {}),
-  };
-
-  const updated = await prisma.branchInventory.updateMany({
-    where,
-    data: { statusCodeId: input.statusCodeId, updatedById: input.userId },
-  });
-
-  if (updated.count !== input.serialNumberIds.length) {
-    throw new Error("One or more serial numbers are not available at the branch");
-  }
+function actionError(error: unknown, fallback: string) {
+  return { error: error instanceof Error ? error.message : fallback };
 }
 
 export interface LogisticsKpis {
@@ -347,251 +327,113 @@ export async function listTransfersAction(input?: {
   );
 }
 
-export async function createTransferAction(input: unknown) {
-  const session = await requirePermission("orders.create");
-  const parsed = transferSchema.safeParse(input);
-  if (!parsed.success) return { error: "Invalid input" };
+const TL_PERMISSIONS = ["orders.approve", LOGISTICS_MANAGE] as const;
 
-  const statusCodeId = await requireFirstCodeId(session.user.tenantId, "transfer_workflow", [
-    "requested",
-    "pending_tl",
-  ]);
-
-  const serialIds = parsed.data.serialNumberIds ?? [];
-  if (serialIds.length > 0) {
-    const stkCodeId = await reasonStatusService.requireCodeId(
-      session.user.tenantId,
-      "inventory_system",
-      "STK",
-    );
-    const validCount = await prisma.branchInventory.count({
-      where: {
-        tenantId: session.user.tenantId,
-        branchId: parsed.data.fromBranchId,
-        serialNumberId: { in: serialIds },
-        statusCodeId: stkCodeId,
-      },
-    });
-    if (validCount !== serialIds.length) {
-      return { error: "One or more serial numbers are not available at the source branch" };
-    }
-  }
-
-  const row = await prisma.branchTransfer.create({
-    data: {
-      tenantId: session.user.tenantId,
-      fromBranchId: parsed.data.fromBranchId,
-      toBranchId: parsed.data.toBranchId,
-      transferNo: nextNo("XFR"),
-      statusCodeId,
-      createdById: session.user.id,
-      ...(serialIds.length
-        ? {
-            lines: {
-              create: serialIds.map((serialNumberId) => ({ serialNumberId })),
-            },
-          }
-        : {}),
-    },
-    include: {
-      fromBranch: { select: { name: true } },
-      toBranch: { select: { name: true } },
-    },
-  });
-
-  await auditService.log({
-    tenantId: session.user.tenantId,
-    userId: session.user.id,
-    action: "transfer.created",
-    entityType: "BranchTransfer",
-    entityId: row.id,
-    metadata: {
-      transferNo: row.transferNo,
-      from: row.fromBranch.name,
-      to: row.toBranch.name,
-    },
-  });
-
+function revalidateTransfer(id: string) {
   revalidateLogisticsPaths();
+  revalidatePath(`/logistics/transfers/${id}`);
   revalidatePath("/operations");
-  return { success: true as const };
+  revalidatePath("/inventory");
+}
+
+function revalidatePullout(id: string) {
+  revalidateLogisticsPaths();
+  revalidatePath(`/logistics/pickups/${id}`);
+  revalidatePath("/operations");
+  revalidatePath("/inventory");
+}
+
+export async function getTransferDetailAction(id: string) {
+  const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
+  try {
+    const detail = await transferPostingService.getDetail(postingActor(session), id);
+    return { success: true as const, detail };
+  } catch (error) {
+    return actionError(error, "Transfer not found");
+  }
+}
+
+export async function listTransferModelsAction(branchId: string) {
+  const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
+  try {
+    const models = await transferPostingService.listModels(postingActor(session), branchId);
+    return { success: true as const, models };
+  } catch (error) {
+    return actionError(error, "Failed to load models");
+  }
+}
+
+export async function listTransferSerialsAction(branchId: string, modelId: string) {
+  const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
+  try {
+    const serials = await transferPostingService.listSerials(postingActor(session), branchId, modelId);
+    return { success: true as const, serials };
+  } catch (error) {
+    return actionError(error, "Failed to load serials");
+  }
+}
+
+export async function createTransferAction(input: unknown) {
+  const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
+  const parsed = transferSchema.safeParse(input);
+  if (!parsed.success) return { error: "Choose branches, a model, and the serials to transfer" };
+  try {
+    const row = await transferPostingService.create(postingActor(session), parsed.data);
+    revalidateTransfer(row.id);
+    return { success: true as const, id: row.id, transferNo: row.transferNo };
+  } catch (error) {
+    return actionError(error, "Failed to create transfer");
+  }
 }
 
 export async function approveTransferAction(id: string) {
-  const session = await requirePermission("orders.approve");
-  const statusCodeId = await requireFirstCodeId(session.user.tenantId, "transfer_workflow", [
-    "approved",
-    "for_transfer",
-  ]);
-  await prisma.branchTransfer.update({
-    where: { id, tenantId: session.user.tenantId },
-    data: { statusCodeId },
-  });
-  revalidateLogisticsPaths();
-  revalidatePath("/operations");
-  return { success: true as const };
+  const session = await requireAnyPermission([...TL_PERMISSIONS]);
+  try {
+    await transferPostingService.approve(postingActor(session), id);
+    revalidateTransfer(id);
+    return { success: true as const };
+  } catch (error) {
+    return actionError(error, "Failed to approve transfer");
+  }
 }
 
 export async function rejectTransferAction(id: string) {
-  const session = await requirePermission("orders.approve");
-  const statusCodeId = await requireFirstCodeId(session.user.tenantId, "transfer_workflow", [
-    "rejected",
-    "cancelled",
-  ]);
-  await prisma.branchTransfer.update({
-    where: { id, tenantId: session.user.tenantId },
-    data: { statusCodeId },
-  });
-  revalidateLogisticsPaths();
-  revalidatePath("/operations");
-  return { success: true as const };
+  const session = await requireAnyPermission([...TL_PERMISSIONS]);
+  try {
+    await transferPostingService.reject(postingActor(session), id);
+    revalidateTransfer(id);
+    return { success: true as const };
+  } catch (error) {
+    return actionError(error, "Failed to reject transfer");
+  }
 }
 
-export async function executeTransferAction(id: string, input?: unknown) {
+export async function executeTransferAction(id: string) {
   const session = await requirePermission(LOGISTICS_MANAGE);
-  const parsed = input ? serialIdsSchema.safeParse(input) : null;
-  if (parsed && !parsed.success) return { error: "Select at least one serial number" };
-
-  const transfer = await prisma.branchTransfer.findFirst({
-    where: { id, tenantId: session.user.tenantId },
-    include: { lines: true },
-  });
-  if (!transfer) return { error: "Transfer not found" };
-
-  const statusCodeId = await reasonStatusService.requireCodeId(
-    session.user.tenantId,
-    "transfer_workflow",
-    "in_transit",
-  );
-  const stkCodeId = await reasonStatusService.requireCodeId(
-    session.user.tenantId,
-    "inventory_system",
-    "STK",
-  );
-  const ditCodeId = await reasonStatusService.requireCodeId(
-    session.user.tenantId,
-    "inventory_system",
-    "DIT",
-  );
-
-  const serialNumberIds =
-    parsed?.data.serialNumberIds ?? transfer.lines.map((l) => l.serialNumberId);
-  if (serialNumberIds.length === 0) {
-    return { error: "Select serial numbers to transfer" };
-  }
-
   try {
-    if (parsed?.data.serialNumberIds) {
-      await prisma.branchTransferLine.createMany({
-        data: parsed.data.serialNumberIds.map((serialNumberId) => ({
-          transferId: id,
-          serialNumberId,
-        })),
-        skipDuplicates: true,
-      });
-    }
-
-    await updateInventoryStatusForSerials({
-      tenantId: session.user.tenantId,
-      branchId: transfer.fromBranchId,
-      serialNumberIds,
-      statusCodeId: ditCodeId,
-      userId: session.user.id,
-      requiredCurrentCodeId: stkCodeId,
-    });
-
-    await prisma.branchTransfer.update({
-      where: { id },
-      data: { statusCodeId },
-    });
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : "Failed to execute transfer" };
+    const result = await transferPostingService.release(postingActor(session), id);
+    revalidateTransfer(id);
+    return { success: true as const, movedCount: result.movedCount, idempotent: result.idempotent };
+  } catch (error) {
+    return actionError(error, "Failed to release transfer");
   }
-
-  await auditService.log({
-    tenantId: session.user.tenantId,
-    userId: session.user.id,
-    action: "transfer.executed",
-    entityType: "BranchTransfer",
-    entityId: id,
-    metadata: { transferNo: transfer.transferNo, serialCount: serialNumberIds.length },
-  });
-
-  revalidateLogisticsPaths();
-  revalidatePath("/operations");
-  revalidatePath("/inventory");
-  return { success: true as const };
 }
 
-export async function receiveTransferAction(id: string) {
-  const session = await requirePermission("orders.create");
-  const statusCodeId = await requireFirstCodeId(session.user.tenantId, "transfer_workflow", [
-    "accepted",
-    "completed",
-  ]);
-
-  const transfer = await prisma.branchTransfer.findFirst({
-    where: { id, tenantId: session.user.tenantId },
-    include: { lines: true },
-  });
-  if (!transfer) return { error: "Transfer not found" };
-  if (transfer.lines.length === 0) return { error: "No transfer lines to receive" };
-
-  const stkCodeId = await reasonStatusService.requireCodeId(
-    session.user.tenantId,
-    "inventory_system",
-    "STK",
-  );
-  const ditCodeId = await reasonStatusService.requireCodeId(
-    session.user.tenantId,
-    "inventory_system",
-    "DIT",
-  );
-
-  const serialNumberIds = transfer.lines.map((l) => l.serialNumberId);
-
+export async function receiveTransferAction(id: string, input: unknown) {
+  const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
+  const parsed = serialIdsSchema.safeParse(input);
+  if (!parsed.success) return { error: "Select the serials that arrived" };
   try {
-    await prisma.$transaction(async (tx) => {
-      const moved = await tx.branchInventory.updateMany({
-        where: {
-          tenantId: session.user.tenantId,
-          branchId: transfer.fromBranchId,
-          serialNumberId: { in: serialNumberIds },
-          statusCodeId: ditCodeId,
-        },
-        data: {
-          branchId: transfer.toBranchId,
-          statusCodeId: stkCodeId,
-          updatedById: session.user.id,
-        },
-      });
-
-      if (moved.count !== serialNumberIds.length) {
-        throw new Error("Some transfer serials are not in-transit from the source branch");
-      }
-
-      await tx.branchTransfer.update({
-        where: { id },
-        data: { statusCodeId },
-      });
-    });
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : "Failed to receive transfer" };
+    const result = await transferPostingService.receive(
+      postingActor(session),
+      id,
+      parsed.data.serialNumberIds,
+    );
+    revalidateTransfer(id);
+    return { success: true as const, ...result };
+  } catch (error) {
+    return actionError(error, "Failed to receive transfer");
   }
-
-  await auditService.log({
-    tenantId: session.user.tenantId,
-    userId: session.user.id,
-    action: "transfer.received",
-    entityType: "BranchTransfer",
-    entityId: id,
-    metadata: { transferNo: transfer.transferNo, serialCount: serialNumberIds.length },
-  });
-
-  revalidateLogisticsPaths();
-  revalidatePath("/operations");
-  revalidatePath("/inventory");
-  return { success: true as const };
 }
 
 export async function listPulloutsAction(input?: {
@@ -611,232 +453,110 @@ export async function listPulloutsAction(input?: {
   );
 }
 
+export async function getPulloutDetailAction(id: string) {
+  const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
+  try {
+    const detail = await pulloutPostingService.getDetail(postingActor(session), id);
+    return { success: true as const, detail };
+  } catch (error) {
+    return actionError(error, "Pull-out not found");
+  }
+}
+
+export async function listPulloutSerialsAction(branchId: string) {
+  const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
+  try {
+    const serials = await pulloutPostingService.listSerials(postingActor(session), branchId);
+    return { success: true as const, serials };
+  } catch (error) {
+    return actionError(error, "Failed to load serials");
+  }
+}
+
 export async function createPulloutAction(input: unknown) {
-  const session = await requirePermission("orders.create");
+  const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
   const parsed = pulloutSchema.safeParse(input);
-  if (!parsed.success) return { error: "Invalid input" };
-
-  const statusCodeId = await reasonStatusService.requireCodeId(
-    session.user.tenantId,
-    "pullout_workflow",
-    "pending_tl",
-  );
-
-  let reasonStatusId: string | undefined;
-  let reasonName: string | undefined;
-  if (parsed.data.reasonStatusCodeId) {
-    const reasonCode = await prisma.reasonStatusCode.findFirst({
-      where: {
-        id: parsed.data.reasonStatusCodeId,
-        tenantId: session.user.tenantId,
-        reasonStatus: { category: "pullout_reason" },
-      },
-      select: { id: true, reasonStatusId: true, name: true },
-    });
-    if (!reasonCode) return { error: "Invalid pull-out reason" };
-    reasonStatusId = reasonCode.reasonStatusId;
-    reasonName = reasonCode.name;
+  if (!parsed.success) return { error: "Choose a branch, warehouse, reason, and serials" };
+  try {
+    const row = await pulloutPostingService.create(postingActor(session), parsed.data);
+    revalidatePullout(row.id);
+    return { success: true as const, id: row.id, pulloutNo: row.pulloutNo };
+  } catch (error) {
+    return actionError(error, "Failed to create pull-out");
   }
-
-  const row = await prisma.branchPullout.create({
-    data: {
-      tenantId: session.user.tenantId,
-      branchId: parsed.data.branchId,
-      warehouseId: parsed.data.warehouseId,
-      pulloutNo: nextNo("PLT"),
-      statusCodeId,
-      reasonStatusId: reasonStatusId ?? null,
-      reasonStatusCodeId: parsed.data.reasonStatusCodeId ?? null,
-      ...(parsed.data.serialNumberIds?.length
-        ? {
-            lines: {
-              create: parsed.data.serialNumberIds.map((serialNumberId) => ({
-                serialNumberId,
-              })),
-            },
-          }
-        : {}),
-    },
-    include: { branch: { select: { name: true } }, lines: true },
-  });
-
-  if (parsed.data.serialNumberIds?.length) {
-    const stkCodeId = await reasonStatusService.requireCodeId(
-      session.user.tenantId,
-      "inventory_system",
-      "STK",
-    );
-    const rsvCodeId = await reasonStatusService.requireCodeId(
-      session.user.tenantId,
-      "inventory_system",
-      "RSV",
-    );
-    try {
-      await updateInventoryStatusForSerials({
-        tenantId: session.user.tenantId,
-        branchId: parsed.data.branchId,
-        serialNumberIds: parsed.data.serialNumberIds,
-        statusCodeId: rsvCodeId,
-        userId: session.user.id,
-        requiredCurrentCodeId: stkCodeId,
-      });
-    } catch (e) {
-      await prisma.branchPullout.delete({ where: { id: row.id } });
-      return { error: e instanceof Error ? e.message : "Serial not available" };
-    }
-  }
-
-  await auditService.log({
-    tenantId: session.user.tenantId,
-    userId: session.user.id,
-    action: "pullout.created",
-    entityType: "BranchPullout",
-    entityId: row.id,
-    metadata: {
-      pulloutNo: row.pulloutNo,
-      branchName: row.branch.name,
-      ...(reasonName ? { reasonName } : {}),
-      ...(parsed.data.serialNumberIds?.length
-        ? { serialCount: parsed.data.serialNumberIds.length }
-        : {}),
-    },
-  });
-
-  revalidateLogisticsPaths();
-  revalidatePath("/operations");
-  return { success: true as const };
 }
 
 export async function approvePulloutTlAction(id: string) {
-  const session = await requirePermission("orders.approve");
-  const statusCodeId = await reasonStatusService.requireCodeId(
-    session.user.tenantId,
-    "pullout_workflow",
-    "for_pullout",
-  );
-  const pullout = await prisma.branchPullout.findFirst({
-    where: { id, tenantId: session.user.tenantId },
-    include: { lines: true },
-  });
-  if (!pullout) return { error: "Pull-out not found" };
-
-  if (pullout.lines.length > 0) {
-    const rsvCodeId = await reasonStatusService.requireCodeId(
-      session.user.tenantId,
-      "inventory_system",
-      "RSV",
-    );
-    const fpoCodeId = await reasonStatusService.requireCodeId(
-      session.user.tenantId,
-      "inventory_system",
-      "FPO",
-    );
-    await updateInventoryStatusForSerials({
-      tenantId: session.user.tenantId,
-      branchId: pullout.branchId,
-      serialNumberIds: pullout.lines.map((l) => l.serialNumberId),
-      statusCodeId: fpoCodeId,
-      userId: session.user.id,
-      requiredCurrentCodeId: rsvCodeId,
-    });
+  const session = await requireAnyPermission([...TL_PERMISSIONS]);
+  try {
+    await pulloutPostingService.approve(postingActor(session), id);
+    revalidatePullout(id);
+    return { success: true as const };
+  } catch (error) {
+    return actionError(error, "Failed to approve pull-out");
   }
+}
 
-  await prisma.branchPullout.update({
-    where: { id },
-    data: { statusCodeId },
-  });
-  revalidateLogisticsPaths();
-  revalidatePath("/operations");
-  revalidatePath("/inventory");
-  return { success: true as const };
+export async function rejectPulloutAction(id: string) {
+  const session = await requireAnyPermission([...TL_PERMISSIONS]);
+  try {
+    await pulloutPostingService.reject(postingActor(session), id);
+    revalidatePullout(id);
+    return { success: true as const };
+  } catch (error) {
+    return actionError(error, "Failed to reject pull-out");
+  }
 }
 
 export async function schedulePulloutAction(id: string) {
   const session = await requirePermission(LOGISTICS_MANAGE);
-  const statusCodeId = await reasonStatusService.requireCodeId(
-    session.user.tenantId,
-    "pullout_workflow",
-    "pending_logistics",
-  );
-  await prisma.branchPullout.update({
-    where: { id, tenantId: session.user.tenantId },
-    data: { statusCodeId },
-  });
-  revalidateLogisticsPaths();
-  revalidatePath("/operations");
-  return { success: true as const };
+  try {
+    await pulloutPostingService.updateList(postingActor(session), { pulloutId: id });
+    revalidatePullout(id);
+    return { success: true as const };
+  } catch (error) {
+    return actionError(error, "Failed to save the pull-out list");
+  }
+}
+
+export async function updatePulloutListAction(id: string, input: unknown) {
+  const session = await requirePermission(LOGISTICS_MANAGE);
+  const parsed = pulloutListSchema.safeParse(input);
+  if (!parsed.success) return { error: "Choose the warehouse and the serials on this list" };
+  try {
+    await pulloutPostingService.updateList(postingActor(session), {
+      pulloutId: id,
+      warehouseId: parsed.data.warehouseId,
+      waybillNo: parsed.data.waybillNo,
+      notes: parsed.data.notes,
+      serialNumberIds: parsed.data.serialNumberIds,
+    });
+    revalidatePullout(id);
+    return { success: true as const };
+  } catch (error) {
+    return actionError(error, "Failed to save the pull-out list");
+  }
 }
 
 export async function releasePulloutAction(id: string) {
-  const session = await requirePermission("orders.create");
-  const statusCodeId = await reasonStatusService.requireCodeId(
-    session.user.tenantId,
-    "pullout_workflow",
-    "in_transit",
-  );
-  await prisma.branchPullout.update({
-    where: { id, tenantId: session.user.tenantId },
-    data: { statusCodeId },
-  });
-  revalidateLogisticsPaths();
-  revalidatePath("/operations");
-  return { success: true as const };
+  const session = await requirePermission(LOGISTICS_MANAGE);
+  try {
+    const result = await pulloutPostingService.finalize(postingActor(session), id);
+    revalidatePullout(id);
+    return { success: true as const, sapJob: result.sapJob };
+  } catch (error) {
+    return actionError(error, "Failed to send the pull-out");
+  }
 }
 
 export async function completePulloutAction(id: string) {
   const session = await requirePermission(LOGISTICS_MANAGE);
-  const statusCodeId = await reasonStatusService.requireCodeId(
-    session.user.tenantId,
-    "pullout_workflow",
-    "completed",
-  );
-  const pullout = await prisma.branchPullout.findFirst({
-    where: { id, tenantId: session.user.tenantId },
-    include: { lines: true },
-  });
-  if (!pullout) return { error: "Pull-out not found" };
-
-  if (pullout.lines.length > 0) {
-    const serialNumberIds = pullout.lines.map((l) => l.serialNumberId);
-    await assertSerialsNotFrozenInStockCount(session.user.tenantId, serialNumberIds);
-    await prisma.branchInventory.deleteMany({
-      where: {
-        tenantId: session.user.tenantId,
-        branchId: pullout.branchId,
-        serialNumberId: { in: serialNumberIds },
-      },
-    });
+  try {
+    await pulloutPostingService.complete(postingActor(session), id);
+    return { success: true as const };
+  } catch (error) {
+    return actionError(error, "Warehouse receipt is not available yet. Units stay in transit.");
   }
-
-  await prisma.branchPullout.update({
-    where: { id },
-    data: { statusCodeId },
-  });
-
-  const { sapService } = await import("@/features/sap/services/sap.service");
-  await sapService.emitPulloutItr(session.user.tenantId, {
-    id: pullout.id,
-    pulloutNo: pullout.pulloutNo,
-    branchId: pullout.branchId,
-    warehouseId: pullout.warehouseId,
-  });
-
-  await auditService.log({
-    tenantId: session.user.tenantId,
-    userId: session.user.id,
-    action: "pullout.completed",
-    entityType: "BranchPullout",
-    entityId: id,
-    metadata: {
-      pulloutNo: pullout.pulloutNo,
-      ...(pullout.lines.length ? { serialCount: pullout.lines.length } : {}),
-    },
-  });
-
-  revalidateLogisticsPaths();
-  revalidatePath("/operations");
-  revalidatePath("/inventory");
-  return { success: true as const };
 }
 
 export async function listBranchesForLogisticsAction() {
@@ -844,6 +564,7 @@ export async function listBranchesForLogisticsAction() {
   return prisma.branch.findMany({
     where: { tenantId: session.user.tenantId, deletedAt: null },
     orderBy: { name: "asc" },
+    select: { id: true, name: true },
   });
 }
 
@@ -852,40 +573,12 @@ export async function listWarehousesForLogisticsAction() {
   return prisma.warehouse.findMany({
     where: { tenantId: session.user.tenantId, deletedAt: null },
     orderBy: { name: "asc" },
+    select: { id: true, name: true, code: true },
   });
 }
 
 export async function listPulloutReasonCodesAction() {
   const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
   return reasonStatusService.listActiveCodes(session.user.tenantId, "pullout_reason");
-}
-
-export async function listBranchStockSerialsAction(branchId: string) {
-  const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
-  const stkCodeId = await reasonStatusService.requireCodeId(
-    session.user.tenantId,
-    "inventory_system",
-    "STK",
-  );
-  const rows = await prisma.branchInventory.findMany({
-    where: {
-      tenantId: session.user.tenantId,
-      branchId,
-      statusCodeId: stkCodeId,
-    },
-    include: {
-      serialNumber: {
-        include: { model: { select: { skuCode: true, name: true } } },
-      },
-    },
-    orderBy: { serialNumber: { serialNo: "asc" } },
-    take: 200,
-  });
-  return rows.map((r) => ({
-    serialNumberId: r.serialNumberId,
-    serialNo: r.serialNumber.serialNo,
-    skuCode: r.serialNumber.model.skuCode,
-    modelName: r.serialNumber.model.name,
-  }));
 }
 

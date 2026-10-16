@@ -1,15 +1,26 @@
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
+import {
+  AI_ASSISTANT_DENIED_MESSAGE,
+  AI_ASSISTANT_OFF_MESSAGE,
+  AI_ASSISTANT_UNAVAILABLE_MESSAGE,
+} from "@/features/ai/constants/assistant-limits";
+import type { PixelcareAiDenialReason } from "@/features/pixelcare-ai/lib/access";
 
 export function PixelcareAiAccessDenied(props: {
-  reason: "allowlist";
+  reason: PixelcareAiDenialReason;
 }) {
   let message: string;
   switch (props.reason) {
     case "allowlist":
-      message =
-        "Pixelcare AI is on, but this account is not on the optional allowlist. Clear PIXELCARE_AI_USER_IDS for all signed-in users, or add your user id/email.";
+      message = AI_ASSISTANT_DENIED_MESSAGE;
+      break;
+    case "policy":
+      message = AI_ASSISTANT_OFF_MESSAGE;
+      break;
+    case "unavailable":
+      message = AI_ASSISTANT_UNAVAILABLE_MESSAGE;
       break;
     default: {
       const _exhaustive: never = props.reason;

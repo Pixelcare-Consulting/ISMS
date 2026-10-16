@@ -1,15 +1,22 @@
 import {
-  convertToModelMessages,
   createUIMessageStream,
   createUIMessageStreamResponse,
   stepCountIs,
   streamText,
-  type ModelMessage,
   type UIMessage,
 } from "ai";
 
+import {
+  AI_ASSISTANT_BUSY_MESSAGE,
+  AI_ASSISTANT_RATE_LIMIT_MESSAGE,
+  AI_ASSISTANT_UNAVAILABLE_MESSAGE,
+  messageForAssistantGate,
+} from "@/features/ai/constants/assistant-limits";
+import { logAiAction } from "@/features/ai/lib/audit";
+import { readAiAssistantGate } from "@/features/ai/services/assistant-policy.service";
 import { PIXELCARE_AI_LIMITS } from "@/features/pixelcare-ai/constants/limits";
 import { isPixelcareAiSampleMode } from "@/features/pixelcare-ai/constants/permissions";
+import { storedHistoryForModel } from "@/features/pixelcare-ai/lib/model-history";
 import {
   getPixelcareAiLanguageModel,
   isPixelcareAiProviderConfigured,
@@ -29,7 +36,7 @@ import { listPixelcareAiToolNames } from "@/features/pixelcare-ai/constants/tool
 import { conversationService } from "@/features/pixelcare-ai/services/conversation.service";
 import { assertPermittedBranch } from "@/features/pixelcare-ai/tools/branch-access";
 import { buildPixelcareAiTools } from "@/features/pixelcare-ai/tools/registry";
-import { rateLimit } from "@/lib/cache/redis";
+import { reserveAiRequest } from "@/lib/cache/ai-limits";
 import type { AppSession } from "@/lib/auth/session";
 import { logger } from "@/lib/shared/logger";
 
@@ -71,6 +78,17 @@ function extractLatestUserText(messages: UIMessage[] | undefined, fallback?: str
   return "";
 }
 
+async function acceptedContext(
+  session: AppSession,
+  context?: PixelcareAiContext | null,
+): Promise<PixelcareAiContext | null> {
+  if (!context) return null;
+  if (!context.branchId) return context;
+  const access = await assertPermittedBranch(session, context.branchId);
+  if (!access.ok) return { ...context, branchId: null };
+  return { ...context, branchId: access.branch.id };
+}
+
 export async function streamPixelcareAiChat(input: {
   session: AppSession;
   conversationId?: string | null;
@@ -79,6 +97,12 @@ export async function streamPixelcareAiChat(input: {
   context?: PixelcareAiContext | null;
   abortSignal?: AbortSignal;
 }) {
+  const policy = await readAiAssistantGate(input.session.user.tenantId);
+  if (!policy.ok) {
+    const denied = messageForAssistantGate(policy.reason);
+    return { ok: false as const, status: denied.status, error: denied.error };
+  }
+
   if (!isPixelcareAiProviderConfigured() && !isPixelcareAiSampleMode()) {
     return {
       ok: false as const,
@@ -87,30 +111,41 @@ export async function streamPixelcareAiChat(input: {
     };
   }
 
-  const limit = await rateLimit(
-    `pixelcare-ai:${input.session.user.tenantId}:${input.session.user.id}`,
-    PIXELCARE_AI_LIMITS.rateLimitMax,
-    PIXELCARE_AI_LIMITS.rateLimitWindowSec,
-  );
-  if (!limit.allowed) {
+  const reservation = await reserveAiRequest({
+    tenantId: input.session.user.tenantId,
+    userId: input.session.user.id,
+    limits: policy.limits,
+  });
+  if (!reservation.ok) {
+    const error =
+      reservation.reason === "rate"
+        ? AI_ASSISTANT_RATE_LIMIT_MESSAGE
+        : reservation.reason === "concurrency"
+          ? AI_ASSISTANT_BUSY_MESSAGE
+          : AI_ASSISTANT_UNAVAILABLE_MESSAGE;
     return {
       ok: false as const,
-      status: 429 as const,
-      error: "Too many Pixelcare AI requests. Wait a minute, then try again.",
+      status: reservation.reason === "unavailable" ? 503 : 429,
+      error,
     };
   }
 
+  try {
   const userText = extractLatestUserText(input.messages, input.message);
   if (!userText) {
+    await reservation.release();
     return { ok: false as const, status: 400 as const, error: "Message is required." };
   }
   if (userText.length > PIXELCARE_AI_LIMITS.maxMessageChars) {
+    await reservation.release();
     return {
       ok: false as const,
       status: 400 as const,
       error: `Message exceeds ${PIXELCARE_AI_LIMITS.maxMessageChars} characters.`,
     };
   }
+
+  const safeContext = await acceptedContext(input.session, input.context);
 
   let conversationId = input.conversationId ?? null;
   if (conversationId) {
@@ -119,19 +154,19 @@ export async function streamPixelcareAiChat(input: {
       input.session.user.id,
       conversationId,
     );
-    if (input.context !== undefined) {
+    if (safeContext !== undefined && input.context !== undefined) {
       await conversationService.patch({
         tenantId: input.session.user.tenantId,
         userId: input.session.user.id,
         id: conversationId,
-        context: input.context,
+        context: safeContext,
       });
     }
   } else {
     const created = await conversationService.create({
       tenantId: input.session.user.tenantId,
       userId: input.session.user.id,
-      context: input.context,
+      context: safeContext,
       title: userText.slice(0, 80),
     });
     conversationId = created.id;
@@ -144,21 +179,15 @@ export async function streamPixelcareAiChat(input: {
     content: userText,
   });
 
-  const history = await conversationService.recentModelMessages(conversationId);
-  const modelMessages: ModelMessage[] = history.map((row) => ({
-    role: row.role,
-    content: row.content,
-  }));
-
-  // Prefer UI message conversion when the client sent a full thread.
-  let messagesForModel = modelMessages;
-  if (input.messages && input.messages.length > 0) {
-    try {
-      messagesForModel = await convertToModelMessages(input.messages);
-    } catch {
-      messagesForModel = modelMessages;
-    }
-  }
+  const history = await conversationService.recentModelMessages(
+    conversationId,
+    policy.limits.maxContextMessages,
+  );
+  const messagesForModel = storedHistoryForModel({
+    rows: history,
+    maxContextMessages: policy.limits.maxContextMessages,
+    pageContext: safeContext,
+  });
 
   const salesOrderNumbers = extractSalesOrderNumbers(userText);
   const sampleMode = isPixelcareAiSampleMode();
@@ -175,7 +204,7 @@ export async function streamPixelcareAiChat(input: {
             )
           )?.contextJson,
         )
-      : (input.context ?? null);
+      : (safeContext ?? null);
   const activeBranch = await resolveActiveBranch(input.session, workingContext);
 
   async function syncContextFromToolResults(
@@ -232,6 +261,7 @@ export async function streamPixelcareAiChat(input: {
         writer.write({ type: "text-end", id: textId });
       },
     });
+    await reservation.release();
     return {
       ok: true as const,
       conversationId,
@@ -242,6 +272,12 @@ export async function streamPixelcareAiChat(input: {
       }),
     };
   }
+
+  const policyAbort = new AbortController();
+  const timeoutSignal = AbortSignal.timeout(policy.limits.requestTimeoutMs);
+  const abortSignal = input.abortSignal
+    ? AbortSignal.any([input.abortSignal, timeoutSignal, policyAbort.signal])
+    : AbortSignal.any([timeoutSignal, policyAbort.signal]);
 
   const result = streamText({
     model: getPixelcareAiLanguageModel(),
@@ -256,12 +292,21 @@ export async function streamPixelcareAiChat(input: {
     tools: buildPixelcareAiTools(input.session, {
       defaultBranchId: activeBranch?.id ?? workingContext?.branchId ?? null,
       messageOrderNumbers: salesOrderNumbers,
+      maxToolSteps: policy.limits.maxToolSteps,
+      requestTimeoutMs: policy.limits.requestTimeoutMs,
+      abortSignal,
     }),
-    prepareStep: ({ stepNumber }) =>
-      preparePixelcareOrderLookupStep({ stepNumber, salesOrderNumbers }),
-    stopWhen: stepCountIs(PIXELCARE_AI_LIMITS.maxToolSteps),
-    maxOutputTokens: PIXELCARE_AI_LIMITS.maxOutputTokens,
-    abortSignal: input.abortSignal,
+    prepareStep: async ({ stepNumber }) => {
+      const stillOn = await readAiAssistantGate(input.session.user.tenantId);
+      if (!stillOn.ok) {
+        policyAbort.abort();
+        return { toolChoice: "none" as const, activeTools: [] as const };
+      }
+      return preparePixelcareOrderLookupStep({ stepNumber, salesOrderNumbers });
+    },
+    stopWhen: stepCountIs(policy.limits.maxToolSteps),
+    maxOutputTokens: policy.limits.maxOutputTokens,
+    abortSignal,
     providerOptions: {
       qwen: {
         enable_thinking: false,
@@ -281,36 +326,53 @@ export async function streamPixelcareAiChat(input: {
       );
     },
     onFinish: async ({ text, usage, finishReason, steps }) => {
-      // Final pass in case step callbacks raced or tools finished only on the last step.
-      const lateResults = steps.flatMap((step) =>
-        (step.toolResults ?? []).map((result) => ({
-          toolName: result.toolName,
-          output: result.output,
-        })),
-      );
-      if (lateResults.length > 0) {
-        await syncContextFromToolResults(lateResults);
-      }
+      try {
+        const lateResults = steps.flatMap((step) =>
+          (step.toolResults ?? []).map((result) => ({
+            toolName: result.toolName,
+            output: result.output,
+          })),
+        );
+        if (lateResults.length > 0) {
+          await syncContextFromToolResults(lateResults);
+        }
 
-      const content = text.trim() || "I could not complete that answer. Try again or rephrase.";
-      await conversationService.appendAssistantMessage({
-        conversationId: conversationId!,
-        content,
-      });
-      logger.info(
-        {
-          requestId,
-          toolNames: listPixelcareAiToolNames(),
-          finishReason,
-          latencyMs: Date.now() - started,
-          totalTokens: usage?.totalTokens ?? null,
-          conversationId,
+        const content = text.trim() || "I could not complete that answer. Try again or rephrase.";
+        await conversationService.appendAssistantMessage({
+          conversationId: conversationId!,
+          content,
+        });
+        logger.info(
+          {
+            requestId,
+            toolCount: listPixelcareAiToolNames().length,
+            finishReason,
+            latencyMs: Date.now() - started,
+            totalTokens: usage?.totalTokens ?? null,
+            conversationId,
+            tenantId: input.session.user.tenantId,
+            userId: input.session.user.id,
+            contextBranchId: workingContext?.branchId ?? null,
+          },
+          "pixelcare-ai.chat.finish",
+        );
+        await logAiAction({
           tenantId: input.session.user.tenantId,
           userId: input.session.user.id,
-          contextBranchId: workingContext?.branchId ?? null,
-        },
-        "pixelcare-ai.chat.finish",
-      );
+          action: "ai.pixelcare.chat",
+          metadata: {
+            conversationId,
+            decision: "allow",
+            totalTokens: usage?.totalTokens ?? null,
+          },
+        });
+      } finally {
+        await reservation.release();
+      }
+    },
+    onError: () => {
+      logger.error({ requestId, event: "pixelcare-ai.chat.failed" }, "pixelcare-ai.chat.failed");
+      void reservation.release();
     },
   });
 
@@ -322,4 +384,9 @@ export async function streamPixelcareAiChat(input: {
       headers: responseHeaders,
     }),
   };
+  } catch (error) {
+    await reservation.release();
+    logger.error({ event: "pixelcare-ai.chat.failed" }, "pixelcare-ai.chat.failed");
+    throw error;
+  }
 }

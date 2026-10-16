@@ -1,5 +1,8 @@
 import type { AiAutomation, Prisma } from "@/lib/database/generated/prisma/client";
 
+import { AI_ASSISTANT_OFF_MESSAGE } from "@/features/ai/constants/assistant-limits";
+import { AssistantUserError } from "@/features/ai/lib/assistant-messages";
+import { readAiAssistantGate } from "@/features/ai/services/assistant-policy.service";
 import {
   automationExecutors,
   missingExecutorError,
@@ -31,7 +34,8 @@ function isUniqueConflict(error: unknown): boolean {
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Unknown error";
+  if (error instanceof AssistantUserError) return error.message;
+  return "The automation could not finish.";
 }
 
 async function claimRun(
@@ -156,6 +160,17 @@ export async function runDueAiAutomations(now: Date = new Date()): Promise<Autom
 
   for (const automation of automations) {
     try {
+      const policy = await readAiAssistantGate(automation.tenantId);
+      if (!policy.ok) {
+        outcomes.push({
+          automationId: automation.id,
+          tenantId: automation.tenantId,
+          outcome: "failed",
+          error: AI_ASSISTANT_OFF_MESSAGE,
+        });
+        continue;
+      }
+
       const decision = decideAutomationDue(automation, now);
       if (decision.kind === "not_due") {
         outcomes.push({

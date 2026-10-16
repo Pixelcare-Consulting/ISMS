@@ -28,6 +28,8 @@ export type AutomationProposalView = {
   orderNumber: string | null;
   lines: unknown;
   label: string;
+  /** Present only for an open proposal the current user can confirm. Never sent to the model. */
+  confirmationToken: string | null;
 };
 
 export type AutomationCardView = {

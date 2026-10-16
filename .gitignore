@@ -9,7 +9,6 @@
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
-/docs
 
 # testing
 /coverage
@@ -69,7 +68,8 @@ yarn-error.log*
 # Others
 /AGENTS.md
 /CLAUDE.md
-/docs/
+/docs/*
+!/docs/AI_ASSISTANT_SECURITY.md
 /.docs/
 .cursor-aor-restore-backup/
 .cursor-aor-restore-backup/*

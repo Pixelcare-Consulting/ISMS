@@ -66,6 +66,89 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.72.0",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T15:45:00+08:00",
+    title: "Send a transfer and a pull-out",
+    highlights: [
+      "Request a transfer, approve it, send it, and receive the units that arrived.",
+      "Request a pull-out through to in transit. Receiving those units at the warehouse is not in this update.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "You can request a transfer between branches, approve it, send the units, and receive only the serials that arrived. The rest stay in transit until they do. A defective unit stays defective when it is received.",
+      },
+      {
+        type: "feature",
+        description:
+          "You can request a pull-out, approve it, save the logistics list, and send it. The units stay in transit at the branch. Warehouse receipt is not in this update.",
+      },
+    ],
+  },
+  {
+    version: "0.71.2",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T14:35:00+08:00",
+    audience: "internal",
+    title: "Ask the assistant on this server",
+    highlights: [
+      "You can ask the assistant again on this server without extra setup.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Questions go through again on a single server. The same request limits still apply.",
+      },
+    ],
+  },
+  {
+    version: "0.71.1",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T14:25:00+08:00",
+    audience: "internal",
+    title: "Clearer assistant messages",
+    highlights: [
+      "If the assistant cannot take a question, you see a short sentence instead of a code error.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "A failed question shows a short sentence, including when the assistant is turned off or cannot take questions right now.",
+      },
+    ],
+  },
+  {
+    version: "0.71.0",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T14:00:00+08:00",
+    audience: "internal",
+    title: "Turn the assistant on for your company",
+    highlights: [
+      "The assistant stays off until it is turned on for the company.",
+      "A replenishment order is created only after you press Confirm order.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "The assistant stays off until it is turned on for the company. Company settings does not show that switch.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The assistant keeps to the stores and records you can already open, and an order is created only after you confirm that same proposal.",
+      },
+      {
+        type: "fix",
+        description: "The assistant no longer runs when it has not been turned on.",
+      },
+    ],
+  },
+  {
     version: "0.70.5",
     date: "2026-10-16",
     releasedAt: "2026-10-16T11:00:00+08:00",

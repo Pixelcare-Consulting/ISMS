@@ -18,6 +18,7 @@ import { resolveRouteTitle } from "@/config/route-titles";
 import { AiCopilotLauncher } from "@/features/ai/components/ai-copilot-launcher";
 import { canUseAiAssist } from "@/features/ai/constants/ai-permissions";
 import { isAiConfigured } from "@/features/ai/lib/provider";
+import { readAiAssistantGate } from "@/features/ai/services/assistant-policy.service";
 import { countUnreadAnnouncementsAction } from "@/features/announcements/actions/announcement.actions";
 import { countStockUnitsStkAction } from "@/features/inventory/actions/inventory.actions";
 import { getWorkflowNavCountBadgesAction } from "@/features/nav-badges/actions/nav-count-badges.actions";
@@ -51,6 +52,7 @@ export default async function AppLayout({
     unreadNotificationCount,
     stockUnitsStkCount,
     workflowNavCounts,
+    assistantGate,
   ] = await Promise.all([
     getCachedLayoutBranding(session.user.tenantId),
     getCachedLayoutProfile(session.user.tenantId, session.user.id),
@@ -60,6 +62,7 @@ export default async function AppLayout({
     countUnreadNotificationsAction().catch(() => 0),
     countStockUnitsStkAction().catch(() => 0),
     getWorkflowNavCountBadgesAction(),
+    readAiAssistantGate(session.user.tenantId),
   ]);
 
   const user = {
@@ -113,7 +116,7 @@ export default async function AppLayout({
       <SapSyncReportDialogs />
       <AiCopilotLauncher
         canAssist={canUseAiAssist(session.user.permissions)}
-        configured={isAiConfigured()}
+        configured={isAiConfigured() && assistantGate.ok}
         canUsePixelcareAi={canUsePixelcareAi({
           userId: session.user.id,
           email: session.user.email,

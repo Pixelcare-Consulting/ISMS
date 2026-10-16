@@ -109,7 +109,10 @@ export const conversationRepository = {
     });
   },
 
-  listRecentMessages(conversationId: string, take = PIXELCARE_AI_LIMITS.maxContextMessages) {
+  listRecentMessages(
+    conversationId: string,
+    take: number = PIXELCARE_AI_LIMITS.maxContextMessages,
+  ) {
     return prisma.aiMessage.findMany({
       where: { conversationId },
       orderBy: { createdAt: "desc" },

@@ -286,6 +286,8 @@ model Tenant {
   aiAutomations               AiAutomation[]
   aiAutomationRuns            AiAutomationRun[]
   aiReplenishmentProposals    AiReplenishmentProposal[]
+  aiAssistantPolicy           AiAssistantPolicy?
+  aiReplenishmentConfirmations AiReplenishmentConfirmation[]
 
   @@index([isPlatform])
   @@map("tenants")
@@ -364,6 +366,7 @@ model User {
   aiAutomationsOwned                 AiAutomation[]                @relation("AiAutomationOwner")
   aiAutomationRunsActed              AiAutomationRun[]             @relation("AiAutomationRunActor")
   aiReplenishmentProposalsConfirmed  AiReplenishmentProposal[]     @relation("AiReplenishmentProposalConfirmedBy")
+  aiReplenishmentConfirmations       AiReplenishmentConfirmation[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -1564,6 +1567,8 @@ model ReasonStatusCode {
   branchTransfers               BranchTransfer[]
   branchPulloutsWorkflow        BranchPullout[]                @relation("PulloutWorkflowStatus")
   branchPulloutsReasonCode      BranchPullout[]                @relation("PulloutReasonCode")
+  transferLinePriorStatuses     BranchTransferLine[]           @relation("TransferLinePriorStatus")
+  pulloutLinePriorStatuses      BranchPulloutLine[]            @relation("PulloutLinePriorStatus")
   serviceCenterInventories      ServiceCenterInventory[]
   serviceCenterDeliveries       ServiceCenterDelivery[]
   scPulloutsWorkflow            ServiceCenterPullout[]         @relation("ScPulloutWorkflowStatus")
@@ -2142,15 +2147,19 @@ model BranchTransfer {
 }
 
 model BranchTransferLine {
-  id             String @id @default(cuid())
-  transferId     String @map("transfer_id")
-  serialNumberId String @map("serial_number_id")
-  quantity       Int    @default(1)
+  id                String  @id @default(cuid())
+  transferId        String  @map("transfer_id")
+  serialNumberId    String  @map("serial_number_id")
+  quantity          Int     @default(1)
+  /// Inventory code before this transfer held the unit. Null on rows created before the hold.
+  priorStatusCodeId String? @map("prior_status_code_id")
 
-  transfer     BranchTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
-  serialNumber SerialNumber   @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
+  transfer        BranchTransfer    @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  serialNumber    SerialNumber      @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
+  priorStatusCode ReasonStatusCode? @relation("TransferLinePriorStatus", fields: [priorStatusCodeId], references: [id], onDelete: SetNull)
 
   @@unique([transferId, serialNumberId])
+  @@index([priorStatusCodeId])
   @@map("branch_transfer_lines")
 }
 
@@ -2192,14 +2201,18 @@ model BranchPullout {
 }
 
 model BranchPulloutLine {
-  id             String @id @default(cuid())
-  pulloutId      String @map("pullout_id")
-  serialNumberId String @map("serial_number_id")
+  id                String  @id @default(cuid())
+  pulloutId         String  @map("pullout_id")
+  serialNumberId    String  @map("serial_number_id")
+  /// Inventory code before this pull-out held the unit. Null on rows created before the hold.
+  priorStatusCodeId String? @map("prior_status_code_id")
 
-  pullout      BranchPullout @relation(fields: [pulloutId], references: [id], onDelete: Cascade)
-  serialNumber SerialNumber  @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
+  pullout         BranchPullout     @relation(fields: [pulloutId], references: [id], onDelete: Cascade)
+  serialNumber    SerialNumber      @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
+  priorStatusCode ReasonStatusCode? @relation("PulloutLinePriorStatus", fields: [priorStatusCodeId], references: [id], onDelete: SetNull)
 
   @@unique([pulloutId, serialNumberId])
+  @@index([priorStatusCodeId])
   @@map("branch_pullout_lines")
 }
 
@@ -3346,6 +3359,8 @@ model AiReplenishmentProposal {
   branchId      String                        @map("branch_id")
   localDay      DateTime                      @map("local_day") @db.Date
   lines         Json
+  /// SHA-256 of the orderable lines the person is asked to confirm.
+  lineHash      String?                       @map("line_hash")
   status        AiReplenishmentProposalStatus @default(proposed)
   orderId       String?                       @unique @map("order_id")
   confirmedById String?                       @map("confirmed_by_id")
@@ -3357,9 +3372,54 @@ model AiReplenishmentProposal {
   run         AiAutomationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
   branch      Branch          @relation(fields: [branchId], references: [id], onDelete: Cascade)
   order       BranchOrder?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  confirmedBy User?           @relation("AiReplenishmentProposalConfirmedBy", fields: [confirmedById], references: [id], onDelete: SetNull)
+  confirmedBy   User?                          @relation("AiReplenishmentProposalConfirmedBy", fields: [confirmedById], references: [id], onDelete: SetNull)
+  confirmations AiReplenishmentConfirmation[]
 
   @@index([tenantId, branchId, localDay])
   @@index([runId])
   @@map("ai_replenishment_proposals")
+}
+
+/// One optional row per tenant. No row, enabled false, or a failed read means
+/// Pixelcare AI and ISMS Assist stay off. Limits cannot exceed code ceilings.
+model AiAssistantPolicy {
+  id                   String   @id @default(cuid())
+  tenantId             String   @unique @map("tenant_id")
+  enabled              Boolean  @default(false)
+  maxRequestsPerUser   Int      @default(30) @map("max_requests_per_user")
+  windowSeconds        Int      @default(600) @map("window_seconds")
+  maxOutputTokens      Int      @default(2048) @map("max_output_tokens")
+  maxToolSteps         Int      @default(5) @map("max_tool_steps")
+  requestTimeoutMs     Int      @default(60000) @map("request_timeout_ms")
+  maxRequestsPerTenant Int      @default(300) @map("max_requests_per_tenant")
+  maxUserConcurrency   Int      @default(2) @map("max_user_concurrency")
+  maxTenantConcurrency Int      @default(20) @map("max_tenant_concurrency")
+  maxContextMessages   Int      @default(24) @map("max_context_messages")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("ai_assistant_policies")
+}
+
+/// Single-use confirmation for one proposal and one line hash. The raw token
+/// is shown only to the Confirm order button, never to the model.
+model AiReplenishmentConfirmation {
+  id         String    @id @default(cuid())
+  tenantId   String    @map("tenant_id")
+  userId     String    @map("user_id")
+  proposalId String    @map("proposal_id")
+  lineHash   String    @map("line_hash")
+  tokenHash  String    @unique @map("token_hash")
+  expiresAt  DateTime  @map("expires_at")
+  usedAt     DateTime? @map("used_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  tenant   Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user     User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  proposal AiReplenishmentProposal  @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId, proposalId])
+  @@map("ai_replenishment_confirmations")
 }

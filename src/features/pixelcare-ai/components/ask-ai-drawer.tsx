@@ -18,6 +18,7 @@ import {
 import { ChatComposer } from "@/features/pixelcare-ai/components/chat-composer";
 import { ChatMessages } from "@/features/pixelcare-ai/components/chat-messages";
 import { ContextBar } from "@/features/pixelcare-ai/components/context-bar";
+import { formatAssistantApiError } from "@/features/pixelcare-ai/lib/chat-api-error";
 import type { PixelcareAiContext } from "@/features/pixelcare-ai/schemas/context.schema";
 
 export function AskAiDrawer(props: {
@@ -51,12 +52,13 @@ export function AskAiDrawer(props: {
     [conversationId, context, open, props.pageContext],
   );
 
-  const { messages, sendMessage, status, stop, setMessages } = useChat({
+  const { messages, sendMessage, status, stop, setMessages, error: chatError } = useChat({
     id: conversationId ?? "pixelcare-ask-ai-draft",
     transport,
   });
 
   const streaming = status === "streaming" || status === "submitted";
+  const shownError = formatAssistantApiError(error ?? chatError?.message ?? null);
   const prevStreaming = useRef(streaming);
 
   useEffect(() => {
@@ -86,7 +88,10 @@ export function AskAiDrawer(props: {
     try {
       await sendMessage({ text });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not send message.");
+      setError(
+        formatAssistantApiError(err instanceof Error ? err.message : "Could not send message.") ??
+          "Could not send message.",
+      );
       setInput(text);
     }
   }
@@ -135,7 +140,7 @@ export function AskAiDrawer(props: {
         <ChatMessages messages={messages} streaming={streaming} className="px-2" />
 
         <div className="mt-auto space-y-2 border-t px-4 py-3">
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          {shownError ? <p className="text-sm text-destructive">{shownError}</p> : null}
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"

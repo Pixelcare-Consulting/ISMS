@@ -1,9 +1,6 @@
-import {
-  PIXELCARE_AI_CONFIRMED_WRITE_TOOLS,
-  PIXELCARE_AI_READ_ONLY_TOOLS,
-} from "@/features/pixelcare-ai/constants/tools";
+import { PIXELCARE_AI_READ_ONLY_TOOLS } from "@/features/pixelcare-ai/constants/tools";
 
-/** Allowlisted tool names. Keep in sync with `buildPixelcareAiTools` keys. */
+/** Model-visible tool names. Confirm order is a button, not a model tool. */
 export function listPixelcareAiToolNames(): string[] {
-  return [...PIXELCARE_AI_READ_ONLY_TOOLS, ...PIXELCARE_AI_CONFIRMED_WRITE_TOOLS];
+  return [...PIXELCARE_AI_READ_ONLY_TOOLS];
 }

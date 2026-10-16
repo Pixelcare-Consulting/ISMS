@@ -40,6 +40,10 @@ export default async function CompanySettingsPage() {
           canEdit={canEdit}
         />
       </SettingsSection>
+      {/*
+        Assistant settings are hidden from company settings on purpose.
+        The tenant policy, save action, and default-off behavior stay on the server.
+      */}
     </div>
   );
 }
