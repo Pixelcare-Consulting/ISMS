@@ -10,12 +10,17 @@ import {
   type InventoryGroupBranchRow,
   type InventoryGroupListFilters,
   type InventoryGroupModelRow,
+  type InventoryGroupStatusCodeRef,
   type InventoryListFilters,
   type InventoryListRow,
   type InventoryListSort,
   type InventoryListSortDir,
 } from "@/features/inventory/repositories/inventory.repository";
-import type { InventoryGroupAggregates } from "@/features/inventory/utils/stock-units-group-aggregates";
+import {
+  inventoryGroupStatusesFromCounts,
+  type InventoryGroupAggregates,
+  type InventoryGroupCountParts,
+} from "@/features/inventory/utils/stock-units-group-aggregates";
 import {
   deriveSkuSeries,
   wholeDaysBetween,
@@ -137,15 +142,31 @@ function toGroupListFilters(
   };
 }
 
-function branchRowToSummary(row: InventoryGroupBranchRow): InventoryGroupBranchSummary {
-  const { branchId, branchName, branchSapCode, ...counts } = row;
+function toGroupAggregates(
+  counts: InventoryGroupCountParts,
+  codes: InventoryStatusCodeRow[],
+): InventoryGroupAggregates {
   return {
-    branch: { id: branchId, name: branchName, sapCode: branchSapCode },
-    counts,
+    ...counts,
+    statuses: inventoryGroupStatusesFromCounts(codes, counts.statusCounts),
   };
 }
 
-function modelRowToSummary(row: InventoryGroupModelRow): InventoryGroupModelSummary {
+function branchRowToSummary(
+  row: InventoryGroupBranchRow,
+  codes: InventoryStatusCodeRow[],
+): InventoryGroupBranchSummary {
+  const { branchId, branchName, branchSapCode, ...counts } = row;
+  return {
+    branch: { id: branchId, name: branchName, sapCode: branchSapCode },
+    counts: toGroupAggregates(counts, codes),
+  };
+}
+
+function modelRowToSummary(
+  row: InventoryGroupModelRow,
+  codes: InventoryStatusCodeRow[],
+): InventoryGroupModelSummary {
   const { modelId, skuCode, modelName, brandName, ...counts } = row;
   return {
     model: {
@@ -154,8 +175,21 @@ function modelRowToSummary(row: InventoryGroupModelRow): InventoryGroupModelSumm
       name: modelName,
       brand: brandName ? { name: brandName } : null,
     },
-    counts,
+    counts: toGroupAggregates(counts, codes),
   };
+}
+
+function toStatusCodeRefs(codes: InventoryStatusCodeRow[]): InventoryGroupStatusCodeRef[] {
+  return codes.map((code) => ({ id: code.id, code: code.code }));
+}
+
+async function loadInventoryStatusCodes(
+  tenantId: string,
+): Promise<InventoryStatusCodeRow[]> {
+  return (await reasonStatusRepository.listActiveCodesByCategory(
+    tenantId,
+    "inventory_system",
+  )) as InventoryStatusCodeRow[];
 }
 
 export const inventoryService = {
@@ -169,8 +203,12 @@ export const inventoryService = {
   ): Promise<
     PaginatedResult<InventoryGroupBranchSummary | InventoryGroupModelSummary>
   > {
-    const branchIds = await resolveBranchIds(tenantId, userId, isUnrestricted);
+    const [branchIds, statusCodes] = await Promise.all([
+      resolveBranchIds(tenantId, userId, isUnrestricted),
+      loadInventoryStatusCodes(tenantId),
+    ]);
     const groupFilters = toGroupListFilters(filters);
+    const statusCodeRefs = toStatusCodeRefs(statusCodes);
     const result =
       groupBy === "by-branch"
         ? await inventoryRepository.listBranchGroups(
@@ -178,20 +216,26 @@ export const inventoryService = {
             branchIds,
             pagination,
             groupFilters,
+            statusCodeRefs,
           )
         : await inventoryRepository.listModelGroups(
             tenantId,
             branchIds,
             pagination,
             groupFilters,
+            statusCodeRefs,
           );
 
     return {
       ...result,
       items:
         groupBy === "by-branch"
-          ? (result.items as InventoryGroupBranchRow[]).map(branchRowToSummary)
-          : (result.items as InventoryGroupModelRow[]).map(modelRowToSummary),
+          ? (result.items as InventoryGroupBranchRow[]).map((row) =>
+              branchRowToSummary(row, statusCodes),
+            )
+          : (result.items as InventoryGroupModelRow[]).map((row) =>
+              modelRowToSummary(row, statusCodes),
+            ),
     };
   },
 
@@ -214,8 +258,12 @@ export const inventoryService = {
       | InventoryListEnrichedItem
     >
   > {
-    const branchIds = await resolveBranchIds(tenantId, userId, isUnrestricted);
+    const [branchIds, statusCodes] = await Promise.all([
+      resolveBranchIds(tenantId, userId, isUnrestricted),
+      loadInventoryStatusCodes(tenantId),
+    ]);
     const groupFilters = toGroupListFilters(input.filters);
+    const statusCodeRefs = toStatusCodeRefs(statusCodes);
 
     if (input.level === "serials") {
       if (!input.branchId || !input.modelId) {
@@ -237,6 +285,7 @@ export const inventoryService = {
           branchId: input.branchId,
           modelId: input.modelId,
         },
+        statusCodeRefs,
       );
       const withPlanogram = await this.enrichWithPlanogramFlags(tenantId, result);
       const withAging = await this.enrichWithDeliveryAging(tenantId, withPlanogram);
@@ -254,10 +303,11 @@ export const inventoryService = {
         input.branchId,
         input.pagination,
         groupFilters,
+        statusCodeRefs,
       );
       return {
         ...result,
-        items: result.items.map(modelRowToSummary),
+        items: result.items.map((row) => modelRowToSummary(row, statusCodes)),
       };
     }
 
@@ -272,16 +322,11 @@ export const inventoryService = {
         input.modelId,
         input.pagination,
         groupFilters,
+        statusCodeRefs,
       );
       return {
         ...result,
-        items: result.items.map((row) => {
-          const { branchId, branchName, branchSapCode, ...counts } = row;
-          return {
-            branch: { id: branchId, name: branchName, sapCode: branchSapCode },
-            counts,
-          };
-        }),
+        items: result.items.map((row) => branchRowToSummary(row, statusCodes)),
       };
     }
 

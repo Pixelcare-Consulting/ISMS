@@ -446,7 +446,7 @@ export function InventoryGroupedTable({
           <TableHead className="w-10" aria-label="Expand" />
           <TableIndexHead />
           <TableHead>{topLabel}</TableHead>
-          <TableHead>Stocks</TableHead>
+          <TableHead className="min-w-72">Stocks</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -595,7 +595,7 @@ function TopGroupRows({
         </TableCell>
         <TableIndexCell index={index} />
         <TableCell className="min-w-0 whitespace-normal">{title}</TableCell>
-        <TableCell>
+        <TableCell className="align-top whitespace-normal">
           <InventoryGroupCounts counts={row.counts} />
         </TableCell>
       </TableRow>
@@ -686,7 +686,7 @@ function NestedMidPanel({
             <tr>
               <th className="w-10 p-2" />
               <th className="p-2">{groupBy === "by-branch" ? "Model" : "Branch"}</th>
-              <th className="p-2">Stocks</th>
+              <th className="min-w-72 p-2">Stocks</th>
             </tr>
           </thead>
           <tbody>
@@ -794,7 +794,7 @@ function MidRows({
           </Button>
         </td>
         <td className="p-2 align-top">{title}</td>
-        <td className="p-2 align-top">
+        <td className="p-2 align-top whitespace-normal">
           <InventoryGroupCounts counts={counts} compact />
         </td>
       </tr>

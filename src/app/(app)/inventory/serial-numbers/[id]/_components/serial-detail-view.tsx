@@ -38,7 +38,13 @@ import {
 } from "@/components/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -115,9 +121,14 @@ export function SerialDetailView({
   serial,
   inventoryStatusOptions,
 }: SerialDetailViewProps) {
+  void inventoryStatusOptions;
+  void DetailsCard;
+  void LocationCard;
+
   return (
     <div className="space-y-6">
       <DetailHeader serial={serial} />
+      {/*
       <div className="grid items-stretch gap-6 lg:grid-cols-2">
         <DetailsCard
           serial={serial}
@@ -125,6 +136,7 @@ export function SerialDetailView({
         />
         <LocationCard serial={serial} />
       </div>
+      */}
       <TimelineCard events={serial.events} />
     </div>
   );
@@ -981,23 +993,37 @@ function LocationCard({ serial }: { serial: SerialTraceability }) {
 }
 
 function TimelineCard({ events }: { events: SerialTimelineEvent[] }) {
+  const chronological = useMemo(
+    () =>
+      [...events].sort(
+        (a, b) => new Date(a.at).getTime() - new Date(b.at).getTime(),
+      ),
+    [events],
+  );
+
   return (
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-base">Lifecycle timeline</CardTitle>
+        {chronological.length > 0 ? (
+          <CardDescription className="text-xs">
+            From the first event at the top to where this serial is now.
+          </CardDescription>
+        ) : null}
       </CardHeader>
       <CardContent>
-        {events.length === 0 ? (
+        {chronological.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">
             No lifecycle activity recorded for this serial yet.
           </p>
         ) : (
           <ol className="space-y-6">
-            {events.map((event, index) => (
+            {chronological.map((event, index) => (
               <TimelineRow
                 key={event.id}
                 event={event}
-                last={index === events.length - 1}
+                isStart={index === 0}
+                isCurrent={index === chronological.length - 1}
               />
             ))}
           </ol>
@@ -1009,35 +1035,78 @@ function TimelineCard({ events }: { events: SerialTimelineEvent[] }) {
 
 function TimelineRow({
   event,
-  last,
+  isStart,
+  isCurrent,
 }: {
   event: SerialTimelineEvent;
-  last: boolean;
+  isStart: boolean;
+  isCurrent: boolean;
 }) {
   const meta = EVENT_META[event.type];
   const Icon = meta.icon;
   const body = (
     <>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="font-medium">{event.label}</span>
+        {isStart ? (
+          <Badge
+            variant="outline"
+            className="border-dashed font-medium uppercase tracking-wide text-muted-foreground"
+          >
+            Start
+          </Badge>
+        ) : null}
+        {isCurrent ? (
+          <Badge className="font-semibold uppercase tracking-wide">
+            Current
+          </Badge>
+        ) : null}
+        <span
+          className={cn(
+            "font-medium",
+            isCurrent ? "font-semibold" : "text-slate-500",
+          )}
+        >
+          {event.label}
+        </span>
         {event.branch ? (
-          <span className="text-sm text-muted-foreground">@ {event.branch}</span>
+          <span
+            className={cn(
+              "text-sm",
+              isCurrent ? "text-muted-foreground" : "text-slate-400",
+            )}
+          >
+            @ {event.branch}
+          </span>
         ) : null}
         {event.status ? (
           <StatusCodeBadge
             code={event.status.code}
             name={event.status.name}
-            color={event.status.color}
+            color={isCurrent ? event.status.color : "slate"}
+            className={
+              isCurrent
+                ? undefined
+                : "border-slate-200 bg-slate-100 text-slate-500"
+            }
           />
-        ) : null}
-        {event.href ? (
-          <ExternalLink className="size-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
         ) : null}
       </div>
       {event.detail ? (
-        <p className="text-sm text-muted-foreground">{event.detail}</p>
+        <p
+          className={cn(
+            "text-sm",
+            isCurrent ? "text-muted-foreground" : "text-slate-400",
+          )}
+        >
+          {event.detail}
+        </p>
       ) : null}
-      <p className="text-xs text-muted-foreground">
+      <p
+        className={cn(
+          "text-xs",
+          isCurrent ? "text-muted-foreground" : "text-slate-400",
+        )}
+      >
         {dateTimeFormatter.format(event.at)}
       </p>
     </>
@@ -1045,32 +1114,27 @@ function TimelineRow({
 
   return (
     <li className="relative flex gap-4">
-      {!last ? (
+      {isCurrent ? (
+        <span
+          className="absolute inset-y-0 -inset-x-2 rounded-lg bg-muted/50"
+          aria-hidden
+        />
+      ) : (
         <span
           className="absolute left-4 top-9 -bottom-6 w-px -translate-x-1/2 bg-border"
           aria-hidden
         />
-      ) : null}
+      )}
       <span
         className={cn(
-          "flex size-8 shrink-0 items-center justify-center rounded-full",
-          meta.tint,
+          "relative z-10 flex size-8 shrink-0 items-center justify-center rounded-full",
+          isCurrent ? meta.tint : "bg-slate-100 text-slate-400",
+          isCurrent && "ring-2 ring-primary",
         )}
       >
         <Icon className="size-4" />
       </span>
-      <div className="min-w-0 flex-1 space-y-1 pt-0.5">
-        {event.href ? (
-          <Link
-            href={event.href}
-            className="group block space-y-1 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            {body}
-          </Link>
-        ) : (
-          body
-        )}
-      </div>
+      <div className="relative z-10 min-w-0 flex-1 space-y-1 pt-0.5">{body}</div>
     </li>
   );
 }

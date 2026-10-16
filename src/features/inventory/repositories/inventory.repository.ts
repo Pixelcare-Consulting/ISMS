@@ -511,4 +511,5 @@ export type {
   InventoryGroupBranchRow,
   InventoryGroupListFilters,
   InventoryGroupModelRow,
+  InventoryGroupStatusCodeRef,
 } from "@/features/inventory/repositories/inventory-group.repository";

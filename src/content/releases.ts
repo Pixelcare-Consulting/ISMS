@@ -66,6 +66,38 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.72.2",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T16:50:00+08:00",
+    title: "Current statuses on a branch row",
+    highlights: [
+      "A branch or model row shows only the statuses that currently have units.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "On Branch Inventory, a branch or model row shows only the statuses that currently have units, such as stock or defective, plus the total. Statuses with nothing on that row stay off the row. The summary cards at the top still show every status.",
+      },
+    ],
+  },
+  {
+    version: "0.72.1",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T16:30:00+08:00",
+    title: "See where a unit's story starts",
+    highlights: [
+      "A serial's lifecycle timeline reads from the first event down to where the unit is now, with earlier steps faded.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "On a serial's lifecycle timeline, the oldest event is at the top and marked Start. The latest event is at the bottom and marked Current, in color. Earlier steps are gray so you can see where the unit is today.",
+      },
+    ],
+  },
+  {
     version: "0.72.0",
     date: "2026-10-16",
     releasedAt: "2026-10-16T15:45:00+08:00",
