@@ -37,6 +37,7 @@ import { getUserBranchIds } from "@/lib/aor/scope";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { resolveActiveOrderPrice } from "@/features/master-data/utils/resolve-active-order-price";
 import type { OrderHistoryRow } from "@/features/orders/types/order-analytics";
+import { toClientOrderListItem } from "@/features/orders/utils/to-client-order-list";
 import type { BranchOrderType } from "@prisma/client";
 
 function hasFullOrderAccess(permissions: string[] | undefined) {
@@ -134,17 +135,7 @@ export async function listOrdersAction(input?: {
   );
   return {
     ...result,
-    items: result.items.map((o) => ({
-      ...o,
-      orderNumber: o.orderNumber,
-      details: o.details.map((d) => ({
-        id: d.id,
-        quantity: d.quantity,
-        approvedQty: d.approvedQty,
-        remarks: d.remarks,
-        model: { ...d.model, sku: d.model.skuCode },
-      })),
-    })),
+    items: result.items.map((order) => toClientOrderListItem(order)),
   };
 }
 

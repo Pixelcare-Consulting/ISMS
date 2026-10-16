@@ -394,7 +394,7 @@ export const appNavigation: NavEntry[] = [
         items: [
           {
             href: "/inventory",
-            label: "Stock units",
+            label: "Branch Inventory",
             icon: Package,
             exact: true,
             permission: "inventory.view",

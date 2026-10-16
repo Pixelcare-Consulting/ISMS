@@ -66,6 +66,20 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.70.3",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T10:30:00+08:00",
+    title: "Order lists open again",
+    highlights: ["Manual, special, and auto replenish order lists open again."],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Those order lists open again after prices were updated.",
+      },
+    ],
+  },
+  {
     version: "0.70.2",
     date: "2026-10-16",
     releasedAt: "2026-10-16T09:45:00+08:00",
