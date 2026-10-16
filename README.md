@@ -2,7 +2,7 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.70.3`
+**Current version:** `0.70.5`
 
 ## Stack
 
@@ -19,7 +19,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | **Dashboard** | Nav group: **Overview** (announcements only — defaults to New/unread, falls back to All when caught up; unread count badge in the menu), **Operations** (Today’s briefing + ops KPI cards / inventory / planning / order pipeline; role-gated), **Sales** (Today’s briefing + sales overview; role-gated), **P-Count Dashboard**, **Site Traffic**, **Market Survey** → Competitors. Sidebar also shows role-scoped red count badges for Monthly SIR for-approval, order review queues, returns approvals, and logistics actions (plus Stock units STK). Header: What’s new beside the sidebar drawer; notifications bell on the right (paginated inbox). Announcement CRUD stays under Announcements. |
 | **Announcements** | Tenant posts with rich body (formatting, links, images, tables); list + CRUD (`/announcements`); publishing a live announcement also sends a tenant-wide in-app notification (header bell → Overview); Overview feed defaults to New (unread) and falls back to All when everything is read; mark-as-read, likes, comments (latest 3 + show all; edit own / managers delete any), reader avatar stack (max 5), and All / New / Earlier + title search filters |
 | **Competitors** | Market observations with master Competitor + Competitor brand/model lookups, AOR-bound branch, optional promotion; KPIs + CRUD (`/competitors`) |
-| **Settings** | Company, users, departments, roles, permissions catalog (`roles.manage`; assign via Roles), branches, warehouses, dealers, service centers, AORs (branches / warehouses / service centers assign + sync), master data (incl. Series / Categories, Competitors / Competitor brands), status codes (per-module tabs + badge colors); collapsible Module guides on complex settings/ops pages |
+| **Settings** | Company, users, departments, roles, permissions catalog (`roles.manage`; assign via Roles), branches, warehouses, dealers, service centers, AORs (branches / warehouses / service centers assign, edit, and sync), master data (incl. Series / Categories, Competitors / Competitor brands), status codes (per-module tabs + badge colors); collapsible Module guides on complex settings/ops pages |
 | **Planning** | Period switcher + clickable cards; in-page Add/Edit/Remove branch revenue targets; official Forecast template download + import (bulk; period as MMM-YY e.g. Dec-25); allocation; Supply Planning runs (`/settings/planning`, `/settings/planning/runs`) |
 | **Planogram** | Clickable cards filter branches with a planogram or none yet; branch list shows allowed SKUs as tags; Open a branch shows a wait message with the branch name; per-branch SKU assignment; current or latest model price and date; editable Shelf max; multi-select Add models (per-SKU Shelf max) and allow-list popup; Allowed models uses the same table; official Excel template download + import (branch SAP + SKU); Add model requires Allowed models first |
 | **Policies** | Full document control (ISO track) |

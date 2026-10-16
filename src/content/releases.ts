@@ -66,6 +66,38 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.70.5",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T11:00:00+08:00",
+    title: "Dispatch a serial already at the branch",
+    highlights: [
+      "A warehouse serial that is already listed at the destination branch can be dispatched.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Dispatch no longer stops when that serial is already on the branch. If it is at a different branch, sold, or defective, the message names the serial and where it is.",
+      },
+    ],
+  },
+  {
+    version: "0.70.4",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T10:45:00+08:00",
+    title: "Edit an area of responsibility",
+    highlights: [
+      "Change someone’s branch assignments without removing them first.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "On Areas of responsibility, use Edit to update a person’s branches and other locations. Assignments you keep stay in place.",
+      },
+    ],
+  },
+  {
     version: "0.70.3",
     date: "2026-10-16",
     releasedAt: "2026-10-16T10:30:00+08:00",

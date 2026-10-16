@@ -18,6 +18,7 @@ export const AORS_PAGE_TUTORIAL: PageTutorialContent = {
       title: "How to use it",
       bullets: [
         "Assignments are stored per branch; the table groups by user so you see every branch in one place.",
+        "Use Edit on a row to change that person's branches and other locations without removing the assignment first.",
         "Create Branches and Users first, then attach AORs.",
         "White-trigger / suggest flows use AORs to know which branches a user can act on.",
       ],

@@ -273,18 +273,18 @@ export const appNavigation: NavEntry[] = [
     icon: Package,
     items: [
       {
-        href: "/inventory/monthly-sir",
-        label: "Monthly SIR",
-        icon: ClipboardList,
-        permission: "inventory.view",
-        countBadgeKey: "monthlySirPending",
-      },
-      {
         href: "/logistics/deliveries",
         label: "Deliveries",
         icon: Truck,
         anyPermissions: ["logistics.view", "logistics.create", "logistics.manage"],
         countBadgeKey: "logisticsDeliveries",
+      },
+      {
+        href: "/inventory/monthly-sir",
+        label: "Monthly SIR",
+        icon: ClipboardList,
+        permission: "inventory.view",
+        countBadgeKey: "monthlySirPending",
       },
       // { DO NOT UNCOMMENT THIS, NO NEED TO SHOW IN THE NAVIGATION
       //   href: "/inventory/stock-count",

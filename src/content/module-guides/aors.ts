@@ -7,6 +7,7 @@ export const AORS_MODULE_GUIDE: ModuleGuideContent = {
   tips: [
     { label: "Create Branches / Service centers and Users first, then attach AORs" },
     { label: "The table groups by user so every location shows in one place" },
+    { label: "Edit a row to change locations without deleting the assignment" },
     { label: "Inventory, Sales, and Service screens filter by these assignments" },
   ],
   storageKey: "module-guide.aors",
