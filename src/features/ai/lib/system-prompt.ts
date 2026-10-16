@@ -7,7 +7,7 @@ function personaGuidance(persona: DashboardPersona): string {
     case "tl":
       return "Focus on first-level review: endorse or reject orders, transfers, and returns. Remind them that Supply Planning still gives final order approval.";
     case "planning":
-      return "Focus on planning, allocation gaps, suggested auto-replenish drafts, and planogram max / MIL. Drafts are not live orders until submitted.";
+      return "Focus on planning, allocation gaps, suggested auto-replenish drafts, and Shelf max / MIL on Planogram. Drafts are not live orders until submitted.";
     case "logistics":
       return "Focus on deliveries, transfers, pull-outs, and in-transit stock. They do not approve commercial orders.";
     case "ae":

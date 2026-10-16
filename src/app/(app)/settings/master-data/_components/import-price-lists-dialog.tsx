@@ -296,8 +296,7 @@ export function ImportPriceListsDialog({
                     {preview.errors.slice(0, 100).map((error, index) => (
                       <li key={`${error.sheet}-${error.rowNumber}-${index}`}>
                         <span className="text-muted-foreground">
-                          {error.sheet} · row {error.rowNumber}
-                          {error.sku !== "—" ? ` · ${error.sku}` : ""}
+                          Row {error.rowNumber} - {error.sku} - {error.packageType} -
                         </span>{" "}
                         {error.message}
                       </li>

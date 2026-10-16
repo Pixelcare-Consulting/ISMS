@@ -3,6 +3,12 @@ import { z } from "zod";
 export const createMonthlySirRequestSchema = z.object({
   branchId: z.string().min(1, "Branch is required"),
   purpose: z.string().trim().min(3, "Purpose is required").max(500),
+  /** Direct uses a free TL/PS slot; request is for extras after slots are exhausted. */
+  mode: z.enum(["direct", "request"]).default("request"),
+});
+
+export const pcountUploadAllowanceSchema = z.object({
+  branchId: z.string().min(1, "Branch is required"),
 });
 
 export const reviewMonthlySirRequestSchema = z.object({

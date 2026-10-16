@@ -1,4 +1,5 @@
 import { SAP_NO_CONNECTION_MESSAGE } from "@/config/platform";
+import { auditService } from "@/features/audit/services/audit.service";
 import { sapErrorMessage, sapText } from "@/features/sap/services/sap-master-data";
 import { sapServiceLayerClient } from "@/features/sap/services/sap-service-layer-client";
 import { sapServiceLayerService } from "@/features/sap/services/sap-service-layer.service";
@@ -6,12 +7,14 @@ import type { SapServiceLayerCredentials } from "@/features/sap/types/sap-servic
 import { mapWithConcurrency } from "@/lib/shared/concurrency";
 
 /**
- * Push the model import's brand column into SAP's item master as a UDF.
+ * Push a model's brand into SAP's item master as a UDF (from the import or the edit sheet).
  *
  * This is the only place ISMS *writes* to SAP: every other Service Layer call is a
  * read (see `sap-sync-engine.ts`). Brand has no standard OITM field, so the tenant
- * carries it as the user-defined field below; the import is what keeps it in step
- * with the ISMS `Brand` a model is filed under.
+ * carries it as the user-defined field below; the import and the edit sheet are what
+ * keep it in step with the ISMS `Brand` a model is filed under. The SAP item sync
+ * reads it back into `brandId`, so a brand changed in ISMS but not here is reverted
+ * on the next sync.
  *
  * Deliberately best-effort. The ISMS side of an import is already written by the
  * time this runs, so a SAP outage, a SKU that only exists in ISMS, or a company
@@ -359,5 +362,63 @@ export const modelBrandSapPushService = {
 
   noConnectionMessage(): string {
     return SAP_NO_CONNECTION_MESSAGE;
+  },
+
+  /**
+   * Reconcile `rows` with SAP for one tenant and record the attempt.
+   *
+   * Runs after the ISMS writes and never throws: SAP being down, unconfigured, or
+   * missing the UDF leaves the ISMS change intact and comes back as `aborted`.
+   */
+  async pushAndAudit(input: {
+    tenantId: string;
+    actorUserId: string;
+    rows: BrandPushRow[];
+    source: "model-import" | "model-edit";
+  }): Promise<BrandPushOutcome> {
+    const empty = (aborted?: string): BrandPushOutcome => ({
+      updated: 0,
+      matched: 0,
+      missing: 0,
+      failed: 0,
+      failures: [],
+      aborted,
+    });
+    if (input.rows.length === 0) return empty();
+
+    const creds = await this.getCredentials(input.tenantId);
+    if (!creds) return empty(this.noConnectionMessage());
+
+    let outcome: BrandPushOutcome;
+    try {
+      outcome = await this.pushBrands(creds, input.rows);
+    } catch (error) {
+      outcome = empty(error instanceof Error ? error.message : "SAP brand update failed.");
+    }
+
+    // Writing into another system is worth a record even when nothing changed hands,
+    // but a push that only found agreement is not news.
+    if (outcome.updated > 0 || outcome.failed > 0 || outcome.aborted) {
+      await auditService.logMany([
+        {
+          tenantId: input.tenantId,
+          userId: input.actorUserId,
+          action: "product_model.sap_brand_push",
+          entityType: "ProductModel",
+          metadata: {
+            source: input.source,
+            attempted: input.rows.length,
+            updated: outcome.updated,
+            matched: outcome.matched,
+            missing: outcome.missing,
+            failed: outcome.failed,
+            failures: outcome.failures,
+            ...(outcome.aborted ? { aborted: outcome.aborted } : {}),
+          },
+        },
+      ]);
+    }
+
+    return outcome;
   },
 };

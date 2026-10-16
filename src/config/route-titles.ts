@@ -16,6 +16,7 @@ const EXTRA_ROUTE_TITLES: Record<string, string> = {
   "/settings/planning/runs": "Supply Planning",
   "/settings/planning/runs/new": "New supply planning run",
   "/help": "Help",
+  "/internal/ai": "Pixelcare AI Assistant (BETA)",
   "/settings/profile": "Profile",
   "/settings/roles/matrix": "Role matrix",
   "/settings/permissions": "Permissions",

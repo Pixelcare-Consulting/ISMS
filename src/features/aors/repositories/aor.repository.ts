@@ -1,3 +1,5 @@
+import { Prisma } from "@/lib/database/generated/prisma/client";
+
 import { prisma } from "@/lib/database/client";
 
 const aorListInclude = {
@@ -19,6 +21,63 @@ type AorCreateRow = {
   serviceCenterId?: string | null;
   serviceCenterLocationId?: string | null;
 };
+
+type AorListRow = Prisma.AorGetPayload<{ include: typeof aorListInclude }>;
+
+const ASSIGNMENT_CONFLICT_MESSAGE =
+  "That assignment already exists. Refresh the page and try again.";
+
+function isUniqueConflict(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2002"
+  );
+}
+
+function presentTargets(
+  rows: {
+    branchId: string | null;
+    warehouseId: string | null;
+    dealerId: string | null;
+    serviceCenterId: string | null;
+  }[],
+) {
+  return {
+    branches: new Set(
+      rows
+        .map((row) => row.branchId)
+        .filter((id): id is string => id !== null),
+    ),
+    warehouses: new Set(
+      rows
+        .map((row) => row.warehouseId)
+        .filter((id): id is string => id !== null),
+    ),
+    dealers: new Set(
+      rows
+        .map((row) => row.dealerId)
+        .filter((id): id is string => id !== null),
+    ),
+    serviceCenters: new Set(
+      rows
+        .map((row) => row.serviceCenterId)
+        .filter((id): id is string => id !== null),
+    ),
+  };
+}
+
+function rowAlreadyAssigned(
+  present: ReturnType<typeof presentTargets>,
+  row: AorCreateRow,
+) {
+  if (row.branchId && present.branches.has(row.branchId)) return true;
+  if (row.warehouseId && present.warehouses.has(row.warehouseId)) return true;
+  if (row.dealerId && present.dealers.has(row.dealerId)) return true;
+  if (row.serviceCenterId && present.serviceCenters.has(row.serviceCenterId)) {
+    return true;
+  }
+  return false;
+}
 
 export const aorRepository = {
   listByTenant(tenantId: string) {
@@ -98,6 +157,77 @@ export const aorRepository = {
   deleteMany(tenantId: string, ids: string[]) {
     if (ids.length === 0) return Promise.resolve({ count: 0 });
     return prisma.aor.deleteMany({ where: { tenantId, id: { in: ids } } });
+  },
+
+  /**
+   * Apply an AOR diff in one transaction. Rows the user already has are left
+   * in place so an edit does not insert a second assignment for the same
+   * branch, warehouse, dealer, or service center.
+   */
+  async applySync(
+    tenantId: string,
+    userId: string,
+    idsToDelete: string[],
+    rowsToCreate: AorCreateRow[],
+  ): Promise<{ created: AorListRow[]; deletedCount: number }> {
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const deleted =
+          idsToDelete.length === 0
+            ? { count: 0 }
+            : await tx.aor.deleteMany({
+                where: { tenantId, id: { in: idsToDelete } },
+              });
+
+        const existing = await tx.aor.findMany({
+          where: { tenantId, userId },
+          select: {
+            branchId: true,
+            warehouseId: true,
+            dealerId: true,
+            serviceCenterId: true,
+          },
+        });
+        const present = presentTargets(existing);
+        const pending = rowsToCreate.filter(
+          (row) => !rowAlreadyAssigned(present, row),
+        );
+
+        if (pending.length === 0) {
+          return { created: [], deletedCount: deleted.count };
+        }
+
+        const created = await tx.aor.createManyAndReturn({
+          data: pending.map((row) => ({
+            tenantId,
+            userId: row.userId,
+            branchId: row.branchId ?? null,
+            warehouseId: row.warehouseId ?? null,
+            dealerId: row.dealerId ?? null,
+            serviceCenterId: row.serviceCenterId ?? null,
+            serviceCenterLocationId: row.serviceCenterLocationId ?? null,
+            createdById: row.createdById ?? null,
+          })),
+          select: { id: true },
+        });
+
+        const createdRows = await tx.aor.findMany({
+          where: {
+            tenantId,
+            id: { in: created.map((row) => row.id) },
+          },
+          include: aorListInclude,
+          orderBy: { createdAt: "desc" },
+        });
+
+        return { created: createdRows, deletedCount: deleted.count };
+      });
+    } catch (error) {
+      if (isUniqueConflict(error)) {
+        throw new Error(ASSIGNMENT_CONFLICT_MESSAGE);
+      }
+      throw error;
+    }
   },
 
   listBranchIdsForUser(tenantId: string, userId: string) {

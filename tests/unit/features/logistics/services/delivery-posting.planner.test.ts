@@ -2,8 +2,11 @@ import {
   assertExclusiveClaim,
   planAccept,
   planDispatch,
+  planDispatchBranchPlacement,
   planReject,
+  selectDispatchCandidates,
   type DeliveryPostingView,
+  type DispatchShelf,
   type WarehouseHold,
 } from "@/features/logistics/services/delivery-posting.planner";
 
@@ -77,6 +80,60 @@ describe("planDispatch", () => {
       "serial already allocated",
     );
     expect(() => assertExclusiveClaim(4, 4, "serial already allocated")).not.toThrow();
+  });
+});
+
+describe("planDispatchBranchPlacement", () => {
+  const serial = { serialNumberId: "s1", serialNo: "SN-1001" };
+
+  function shelf(overrides: Partial<DispatchShelf> = {}): DispatchShelf {
+    return {
+      serialNumberId: "s1",
+      branchId: "br-1",
+      branchName: "Abenson Alturas Bohol",
+      status: "STK",
+      ...overrides,
+    };
+  }
+
+  it("inserts a serial that is not on any branch", () => {
+    const plan = planDispatchBranchPlacement("br-1", [serial], []);
+    expect(plan).toEqual({ ok: true, inserts: ["s1"], updates: [] });
+  });
+
+  it("updates a serial that is already on this branch", () => {
+    const plan = planDispatchBranchPlacement("br-1", [serial], [shelf()]);
+    expect(plan).toEqual({ ok: true, inserts: [], updates: ["s1"] });
+  });
+
+  it("rejects a serial on another branch or already sold or defective", () => {
+    const elsewhere = planDispatchBranchPlacement("br-1", [serial], [
+      shelf({ branchId: "br-2", branchName: "Abenson Cebu" }),
+    ]);
+    expect(elsewhere).toEqual({
+      ok: false,
+      error: "Serial SN-1001 is already at Abenson Cebu.",
+    });
+
+    const sold = planDispatchBranchPlacement("br-1", [serial], [shelf({ status: "SLD" })]);
+    expect(sold).toEqual({
+      ok: false,
+      error: "Serial SN-1001 is already sold at Abenson Alturas Bohol.",
+    });
+
+    const defective = planDispatchBranchPlacement("br-1", [serial], [
+      shelf({ status: "DEF", branchName: "Abenson Alturas Bohol" }),
+    ]);
+    expect(defective).toEqual({
+      ok: false,
+      error: "Serial SN-1001 is defective at Abenson Alturas Bohol.",
+    });
+
+    for (const result of [elsewhere, sold, defective]) {
+      expect(result.ok).toBe(false);
+      if (result.ok) continue;
+      expect(result.error).not.toMatch(/not in that warehouse/i);
+    }
   });
 });
 
@@ -164,5 +221,39 @@ describe("planReject", () => {
   it("is a no-op when the delivery is already rejected", () => {
     const plan = planReject(delivery({ status: "rejected" }));
     expect(plan).toEqual({ ok: true, idempotent: true, returns: [] });
+  });
+});
+
+describe("selectDispatchCandidates", () => {
+  const rows = [
+    {
+      serialNo: "SN-IN-PRIMARY",
+      modelId: "model-1",
+      deleted: false,
+      warehouseId: "wh-primary",
+    },
+    {
+      serialNo: "SN-OTHER-WAREHOUSE",
+      modelId: "model-1",
+      deleted: false,
+      warehouseId: "wh-other",
+    },
+    {
+      serialNo: "SN-OTHER-MODEL",
+      modelId: "model-2",
+      deleted: false,
+      warehouseId: "wh-primary",
+    },
+    {
+      serialNo: "SN-RETIRED",
+      modelId: "model-1",
+      deleted: true,
+      warehouseId: "wh-primary",
+    },
+  ];
+
+  it("lists a serial stocked into the branch primary warehouse for the ordered model", () => {
+    const listed = selectDispatchCandidates(rows, ["model-1"], "wh-primary");
+    expect(listed.map((row) => row.serialNo)).toEqual(["SN-IN-PRIMARY"]);
   });
 });

@@ -230,7 +230,8 @@ export async function uploadAnnouncementImageAction(formData: FormData) {
       fileName: file.name || "image.png",
     });
     const buffer = Buffer.from(await file.arrayBuffer());
-    await getObjectStorage().upload({
+    const storage = await getObjectStorage();
+    await storage.upload({
       path: storagePath,
       body: buffer,
       contentType,

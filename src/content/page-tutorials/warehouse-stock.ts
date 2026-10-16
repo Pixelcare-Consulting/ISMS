@@ -12,7 +12,7 @@ export const WAREHOUSE_STOCK_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "What this page is for",
       description:
-        "Warehouse stock lists serials sitting in warehouse locations. Branch shelf stock stays under Stock units. This view is read-only — receiving and SAP sync are separate workflows.",
+        "Warehouse stock lists serials sitting in warehouse locations. Branch shelf stock stays under Stock units. This view is read-only — stock in from a warehouse location, or use a warehouse receive. SAP warehouse sync does not place serials.",
     },
     {
       title: "How to use it",
@@ -25,12 +25,12 @@ export const WAREHOUSE_STOCK_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "Empty list?",
       description:
-        "Rows appear after warehouse stock is loaded (feed, demo seed, or Official Sales warehouse demo serials). An empty list usually means no warehouse serials have been loaded yet — not a permissions error.",
+        "Rows appear after you stock serials into a location under Settings → Warehouses. An empty list usually means nothing has been stocked in yet — not a permissions error.",
     },
     {
       title: "Related work",
       description:
-        "Use Stock units for branch STK. Use Settings → Warehouses to maintain warehouse codes and aisles. Official Sales can consume warehouse serials for WHSE_ADD.",
+        "Use Stock units for branch STK. Use Settings → Warehouses to maintain locations and stock serials in. Official Sales can consume warehouse serials for WHSE_ADD.",
     },
   ],
 };

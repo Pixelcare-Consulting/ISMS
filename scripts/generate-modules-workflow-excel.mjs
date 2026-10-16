@@ -2,7 +2,7 @@
  * Generates docs/ISMS_App_Modules_vs_Workflow.xlsx
  * Run: pnpm exec --package xlsx node scripts/generate-modules-workflow-excel.mjs
  */
-import { writeFileSync, mkdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import XLSX from "xlsx";

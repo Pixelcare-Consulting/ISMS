@@ -6,6 +6,7 @@ import { getUserBranchIds } from "@/lib/aor/scope";
 import { salesListDetailWhere } from "@/features/sales/constants/sales-list-status";
 import { planogramRepository } from "@/features/planogram/repositories/planogram.repository";
 import { masterDataRepository } from "@/features/master-data/repositories/master-data.repository";
+import { resolveActiveOrderPrice } from "@/features/master-data/utils/resolve-active-order-price";
 import { branchRepository } from "@/features/branches/repositories/branch.repository";
 import { orderingPolicyService } from "@/features/ordering/services/ordering-policy.service";
 import { checkOrderingAllowed } from "@/features/orders/utils/order-window";
@@ -139,7 +140,7 @@ async function loadAnalyticsPayload(
   );
 
   const lines: OrderAnalyticsLine[] = brandEntries.map((entry) => {
-    const srp = decimalToNumber(entry.model.srp);
+    const srp = resolveActiveOrderPrice(entry.model.priceLists, entry.model.srp);
     const cbm = decimalToNumber(entry.model.cbm);
     const inv = invByModel.get(entry.model.id) ?? new Map<string, number>();
     const stkQty = inv.get("STK") ?? 0;
@@ -255,6 +256,34 @@ export const orderAnalyticsService = {
   },
 };
 
+function toAdditionalModel(input: {
+  id: string;
+  skuCode: string;
+  name: string;
+  brandId: string | null;
+  srp: number;
+  cbm: number;
+  onPlanogram: boolean;
+  remainingCapacity: number;
+  inv: Map<string, number>;
+}): OrderWorkspaceAdditionalModel {
+  const stkQty = input.inv.get("STK") ?? 0;
+  const ditQty = input.inv.get("DIT") ?? 0;
+  return {
+    id: input.id,
+    skuCode: input.skuCode,
+    name: input.name,
+    brandId: input.brandId,
+    srp: input.srp,
+    cbm: input.cbm,
+    inventory: sortInventoryCounts(input.inv),
+    stkQty,
+    ditQty,
+    onPlanogram: input.onPlanogram,
+    remainingCapacity: input.remainingCapacity,
+  };
+}
+
 async function loadAdditionalModels(
   tenantId: string,
   branchId: string,
@@ -264,18 +293,31 @@ async function loadAdditionalModels(
   switch (orderType) {
     case "special": {
       const models = await masterDataRepository.listModels(tenantId);
-      return models
-        .filter((m) => m.status === "active" && !onGrid.has(m.id))
-        .map((m) => ({
+      const extras = models.filter((m) => m.status === "active" && !onGrid.has(m.id));
+      const extraIds = extras.map((m) => m.id);
+      const invByModel =
+        extraIds.length > 0
+          ? await planogramRepository.countInventoryByStatusForBranchModels(
+              tenantId,
+              branchId,
+              extraIds,
+            )
+          : new Map<string, Map<string, number>>();
+
+      return extras.map((m) => {
+        const inv = invByModel.get(m.id) ?? new Map<string, number>();
+        return toAdditionalModel({
           id: m.id,
           skuCode: m.skuCode,
           name: m.name,
           brandId: m.brandId,
-          srp: decimalToNumber(m.srp),
+          srp: resolveActiveOrderPrice(m.priceLists, m.srp),
           cbm: decimalToNumber(m.cbm),
           onPlanogram: false,
           remainingCapacity: Number.MAX_SAFE_INTEGER,
-        }));
+          inv,
+        });
+      });
     }
     case "manual":
     case "auto_replenish": {
@@ -295,17 +337,19 @@ async function loadAdditionalModels(
           : new Map<string, Map<string, number>>();
 
       return extraEntries.map((entry) => {
-        const stkQty = invByModel.get(entry.model.id)?.get("STK") ?? 0;
-        return {
+        const inv = invByModel.get(entry.model.id) ?? new Map<string, number>();
+        const stkQty = inv.get("STK") ?? 0;
+        return toAdditionalModel({
           id: entry.model.id,
           skuCode: entry.model.skuCode,
           name: entry.model.name,
           brandId: entry.model.brandId,
-          srp: decimalToNumber(entry.model.srp),
+          srp: resolveActiveOrderPrice(entry.model.priceLists, entry.model.srp),
           cbm: decimalToNumber(entry.model.cbm),
           onPlanogram: true,
           remainingCapacity: Math.max(0, entry.maxQty - stkQty),
-        };
+          inv,
+        });
       });
     }
     default: {

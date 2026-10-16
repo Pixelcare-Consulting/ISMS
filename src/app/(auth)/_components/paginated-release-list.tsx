@@ -5,10 +5,10 @@ import { useState } from "react";
 
 import { ReleaseNoteCard } from "@/app/(auth)/_components/release-note-card";
 import { Button } from "@/components/ui/button";
-import { getAllReleases } from "@/lib/shared/version";
+import { getWhatsNewReleases } from "@/lib/shared/version";
 
 export function PaginatedReleaseList() {
-  const releases = getAllReleases();
+  const releases = getWhatsNewReleases();
   const [page, setPage] = useState(0);
   const totalPages = releases.length;
   const currentRelease = releases[page];

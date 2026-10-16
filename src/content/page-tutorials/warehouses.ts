@@ -19,6 +19,7 @@ export const WAREHOUSES_PAGE_TUTORIAL: PageTutorialContent = {
         "SAP is the source of truth for warehouses — there is no Add warehouse; use Sync from SAP to bring in new ones.",
         "Sync from SAP pulls warehouse master data over the Service Layer and matches on code — it adds and renames warehouses, but never deletes them or changes which one is main.",
         "Define aisles when your process tracks storage slots.",
+        "On a location, choose Stock in, pick the model, and enter serial numbers. Those serials show on warehouse stock and can be dispatched when this warehouse is the branch’s primary warehouse.",
         "Link warehouses in Areas of responsibility when users need warehouse-scoped access.",
         "Open the Stock tab (or Stock on a row) to browse warehouse serials — same list as Inventory → Warehouse stock.",
       ],

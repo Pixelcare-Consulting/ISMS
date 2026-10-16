@@ -7,12 +7,12 @@ import {
   type LookupEntityKey,
 } from "@/features/lookups/constants/lookup-registry";
 import { lookupRepository } from "@/features/lookups/repositories/lookup.repository";
+import { invalidateSeriesCache } from "@/features/master-data/repositories/master-data.repository";
 import {
   lookupStatusSchema,
   lookupWriteSchema,
   type LookupWriteInput,
 } from "@/features/lookups/schemas/lookup.schema";
-import { masterDataRepository } from "@/features/master-data/repositories/master-data.repository";
 
 interface LookupActorContext {
   tenantId: string;
@@ -68,6 +68,11 @@ function buildWriteData(
   return data;
 }
 
+/** The model pickers cache the active series list; drop it whenever a series row changes. */
+async function invalidatePickerCache(entity: LookupEntityKey, tenantId: string) {
+  if (entity === "series") await invalidateSeriesCache(tenantId);
+}
+
 async function requireValidParent(
   config: LookupEntityConfig,
   tenantId: string,
@@ -106,9 +111,7 @@ export const lookupService = {
 
     try {
       const row = await lookupRepository.create(entity, ctx.tenantId, data);
-      if (entity === "series" && typeof row.code === "string" && row.code.trim()) {
-        await masterDataRepository.linkUnassignedModelsToSeriesByCode(ctx.tenantId);
-      }
+      await invalidatePickerCache(entity, ctx.tenantId);
       await auditService.log({
         tenantId: ctx.tenantId,
         userId: ctx.actorUserId,
@@ -148,9 +151,7 @@ export const lookupService = {
 
     try {
       const row = await lookupRepository.update(entity, ctx.tenantId, id, data);
-      if (entity === "series" && typeof row.code === "string" && row.code.trim()) {
-        await masterDataRepository.linkUnassignedModelsToSeriesByCode(ctx.tenantId);
-      }
+      await invalidatePickerCache(entity, ctx.tenantId);
       await auditService.log({
         tenantId: ctx.tenantId,
         userId: ctx.actorUserId,
@@ -189,6 +190,7 @@ export const lookupService = {
     const row = await lookupRepository.update(entity, ctx.tenantId, id, {
       recordStatus,
     });
+    await invalidatePickerCache(entity, ctx.tenantId);
     await auditService.log({
       tenantId: ctx.tenantId,
       userId: ctx.actorUserId,

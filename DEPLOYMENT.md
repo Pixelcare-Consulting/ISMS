@@ -17,7 +17,7 @@ server. CI builds one image per commit, and staging runs that exact image.
 | Deploy trigger | **Automatic** (Vercel git integration) | **Automatic** on every push to `staging` | Manual (`deploy/stack.sh sandbox up -d --build`) |
 | Ingress | Vercel | Traefik + Let's Encrypt on `APP_DOMAIN` | `http://localhost:3000`, no TLS |
 | Postgres host port | — (own hosted database) | 5434 | 5432 |
-| SAP auto-check | None | `cron` sidecar | Off (opt-in `--profile cron`) |
+| Cron (SAP check + AI automations) | None | `cron` sidecar | Off (opt-in `--profile cron`) |
 | Override file | — | `docker-compose.staging.yml`, `.env.staging` | `docker-compose.sandbox.yml`, `.env.sandbox` |
 
 To self-host develop again next to staging, restore the override with
@@ -169,7 +169,7 @@ routes by `APP_DOMAIN`.
 deploy/stack.sh sandbox up -d --build         # whole stack → http://localhost:3000
 deploy/stack.sh sandbox up -d postgres        # DB only, then `pnpm dev` on the host (.env.local)
 APP_IMAGE=ghcr.io/pixelcare-consulting/isms:develop deploy/stack.sh sandbox up -d --pull always
-deploy/stack.sh sandbox --profile cron up -d  # also run the SAP auto-check sidecar
+deploy/stack.sh sandbox --profile cron up -d  # SAP auto-check and AI automations sidecar
 ```
 
 Nothing here is deployed — it is the same stack CI uses for the e2e suite.
@@ -187,7 +187,7 @@ passes the file both as `--env-file` (Compose `${VAR}` interpolation) and
 - Compose: `APP_IMAGE` (required on staging), `APP_DOMAIN` (staging), `APP_HOST_PORT` (sandbox), `POSTGRES_HOST_PORT` (unique per env on a shared server)
 - App URL / auth: `APP_URL`, `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `AUTH_SECRET`, `BETTER_AUTH_API_KEY`, `ALLOW_PUBLIC_REGISTER`, `AUTH_RATE_LIMIT_ENABLED` (only ever `false` in the CI e2e stack)
 - Database: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `DATABASE_URL`, `DIRECT_URL` (host is the compose service `postgres`)
-- Integrations: `CRON_SECRET` (required for the SAP auto-check), `SAP_CHECK_INTERVAL_SECONDS` (cron sidecar, default 600), `SAP_ENCRYPTION_KEY`, `SAP_*` tuning, `RESEND_API_KEY`, `EMAIL_FROM`, `OPENAI_API_KEY`, `AI_MODEL`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`
+- Integrations: `CRON_SECRET` (required bearer for `/api/cron/sap-check` and `/api/cron/ai-automations`), `SAP_CHECK_INTERVAL_SECONDS` (cron sidecar, default 600), `SAP_ENCRYPTION_KEY`, `SAP_*` tuning, `RESEND_API_KEY`, `EMAIL_FROM`, `OPENAI_API_KEY`, `AI_MODEL`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`
 - Operations: `MAINTENANCE_MODE`, `LOG_LEVEL`, `SENTRY_DSN`, `SLOW_QUERY_MS`, `PRISMA_LOG_QUERIES`, `AUDIT_LOG_HOT_DAYS`
 - Traefik: `LETSENCRYPT_EMAIL`
 
@@ -199,7 +199,7 @@ maintainer). `grep -rhoE 'process\.env\.[A-Z0-9_]+' src` is the source of truth.
 ```bash
 deploy/stack.sh staging ps
 deploy/stack.sh staging logs -f app
-deploy/stack.sh staging logs cron                       # sap-check results and failures
+deploy/stack.sh staging logs cron                       # sap-check and ai-automations results and failures
 curl -s https://$APP_DOMAIN/api/health               # {"status":"ok"} or 503 (from outside the client LAN)
 curl -sk --resolve $APP_DOMAIN:443:127.0.0.1 https://$APP_DOMAIN/api/health   # same check, on the server itself
 
@@ -265,8 +265,9 @@ The image never changes — production pulls the same `sha-…` tag staging ran.
 
 ## Differences from Vercel
 
-- **Storage**: `src/lib/storage` uses the local filesystem whenever `VERCEL` is unset; Supabase Storage is no longer required.
-- **Cron**: the `cron` sidecar calls `/api/cron/sap-check` with `CRON_SECRET` every `SAP_CHECK_INTERVAL_SECONDS` (default 10 min). It only checks SAP and notifies users; SAP syncs stay manual (the Sync button on each module). Develop on Vercel has no cron.
+- **Storage**: `src/lib/storage` defaults to local filesystem (`STORAGE_ROOT=/app/data/uploads` in the image). Supabase Storage is opt-in only via `STORAGE_DRIVER=supabase` and is not used for staging.
+- **Cron**: the `cron` sidecar calls `/api/cron/sap-check` and `/api/cron/ai-automations` with `Authorization: Bearer CRON_SECRET` every `SAP_CHECK_INTERVAL_SECONDS` (default 10 min). sap-check only checks SAP and notifies users; SAP syncs stay manual (the Sync button on each module). ai-automations runs enabled Pixelcare schedules in each automation's timezone. The sidecar must be up — an open browser does not run them. Develop on Vercel has no cron.
+- **AI automations migration (not applied):** `prisma/migrations/20261016083000_ai_automations` is in the repo and has not been applied. The live database already records `20261015124844`, which is missing from this repo, so `prisma migrate dev` asks for a reset. Do not reset. Leave that history mismatch until the missing migration is restored.
 - **Redis**: the app talks to Upstash over REST only; there is no Redis container. Leave `UPSTASH_*` unset for the in-memory fallback.
 - **URL**: `APP_URL` (runtime) replaces `NEXT_PUBLIC_APP_URL` (build-time) for auth trusted origins and email links.
 - `vercel.json` can be deleted once Vercel is decommissioned.

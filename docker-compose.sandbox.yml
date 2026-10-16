@@ -9,7 +9,7 @@
 #
 # Differences from the deployed environments: builds from the working tree by
 # default, no Traefik/TLS (port 3000 published directly), and the SAP auto-check
-# cron is opt-in (`--profile cron`) so a laptop never polls SAP by accident.
+# cron is opt-in (`--profile cron`) so a laptop never polls SAP or AI automations by accident.
 name: isms-sandbox
 
 x-env-file: &env-file .env.sandbox

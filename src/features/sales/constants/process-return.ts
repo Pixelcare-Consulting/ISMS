@@ -34,6 +34,28 @@ export function isDealerInitiatedDocumentTypeName(
   );
 }
 
+/**
+ * Document Type indicates Replacement (e.g. BRANCH REPLACEMENT).
+ * Checked before Return so names containing both prefer Replacement.
+ */
+export function isReplacementDocumentTypeName(
+  name: string | null | undefined,
+): boolean {
+  const normalized = name?.trim().toLowerCase() ?? "";
+  return normalized.includes("replacement");
+}
+
+/**
+ * Document Type indicates Return (e.g. BRANCH RETURN), not Replacement.
+ */
+export function isReturnDocumentTypeName(
+  name: string | null | undefined,
+): boolean {
+  const normalized = name?.trim().toLowerCase() ?? "";
+  if (!normalized || normalized.includes("replacement")) return false;
+  return normalized.includes("return");
+}
+
 /** @deprecated Prefer {@link isServiceDocumentTypeName}. */
 export function isServiceReturnDocumentTypeName(
   name: string | null | undefined,

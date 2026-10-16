@@ -10,9 +10,10 @@ import {
 import { AppNavigationProgress } from "@/app/(app)/_components/app-navigation-progress";
 import { AppSidebar } from "@/app/(app)/_components/app-sidebar";
 import { AppTopLoader } from "@/app/(app)/_components/app-top-loader";
+import { PixelcareAwareShell } from "@/app/(app)/_components/pixelcare-aware-shell";
 import { WhatsNewHeaderAction } from "@/app/(app)/_components/whats-new-header-action";
 import { DocumentTitle } from "@/components/document-title";
-import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { resolveRouteTitle } from "@/config/route-titles";
 import { AiCopilotLauncher } from "@/features/ai/components/ai-copilot-launcher";
 import { canUseAiAssist } from "@/features/ai/constants/ai-permissions";
@@ -22,6 +23,8 @@ import { countStockUnitsStkAction } from "@/features/inventory/actions/inventory
 import { getWorkflowNavCountBadgesAction } from "@/features/nav-badges/actions/nav-count-badges.actions";
 import { countUnreadNotificationsAction } from "@/features/notifications/actions/notification.actions";
 import { NotificationsHeaderAction } from "@/features/notifications/components/notifications-header-action";
+import { PixelcareAiFullscreenProvider } from "@/features/pixelcare-ai/components/fullscreen-provider";
+import { canUsePixelcareAi } from "@/features/pixelcare-ai/constants/permissions";
 import { SapSyncProgressModals } from "@/features/sap/components/sap-sync-progress-modal";
 import { SapSyncReportDialogs } from "@/features/sap/components/sap-sync-report-dialogs";
 import { pageMetadata } from "@/lib/shared/seo";
@@ -38,6 +41,7 @@ export default async function AppLayout({
   children: React.ReactNode;
 }) {
   const session = await requireAuth();
+
   const [
     branding,
     profile,
@@ -76,37 +80,45 @@ export default async function AppLayout({
         <AppNavigationProgress />
       </Suspense>
 
-      <AppSidebar
-        branding={branding}
-        user={user}
-        countBadges={{
-          unreadAnnouncements: unreadAnnouncementCount,
-          stockUnitsStk: stockUnitsStkCount,
-          ...workflowNavCounts,
-        }}
-      />
-
-      <SidebarInset className="h-svh overflow-hidden">
-        <header className="app-header flex h-14 shrink-0 items-center gap-2 bg-white pl-2 pr-3 text-sidebar-foreground sm:pr-4 lg:pr-6">
-          <SidebarTrigger className="text-sidebar hover:bg-sidebar-accent/60 hover:text-sidebar-foreground" />
-          <WhatsNewHeaderAction />
-          <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
-            <NotificationsHeaderAction
-              initialUnreadCount={unreadNotificationCount}
+      <PixelcareAiFullscreenProvider>
+        <PixelcareAwareShell
+          sidebar={
+            <AppSidebar
+              branding={branding}
+              user={user}
+              countBadges={{
+                unreadAnnouncements: unreadAnnouncementCount,
+                stockUnitsStk: stockUnitsStkCount,
+                ...workflowNavCounts,
+              }}
             />
-          </div>
-        </header>
-
-        <div className="content-scrollbar flex-1 overflow-y-auto bg-background">
-          <div className="w-full px-5 py-6 sm:px-7 lg:px-10">{children}</div>
-        </div>
-      </SidebarInset>
+          }
+          header={
+            <header className="app-header flex h-14 shrink-0 items-center gap-2 bg-white pl-2 pr-3 text-sidebar-foreground sm:pr-4 lg:pr-6">
+              <SidebarTrigger className="text-sidebar hover:bg-sidebar-accent/60 hover:text-sidebar-foreground" />
+              <WhatsNewHeaderAction />
+              <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+                <NotificationsHeaderAction
+                  initialUnreadCount={unreadNotificationCount}
+                />
+              </div>
+            </header>
+          }
+        >
+          {children}
+        </PixelcareAwareShell>
+      </PixelcareAiFullscreenProvider>
 
       <SapSyncProgressModals />
       <SapSyncReportDialogs />
       <AiCopilotLauncher
         canAssist={canUseAiAssist(session.user.permissions)}
         configured={isAiConfigured()}
+        canUsePixelcareAi={canUsePixelcareAi({
+          userId: session.user.id,
+          email: session.user.email,
+          permissions: session.user.permissions,
+        })}
       />
     </SidebarProvider>
   );

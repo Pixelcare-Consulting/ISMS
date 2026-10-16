@@ -101,7 +101,11 @@ export function EditOrderDialog({
         toast.error(result.error);
         return;
       }
-      toast.success("Order updated — re-submitted for review");
+      toast.success(
+        order.orderType === "manual"
+          ? "Order updated — still awaiting Supply Planning"
+          : "Order updated — re-submitted for review",
+      );
       onClose();
       router.refresh();
     });
@@ -115,7 +119,10 @@ export function EditOrderDialog({
         <div>
           <h3 className="font-medium">Edit order {order.orderNumber}</h3>
           <p className="text-sm text-muted-foreground">
-            {order.branchName} — editing resubmits the order for review.
+            {order.branchName} —{" "}
+            {order.orderType === "manual"
+              ? "you can adjust lines while Supply Planning reviews."
+              : "editing resubmits the order for review."}
           </p>
         </div>
 
@@ -165,7 +172,7 @@ export function EditOrderDialog({
                   label="Add SKU"
                   options={availableToAdd.map((m) => ({
                     id: m.id,
-                    label: `${m.skuCode} — ${m.name}${m.maxQty != null ? ` (max ${m.maxQty})` : ""}`,
+                    label: `${m.skuCode} — ${m.name}${m.maxQty != null ? ` (Shelf max ${m.maxQty})` : ""}`,
                   }))}
                   value={addModelId}
                   onChange={setAddModelId}

@@ -2,7 +2,7 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.54.5`
+**Current version:** `0.70.5`
 
 ## Stack
 
@@ -14,22 +14,23 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 |------|----------|
 | **Auth** | Email/password (Better Auth), tenant-scoped sessions, demo seed users; public `/register` off unless `ALLOW_PUBLIC_REGISTER=true` |
 | **Help** | Workflow guides, FAQs, page tutorials; **ISMS Assist** (ask in plain language over Help content; sources shown) |
+| **Pixelcare AI** | Internal assistant at `/internal/ai` (chat-first home with guided suggestion chips + chat workspace + in-page Ask AI). Automations at `/internal/ai/automations`: daily briefing, replenishment review, and pending-work reminders. Replenishment creates an auto replenish order only after you confirm; it starts as Pending TL and is not sent to SAP. Schedules run on the server only when the scheduler is running. On by default for all signed-in users. Optional `PIXELCARE_AI_USER_IDS` lockdown; tools still enforce AOR/tenant/module permissions. Uses Qwen (Model Studio); separate from OpenAI ISMS Assist |
 | **Provider** | Platform console at `/provider/*` for platform operators only (provider role on the `isPlatform` Pixelcare tenant): customer summaries, create org + first Tenant Admin, org branding edit, full user/admin management, soft-disable/restore, global permissions |
 | **Dashboard** | Nav group: **Overview** (announcements only — defaults to New/unread, falls back to All when caught up; unread count badge in the menu), **Operations** (Today’s briefing + ops KPI cards / inventory / planning / order pipeline; role-gated), **Sales** (Today’s briefing + sales overview; role-gated), **P-Count Dashboard**, **Site Traffic**, **Market Survey** → Competitors. Sidebar also shows role-scoped red count badges for Monthly SIR for-approval, order review queues, returns approvals, and logistics actions (plus Stock units STK). Header: What’s new beside the sidebar drawer; notifications bell on the right (paginated inbox). Announcement CRUD stays under Announcements. |
 | **Announcements** | Tenant posts with rich body (formatting, links, images, tables); list + CRUD (`/announcements`); publishing a live announcement also sends a tenant-wide in-app notification (header bell → Overview); Overview feed defaults to New (unread) and falls back to All when everything is read; mark-as-read, likes, comments (latest 3 + show all; edit own / managers delete any), reader avatar stack (max 5), and All / New / Earlier + title search filters |
 | **Competitors** | Market observations with master Competitor + Competitor brand/model lookups, AOR-bound branch, optional promotion; KPIs + CRUD (`/competitors`) |
-| **Settings** | Company, users, departments, roles, permissions catalog (`roles.manage`; assign via Roles), branches, warehouses, dealers, service centers, AORs (branches / warehouses / service centers assign + sync), master data (incl. Series / Categories, Competitors / Competitor brands), status codes (per-module tabs + badge colors); collapsible Module guides on complex settings/ops pages |
+| **Settings** | Company, users, departments, roles, permissions catalog (`roles.manage`; assign via Roles), branches, warehouses, dealers, service centers, AORs (branches / warehouses / service centers assign, edit, and sync), master data (incl. Series / Categories, Competitors / Competitor brands), status codes (per-module tabs + badge colors); collapsible Module guides on complex settings/ops pages |
 | **Planning** | Period switcher + clickable cards; in-page Add/Edit/Remove branch revenue targets; official Forecast template download + import (bulk; period as MMM-YY e.g. Dec-25); allocation; Supply Planning runs (`/settings/planning`, `/settings/planning/runs`) |
-| **Planogram** | Clickable cards filter branches with a planogram or none yet; branch list shows allowed SKUs as tags; Open a branch shows a wait message with the branch name; per-branch SKU assignment; current or latest model price and date; editable max qty; Allowed models uses the same table; official Excel template download + import (branch SAP + SKU); Add model requires Allowed models first |
+| **Planogram** | Clickable cards filter branches with a planogram or none yet; branch list shows allowed SKUs as tags; Open a branch shows a wait message with the branch name; per-branch SKU assignment; current or latest model price and date; editable Shelf max; multi-select Add models (per-SKU Shelf max) and allow-list popup; Allowed models uses the same table; official Excel template download + import (branch SAP + SKU); Add model requires Allowed models first |
 | **Policies** | Full document control (ISO track) |
-| **Inventory** | Serialized stock (STK on Stock units), **SAP Serial No.** flat serial list (`/inventory/serial-numbers`; legacy by-model via `?view=by-model`), **warehouse stock** SN list (`/inventory/warehouse-stock`; also Settings → Warehouses → Stock), AOR-scoped lists, series QTY/VALUE + DR#/date/aging, **physical stock count / P-Count** (`/inventory/stock-count`) — scan serials, surplus/missing variances, Post differences (local STK + SAP Inventory Posting when SL connected); **Monthly SIR** (`/inventory/monthly-sir`) — request/approve, Excel P-COUNT upload, and variance workbook |
-| **Orders** | Nav group: Manual / Special / Auto replenish (`/orders/manual` etc.); per-type Module guide; Manual/Special tabs **Orders \| Order Analytics \| Order History** (`?tab=`); Auto replenish **Orders \| Order History** (no Analytics); Orders tab is a role work queue (PS / TL / SP / Logistics see their step; admins see the live pipeline) and omits approved / rejected / cancelled (those stay in Order History); pipeline counts sit under Orders as KPI cards for the queue; Analytics filter card (search for a branch, then brand on the card; assigned branch is selected for you; Clear; DII / inventory KPI cards after both are set); Create optional brand (cleared = all SKUs), extras below the table with multi-add, row numbers, delete a wrong line; per-branch create workspace (multi-line); Create shows a placeholder SKU grid while models load; Create submit shows a please-wait overlay; Auto replenish has no Create — use Suggested orders / Replenishment; drafts use **Submit for review** before TL; per-type `orders.manual`, `orders.special`, `orders.auto_replenish` with view/create/approve; PS → TL → SP; SO#, processed orders, delivery-due auto-reschedule |
+| **Inventory** | **Stock units** (`/inventory`) — grouped **By branch** / **By model** / **All serials**, AOR-scoped lists, series QTY/VALUE + DR#/date/aging (defective units via Sales returns STK/DEF, not from Stock units); **SAP Serial No.** flat serial list (`/inventory/serial-numbers`; legacy by-model via `?view=by-model`), **warehouse stock** SN list (`/inventory/warehouse-stock`; also Settings → Warehouses → Stock), **physical stock count / P-Count** (`/inventory/stock-count`) — scan serials, surplus/missing variances, Post differences (local STK + SAP Inventory Posting when SL connected); **Monthly SIR** (`/inventory/monthly-sir`) — TL/PS free P-COUNT upload slots (Manila calendar; free slot used when you Start Upload; extras via Request to upload), approve when needed, Excel P-COUNT upload, and variance workbook |
+| **Orders** | Nav group: Manual / Special / Auto replenish (`/orders/manual` etc.); per-type Module guide; Manual/Special tabs **Orders \| Order Analytics \| Order History** (`?tab=`); Auto replenish **Orders \| Order History** (no Analytics); Orders tab is a role work queue (PS / TL / SP / Logistics see their step; admins see the live pipeline) and omits approved / rejected / cancelled (those stay in Order History); pipeline counts sit under Orders as KPI cards for the queue; Analytics filter card (search for a branch, then brand on the card; assigned branch is selected for you; Clear; DII / inventory KPI cards after both are set); Create optional brand (cleared = all SKUs), extras below the table with multi-add, row numbers, delete a wrong line; per-branch create workspace (multi-line); Create shows a placeholder SKU grid while models load; Create submit shows a please-wait overlay; Auto replenish has no Create — use Suggested orders / Replenishment; drafts use **Submit for review** before TL; per-type `orders.manual`, `orders.special`, `orders.auto_replenish` with view/create/approve; Manual → Pending SP (TL optional edit) → SP; Special TL→SP; Auto TL→SP; SO#, processed orders, delivery-due auto-reschedule |
 | **Logistics** | Deliveries (accept/reject), transfers, pull-outs with SN movement; gated by `logistics.view` / `create` / `manage` |
 | **Sales** | Encode at `/sales/new` (CTA from `/sales`); PS auto-branch; TL `sales.create` + branch picker; package detail modal (qty → N sets), reserved (RSV) sales; list + KPIs show Sold / Official Sold / TO FOLLOW only (return workflow on Returns); line Edit only for TO-FOLLOW; Accounting `sales.update` edits transaction headers; Process Return per serial line from Sale details (document type, STK/DEF, problems, Return or Replacement) |
 | **Returns / Replacement** | `/returns` with Branch \| Service \| Approvals tabs gated by `returns.branch.view` / `returns.service.view` / evaluate·approve·complete (umbrella `returns.view` sees all); ATR workflow via `returns.*` (legacy `sales.return.*` / `service_centers.return.*` still work); Branch table includes report columns + ATR/ODRF download; **Service Return / Replacement** Document Types appear under Service Returns (with SC-sale returns); Dealer Initiated types need TL after CS; other types go Approved after CS; approved Return restores STK/DEF for the selected serial only; approved Replacement Same Invoice shows original TRN (read-only) and updates that sale line, or New Invoice creates a new sale |
 | **Service** | Service center ops (AOR-scoped): inventory + manual stock-in, sales encode + request return, orders, deliveries (backload → STK), pull-outs under `/service-centers/*` |
-| **Reports** | Processed orders, daily stock, transfers, sales CSV (`/reports/sales`), **P-Count** (`/reports/pcount`), **Official Sales** dealer-template staging — Action Key process (`ADD` / `WHSE_ADD` / `DEL` → Official Sold; already-OFS ADD is idempotent; DEL restores STK at Branch Sold; stock adjustments appear in Serial Number Logs; process summarizes failed serials), progress popup, View details, and ? quick guide (`/reports/official-sales`) |
-| **SAP** | Outbound job queue + mock processor; **Service Layer** settings (encrypted credentials) + shared Redis-backed B1 session (L1 in-memory fallback) with status UI (Connect/Logout) and refresh-on-401 |
+| **Reports** | Processed orders, daily stock, transfers, sales CSV (`/reports/sales`), **Inventory Report** Excel (`/reports/inventory` — Summary + Detail tabs; dealer/branch classification + serial/DR#/aging; date filter; AOR-scoped), **P-Count** (`/reports/pcount`), **Official Sales** dealer-template staging — Action Key process (`ADD` / `WHSE_ADD` / `DEL` → Official Sold; already-OFS ADD is idempotent; DEL restores STK at Branch Sold; stock adjustments appear in Serial Number Logs; process summarizes failed serials), progress popup, View details, and ? quick guide (`/reports/official-sales`) |
+| **SAP** | Outbound job queue + swappable outbound port (mock ITR/SO/OWTR by default; Service Layer adapter opt-in); **Service Layer** settings (encrypted credentials) + shared Redis-backed B1 session (L1 in-memory fallback) with status UI (Connect/Logout) and refresh-on-401; P-Count Inventory Posting live when SL connected |
 | **RBAC** | ISO + BRS roles (PS, TL, SP/SPA, Logistics, AE, Accounting); shared action vocabulary + module allowlists; Roles simple checklist + module×action matrix; Super Admins see built-in system roles and can adjust grants (rename/delete stay locked); Returns / Replacement uses `returns.view` (all tabs), `returns.branch.view` / `returns.service.view` (tabs), plus `request` / `evaluate` / `approve` / `complete` (Approvals tab uses evaluate/approve/complete — no separate approvals.view); legacy `sales.return.*` / SC return aliases still work; sale header Edit uses `sales.update`; Logistics uses `logistics.view` / `create` / `manage`; Service uses `service_centers.*` ops perms; ISMS Assist uses `ai.assist` |
 
 ### App routes
@@ -43,6 +44,8 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/provider/tenants` | Platform operator — customer list (status filters) / create / detail (org branding + users) / disable / restore |
 | `/provider/permissions` | Platform operator — global permissions catalog |
 | `/help` | Authenticated — Help & Support; Assist when `ai.assist` |
+| `/internal/ai` | Pixelcare AI — signed-in session (optional `PIXELCARE_AI_USER_IDS` lockdown; hidden from normal nav). A sales order number already in your message is looked up as written |
+| `/internal/ai/automations` | Pixelcare AI automations — same access as `/internal/ai`. Daily briefing, replenishment review (confirm before an auto replenish order; starts Pending TL; not sent to SAP), and pending-work reminders. Schedules run only when the server scheduler is up |
 | `/dashboard` | Authenticated tenant app — Overview announcement feed only (platform operators redirect to `/provider`) |
 | `/dashboard/operations` | Inventory / orders / logistics / planning access — ops cards + Today’s briefing (no announcements) |
 | `/dashboard/sales` | `sales.*` / returns access — Sales overview + Today’s briefing (no announcements) |
@@ -50,11 +53,11 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/dashboard/site-traffic` | `users.manage` or `audit_logs.view` — Site Traffic KPIs and activity tabs |
 | `/announcements` | `announcements.view` / `announcements.manage` |
 | `/competitors` | `competitors.view` / `competitors.manage` |
-| `/inventory` | `inventory.view` (Stock units: STK only, series summary, DR#/date/aging; Sold etc. in Sales) |
+| `/inventory` | `inventory.view` (Stock units: grouped by branch/model or all serials; series summary, DR#/date/aging; Sold etc. in Sales) |
 | `/inventory/serial-numbers` | `inventory.view` — SAP Serial No. flat list (one row per serial); `?view=by-model` for legacy model+QTY UI; Sync from SAP needs `sap.manage` |
 | `/inventory/warehouse-stock` | `inventory.view` or `warehouses.manage` (read-only warehouse SNs; AOR-scoped; `?warehouse=` / `?location=` / `?q=`) |
 | `/inventory/stock-count` | `inventory.view` (nav alias: P-Count) |
-| `/inventory/monthly-sir` | `inventory.view` — request, download/upload P-COUNT workbook, generate variance; approve/disapprove needs `inventory.manage` |
+| `/inventory/monthly-sir` | `inventory.view` — Upload P-COUNT when TL/PS Manila free slots remain (slot used on Start), else Request to upload; download/upload P-COUNT workbook, generate variance; approve/disapprove needs `inventory.manage` |
 | `/orders` | Redirects to first accessible order type (or dashboard) |
 | `/orders/manual` | `orders.manual.view` / `create` / `approve` (or legacy `orders.*`); tabs `?tab=orders` \| `analytics` \| `history` |
 | `/orders/special` | `orders.special.view` / `create` / `approve` (or legacy `orders.*`); tabs `?tab=orders` \| `analytics` \| `history` |
@@ -69,13 +72,13 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/service-centers/sales`, `/service-centers/sales/new` | `service_centers.sales.*` (request return still available; finish under `/returns`) |
 | `/service-centers/orders` | `service_centers.orders.view` / `create` / `approve` |
 | `/service-centers/deliveries`, `/pullouts` | `service_centers.logistics.view` / `create` / `manage` |
-| `/reports/processed-orders`, `/daily-stock`, `/transfers`, `/sales`, `/pcount`, `/official-sales` | `reports.view` (+ module-specific) |
+| `/reports/processed-orders`, `/daily-stock`, `/transfers`, `/sales`, `/inventory`, `/pcount`, `/official-sales` | `reports.view` (+ module-specific; Inventory Report also accepts `inventory.view`) |
 | `/policies`, `/policies/[id]`, `/policies/new` | Policy permissions |
 | `/settings/company` | Tenant Admin / Super Admin |
 | `/settings/users`, `/roles` | `users.manage` / `roles.manage` |
 | `/settings/departments` | `departments.manage` |
 | `/audit-logs/system`, `/audit-logs/serial-numbers` | `audit_logs.view` |
-| `/settings/branches`, `/settings/branch-quotas` | `branches.manage` (Import template: form-aligned Branches sheet + prefills; creates missing sap_codes; accepts PSG ISMS; optional legacy Allowed Models; schedule UX shows company locked days + frequency suggestions) |
+| `/settings/branches`, `/settings/branch-quotas` | `branches.manage` (Branches Import: form-aligned sheet + prefills; creates missing sap_codes; accepts PSG ISMS; optional legacy Allowed Models; schedule UX shows company locked days + frequency suggestions. Branch Quotas Import: template of current quotas, preview create/update, apply upsert by branch + brand + month) |
 | `/settings/ordering` | `ordering_settings.manage` (company locked weekdays + optional daily time lock in Manila, scoped to selected order modules; frequency code catalog incl. Daily / Three times a month) |
 | `/settings/warehouses` | `warehouses.manage` (Warehouses setup + Stock tab → `/inventory/warehouse-stock`) |
 | `/settings/dealers` | `dealers.manage` |
@@ -93,6 +96,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | Doc | Purpose |
 |-----|---------|
 | [`docs/CLIENT_WORKFLOW.md`](docs/CLIENT_WORKFLOW.md) | Client-facing How ISMS works (Mermaid master + role swimlanes) |
+| [`docs/END_USER_STOCK_AND_RETURNS_GUIDE.md`](docs/END_USER_STOCK_AND_RETURNS_GUIDE.md) | Branch staff guide — Stock units, sell STK, defective returns via Process Return (DEF); [`STOCK_UNITS_AND_DEFECTIVE_RETURNS_WORKFLOW.md`](docs/STOCK_UNITS_AND_DEFECTIVE_RETURNS_WORKFLOW.md) points here |
 | [`docs/FINDEN_ISMS_End_User_Process_Flow.docx`](docs/FINDEN_ISMS_End_User_Process_Flow.docx) | Shareable end-user Process Flow (Word) — plain-language narrative + sales/returns steps |
 | [`docs/FINDEN_ISMS_End_User_Process_Flow.xlsx`](docs/FINDEN_ISMS_End_User_Process_Flow.xlsx) | Shareable end-user Process Flow (Excel) — multi-sheet matrices & menu map |
 | [`docs/FINDEN_ISMS_SAP_B1_Automation_Proposal.docx`](docs/FINDEN_ISMS_SAP_B1_Automation_Proposal.docx) | Stakeholder proposal — SAP B1 automation phases, keep vs retire guidance |
@@ -119,8 +123,9 @@ src/
 │   ├── (marketing)/     # Public landing
 │   ├── (auth)/          # Login, register
 │   ├── (app)/           # Tenant app (dashboard, inventory, orders, logistics, settings, reports)
+│   ├── (internal)/      # Private Pixelcare AI shell (no ISMS sidebar)
 │   ├── (provider)/      # Platform Provider console (customer tenants, permissions)
-│   └── api/             # Auth, exports, policy attachments
+│   └── api/             # Auth, exports, policy attachments, internal AI
 ├── components/          # Shared UI (ShadCN, data-table)
 ├── config/              # app-navigation, app-modules
 ├── content/             # releases.ts, page-tutorials, module-guides
@@ -144,6 +149,17 @@ src/
 5. (Optional) Policy / audit files land under `STORAGE_ROOT` (default `.data/uploads`)
 6. (Optional) Workflow email: Resend
 7. Dev: `pnpm run dev`
+
+### Pixelcare AI (optional)
+
+1. Copy Qwen / Pixelcare AI placeholders from [`.env.example`](.env.example) into `.env.local`
+2. Pixelcare AI is on by default for any signed-in user at `/internal/ai`
+3. Leave `PIXELCARE_AI_USER_IDS` empty for everyone. Only set it (comma-separated user ids/emails) if you need a temporary lockdown. Optional `ai.internal` still bypasses a non-empty allowlist.
+4. Set `QWEN_API_KEY`, `QWEN_BASE_URL` (Model Studio compatible-mode URL), and optional `QWEN_MODEL` (default `qwen-plus`)
+5. Apply the `ai_conversations` / `ai_messages` migration (`pnpm run db:migrate` or `pnpm run db:deploy`), then open `/internal/ai`
+6. Optional: `PIXELCARE_AI_SAMPLE_MODE=true` for labeled sample fixtures only (never mix with live decisions)
+7. Restart `pnpm run dev` after changing `.env.local` so Next.js reloads env
+8. Automations: open `/internal/ai/automations`. Scheduled runs happen on the server only when the scheduler is running (see [`DEPLOYMENT.md`](DEPLOYMENT.md))
 
 See [`database/postgres.example.md`](database/postgres.example.md) for connection details and cutover notes.
 

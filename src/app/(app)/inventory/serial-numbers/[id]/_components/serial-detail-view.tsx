@@ -305,11 +305,13 @@ function DetailHeader({ serial }: { serial: SerialTraceability }) {
             {brandSeriesLine(serial)}
           </p>
         </div>
-        <Button variant="outline" size="sm" asChild className="w-fit shrink-0 self-end">
-          <Link href="/inventory/serial-numbers">
-            <ArrowLeft className="size-4" /> All serials
-          </Link>
-        </Button>
+        <div className="flex shrink-0 flex-col items-end gap-2 self-end">
+          <Button variant="outline" size="sm" asChild className="w-fit">
+            <Link href="/inventory/serial-numbers">
+              <ArrowLeft className="size-4" /> All serials
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <dl className="grid gap-3 border-t border-border/50 pt-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -834,7 +836,7 @@ function LocationCard({ serial }: { serial: SerialTraceability }) {
               value={
                 serial.planogram.onPlanogram
                   ? serial.planogram.maxQty != null
-                    ? `Yes · max ${serial.planogram.maxQty}`
+                    ? `Yes · Shelf max ${serial.planogram.maxQty}`
                     : "Yes"
                   : "No"
               }

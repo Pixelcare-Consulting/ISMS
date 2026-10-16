@@ -1,6 +1,8 @@
 import { auditService } from "@/features/audit/services/audit.service";
 import { calendarMonthBoundsFromLabel } from "@/features/demand-planning/lib/planning-period-dates";
+import { partitionBranchesBySalesHistory } from "@/features/demand-planning/lib/exclude-no-history";
 import { resolveHistoryWindow, toDateInputValue } from "@/features/demand-planning/lib/history-window";
+import { isDemandPlanningRunDeletable } from "@/features/demand-planning/lib/run-lifecycle";
 import { parseRunParameters, parseRunScope } from "@/features/demand-planning/lib/run-snapshot";
 import {
   skuInputFromPersistableLine,
@@ -27,6 +29,17 @@ import type { GenerateDemandPlanInput } from "@/features/demand-planning/schemas
 import type { DemandPlanningSourcePreview } from "@/features/demand-planning/types/run.types";
 import { decimalToNumber } from "@/lib/database/decimal";
 import type { PaginationInput } from "@/lib/shared/pagination";
+
+const DOCUMENT_NUMBER_CREATE_ATTEMPTS = 5;
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code: string }).code === "P2002"
+  );
+}
 
 function periodStartDate(period: {
   label: string;
@@ -240,26 +253,45 @@ export const demandPlanningRunService = {
       input.historyFrom,
       input.historyTo,
     );
-    const documentNumber = await demandPlanningRepository.nextDocumentNumber(tenantId, start);
     const parameters = toRunParameters(input);
     const scope = {
       dealerIds: input.dealerIds,
       branchIds: branches.map((branch) => branch.id),
     };
 
-    const run = await demandPlanningRepository.createRun(tenantId, {
-      periodId: period.id,
-      documentNumber,
-      version,
-      status: "draft",
-      name: input.name?.trim() || null,
-      scope,
-      parameters,
-      historyFrom,
-      historyTo,
-      createdById: actorUserId,
-      supersedesRunId: input.supersedesRunId ?? null,
-    });
+    let run: Awaited<ReturnType<typeof demandPlanningRepository.createRun>> | null = null;
+    let documentNumber = "";
+    for (let attempt = 0; attempt < DOCUMENT_NUMBER_CREATE_ATTEMPTS; attempt++) {
+      documentNumber = await demandPlanningRepository.nextDocumentNumber(tenantId, start);
+      try {
+        run = await demandPlanningRepository.createRun(tenantId, {
+          periodId: period.id,
+          documentNumber,
+          version,
+          status: "draft",
+          name: input.name?.trim() || null,
+          scope,
+          parameters,
+          historyFrom,
+          historyTo,
+          createdById: actorUserId,
+          supersedesRunId: input.supersedesRunId ?? null,
+        });
+        break;
+      } catch (error) {
+        if (!isUniqueConstraintError(error)) throw error;
+        if (attempt === DOCUMENT_NUMBER_CREATE_ATTEMPTS - 1) {
+          throw new Error(
+            "Could not allocate a unique document number. Please try generating the plan again.",
+          );
+        }
+      }
+    }
+    if (!run) {
+      throw new Error(
+        "Could not allocate a unique document number. Please try generating the plan again.",
+      );
+    }
 
     const { assembled, stamps, onHandAsAt } = await demandPlanningFactsService.assembleBranches({
       tenantId,
@@ -269,16 +301,36 @@ export const demandPlanningRunService = {
       historyTo,
       parameters,
     });
-    const persistable = demandPlanningFactsService.computePersistableBranches(
+    const computed = demandPlanningFactsService.computePersistableBranches(
       assembled,
       parameters,
     );
+
+    let persistable = computed;
+    let excludedNoHistoryCount = 0;
+    let narrowedScope: typeof scope | undefined;
+    if (input.excludeNoHistoryBranches) {
+      const { kept, excluded } = partitionBranchesBySalesHistory(computed);
+      excludedNoHistoryCount = excluded.length;
+      if (kept.length === 0) {
+        await demandPlanningRepository.deleteRun(tenantId, run.id);
+        throw new Error(
+          "Every dealer in scope has no sales history for the Date from–Date to range. Widen the dates or add sales, then generate again.",
+        );
+      }
+      persistable = kept;
+      narrowedScope = {
+        dealerIds: scope.dealerIds,
+        branchIds: kept.map((branch) => branch.branchId),
+      };
+    }
 
     await demandPlanningRepository.replaceRunComputation(tenantId, run.id, {
       status: "generated",
       historyFrom,
       historyTo,
       onHandAsAt,
+      scope: narrowedScope,
       stamps,
       branches: persistable,
     });
@@ -293,10 +345,12 @@ export const demandPlanningRunService = {
         documentNumber,
         branchCount: persistable.length,
         plannedCount: persistable.filter((branch) => branch.planStatus === "planned").length,
+        excludedNoHistoryCount,
+        excludeNoHistoryBranches: input.excludeNoHistoryBranches,
       },
     });
 
-    return { runId: run.id, documentNumber };
+    return { runId: run.id, documentNumber, excludedNoHistoryCount };
   },
 
   async recalculateRun(tenantId: string, actorUserId: string, runId: string) {
@@ -318,6 +372,8 @@ export const demandPlanningRunService = {
         frequencyOverride: parameters.frequencyOverride,
         historyFrom: run.historyFrom ? toDateInputValue(run.historyFrom) : null,
         historyTo: run.historyTo ? toDateInputValue(run.historyTo) : null,
+        /** Preserve whatever is already on the run (already filtered or intentionally kept). */
+        excludeNoHistoryBranches: false,
         supersedesRunId: run.id,
       });
     }
@@ -495,5 +551,66 @@ export const demandPlanningRunService = {
         branchLabel: branchLabel.get(line.runBranchId) ?? "",
       })),
     };
+  },
+
+  async deleteRun(tenantId: string, actorUserId: string, runId: string) {
+    const run = await demandPlanningRepository.findRunStatus(tenantId, runId);
+    if (!run) throw new Error("Supply planning run not found");
+    if (!isDemandPlanningRunDeletable(run.status)) {
+      throw new Error("Released runs cannot be deleted");
+    }
+
+    const result = await demandPlanningRepository.deleteRun(tenantId, runId);
+    if (result.count === 0) throw new Error("Supply planning run not found");
+
+    await auditService.log({
+      tenantId,
+      userId: actorUserId,
+      action: "demand_planning.run_deleted",
+      entityType: "DemandPlanningRun",
+      entityId: runId,
+      metadata: {
+        documentNumber: run.documentNumber,
+        status: run.status,
+        name: run.name,
+      },
+    });
+
+    return { runId, documentNumber: run.documentNumber };
+  },
+
+  /**
+   * Best-effort bulk delete: each id is validated like single delete.
+   * Released / missing runs are skipped so the rest can still succeed.
+   */
+  async deleteRuns(tenantId: string, actorUserId: string, runIds: string[]) {
+    const uniqueIds = [...new Set(runIds.filter(Boolean))];
+    if (uniqueIds.length === 0) {
+      throw new Error("Select at least one run to delete");
+    }
+
+    let deleted = 0;
+    let skipped = 0;
+    const documentNumbers: string[] = [];
+
+    for (const runId of uniqueIds) {
+      try {
+        const result = await this.deleteRun(tenantId, actorUserId, runId);
+        deleted += 1;
+        documentNumbers.push(result.documentNumber);
+      } catch {
+        skipped += 1;
+      }
+    }
+
+    if (deleted === 0) {
+      throw new Error(
+        skipped > 0
+          ? "No runs were deleted. Released runs cannot be deleted."
+          : "No runs were deleted",
+      );
+    }
+
+    return { deleted, skipped, documentNumbers };
   },
 };

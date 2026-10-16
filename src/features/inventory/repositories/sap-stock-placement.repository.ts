@@ -4,11 +4,15 @@ import { prisma } from "@/lib/database/client";
  * Warehouse placement writer.
  *
  * Serial master sync stays registry-only and must not call this. Stock is placed
- * only by an explicit warehouse receive (live SAP test company, or the labeled
- * local fixture). Creating a model, warehouse, or location does not call this.
+ * only by an explicit location stock-in, or by a warehouse receive (live SAP test
+ * company, or the labeled local fixture). Approving an order, syncing warehouses
+ * from SAP, and creating a model, warehouse, or location do not call this.
  *
- * `skipDuplicates` keeps a second receive from inserting the same unit twice.
+ * `skipDuplicates` keeps a second placement from inserting the same unit twice.
  */
+
+/** Status shown on warehouse stock after a person stocks a serial into a location. */
+export const STOCK_IN_SYSTEM_STATUS = "Stock";
 
 /** Rows written per statement. Stays well under Postgres parameter limits. */
 const WRITE_CHUNK = 500;

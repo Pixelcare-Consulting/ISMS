@@ -1,14 +1,18 @@
 import { getOrderActionableQueueStatuses } from "@/features/orders/constants/order-workflow";
 
 describe("getOrderActionableQueueStatuses", () => {
-  it("returns TL + SP steps for a Team Leader on manual orders (no drafts)", () => {
-    expect(getOrderActionableQueueStatuses("manual", ["tl"])).toEqual([
-      "pending_tl",
-    ]);
+  it("does not badge Team Leaders for Manual pending_sp (edit-only, not approve)", () => {
+    expect(getOrderActionableQueueStatuses("manual", ["tl"])).toEqual([]);
   });
 
   it("returns SP step for Supply Planning on special orders", () => {
     expect(getOrderActionableQueueStatuses("special", ["sp"])).toEqual([
+      "pending_sp",
+    ]);
+  });
+
+  it("returns SP step for Supply Planning on manual orders", () => {
+    expect(getOrderActionableQueueStatuses("manual", ["sp"])).toEqual([
       "pending_sp",
     ]);
   });

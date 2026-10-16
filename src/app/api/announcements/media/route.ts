@@ -42,7 +42,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Invalid path" }, { status: 403 });
     }
 
-    const storage = getObjectStorage();
+    const storage = await getObjectStorage();
     const { buffer } = await storage.download(storagePath);
 
     return new NextResponse(new Uint8Array(buffer), {

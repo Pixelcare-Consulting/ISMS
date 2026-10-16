@@ -112,7 +112,6 @@ export function ImportModelsDialog({
       let lastProcessed = 0;
       let lastTotal = 0;
       let modelsUpdated = 0;
-      let brandsCreated = 0;
       let seriesCreated = 0;
       let sapUpdated = 0;
       let sapFailed = 0;
@@ -161,7 +160,6 @@ export function ImportModelsDialog({
           if (progress.planKey) planKey = progress.planKey;
 
           modelsUpdated += progress.modelsUpdated;
-          brandsCreated += progress.brandsCreated;
           seriesCreated += progress.seriesCreated;
           sapUpdated += progress.sapBrandsUpdated;
           sapFailed += progress.sapBrandsFailed;
@@ -186,9 +184,6 @@ export function ImportModelsDialog({
               `${modelsUpdated} updated`,
               `${unchangedCount} unchanged`,
             ];
-            if (brandsCreated > 0) {
-              parts.push(`${brandsCreated} brand${brandsCreated === 1 ? "" : "s"} added`);
-            }
             if (seriesCreated > 0) {
               parts.push(`${seriesCreated} series added`);
             }
@@ -253,8 +248,12 @@ export function ImportModelsDialog({
           <div className="text-muted-foreground space-y-2 text-sm">
             <p>
               Download the <strong>Models</strong> template, fill in SKU, name, brand, and
-              series (optional feature, resolution, actual size, and status), then upload
-              that same file. Other spreadsheet layouts are not accepted.
+              series (optional category, feature, resolution, actual size, and status),
+              then upload that same file. Other spreadsheet layouts are not accepted.
+            </p>
+            <p>
+              Brand, category, feature, resolution, and actual size must already exist in
+              Master data. A value ISMS does not have is listed as a problem, not created.
             </p>
             <p>
               Import only updates existing models — unknown SKUs are rejected (new

@@ -1,6 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { formatDemandPeso, formatDemandQty } from "@/features/demand-planning/lib/format-demand-plan";
 import type { DemandPlanningSourcePreview } from "@/features/demand-planning/types/run.types";
 import { cn } from "@/utils/cn";
@@ -50,6 +51,26 @@ function SourceRow({
   );
 }
 
+function WizardStepSourcesSkeleton() {
+  return (
+    <div aria-busy="true" aria-label="Loading data sources">
+      {Array.from({ length: 6 }, (_, i) => (
+        <div
+          key={i}
+          className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b py-2.5 last:border-b-0"
+        >
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+            <Skeleton className="h-4 w-28" />
+            <Skeleton className="h-4 w-44 max-w-full" />
+          </div>
+          <Skeleton className="h-5 w-16 shrink-0 rounded-full" />
+          <Skeleton className="h-4 w-28 sm:ml-auto" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function WizardStepSources({
   preview,
   loading,
@@ -58,7 +79,7 @@ export function WizardStepSources({
   loading: boolean;
 }) {
   if (loading) {
-    return <p className="text-sm text-muted-foreground">Checking history, planogram, forecast, and on-hand…</p>;
+    return <WizardStepSourcesSkeleton />;
   }
 
   const historyCounts = preview

@@ -177,7 +177,7 @@ export async function GET(request: Request, context: RouteContext) {
   }
 
   try {
-    const storage = getObjectStorage();
+    const storage = await getObjectStorage();
     const { buffer } = await storage.download(storagePath);
     const fileName = saleProofFileName(storagePath);
     const mimeType = saleProofMimeType(storagePath);

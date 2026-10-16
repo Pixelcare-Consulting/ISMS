@@ -147,12 +147,12 @@ export const WORKFLOW_SWIMLANE_CHARTS: WorkflowChart[] = [
       {
         id: "ps",
         role: "Product Specialist",
-        nodeIds: ["manual_create", "manual_ps"],
+        nodeIds: ["manual_create"],
       },
       {
         id: "tl",
         role: "Team Leader",
-        nodeIds: ["manual_tl", "auto_tl", "special_create"],
+        nodeIds: ["manual_edit", "auto_tl", "special_create"],
       },
       {
         id: "sp",
@@ -172,8 +172,7 @@ export const WORKFLOW_SWIMLANE_CHARTS: WorkflowChart[] = [
     ],
     nodes: [
       { id: "manual_create", label: "Manual: create order" },
-      { id: "manual_ps", label: "Manual: PS review" },
-      { id: "manual_tl", label: "Manual: TL review" },
+      { id: "manual_edit", label: "Manual: TL optional edit" },
       { id: "manual_sp", label: "Manual: SP approval" },
       { id: "auto_tl", label: "Auto: TL review" },
       { id: "auto_sp", label: "Auto: SP approval" },
@@ -183,9 +182,8 @@ export const WORKFLOW_SWIMLANE_CHARTS: WorkflowChart[] = [
       { id: "accept", label: "Accept in Operations" },
     ],
     edges: [
-      { from: "manual_create", to: "manual_ps" },
-      { from: "manual_ps", to: "manual_tl" },
-      { from: "manual_tl", to: "manual_sp" },
+      { from: "manual_create", to: "manual_sp" },
+      { from: "manual_edit", to: "manual_sp" },
       { from: "manual_sp", to: "fulfill" },
       { from: "auto_tl", to: "auto_sp" },
       { from: "auto_sp", to: "fulfill" },
@@ -194,9 +192,10 @@ export const WORKFLOW_SWIMLANE_CHARTS: WorkflowChart[] = [
       { from: "fulfill", to: "accept" },
     ],
     callouts: [
-      "Manual: Product Specialist → Team Leader → Supply Planning.",
+      "Manual: Product Specialist submits → Supply Planning (Team Leader may optionally edit).",
       "Auto replenish: Team Leader → Supply Planning.",
       "Special: Team Leader creates → Supply Planning.",
+      "After SP approval, ISMS queues SAP ITR (Inventory Transfer Request) and SO (Sales Order); a local delivery opens as Process III.A entry.",
     ],
   },
   {
@@ -229,7 +228,11 @@ export const WORKFLOW_SWIMLANE_CHARTS: WorkflowChart[] = [
       { from: "dispatch", to: "receive" },
       { from: "receive", to: "resolve" },
     ],
-    callouts: ["Units move In transit → On hand when the branch accepts."],
+    callouts: [
+      "Process III.A entry is the local delivery opened after approved order → ITR/SO.",
+      "Units move In transit → On hand when the branch accepts.",
+      "Partial accept then return-to-warehouse queues Inventory Transfer (OWTR) for SAP (mock until live).",
+    ],
   },
   {
     id: "transfers",

@@ -8,6 +8,10 @@ export const INVENTORY_MODULE_GUIDE: ModuleGuideContent = {
   tips: [
     { label: "Lists Stock (STK) units only — sold and other statuses live in Sales / Logistics" },
     { label: "Series summary groups QTY and value by SKU — click to expand" },
+    {
+      label:
+        "To validate order STK, use By model here or Reports → Inventory Report (SKU / status / branch filters + Excel Summary and Detail tabs) — All serials is AOR-wide, not one branch",
+    },
     { label: "Off planogram means the SKU is not on that branch’s authorized list" },
     { label: "Search by serial, SKU, or branch" },
     { label: "Warehouse serials are under Inventory → Warehouse stock (not this list)" },

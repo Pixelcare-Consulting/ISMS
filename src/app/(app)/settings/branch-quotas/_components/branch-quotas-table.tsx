@@ -2,9 +2,10 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
+import { Plus, Upload } from "lucide-react";
 import { toast } from "sonner";
 
+import { ImportBranchQuotasDialog } from "@/app/(app)/settings/branch-quotas/_components/import-branch-quotas-dialog";
 import {
   createBranchQuotaAction,
   deleteBranchQuotaAction,
@@ -80,6 +81,7 @@ export function BranchQuotasTable({ quotas }: { quotas: QuotaRow[] }) {
   const rows = quotas;
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
+  const [importing, setImporting] = useState(false);
   const [deleting, setDeleting] = useState<QuotaRow | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<QuotaRow | null>(null);
@@ -209,10 +211,16 @@ export function BranchQuotasTable({ quotas }: { quotas: QuotaRow[] }) {
           suggestions,
         }}
         toolbarActions={
-          <Button onClick={openCreate}>
-            <Plus className="size-4" />
-            Add quota
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setImporting(true)}>
+              <Upload className="size-4" />
+              Import
+            </Button>
+            <Button onClick={openCreate}>
+              <Plus className="size-4" />
+              Add quota
+            </Button>
+          </div>
         }
         empty={rows.length === 0}
         emptyMessage="No branch quotas yet."
@@ -369,6 +377,8 @@ export function BranchQuotasTable({ quotas }: { quotas: QuotaRow[] }) {
         onConfirm={handleDelete}
         pending={pending}
       />
+
+      <ImportBranchQuotasDialog open={importing} onOpenChange={setImporting} />
     </div>
   );
 }

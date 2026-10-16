@@ -252,13 +252,6 @@ export const appNavigation: NavEntry[] = [
     icon: Package,
     items: [
       {
-        href: "/logistics/deliveries",
-        label: "Deliveries",
-        icon: Truck,
-        anyPermissions: ["logistics.view", "logistics.create", "logistics.manage"],
-        countBadgeKey: "logisticsDeliveries",
-      },
-      {
         href: "/logistics/transfers",
         label: "Transfers",
         icon: ArrowLeftRight,
@@ -280,19 +273,18 @@ export const appNavigation: NavEntry[] = [
     icon: Package,
     items: [
       {
+        href: "/logistics/deliveries",
+        label: "Deliveries",
+        icon: Truck,
+        anyPermissions: ["logistics.view", "logistics.create", "logistics.manage"],
+        countBadgeKey: "logisticsDeliveries",
+      },
+      {
         href: "/inventory/monthly-sir",
         label: "Monthly SIR",
         icon: ClipboardList,
         permission: "inventory.view",
         countBadgeKey: "monthlySirPending",
-      },
-      {
-        href: "/inventory",
-        label: "Stock units",
-        icon: Package,
-        exact: true,
-        permission: "inventory.view",
-        countBadgeKey: "stockUnitsStk",
       },
       // { DO NOT UNCOMMENT THIS, NO NEED TO SHOW IN THE NAVIGATION
       //   href: "/inventory/stock-count",
@@ -301,13 +293,7 @@ export const appNavigation: NavEntry[] = [
       //   permission: "inventory.view",
       //   badge: "new",
       // },
-      {
-        href: "/inventory/serial-numbers",
-        label: "SAP Serial No.",
-        icon: Barcode,
-        permission: "inventory.view",
-        badge: "new",
-      },
+    
     ],
   },
   {
@@ -407,6 +393,21 @@ export const appNavigation: NavEntry[] = [
         icon: Package,
         items: [
           {
+            href: "/inventory",
+            label: "Branch Inventory",
+            icon: Package,
+            exact: true,
+            permission: "inventory.view",
+            countBadgeKey: "stockUnitsStk",
+          },
+          // {
+          //   href: "/inventory/serial-numbers",
+          //   label: "SAP Serial No.",
+          //   icon: Barcode,
+          //   permission: "inventory.view",
+          //   badge: "new",
+          // },
+          {
             href: "/inventory/warehouse-stock",
             label: "Warehouse stock",
             icon: Warehouse,
@@ -425,6 +426,12 @@ export const appNavigation: NavEntry[] = [
         label: "Supply Planning",
         icon: ChartColumn,
         anyPermissions: ["forecast.view", "forecast.manage"],
+      },
+      {
+        href: "/reports/inventory",
+        label: "Inventory report",
+        icon: Package,
+        anyPermissions: ["reports.view", "inventory.view"],
       },
       {
         href: "/reports/aging",

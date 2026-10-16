@@ -24,7 +24,9 @@ import {
 } from "@/features/orders/constants/order-permissions";
 import {
   canApproveOrder,
+  canEditOrderLines,
   getOrderQueueStatuses,
+  isSuperAdminOrderOverride,
 } from "@/features/orders/constants/order-workflow";
 import {
   hasPermission,
@@ -33,9 +35,10 @@ import {
 } from "@/lib/auth/permissions";
 import { getUserBranchIds } from "@/lib/aor/scope";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
-import type { BranchOrderType } from "@prisma/client";
-import { decimalToNumber } from "@/lib/database/decimal";
+import { resolveActiveOrderPrice } from "@/features/master-data/utils/resolve-active-order-price";
 import type { OrderHistoryRow } from "@/features/orders/types/order-analytics";
+import { toClientOrderListItem } from "@/features/orders/utils/to-client-order-list";
+import type { BranchOrderType } from "@prisma/client";
 
 function hasFullOrderAccess(permissions: string[] | undefined) {
   return (
@@ -132,17 +135,7 @@ export async function listOrdersAction(input?: {
   );
   return {
     ...result,
-    items: result.items.map((o) => ({
-      ...o,
-      orderNumber: o.orderNumber,
-      details: o.details.map((d) => ({
-        id: d.id,
-        quantity: d.quantity,
-        approvedQty: d.approvedQty,
-        remarks: d.remarks,
-        model: { ...d.model, sku: d.model.skuCode },
-      })),
-    })),
+    items: result.items.map((order) => toClientOrderListItem(order)),
   };
 }
 
@@ -295,7 +288,20 @@ export async function updateOrderAction(
   if (!existing) {
     return { error: "Order not found" };
   }
-  if (!hasOrderPermission(session.user.permissions, existing.orderType, "create")) {
+  const roleSlugs = session.user.roleSlugs ?? [];
+  const hasCreatePermission = hasOrderPermission(
+    session.user.permissions,
+    existing.orderType,
+    "create",
+  );
+  if (
+    !canEditOrderLines({
+      status: existing.status,
+      orderType: existing.orderType,
+      roleSlugs,
+      hasCreatePermission,
+    })
+  ) {
     redirect("/dashboard?error=forbidden");
   }
   try {
@@ -327,6 +333,54 @@ export async function submitDraftOrderAction(orderId: string) {
     return { success: true as const };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to submit order for review" };
+  }
+}
+
+export async function deleteDraftOrderAction(orderId: string) {
+  const session = await requireAuth();
+  const existing = await orderRepository.findById(session.user.tenantId, orderId);
+  if (!existing) {
+    return { error: "Order not found" };
+  }
+  if (!hasOrderPermission(session.user.permissions, existing.orderType, "create")) {
+    redirect("/dashboard?error=forbidden");
+  }
+  try {
+    await orderService.deleteDraft(session.user.tenantId, session.user.id, orderId, {
+      hasFullAccess: hasFullOrderAccess(session.user.permissions),
+    });
+    revalidateOrderPaths(existing.orderType);
+    return { success: true as const };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to delete draft order" };
+  }
+}
+
+export async function adminBulkCancelOrdersAction(orderIds: string[]) {
+  const session = await requireAuth();
+  const roleSlugs = session.user.roleSlugs ?? [];
+  if (!isSuperAdminOrderOverride(roleSlugs)) {
+    return { error: "Only Super Admin can cancel selected orders in bulk." };
+  }
+
+  const uniqueIds = [...new Set(orderIds.filter(Boolean))];
+  if (uniqueIds.length === 0) {
+    return { error: "Select at least one order." };
+  }
+
+  try {
+    const result = await orderService.adminBulkCancelOrDiscard(
+      session.user.tenantId,
+      session.user.id,
+      uniqueIds,
+      { roleSlugs },
+    );
+    revalidateOrderPaths();
+    return { success: true as const, ...result };
+  } catch (e) {
+    return {
+      error: e instanceof Error ? e.message : "Failed to cancel or discard selected orders",
+    };
   }
 }
 
@@ -449,7 +503,7 @@ export async function listOrderHistoryAction(input?: {
     let totalAmt = 0;
     let appAmt = 0;
     for (const detail of order.details) {
-      const srp = decimalToNumber(detail.model.srp);
+      const srp = resolveActiveOrderPrice(detail.model.priceLists, detail.model.srp);
       const approved = detail.approvedQty ?? 0;
       orderQty += detail.quantity;
       appQty += approved;

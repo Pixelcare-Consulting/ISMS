@@ -180,6 +180,7 @@ function selectionsForUser(
   userAors: AorRow[],
   branches: BranchOption[],
   dealers: DealerOption[],
+  inferDealers = true,
 ) {
   const branchIds = [
     ...new Set(
@@ -219,13 +220,15 @@ function selectionsForUser(
     branchIdsByDealer.set(branch.dealerId, list);
   }
 
-  const inferredDealerIds = dealers
-    .filter((dealer) => {
-      if (dealerIdsFromRows.includes(dealer.id)) return false;
-      const ids = branchIdsByDealer.get(dealer.id) ?? [];
-      return ids.length > 0 && ids.every((id) => assignedBranchSet.has(id));
-    })
-    .map((dealer) => dealer.id);
+  const inferredDealerIds = inferDealers
+    ? dealers
+        .filter((dealer) => {
+          if (dealerIdsFromRows.includes(dealer.id)) return false;
+          const ids = branchIdsByDealer.get(dealer.id) ?? [];
+          return ids.length > 0 && ids.every((id) => assignedBranchSet.has(id));
+        })
+        .map((dealer) => dealer.id)
+    : [];
 
   return {
     branchIds,
@@ -320,6 +323,7 @@ export function AorsTable({
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetMode, setSheetMode] = useState<"assign" | "edit">("assign");
   const [userId, setUserId] = useState("");
   const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
   const [selectedDealerIds, setSelectedDealerIds] = useState<string[]>([]);
@@ -358,6 +362,17 @@ export function AorsTable({
     setSelectedWarehouseIds(next.warehouseIds);
     setSelectedServiceCenterIds(next.serviceCenterIds);
   }
+
+  const userSelectOptions = useMemo(() => {
+    const options = users.map((user) => ({ id: user.id, label: user.label }));
+    if (userId && !options.some((option) => option.id === userId)) {
+      const match = rows.find((row) => row.user.id === userId);
+      if (match) {
+        options.unshift({ id: match.user.id, label: formatPerson(match.user) });
+      }
+    }
+    return options;
+  }, [users, userId, rows]);
 
   const branchOptions = useMemo(
     () =>
@@ -469,6 +484,7 @@ export function AorsTable({
       selectedServiceCenterIds.length > 0);
 
   function openAssign() {
+    setSheetMode("assign");
     setUserId("");
     setSelectedBranchIds([]);
     setSelectedDealerIds([]);
@@ -477,8 +493,26 @@ export function AorsTable({
     setSheetOpen(true);
   }
 
+  function openEdit(group: AorUserGroup) {
+    const next = selectionsForUser(group.aors, branches, dealers, false);
+    setSheetMode("edit");
+    setUserId(group.userId);
+    setSelectedBranchIds(next.branchIds);
+    setSelectedDealerIds(next.dealerIds);
+    setSelectedWarehouseIds(next.warehouseIds);
+    setSelectedServiceCenterIds(next.serviceCenterIds);
+    setViewingAll(null);
+    setSheetOpen(true);
+  }
+
+  function onSheetOpenChange(open: boolean) {
+    setSheetOpen(open);
+    if (!open) setSheetMode("assign");
+  }
+
   function assign() {
     if (!canAssign) return;
+    const editing = sheetMode === "edit";
 
     startTransition(async () => {
       const fd = new FormData();
@@ -506,6 +540,8 @@ export function AorsTable({
       const deletedCount = result.deletedCount ?? 0;
       if (createdCount === 0 && deletedCount === 0) {
         toast.message("No AOR changes");
+      } else if (editing) {
+        toast.success("AOR updated");
       } else if (deletedCount > 0 && createdCount > 0) {
         toast.success(
           `Synced AORs (+${createdCount}, −${deletedCount})`,
@@ -546,7 +582,7 @@ export function AorsTable({
       setSelectedDealerIds([]);
       setSelectedWarehouseIds([]);
       setSelectedServiceCenterIds([]);
-      setSheetOpen(false);
+      onSheetOpenChange(false);
       router.refresh();
     });
   }
@@ -656,7 +692,7 @@ export function AorsTable({
                 <GlobalTableHead {...sort.sortProps("branches")}>Branches</GlobalTableHead>
                 <GlobalTableHead {...sort.sortProps("assignedAt")}>Assigned at</GlobalTableHead>
                 <GlobalTableHead {...sort.sortProps("assignedBy")}>Assigned by</GlobalTableHead>
-                <GlobalTableHead className="w-16" />
+                <GlobalTableHead className="w-24" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -735,6 +771,9 @@ export function AorsTable({
                       </TableCell>
                       <TableCell>{group.assignedByLabel}</TableCell>
                       <TableRowActions
+                        onEdit={() => openEdit(group)}
+                        editTitle="Edit AOR"
+                        editDisabled={pending}
                         onDelete={() => setRemovingAll(group)}
                         deleteTitle="Remove all AORs"
                         deleteDisabled={pending}
@@ -746,16 +785,19 @@ export function AorsTable({
             </TableBody>
       </GlobalDataTable>
 
-      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+      <Sheet open={sheetOpen} onOpenChange={onSheetOpenChange}>
         <SheetContent
           side="right"
           className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-md"
         >
           <SheetHeader className="border-b border-border/60 px-4 py-4 text-left">
-            <SheetTitle>Assign AOR</SheetTitle>
+            <SheetTitle>
+              {sheetMode === "edit" ? "Edit AOR" : "Assign AOR"}
+            </SheetTitle>
             <SheetDescription>
-              Assign branches, dealers, warehouses, or service centers to a
-              user. Selecting a dealer assigns all of its active branches.
+              {sheetMode === "edit"
+                ? "Update branches, dealers, warehouses, or service centers for this user. Locations you leave selected stay assigned."
+                : "Assign branches, dealers, warehouses, or service centers to a user. Selecting a dealer assigns all of its active branches."}
             </SheetDescription>
           </SheetHeader>
           <form
@@ -768,12 +810,12 @@ export function AorsTable({
             <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
               <SearchableSelect
                 label="User"
-                options={users.map((u) => ({ id: u.id, label: u.label }))}
+                options={userSelectOptions}
                 value={userId}
                 onChange={selectUserForAssign}
                 placeholder="Select user…"
                 searchPlaceholder="Search users…"
-                disabled={pending}
+                disabled={pending || sheetMode === "edit"}
               />
               <SearchableMultiSelect
                 label="Branches"
@@ -821,13 +863,17 @@ export function AorsTable({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setSheetOpen(false)}
+                onClick={() => onSheetOpenChange(false)}
                 disabled={pending}
               >
                 Cancel
               </Button>
               <Button type="submit" disabled={pending || !canAssign}>
-                {pending ? "Saving…" : "Save AOR"}
+                {pending
+                  ? "Saving…"
+                  : sheetMode === "edit"
+                    ? "Save changes"
+                    : "Save AOR"}
               </Button>
             </SheetFooter>
           </form>

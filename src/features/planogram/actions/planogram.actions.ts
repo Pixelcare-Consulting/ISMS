@@ -113,6 +113,47 @@ export async function addPlanogramModelAction(input: unknown) {
   }
 }
 
+const addBulkSchema = z.object({
+  branchId: z.string().min(1),
+  items: z
+    .array(
+      z.object({
+        modelId: z.string().min(1),
+        maxQty: z.number().int().min(1),
+      }),
+    )
+    .min(1),
+  daysThreshold: z.number().int().min(1).optional(),
+});
+
+export async function addPlanogramModelsAction(input: unknown) {
+  const session = await requirePlanogramManage();
+  const parsed = addBulkSchema.safeParse(input);
+  if (!parsed.success) return { error: "Invalid input" };
+
+  try {
+    const result = await planogramService.addModels({
+      tenantId: session.user.tenantId,
+      actorUserId: session.user.id,
+      branchId: parsed.data.branchId,
+      items: parsed.data.items,
+      daysThreshold: parsed.data.daysThreshold,
+    });
+
+    if (result.added > 0) {
+      revalidatePlanogram(parsed.data.branchId);
+    }
+
+    return {
+      success: true as const,
+      added: result.added,
+      errors: result.errors,
+    };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to add models" };
+  }
+}
+
 const updateMaxQtySchema = z.object({
   planogramId: z.string().min(1),
   branchId: z.string().min(1),
@@ -134,7 +175,7 @@ export async function updatePlanogramMaxQtyAction(input: unknown) {
     revalidatePlanogram(parsed.data.branchId);
     return { success: true as const };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "Failed to update max qty" };
+    return { error: e instanceof Error ? e.message : "Failed to update Shelf max" };
   }
 }
 

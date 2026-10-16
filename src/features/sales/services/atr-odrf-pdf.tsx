@@ -17,7 +17,7 @@ export async function generateAndStoreAtrOdrfPdf(input: {
     tenantId: input.tenantId,
     returnRequestId: input.returnRequestId,
   });
-  const storage = getObjectStorage();
+  const storage = await getObjectStorage();
   await storage.upload({
     path,
     body: Buffer.from(buffer),

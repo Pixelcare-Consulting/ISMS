@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import {
@@ -123,6 +123,7 @@ export function NewRunWizard({
     DEFAULT_DEMAND_PLAN_PARAMETERS.floorAllocationAtZero,
   );
   const [preview, setPreview] = useState<DemandPlanningSourcePreview | null>(null);
+  const [loadedPreviewKey, setLoadedPreviewKey] = useState<string | null>(null);
   const [run, setRun] = useState<DemandPlanningClientRun | null>(null);
 
   const historyDatesValid =
@@ -143,6 +144,8 @@ export function NewRunWizard({
       frequencyOverride,
       historyFrom: historyFrom || null,
       historyTo: historyTo || null,
+      /** Always on for new runs; UI control removed. Recalculate may pass false. */
+      excludeNoHistoryBranches: true as const,
     }),
     [
       periodId,
@@ -159,6 +162,10 @@ export function NewRunWizard({
     ],
   );
 
+  const previewKey = useMemo(() => JSON.stringify(payload), [payload]);
+  /** Stale while payload changed; avoid setState sync in the fetch effect. */
+  const displayedPreview = previewKey === loadedPreviewKey ? preview : null;
+
   const copy = STEP_COPY[step];
   const minLevelPeso =
     run && run.branches.length > 0
@@ -169,6 +176,30 @@ export function NewRunWizard({
         run.branches.filter((branch) => branch.planStatus !== "planned").length
       } awaiting first cycle`
     : undefined;
+
+  useEffect(() => {
+    if (step !== 3) return;
+    if (previewKey === loadedPreviewKey) return;
+
+    let cancelled = false;
+
+    startTransition(async () => {
+      const result = await previewDemandPlanSourcesAction(payload);
+      if (cancelled) return;
+      if ("error" in result && result.error) {
+        toast.error(result.error);
+        return;
+      }
+      if ("preview" in result && result.preview) {
+        setPreview(result.preview);
+        setLoadedPreviewKey(previewKey);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [step, previewKey, payload, loadedPreviewKey]);
 
   function goTo(next: DemandPlanningWizardStep) {
     setStep(next);
@@ -188,19 +219,8 @@ export function NewRunWizard({
       return Boolean(periodId) && branchIds.length > 0 && historyDatesValid;
     }
     if (step === 2) return Number.isFinite(monthBasisDays) && monthBasisDays > 0;
-    if (step === 3) return Boolean(preview);
+    if (step === 3) return Boolean(displayedPreview);
     return Boolean(run);
-  }
-
-  function loadPreview() {
-    startTransition(async () => {
-      const result = await previewDemandPlanSourcesAction(payload);
-      if ("error" in result && result.error) {
-        toast.error(result.error);
-        return;
-      }
-      if ("preview" in result && result.preview) setPreview(result.preview);
-    });
   }
 
   function goNext() {
@@ -210,7 +230,6 @@ export function NewRunWizard({
     }
     if (step === 2) {
       goTo(3);
-      loadPreview();
       return;
     }
     if (step === 3) {
@@ -231,7 +250,16 @@ export function NewRunWizard({
         setRun(loaded.run);
         setElapsedMs(performance.now() - startedAt);
         goTo(4);
-        toast.success("Plan generated", { description: result.documentNumber });
+        const excluded =
+          "excludedNoHistoryCount" in result && typeof result.excludedNoHistoryCount === "number"
+            ? result.excludedNoHistoryCount
+            : 0;
+        toast.success("Plan generated", {
+          description:
+            excluded > 0
+              ? `${result.documentNumber} · ${excluded} dealer${excluded === 1 ? "" : "s"} excluded: no sales history`
+              : result.documentNumber,
+        });
       });
       return;
     }
@@ -322,7 +350,9 @@ export function NewRunWizard({
           onFloorAllocationAtZero={setFloorAllocationAtZero}
         />
       ) : null}
-      {step === 3 ? <WizardStepSources preview={preview} loading={pending && !preview} /> : null}
+      {step === 3 ? (
+        <WizardStepSources preview={displayedPreview} loading={!displayedPreview} />
+      ) : null}
       {step === 4 && run ? <WizardStepReview run={run} /> : null}
     </DemandPlanningWizardShell>
   );

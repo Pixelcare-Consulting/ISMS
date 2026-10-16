@@ -13,7 +13,23 @@ const orderListInclude = {
   createdBy: { select: { id: true, name: true, email: true } },
   details: {
     include: {
-      model: { select: { id: true, skuCode: true, name: true, brandId: true, srp: true } },
+      model: {
+        select: {
+          id: true,
+          skuCode: true,
+          name: true,
+          brandId: true,
+          srp: true,
+          priceLists: {
+            select: {
+              amount: true,
+              periodStart: true,
+              periodEnd: true,
+              packageTypeId: true,
+            },
+          },
+        },
+      },
     },
   },
   approvalLevels: {
@@ -211,7 +227,7 @@ export const orderRepository = {
     orderId: string,
     data: {
       orderType: BranchOrderType;
-      details: { modelId: string; quantity: number }[];
+      details: { modelId: string; quantity: number; amount?: number | null }[];
     },
   ) {
     const approvalChain = getOrderApprovalChain(data.orderType);
@@ -229,7 +245,13 @@ export const orderRepository = {
           processedAt: null,
           spaRemarks: null,
           deliveryDueDate: null,
-          details: { create: data.details },
+          details: {
+            create: data.details.map((line) => ({
+              modelId: line.modelId,
+              quantity: line.quantity,
+              amount: line.amount ?? null,
+            })),
+          },
           approvalLevels: {
             create: approvalChain.map((step) => ({
               level: step.level,
@@ -259,7 +281,7 @@ export const orderRepository = {
       await tx.branchOrderApprovalLevel.deleteMany({ where: { orderId } });
 
       return tx.branchOrder.update({
-        where: { id: orderId, tenantId },
+        where: { id: orderId, tenantId, status: "draft" },
         data: {
           status: initialStatus,
           approvedById: null,
@@ -279,6 +301,51 @@ export const orderRepository = {
           approvalLevels: true,
         },
       });
+    });
+  },
+
+  /** Hard-delete a draft row when it has no logistics/SAP links (race-safe predicate). */
+  async deleteDraft(tenantId: string, orderId: string) {
+    return prisma.branchOrder.deleteMany({
+      where: {
+        id: orderId,
+        tenantId,
+        status: "draft",
+        processedAt: null,
+        sapDocRef: null,
+        deliveries: { none: {} },
+      },
+    });
+  },
+
+  findManyByIds(tenantId: string, ids: string[]) {
+    if (ids.length === 0) return Promise.resolve([]);
+    return prisma.branchOrder.findMany({
+      where: { tenantId, id: { in: ids } },
+      include: {
+        branch: { select: { name: true } },
+        details: { include: { model: { select: { skuCode: true } } } },
+        deliveries: { select: { id: true }, take: 1 },
+      },
+    });
+  },
+
+  /** Race-safe pending → cancelled when still unlinked (Super Admin bulk cancel). */
+  forceCancelFromPending(
+    tenantId: string,
+    orderId: string,
+    fromStatus: BranchOrderStatus,
+  ) {
+    return prisma.branchOrder.updateMany({
+      where: {
+        id: orderId,
+        tenantId,
+        status: fromStatus,
+        processedAt: null,
+        sapDocRef: null,
+        deliveries: { none: {} },
+      },
+      data: { status: "cancelled" },
     });
   },
 

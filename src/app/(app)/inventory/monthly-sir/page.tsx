@@ -2,6 +2,7 @@ import { SectionPageLead } from "@/components/navigation/section-page-lead";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { hasPermission, requirePermission } from "@/lib/auth/permissions";
 import {
+  getPcountUploadAllowanceAction,
   listMonthlySirBranchesAction,
   listMonthlySirRequestsAction,
 } from "@/features/monthly-sir/actions/monthly-sir.actions";
@@ -31,12 +32,21 @@ export default async function MonthlySirPage({
     }),
     listMonthlySirBranchesAction(),
   ]);
+  const allowanceBranchId = params.branch || branches[0]?.id || "";
+  const allowanceResult = allowanceBranchId
+    ? await getPcountUploadAllowanceAction({ branchId: allowanceBranchId })
+    : null;
+  const initialAllowance =
+    allowanceResult && !("error" in allowanceResult)
+      ? allowanceResult.allowance
+      : null;
 
   return (
     <div className="space-y-4">
       <SectionPageLead>
-        Request a monthly inventory record, complete P-COUNT in Excel, and review
-        variances through the existing P-Count workflow.
+        Upload P-COUNT with your free monthly slots, or request an extra upload
+        after they are used. Complete the Excel count and review variances through
+        the existing P-Count workflow.
       </SectionPageLead>
       <MonthlySirPanel
         requests={requests}
@@ -44,6 +54,8 @@ export default async function MonthlySirPage({
         tab={tab}
         branchId={params.branch ?? ""}
         canManage={hasPermission(session.user.permissions, "inventory.manage")}
+        initialAllowance={initialAllowance}
+        initialAllowanceBranchId={allowanceBranchId}
       />
     </div>
   );

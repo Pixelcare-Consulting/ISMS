@@ -1,9 +1,8 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronsUpDown } from "lucide-react";
 
 import {
   addAllowedModelAction,
@@ -25,9 +24,15 @@ import {
 import { GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Table,
   TableBody,
@@ -76,13 +81,13 @@ export function AllowedModelsPanel({
   const [pending, startTransition] = useTransition();
   const [query, setQuery] = useState("");
   const [removing, setRemoving] = useState<AllowedModelRow | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
   const [candidates, setCandidates] = useState<
     { id: string; skuCode: string; name: string }[]
   >([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [candidateQuery, setCandidateQuery] = useState("");
   const [loadingCandidates, setLoadingCandidates] = useState(false);
-  const [dropdownOpen, setDropdownOpen] = useState(false);
 
   const filtered = useMemo(
     () =>
@@ -130,14 +135,42 @@ export function AllowedModelsPanel({
 
   const colCount = canManage ? 9 : 8;
 
-  async function loadCandidates() {
-    setLoadingCandidates(true);
-    try {
-      const list = await listModelCandidatesForAllowedListAction(branchId);
-      setCandidates(list.map((m) => ({ id: m.id, skuCode: m.skuCode, name: m.name })));
-    } finally {
-      setLoadingCandidates(false);
+  useEffect(() => {
+    if (!addOpen) return;
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const list = await listModelCandidatesForAllowedListAction(branchId);
+        if (cancelled) return;
+        setCandidates(list.map((m) => ({ id: m.id, skuCode: m.skuCode, name: m.name })));
+      } catch (error) {
+        if (cancelled) return;
+        toast.error(error instanceof Error ? error.message : "Failed to load models");
+        setCandidates([]);
+      } finally {
+        if (!cancelled) setLoadingCandidates(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [addOpen, branchId]);
+
+  function handleAddOpenChange(next: boolean) {
+    if (pending) return;
+    setAddOpen(next);
+    if (next) {
+      setLoadingCandidates(true);
+      setSelectedIds(new Set());
+      setCandidateQuery("");
+      setCandidates([]);
+      return;
     }
+    setCandidateQuery("");
+    setSelectedIds(new Set());
   }
 
   function toggleCandidate(id: string, checked: boolean) {
@@ -171,10 +204,13 @@ export function AllowedModelsPanel({
       if (failed.length > 0) {
         toast.error(`${failed.length} of ${modelIds.length} models failed to add`);
       } else {
-        toast.success(`${modelIds.length} model${modelIds.length === 1 ? "" : "s"} added to allow-list`);
+        toast.success(
+          `${modelIds.length} model${modelIds.length === 1 ? "" : "s"} added to allow-list`,
+        );
       }
-      setCandidates((prev) => prev.filter((m) => !selectedIds.has(m.id)));
+      setAddOpen(false);
       setSelectedIds(new Set());
+      setCandidateQuery("");
       router.refresh();
     });
   }
@@ -214,110 +250,14 @@ export function AllowedModelsPanel({
               className="sm:max-w-sm"
             />
             {canManage ? (
-              <div className="flex shrink-0 flex-wrap items-center gap-2">
-                {candidates.length === 0 ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    type="button"
-                    disabled={loadingCandidates}
-                    onClick={loadCandidates}
-                  >
-                    Load models
-                  </Button>
-                ) : (
-                  <>
-                    <Popover
-                      modal
-                      open={dropdownOpen}
-                      onOpenChange={(next) => {
-                        setDropdownOpen(next);
-                        if (!next) setCandidateQuery("");
-                      }}
-                    >
-                      <PopoverTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          role="combobox"
-                          aria-expanded={dropdownOpen}
-                          className="h-8 justify-between border-input bg-background font-normal shadow-sm sm:min-w-56"
-                        >
-                          <span
-                            className={cn(
-                              "truncate text-left",
-                              selectedIds.size === 0 && "text-muted-foreground",
-                            )}
-                          >
-                            {selectedIds.size > 0
-                              ? `${selectedIds.size} model${selectedIds.size === 1 ? "" : "s"} selected`
-                              : "Select models…"}
-                          </span>
-                          <ChevronsUpDown className="size-4 shrink-0 opacity-50" />
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent
-                        className="w-(--radix-popover-trigger-width) p-0"
-                        align="start"
-                      >
-                        <div className="border-b p-2">
-                          <Input
-                            placeholder="Search models…"
-                            value={candidateQuery}
-                            onChange={(e) => setCandidateQuery(e.target.value)}
-                            className="h-8"
-                          />
-                        </div>
-                        <div className="flex items-center gap-2 border-b bg-muted/30 px-3 py-2">
-                          <Checkbox
-                            checked={allFilteredSelected}
-                            onCheckedChange={(checked) =>
-                              toggleSelectAllFiltered(Boolean(checked))
-                            }
-                            aria-label="Select all filtered models"
-                          />
-                          <Label className="text-xs text-muted-foreground">
-                            Select all ({filteredCandidates.length})
-                          </Label>
-                        </div>
-                        <div className="max-h-64 overflow-y-auto">
-                          {filteredCandidates.length === 0 ? (
-                            <p className="px-3 py-4 text-sm text-muted-foreground">
-                              No matching models.
-                            </p>
-                          ) : (
-                            filteredCandidates.map((c) => (
-                              <label
-                                key={c.id}
-                                className="flex cursor-pointer items-center gap-2 border-b px-3 py-2 text-sm last:border-b-0 hover:bg-muted/40"
-                              >
-                                <Checkbox
-                                  checked={selectedIds.has(c.id)}
-                                  onCheckedChange={(checked) =>
-                                    toggleCandidate(c.id, Boolean(checked))
-                                  }
-                                  aria-label={`Select ${c.skuCode}`}
-                                />
-                                <span className="min-w-0 flex-1 truncate">
-                                  <span className="font-mono">{c.skuCode}</span> — {c.name}
-                                </span>
-                              </label>
-                            ))
-                          )}
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-                    <Button
-                      size="sm"
-                      disabled={pending || selectedIds.size === 0}
-                      onClick={handleAdd}
-                    >
-                      Add {selectedIds.size > 0 ? selectedIds.size : ""} to allow-list
-                    </Button>
-                  </>
-                )}
-              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                type="button"
+                onClick={() => handleAddOpenChange(true)}
+              >
+                Add to allow-list
+              </Button>
             ) : null}
           </div>
         }
@@ -379,6 +319,84 @@ export function AllowedModelsPanel({
           </Table>
         </AppDataTableBody>
       </AppDataTable>
+
+      <Dialog open={addOpen} onOpenChange={handleAddOpenChange}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Add to allow-list</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Select active models that are not yet on this branch&apos;s allow-list.
+            </p>
+            <Input
+              placeholder="Search models…"
+              value={candidateQuery}
+              onChange={(e) => setCandidateQuery(e.target.value)}
+              className="h-8"
+              disabled={loadingCandidates || pending}
+            />
+            <div className="flex items-center gap-2 rounded-md border bg-muted/30 px-3 py-2">
+              <Checkbox
+                checked={allFilteredSelected}
+                onCheckedChange={(checked) => toggleSelectAllFiltered(Boolean(checked))}
+                disabled={loadingCandidates || filteredCandidates.length === 0 || pending}
+                aria-label="Select all filtered models"
+              />
+              <Label className="text-xs text-muted-foreground">
+                Select all ({filteredCandidates.length})
+              </Label>
+            </div>
+            <div className="max-h-64 overflow-y-auto rounded-md border">
+              {loadingCandidates ? (
+                <p className="px-3 py-4 text-sm text-muted-foreground">Loading models…</p>
+              ) : filteredCandidates.length === 0 ? (
+                <p className="px-3 py-4 text-sm text-muted-foreground">
+                  {candidates.length === 0
+                    ? "No models left to add to the allow-list."
+                    : "No matching models."}
+                </p>
+              ) : (
+                filteredCandidates.map((c) => (
+                  <label
+                    key={c.id}
+                    className="flex cursor-pointer items-center gap-2 border-b px-3 py-2 text-sm last:border-b-0 hover:bg-muted/40"
+                  >
+                    <Checkbox
+                      checked={selectedIds.has(c.id)}
+                      onCheckedChange={(checked) =>
+                        toggleCandidate(c.id, Boolean(checked))
+                      }
+                      disabled={pending}
+                      aria-label={`Select ${c.skuCode}`}
+                    />
+                    <span className="min-w-0 flex-1 truncate">
+                      <span className="font-mono">{c.skuCode}</span> — {c.name}
+                    </span>
+                  </label>
+                ))
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => handleAddOpenChange(false)}
+              disabled={pending}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={pending || loadingCandidates || selectedIds.size === 0}
+              onClick={handleAdd}
+            >
+              Add {selectedIds.size > 0 ? selectedIds.size : ""} to allow-list
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <DeleteConfirmDialog
         open={Boolean(removing)}

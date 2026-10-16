@@ -1,3 +1,12 @@
+/** Default free direct Upload P-COUNT starts per TL per branch per Manila month. */
+export const DEFAULT_TL_MONTHLY_FREE_SLOTS = 1;
+
+/** Default free direct Upload P-COUNT starts per PS per branch per Manila month. */
+export const DEFAULT_PS_MONTHLY_FREE_SLOTS = 2;
+
+/** Review remark written on free/direct Start (also used for legacy backfill). */
+export const DIRECT_UPLOAD_REVIEW_REMARKS = "Direct upload allowance";
+
 export const MONTHLY_SIR_STATUS_LABELS = {
   pending: "For approval",
   approved: "Approved",
@@ -18,7 +27,7 @@ export const MONTHLY_SIR_VARIANCE_LABELS = {
   matched: "IN FILE AND IN STK",
   surplus: "IN FILE NOT IN STK",
   missing: "STK NOT IN FILE",
-  status_mismatch: "STATUS MISMATCH",
+  status_mismatch: "IN FILE NOT IN STK",
 } as const;
 
 export const MONTHLY_SIR_SYSTEM_FILL = "FFFF00";

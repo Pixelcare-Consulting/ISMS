@@ -6,12 +6,15 @@ import {
   BRANCH_ORDER_TYPE_LABELS,
 } from "@/features/orders/constants/order-status";
 import {
+  canAdminForceCancelOrder,
   canApproveOrder,
+  canDeleteDraftOrder,
   declineOrderStatus,
   getApprovalLevelForStatus,
   getInitialOrderStatus,
   getRoleSlugForApproval,
   isOrderEditable,
+  isSuperAdminOrderOverride,
   nextStatusAfterApprove,
 } from "@/features/orders/constants/order-workflow";
 import { orderRepository } from "@/features/orders/repositories/order.repository";
@@ -23,13 +26,13 @@ import { sapService } from "@/features/sap/services/sap.service";
 import { branchQuotaService } from "@/features/branch-quotas/services/branch-quota.service";
 import { planogramRepository } from "@/features/planogram/repositories/planogram.repository";
 import { masterDataRepository } from "@/features/master-data/repositories/master-data.repository";
+import { resolveActiveOrderPrice } from "@/features/master-data/utils/resolve-active-order-price";
 import { getUserBranchIds } from "@/lib/aor/scope";
 import { resolveDeliveryDueDate } from "@/features/orders/utils/delivery-schedule";
 import { assertOrderingAllowed } from "@/features/orders/utils/order-window";
 import { branchRepository } from "@/features/branches/repositories/branch.repository";
 import { orderingPolicyService } from "@/features/ordering/services/ordering-policy.service";
 import { sendWorkflowEmail } from "@/lib/notifications/workflow-email";
-import { decimalToNumber } from "@/lib/database/decimal";
 
 export interface OrderStatusKpi {
   code: string;
@@ -74,12 +77,26 @@ function pendingApprovalEmail(status: BranchOrderStatus, orderType: BranchOrderT
     return "Special order submitted — pending Supply Planning approval.";
   }
   if (status === "pending_ps") return "Manual order is still with the product specialist.";
-  if (orderType === "manual" && status === "pending_tl") {
-    return "Manual order submitted — pending Team Leader review.";
+  if (orderType === "manual" && status === "pending_sp") {
+    return "Manual order submitted — pending Supply Planning approval.";
   }
   if (status === "pending_tl") return "Order pending Team Leader review.";
   if (status === "pending_sp") return "Order pending Supply Planning approval.";
   return `Order is pending approval (${status}).`;
+}
+
+async function priceOrderDetails<T extends { modelId: string; quantity: number }>(
+  tenantId: string,
+  details: T[],
+): Promise<(T & { amount: number })[]> {
+  const modelIds = [...new Set(details.map((line) => line.modelId))];
+  const sources = await masterDataRepository.listModelsForOrderPricing(tenantId, modelIds);
+  const byId = new Map(sources.map((model) => [model.id, model]));
+  return details.map((line) => {
+    const model = byId.get(line.modelId);
+    const srp = model ? resolveActiveOrderPrice(model.priceLists, model.srp) : 0;
+    return { ...line, amount: line.quantity * srp };
+  });
 }
 
 async function validateOrderLines(
@@ -121,7 +138,7 @@ async function validateOrderLines(
     const remainingCapacity = Math.max(0, planogram.maxQty - stockCount);
     if (line.quantity > remainingCapacity) {
       throw new Error(
-        `Quantity for ${model.skuCode} exceeds shelf capacity (${remainingCapacity} remaining of ${planogram.maxQty} max)`,
+        `Quantity for ${model.skuCode} exceeds shelf capacity (${remainingCapacity} remaining of Shelf max ${planogram.maxQty})`,
       );
     }
   }
@@ -288,17 +305,13 @@ export const orderService = {
             .join("\n")
         : data.notes;
 
-    const details = await Promise.all(
-      data.details.map(async (line) => {
-        const model = await masterDataRepository.findModel(tenantId, line.modelId);
-        const srp = model ? decimalToNumber(model.srp) : 0;
-        return {
-          modelId: line.modelId,
-          quantity: line.quantity,
-          remarks: line.remarks ?? null,
-          amount: line.quantity * srp,
-        };
-      }),
+    const details = await priceOrderDetails(
+      tenantId,
+      data.details.map((line) => ({
+        modelId: line.modelId,
+        quantity: line.quantity,
+        remarks: line.remarks ?? null,
+      })),
     );
 
     const order = await orderRepository.create(tenantId, {
@@ -341,7 +354,7 @@ export const orderService = {
   ) {
     const order = await orderRepository.findById(tenantId, orderId);
     if (!order) throw new Error("Order not found");
-    if (!isOrderEditable(order.status)) {
+    if (!isOrderEditable(order.status, order.orderType)) {
       throw new Error("This order can no longer be edited.");
     }
 
@@ -371,9 +384,10 @@ export const orderService = {
 
     await validateOrderLines(tenantId, order.branchId, order.orderType, opts.details);
 
+    const details = await priceOrderDetails(tenantId, opts.details);
     const updated = await orderRepository.updateLines(tenantId, orderId, {
       orderType: order.orderType,
-      details: opts.details,
+      details,
     });
 
     await auditService.log({
@@ -450,6 +464,168 @@ export const orderService = {
     });
 
     return updated;
+  },
+
+  async deleteDraft(
+    tenantId: string,
+    userId: string,
+    orderId: string,
+    opts: { hasFullAccess: boolean },
+  ) {
+    const order = await orderRepository.findById(tenantId, orderId);
+    if (!order) throw new Error("Order not found");
+    if (!canDeleteDraftOrder({ status: order.status })) {
+      throw new Error("Only unsubmitted draft orders can be deleted.");
+    }
+
+    if (!opts.hasFullAccess) {
+      const branchIds = await getUserBranchIds(tenantId, userId);
+      if (branchIds && !branchIds.includes(order.branchId)) {
+        throw new Error("You can only delete draft orders for your own branch.");
+      }
+    }
+
+    if (order.processedAt || order.sapDocRef) {
+      throw new Error("This draft is linked or processed and cannot be deleted.");
+    }
+
+    const auditMetadata = orderAuditMetadata(order);
+    const result = await orderRepository.deleteDraft(tenantId, orderId);
+    if (result.count === 0) {
+      throw new Error(
+        "This draft was already submitted for review, removed, or cannot be deleted.",
+      );
+    }
+
+    await auditService.log({
+      tenantId,
+      userId,
+      action: "order.draft_deleted",
+      entityType: "BranchOrder",
+      entityId: orderId,
+      metadata: {
+        ...auditMetadata,
+        status: order.status,
+      },
+    });
+  },
+
+  async adminBulkCancelOrDiscard(
+    tenantId: string,
+    userId: string,
+    orderIds: string[],
+    opts: { roleSlugs: string[] },
+  ) {
+    if (!isSuperAdminOrderOverride(opts.roleSlugs)) {
+      throw new Error("Only Super Admin can bulk cancel or discard orders.");
+    }
+
+    const uniqueIds = [...new Set(orderIds.filter(Boolean))];
+    if (uniqueIds.length === 0) {
+      throw new Error("Select at least one order.");
+    }
+
+    const orders = await orderRepository.findManyByIds(tenantId, uniqueIds);
+    const byId = new Map(orders.map((order) => [order.id, order]));
+
+    let discarded = 0;
+    let cancelled = 0;
+    const skipped: { id: string; orderNumber: string; reason: string }[] = [];
+
+    const adminCancelComment = "Cancelled by Super Admin";
+
+    for (const id of uniqueIds) {
+      const order = byId.get(id);
+      if (!order) {
+        skipped.push({ id, orderNumber: id, reason: "Order not found" });
+        continue;
+      }
+
+      const linked = Boolean(
+        order.processedAt || order.sapDocRef || order.deliveries.length > 0,
+      );
+      if (linked) {
+        skipped.push({
+          id: order.id,
+          orderNumber: order.orderNumber,
+          reason: "Linked to a delivery or SAP",
+        });
+        continue;
+      }
+
+      if (canDeleteDraftOrder({ status: order.status })) {
+        try {
+          await this.deleteDraft(tenantId, userId, order.id, { hasFullAccess: true });
+          discarded += 1;
+        } catch (error) {
+          skipped.push({
+            id: order.id,
+            orderNumber: order.orderNumber,
+            reason: error instanceof Error ? error.message : "Could not discard draft",
+          });
+        }
+        continue;
+      }
+
+      if (!canAdminForceCancelOrder({ status: order.status })) {
+        skipped.push({
+          id: order.id,
+          orderNumber: order.orderNumber,
+          reason: "Already approved, rejected, or cancelled",
+        });
+        continue;
+      }
+
+      const fromStatus = order.status;
+      const update = await orderRepository.forceCancelFromPending(
+        tenantId,
+        order.id,
+        fromStatus,
+      );
+      if (update.count === 0) {
+        skipped.push({
+          id: order.id,
+          orderNumber: order.orderNumber,
+          reason: "Already processed or status changed",
+        });
+        continue;
+      }
+
+      const level = getApprovalLevelForStatus(fromStatus, order.orderType);
+      const roleSlug = getRoleSlugForApproval(fromStatus, order.orderType);
+      await orderRepository.addRejection(order.id, {
+        level,
+        roleSlug,
+        approvedById: userId,
+        comment: adminCancelComment,
+      });
+
+      await auditService.log({
+        tenantId,
+        userId,
+        action: "order.admin_cancelled",
+        entityType: "BranchOrder",
+        entityId: order.id,
+        metadata: {
+          ...orderAuditMetadata(order),
+          from: fromStatus,
+          to: "cancelled",
+          comment: adminCancelComment,
+        },
+      });
+
+      cancelled += 1;
+    }
+
+    if (discarded === 0 && cancelled === 0) {
+      throw new Error(
+        skipped.length > 0
+          ? "No orders were cancelled or discarded. Check the skipped reasons."
+          : "No orders were cancelled or discarded.",
+      );
+    }
+
+    return { discarded, cancelled, skipped };
   },
 
   async approve(
