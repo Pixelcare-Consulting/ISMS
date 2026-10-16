@@ -6,6 +6,7 @@ import { getUserBranchIds } from "@/lib/aor/scope";
 import { salesListDetailWhere } from "@/features/sales/constants/sales-list-status";
 import { planogramRepository } from "@/features/planogram/repositories/planogram.repository";
 import { masterDataRepository } from "@/features/master-data/repositories/master-data.repository";
+import { resolveActiveOrderPrice } from "@/features/master-data/utils/resolve-active-order-price";
 import { branchRepository } from "@/features/branches/repositories/branch.repository";
 import { orderingPolicyService } from "@/features/ordering/services/ordering-policy.service";
 import { checkOrderingAllowed } from "@/features/orders/utils/order-window";
@@ -139,7 +140,7 @@ async function loadAnalyticsPayload(
   );
 
   const lines: OrderAnalyticsLine[] = brandEntries.map((entry) => {
-    const srp = decimalToNumber(entry.model.srp);
+    const srp = resolveActiveOrderPrice(entry.model.priceLists, entry.model.srp);
     const cbm = decimalToNumber(entry.model.cbm);
     const inv = invByModel.get(entry.model.id) ?? new Map<string, number>();
     const stkQty = inv.get("STK") ?? 0;
@@ -310,7 +311,7 @@ async function loadAdditionalModels(
           skuCode: m.skuCode,
           name: m.name,
           brandId: m.brandId,
-          srp: decimalToNumber(m.srp),
+          srp: resolveActiveOrderPrice(m.priceLists, m.srp),
           cbm: decimalToNumber(m.cbm),
           onPlanogram: false,
           remainingCapacity: Number.MAX_SAFE_INTEGER,
@@ -343,7 +344,7 @@ async function loadAdditionalModels(
           skuCode: entry.model.skuCode,
           name: entry.model.name,
           brandId: entry.model.brandId,
-          srp: decimalToNumber(entry.model.srp),
+          srp: resolveActiveOrderPrice(entry.model.priceLists, entry.model.srp),
           cbm: decimalToNumber(entry.model.cbm),
           onPlanogram: true,
           remainingCapacity: Math.max(0, entry.maxQty - stkQty),

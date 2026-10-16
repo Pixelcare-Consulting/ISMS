@@ -1,6 +1,6 @@
 {
   "name": "isms",
-  "version": "0.69.2",
+  "version": "0.70.1",
   "private": true,
   "packageManager": "pnpm@11.6.0",
   "scripts": {

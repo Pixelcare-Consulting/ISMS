@@ -2,6 +2,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -316,6 +317,9 @@ export function ChatWorkspace(props: {
             <p className="text-xs text-muted-foreground">Pixelcare AI Assistant (BETA)</p>
             <h1 className="truncate text-lg font-semibold">{props.initialTitle}</h1>
           </div>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/internal/ai/automations">Automations</Link>
+          </Button>
           <BackToIsms />
           {/* DO NOT UNCOMMENT <Button asChild variant="ghost" size="sm">
             <Link href="/internal/ai">Guided home</Link>

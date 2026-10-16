@@ -138,6 +138,26 @@ export const masterDataRepository = {
     });
   },
 
+  /** Model SRP plus price-list rows, for order line amounts. */
+  listModelsForOrderPricing(tenantId: string, modelIds: string[]) {
+    if (modelIds.length === 0) return Promise.resolve([]);
+    return prisma.productModel.findMany({
+      where: { tenantId, id: { in: modelIds } },
+      select: {
+        id: true,
+        srp: true,
+        priceLists: {
+          select: {
+            amount: true,
+            periodStart: true,
+            periodEnd: true,
+            packageTypeId: true,
+          },
+        },
+      },
+    });
+  },
+
   updateModelStatus(tenantId: string, id: string, status: "active" | "hold" | "retired") {
     return prisma.productModel.update({
       where: { id, tenantId },

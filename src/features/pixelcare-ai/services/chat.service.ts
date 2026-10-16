@@ -15,6 +15,10 @@ import {
   isPixelcareAiProviderConfigured,
   PROVIDER_NOT_CONFIGURED,
 } from "@/features/pixelcare-ai/lib/provider";
+import {
+  extractSalesOrderNumbers,
+  preparePixelcareOrderLookupStep,
+} from "@/features/pixelcare-ai/lib/sales-order-numbers";
 import { buildPixelcareAiSystemPrompt } from "@/features/pixelcare-ai/lib/system-prompt";
 import {
   extractBranchIdFromToolResult,
@@ -156,6 +160,7 @@ export async function streamPixelcareAiChat(input: {
     }
   }
 
+  const salesOrderNumbers = extractSalesOrderNumbers(userText);
   const sampleMode = isPixelcareAiSampleMode();
   const requestId = crypto.randomUUID();
   const started = Date.now();
@@ -245,11 +250,15 @@ export async function streamPixelcareAiChat(input: {
       context: workingContext,
       activeBranch,
       userName: input.session.user.name,
+      salesOrderNumbers,
     }),
     messages: messagesForModel,
     tools: buildPixelcareAiTools(input.session, {
       defaultBranchId: activeBranch?.id ?? workingContext?.branchId ?? null,
+      messageOrderNumbers: salesOrderNumbers,
     }),
+    prepareStep: ({ stepNumber }) =>
+      preparePixelcareOrderLookupStep({ stepNumber, salesOrderNumbers }),
     stopWhen: stepCountIs(PIXELCARE_AI_LIMITS.maxToolSteps),
     maxOutputTokens: PIXELCARE_AI_LIMITS.maxOutputTokens,
     abortSignal: input.abortSignal,

@@ -5,10 +5,16 @@ import { PIXELCARE_AI_LIMITS } from "@/features/pixelcare-ai/constants/limits";
 import { isPixelcareAiSampleMode } from "@/features/pixelcare-ai/constants/permissions";
 import { computeSugQty } from "@/features/pixelcare-ai/lib/sug";
 import {
+  confirmReplenishmentProposal,
+  prepareReplenishmentProposalForUser,
+} from "@/features/pixelcare-ai/automations/replenishment";
+import { PROPOSED_NOT_CREATED } from "@/features/pixelcare-ai/automations/proposal-lines";
+import {
   assertPermittedBranch,
   isUnrestrictedBranchAccess,
   listPermittedBranches as fetchPermittedBranches,
 } from "@/features/pixelcare-ai/tools/branch-access";
+import { findOrderStatuses } from "@/features/pixelcare-ai/tools/find-order-status";
 import { buildPlanningOpsTools } from "@/features/pixelcare-ai/tools/planning-ops-tools";
 import {
   SAMPLE_BRANCH_STOCK,
@@ -22,22 +28,24 @@ import {
 } from "@/features/pixelcare-ai/tools/tool-payload";
 import { buildWorkflowOpsTools } from "@/features/pixelcare-ai/tools/workflow-ops-tools";
 import { inventoryService } from "@/features/inventory/services/inventory.service";
-import { BRANCH_ORDER_STATUS_LABELS } from "@/features/orders/constants/order-status";
-import { hasAnyOrderPermission } from "@/features/orders/constants/order-permissions";
+import { hasAnyOrderPermission, hasOrderPermission } from "@/features/orders/constants/order-permissions";
 import { orderAnalyticsService } from "@/features/orders/services/order-analytics.service";
-import { getUserBranchIds } from "@/lib/aor/scope";
 import { hasPermission } from "@/lib/auth/permissions";
 import type { AppSession } from "@/lib/auth/session";
-import { prisma } from "@/lib/database/client";
 import type { InventoryGroupModelSummary } from "@/features/inventory/services/inventory.service";
 
 export function buildPixelcareAiTools(
   session: AppSession,
-  options?: { defaultBranchId?: string | null },
+  options?: {
+    defaultBranchId?: string | null;
+    /** SO numbers already present in the latest user message. */
+    messageOrderNumbers?: readonly string[];
+  },
 ) {
   const sampleMode = isPixelcareAiSampleMode();
   const permissions = session.user.permissions;
   const defaultBranchId = options?.defaultBranchId?.trim() || null;
+  const messageOrderNumbers = options?.messageOrderNumbers ?? [];
   const canInventory = hasPermission(permissions, "inventory.view");
   const canOrders = hasAnyOrderPermission(permissions, "view");
   const canPlanogram =
@@ -304,11 +312,22 @@ export function buildPixelcareAiTools(
 
     findOrderStatus: tool({
       description:
-        "Find permitted order status by order number (or partial match). Returns status labels and deep links.",
+        "Look up permitted order status for one or more sales order numbers. Pass orderNumbers when the user already gave SO#YYYY-MM-##### values and keep the #. orderNumber still accepts a single number or partial match. Returns each number as a hit (status and deep link) or an explicit miss. Never invent a status.",
       inputSchema: z.object({
-        orderNumber: z.string().min(2).max(80).describe("Order / SO number to look up"),
+        orderNumber: z
+          .string()
+          .max(80)
+          .nullish()
+          .describe("Single order / SO number, including partial match. Optional when orderNumbers is set."),
+        orderNumbers: z
+          .array(z.string().max(80))
+          .max(10)
+          .nullish()
+          .describe(
+            "Sales order numbers already in the user message. Keep the # (SO#YYYY-MM-#####).",
+          ),
       }),
-      execute: async ({ orderNumber }) => {
+      execute: async ({ orderNumber, orderNumbers }) => {
         if (sampleMode) {
           return truncatePayload(SAMPLE_ORDER_STATUS);
         }
@@ -316,76 +335,99 @@ export function buildPixelcareAiTools(
           return { error: "You do not have order view permission." };
         }
 
-        const tenantId = session.user.tenantId;
-        const fullAccess =
-          hasPermission(permissions, "branches.manage") ||
-          hasAnyOrderPermission(permissions, "approve");
-        const branchIds = fullAccess ? null : await getUserBranchIds(tenantId, session.user.id);
-
-        const where = {
-          tenantId,
-          orderNumber: { contains: orderNumber.trim(), mode: "insensitive" as const },
-          ...(branchIds && branchIds.length > 0 ? { branchId: { in: branchIds } } : {}),
-          ...(branchIds && branchIds.length === 0 ? { branchId: { in: [] as string[] } } : {}),
-        };
-
-        const orders = await prisma.branchOrder.findMany({
-          where,
-          take: 10,
-          orderBy: { updatedAt: "desc" },
-          include: {
-            branch: { select: { id: true, name: true } },
-            approvalLevels: {
-              orderBy: { level: "asc" },
-              select: {
-                level: true,
-                roleSlug: true,
-                approvedAt: true,
-                rejectedAt: true,
-                comment: true,
-              },
-            },
-          },
+        const result = await findOrderStatuses({
+          tenantId: session.user.tenantId,
+          userId: session.user.id,
+          permissions,
+          orderNumber,
+          orderNumbers,
+          fromMessage: messageOrderNumbers,
         });
+        if ("error" in result) return result;
+        return truncatePayload(result);
+      },
+    }),
 
-        if (orders.length === 0) {
+    prepareReplenishmentProposal: tool({
+      description:
+        "Read shelf gaps and save a replenishment proposal only. SUG = Shelf max − STK. Returns quantities, reasons, links, and exceptions with the label Proposed — not created. Does not create, submit, approve, or send an order.",
+      inputSchema: z.object({
+        branchId: z
+          .string()
+          .min(1)
+          .optional()
+          .describe("Branch id or SAP code. Prefer the Active branchId when set."),
+      }),
+      execute: async ({ branchId }) => {
+        if (sampleMode) {
           return {
-            retrievedAt: retrievedAt(),
-            orders: [],
-            note: "No matching orders in your access scope.",
-            sourceHref: "/orders",
+            error: "Sample mode cannot prepare a live replenishment proposal.",
           };
         }
+        if (!hasOrderPermission(permissions, "auto_replenish", "create")) {
+          return { error: "You do not have permission to create an auto replenish order." };
+        }
+        const ref = resolveBranchArg(branchId);
+        if (!ref) {
+          return {
+            error:
+              "No branch selected. Set Context branch, pass a branch id/SAP code, or call listPermittedBranches.",
+          };
+        }
+        const access = await assertPermittedBranch(session, ref);
+        if (!access.ok) return { error: access.error };
+        try {
+          const result = await prepareReplenishmentProposalForUser({
+            tenantId: session.user.tenantId,
+            userId: session.user.id,
+            branchId: access.branch.id,
+          });
+          return truncatePayload({
+            ...result,
+            label: PROPOSED_NOT_CREATED,
+            branch: {
+              id: access.branch.id,
+              name: access.branch.name,
+              sapCode: access.branch.sapCode,
+            },
+          });
+        } catch (error) {
+          return {
+            error: error instanceof Error ? error.message : "Could not prepare a proposal.",
+          };
+        }
+      },
+    }),
 
-        return truncatePayload({
-          sample: false,
-          retrievedAt: retrievedAt(),
-          orders: orders.map((order) => {
-            const typePath =
-              order.orderType === "auto_replenish"
-                ? "auto-replenish"
-                : order.orderType === "special"
-                  ? "special"
-                  : "manual";
-            return {
-              id: order.id,
-              orderNumber: order.orderNumber,
-              status: order.status,
-              statusLabel: BRANCH_ORDER_STATUS_LABELS[order.status] ?? order.status,
-              orderType: order.orderType,
-              branchId: order.branch.id,
-              branchName: order.branch.name,
-              href: `/orders/${typePath}`,
-              history: order.approvalLevels.map((level) => ({
-                level: level.level,
-                role: level.roleSlug,
-                approvedAt: level.approvedAt?.toISOString() ?? null,
-                rejectedAt: level.rejectedAt?.toISOString() ?? null,
-                comment: level.comment,
-              })),
-            };
-          }),
-        });
+    confirmReplenishmentProposal: tool({
+      description:
+        "Create one Auto replenish order for a proposal the user has explicitly confirmed. Pass that proposal id only. A repeat call returns the existing order and does not create another. Does not submit, approve, cancel, delete, or post to SAP.",
+      inputSchema: z.object({
+        proposalId: z.string().min(1).describe("Proposal id the user just confirmed."),
+      }),
+      execute: async ({ proposalId }) => {
+        if (sampleMode) {
+          return { error: "Sample mode cannot confirm a live replenishment proposal." };
+        }
+        if (!hasOrderPermission(permissions, "auto_replenish", "create")) {
+          return { error: "You do not have permission to create an auto replenish order." };
+        }
+        try {
+          const result = await confirmReplenishmentProposal({
+            tenantId: session.user.tenantId,
+            actorUserId: session.user.id,
+            proposalId,
+          });
+          return truncatePayload({
+            sample: false,
+            retrievedAt: retrievedAt(),
+            ...result,
+          });
+        } catch (error) {
+          return {
+            error: error instanceof Error ? error.message : "Could not confirm the proposal.",
+          };
+        }
       },
     }),
 

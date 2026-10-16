@@ -28,6 +28,33 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
+function orderStatusRows(
+  lookups: Array<Record<string, unknown>>,
+): Array<Record<string, unknown>> {
+  return lookups.flatMap((lookup) => {
+    const query = typeof lookup.query === "string" ? lookup.query : "";
+    const orders = asRowArray(lookup.orders);
+    if (lookup.found !== true || orders.length === 0) {
+      return [
+        {
+          orderNumber: query,
+          result: "Not found",
+          statusLabel: "—",
+          orderType: "—",
+          branchName: "—",
+        },
+      ];
+    }
+    return orders.map((order) => ({
+      orderNumber: order.orderNumber ?? query,
+      result: "Found",
+      statusLabel: order.statusLabel,
+      orderType: order.orderType,
+      branchName: order.branchName,
+    }));
+  });
+}
+
 function asRowArray(value: unknown): Array<Record<string, unknown>> {
   if (!Array.isArray(value)) return [];
   return value
@@ -93,6 +120,22 @@ export function tableFromToolOutput(
       };
     }
     case "findOrderStatus": {
+      const lookups = asRowArray(data.lookups);
+      if (lookups.length > 0) {
+        const rows = orderStatusRows(lookups);
+        if (rows.length === 0) return null;
+        return {
+          caption: "Orders",
+          columns: [
+            { key: "orderNumber", label: "Order #", mono: true },
+            { key: "result", label: "Result" },
+            { key: "statusLabel", label: "Status" },
+            { key: "orderType", label: "Type" },
+            { key: "branchName", label: "Branch", wrap: true },
+          ],
+          rows,
+        };
+      }
       const rows = asRowArray(data.orders);
       if (rows.length === 0) return null;
       return {

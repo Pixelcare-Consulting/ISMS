@@ -26,13 +26,13 @@ import { sapService } from "@/features/sap/services/sap.service";
 import { branchQuotaService } from "@/features/branch-quotas/services/branch-quota.service";
 import { planogramRepository } from "@/features/planogram/repositories/planogram.repository";
 import { masterDataRepository } from "@/features/master-data/repositories/master-data.repository";
+import { resolveActiveOrderPrice } from "@/features/master-data/utils/resolve-active-order-price";
 import { getUserBranchIds } from "@/lib/aor/scope";
 import { resolveDeliveryDueDate } from "@/features/orders/utils/delivery-schedule";
 import { assertOrderingAllowed } from "@/features/orders/utils/order-window";
 import { branchRepository } from "@/features/branches/repositories/branch.repository";
 import { orderingPolicyService } from "@/features/ordering/services/ordering-policy.service";
 import { sendWorkflowEmail } from "@/lib/notifications/workflow-email";
-import { decimalToNumber } from "@/lib/database/decimal";
 
 export interface OrderStatusKpi {
   code: string;
@@ -83,6 +83,20 @@ function pendingApprovalEmail(status: BranchOrderStatus, orderType: BranchOrderT
   if (status === "pending_tl") return "Order pending Team Leader review.";
   if (status === "pending_sp") return "Order pending Supply Planning approval.";
   return `Order is pending approval (${status}).`;
+}
+
+async function priceOrderDetails<T extends { modelId: string; quantity: number }>(
+  tenantId: string,
+  details: T[],
+): Promise<(T & { amount: number })[]> {
+  const modelIds = [...new Set(details.map((line) => line.modelId))];
+  const sources = await masterDataRepository.listModelsForOrderPricing(tenantId, modelIds);
+  const byId = new Map(sources.map((model) => [model.id, model]));
+  return details.map((line) => {
+    const model = byId.get(line.modelId);
+    const srp = model ? resolveActiveOrderPrice(model.priceLists, model.srp) : 0;
+    return { ...line, amount: line.quantity * srp };
+  });
 }
 
 async function validateOrderLines(
@@ -291,17 +305,13 @@ export const orderService = {
             .join("\n")
         : data.notes;
 
-    const details = await Promise.all(
-      data.details.map(async (line) => {
-        const model = await masterDataRepository.findModel(tenantId, line.modelId);
-        const srp = model ? decimalToNumber(model.srp) : 0;
-        return {
-          modelId: line.modelId,
-          quantity: line.quantity,
-          remarks: line.remarks ?? null,
-          amount: line.quantity * srp,
-        };
-      }),
+    const details = await priceOrderDetails(
+      tenantId,
+      data.details.map((line) => ({
+        modelId: line.modelId,
+        quantity: line.quantity,
+        remarks: line.remarks ?? null,
+      })),
     );
 
     const order = await orderRepository.create(tenantId, {
@@ -374,9 +384,10 @@ export const orderService = {
 
     await validateOrderLines(tenantId, order.branchId, order.orderType, opts.details);
 
+    const details = await priceOrderDetails(tenantId, opts.details);
     const updated = await orderRepository.updateLines(tenantId, orderId, {
       orderType: order.orderType,
-      details: opts.details,
+      details,
     });
 
     await auditService.log({

@@ -34,7 +34,7 @@ export const PIXELCARE_AI_TASKS: PixelcareAiTask[] = [
     title: "Track an order",
     description: "Look up order status and next steps for orders you can see.",
     starterPrompt:
-      "Help me track an order. Ask for the order number if needed, then look up status.",
+      "Help me track an order. If one or more sales order numbers (SO#YYYY-MM-#####) are already in the message, call findOrderStatus immediately with those exact numbers and keep the #. Ask for the order number only when none was given. Say when a number is not found or outside access, and never invent a status.",
   },
   {
     id: "help-return",

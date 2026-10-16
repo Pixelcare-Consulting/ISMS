@@ -1,5 +1,6 @@
 export const PIXELCARE_AI_READ_ONLY_TOOLS = [
   "listPermittedBranches",
+  "prepareReplenishmentProposal",
   "checkBranchStock",
   "explainShelfGaps",
   "findOrderStatus",
@@ -22,7 +23,11 @@ export const PIXELCARE_AI_READ_ONLY_TOOLS = [
   "getSapIntegrationOverview",
 ] as const;
 
-export type PixelcareAiToolName = (typeof PIXELCARE_AI_READ_ONLY_TOOLS)[number];
+export const PIXELCARE_AI_CONFIRMED_WRITE_TOOLS = ["confirmReplenishmentProposal"] as const;
+
+export type PixelcareAiToolName =
+  | (typeof PIXELCARE_AI_READ_ONLY_TOOLS)[number]
+  | (typeof PIXELCARE_AI_CONFIRMED_WRITE_TOOLS)[number];
 
 export const PIXELCARE_AI_FORBIDDEN_WRITE_TOOLS = [
   "createOrder",

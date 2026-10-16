@@ -20,6 +20,8 @@ describe("buildPixelcareAiSystemPrompt", () => {
     expect(prompt).toContain("Do not invent Settings menus or navigation paths");
     expect(prompt).toContain("call listPermittedBranches");
     expect(prompt).toContain("You cannot create, submit, or approve orders");
+    expect(prompt).toContain("Proposed — not created");
+    expect(prompt).toContain("confirmReplenishmentProposal");
     expect(prompt).toContain("Order Analytics");
     expect(prompt).toContain("Proceed to order");
     expect(prompt).toContain("Create order");
@@ -50,6 +52,19 @@ describe("buildPixelcareAiSystemPrompt", () => {
     expect(prompt).toContain("present the facts and tables directly");
     expect(prompt).toContain("do not announce retrieval");
     expect(prompt).toContain("without lecturing about docs vs tools");
+  });
+
+  it("looks up sales order numbers already in the message", () => {
+    const prompt = buildPixelcareAiSystemPrompt({
+      sampleMode: false,
+      salesOrderNumbers: ["SO#2026-10-00009", "SO#2026-10-00010"],
+    });
+
+    expect(prompt).toContain("call findOrderStatus immediately");
+    expect(prompt).toContain("Ask for an order number only when none was given");
+    expect(prompt).toContain("Never invent a status");
+    expect(prompt).toContain("keeps the #");
+    expect(prompt).toContain("SO#2026-10-00009, SO#2026-10-00010");
   });
 
   it("reminds sample mode cannot place live orders", () => {

@@ -13,7 +13,23 @@ const orderListInclude = {
   createdBy: { select: { id: true, name: true, email: true } },
   details: {
     include: {
-      model: { select: { id: true, skuCode: true, name: true, brandId: true, srp: true } },
+      model: {
+        select: {
+          id: true,
+          skuCode: true,
+          name: true,
+          brandId: true,
+          srp: true,
+          priceLists: {
+            select: {
+              amount: true,
+              periodStart: true,
+              periodEnd: true,
+              packageTypeId: true,
+            },
+          },
+        },
+      },
     },
   },
   approvalLevels: {
@@ -211,7 +227,7 @@ export const orderRepository = {
     orderId: string,
     data: {
       orderType: BranchOrderType;
-      details: { modelId: string; quantity: number }[];
+      details: { modelId: string; quantity: number; amount?: number | null }[];
     },
   ) {
     const approvalChain = getOrderApprovalChain(data.orderType);
@@ -229,7 +245,13 @@ export const orderRepository = {
           processedAt: null,
           spaRemarks: null,
           deliveryDueDate: null,
-          details: { create: data.details },
+          details: {
+            create: data.details.map((line) => ({
+              modelId: line.modelId,
+              quantity: line.quantity,
+              amount: line.amount ?? null,
+            })),
+          },
           approvalLevels: {
             create: approvalChain.map((step) => ({
               level: step.level,

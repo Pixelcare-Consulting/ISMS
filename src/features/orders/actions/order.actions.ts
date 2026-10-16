@@ -35,9 +35,9 @@ import {
 } from "@/lib/auth/permissions";
 import { getUserBranchIds } from "@/lib/aor/scope";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
-import type { BranchOrderType } from "@prisma/client";
-import { decimalToNumber } from "@/lib/database/decimal";
+import { resolveActiveOrderPrice } from "@/features/master-data/utils/resolve-active-order-price";
 import type { OrderHistoryRow } from "@/features/orders/types/order-analytics";
+import type { BranchOrderType } from "@prisma/client";
 
 function hasFullOrderAccess(permissions: string[] | undefined) {
   return (
@@ -512,7 +512,7 @@ export async function listOrderHistoryAction(input?: {
     let totalAmt = 0;
     let appAmt = 0;
     for (const detail of order.details) {
-      const srp = decimalToNumber(detail.model.srp);
+      const srp = resolveActiveOrderPrice(detail.model.priceLists, detail.model.srp);
       const approved = detail.approvedQty ?? 0;
       orderQty += detail.quantity;
       appQty += approved;

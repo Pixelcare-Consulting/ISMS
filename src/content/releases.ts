@@ -66,6 +66,59 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.70.1",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T09:15:00+08:00",
+    title: "Branch orders use the current price",
+    highlights: [
+      "Branch order amounts follow the price that is current in master data.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Creating or editing a branch order, and the order history total, use the current master-data price instead of a blank model price.",
+      },
+    ],
+  },
+
+  {
+    version: "0.70.0",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T08:55:00+08:00",
+    audience: "internal",
+    title: "Pixelcare AI: workflow automations",
+    highlights: [
+      "When you already typed a sales order number, the assistant looks that order up.",
+      "Automations can send a daily briefing, review replenishment, and remind you about work still waiting.",
+      "Replenishment creates an auto replenish order only after you confirm. It starts as Pending TL and is not sent to SAP.",
+      "Scheduled automations run on the server only when the scheduler is running.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Automations cover a daily briefing, a replenishment review, and reminders for work still waiting.",
+      },
+      {
+        type: "feature",
+        description:
+          "Confirming a replenishment review creates an auto replenish order that starts as Pending TL. It is not sent to SAP.",
+      },
+      {
+        type: "improvement",
+        description:
+          "When your message already includes a sales order number, the assistant looks that order up.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Scheduled automations run on the server only when the scheduler is running.",
+      },
+    ],
+  },
+
+  {
     version: "0.69.2",
     date: "2026-10-16",
     releasedAt: "2026-10-16T08:05:00+08:00",

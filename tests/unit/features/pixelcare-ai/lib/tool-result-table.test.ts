@@ -145,8 +145,68 @@ describe("tableFromToolOutput", () => {
     expect(inbox?.rows[0]?.kind).toBe("Delivery");
   });
 
+  it("shows findOrderStatus hits and explicit misses without a guessed status", () => {
+    const table = tableFromToolOutput("findOrderStatus", {
+      lookups: [
+        {
+          query: "SO#2026-10-00009",
+          found: true,
+          orders: [
+            {
+              orderNumber: "SO#2026-10-00009",
+              statusLabel: "Draft",
+              orderType: "manual",
+              branchName: "Store A",
+            },
+          ],
+        },
+        {
+          query: "SO#2026-10-99999",
+          found: false,
+          note: "Not found in your access scope.",
+        },
+      ],
+    });
+
+    expect(table?.caption).toBe("Orders");
+    expect(table?.columns.map((column) => column.key)).toEqual([
+      "orderNumber",
+      "result",
+      "statusLabel",
+      "orderType",
+      "branchName",
+    ]);
+    expect(table?.rows.map((row) => row.result)).toEqual(["Found", "Not found"]);
+    expect(table?.rows[0]?.orderNumber).toBe("SO#2026-10-00009");
+    expect(table?.rows[0]?.statusLabel).toBe("Draft");
+    expect(table?.rows[1]?.statusLabel).toBe("—");
+    expect(table?.rows[1]).not.toHaveProperty("status");
+  });
+
+  it("keeps the legacy findOrderStatus orders table", () => {
+    const table = tableFromToolOutput("findOrderStatus", {
+      orders: [
+        {
+          orderNumber: "SO-SAMPLE-001",
+          statusLabel: "Pending Supply Planning",
+          orderType: "manual",
+          branchName: "Sample Branch",
+        },
+      ],
+    });
+
+    expect(table?.caption).toBe("Orders");
+    expect(table?.columns.map((column) => column.key)).not.toContain("result");
+    expect(table?.rows[0]?.orderNumber).toBe("SO-SAMPLE-001");
+  });
+
   it("returns null on tool errors or empty rows", () => {
     expect(tableFromToolOutput("checkBranchStock", { error: "denied" })).toBeNull();
+    expect(
+      tableFromToolOutput("findOrderStatus", {
+        error: "You do not have order view permission.",
+      }),
+    ).toBeNull();
     expect(tableFromToolOutput("checkBranchStock", { items: [] })).toBeNull();
     expect(tableFromToolOutput("explainReturns", { tips: ["a"] })).toBeNull();
   });

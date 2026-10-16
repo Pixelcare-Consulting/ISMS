@@ -1,8 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { Button } from "@/components/ui/button";
 import { BackToIsms } from "@/features/pixelcare-ai/components/back-to-isms";
 import { ChatLandingHero } from "@/features/pixelcare-ai/components/chat-landing-hero";
 import {
@@ -161,6 +163,9 @@ export function GuidedHome(props: {
             <p className="truncate text-sm font-medium">Pixelcare AI Assistant (BETA)</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <Button asChild variant="outline" size="sm">
+              <Link href="/internal/ai/automations">Automations</Link>
+            </Button>
             <BackToIsms />
             <PixelcareAiFullscreenToggle />
           </div>

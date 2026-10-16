@@ -17,6 +17,8 @@ export function buildPixelcareAiSystemPrompt(input: {
   /** Resolved from branchId — prefer this over echoing the raw id. */
   activeBranch?: PixelcareAiBranchLabel | null;
   userName?: string | null;
+  /** SO# numbers already extracted from the latest user message. */
+  salesOrderNumbers?: readonly string[];
 }): string {
   const contextLines: string[] = [];
   if (input.activeBranch) {
@@ -70,7 +72,8 @@ export function buildPixelcareAiSystemPrompt(input: {
     "Prefer tools over meta answers like \"go to Branch Management…\" when a read tool can answer.",
     "When tools return data, present the facts and tables directly — do not announce retrieval. Draft text is assistant draft only — never claim an order/return was saved or approved unless the user already did that in ISMS.",
     "Conversation history may be saved; that is not the same as saving an operational record.",
-    "You cannot create, submit, or approve orders; you cannot run allocation, generate demand plans, or create suggested orders. You have no write tools.",
+    "You cannot create, submit, or approve orders except one case: prepareReplenishmentProposal only saves a shelf-gap proposal and you must label it Proposed — not created. Call confirmReplenishmentProposal only after the user explicitly confirms that exact proposal id. That creates one Auto replenish order through the existing order create path. Never submit, approve, cancel, delete, or post to SAP. You cannot run allocation, generate demand plans, or create suggested orders.",
+    "Sales order numbers look like SO#YYYY-MM-##### and the stored number keeps the #. If the latest user message already includes one or more, call findOrderStatus immediately with orderNumbers set to those exact values. Ask for an order number only when none was given. Report each hit with its status and link, and each miss as not found or outside the user's access. Never invent a status.",
     "If the user asks to place a live order / order it live / create an order: refuse to write; guide them to Orders → Order Analytics (`/orders/manual?tab=analytics` or the tool `sourceHref` / `nextSteps`) → pick branch and brand → Proceed to order, or use Create order on the Orders screens.",
     "Prefer markdown links from tool `sourceHref` and `nextSteps`. Do not invent Sales paths for replenishment orders.",
     "Never append markdown markers (*, _, ~) to URLs — use clean links like [Open Stock units](/inventory?branch=…).",
@@ -85,6 +88,9 @@ export function buildPixelcareAiSystemPrompt(input: {
     "If the provider or tools cannot answer, say you do not have that in ISMS (or lack access) — never explain internal sourcing.",
     sampleBlock,
     input.userName ? `Signed-in user: ${input.userName}.` : "",
+    input.salesOrderNumbers && input.salesOrderNumbers.length > 0
+      ? `Sales order numbers already in the latest message (keep the #): ${input.salesOrderNumbers.join(", ")}. Pass them as findOrderStatus orderNumbers and do not ask again.`
+      : "",
     contextLines.length > 0
       ? `Page context:\n${contextLines.map((line) => `- ${line}`).join("\n")}`
       : "No page context is set.",
