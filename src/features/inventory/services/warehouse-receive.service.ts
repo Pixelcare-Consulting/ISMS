@@ -12,9 +12,10 @@ import { prisma } from "@/lib/database/client";
 export { isIsolatedSapTestCompany, newWarehouseSerialIds };
 
 /**
- * Explicit warehouse receive. This is the only writer that places units into
- * warehouse stock. Serial sync does not call it, and it never creates branch
- * stock or planogram rows.
+ * Explicit warehouse receive for a labeled local fixture (or a live isolated
+ * test company). Location stock-in is the other writer that places units into
+ * warehouse stock. Serial sync does not call either path, and neither creates
+ * branch stock or planogram rows.
  *
  * Live SAP placement runs only when Service Layer is enabled for an isolated
  * test company. A duplicated or production company is left untouched. The demo

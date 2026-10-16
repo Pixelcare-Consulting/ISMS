@@ -66,6 +66,23 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.70.2",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T09:45:00+08:00",
+    title: "Stock serials into a warehouse location",
+    highlights: [
+      "Stock serials into a warehouse location so a delivery can be dispatched.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "On a warehouse location, choose a model and enter serial numbers. Those serials show on warehouse stock and can be dispatched when that warehouse is the branch’s primary warehouse.",
+      },
+    ],
+  },
+
+  {
     version: "0.70.1",
     date: "2026-10-16",
     releasedAt: "2026-10-16T09:15:00+08:00",

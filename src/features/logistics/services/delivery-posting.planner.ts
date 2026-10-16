@@ -39,6 +39,42 @@ export interface WarehouseHold {
   warehouseLocationId: string;
 }
 
+/**
+ * A warehouse serial is offered on Dispatch when it is still active, its model
+ * is on the approved delivery, and it sits in the branch primary warehouse
+ * when that warehouse is set.
+ */
+export function isDispatchCandidate(input: {
+  modelId: string;
+  deleted: boolean;
+  warehouseId: string;
+  requiredModelIds: readonly string[];
+  primaryWarehouseId: string | null;
+}): boolean {
+  if (input.deleted) return false;
+  if (!input.requiredModelIds.includes(input.modelId)) return false;
+  if (input.primaryWarehouseId && input.warehouseId !== input.primaryWarehouseId) return false;
+  return true;
+}
+
+export function selectDispatchCandidates<
+  T extends { modelId: string; deleted: boolean; warehouseId: string },
+>(
+  rows: readonly T[],
+  requiredModelIds: readonly string[],
+  primaryWarehouseId: string | null,
+): T[] {
+  return rows.filter((row) =>
+    isDispatchCandidate({
+      modelId: row.modelId,
+      deleted: row.deleted,
+      warehouseId: row.warehouseId,
+      requiredModelIds,
+      primaryWarehouseId,
+    }),
+  );
+}
+
 export type PlanFailure = { ok: false; error: string };
 
 export interface DispatchPlan {

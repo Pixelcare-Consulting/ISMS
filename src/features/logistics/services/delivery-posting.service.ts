@@ -7,6 +7,7 @@ import {
   planAccept,
   planDispatch,
   planReject,
+  selectDispatchCandidates,
   type BranchUnitStatus,
   type DeliveryPostingView,
   type WarehouseHold,
@@ -155,32 +156,47 @@ export const deliveryPostingService = {
       select: { primaryWarehouseId: true },
     });
 
+    const primaryWarehouseId = branch?.primaryWarehouseId ?? null;
     const rows = await prisma.warehouseInventory.findMany({
       where: {
         tenantId,
         serialNumber: { modelId: { in: modelIds }, deletedAt: null },
-        ...(branch?.primaryWarehouseId
-          ? { warehouseLocation: { warehouseId: branch.primaryWarehouseId } }
+        ...(primaryWarehouseId
+          ? { warehouseLocation: { warehouseId: primaryWarehouseId } }
           : {}),
       },
       select: {
         serialNumberId: true,
         serialNumber: { select: { serialNo: true, modelId: true } },
         warehouseLocation: {
-          select: { code: true, warehouse: { select: { code: true } } },
+          select: { code: true, warehouse: { select: { id: true, code: true } } },
         },
       },
       orderBy: { serialNumber: { serialNo: "asc" } },
     });
 
-    return {
-      requiredQty,
-      serials: rows.map((row) => ({
+    const serials = selectDispatchCandidates(
+      rows.map((row) => ({
         id: row.serialNumberId,
         serialNo: row.serialNumber.serialNo,
         modelId: row.serialNumber.modelId,
+        deleted: false,
+        warehouseId: row.warehouseLocation.warehouse.id,
         warehouseCode: row.warehouseLocation.warehouse.code,
         locationCode: row.warehouseLocation.code,
+      })),
+      modelIds,
+      primaryWarehouseId,
+    );
+
+    return {
+      requiredQty,
+      serials: serials.map((row) => ({
+        id: row.id,
+        serialNo: row.serialNo,
+        modelId: row.modelId,
+        warehouseCode: row.warehouseCode,
+        locationCode: row.locationCode,
       })),
     };
   },
