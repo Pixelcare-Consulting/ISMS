@@ -15,7 +15,7 @@ export interface SheetRows {
 }
 
 export interface BranchQuotaTemplateRow {
-  branchSapCode: string;
+  branchName: string;
   brandName: string;
   month: string;
   quotaAmount: string;
@@ -102,7 +102,7 @@ function assertOurTemplate(columns: Set<string>): void {
   const missing = BRANCH_QUOTA_IMPORT_REQUIRED_COLUMNS.filter((col) => !columns.has(col));
   if (missing.length > 0) {
     throw new Error(
-      `The Branch Quotas sheet needs branch_sap_code, brand_name, month, and quota_amount columns. Download the template.`,
+      `The Branch Quotas sheet needs branch_name, brand_name, month, and quota_amount columns. Download the template.`,
     );
   }
 }
@@ -130,14 +130,14 @@ export async function buildBranchQuotaTemplateWorkbook(
   const sheet = workbook.addWorksheet(BRANCH_QUOTA_SHEET_NAME);
   sheet.addRow([...BRANCH_QUOTA_SHEET_HEADERS]);
   for (const row of rows) {
-    sheet.addRow([row.branchSapCode, row.brandName, row.month, row.quotaAmount]);
+    sheet.addRow([row.branchName, row.brandName, row.month, row.quotaAmount]);
   }
   if (rows.length === 0) {
     const now = new Date();
     const month = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
-    sheet.addRow(["BR-001", "Devant", month, "100"]);
+    sheet.addRow(["Western Makati", "Devant", month, "100"]);
   }
-  styleHeader(sheet, [18, 20, 12, 14]);
+  styleHeader(sheet, [28, 20, 12, 14]);
 
   const buffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(buffer);

@@ -44,9 +44,10 @@ export default async function MonthlySirPage({
   return (
     <div className="space-y-4">
       <SectionPageLead>
-        Upload P-COUNT with your free monthly slots, or request an extra upload
-        after they are used. Complete the Excel count and review variances through
-        the existing P-Count workflow.
+        Team Leaders get one free P-COUNT upload per branch each month. Product
+        Specialists can upload on the 14th, 15th, 16th, the last three days of
+        the month, and the 1st of the next month. An approved request does not
+        open a closed day.
       </SectionPageLead>
       <MonthlySirPanel
         requests={requests}

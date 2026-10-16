@@ -2,14 +2,18 @@ import type { MonthlySirRequestStatus } from "@prisma/client";
 
 import { aorService } from "@/features/aors/services/aor.service";
 import { auditService } from "@/features/audit/services/audit.service";
-import { DIRECT_UPLOAD_REVIEW_REMARKS } from "@/features/monthly-sir/constants/monthly-sir";
+import {
+  DIRECT_UPLOAD_REVIEW_REMARKS,
+  MONTHLY_SIR_VARIANCE_LABELS,
+} from "@/features/monthly-sir/constants/monthly-sir";
 import {
   isPcountUploadStatus,
-  PCOUNT_VARIANCE_REMARK,
   pcountRemarkForUploadedRow,
+  uncataloguedSerialVarianceDescription,
 } from "@/features/monthly-sir/constants/pcount-upload";
 import {
   assertPcountAllowanceRole,
+  assertPsPcountUploadAllowed,
   pcountMonthWindows,
   resolvePcountAllowanceRole,
   resolvePcountUploadAllowance,
@@ -82,33 +86,36 @@ async function loadFreeSlotCountsForAllowance(input: {
         psFreeStartsH2: 0,
       };
     }
-    case "ps": {
-      const [psFreeStartsH1, psFreeStartsH2] = await Promise.all([
-        monthlySirRepository.countFreeSlotStartsByRequester(input.tenantId, {
-          requestedById: input.userId,
-          branchId: input.branchId,
-          createdAtFrom: windows.h1Start,
-          createdAtToExclusive: windows.h1EndExclusive,
-        }),
-        monthlySirRepository.countFreeSlotStartsByRequester(input.tenantId, {
-          requestedById: input.userId,
-          branchId: input.branchId,
-          createdAtFrom: windows.h2Start,
-          createdAtToExclusive: windows.h2EndExclusive,
-        }),
-      ]);
+    case "ps":
       return {
         windows,
         tlFreeStartsInMonth: 0,
-        psFreeStartsH1,
-        psFreeStartsH2,
+        psFreeStartsH1: 0,
+        psFreeStartsH2: 0,
       };
-    }
     default: {
       const _exhaustive: never = role;
       return _exhaustive;
     }
   }
+}
+
+function assertCallerMayUploadPcount(input: {
+  permissions: string[] | undefined;
+  roleSlugs: string[] | undefined;
+  unrestricted: boolean;
+  at?: Date;
+}) {
+  const role = resolvePcountAllowanceRole(input.permissions, input.roleSlugs, {
+    unrestricted: input.unrestricted,
+  });
+  const windows = pcountMonthWindows(input.at);
+  assertPsPcountUploadAllowed({
+    role,
+    year: windows.year,
+    month: windows.month,
+    day: windows.day,
+  });
 }
 
 async function createLinkedCountSession(input: {
@@ -199,12 +206,11 @@ export const monthlySirService = {
     ]);
     return resolvePcountUploadAllowance({
       role,
+      manilaYear: counts.windows.year,
+      manilaMonth: counts.windows.month,
       manilaDay: counts.windows.day,
       tlFreeStartsInMonth: counts.tlFreeStartsInMonth,
-      psFreeStartsH1: counts.psFreeStartsH1,
-      psFreeStartsH2: counts.psFreeStartsH2,
       tlMonthlyFreeSlots: policy.tlMonthlyFreeSlots,
-      psMonthlyFreeSlots: policy.psMonthlyFreeSlots,
     });
   },
 
@@ -533,6 +539,8 @@ export const monthlySirService = {
     userId: string;
     requestId: string;
     unrestricted: boolean;
+    permissions: string[] | undefined;
+    roleSlugs: string[] | undefined;
     file: Buffer;
   }) {
     const request = await this.getApprovedRequest(
@@ -541,6 +549,7 @@ export const monthlySirService = {
       input.requestId,
       input.unrestricted,
     );
+    assertCallerMayUploadPcount(input);
     if (request.stockCountSession?.status !== "in_progress") {
       throw new Error("The linked count session is no longer accepting uploads");
     }
@@ -564,6 +573,8 @@ export const monthlySirService = {
     userId: string;
     requestId: string;
     unrestricted: boolean;
+    permissions: string[] | undefined;
+    roleSlugs: string[] | undefined;
     file: Buffer;
   }) {
     const request = await this.getApprovedRequest(
@@ -572,6 +583,7 @@ export const monthlySirService = {
       input.requestId,
       input.unrestricted,
     );
+    assertCallerMayUploadPcount(input);
     const sessionId = request.stockCountSessionId!;
     if (request.stockCountSession?.status !== "in_progress") {
       throw new Error("The linked count session is no longer accepting uploads");
@@ -667,7 +679,7 @@ export const monthlySirService = {
             sessionId,
             varianceType: "surplus",
             status: "open",
-            description: `Unexpected serial found during physical count (${row.serialNo})`,
+            description: uncataloguedSerialVarianceDescription(row.serialNo),
           },
         });
         surplus += 1;
@@ -690,7 +702,7 @@ export const monthlySirService = {
     // Same missing rule as stockAuditService.completeCounting: still-pending expected lines.
     await prisma.stockCountLine.updateMany({
       where: { sessionId, status: "pending", expectedInCount: true },
-      data: { notes: PCOUNT_VARIANCE_REMARK },
+      data: { notes: MONTHLY_SIR_VARIANCE_LABELS.missing },
     });
 
     await monthlySirRepository.markUploaded(

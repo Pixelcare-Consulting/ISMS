@@ -1,11 +1,14 @@
 "use client";
 
-import Link from "next/link";
+// Temporarily hidden with the Automations button.
+// import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { Button } from "@/components/ui/button";
-import { BackToIsms } from "@/features/pixelcare-ai/components/back-to-isms";
+// Temporarily hidden with the Automations button.
+// import { Button } from "@/components/ui/button";
+// Temporarily hidden with the Back to ISMS button.
+// import { BackToIsms } from "@/features/pixelcare-ai/components/back-to-isms";
 import { ChatLandingHero } from "@/features/pixelcare-ai/components/chat-landing-hero";
 import {
   ConversationSidebar,
@@ -163,10 +166,12 @@ export function GuidedHome(props: {
             <p className="truncate text-sm font-medium">Pixelcare AI Assistant (BETA)</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {/* Temporarily hidden — restore by uncommenting.
             <Button asChild variant="outline" size="sm">
               <Link href="/internal/ai/automations">Automations</Link>
             </Button>
             <BackToIsms />
+            */}
             <PixelcareAiFullscreenToggle />
           </div>
         </header>

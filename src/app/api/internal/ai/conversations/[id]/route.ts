@@ -59,10 +59,10 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     });
     return NextResponse.json({ conversation });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Update failed.";
+    const missing = error instanceof Error && error.message.includes("not found");
     return NextResponse.json(
-      { error: message },
-      { status: message.includes("not found") ? 404 : 500 },
+      { error: missing ? "Conversation not found." : "Update failed." },
+      { status: missing ? 404 : 500 },
     );
   }
 }
@@ -82,10 +82,10 @@ export async function DELETE(_request: Request, { params }: RouteParams) {
     );
     return NextResponse.json({ ok: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Delete failed.";
+    const missing = error instanceof Error && error.message.includes("not found");
     return NextResponse.json(
-      { error: message },
-      { status: message.includes("not found") ? 404 : 500 },
+      { error: missing ? "Conversation not found." : "Delete failed." },
+      { status: missing ? 404 : 500 },
     );
   }
 }

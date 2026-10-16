@@ -134,8 +134,11 @@ export const conversationService = {
     return message;
   },
 
-  async recentModelMessages(conversationId: string) {
-    const rows = await conversationRepository.listRecentMessages(conversationId);
+  async recentModelMessages(
+    conversationId: string,
+    take: number = PIXELCARE_AI_LIMITS.maxContextMessages,
+  ) {
+    const rows = await conversationRepository.listRecentMessages(conversationId, take);
     return rows
       .reverse()
       .filter((row) => row.role === "user" || row.role === "assistant")

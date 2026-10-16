@@ -2,7 +2,7 @@
 
 Single Next.js 16 SaaS app: **ISO-aligned security management** (policies, RBAC) plus **BRS inventory operations** (planning, orders, logistics, sales, SAP integration).
 
-**Current version:** `0.70.5`
+**Current version:** `0.74.2`
 
 ## Stack
 
@@ -14,7 +14,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 |------|----------|
 | **Auth** | Email/password (Better Auth), tenant-scoped sessions, demo seed users; public `/register` off unless `ALLOW_PUBLIC_REGISTER=true` |
 | **Help** | Workflow guides, FAQs, page tutorials; **ISMS Assist** (ask in plain language over Help content; sources shown) |
-| **Pixelcare AI** | Internal assistant at `/internal/ai` (chat-first home with guided suggestion chips + chat workspace + in-page Ask AI). Automations at `/internal/ai/automations`: daily briefing, replenishment review, and pending-work reminders. Replenishment creates an auto replenish order only after you confirm; it starts as Pending TL and is not sent to SAP. Schedules run on the server only when the scheduler is running. On by default for all signed-in users. Optional `PIXELCARE_AI_USER_IDS` lockdown; tools still enforce AOR/tenant/module permissions. Uses Qwen (Model Studio); separate from OpenAI ISMS Assist |
+| **Pixelcare AI** | Internal assistant at `/internal/ai` (chat-first home with guided suggestion chips + chat workspace + in-page Ask AI). Automations at `/internal/ai/automations`: daily briefing, replenishment review, and pending-work reminders. Replenishment creates an auto replenish order only after you confirm; it starts as Pending TL and is not sent to SAP. Schedules run on the server only when the scheduler is running. Off until a company admin turns the assistant on in Company settings. Optional `PIXELCARE_AI_USER_IDS` lockdown; tools still enforce AOR/tenant/module permissions. Uses Qwen (Model Studio); separate from OpenAI ISMS Assist. Prompts are sent to that provider — see [`docs/AI_ASSISTANT_SECURITY.md`](docs/AI_ASSISTANT_SECURITY.md) |
 | **Provider** | Platform console at `/provider/*` for platform operators only (provider role on the `isPlatform` Pixelcare tenant): customer summaries, create org + first Tenant Admin, org branding edit, full user/admin management, soft-disable/restore, global permissions |
 | **Dashboard** | Nav group: **Overview** (announcements only — defaults to New/unread, falls back to All when caught up; unread count badge in the menu), **Operations** (Today’s briefing + ops KPI cards / inventory / planning / order pipeline; role-gated), **Sales** (Today’s briefing + sales overview; role-gated), **P-Count Dashboard**, **Site Traffic**, **Market Survey** → Competitors. Sidebar also shows role-scoped red count badges for Monthly SIR for-approval, order review queues, returns approvals, and logistics actions (plus Stock units STK). Header: What’s new beside the sidebar drawer; notifications bell on the right (paginated inbox). Announcement CRUD stays under Announcements. |
 | **Announcements** | Tenant posts with rich body (formatting, links, images, tables); list + CRUD (`/announcements`); publishing a live announcement also sends a tenant-wide in-app notification (header bell → Overview); Overview feed defaults to New (unread) and falls back to All when everything is read; mark-as-read, likes, comments (latest 3 + show all; edit own / managers delete any), reader avatar stack (max 5), and All / New / Earlier + title search filters |
@@ -44,7 +44,7 @@ Next.js App Router · ShadCN · Tailwind · React Hook Form · Zod · Zustand ·
 | `/provider/tenants` | Platform operator — customer list (status filters) / create / detail (org branding + users) / disable / restore |
 | `/provider/permissions` | Platform operator — global permissions catalog |
 | `/help` | Authenticated — Help & Support; Assist when `ai.assist` |
-| `/internal/ai` | Pixelcare AI — signed-in session (optional `PIXELCARE_AI_USER_IDS` lockdown; hidden from normal nav). A sales order number already in your message is looked up as written |
+| `/internal/ai` | Pixelcare AI — signed-in session after a company admin turns the assistant on (optional `PIXELCARE_AI_USER_IDS` lockdown; hidden from normal nav). A sales order number already in your message is looked up as written |
 | `/internal/ai/automations` | Pixelcare AI automations — same access as `/internal/ai`. Daily briefing, replenishment review (confirm before an auto replenish order; starts Pending TL; not sent to SAP), and pending-work reminders. Schedules run only when the server scheduler is up |
 | `/dashboard` | Authenticated tenant app — Overview announcement feed only (platform operators redirect to `/provider`) |
 | `/dashboard/operations` | Inventory / orders / logistics / planning access — ops cards + Today’s briefing (no announcements) |
@@ -153,9 +153,9 @@ src/
 ### Pixelcare AI (optional)
 
 1. Copy Qwen / Pixelcare AI placeholders from [`.env.example`](.env.example) into `.env.local`
-2. Pixelcare AI is on by default for any signed-in user at `/internal/ai`
+2. In Company settings, turn the assistant on for this company. Pixelcare AI and ISMS Assist stay off until then, even when API keys are set
 3. Leave `PIXELCARE_AI_USER_IDS` empty for everyone. Only set it (comma-separated user ids/emails) if you need a temporary lockdown. Optional `ai.internal` still bypasses a non-empty allowlist.
-4. Set `QWEN_API_KEY`, `QWEN_BASE_URL` (Model Studio compatible-mode URL), and optional `QWEN_MODEL` (default `qwen-plus`)
+4. Set `QWEN_API_KEY`, `QWEN_BASE_URL` (Model Studio compatible-mode URL), and optional `QWEN_MODEL` (default `qwen-plus`). Set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` when several servers share request ceilings. One server still answers without them. ISMS Assist also needs `OPENAI_API_KEY` (optional `AI_MODEL`)
 5. Apply the `ai_conversations` / `ai_messages` migration (`pnpm run db:migrate` or `pnpm run db:deploy`), then open `/internal/ai`
 6. Optional: `PIXELCARE_AI_SAMPLE_MODE=true` for labeled sample fixtures only (never mix with live decisions)
 7. Restart `pnpm run dev` after changing `.env.local` so Next.js reloads env

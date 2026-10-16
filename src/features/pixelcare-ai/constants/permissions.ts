@@ -24,9 +24,13 @@ export function parsePixelcareAiUserAllowlist(
     .filter(Boolean);
 }
 
-/** @deprecated Always on — kept for callers; ignore env. */
-export function isPixelcareAiEnabled(_flag?: string | undefined): boolean {
-  return true;
+/**
+ * Not a product switch. Tenant AiAssistantPolicy decides, and it defaults off.
+ * A string flag cannot turn the assistant on.
+ */
+export function isPixelcareAiEnabled(flag?: string): boolean {
+  void flag;
+  return false;
 }
 
 export function isPixelcareAiSampleMode(
@@ -52,7 +56,8 @@ function allowlistMatches(
 export type PixelcareAiAccessReason = "ok" | "allowlist";
 
 /**
- * Access rules (always available when signed in):
+ * Allowlist only. The company assistant switch is checked separately and
+ * defaults off.
  * 1. Caller must already be authenticated (enforced by access helpers)
  * 2. Empty allowlist → all authenticated users
  * 3. Non-empty allowlist → match user id/email, or hold `ai.internal`

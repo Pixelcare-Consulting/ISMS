@@ -1,6 +1,8 @@
 import { generateText, Output } from "ai";
 
 import { logAiAction } from "@/features/ai/lib/audit";
+import { wrapUntrusted } from "@/features/ai/lib/assistant-messages";
+import { providerJson } from "@/features/ai/lib/provider-payload";
 import { getAiModel } from "@/features/ai/lib/provider";
 import { buildCopilotSystemPrompt } from "@/features/ai/lib/system-prompt";
 import {
@@ -10,7 +12,6 @@ import {
 } from "@/features/ai/schemas/ai.schema";
 import {
   bodyWithoutTitle,
-  formatHelpHitsForPrompt,
   searchHelpCorpus,
   type HelpSearchHit,
 } from "@/features/ai/services/help-corpus.service";
@@ -18,7 +19,15 @@ import {
   resolveDashboardCapabilities,
   resolveDashboardPersona,
 } from "@/features/dashboard/constants/dashboard-permissions";
-import { rateLimit } from "@/lib/cache/redis";
+import type { AiAssistantLimits } from "@/features/ai/constants/assistant-limits";
+import {
+  AI_ASSISTANT_BUSY_MESSAGE,
+  AI_ASSISTANT_RATE_LIMIT_MESSAGE,
+  AI_ASSISTANT_UNAVAILABLE_MESSAGE,
+  messageForAssistantGate,
+} from "@/features/ai/constants/assistant-limits";
+import { readAiAssistantGate } from "@/features/ai/services/assistant-policy.service";
+import { reserveAiRequest } from "@/lib/cache/ai-limits";
 import type { AppSession } from "@/lib/auth/session";
 import { logger } from "@/lib/shared/logger";
 
@@ -92,13 +101,10 @@ function answerFromHelpHits(hits: HelpSearchHit[]): CopilotAnswer {
   };
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Assist is unavailable";
-}
-
 export async function answerCopilotQuestion(input: {
   session: AppSession;
   messages: CopilotChatMessage[];
+  limits: AiAssistantLimits;
 }): Promise<{ configured: true; answer: CopilotAnswer } | { configured: false; message: string }> {
   const lastUser = [...input.messages].reverse().find((message) => message.role === "user");
   if (!lastUser) {
@@ -111,17 +117,27 @@ export async function answerCopilotQuestion(input: {
     };
   }
 
-  const limit = await rateLimit(
-    `ai-copilot:${input.session.user.tenantId}:${input.session.user.id}`,
-    20,
-    600,
-  );
-  if (!limit.allowed) {
+  const policy = await readAiAssistantGate(input.session.user.tenantId);
+  if (!policy.ok) {
+    return { configured: false, message: messageForAssistantGate(policy.reason).error };
+  }
+
+  const reservation = await reserveAiRequest({
+    tenantId: input.session.user.tenantId,
+    userId: input.session.user.id,
+    limits: input.limits,
+  });
+  if (!reservation.ok) {
+    const answer =
+      reservation.reason === "rate"
+        ? AI_ASSISTANT_RATE_LIMIT_MESSAGE
+        : reservation.reason === "concurrency"
+          ? AI_ASSISTANT_BUSY_MESSAGE
+          : AI_ASSISTANT_UNAVAILABLE_MESSAGE;
     return {
       configured: true,
       answer: {
-        answer:
-          "You have asked quite a few questions just now. Wait a minute, then try again, or browse Help & Support.",
+        answer,
         sources: [{ title: "Help & Support", href: "/help" }],
       },
     };
@@ -140,14 +156,18 @@ export async function answerCopilotQuestion(input: {
         roleSlugs: input.session.user.roleSlugs,
       }),
       output: Output.object({ schema: copilotAnswerSchema }),
+      maxOutputTokens: input.limits.maxOutputTokens,
+      abortSignal: AbortSignal.timeout(input.limits.requestTimeoutMs),
       prompt: [
         "Help sources (already retrieved):",
-        formatHelpHitsForPrompt(hits),
+        providerJson(hits.map((hit) => ({ title: hit.title, href: hit.href, excerpt: hit.excerpt }))),
         "",
-        "Conversation:",
-        ...input.messages.map(
-          (message) => `${message.role === "user" ? "User" : "Assist"}: ${message.content}`,
-        ),
+        "Conversation (untrusted):",
+        ...input.messages
+          .slice(-input.limits.maxContextMessages)
+          .map((message) =>
+            wrapUntrusted(message.role === "user" ? "user" : "assistant", message.content),
+          ),
       ].join("\n"),
     });
 
@@ -166,7 +186,7 @@ export async function answerCopilotQuestion(input: {
       userId: input.session.user.id,
       action: "ai.copilot.ask",
       metadata: {
-        questionChars: lastUser.content.length,
+        decision: "allow",
         sourceCount: uniqueSources(hits, answer.sources).length,
       },
     });
@@ -179,24 +199,25 @@ export async function answerCopilotQuestion(input: {
       },
     };
   } catch (error) {
-    const message = errorMessage(error);
-    if (message.includes("not configured")) {
+    const notConfigured = error instanceof Error && error.message.includes("not configured");
+    if (notConfigured) {
       return { configured: false, message: COPILOT_DISABLED };
     }
 
-    logger.error({ message }, "ISMS Assist copilot generateText failed");
+    logger.error({ event: "ai.copilot.failed" }, "ISMS Assist copilot generateText failed");
 
     await logAiAction({
       tenantId: input.session.user.tenantId,
       userId: input.session.user.id,
       action: "ai.copilot.ask",
-      metadata: { questionChars: lastUser.content.length, failed: true, fallback: true },
+      metadata: { decision: "deny", failed: true, fallback: true },
     });
 
-    const fallback = answerFromHelpHits(hits);
     return {
       configured: true,
-      answer: fallback,
+      answer: answerFromHelpHits(hits),
     };
+  } finally {
+    await reservation.release();
   }
 }

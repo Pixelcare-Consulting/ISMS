@@ -295,7 +295,13 @@ export function buildPlanningOpsTools(session: AppSession) {
           return { error: "Supply planning run not found." };
         }
 
-        const branchSummary = (run.branches ?? [])
+        const permittedIds = isUnrestrictedBranchAccess(permissions)
+          ? null
+          : new Set((await listPermittedBranches(session)).map((branch) => branch.id));
+        const visibleBranches = (run.branches ?? []).filter((branch) =>
+          permittedIds === null ? true : permittedIds.has(branch.branchId),
+        );
+        const branchSummary = visibleBranches
           .slice(0, PIXELCARE_AI_LIMITS.maxToolResultItems)
           .map((branch) => ({
             id: branch.id,
@@ -319,12 +325,12 @@ export function buildPlanningOpsTools(session: AppSession) {
             periodLabel: run.periodLabel,
             createdAt: run.createdAt,
             releasedAt: run.releasedAt,
-            branchCount: run.branchCount,
+            branchCount: visibleBranches.length,
           },
           branches: branchSummary,
           note:
-            run.branchCount > branchSummary.length
-              ? `Showing first ${branchSummary.length} of ${run.branchCount} branches.`
+            visibleBranches.length > branchSummary.length
+              ? `Showing first ${branchSummary.length} of ${visibleBranches.length} branches in your area.`
               : undefined,
           nextSteps: [
             {
@@ -360,7 +366,11 @@ export function buildPlanningOpsTools(session: AppSession) {
           tenantId,
           periodId?.trim() || undefined,
         );
+        const permittedIds = isUnrestrictedBranchAccess(permissions)
+          ? null
+          : new Set((await listPermittedBranches(session)).map((branch) => branch.id));
         const branches = view.branches
+          .filter((row) => (permittedIds === null ? true : permittedIds.has(row.branchId)))
           .slice(0, PIXELCARE_AI_LIMITS.maxToolResultItems)
           .map((row) => ({
             branchId: row.branchId,
@@ -386,8 +396,10 @@ export function buildPlanningOpsTools(session: AppSession) {
           coverage: view.coverage,
           branches,
           note:
-            view.branches.length > branches.length
-              ? `Showing first ${branches.length} of ${view.branches.length} branches.`
+            view.branches.filter((row) =>
+              permittedIds === null ? true : permittedIds.has(row.branchId),
+            ).length > branches.length
+              ? `Showing first ${branches.length} branches in your area.`
               : view.run
                 ? undefined
                 : "No coverage run for this period yet.",
@@ -439,14 +451,12 @@ export function buildPlanningOpsTools(session: AppSession) {
           { branchId: branchId?.trim() || undefined, q: q?.trim() || undefined },
         );
 
-        return truncatePayload({
-          sample: false,
-          retrievedAt: retrievedAt(),
-          sourceHref: "/settings/planning",
-          periodId: period.id,
-          periodLabel: period.label,
-          total: result.total,
-          gaps: result.items.map((row) => ({
+        const permittedIds = isUnrestrictedBranchAccess(permissions)
+          ? null
+          : new Set((await listPermittedBranches(session)).map((branch) => branch.id));
+        const gaps = result.items
+          .filter((row) => (permittedIds === null ? true : permittedIds.has(row.branch.id)))
+          .map((row) => ({
             branchId: row.branch.id,
             branchName: row.branch.name,
             sapCode: row.branch.sapCode,
@@ -455,7 +465,16 @@ export function buildPlanningOpsTools(session: AppSession) {
             shelfMax: row.planogramMax,
             currentStock: row.currentStock,
             gapQty: row.gapQty,
-          })),
+          }));
+
+        return truncatePayload({
+          sample: false,
+          retrievedAt: retrievedAt(),
+          sourceHref: "/settings/planning",
+          periodId: period.id,
+          periodLabel: period.label,
+          total: gaps.length,
+          gaps,
           note: "Shelf max is planogram capacity already stored on the allocation row. SUG for order create remains Shelf max − STK on Order Analytics.",
           nextSteps: [
             { label: "Open Planning", href: "/settings/planning" },
@@ -721,7 +740,6 @@ export function buildPlanningOpsTools(session: AppSession) {
                 id: true,
                 transactionNo: true,
                 atrStatus: true,
-                customerName: true,
                 branch: { select: { id: true, name: true, sapCode: true } },
               },
             },
@@ -748,7 +766,6 @@ export function buildPlanningOpsTools(session: AppSession) {
             dealerRsNo: row.dealerRsNo,
             transactionNo: row.sale.transactionNo,
             atrStatus: row.sale.atrStatus,
-            customerName: row.sale.customerName,
             branchId: row.sale.branch.id,
             branchName: row.sale.branch.name,
             sapCode: row.sale.branch.sapCode,

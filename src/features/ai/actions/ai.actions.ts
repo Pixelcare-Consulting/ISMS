@@ -1,8 +1,14 @@
 "use server";
 
 import { canUseAiAssist } from "@/features/ai/constants/ai-permissions";
+import {
+  AI_ASSISTANT_FAILED_MESSAGE,
+  messageForAssistantGate,
+} from "@/features/ai/constants/assistant-limits";
 import { isAiConfigured } from "@/features/ai/lib/provider";
 import { askCopilotSchema } from "@/features/ai/schemas/ai.schema";
+import { publicAssistantError } from "@/features/ai/lib/assistant-messages";
+import { readAiAssistantGate } from "@/features/ai/services/assistant-policy.service";
 import {
   generateDashboardBriefing,
   getCachedDashboardBriefing,
@@ -27,16 +33,30 @@ function normalizeSurface(
 
 export async function getAiStatusAction() {
   const session = await requireAuth();
+  const policy = await readAiAssistantGate(session.user.tenantId);
   return {
     canAssist: canUseAiAssist(session.user.permissions),
-    configured: isAiConfigured(),
+    configured: isAiConfigured() && policy.ok,
+    enabled: policy.ok,
   };
 }
 
-export async function askCopilotAction(input: unknown) {
+async function requireEnabledAssist() {
   const gate = await requireAssist();
   if (!gate.ok || !gate.session) {
-    return { ok: false as const, error: "You do not have access to ISMS Assist." };
+    return { ok: false as const, session: null, error: "You do not have access to ISMS Assist." };
+  }
+  const policy = await readAiAssistantGate(gate.session.user.tenantId);
+  if (!policy.ok) {
+    return { ok: false as const, session: null, error: messageForAssistantGate(policy.reason).error };
+  }
+  return { ok: true as const, session: gate.session, error: null, limits: policy.limits };
+}
+
+export async function askCopilotAction(input: unknown) {
+  const gate = await requireEnabledAssist();
+  if (!gate.ok || !gate.session) {
+    return { ok: false as const, error: gate.error ?? "You do not have access to ISMS Assist." };
   }
 
   if (!isAiConfigured()) {
@@ -55,6 +75,7 @@ export async function askCopilotAction(input: unknown) {
   const result = await answerCopilotQuestion({
     session: gate.session,
     messages: parsed.data.messages,
+    limits: gate.limits,
   });
 
   if (!result.configured) {
@@ -69,7 +90,11 @@ export async function getCachedDashboardBriefingAction(
 ) {
   const gate = await requireAssist();
   if (!gate.ok || !gate.session) {
-    return { ok: false as const, briefing: null, configured: isAiConfigured() };
+    return { ok: false as const, briefing: null, configured: false };
+  }
+  const policy = await readAiAssistantGate(gate.session.user.tenantId);
+  if (!policy.ok) {
+    return { ok: true as const, briefing: null, configured: false };
   }
 
   const briefing = await getCachedDashboardBriefing(
@@ -83,9 +108,12 @@ export async function generateDashboardBriefingAction(
   force = false,
   surface?: DashboardBriefingSurface,
 ) {
-  const gate = await requireAssist();
+  const gate = await requireEnabledAssist();
   if (!gate.ok || !gate.session) {
-    return { ok: false as const, error: "You do not have access to ISMS Assist." };
+    return {
+      ok: false as const,
+      error: gate.error ?? "You do not have access to ISMS Assist.",
+    };
   }
 
   if (!isAiConfigured()) {
@@ -96,9 +124,17 @@ export async function generateDashboardBriefingAction(
     };
   }
 
-  const briefing = await generateDashboardBriefing(gate.session, {
-    force,
-    surface: normalizeSurface(surface),
-  });
-  return { ok: true as const, briefing };
+  try {
+    const briefing = await generateDashboardBriefing(gate.session, {
+      force,
+      surface: normalizeSurface(surface),
+      limits: gate.limits,
+    });
+    return { ok: true as const, briefing };
+  } catch (error) {
+    return {
+      ok: false as const,
+      error: publicAssistantError(error, AI_ASSISTANT_FAILED_MESSAGE),
+    };
+  }
 }

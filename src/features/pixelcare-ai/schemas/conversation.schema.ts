@@ -22,7 +22,7 @@ export const chatRequestSchema = z.object({
     .array(
       z.object({
         id: z.string().optional(),
-        role: z.enum(["user", "assistant", "system"]),
+        role: z.enum(["user", "assistant"]),
         parts: z.array(z.unknown()).optional(),
         content: z.string().optional(),
       }),

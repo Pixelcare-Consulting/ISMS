@@ -1,5 +1,8 @@
 import type { Prisma } from "@/lib/database/generated/prisma/client";
 
+import { AI_ASSISTANT_OFF_MESSAGE } from "@/features/ai/constants/assistant-limits";
+import { AssistantUserError } from "@/features/ai/lib/assistant-messages";
+import { readAiAssistantGate } from "@/features/ai/services/assistant-policy.service";
 import {
   automationExecutors,
   missingExecutorError,
@@ -15,7 +18,8 @@ export type ManualRunResult = {
 };
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Unknown error";
+  if (error instanceof AssistantUserError) return error.message;
+  return "The automation could not finish.";
 }
 
 /**
@@ -37,7 +41,10 @@ export async function runSavedAutomation(input: {
       ownerUserId: input.actorUserId,
     },
   });
-  if (!automation) throw new Error("Automation not found.");
+  if (!automation) throw new AssistantUserError("Automation not found.");
+
+  const policy = await readAiAssistantGate(input.tenantId);
+  if (!policy.ok) throw new AssistantUserError(AI_ASSISTANT_OFF_MESSAGE);
 
   const now = input.now ?? new Date();
   const slot = `${input.trigger}:${now.toISOString()}`;

@@ -1,7 +1,6 @@
 import type { CreateAuditLogInput } from "@/features/audit/repositories/audit-log.repository";
 import { auditService } from "@/features/audit/services/audit.service";
 import {
-  PLANOGRAM_DEFAULT_MAX_QTY,
   PLANOGRAM_DEFAULT_MIL_DAYS,
   PLANOGRAM_IMPORT_FIELD_LABELS,
   PLANOGRAM_SHEET_NAME,
@@ -12,6 +11,7 @@ import {
   type PlanogramImportRowError,
   type PlanogramImportRowPlan,
 } from "@/features/planogram/schemas/planogram-import.schema";
+import { parsePlanogramShelfMax } from "@/features/planogram/services/planogram-import.validation";
 import {
   buildPlanogramTemplateWorkbook,
   readPlanogramImportWorkbook,
@@ -22,6 +22,7 @@ import { getUserBranchIds } from "@/lib/aor/scope";
 import { hasPermission } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/database/client";
 import { mapWithConcurrency } from "@/lib/shared/concurrency";
+import { indexBranchesByName, resolveBranchByName } from "@/lib/shared/match-branch-by-name";
 import {
   getCachedPlan,
   invalidatePlan,
@@ -103,15 +104,17 @@ async function loadTemplateRows(actor: PlanogramImportActor): Promise<PlanogramT
   const entries = await prisma.branchPlanogram.findMany({
     where: { tenantId: actor.tenantId, ...branchFilter },
     select: {
-      branch: { select: { sapCode: true } },
+      maxQty: true,
+      branch: { select: { name: true } },
       model: { select: { skuCode: true } },
     },
-    orderBy: [{ branch: { sapCode: "asc" } }, { model: { skuCode: "asc" } }],
+    orderBy: [{ branch: { name: "asc" } }, { model: { skuCode: "asc" } }],
   });
 
   return entries.map((entry) => ({
-    sapCode: entry.branch.sapCode,
+    branchName: entry.branch.name,
     sku: entry.model.skuCode,
+    maxQty: entry.maxQty,
   }));
 }
 
@@ -130,31 +133,29 @@ async function buildPlan(
   const seenPairs = new Map<string, number>();
 
   for (const row of sheet.rows) {
-    const sapCode = row.values.sap_code?.trim() ?? "";
+    const branchName = row.values.branch_name?.trim() ?? "";
     const sku = row.values.sku?.trim() ?? "";
-    if (isBlankOrDash(sapCode) && isBlankOrDash(sku)) {
+    const shelfMaxRaw = row.values.shelf_max?.trim() ?? "";
+    if (isBlankOrDash(branchName) && isBlankOrDash(sku) && isBlankOrDash(shelfMaxRaw)) {
       continue;
     }
-    const pairKey = `${lookupKey(sapCode)}::${lookupKey(sku)}`;
-    if (seenPairs.has(pairKey) && sapCode && sku) {
+    const pairKey = `${lookupKey(branchName)}::${lookupKey(sku)}`;
+    if (seenPairs.has(pairKey) && branchName && sku) {
       errors.push({
         sheet: PLANOGRAM_SHEET_NAME,
         rowNumber: row.rowNumber,
-        sapCode,
+        sapCode: branchName,
         sku,
-        message: `Duplicate of row ${seenPairs.get(pairKey)} (${sapCode} / ${sku}). Keep one row per branch and SKU.`,
+        message: `Duplicate of row ${seenPairs.get(pairKey)} (${branchName} / ${sku}). Keep one row per branch and SKU.`,
       });
       continue;
     }
-    if (sapCode && sku) seenPairs.set(pairKey, row.rowNumber);
+    if (branchName && sku) seenPairs.set(pairKey, row.rowNumber);
   }
 
-  const sapCodes = new Set<string>();
   const skus = new Set<string>();
   for (const row of sheet.rows) {
-    const sapCode = row.values.sap_code?.trim() ?? "";
     const sku = row.values.sku?.trim() ?? "";
-    if (!isBlankOrDash(sapCode)) sapCodes.add(sapCode);
     if (!isBlankOrDash(sku)) skus.add(sku);
   }
 
@@ -163,7 +164,7 @@ async function buildPlan(
       where: { tenantId: actor.tenantId },
       select: { id: true, name: true, sapCode: true, status: true },
     }),
-    sapCodes.size === 0 && skus.size === 0
+    skus.size === 0
       ? Promise.resolve([])
       : prisma.productModel.findMany({
           where: { tenantId: actor.tenantId },
@@ -171,7 +172,7 @@ async function buildPlan(
         }),
   ]);
 
-  const branchBySap = new Map(branches.map((branch) => [lookupKey(branch.sapCode), branch]));
+  const branchByName = indexBranchesByName(branches);
   const modelBySku = new Map(models.map((model) => [lookupKey(model.skuCode), model]));
 
   const candidateBranchIds = [...new Set(branches.map((b) => b.id))];
@@ -199,9 +200,10 @@ async function buildPlan(
   const writes: RowPlanInternal[] = [];
 
   for (const row of sheet.rows) {
-    const sapCode = row.values.sap_code?.trim() ?? "";
+    const branchName = row.values.branch_name?.trim() ?? "";
     const sku = row.values.sku?.trim() ?? "";
-    if (isBlankOrDash(sapCode) && isBlankOrDash(sku)) {
+    const shelfMaxRaw = row.values.shelf_max?.trim() ?? "";
+    if (isBlankOrDash(branchName) && isBlankOrDash(sku) && isBlankOrDash(shelfMaxRaw)) {
       continue;
     }
 
@@ -209,14 +211,14 @@ async function buildPlan(
       errors.push({
         sheet: PLANOGRAM_SHEET_NAME,
         rowNumber: row.rowNumber,
-        sapCode: sapCode || "—",
+        sapCode: branchName || "—",
         sku: sku || "—",
         message,
       });
     };
 
-    if (isBlankOrDash(sapCode)) {
-      pushError("branch_sap_code is empty.");
+    if (isBlankOrDash(branchName)) {
+      pushError("branch_name is empty.");
       continue;
     }
     if (isBlankOrDash(sku)) {
@@ -224,22 +226,33 @@ async function buildPlan(
       continue;
     }
 
-    const pairFileKey = `${lookupKey(sapCode)}::${lookupKey(sku)}`;
+    const pairFileKey = `${lookupKey(branchName)}::${lookupKey(sku)}`;
     if (seenPairs.get(pairFileKey) !== row.rowNumber) {
       continue;
     }
 
-    const branch = branchBySap.get(lookupKey(sapCode));
-    if (!branch) {
-      pushError(`Branch "${sapCode}" was not found. Import or sync branches first.`);
+    const shelfMax = parsePlanogramShelfMax(shelfMaxRaw);
+    if ("error" in shelfMax) {
+      pushError(shelfMax.error);
       continue;
     }
+
+    const resolved = resolveBranchByName(
+      branchByName,
+      branchName,
+      `Branch "${branchName}" was not found. Import or sync branches first.`,
+    );
+    if ("error" in resolved) {
+      pushError(resolved.error);
+      continue;
+    }
+    const branch = resolved.branch;
     if (branch.status !== "active") {
-      pushError(`Branch "${sapCode}" is not active.`);
+      pushError(`Branch "${branchName}" is not active.`);
       continue;
     }
     if (scopedSet && !scopedSet.has(branch.id)) {
-      pushError(`Branch "${sapCode}" is outside your area of responsibility.`);
+      pushError(`Branch "${branchName}" is outside your area of responsibility.`);
       continue;
     }
 
@@ -262,14 +275,18 @@ async function buildPlan(
     if (willAddAllowedModel) {
       pushChange(changes, "allowedModel", null, "add");
     }
+    if (existing && existing.maxQty !== shelfMax.maxQty) {
+      pushChange(changes, "maxQty", existing.maxQty, shelfMax.maxQty);
+    }
 
-    const action = !existing ? "create" : willAddAllowedModel ? "update" : "skip";
+    const maxQtyChanged = existing != null && existing.maxQty !== shelfMax.maxQty;
+    const action = !existing ? "create" : willAddAllowedModel || maxQtyChanged ? "update" : "skip";
     const planned: RowPlanInternal = {
       rowNumber: row.rowNumber,
       sapCode: branch.sapCode,
       sku: model.skuCode,
       branchName: branch.name,
-      maxQty: existing ? existing.maxQty : PLANOGRAM_DEFAULT_MAX_QTY,
+      maxQty: shelfMax.maxQty,
       milDays: PLANOGRAM_DEFAULT_MIL_DAYS,
       action,
       changes,
@@ -343,7 +360,7 @@ async function applyWriteSlice(
         modelId: row.modelId,
         maxQty: row.maxQty,
       },
-      update: {},
+      update: { maxQty: row.maxQty },
     });
 
     if (row.action === "create") {
@@ -372,6 +389,22 @@ async function applyWriteSlice(
         },
       });
       return { created: 1, updated: 0, allowedModelsAdded: allowedAdded, audits };
+    }
+
+    if (row.changes.some((change) => change.field === "maxQty")) {
+      audits.push({
+        tenantId,
+        userId: actorUserId,
+        action: "planogram.max_qty_updated",
+        entityType: "BranchPlanogram",
+        entityId: entry.id,
+        metadata: {
+          branchId: row.branchId,
+          modelId: row.modelId,
+          maxQty: row.maxQty,
+          source: "planogram-import",
+        },
+      });
     }
 
     return { created: 0, updated: 1, allowedModelsAdded: allowedAdded, audits };

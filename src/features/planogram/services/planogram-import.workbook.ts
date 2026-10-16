@@ -1,6 +1,7 @@
 import ExcelJS from "exceljs";
 
 import {
+  PLANOGRAM_DEFAULT_MAX_QTY,
   PLANOGRAM_IMPORT_ALIAS_MAP,
   PLANOGRAM_IMPORT_COLUMN_LABELS,
   PLANOGRAM_IMPORT_REQUIRED_COLUMNS,
@@ -16,14 +17,15 @@ export interface SheetRows {
 }
 
 export interface PlanogramTemplateRow {
-  sapCode: string;
+  branchName: string;
   sku: string;
+  maxQty: number;
 }
 
 const EMPTY_SHEET: SheetRows = { present: false, columns: new Set(), rows: [] };
 
 const BRS_LAYOUT_ERROR =
-  "This file is the old BRS forecast/planogram layout, not the Planogram template. Download the template (branch_sap_code, sku). Branch Target Quota belongs on Planning via the SFE Forecast template.";
+  "This file is the old BRS forecast/planogram layout, not the Planogram template. Download the template (branch_name, sku, shelf_max). Branch Target Quota belongs on Planning via the SFE Forecast template.";
 
 /** Headers that appear on the wide Dealer 1 BRS sheet (Brand / SKU / Model / Series / SRP + Y/N pairs). */
 const BRS_WIDE_HEADER_HINTS = new Set([
@@ -110,7 +112,7 @@ function styleHeader(sheet: ExcelJS.Worksheet, widths: number[]) {
 function looksLikeBrsWideLayout(columns: Set<string>, rawHeaders: string[]): boolean {
   const brsHits = rawHeaders.filter((header) => BRS_WIDE_HEADER_HINTS.has(header));
   const ynPairs = rawHeaders.filter((header) => header === "y" || header === "n").length;
-  const missingTemplateKeys = !columns.has("sap_code") || !columns.has("sku");
+  const missingTemplateKeys = PLANOGRAM_IMPORT_REQUIRED_COLUMNS.some((col) => !columns.has(col));
 
   if (brsHits.length >= 2 && missingTemplateKeys) return true;
   if (ynPairs >= 2 && missingTemplateKeys) return true;
@@ -145,12 +147,12 @@ export async function buildPlanogramTemplateWorkbook(
   const sheet = workbook.addWorksheet(PLANOGRAM_SHEET_NAME);
   sheet.addRow([...PLANOGRAM_SHEET_HEADERS]);
   for (const row of rows) {
-    sheet.addRow([row.sapCode, row.sku]);
+    sheet.addRow([row.branchName, row.sku, row.maxQty]);
   }
   if (rows.length === 0) {
-    sheet.addRow(["WMK-001", "100L10E"]);
+    sheet.addRow(["Western Makati", "100L10E", PLANOGRAM_DEFAULT_MAX_QTY]);
   }
-  styleHeader(sheet, [18, 14]);
+  styleHeader(sheet, [28, 16, 12]);
 
   const buffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(buffer);

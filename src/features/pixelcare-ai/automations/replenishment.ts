@@ -20,6 +20,7 @@ import {
   REPLENISHMENT_ORDER_TYPE,
   type ReplenishmentLine,
 } from "@/features/pixelcare-ai/automations/proposal-lines";
+import { hashOrderableLines } from "@/features/pixelcare-ai/automations/line-hash";
 import { orderAnalyticsService } from "@/features/orders/services/order-analytics.service";
 import { orderService } from "@/features/orders/services/order.service";
 import { ORDER_TYPE_ROUTE } from "@/features/orders/constants/order-permissions";
@@ -115,6 +116,7 @@ async function saveOpenProposal(input: {
         branchId: input.branchId,
         localDay,
         lines: input.lines,
+        lineHash: hashOrderableLines(input.lines),
         status: "proposed",
         orderId: null,
       },
@@ -130,9 +132,20 @@ async function saveOpenProposal(input: {
         localDay,
         status: "proposed",
       },
-      select: { id: true },
+      select: { id: true, lineHash: true, lines: true },
     });
     if (!existing) throw error;
+    if (!existing.lineHash) {
+      try {
+        const lineHash = hashOrderableLines(parseStoredProposalLines(existing.lines));
+        await prisma.aiReplenishmentProposal.update({
+          where: { id: existing.id },
+          data: { lineHash },
+        });
+      } catch {
+        // Confirm stays disabled until the stored lines can be hashed.
+      }
+    }
     return { id: existing.id, reused: true };
   }
 }
@@ -205,7 +218,7 @@ type StoredProposal = {
   run: { automation: { ownerUserId: string } };
 };
 
-function parseStoredLines(value: Prisma.JsonValue): ReplenishmentLine[] {
+export function parseStoredProposalLines(value: Prisma.JsonValue): ReplenishmentLine[] {
   if (!Array.isArray(value)) throw new Error("Proposal lines are missing.");
   return value.map((entry) => {
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
@@ -395,7 +408,7 @@ async function confirmLockedProposal(
         const access = await loadOwnerAccess(locked.tenantId, actorUserId);
         assertCanCreateReplenishment(access);
         resolveScopedBranches([locked.branchId], access);
-        const lines = orderableReplenishmentLines(parseStoredLines(locked.lines));
+        const lines = orderableReplenishmentLines(parseStoredProposalLines(locked.lines));
         if (lines.length === 0) {
           throw new Error("No orderable shelf gaps on this proposal.");
         }
@@ -403,7 +416,7 @@ async function confirmLockedProposal(
       createDraft: async () => {
         if (!locked) throw new Error("Proposal not found.");
         const access = await loadOwnerAccess(locked.tenantId, actorUserId);
-        const orderable = orderableReplenishmentLines(parseStoredLines(locked.lines));
+        const orderable = orderableReplenishmentLines(parseStoredProposalLines(locked.lines));
         const order = await orderService.create(locked.tenantId, actorUserId, {
           branchId: locked.branchId,
           orderType: REPLENISHMENT_ORDER_TYPE,

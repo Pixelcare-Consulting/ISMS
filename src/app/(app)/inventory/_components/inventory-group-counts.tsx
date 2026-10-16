@@ -1,4 +1,9 @@
 import type { InventoryGroupCountsDto } from "@/features/inventory/actions/inventory.actions";
+import {
+  visibleInventoryGroupStatuses,
+  type InventoryGroupStatusCount,
+} from "@/features/inventory/utils/stock-units-group-aggregates";
+import { statusColorClassName } from "@/features/reason-status/constants/status-colors";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/utils/cn";
 
@@ -12,20 +17,28 @@ function CountBadge({
   label,
   value,
   className,
+  title,
 }: {
   label: string;
   value: number;
   className?: string;
+  title?: string;
 }) {
-  if (value <= 0) return null;
   return (
     <Badge
       variant="outline"
+      title={title}
       className={cn("tabular-nums font-normal whitespace-nowrap", className)}
     >
-      {label} {value.toLocaleString()}
+      <span className="font-mono text-[10px]">{label}</span>{" "}
+      {value.toLocaleString()}
     </Badge>
   );
+}
+
+/** TO FOLLOW is the name people read on the summary card; its code is FW. */
+function statusChipLabel(status: InventoryGroupStatusCount): string {
+  return status.code === "FW" ? status.name : status.code;
 }
 
 export function InventoryGroupCounts({
@@ -33,26 +46,49 @@ export function InventoryGroupCounts({
   className,
   compact = false,
 }: InventoryGroupCountsProps) {
-  const size = compact ? "text-[11px] px-1.5 py-0" : undefined;
+  const size = compact ? "text-[11px] px-1.5 py-0" : "text-xs";
+  const statuses = counts.statuses ?? [];
+  const visibleStatuses =
+    statuses.length > 0
+      ? visibleInventoryGroupStatuses(statuses)
+      : visibleInventoryGroupStatuses([
+          {
+            code: "STK",
+            name: "Stock",
+            color: "emerald",
+            count: counts.available + counts.pendingInspection,
+          },
+          {
+            code: "DEF",
+            name: "Defective",
+            color: "rose",
+            count: counts.defective,
+          },
+          {
+            code: "RSV",
+            name: "Reserved",
+            color: "orange",
+            count: counts.reserved,
+          },
+        ]);
+  const shownTotal =
+    statuses.length > 0
+      ? statuses.reduce((sum, status) => sum + status.count, 0)
+      : counts.total;
+
   return (
-    <div className={cn("flex flex-wrap items-center gap-1.5", className)}>
-      <CountBadge
-        label="Avail"
-        value={counts.available}
-        className={cn("border-green-600/50 text-green-800", size)}
-      />
-      <CountBadge
-        label="Def"
-        value={counts.defective}
-        className={cn("border-red-600/50 text-red-800", size)}
-      />
-      <CountBadge
-        label="RSV"
-        value={counts.reserved}
-        className={cn("border-blue-600/50 text-blue-800", size)}
-      />
+    <div className={cn("flex max-w-xl flex-wrap items-center gap-1", className)}>
+      {visibleStatuses.map((status) => (
+        <CountBadge
+          key={status.code}
+          label={statusChipLabel(status)}
+          value={status.count}
+          title={`${status.name} (${status.code})`}
+          className={cn(statusColorClassName(status.color, status.code), size)}
+        />
+      ))}
       <Badge variant="secondary" className={cn("tabular-nums font-normal", size)}>
-        Total {counts.total.toLocaleString()}
+        Total {shownTotal.toLocaleString()}
       </Badge>
     </div>
   );

@@ -5,6 +5,10 @@ import {
   MONTHLY_SIR_SYSTEM_FILL,
   MONTHLY_SIR_VARIANCE_LABELS,
 } from "@/features/monthly-sir/constants/monthly-sir";
+import {
+  pcountDisplayRemark,
+  serialFromUncataloguedVariance,
+} from "@/features/monthly-sir/constants/pcount-upload";
 import { prisma } from "@/lib/database/client";
 
 const HEADERS = [
@@ -44,6 +48,37 @@ function valueToString(value: ExcelJS.CellValue): string {
 
 function formatDate(value: Date | null | undefined): string {
   return value ? value.toISOString().slice(0, 10) : "";
+}
+
+function appendCatalogUnknownPcountRow(
+  sheet: ExcelJS.Worksheet,
+  input: {
+    branchName: string;
+    serialNo: string;
+    pcount: string;
+    uploadedAt?: Date | null;
+    uploadedBy?: string | null;
+  },
+) {
+  sheet.addRow([
+    input.branchName,
+    "",
+    "",
+    "",
+    "",
+    input.serialNo,
+    "",
+    MONTHLY_SIR_VARIANCE_LABELS.surplus,
+    "",
+    "",
+    "",
+    "",
+    input.pcount,
+    formatDate(input.uploadedAt),
+    input.uploadedBy ?? "",
+    "",
+    formatDate(input.uploadedAt),
+  ]);
 }
 
 function styleDataSheet(sheet: ExcelJS.Worksheet) {
@@ -155,7 +190,11 @@ export async function buildMonthlySirTemplate(input: {
               statusCode: { select: { code: true } },
             },
           },
+          variance: { select: { varianceType: true } },
         },
+      },
+      variances: {
+        select: { lineId: true, varianceType: true, description: true },
       },
     },
   });
@@ -203,9 +242,6 @@ export async function buildMonthlySirTemplate(input: {
   const invalidSerials = scannedSerialNos.filter(
     (serialNo) => !catalogBySerial.has(serialNo),
   );
-  if (invalidSerials.length > 0) {
-    throw new Error(`Unknown serials: ${invalidSerials.join(", ")}`);
-  }
 
   const sessionSerials = new Set(
     session.lines.map((line) => line.serialNumber.serialNo.toUpperCase()),
@@ -248,7 +284,12 @@ export async function buildMonthlySirTemplate(input: {
       line.model.name || line.model.skuCode,
       line.serialNumber.serialNo,
       aging,
-      line.notes ?? "",
+      pcountDisplayRemark({
+        expectedInCount: line.expectedInCount,
+        lineStatus: line.status,
+        varianceType: line.variance?.varianceType ?? null,
+        notes: line.notes,
+      }),
       "",
       line.branchInventory?.statusCode.code ?? "",
       formatDate(line.branchInventory?.updatedAt),
@@ -280,7 +321,7 @@ export async function buildMonthlySirTemplate(input: {
       serial.model.name || serial.model.skuCode,
       serial.serialNo,
       aging,
-      "Scanned outside the session snapshot",
+      MONTHLY_SIR_VARIANCE_LABELS.surplus,
       "",
       inventory?.statusCode.code ?? "",
       formatDate(inventory?.updatedAt),
@@ -292,6 +333,31 @@ export async function buildMonthlySirTemplate(input: {
       "",
     ]);
   }
+
+  const listedSerials = new Set<string>([
+    ...session.lines.map((line) => line.serialNumber.serialNo.toUpperCase()),
+    ...surplusSerials.map((serial) => serial.serialNo.toUpperCase()),
+  ]);
+  const appendUnknown = (serialNo: string, pcount: string) => {
+    const key = serialNo.trim().toUpperCase();
+    if (!key || listedSerials.has(key)) return;
+    listedSerials.add(key);
+    appendCatalogUnknownPcountRow(sheet, {
+      branchName: session.branch.name,
+      serialNo: serialNo.trim(),
+      pcount,
+      uploadedAt: input.uploadedAt,
+      uploadedBy: input.uploadedBy,
+    });
+  };
+  for (const serialNo of invalidSerials) appendUnknown(serialNo, "STK");
+  for (const variance of session.variances) {
+    if (variance.lineId || variance.varianceType !== "surplus") continue;
+    const serialNo = serialFromUncataloguedVariance(variance.description);
+    if (!serialNo) continue;
+    appendUnknown(serialNo, input.scannedSerialNos ? "STK" : "");
+  }
+
   styleDataSheet(sheet);
   const buffer = await workbook.xlsx.writeBuffer();
   return {
@@ -407,16 +473,30 @@ export async function buildMonthlySirVarianceWorkbook(input: {
   ]);
   sheet.getRow(5).font = { bold: true };
   for (const variance of session.variances) {
-    const line = variance.line;
-    if (!line) continue;
-    const anchor = line.branchInventory?.createdAt;
-    const aging = anchor
-      ? Math.max(0, Math.floor((Date.now() - anchor.getTime()) / 86_400_000))
-      : "";
     const label =
       MONTHLY_SIR_VARIANCE_LABELS[
         variance.varianceType as keyof typeof MONTHLY_SIR_VARIANCE_LABELS
       ] ?? variance.varianceType;
+    const line = variance.line;
+    if (!line) {
+      const serialNo = serialFromUncataloguedVariance(variance.description);
+      if (!serialNo) continue;
+      sheet.addRow([
+        session.branch.name,
+        serialNo,
+        "",
+        "",
+        "VAR",
+        label,
+        "",
+        variance.investigationNotes?.trim() || label,
+      ]);
+      continue;
+    }
+    const anchor = line.branchInventory?.createdAt;
+    const aging = anchor
+      ? Math.max(0, Math.floor((Date.now() - anchor.getTime()) / 86_400_000))
+      : "";
     sheet.addRow([
       session.branch.name,
       line.serialNumber.serialNo,
@@ -425,7 +505,14 @@ export async function buildMonthlySirVarianceWorkbook(input: {
       "VAR",
       label,
       formatDate(anchor),
-      variance.investigationNotes ?? variance.description ?? line.notes ?? "",
+      variance.investigationNotes ??
+        variance.description ??
+        pcountDisplayRemark({
+          expectedInCount: line.expectedInCount,
+          lineStatus: line.status,
+          varianceType: variance.varianceType,
+          notes: line.notes,
+        }),
     ]);
   }
   sheet.views = [{ state: "frozen", ySplit: 5 }];

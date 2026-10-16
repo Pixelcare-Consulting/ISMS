@@ -227,6 +227,8 @@ export async function previewMonthlySirUploadAction(formData: FormData) {
       userId: session.user.id,
       requestId: parsed.data.requestId,
       unrestricted: isUnrestricted(session.user.permissions),
+      permissions: session.user.permissions,
+      roleSlugs: session.user.roleSlugs,
       file,
     });
   } catch (error) {
@@ -247,6 +249,8 @@ export async function applyMonthlySirUploadAction(formData: FormData) {
       userId: session.user.id,
       requestId: parsed.data.requestId,
       unrestricted: isUnrestricted(session.user.permissions),
+      permissions: session.user.permissions,
+      roleSlugs: session.user.roleSlugs,
       file,
     });
     revalidateMonthlySir();

@@ -1,9 +1,8 @@
 import { Prisma } from "@prisma/client";
 
-import { STOCK_UNITS_GROUP_STATUS_CODES } from "@/features/inventory/constants/stock-units-group";
 import {
   inventoryGroupAggregatesFromSqlRow,
-  type InventoryGroupAggregates,
+  type InventoryGroupCountParts,
 } from "@/features/inventory/utils/stock-units-group-aggregates";
 import { stockUnitsGroupSearchPattern } from "@/features/inventory/utils/stock-units-group-search";
 import { prisma } from "@/lib/database/client";
@@ -24,18 +23,24 @@ export type InventoryGroupListFilters = InventoryListFilters & {
   modelId?: string;
 };
 
+/** Active inventory status, same rows the summary cards use. */
+export type InventoryGroupStatusCodeRef = {
+  id: string;
+  code: string;
+};
+
 export type InventoryGroupBranchRow = {
   branchId: string;
   branchName: string;
   branchSapCode: string;
-} & InventoryGroupAggregates;
+} & InventoryGroupCountParts;
 
 export type InventoryGroupModelRow = {
   modelId: string;
   skuCode: string;
   modelName: string;
   brandName: string | null;
-} & InventoryGroupAggregates;
+} & InventoryGroupCountParts;
 
 type BranchGroupAggRaw = {
   branch_id: string;
@@ -45,6 +50,7 @@ type BranchGroupAggRaw = {
   def: number | bigint;
   rsv: number | bigint;
   pending_inspection: number | bigint;
+  status_counts?: unknown;
 };
 
 type ModelGroupAggRaw = {
@@ -56,6 +62,7 @@ type ModelGroupAggRaw = {
   def: number | bigint;
   rsv: number | bigint;
   pending_inspection: number | bigint;
+  status_counts?: unknown;
 };
 
 type ModelBranchSubgroupRaw = {
@@ -66,6 +73,7 @@ type ModelBranchSubgroupRaw = {
   def: number | bigint;
   rsv: number | bigint;
   pending_inspection: number | bigint;
+  status_counts?: unknown;
 };
 
 /** Open pending_inspection defect report for a branch inventory row. */
@@ -88,27 +96,35 @@ function resolveEffectiveBranchIdsForGroups(
     : branchIds;
 }
 
-function groupAggregateSelectSql(): Prisma.Sql {
+function groupAggregateSelectSql(
+  statusCodes: readonly InventoryGroupStatusCodeRef[],
+): Prisma.Sql {
   const pending = openPendingDefectReportExistsSql();
+  const statusCountArgs = statusCodes.flatMap((status) => [
+    Prisma.sql`CAST(${status.code} AS text)`,
+    Prisma.sql`COUNT(*) FILTER (WHERE bi.status_code_id = CAST(${status.id} AS text))::int`,
+  ]);
   return Prisma.sql`
     COUNT(*) FILTER (WHERE rsc.code = 'STK' AND NOT (${pending}))::int AS stk,
     COUNT(*) FILTER (WHERE rsc.code = 'DEF')::int AS def,
     COUNT(*) FILTER (WHERE rsc.code = 'RSV')::int AS rsv,
-    COUNT(*) FILTER (WHERE rsc.code = 'STK' AND (${pending}))::int AS pending_inspection
+    COUNT(*) FILTER (WHERE rsc.code = 'STK' AND (${pending}))::int AS pending_inspection,
+    jsonb_build_object(${Prisma.join(statusCountArgs)}) AS status_counts
   `;
 }
 
 async function buildGroupInventoryConditions(
   tenantId: string,
   effectiveBranchIds: string[],
+  statusCodes: readonly InventoryGroupStatusCodeRef[],
   filters?: InventoryGroupListFilters,
 ): Promise<Prisma.Sql[] | null> {
-  if (effectiveBranchIds.length === 0) return null;
+  if (effectiveBranchIds.length === 0 || statusCodes.length === 0) return null;
 
   const conditions: Prisma.Sql[] = [
     Prisma.sql`bi.tenant_id = ${tenantId}`,
     Prisma.sql`bi.branch_id IN (${Prisma.join(effectiveBranchIds)})`,
-    Prisma.sql`rsc.code IN (${Prisma.join([...STOCK_UNITS_GROUP_STATUS_CODES])})`,
+    Prisma.sql`bi.status_code_id IN (${Prisma.join(statusCodes.map((status) => status.id))})`,
   ];
 
   if (filters?.modelId) {
@@ -170,12 +186,14 @@ export const inventoryGroupRepository = {
     branchIds: string[],
     pagination?: { page?: number; limit?: number },
     filters?: InventoryGroupListFilters,
+    statusCodes: readonly InventoryGroupStatusCodeRef[] = [],
   ): Promise<PaginatedResult<InventoryGroupBranchRow>> {
     const { limit, page, skip } = resolvePagination(pagination);
     const effectiveBranchIds = resolveEffectiveBranchIdsForGroups(branchIds, filters);
     const conditions = await buildGroupInventoryConditions(
       tenantId,
       effectiveBranchIds,
+      statusCodes,
       filters,
     );
     if (!conditions) {
@@ -183,7 +201,7 @@ export const inventoryGroupRepository = {
     }
 
     const whereClause = Prisma.join(conditions, " AND ");
-    const aggSelect = groupAggregateSelectSql();
+    const aggSelect = groupAggregateSelectSql(statusCodes);
 
     const [rows, countRows] = await Promise.all([
       prisma.$queryRaw<BranchGroupAggRaw[]>`
@@ -226,12 +244,14 @@ export const inventoryGroupRepository = {
     branchIds: string[],
     pagination?: { page?: number; limit?: number },
     filters?: InventoryGroupListFilters,
+    statusCodes: readonly InventoryGroupStatusCodeRef[] = [],
   ): Promise<PaginatedResult<InventoryGroupModelRow>> {
     const { limit, page, skip } = resolvePagination(pagination);
     const effectiveBranchIds = resolveEffectiveBranchIdsForGroups(branchIds, filters);
     const conditions = await buildGroupInventoryConditions(
       tenantId,
       effectiveBranchIds,
+      statusCodes,
       filters,
     );
     if (!conditions) {
@@ -239,7 +259,7 @@ export const inventoryGroupRepository = {
     }
 
     const whereClause = Prisma.join(conditions, " AND ");
-    const aggSelect = groupAggregateSelectSql();
+    const aggSelect = groupAggregateSelectSql(statusCodes);
 
     const [rows, countRows] = await Promise.all([
       prisma.$queryRaw<ModelGroupAggRaw[]>`
@@ -284,16 +304,23 @@ export const inventoryGroupRepository = {
     branchId: string,
     pagination?: { page?: number; limit?: number },
     filters?: InventoryGroupListFilters,
+    statusCodes: readonly InventoryGroupStatusCodeRef[] = [],
   ): Promise<PaginatedResult<InventoryGroupModelRow>> {
     if (!branchIds.includes(branchId)) {
       const { limit, page } = resolvePagination(pagination);
       return toPaginatedResult<InventoryGroupModelRow>([], 0, page, limit);
     }
 
-    return this.listModelGroups(tenantId, branchIds, pagination, {
-      ...filters,
-      branchId,
-    });
+    return this.listModelGroups(
+      tenantId,
+      branchIds,
+      pagination,
+      {
+        ...filters,
+        branchId,
+      },
+      statusCodes,
+    );
   },
 
   async listBranchesInModelGroup(
@@ -302,27 +329,33 @@ export const inventoryGroupRepository = {
     modelId: string,
     pagination?: { page?: number; limit?: number },
     filters?: InventoryGroupListFilters,
+    statusCodes: readonly InventoryGroupStatusCodeRef[] = [],
   ): Promise<
     PaginatedResult<
       {
         branchId: string;
         branchName: string;
         branchSapCode: string;
-      } & InventoryGroupAggregates
+      } & InventoryGroupCountParts
     >
   > {
     const { limit, page, skip } = resolvePagination(pagination);
     const effectiveBranchIds = resolveEffectiveBranchIdsForGroups(branchIds, filters);
-    const conditions = await buildGroupInventoryConditions(tenantId, effectiveBranchIds, {
-      ...filters,
-      modelId,
-    });
+    const conditions = await buildGroupInventoryConditions(
+      tenantId,
+      effectiveBranchIds,
+      statusCodes,
+      {
+        ...filters,
+        modelId,
+      },
+    );
     if (!conditions) {
       return toPaginatedResult([], 0, page, limit);
     }
 
     const whereClause = Prisma.join(conditions, " AND ");
-    const aggSelect = groupAggregateSelectSql();
+    const aggSelect = groupAggregateSelectSql(statusCodes);
 
     const [rows, countRows] = await Promise.all([
       prisma.$queryRaw<ModelBranchSubgroupRaw[]>`
@@ -373,14 +406,18 @@ export const inventoryGroupRepository = {
     branchIds: string[],
     pagination?: { page?: number; limit?: number },
     filters?: InventoryGroupListFilters & { branchId: string; modelId: string },
+    statusCodes: readonly InventoryGroupStatusCodeRef[] = [],
   ): Promise<PaginatedResult<InventoryListRow>> {
     const { limit, page, skip } = resolvePagination(pagination);
     const effectiveBranchIds = resolveEffectiveBranchIdsForGroups(branchIds, filters);
+    const statusCodeIds = statusCodes.map((status) => status.id);
     if (
       effectiveBranchIds.length === 0 ||
+      statusCodeIds.length === 0 ||
       !filters?.branchId ||
       !filters?.modelId ||
-      !effectiveBranchIds.includes(filters.branchId)
+      !effectiveBranchIds.includes(filters.branchId) ||
+      (filters.statusCodeId != null && !statusCodeIds.includes(filters.statusCodeId))
     ) {
       return toPaginatedResult<InventoryListRow>([], 0, page, limit);
     }
@@ -394,10 +431,7 @@ export const inventoryGroupRepository = {
           modelId: filters.modelId,
           ...(filters.skuCode ? { model: { skuCode: filters.skuCode } } : {}),
         },
-        statusCode: {
-          code: { in: [...STOCK_UNITS_GROUP_STATUS_CODES] },
-        },
-        ...(filters.statusCodeId ? { statusCodeId: filters.statusCodeId } : {}),
+        statusCodeId: filters.statusCodeId ?? { in: statusCodeIds },
       },
     ];
 

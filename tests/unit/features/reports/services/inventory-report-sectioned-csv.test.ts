@@ -20,6 +20,7 @@ describe("buildInventoryReportSectionedCsv", () => {
           "DR-1",
           "2026-10-01",
           14,
+          "IN FILE AND IN STK",
         ],
       ],
     );
@@ -29,6 +30,8 @@ describe("buildInventoryReportSectionedCsv", () => {
     expect(csv).toContain("Branch A,SKU-1,Stock,2");
     expect(csv).toContain("# DETAIL\r\n");
     expect(csv).toContain("SERIAL NO");
+    expect(csv).toContain("AGING DAYS,REMARKS");
     expect(csv).toContain("SN-1");
+    expect(csv).toContain("IN FILE AND IN STK");
   });
 });

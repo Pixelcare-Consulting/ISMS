@@ -76,7 +76,9 @@ export default async function DashboardSalesPage() {
       {canAssist ? (
         <DashboardBriefingStrip
           canAssist={canAssist}
-          configured={isAiConfigured()}
+          configured={Boolean(
+            briefingResult.ok && briefingResult.configured && isAiConfigured(),
+          )}
           initial={briefingResult.ok ? briefingResult.briefing : null}
           surface="sales"
         />

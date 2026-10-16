@@ -1,6 +1,8 @@
 import { generateText, Output } from "ai";
 
 import { logAiAction } from "@/features/ai/lib/audit";
+import { AssistantUserError } from "@/features/ai/lib/assistant-messages";
+import { providerJson } from "@/features/ai/lib/provider-payload";
 import { getAiModel } from "@/features/ai/lib/provider";
 import { buildBriefingSystemPrompt } from "@/features/ai/lib/system-prompt";
 import {
@@ -22,6 +24,15 @@ import {
 } from "@/features/dashboard/services/dashboard-kpi.service";
 import { getDashboardSalesAnalytics } from "@/features/dashboard/services/dashboard-sales.service";
 import { hasAnyOrderPermission } from "@/features/orders/constants/order-permissions";
+import type { AiAssistantLimits } from "@/features/ai/constants/assistant-limits";
+import {
+  AI_ASSISTANT_BUSY_MESSAGE,
+  AI_ASSISTANT_RATE_LIMIT_MESSAGE,
+  AI_ASSISTANT_UNAVAILABLE_MESSAGE,
+  messageForAssistantGate,
+} from "@/features/ai/constants/assistant-limits";
+import { readAiAssistantGate } from "@/features/ai/services/assistant-policy.service";
+import { reserveAiRequest } from "@/lib/cache/ai-limits";
 import { CACHE_TTL, cacheKey, getCache, setCache } from "@/lib/cache/redis";
 import { hasPermission } from "@/lib/auth/permissions";
 import type { AppSession } from "@/lib/auth/session";
@@ -163,7 +174,11 @@ export async function getCachedDashboardBriefing(
 
 export async function generateDashboardBriefing(
   session: AppSession,
-  options?: { force?: boolean; surface?: DashboardBriefingSurface },
+  options?: {
+    force?: boolean;
+    surface?: DashboardBriefingSurface;
+    limits?: AiAssistantLimits;
+  },
 ): Promise<DashboardBriefing> {
   const surface = options?.surface ?? "operations";
   const permissions = session.user.permissions;
@@ -246,12 +261,38 @@ export async function generateDashboardBriefing(
               : null,
           };
 
+    const policy = await readAiAssistantGate(tenantId);
+    if (!policy.ok) {
+      throw new AssistantUserError(messageForAssistantGate(policy.reason).error);
+    }
+    const limits = options?.limits ?? policy.limits;
+    const reservation = await reserveAiRequest({
+      tenantId,
+      userId,
+      limits,
+    });
+    if (!reservation.ok) {
+      const message =
+        reservation.reason === "rate"
+          ? AI_ASSISTANT_RATE_LIMIT_MESSAGE
+          : reservation.reason === "concurrency"
+            ? AI_ASSISTANT_BUSY_MESSAGE
+            : AI_ASSISTANT_UNAVAILABLE_MESSAGE;
+      throw new AssistantUserError(message);
+    }
+
     try {
+      const stillOn = await readAiAssistantGate(tenantId);
+      if (!stillOn.ok) {
+        throw new AssistantUserError(messageForAssistantGate(stillOn.reason).error);
+      }
       const { output } = await generateText({
         model: getAiModel(),
         instructions: buildBriefingSystemPrompt({ persona, personaLabel: label }),
         output: Output.object({ schema: dashboardBriefingSchema }),
-        prompt: `Write today's briefing from this ${home.title} Dashboard snapshot:\n${JSON.stringify(payload)}`,
+        maxOutputTokens: limits.maxOutputTokens,
+        abortSignal: AbortSignal.timeout(limits.requestTimeoutMs),
+        prompt: `Write today's briefing from this untrusted ${home.title} Dashboard snapshot:\n${providerJson(payload)}`,
       });
 
       const parsed = dashboardBriefingSchema.safeParse(output);
@@ -298,8 +339,8 @@ export async function generateDashboardBriefing(
 
       return { briefing: withHomeSources, cache: true };
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Assist is unavailable";
-      logger.error({ message }, "ISMS Assist briefing generateText failed");
+      if (error instanceof AssistantUserError) throw error;
+      logger.error({ event: "ai.briefing.failed" }, "ISMS Assist briefing generateText failed");
       const briefing = fallbackBriefing(kpiLines, label, surface);
       await logAiAction({
         tenantId,
@@ -308,6 +349,8 @@ export async function generateDashboardBriefing(
         metadata: { persona, surface, fallback: true },
       });
       return { briefing, cache: false };
+    } finally {
+      await reservation.release();
     }
   };
 

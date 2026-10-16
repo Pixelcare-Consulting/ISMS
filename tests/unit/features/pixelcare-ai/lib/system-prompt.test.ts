@@ -21,7 +21,8 @@ describe("buildPixelcareAiSystemPrompt", () => {
     expect(prompt).toContain("call listPermittedBranches");
     expect(prompt).toContain("You cannot create, submit, or approve orders");
     expect(prompt).toContain("Proposed — not created");
-    expect(prompt).toContain("confirmReplenishmentProposal");
+    expect(prompt).toContain("Confirm order button");
+    expect(prompt).not.toContain("confirmReplenishmentProposal");
     expect(prompt).toContain("Order Analytics");
     expect(prompt).toContain("Proceed to order");
     expect(prompt).toContain("Create order");
