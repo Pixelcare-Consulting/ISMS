@@ -13,4 +13,9 @@ describe("stock units group search", () => {
     expect(stockUnitsGroupSearchPattern("  ABC-123  ")).toBe("%ABC-123%");
     expect(stockUnitsGroupSearchPattern("100%_off")).toBe("%100\\%\\_off%");
   });
+
+  it("escapes backslashes so they cannot act as LIKE escape characters", () => {
+    expect(stockUnitsGroupSearchPattern("A\\B")).toBe("%A\\\\B%");
+    expect(stockUnitsGroupSearchPattern("\\%")).toBe("%\\\\\\%%");
+  });
 });
