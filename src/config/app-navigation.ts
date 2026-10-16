@@ -246,11 +246,39 @@ export const appNavigation: NavEntry[] = [
       },
     ],
   },
+  // {
+  //   type: "group",
+  //   label: "Logistics",
+  //   icon: Package,
+  //   items: [
+  //     {
+  //       href: "/logistics/transfers",
+  //       label: "Transfers",
+  //       icon: ArrowLeftRight,
+  //       anyPermissions: ["logistics.view", "logistics.create", "logistics.manage"],
+  //       countBadgeKey: "logisticsTransfers",
+  //     },
+  //     {
+  //       href: "/logistics/pickups",
+  //       label: "Pull-outs",
+  //       icon: ArrowUpToLine,
+  //       anyPermissions: ["logistics.view", "logistics.create", "logistics.manage"],
+  //       countBadgeKey: "logisticsPullouts",
+  //     },
+  //   ],
+  // },
   {
     type: "group",
-    label: "Logistics",
+    label: "Inventory",
     icon: Package,
     items: [
+      {
+        href: "/logistics/deliveries",
+        label: "Deliveries",
+        icon: Truck,
+        anyPermissions: ["logistics.view", "logistics.create", "logistics.manage"],
+        countBadgeKey: "logisticsDeliveries",
+      },
       {
         href: "/logistics/transfers",
         label: "Transfers",
@@ -265,19 +293,13 @@ export const appNavigation: NavEntry[] = [
         anyPermissions: ["logistics.view", "logistics.create", "logistics.manage"],
         countBadgeKey: "logisticsPullouts",
       },
-    ],
-  },
-  {
-    type: "group",
-    label: "Inventory",
-    icon: Package,
-    items: [
       {
-        href: "/logistics/deliveries",
-        label: "Deliveries",
-        icon: Truck,
-        anyPermissions: ["logistics.view", "logistics.create", "logistics.manage"],
-        countBadgeKey: "logisticsDeliveries",
+        href: "/inventory",
+        label: "Branch Inventory",
+        icon: Package,
+        exact: true,
+        permission: "inventory.view",
+        countBadgeKey: "stockUnitsStk",
       },
       {
         href: "/inventory/monthly-sir",
@@ -392,14 +414,7 @@ export const appNavigation: NavEntry[] = [
         label: "Inventory",
         icon: Package,
         items: [
-          {
-            href: "/inventory",
-            label: "Branch Inventory",
-            icon: Package,
-            exact: true,
-            permission: "inventory.view",
-            countBadgeKey: "stockUnitsStk",
-          },
+        
           // {
           //   href: "/inventory/serial-numbers",
           //   label: "SAP Serial No.",
