@@ -82,6 +82,8 @@ interface SaleRow {
   statusCode: SaleStatusCodeRef | null;
   branchId: string;
   branch: { id: string; name: string };
+  /** Stock-source branch. Matches the sold branch when no alternate was set. */
+  alternateBranch: { id: string; name: string };
   serialNumberId: string | null;
   serialNumber: { id: string; serialNo: string } | null;
   returnRequest: { id: string; status: string } | null;
@@ -208,8 +210,8 @@ function buildSaleIdMap(rows: SaleRow[]): Map<string, number> {
   return map;
 }
 
-/** Compact: ID TRN DATE BRANCH CUSTOMER SN SALE STATUS ACTIONS */
-const COMPACT_COL_COUNT = 9;
+/** Compact: ID TRN DATE BRANCH ALTERNATE BRANCH CUSTOMER SN SALE STATUS ACTIONS */
+const COMPACT_COL_COUNT = 10;
 /** Extra when "Show all columns": PACKAGE BRAND MODEL MODEL PRICE */
 const SECONDARY_COL_COUNT = 4;
 
@@ -276,6 +278,7 @@ export function SalesTable({
           sale.brandName,
           sale.modelLabel,
           sale.branch.name,
+          sale.alternateBranch.name,
           sale.saleAmount,
           sale.modelPrice,
           saleSerialLabel(sale),
@@ -292,6 +295,7 @@ export function SalesTable({
       uniqueSearchSuggestions(
         result.items.map((sale) => sale.transactionNo),
         result.items.map((sale) => sale.branch.name),
+        result.items.map((sale) => sale.alternateBranch.name),
         result.items.map((sale) => sale.customerName ?? ""),
         result.items.map((sale) => saleSerialLabel(sale)),
         result.items.map((sale) => sale.modelLabel ?? ""),
@@ -507,6 +511,7 @@ export function SalesTable({
             >
               BRANCH
             </GlobalTableHead>
+            <GlobalTableHead>ALTERNATE BRANCH</GlobalTableHead>
             <GlobalTableHead
               sortKey="customer"
               activeSortKey={sort}
@@ -574,6 +579,9 @@ export function SalesTable({
                     {formatSaleDate(s.transactionDate)}
                   </TableCell>
                   <TableCell className="py-2 sm:py-2.5">{s.branch.name}</TableCell>
+                  <TableCell className="py-2 sm:py-2.5">
+                    {s.alternateBranch.name}
+                  </TableCell>
                   <TableCell className="py-2 sm:py-2.5">
                     {s.customerName?.trim() || "—"}
                   </TableCell>

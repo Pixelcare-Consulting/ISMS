@@ -1,11 +1,14 @@
 import type { AtrStatus, ReturnRequestStatus } from "@prisma/client";
 
 import { prisma } from "@/lib/database/client";
-import { decimalToNumber } from "@/lib/database/decimal";
 import { getUserBranchIds, branchScopeFilter } from "@/lib/aor/scope";
 import { CACHE_TTL, cacheKey, getOrSet } from "@/lib/cache/redis";
 import type { KpiStatusCount } from "@/lib/kpi-cards";
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
+import {
+  rankTopBranchesByDashboardSaleAmount,
+  sumDashboardSaleAmounts,
+} from "@/features/dashboard/services/dashboard-sales-amount";
 
 const SALE_STATUS_CODES = ["SLD", "RSV", "OFS", "FW"] as const;
 
@@ -133,12 +136,10 @@ async function computeDashboardSalesAnalytics(
     salesThisMonth,
     openAtr,
     returnsInProgress,
-    saleAmountWithSaleAmount,
-    saleAmountFallback,
+    monthLines,
     statusGroups,
     atrGroups,
     returnGroups,
-    branchGroups,
     modelGroups,
   ] = await Promise.all([
     prisma.branchSalesTransaction.count({ where: monthSaleScope }),
@@ -152,20 +153,19 @@ async function computeDashboardSalesAnalytics(
         sale: { ...scope },
       },
     }),
-    prisma.branchSalesTransactionDetail.aggregate({
-      where: {
-        sale: monthSaleScope,
-        saleAmount: { not: null },
+    prisma.branchSalesTransactionDetail.findMany({
+      where: { sale: monthSaleScope },
+      select: {
+        modelPrice: true,
+        saleAmount: true,
+        amount: true,
+        sale: {
+          select: {
+            branchId: true,
+            branch: { select: { name: true } },
+          },
+        },
       },
-      _sum: { saleAmount: true },
-    }),
-    prisma.branchSalesTransactionDetail.aggregate({
-      where: {
-        sale: monthSaleScope,
-        saleAmount: null,
-        amount: { not: null },
-      },
-      _sum: { amount: true },
     }),
     saleStatusCodeIds.length > 0
       ? prisma.branchSalesTransactionDetail.groupBy({
@@ -190,13 +190,6 @@ async function computeDashboardSalesAnalytics(
       },
       _count: { id: true },
     }),
-    prisma.branchSalesTransaction.groupBy({
-      by: ["branchId"],
-      where: monthSaleScope,
-      _sum: { amount: true },
-      orderBy: { _sum: { amount: "desc" } },
-      take: 5,
-    }),
     prisma.branchSalesTransactionDetail.groupBy({
       by: ["modelId"],
       where: {
@@ -209,9 +202,14 @@ async function computeDashboardSalesAnalytics(
     }),
   ]);
 
-  const saleAmountThisMonth =
-    decimalToNumber(saleAmountWithSaleAmount._sum.saleAmount) +
-    decimalToNumber(saleAmountFallback._sum.amount);
+  const saleAmountLines = monthLines.map((line) => ({
+    branchId: line.sale.branchId,
+    branchName: line.sale.branch.name,
+    modelPrice: line.modelPrice,
+    saleAmount: line.saleAmount,
+    amount: line.amount,
+  }));
+  const saleAmountThisMonth = sumDashboardSaleAmounts(saleAmountLines);
 
   const statusCountByCode = new Map<string, number>();
   for (const group of statusGroups) {
@@ -255,38 +253,26 @@ async function computeDashboardSalesAnalytics(
     })),
   ];
 
-  const branchIdsForNames = branchGroups.map((g) => g.branchId);
   const modelIdsForNames = modelGroups
     .map((g) => g.modelId)
     .filter((id): id is string => Boolean(id));
 
-  const [branches, models] = await Promise.all([
-    branchIdsForNames.length > 0
-      ? prisma.branch.findMany({
-          where: { id: { in: branchIdsForNames } },
-          select: { id: true, name: true },
-        })
-      : Promise.resolve([]),
+  const models =
     modelIdsForNames.length > 0
-      ? prisma.productModel.findMany({
+      ? await prisma.productModel.findMany({
           where: { id: { in: modelIdsForNames } },
           select: { id: true, name: true, skuCode: true },
         })
-      : Promise.resolve([]),
-  ]);
+      : [];
 
-  const branchNameById = new Map(branches.map((b) => [b.id, b.name] as const));
   const modelLabelById = new Map(
     models.map(
       (m) => [m.id, m.skuCode ? `${m.skuCode} · ${m.name}` : m.name] as const,
     ),
   );
 
-  const topBranches: DashboardSalesRankingRow[] = branchGroups.map((g) => ({
-    id: g.branchId,
-    name: branchNameById.get(g.branchId) ?? "Unknown branch",
-    value: decimalToNumber(g._sum.amount),
-  }));
+  const topBranches: DashboardSalesRankingRow[] =
+    rankTopBranchesByDashboardSaleAmount(saleAmountLines);
 
   const topModels: DashboardSalesRankingRow[] = modelGroups
     .filter((g): g is typeof g & { modelId: string } => Boolean(g.modelId))
@@ -317,7 +303,7 @@ export async function getDashboardSalesAnalytics(
 ): Promise<DashboardSalesAnalytics> {
   const scopeKey = hasFullAccess ? "full" : userId;
   return getOrSet(
-    cacheKey("tenant", tenantId, "dashboard-sales-analytics-v1", scopeKey),
+    cacheKey("tenant", tenantId, "dashboard-sales-analytics-v2", scopeKey),
     CACHE_TTL.dashboardKpis,
     () => computeDashboardSalesAnalytics(tenantId, userId, hasFullAccess),
   );

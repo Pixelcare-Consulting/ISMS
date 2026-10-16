@@ -220,13 +220,15 @@ export function ImportBranchQuotasDialog({
           <div className="text-muted-foreground space-y-2 text-sm">
             <p>
               Download the <strong>Branch Quotas</strong> template — it lists your current
-              quotas — edit or add rows, then upload that same file. Columns are branch SAP
-              code, brand name, month (<code>YYYY-MM</code>), and quota amount.
+              quotas — edit or add rows, then upload that same file. Columns are branch
+              name, brand name, month (<code>YYYY-MM</code>), and quota amount. A file that
+              still uses the branch SAP code will not import.
             </p>
             <p>
               Rows match by branch + brand + month. Existing quotas update; new combinations
-              create. Unknown branch SAP codes or brand names are rejected. Rows left out of
-              the file are not removed.
+              create. Unknown branch names or brand names are rejected. If more than one
+              branch uses the same name, that row is rejected. Rows left out of the file
+              are not removed.
             </p>
           </div>
 
@@ -317,7 +319,6 @@ export function ImportBranchQuotasDialog({
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Branch SAP</TableHead>
                         <TableHead>Branch</TableHead>
                         <TableHead>Brand</TableHead>
                         <TableHead>Month</TableHead>
@@ -332,9 +333,6 @@ export function ImportBranchQuotasDialog({
                           <TableRow
                             key={`${row.branchSapCode}-${row.brandName}-${row.month}-${row.rowNumber}`}
                           >
-                            <TableCell className="font-mono text-xs">
-                              {row.branchSapCode}
-                            </TableCell>
                             <TableCell>{row.branchName}</TableCell>
                             <TableCell>{row.brandName}</TableCell>
                             <TableCell className="tabular-nums">{row.month}</TableCell>

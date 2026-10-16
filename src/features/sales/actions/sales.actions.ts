@@ -461,6 +461,7 @@ export async function listSalesAction(input?: {
         // Stock source drives edit-serial inventory picks; fall back to sold branch.
         branchId: sale.alternateBranchId ?? sale.branchId,
         branch: sale.branch,
+        alternateBranch: sale.stockSourceBranch ?? sale.branch,
         serialNumberId: detail.serialNumberId,
         serialNumber: detail.serialNumber
           ? { id: detail.serialNumber.id, serialNo: detail.serialNumber.serialNo }

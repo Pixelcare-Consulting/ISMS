@@ -66,6 +66,94 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.74.2",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T17:40:00+08:00",
+    title: "Document number on a serial log",
+    highlights: [
+      "A delivery, return, replacement, defect, or status update keeps its document number on the serial log.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Serial number logs keep the document reference on a delivery, return, replacement, defect, status update, and similar movements. The reference is the document number, with the full details underneath. A status update no longer shows the branch code as the reference. A transfer, sale, pull-out, or count is not listed twice.",
+      },
+    ],
+  },
+  {
+    version: "0.74.1",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T17:25:00+08:00",
+    title: "Branch and model amount on sales",
+    highlights: [
+      "The sales list shows the branch and the alternate branch.",
+      "The monthly sale amount, and the top-branch ranking that uses it, uses the model amount.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "The sales list shows the branch and the alternate branch. If no alternate was set, the alternate column repeats the sold branch.",
+      },
+      {
+        type: "fix",
+        description:
+          "The sales dashboard sale amount for the month, and the top-branch ranking that uses that amount, uses the model amount. A line with no model amount still uses its sale amount.",
+      },
+    ],
+  },
+  {
+    version: "0.74.0",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T17:15:00+08:00",
+    title: "Upload by the branch name",
+    highlights: [
+      "Planogram, branch quota, and Planning & Forecast uploads match the branch name.",
+      "A planogram upload includes Shelf max.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Planogram, branch quota, and Planning & Forecast uploads match the branch name instead of the branch code. A name that matches more than one branch is rejected. Downloaded templates use the branch name. A file that still uses the branch code will not import.",
+      },
+      {
+        type: "improvement",
+        description:
+          "A planogram upload includes Shelf max, a whole number of at least 1, and saves it on new and existing rows.",
+      },
+    ],
+  },
+  {
+    version: "0.73.0",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T17:00:00+08:00",
+    title: "Physical count on the count days",
+    highlights: [
+      "A Product Specialist can upload a physical count only on the count days.",
+      "Inventory Report detail shows the same remarks as the count sheet.",
+      "A serial that is not in the catalog still appears on the count and variance sheets.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "A Product Specialist can upload a physical count only on the 14th, 15th, and 16th, the last three days of the month, and the 1st of the next month. That 1st closes the previous month. There is no half-month upload limit. Any other day blocks the upload, including a request that was already approved. Team Leader uploads stay as they are.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Inventory Report detail has a remarks column after aging. It uses the same wording as the count sheet: IN FILE AND IN STK, IN FILE NOT IN STK, and STK NOT IN FILE. The remark is blank when that serial has no completed count. Older remarks show as those same phrases.",
+      },
+      {
+        type: "fix",
+        description:
+          "A serial that was not in the catalog still shows on the filled count sheet and the variance sheet, with a blank model and the remark IN FILE NOT IN STK. No new serial is added to the catalog.",
+      },
+    ],
+  },
+  {
     version: "0.72.2",
     date: "2026-10-16",
     releasedAt: "2026-10-16T16:50:00+08:00",

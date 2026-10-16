@@ -25,7 +25,7 @@ export interface SheetRows {
 
 export interface SfeTemplateRow {
   period: string;
-  sapCode: string;
+  branchName: string;
   sku: string;
   forecastQty: number;
 }
@@ -39,13 +39,13 @@ export interface ForecastImportSheets {
 const EMPTY_SHEET: SheetRows = { present: false, columns: new Set(), rows: [] };
 
 const BRS_LAYOUT_ERROR =
-  "This file is the old BRS forecast/planogram layout, not the Forecast template. Download the template (SFE: period, branch_sap_code, sku, forecast_qty). Use Planogram for shelf max.";
+  "This file is the old BRS forecast/planogram layout, not the Forecast template. Download the template (SFE: period, branch_name, sku, forecast_qty). Use Planogram for shelf max.";
 
 const PLANOGRAM_FILE_ERROR =
   "This file looks like the Planogram template, not Forecast. Download the Forecast template. Shelf max belongs under Planogram.";
 
 const FOCUS_SHEET_ERROR =
-  `A "${FOCUS_SHEET_NAME}" sheet is not supported. Remove it and use the SFE sheet only (period, branch_sap_code, sku, forecast_qty).`;
+  `A "${FOCUS_SHEET_NAME}" sheet is not supported. Remove it and use the SFE sheet only (period, branch_name, sku, forecast_qty).`;
 
 /** Headers that appear on the wide Dealer 1 BRS sheet (Brand / SKU / Model / Series / SRP + Y/N pairs). */
 const BRS_WIDE_HEADER_HINTS = new Set([
@@ -225,20 +225,26 @@ function looksLikeBrsWideLayout(columns: Set<string>, rawHeaders: string[]): boo
   const ynPairs = rawHeaders.filter((header) => header === "y" || header === "n").length;
   const hasQuota = columns.has("sap_code") && columns.has("revenue_target") && columns.has("period");
   const hasSfe =
-    columns.has("sap_code") && columns.has("sku") && columns.has("forecast_qty") && columns.has("period");
+    columns.has("branch_name") &&
+    columns.has("sku") &&
+    columns.has("forecast_qty") &&
+    columns.has("period");
 
   if (hasQuota || hasSfe) return false;
   if (brsHits.length >= 2) return true;
   if (ynPairs >= 2) return true;
-  if (rawHeaders[0] === "period" && !columns.has("sap_code")) return true;
+  if (rawHeaders[0] === "period" && !columns.has("branch_name") && !columns.has("sap_code")) {
+    return true;
+  }
   return false;
 }
 
-function looksLikePlanogramTemplate(columns: Set<string>, rawHeaders: string[]): boolean {
-  const hasPlanogramCols = rawHeaders.includes("sku") && rawHeaders.includes("maxqty");
-  const missingForecast =
-    !columns.has("period") || (!columns.has("revenue_target") && !columns.has("forecast_qty"));
-  return hasPlanogramCols && missingForecast;
+/** sku plus shelf max / max qty is a planogram file, including one re-added onto SFE columns. */
+const PLANOGRAM_MAX_HEADERS = new Set(["maxqty", "shelfmax"]);
+
+function looksLikePlanogramTemplate(rawHeaders: string[]): boolean {
+  const hasMaxColumn = rawHeaders.some((header) => PLANOGRAM_MAX_HEADERS.has(header));
+  return rawHeaders.includes("sku") && hasMaxColumn;
 }
 
 function missingRequired(
@@ -258,7 +264,7 @@ function assertNotForeignLayout(columns: Set<string>, rawHeaders: string[]): voi
   if (looksLikeBrsWideLayout(columns, rawHeaders)) {
     throw new Error(BRS_LAYOUT_ERROR);
   }
-  if (looksLikePlanogramTemplate(columns, rawHeaders)) {
+  if (looksLikePlanogramTemplate(rawHeaders)) {
     throw new Error(PLANOGRAM_FILE_ERROR);
   }
 }
@@ -319,13 +325,13 @@ export async function buildForecastTemplateWorkbook(
   const sfeData =
     sfeRows.length > 0
       ? sfeRows
-      : [{ period: "Dec-25", sapCode: "WMK-001", sku: "32STW101", forecastQty: 20 }];
+      : [{ period: "Dec-25", branchName: "Western Makati", sku: "32STW101", forecastQty: 20 }];
   for (const row of sfeData) {
-    const dataRow = sfeSheet.addRow([String(row.period), row.sapCode, row.sku, row.forecastQty]);
+    const dataRow = sfeSheet.addRow([String(row.period), row.branchName, row.sku, row.forecastQty]);
     dataRow.getCell(1).value = String(row.period);
     dataRow.getCell(1).numFmt = "@";
   }
-  styleHeader(sfeSheet, [14, 18, 16, 14]);
+  styleHeader(sfeSheet, [14, 28, 16, 14]);
   sfeSheet.getColumn(1).numFmt = "@";
 
   const buffer = await workbook.xlsx.writeBuffer();
@@ -417,14 +423,14 @@ export async function readForecastImportWorkbook(file: Buffer): Promise<Forecast
 
   if (ignoredForecastSheet) {
     throw new Error(
-      `Add a sheet named "${SFE_SHEET_NAME}" (period, branch_sap_code, sku, forecast_qty). The "${FORECAST_SHEET_NAME}" sheet is no longer used — Target Quota is calculated from SFE × price list.`,
+      `Add a sheet named "${SFE_SHEET_NAME}" (period, branch_name, sku, forecast_qty). The "${FORECAST_SHEET_NAME}" sheet is no longer used — Target Quota is calculated from SFE × price list.`,
     );
   }
 
   const first = readSheet(workbook.worksheets[0], SFE_IMPORT_ALIAS_MAP);
   if (!first.sheet.present) {
     throw new Error(
-      `Add a sheet named "${SFE_SHEET_NAME}" (period, branch_sap_code, sku, forecast_qty).`,
+      `Add a sheet named "${SFE_SHEET_NAME}" (period, branch_name, sku, forecast_qty).`,
     );
   }
   assertNotForeignLayout(first.sheet.columns, first.rawHeaders);

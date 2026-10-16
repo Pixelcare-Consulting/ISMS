@@ -26,6 +26,7 @@ import {
 } from "@/features/branch-quotas/services/branch-quota-import.workbook";
 import { prisma } from "@/lib/database/client";
 import { mapWithConcurrency } from "@/lib/shared/concurrency";
+import { indexBranchesByName, resolveBranchByName } from "@/lib/shared/match-branch-by-name";
 import {
   getCachedPlan,
   invalidatePlan,
@@ -89,14 +90,14 @@ async function loadTemplateRows(tenantId: string): Promise<BranchQuotaTemplateRo
     select: {
       quotaDate: true,
       quotaAmount: true,
-      branch: { select: { sapCode: true } },
+      branch: { select: { name: true } },
       brand: { select: { name: true } },
     },
     orderBy: [{ quotaDate: "desc" }, { branch: { name: "asc" } }],
   });
 
   return quotas.map((row) => ({
-    branchSapCode: row.branch.sapCode,
+    branchName: row.branch.name,
     brandName: row.brand.name,
     month: monthLabelFromDate(row.quotaDate),
     quotaAmount: formatQuotaAmount(Number(row.quotaAmount)),
@@ -104,7 +105,7 @@ async function loadTemplateRows(tenantId: string): Promise<BranchQuotaTemplateRo
 }
 
 /**
- * Diff sheet rows against existing quotas. Unknown branch SAP / brand → errors.
+ * Diff sheet rows against existing quotas. Unknown branch name / brand → errors.
  * Last-wins on duplicate unique keys within the file.
  */
 export async function buildPlanFromSheet(
@@ -139,7 +140,7 @@ export async function buildPlanFromSheet(
     }),
   ]);
 
-  const branchBySap = new Map(branches.map((b) => [lookupKey(b.sapCode), b]));
+  const branchByName = indexBranchesByName(branches);
   const brandByName = new Map(brands.map((b) => [lookupKey(b.name), b]));
   const existingByKey = new Map(
     quotas.map((q) => [
@@ -153,18 +154,18 @@ export async function buildPlanFromSheet(
   const plannedByKey = new Map<string, RowPlanInternal | BranchQuotaImportRowPlan>();
 
   for (const row of sheet.rows) {
-    const sapCode = row.values.branchsapcode?.trim() ?? "";
+    const branchName = row.values.branchname?.trim() ?? "";
     const brandName = row.values.brandname?.trim() ?? "";
     const monthRaw = row.values.month?.trim() ?? "";
     const amountRaw = row.values.quotaamount?.trim() ?? "";
-    const identity = [sapCode, brandName, monthRaw].filter(Boolean).join(" / ") || "—";
+    const identity = [branchName, brandName, monthRaw].filter(Boolean).join(" / ") || "—";
 
-    if (isBlankOrDash(sapCode)) {
+    if (isBlankOrDash(branchName)) {
       errors.push({
         sheet: BRANCH_QUOTA_SHEET_NAME,
         rowNumber: row.rowNumber,
         identity,
-        message: "branch_sap_code is empty.",
+        message: "branch_name is empty.",
       });
       continue;
     }
@@ -179,16 +180,21 @@ export async function buildPlanFromSheet(
       continue;
     }
 
-    const branch = branchBySap.get(lookupKey(sapCode));
-    if (!branch) {
+    const resolved = resolveBranchByName(
+      branchByName,
+      branchName,
+      `Branch "${branchName}" does not exist.`,
+    );
+    if ("error" in resolved) {
       errors.push({
         sheet: BRANCH_QUOTA_SHEET_NAME,
         rowNumber: row.rowNumber,
         identity,
-        message: `Branch "${sapCode}" does not exist.`,
+        message: resolved.error,
       });
       continue;
     }
+    const branch = resolved.branch;
 
     const brand = brandByName.get(lookupKey(brandName));
     if (!brand) {

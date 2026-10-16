@@ -3,12 +3,16 @@ import ExcelJS from "exceljs";
 import { prisma } from "@/lib/database/client";
 import {
   buildMonthlySirBlankTemplate,
+  buildMonthlySirTemplate,
+  buildMonthlySirVarianceWorkbook,
   parseMonthlySirUpload,
 } from "@/features/monthly-sir/services/monthly-sir.workbook";
 
 jest.mock("@/lib/database/client", () => ({
   prisma: {
     stockCountSession: { findFirst: jest.fn() },
+    serialNumber: { findMany: jest.fn() },
+    branchDeliveryLine: { findMany: jest.fn() },
   },
 }));
 
@@ -66,5 +70,133 @@ describe("P-Count blank template and upload parser", () => {
     await expect(parseMonthlySirUpload(buffer)).resolves.toEqual([
       { rowNumber: 6, serialNo: "SN-1", pcount: "STK" },
     ]);
+  });
+});
+
+function cellText(sheet: ExcelJS.Worksheet, row: number, column: number): string {
+  const value = sheet.getRow(row).getCell(column).value;
+  return value == null ? "" : String(value);
+}
+
+describe("P-Count filled sheet and variance workbook", () => {
+  beforeEach(() => {
+    (prisma.serialNumber.findMany as jest.Mock).mockResolvedValue([]);
+    (prisma.branchDeliveryLine.findMany as jest.Mock).mockResolvedValue([]);
+  });
+
+  it("derives remarks from the line and variance, and keeps catalog-unknown serials", async () => {
+    (prisma.stockCountSession.findFirst as jest.Mock).mockResolvedValue({
+      branchId: "branch-1",
+      branch: { name: "Main", sapCode: "BR01" },
+      lines: [
+        {
+          expectedInCount: true,
+          status: "counted",
+          notes: "P-COUNT: STK",
+          variance: null,
+          serialNumber: { id: "s1", serialNo: "SN-1" },
+          model: { name: "Widget", skuCode: "W", brand: { name: "Brand" } },
+          branchInventory: {
+            createdAt: new Date("2026-01-01T00:00:00.000Z"),
+            updatedAt: new Date("2026-02-01T00:00:00.000Z"),
+            updatedBy: { name: "Ada", email: "a@b.c" },
+            statusCode: { code: "STK" },
+          },
+        },
+        {
+          expectedInCount: true,
+          status: "variance",
+          notes: "P-COUNT: VAR",
+          variance: { varianceType: "missing" },
+          serialNumber: { id: "s2", serialNo: "SN-MISSING" },
+          model: { name: "Widget", skuCode: "W", brand: { name: "Brand" } },
+          branchInventory: {
+            createdAt: new Date("2026-01-01T00:00:00.000Z"),
+            updatedAt: new Date("2026-02-01T00:00:00.000Z"),
+            updatedBy: null,
+            statusCode: { code: "STK" },
+          },
+        },
+      ],
+      variances: [
+        {
+          lineId: null,
+          varianceType: "surplus",
+          description: "Unexpected serial found during physical count (GHOST-2)",
+        },
+      ],
+    });
+
+    const { buffer } = await buildMonthlySirTemplate({
+      tenantId: "tenant-1",
+      sessionId: "session-1",
+      generatedBy: "Ada",
+      scannedSerialNos: ["GHOST-1"],
+    });
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
+    const sheet = workbook.worksheets[0]!;
+
+    expect(cellText(sheet, 6, 6)).toBe("SN-1");
+    expect(cellText(sheet, 6, 8)).toBe("IN FILE AND IN STK");
+    expect(cellText(sheet, 7, 6)).toBe("SN-MISSING");
+    expect(cellText(sheet, 7, 8)).toBe("STK NOT IN FILE");
+
+    const unknownRows = [8, 9].map((row) => ({
+      model: cellText(sheet, row, 5),
+      serial: cellText(sheet, row, 6),
+      remark: cellText(sheet, row, 8),
+    }));
+    expect(unknownRows).toEqual(
+      expect.arrayContaining([
+        { model: "", serial: "GHOST-1", remark: "IN FILE NOT IN STK" },
+        { model: "", serial: "GHOST-2", remark: "IN FILE NOT IN STK" },
+      ]),
+    );
+  });
+
+  it("lists a catalog-unknown surplus on the variance sheet with a blank model", async () => {
+    (prisma.stockCountSession.findFirst as jest.Mock).mockResolvedValue({
+      status: "counting_complete",
+      branch: { name: "Main", sapCode: "BR01" },
+      variances: [
+        {
+          varianceType: "surplus",
+          description: "Unexpected serial found during physical count (GHOST-2)",
+          investigationNotes: null,
+          line: null,
+        },
+        {
+          varianceType: "missing",
+          description: "Expected unit not scanned during physical count",
+          investigationNotes: null,
+          line: {
+            expectedInCount: true,
+            status: "variance",
+            notes: "P-COUNT: VAR",
+            serialNumber: { serialNo: "SN-MISSING" },
+            model: { name: "Widget", skuCode: "W" },
+            branchInventory: { createdAt: new Date("2026-01-01T00:00:00.000Z") },
+          },
+        },
+      ],
+    });
+
+    const { buffer } = await buildMonthlySirVarianceWorkbook({
+      tenantId: "tenant-1",
+      sessionId: "session-1",
+      generatedBy: "Ada",
+    });
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
+    const sheet = workbook.worksheets[0]!;
+
+    expect(cellText(sheet, 6, 2)).toBe("GHOST-2");
+    expect(cellText(sheet, 6, 3)).toBe("");
+    expect(cellText(sheet, 6, 6)).toBe("IN FILE NOT IN STK");
+    expect(cellText(sheet, 6, 8)).toBe("IN FILE NOT IN STK");
+    expect(cellText(sheet, 7, 2)).toBe("SN-MISSING");
+    expect(cellText(sheet, 7, 3)).toBe("Widget");
+    expect(cellText(sheet, 7, 6)).toBe("STK NOT IN FILE");
   });
 });

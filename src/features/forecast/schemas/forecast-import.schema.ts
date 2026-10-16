@@ -5,8 +5,11 @@
  * Target Quota (BranchForecastTarget) is derived on import as
  * Σ(forecast_qty × model SRP) per branch — there is no Forecast quota sheet.
  *
- * Branch SAP codes and SKUs must already exist. This import does not create
- * branches, SKUs, or planogram rows. Targets left out of the file are not deleted.
+ * Branch names and SKUs must already exist. Names match after trim, ignoring
+ * case. More than one branch with that name is an error. A file that still
+ * uses the branch SAP code does not match the SFE columns. This import does
+ * not create branches, SKUs, or planogram rows. Targets left out of the file
+ * are not deleted.
  */
 
 export const FORECAST_SHEET_NAME = "Forecast";
@@ -22,7 +25,7 @@ export const FORECAST_SHEET_HEADERS = [
 
 export const SFE_SHEET_HEADERS = [
   "period",
-  "branch_sap_code",
+  "branch_name",
   "sku",
   "forecast_qty",
 ] as const;
@@ -36,7 +39,7 @@ export const FORECAST_IMPORT_COLUMN_LABELS: Record<string, string> = {
 
 export const SFE_IMPORT_COLUMN_LABELS: Record<string, string> = {
   period: "period",
-  sap_code: "branch_sap_code",
+  branch_name: "branch_name",
   sku: "sku",
   forecast_qty: "forecast_qty",
 };
@@ -54,14 +57,16 @@ export const FORECAST_IMPORT_ALIAS_MAP: Record<string, string> = {
   revenue_target: "revenue_target",
 };
 
+/**
+ * SFE columns only. SAP-code headers are intentionally absent so old files
+ * fail the column check instead of being read as branch names.
+ */
 export const SFE_IMPORT_ALIAS_MAP: Record<string, string> = {
   period: "period",
   periodlabel: "period",
   planningperiod: "period",
-  sapcode: "sap_code",
-  sap_code: "sap_code",
-  branchcode: "sap_code",
-  branchsapcode: "sap_code",
+  branchname: "branch_name",
+  branch: "branch_name",
   sku: "sku",
   skucode: "sku",
   itemcode: "sku",
@@ -72,7 +77,7 @@ export const SFE_IMPORT_ALIAS_MAP: Record<string, string> = {
 };
 
 export const FORECAST_IMPORT_REQUIRED_COLUMNS = ["period", "sap_code", "revenue_target"] as const;
-export const SFE_IMPORT_REQUIRED_COLUMNS = ["period", "sap_code", "sku", "forecast_qty"] as const;
+export const SFE_IMPORT_REQUIRED_COLUMNS = ["period", "branch_name", "sku", "forecast_qty"] as const;
 
 export const FORECAST_IMPORT_FIELD_LABELS: Record<string, string> = {
   revenueTarget: "Target Quota",

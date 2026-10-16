@@ -26,6 +26,7 @@ describe("buildInventoryReportWorkbook", () => {
           "DR-1",
           "2026-10-01",
           14,
+          "IN FILE AND IN STK",
         ],
       ],
     );
@@ -56,5 +57,8 @@ describe("buildInventoryReportWorkbook", () => {
       ),
     ).toEqual([...INVENTORY_REPORT_DETAIL_HEADERS]);
     expect(detail!.getRow(2).getCell(8).value).toBe("SN-1");
+    expect(detail!.getRow(1).getCell(15).value).toBe("REMARKS");
+    expect(detail!.getRow(2).getCell(15).value).toBe("IN FILE AND IN STK");
+    expect(summary!.columnCount).toBe(INVENTORY_REPORT_SUMMARY_HEADERS.length);
   });
 });

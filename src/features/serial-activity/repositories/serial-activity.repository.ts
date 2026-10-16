@@ -8,6 +8,11 @@ import type {
   SerialActivityEvent,
   SerialActivityType,
 } from "@/features/serial-activity/constants/serial-activity-display";
+import {
+  documentReferenceFromHistoryDetails,
+  historyActivityForTxn,
+  historyTxnTypesForActivity,
+} from "@/features/serial-activity/lib/serial-history-log";
 
 export type SerialActivitySortDir = "asc" | "desc";
 
@@ -243,7 +248,7 @@ async function statusSource(
       select: {
         id: true,
         updatedAt: true,
-        branch: { select: { name: true, sapCode: true } },
+        branch: { select: { name: true } },
         statusCode: { select: { code: true, name: true } },
         serialNumber: { select: { serialNo: true, model: modelSelect } },
         updatedBy: userSelect,
@@ -264,7 +269,7 @@ async function statusSource(
           serialNo: serial.serialNo,
           modelLabel: serial.modelLabel,
           location: r.branch.name,
-          reference: r.branch.sapCode,
+          reference: null,
           referenceDetails: referenceDetails(
             `Status set to ${r.statusCode.name} (${r.statusCode.code})`,
           ),
@@ -821,6 +826,108 @@ async function countedSource(
   };
 }
 
+/**
+ * Ledger rows the live tables do not already list. Reference is the document
+ * number inside `details`; reference details are the full details text.
+ * Transfer, sale, pull-out, and count stay on their live sources only.
+ */
+async function historyLedgerSource(
+  tenantId: string,
+  { window, q, dateFilter, dir }: SourceOptions,
+  activityType?: SerialActivityType,
+): Promise<SourceResult> {
+  const txnTypes = historyTxnTypesForActivity(activityType);
+  if (txnTypes.length === 0) {
+    return { events: [], count: 0 };
+  }
+
+  const where: Prisma.SerialNumberHistoryWhereInput = {
+    tenantId,
+    txnType: { in: txnTypes },
+    ...(dateFilter ? { createdAt: dateFilter } : {}),
+    ...(q
+      ? {
+          OR: [
+            { serialNumber: { serialNo: textContains(q) } },
+            { details: textContains(q) },
+          ],
+        }
+      : {}),
+  };
+
+  const [rows, count] = await Promise.all([
+    prisma.serialNumberHistory.findMany({
+      where,
+      orderBy: { createdAt: dir },
+      take: window,
+      select: {
+        id: true,
+        txnType: true,
+        details: true,
+        status: true,
+        createdAt: true,
+        serialNumber: { select: { serialNo: true, model: modelSelect } },
+        createdBy: userSelect,
+      },
+    }),
+    prisma.serialNumberHistory.count({ where }),
+  ]);
+
+  return {
+    count,
+    events: rows.flatMap((row) => {
+      const serial = serialFields(row.serialNumber);
+      const activity = historyActivityForTxn(row.txnType);
+      if (!serial || !activity) return [];
+      const details = row.details?.trim() || null;
+      return [
+        {
+          id: `history:${row.id}`,
+          type: activity.type,
+          ...(activity.typeLabel ? { typeLabel: activity.typeLabel } : {}),
+          timestamp: row.createdAt,
+          serialNo: serial.serialNo,
+          modelLabel: serial.modelLabel,
+          location: null,
+          reference: documentReferenceFromHistoryDetails(details),
+          referenceDetails: referenceDetails(details),
+          status: row.status?.trim() || null,
+          performedBy: performedByLabel(row.createdBy),
+        },
+      ];
+    }),
+  };
+}
+
+async function historyCountsByActivity(
+  tenantId: string,
+): Promise<Record<SerialActivityType, number>> {
+  const counts: Record<SerialActivityType, number> = {
+    registered: 0,
+    status: 0,
+    transferred: 0,
+    sold: 0,
+    pulled_out: 0,
+    counted: 0,
+  };
+  const txnTypes = historyTxnTypesForActivity();
+  if (txnTypes.length === 0) return counts;
+
+  const groups = await prisma.serialNumberHistory.groupBy({
+    by: ["txnType"],
+    where: { tenantId, txnType: { in: txnTypes } },
+    _count: { id: true },
+  });
+
+  for (const group of groups) {
+    const activity = historyActivityForTxn(group.txnType);
+    if (!activity) continue;
+    counts[activity.type] += group._count.id;
+  }
+
+  return counts;
+}
+
 const SOURCES: Record<
   SerialActivityType,
   (tenantId: string, options: SourceOptions) => Promise<SourceResult>
@@ -852,12 +959,19 @@ export const serialActivityRepository = {
 
     // Official Sales ADD/DEL/WHSE_ADD/stock_adj audits use type `sold` with a
     // typeLabel override so they appear in the full feed and Sales filter.
+    // History rows fill movements those live tables do not already describe.
+    const historySource = (
+      sourceTenantId: string,
+      options: SourceOptions,
+    ): Promise<SourceResult> =>
+      historyLedgerSource(sourceTenantId, options, params.type);
+
     const active =
       params.type == null
-        ? [...Object.values(SOURCES), officialSalesAuditSource]
+        ? [...Object.values(SOURCES), officialSalesAuditSource, historySource]
         : params.type === "sold"
-          ? [SOURCES.sold, officialSalesAuditSource]
-          : [SOURCES[params.type]];
+          ? [SOURCES.sold, officialSalesAuditSource, historySource]
+          : [SOURCES[params.type], historySource];
 
     const results = await Promise.all(
       active.map((source) => source(tenantId, { window, q, dateFilter, dir })),
@@ -887,6 +1001,7 @@ export const serialActivityRepository = {
       pulledOut,
       counted,
       officialSales,
+      historyCounts,
     ] = await Promise.all([
       registeredSource(tenantId, opts),
       statusSource(tenantId, opts),
@@ -895,13 +1010,26 @@ export const serialActivityRepository = {
       pulledOutSource(tenantId, opts),
       countedSource(tenantId, opts),
       officialSalesAuditSource(tenantId, opts),
+      historyCountsByActivity(tenantId),
     ]);
 
-    const soldCount = sold.count + officialSales.count;
+    const soldCount = sold.count + officialSales.count + historyCounts.sold;
     const statuses = [
-      { code: "registered", name: "Registered", count: registered.count },
-      { code: "status", name: "Status update", count: status.count },
-      { code: "transferred", name: "Transferred", count: transferred.count },
+      {
+        code: "registered",
+        name: "Registered",
+        count: registered.count + historyCounts.registered,
+      },
+      {
+        code: "status",
+        name: "Status update",
+        count: status.count + historyCounts.status,
+      },
+      {
+        code: "transferred",
+        name: "Transferred",
+        count: transferred.count + historyCounts.transferred,
+      },
       { code: "sold", name: "Sales transaction", count: soldCount },
       { code: "pulled_out", name: "Pulled out", count: pulledOut.count },
       { code: "counted", name: "Counted", count: counted.count },

@@ -10,7 +10,7 @@ const DETAIL_HEADER_FILL = "FF2E7D32";
 
 const SUMMARY_COLUMN_WIDTHS = [24, 16, 14, 8];
 const DETAIL_COLUMN_WIDTHS = [
-  22, 22, 14, 14, 14, 14, 14, 18, 14, 18, 12, 12, 12, 12,
+  22, 22, 14, 14, 14, 14, 14, 18, 14, 18, 12, 12, 12, 12, 24,
 ];
 
 export type InventoryReportCell = string | number | null | undefined;

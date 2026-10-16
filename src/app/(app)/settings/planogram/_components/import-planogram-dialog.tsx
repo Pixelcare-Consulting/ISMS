@@ -229,13 +229,15 @@ export function ImportPlanogramDialog({
         <div className="space-y-4">
           <div className="text-muted-foreground space-y-2 text-sm">
             <p>
-              Download the <strong>Planogram</strong> template, fill in branch SAP code and
-              SKU, then upload that same file. The old BRS wide spreadsheet is not accepted
-              here.
+              Download the <strong>Planogram</strong> template, fill in branch name, SKU, and
+              shelf max, then upload that same file. The old BRS wide spreadsheet is not
+              accepted here. A file that still uses the branch SAP code will not import.
             </p>
             <p>
               SKUs and branches must already exist — this import does not create models.
-              Rows left out of the file are not removed.
+              Shelf max is a whole number of at least 1 and is saved on new and existing
+              rows. If more than one branch uses the same name, that row is rejected. Rows
+              left out of the file are not removed.
             </p>
           </div>
 
@@ -312,6 +314,7 @@ export function ImportPlanogramDialog({
                       <li key={`${error.sheet}-${error.rowNumber}-${index}`}>
                         <span className="text-muted-foreground">
                           {error.sheet} · row {error.rowNumber}
+                          {error.sapCode !== "—" ? ` · ${error.sapCode}` : ""}
                           {error.sku !== "—" ? ` · ${error.sku}` : ""}
                         </span>{" "}
                         {error.message}
@@ -331,17 +334,21 @@ export function ImportPlanogramDialog({
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Branch SAP code</TableHead>
+                        <TableHead>Branch</TableHead>
                         <TableHead>SKU</TableHead>
+                        <TableHead className="text-right">Shelf max</TableHead>
                         <TableHead>Action</TableHead>
                         {showChangesColumn ? <TableHead>Changes</TableHead> : null}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {preview.rows.map((row) => (
-                        <TableRow key={`${row.sapCode}-${row.sku}-${row.rowNumber}`}>
-                          <TableCell className="font-mono text-xs">{row.sapCode}</TableCell>
+                        <TableRow key={`${row.branchName}-${row.sku}-${row.rowNumber}`}>
+                          <TableCell className="text-sm">{row.branchName}</TableCell>
                           <TableCell className="font-mono text-xs">{row.sku}</TableCell>
+                          <TableCell className="text-right tabular-nums text-sm">
+                            {row.maxQty}
+                          </TableCell>
                           <TableCell className="text-sm">{actionLabel(row.action)}</TableCell>
                           {showChangesColumn ? (
                             <TableCell className="text-sm">

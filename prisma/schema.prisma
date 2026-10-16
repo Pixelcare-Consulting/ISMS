@@ -2296,8 +2296,7 @@ model MonthlySirPolicy {
   tenantId           String   @unique @map("tenant_id")
   /// Free direct Upload P-COUNT starts per TL per branch per Manila month.
   tlMonthlyFreeSlots Int      @default(1) @map("tl_monthly_free_slots")
-  /// Free direct Upload P-COUNT starts per PS per branch per Manila month
-  /// (split across days 1–15 and 16–end).
+  /// Legacy PS free-slot budget. PS uploads follow the Manila calendar instead.
   psMonthlyFreeSlots Int      @default(2) @map("ps_monthly_free_slots")
   createdAt          DateTime @default(now()) @map("created_at")
   updatedAt          DateTime @updatedAt @map("updated_at")

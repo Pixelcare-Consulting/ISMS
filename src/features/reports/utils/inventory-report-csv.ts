@@ -15,6 +15,7 @@ export const INVENTORY_REPORT_DETAIL_HEADERS = [
   "DR#",
   "DR DATE",
   "AGING DAYS",
+  "REMARKS",
 ] as const;
 
 export const INVENTORY_REPORT_SUMMARY_HEADERS = [

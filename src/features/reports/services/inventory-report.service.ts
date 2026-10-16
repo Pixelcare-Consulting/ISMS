@@ -1,5 +1,6 @@
 import { inventoryRepository } from "@/features/inventory/repositories/inventory.repository";
 import { wholeDaysBetween } from "@/features/inventory/utils/sku-series";
+import { pcountDisplayRemark } from "@/features/monthly-sir/constants/pcount-upload";
 import { buildInventoryReportSectionedCsv } from "@/features/reports/utils/inventory-report-csv";
 import { buildInventoryReportWorkbook } from "@/features/reports/utils/inventory-report.workbook";
 import { prisma } from "@/lib/database/client";
@@ -62,6 +63,52 @@ async function findLatestDeliveriesChunked(
   }
 
   return results;
+}
+
+async function findLatestCountRemarks(
+  tenantId: string,
+  serialNumberIds: string[],
+) {
+  const latest = new Map<string, { at: number; remark: string }>();
+  if (serialNumberIds.length === 0) return latest;
+
+  for (let i = 0; i < serialNumberIds.length; i += DELIVERY_LOOKUP_CHUNK) {
+    const chunk = serialNumberIds.slice(i, i + DELIVERY_LOOKUP_CHUNK);
+    const lines = await prisma.stockCountLine.findMany({
+      where: {
+        serialNumberId: { in: chunk },
+        session: {
+          tenantId,
+          status: { notIn: ["draft", "in_progress"] },
+        },
+      },
+      select: {
+        serialNumberId: true,
+        expectedInCount: true,
+        status: true,
+        notes: true,
+        session: { select: { branchId: true, createdAt: true } },
+        variance: { select: { varianceType: true } },
+      },
+    });
+    for (const line of lines) {
+      const key = `${line.session.branchId}\0${line.serialNumberId}`;
+      const at = line.session.createdAt.getTime();
+      const current = latest.get(key);
+      if (current && current.at > at) continue;
+      latest.set(key, {
+        at,
+        remark: pcountDisplayRemark({
+          expectedInCount: line.expectedInCount,
+          lineStatus: line.status,
+          varianceType: line.variance?.varianceType ?? null,
+          notes: line.notes,
+        }),
+      });
+    }
+  }
+
+  return latest;
 }
 
 /**
@@ -138,6 +185,10 @@ export async function buildInventoryReportRows(
   const deliveryBySerial = new Map(
     deliveries.map((d) => [d.serialNumberId, d] as const),
   );
+  const countRemarks = await findLatestCountRemarks(
+    tenantId,
+    rows.map((row) => row.serialNumberId),
+  );
 
   const detailRows: InventoryReportCell[][] = [];
   const summaryCounts = new Map<string, number>();
@@ -171,6 +222,7 @@ export async function buildInventoryReportRows(
       delivery?.deliveryNo ?? "",
       formatDate(delivery?.deliveryDate),
       wholeDaysBetween(agingAnchor),
+      countRemarks.get(`${item.branchId}\0${item.serialNumberId}`)?.remark ?? "",
     ]);
   }
 
@@ -193,7 +245,7 @@ export async function buildInventoryReportRows(
 export const inventoryReportService = {
   /**
    * Branch inventory CSV with dealer/branch classification columns and
-   * serial validation columns (status, DR#, aging).
+   * serial validation columns (status, DR#, aging, latest count remark).
    *
    * Kept for unit tests of the sectioned CSV shape; export uses Excel.
    */
