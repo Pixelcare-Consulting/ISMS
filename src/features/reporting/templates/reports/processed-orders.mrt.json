@@ -1,10 +1,10 @@
 {
   "ReportVersion": "2026.4.1",
-  "ReportGuid": "e5a099f38b65014d25f38a7e8b009294",
+  "ReportGuid": "7fab027184e86e3baf7b0c87f42cbfda",
   "ReportName": "processed-orders",
   "ReportAlias": "Processed Orders",
-  "ReportCreated": "/Date(1792383321000+0800)/",
-  "ReportChanged": "/Date(1792383321000+0800)/",
+  "ReportCreated": "/Date(1792384725000+0800)/",
+  "ReportChanged": "/Date(1792384725000+0800)/",
   "EngineVersion": "EngineV2",
   "ReportUnit": "Centimeters",
   "ScriptLanguage": "CSharp",
@@ -129,7 +129,7 @@
     "0": {
       "Ident": "StiPage",
       "Name": "Page1",
-      "Guid": "20d142d8fdd282b273c84948930932ec",
+      "Guid": "05dfd37c26acc4d111242c74b429ce9b",
       "Interaction": {
         "Ident": "StiInteraction"
       },

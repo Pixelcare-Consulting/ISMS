@@ -2,8 +2,8 @@
  * Generates the Stimulsoft templates (.mrt JSON) committed under
  * src/features/reporting/templates from the shared specs:
  *   - REPORT_DEFINITIONS  → templates/reports/<key>.mrt.json
- *   - ANALYTICS_SECTIONS  → templates/dashboards/analytics.mrt.json
- *   - blank dashboard     → templates/dashboards/blank.mrt.json (new custom dashboards)
+ *   - READY_MADE_DASHBOARDS → templates/dashboards/ready-made/<key>.mrt.json
+ *   - blank dashboard       → templates/dashboards/blank.mrt.json (new custom dashboards)
  *
  * Run: pnpm reporting:templates
  * Re-run after changing a spec or the dataset catalog. Output is deterministic
@@ -15,12 +15,19 @@ import path from "node:path";
 import type { Stimulsoft as StimulsoftNamespace } from "stimulsoft-dashboards-js-react/stimulsoft.reports";
 
 import {
-  ANALYTICS_CANVAS,
-  ANALYTICS_DATASET_KEYS,
-  ANALYTICS_SECTIONS,
-  layoutAnalytics,
-  type AnalyticsElementSpec,
-} from "../../src/features/reporting/dashboards/analytics-layout";
+  READY_MADE_DASHBOARDS,
+  type ReadyMadeDashboard,
+  type ReadyMadeDashboardKey,
+} from "../../src/features/custom-dashboards/ready-made/ready-made-dashboards";
+import {
+  DASHBOARD_CANVAS,
+  dashboardDatasetKeys,
+  layoutDashboard,
+  type Aggregate,
+  type DashboardElementSpec,
+  type DashboardSpec,
+  type MeasureSpec,
+} from "../../src/features/reporting/dashboards/dashboard-layout";
 import {
   DATASET_CATALOG,
   type DatasetColumn,
@@ -348,79 +355,152 @@ function rect(sti: Sti, r: { left: number; top: number; width: number; height: n
   return new sti.System.Drawing.Rectangle(r.left, r.top, r.width, r.height);
 }
 
-function chartSeriesType(sti: Sti, kind: AnalyticsElementSpec["kind"]) {
-  const T = sti.Report.Dashboard.StiChartSeriesType;
-  return kind === "DOUGHNUT" ? T.Doughnut : T.ClusteredBar;
+const AGGREGATE_FUNCTION: Record<Aggregate, string> = {
+  SUM: "Sum",
+  COUNT: "Count",
+  AVG: "Avg",
+  DISTINCT_COUNT: "DistinctCount",
+};
+
+function measureExpression(key: DatasetKey, measure: MeasureSpec): string {
+  columnMeta(key, measure.column);
+  return `${AGGREGATE_FUNCTION[measure.aggregate]}(${key}.${measure.column})`;
 }
 
-function buildElement(sti: Sti, spec: AnalyticsElementSpec) {
+function chartSeriesType(sti: Sti, kind: DashboardElementSpec["kind"]) {
+  const T = sti.Report.Dashboard.StiChartSeriesType;
+  if (kind === "DOUGHNUT") return T.Doughnut;
+  return kind === "COLUMN" ? T.ClusteredColumn : T.ClusteredBar;
+}
+
+type DashboardElement = StimulsoftNamespace.Dashboard.Components.StiElement;
+
+function titled(el: DashboardElement & { title: { text: string; visible: boolean } }, text: string): DashboardElement {
+  el.title.text = text;
+  el.title.visible = true;
+  return el;
+}
+
+function buildElement(sti: Sti, spec: DashboardElementSpec): DashboardElement {
   const DC = sti.Dashboard.Components;
   const key = spec.datasetKey;
+  const decimals = spec.decimals ?? 0;
 
   if (spec.kind === "INDICATOR") {
     const el = new DC.Indicator.StiIndicatorElement();
     el.name = spec.name;
-    el.value = new DC.Indicator.StiValueIndicatorMeter(`${spec.name}Value`, `Sum(${key}.${spec.value})`, spec.title);
-    el.textFormat = numberFormat(sti, spec.decimals ?? 0);
-    el.title.text = spec.title;
-    el.title.visible = true;
+    el.value = new DC.Indicator.StiValueIndicatorMeter(`${spec.name}Value`, measureExpression(key, spec.value!), spec.title);
+    el.textFormat = numberFormat(sti, decimals);
+    return titled(el, spec.title);
+  }
+
+  if (spec.kind === "FILTER") {
+    const el = new DC.ComboBox.StiComboBoxElement();
+    el.name = spec.name;
+    const field = `${key}.${spec.argument}`;
+    el.keyMeter = new DC.ComboBox.StiKeyComboBoxMeter(`${spec.name}Key`, field, spec.title);
+    el.nameMeter = new DC.ComboBox.StiNameComboBoxMeter(`${spec.name}Name`, field, spec.title);
+    el.selectionMode = sti.Report.Dashboard.StiItemSelectionMode.Multi;
+    el.showAllValue = true;
+    // Combo boxes have no title in Stimulsoft; the "All" entry and values label it.
     return el;
   }
 
   if (spec.kind === "TABLE") {
     const el = new DC.Table.StiTableElement();
     el.name = spec.name;
-    for (const name of spec.columns ?? []) {
-      const meta = columnMeta(key, name);
-      const columnKey = `${spec.name}_${name}`;
-      const column =
-        meta.type === "number"
-          ? new DC.Table.StiMeasureColumn(columnKey, `Sum(${key}.${name})`, meta.label, undefined, numberFormat(sti, spec.decimals ?? 0))
-          : new DC.Table.StiDimensionColumn(columnKey, `${key}.${name}`, meta.label);
-      el.columns.push(column);
+    for (const column of spec.columns ?? []) {
+      const meta = columnMeta(key, column.column);
+      const columnKey = `${spec.name}_${column.column}`;
+      const label = column.label ?? meta.label;
+      el.columns.push(
+        column.aggregate
+          ? new DC.Table.StiMeasureColumn(
+              columnKey,
+              measureExpression(key, { column: column.column, aggregate: column.aggregate }),
+              label,
+              undefined,
+              numberFormat(sti, 0),
+            )
+          : new DC.Table.StiDimensionColumn(columnKey, `${key}.${column.column}`, label),
+      );
     }
-    el.title.text = spec.title;
-    el.title.visible = true;
-    return el;
+    return titled(el, spec.title);
   }
 
   const el = new DC.Chart.StiChartElement();
   el.name = spec.name;
-  el.insertArgument(0, new DC.Chart.StiArgumentChartMeter(`${spec.name}Argument`, `${key}.${spec.argument}`, columnMeta(key, spec.argument!).label));
-  el.insertValue(0, new DC.Chart.StiValueChartMeter(`${spec.name}Value`, `Sum(${key}.${spec.value})`, columnMeta(key, spec.value!).label, chartSeriesType(sti, spec.kind)));
-  el.valueFormat = numberFormat(sti, spec.decimals ?? 0);
+  const argument = columnMeta(key, spec.argument!);
+  const valueKey = `${spec.name}Value`;
+  el.insertArgument(0, new DC.Chart.StiArgumentChartMeter(`${spec.name}Argument`, `${key}.${spec.argument}`, argument.label));
+  el.insertValue(0, new DC.Chart.StiValueChartMeter(valueKey, measureExpression(key, spec.value!), spec.title, chartSeriesType(sti, spec.kind)));
+  el.valueFormat = numberFormat(sti, decimals);
+  if (argument.type === "date") el.argumentFormat = dateFormat(sti);
+  if (spec.topN) {
+    const Engine = sti.Data.Engine;
+    el.topN = new Engine.StiDataTopN(Engine.StiDataTopNMode.Top, spec.topN, false, "", valueKey);
+    el.transformSorts.push(new Engine.StiDataSortRule(valueKey, Engine.StiDataSortDirection.Descending));
+  }
   // Doughnut slice labels collide on small slices; the legend and tooltips carry them.
   if (spec.kind === "DOUGHNUT") el.labels.position = sti.Report.Dashboard.StiChartLabelsPosition.None;
-  el.title.text = spec.title;
-  el.title.visible = true;
-  return el;
+  return titled(el, spec.title);
 }
 
-function buildAnalyticsDashboard(sti: Sti): string {
-  const report = sti.Report.StiReport.createNewDashboard();
-  report.reportName = "analytics";
-  report.reportAlias = "Analytics";
+const FILTER_LABEL_WIDTH = 96;
 
-  ensureDataSources(sti, report, ANALYTICS_DATASET_KEYS);
+type Slot = { left: number; top: number; width: number; height: number };
+
+function labelSlot(slot: Slot): Slot {
+  return { ...slot, width: FILTER_LABEL_WIDTH };
+}
+
+function controlSlot(slot: Slot): Slot {
+  return { ...slot, left: slot.left + FILTER_LABEL_WIDTH, width: slot.width - FILTER_LABEL_WIDTH };
+}
+
+function buildFilterLabel(sti: Sti, spec: DashboardElementSpec): DashboardElement {
+  const label = new sti.Dashboard.Components.Text.StiTextElement();
+  label.name = `${spec.name}Label`;
+  label.text = `<font size="12"><b>${spec.title}</b></font>`;
+  label.title.visible = false;
+  label.altTitleVisible = false; // the mobile layout has its own title flag
+  label.vertAlignment = sti.Base.Drawing.StiVertAlignment.Center;
+  return label;
+}
+
+/** Generates one dashboard template from a spec (desktop + mobile layout). */
+function buildDashboard(sti: Sti, name: string, spec: DashboardSpec): string {
+  const report = sti.Report.StiReport.createNewDashboard();
+  report.reportName = name;
+  report.reportAlias = spec.title;
+  ensureDataSources(sti, report, dashboardDatasetKeys(spec));
 
   const dashboard = report.pages.getByIndex(0) as StimulsoftNamespace.Dashboard.Components.StiDashboard;
-  dashboard.name = "Analytics";
-  dashboard.alias = "Analytics";
+  dashboard.name = name.replace(/[^A-Za-z0-9]/g, "");
+  dashboard.alias = spec.title;
 
-  const { placements, desktopHeight, mobileHeight } = layoutAnalytics(() => true);
-  dashboard.width = ANALYTICS_CANVAS.desktopWidth;
+  const { placements, desktopHeight, mobileHeight } = layoutDashboard(spec);
+  dashboard.width = DASHBOARD_CANVAS.desktopWidth;
   dashboard.height = desktopHeight;
-  dashboard.altSize = new sti.System.Drawing.Size(ANALYTICS_CANVAS.mobileWidth, mobileHeight);
+  dashboard.altSize = new sti.System.Drawing.Size(DASHBOARD_CANVAS.mobileWidth, mobileHeight);
 
-  for (const section of ANALYTICS_SECTIONS) {
-    for (const spec of section.elements) {
-      const placement = placements.get(spec.name);
-      if (!placement) continue;
-      const el = buildElement(sti, spec);
+  for (const element of spec.sections.flatMap((section) => section.elements)) {
+    const placement = placements.get(element.name);
+    if (!placement) continue;
+    const el = buildElement(sti, element);
+    if (element.kind === "FILTER") {
+      // Combo boxes have no caption, so a text label sits to the left of each.
+      const label = buildFilterLabel(sti, element);
+      label.clientRectangle = rect(sti, labelSlot(placement.desktop));
+      label.altClientRectangle = rect(sti, labelSlot(placement.mobile));
+      dashboard.components.add(label);
+      el.clientRectangle = rect(sti, controlSlot(placement.desktop));
+      el.altClientRectangle = rect(sti, controlSlot(placement.mobile));
+    } else {
       el.clientRectangle = rect(sti, placement.desktop);
       el.altClientRectangle = rect(sti, placement.mobile);
-      dashboard.components.add(el);
     }
+    dashboard.components.add(el);
   }
 
   return report.saveToJsonString();
@@ -448,7 +528,9 @@ async function main() {
   for (const [key, def] of Object.entries(REPORT_DEFINITIONS) as [ReportKey, ReportDefinition][]) {
     write(`reports/${key}.mrt.json`, buildReport(sti, key, def));
   }
-  write("dashboards/analytics.mrt.json", buildAnalyticsDashboard(sti));
+  for (const [key, dashboard] of Object.entries(READY_MADE_DASHBOARDS) as [ReadyMadeDashboardKey, ReadyMadeDashboard][]) {
+    write(`dashboards/ready-made/${key}.mrt.json`, buildDashboard(sti, key, dashboard.spec));
+  }
   write("dashboards/blank.mrt.json", buildBlankDashboard(sti));
 }
 

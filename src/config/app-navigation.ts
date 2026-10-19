@@ -7,7 +7,6 @@ import {
   CalendarClock,
   CalendarDays,
   ChartColumn,
-  ChartNoAxesCombined,
   ClipboardList,
   Clock,
   History,
@@ -146,13 +145,6 @@ export const appNavigation: NavEntry[] = [
         label: "Sales",
         icon: Store,
         anyPermissions: SALES_DASHBOARD_PERMISSIONS,
-      },
-      {
-        href: "/dashboard/analytics",
-        label: "Analytics",
-        icon: ChartNoAxesCombined,
-        anyPermissions: [...OPERATIONS_DASHBOARD_PERMISSIONS, ...SALES_DASHBOARD_PERMISSIONS],
-        badge: "new",
       },
       {
         href: "/dashboard/custom",

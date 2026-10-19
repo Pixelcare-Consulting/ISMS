@@ -1,10 +1,10 @@
 {
   "ReportVersion": "2026.4.1",
-  "ReportGuid": "7be08e56ed78af4d99711ce614b571bc",
+  "ReportGuid": "d0066b00e6a43632892b06eb75dd8aba",
   "ReportName": "transfers",
   "ReportAlias": "Transfers",
-  "ReportCreated": "/Date(1792383321000+0800)/",
-  "ReportChanged": "/Date(1792383321000+0800)/",
+  "ReportCreated": "/Date(1792384725000+0800)/",
+  "ReportChanged": "/Date(1792384725000+0800)/",
   "EngineVersion": "EngineV2",
   "ReportUnit": "Centimeters",
   "ScriptLanguage": "CSharp",
@@ -69,7 +69,7 @@
     "0": {
       "Ident": "StiPage",
       "Name": "Page1",
-      "Guid": "cb29ef02240bbf3eb8487e9319cc9a78",
+      "Guid": "21dceb646606e1cb9d71c59412f49703",
       "Interaction": {
         "Ident": "StiInteraction"
       },

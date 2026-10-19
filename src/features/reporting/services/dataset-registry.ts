@@ -19,6 +19,7 @@ import { processedOrdersReportService } from "@/features/reports/services/proces
 import { salesReportService } from "@/features/reports/services/sales-report.service";
 import { transferReportService } from "@/features/reports/services/transfer-report.service";
 import {
+  agingBucketLabel,
   DATASET_CATALOG,
   type DatasetKey,
   type DatasetRow,
@@ -164,7 +165,10 @@ const DATASETS: Record<DatasetKey, DatasetDefinition> = {
   inventory_detail: {
     canAccess: anyOf(INVENTORY_REPORT_ACCESS),
     load: async (ctx, params) =>
-      rowsFromCells("inventory_detail", (await loadInventoryRows(ctx, params)).detailRows),
+      rowsFromCells("inventory_detail", (await loadInventoryRows(ctx, params)).detailRows).map((row) => ({
+        ...row,
+        agingBucket: typeof row.agingDays === "number" ? agingBucketLabel(row.agingDays) : null,
+      })),
   },
   inventory_summary: {
     canAccess: anyOf(INVENTORY_REPORT_ACCESS),

@@ -1,7 +1,7 @@
-import { ANALYTICS_SECTIONS } from "@/features/reporting/dashboards/analytics-layout";
+import { READY_MADE_DASHBOARDS, READY_MADE_KEYS } from "@/features/custom-dashboards/ready-made/ready-made-dashboards";
 import { DATASET_CATALOG, isDatasetKey } from "@/features/reporting/datasets/dataset-catalog";
 import { REPORT_DEFINITIONS, type ReportDefinition } from "@/features/reporting/reports/report-definitions";
-import { REPORT_TEMPLATES } from "@/features/reporting/templates/template-loaders";
+import { READY_MADE_TEMPLATES, REPORT_TEMPLATES } from "@/features/reporting/templates/template-loaders";
 
 function columnNames(key: keyof typeof DATASET_CATALOG): Set<string> {
   return new Set(DATASET_CATALOG[key].columns.map((c) => c.name));
@@ -20,18 +20,23 @@ describe("reporting specs reference real catalog columns", () => {
     }
   });
 
-  it("analytics elements use known datasets and columns", () => {
-    for (const element of ANALYTICS_SECTIONS.flatMap((s) => s.elements)) {
+  it.each(READY_MADE_KEYS)("ready-made %s uses known datasets and columns", (key) => {
+    for (const element of READY_MADE_DASHBOARDS[key].spec.sections.flatMap((s) => s.elements)) {
       const names = columnNames(element.datasetKey);
-      for (const name of [element.value, element.argument, ...(element.columns ?? [])].filter(Boolean)) {
-        expect(names).toContain(name);
-      }
+      const referenced = [element.value?.column, element.argument, ...(element.columns ?? []).map((c) => c.column)];
+      for (const name of referenced.filter(Boolean)) expect(names).toContain(name);
     }
   });
 
-  it("analytics element names are unique", () => {
-    const names = ANALYTICS_SECTIONS.flatMap((s) => s.elements.map((e) => e.name));
-    expect(new Set(names).size).toBe(names.length);
+  it("element names are unique within each ready-made dashboard", () => {
+    for (const key of READY_MADE_KEYS) {
+      const names = READY_MADE_DASHBOARDS[key].spec.sections.flatMap((s) => s.elements.map((e) => e.name));
+      expect(new Set(names).size).toBe(names.length);
+    }
+  });
+
+  it("every ready-made dashboard has a generated template loader", () => {
+    expect(Object.keys(READY_MADE_TEMPLATES).sort()).toEqual([...READY_MADE_KEYS].sort());
   });
 
   it("every report definition has a generated template loader", () => {

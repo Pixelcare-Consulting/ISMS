@@ -29,4 +29,6 @@ export const saveCustomDashboardTemplateSchema = z.object({
 
 export const customDashboardIdSchema = z.object({ id });
 
+export const copyReadyMadeDashboardSchema = z.object({ key: z.string().trim().min(1).max(64) });
+
 export type CustomDashboardDetailsInput = z.input<typeof customDashboardDetailsSchema>;

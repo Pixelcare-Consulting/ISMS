@@ -1,10 +1,10 @@
 {
   "ReportVersion": "2026.4.1",
-  "ReportGuid": "2aeb736173454cf7794659378832d849",
+  "ReportGuid": "f9d6eca300f4f55bd3f30262bb9e9f1c",
   "ReportName": "daily-stock",
   "ReportAlias": "Daily Stock",
-  "ReportCreated": "/Date(1792383321000+0800)/",
-  "ReportChanged": "/Date(1792383321000+0800)/",
+  "ReportCreated": "/Date(1792384725000+0800)/",
+  "ReportChanged": "/Date(1792384725000+0800)/",
   "EngineVersion": "EngineV2",
   "ReportUnit": "Centimeters",
   "ScriptLanguage": "CSharp",
@@ -75,7 +75,7 @@
     "0": {
       "Ident": "StiPage",
       "Name": "Page1",
-      "Guid": "faba86369fb89d8cccafea53b86f7e68",
+      "Guid": "ab4b472d789405e573d80c4eefdde279",
       "Interaction": {
         "Ident": "StiInteraction"
       },

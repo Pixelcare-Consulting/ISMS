@@ -5,7 +5,7 @@ const isoDate = z
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD");
 
 /**
- * One filter shape for every dataset so a report, the Analytics dashboard and
+ * One filter shape for every dataset so a report, a ready-made dashboard and
  * a custom dashboard can share a single filter bar. Each loader reads only
  * the fields it needs.
  */

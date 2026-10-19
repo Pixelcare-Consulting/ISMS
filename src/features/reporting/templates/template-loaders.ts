@@ -1,3 +1,4 @@
+import type { ReadyMadeDashboardKey } from "@/features/custom-dashboards/ready-made/ready-made-dashboards";
 import type { ReportKey } from "@/features/reporting/reports/report-definitions";
 
 /**
@@ -14,4 +15,8 @@ export const REPORT_TEMPLATES: Record<ReportKey, () => TemplateModule> = {
   inventory: () => import("./reports/inventory.mrt.json"),
 };
 
-export const loadAnalyticsTemplate = (): TemplateModule => import("./dashboards/analytics.mrt.json");
+export const READY_MADE_TEMPLATES: Record<ReadyMadeDashboardKey, () => TemplateModule> = {
+  "sales-trends": () => import("./dashboards/ready-made/sales-trends.mrt.json"),
+  "inventory-health": () => import("./dashboards/ready-made/inventory-health.mrt.json"),
+  "orders-logistics": () => import("./dashboards/ready-made/orders-logistics.mrt.json"),
+};

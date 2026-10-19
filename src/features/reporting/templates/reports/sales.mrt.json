@@ -1,10 +1,10 @@
 {
   "ReportVersion": "2026.4.1",
-  "ReportGuid": "635ba9be84bcc79d4ddd677ba3f0a475",
+  "ReportGuid": "efcc5e8b2ab3b66c2718fc6f960a0f4c",
   "ReportName": "sales",
   "ReportAlias": "Sales & Returns",
-  "ReportCreated": "/Date(1792383321000+0800)/",
-  "ReportChanged": "/Date(1792383321000+0800)/",
+  "ReportCreated": "/Date(1792384725000+0800)/",
+  "ReportChanged": "/Date(1792384725000+0800)/",
   "EngineVersion": "EngineV2",
   "ReportUnit": "Centimeters",
   "ScriptLanguage": "CSharp",
@@ -111,7 +111,7 @@
     "0": {
       "Ident": "StiPage",
       "Name": "Page1",
-      "Guid": "cb2849089f1c00e930cdf9571524c612",
+      "Guid": "4d0585b0c3d3962d1b32a25d6ea27b2e",
       "Interaction": {
         "Ident": "StiInteraction"
       },

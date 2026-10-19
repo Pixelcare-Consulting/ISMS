@@ -1,0 +1,870 @@
+{
+  "ReportVersion": "2026.4.1",
+  "ReportGuid": "7810a35bc406cc6d0744bf25172e9b3e",
+  "ReportName": "inventory-health",
+  "ReportAlias": "Inventory Health",
+  "ReportCreated": "/Date(1792384725000+0800)/",
+  "ReportChanged": "/Date(1792384725000+0800)/",
+  "EngineVersion": "EngineV2",
+  "ReportUnit": "Centimeters",
+  "ScriptLanguage": "CSharp",
+  "UsePlatformDependentScript": false,
+  "CalculationMode": "Interpretation",
+  "Dictionary": {
+    "DataSources": {
+      "0": {
+        "Ident": "StiDataTableSource",
+        "Name": "inventory_detail",
+        "Alias": "inventory_detail",
+        "Columns": {
+          "0": {
+            "Name": "dealer",
+            "NameInSource": "dealer",
+            "Alias": "Dealer",
+            "Type": "System.String"
+          },
+          "1": {
+            "Name": "branch",
+            "NameInSource": "branch",
+            "Alias": "Branch",
+            "Type": "System.String"
+          },
+          "2": {
+            "Name": "dealerType",
+            "NameInSource": "dealerType",
+            "Alias": "Dealer Type",
+            "Type": "System.String"
+          },
+          "3": {
+            "Name": "modeOfPayment",
+            "NameInSource": "modeOfPayment",
+            "Alias": "Mode of Payment",
+            "Type": "System.String"
+          },
+          "4": {
+            "Name": "area",
+            "NameInSource": "area",
+            "Alias": "Area",
+            "Type": "System.String"
+          },
+          "5": {
+            "Name": "dealerArea",
+            "NameInSource": "dealerArea",
+            "Alias": "Dealer Area",
+            "Type": "System.String"
+          },
+          "6": {
+            "Name": "branchArea",
+            "NameInSource": "branchArea",
+            "Alias": "Branch Area",
+            "Type": "System.String"
+          },
+          "7": {
+            "Name": "serialNo",
+            "NameInSource": "serialNo",
+            "Alias": "Serial No",
+            "Type": "System.String"
+          },
+          "8": {
+            "Name": "skuCode",
+            "NameInSource": "skuCode",
+            "Alias": "SKU",
+            "Type": "System.String"
+          },
+          "9": {
+            "Name": "model",
+            "NameInSource": "model",
+            "Alias": "Model",
+            "Type": "System.String"
+          },
+          "10": {
+            "Name": "status",
+            "NameInSource": "status",
+            "Alias": "Status",
+            "Type": "System.String"
+          },
+          "11": {
+            "Name": "drNo",
+            "NameInSource": "drNo",
+            "Alias": "DR No",
+            "Type": "System.String"
+          },
+          "12": {
+            "Name": "drDate",
+            "NameInSource": "drDate",
+            "Alias": "DR Date",
+            "Type": "System.DateTime"
+          },
+          "13": {
+            "Name": "agingDays",
+            "NameInSource": "agingDays",
+            "Alias": "Aging (days)",
+            "Type": "System.Decimal"
+          },
+          "14": {
+            "Name": "countRemark",
+            "NameInSource": "countRemark",
+            "Alias": "Latest Count Remark",
+            "Type": "System.String"
+          },
+          "15": {
+            "Name": "agingBucket",
+            "NameInSource": "agingBucket",
+            "Alias": "Aging Bucket",
+            "Type": "System.String"
+          }
+        },
+        "NameInSource": "inventory_detail.inventory_detail"
+      }
+    }
+  },
+  "Pages": {
+    "0": {
+      "Ident": "StiDashboard",
+      "Name": "inventoryhealth",
+      "Guid": "a6eceb479afe8e1814e5a4ca643249fc",
+      "Alias": "Inventory Health",
+      "Interaction": {
+        "Ident": "StiInteraction"
+      },
+      "Brush": "solid:",
+      "Components": {
+        "0": {
+          "Ident": "StiTextElement",
+          "Name": "InventoryBranchFilterLabel",
+          "Guid": "c6f37709620eee4c630b54d5284a7e4b",
+          "ClientRectangle": "0,0,96,40",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "0,0,96,40",
+          "AltTitleVisible": false,
+          "DashboardInteraction": {
+            "Ident": "Text",
+            "OnHover": "ShowToolTip",
+            "OnClick": "OpenHyperlink",
+            "HyperlinkDestination": "NewTab"
+          },
+          "Text": "<font size=\"12\"><b>Branch</b></font>",
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;",
+          "Title": {
+            "Text": "Text",
+            "Visible": false
+          }
+        },
+        "1": {
+          "Ident": "StiComboBoxElement",
+          "Name": "InventoryBranchFilter",
+          "Guid": "954b0a35f6620a90938e1fe70e862835",
+          "ClientRectangle": "96,0,299,40",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "96,0,384,40",
+          "ShowAllValue": true,
+          "SelectionMode": "Multi",
+          "NameMeter": {
+            "Ident": "NameComboBoxMeter",
+            "Key": "InventoryBranchFilterName",
+            "Expression": "inventory_detail.branch",
+            "Label": "Branch"
+          },
+          "KeyMeter": {
+            "Ident": "KeyComboBoxMeter",
+            "Key": "InventoryBranchFilterKey",
+            "Expression": "inventory_detail.branch",
+            "Label": "Branch"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;",
+          "DashboardInteraction": {
+            "Ident": "Filter",
+            "OnHover": "ShowToolTip",
+            "OnClick": "ApplyFilter",
+            "HyperlinkDestination": "NewTab"
+          }
+        },
+        "2": {
+          "Ident": "StiTextElement",
+          "Name": "InventoryAreaFilterLabel",
+          "Guid": "4af5397961572c0f56e338b093cbf9a9",
+          "ClientRectangle": "403,0,96,40",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "0,48,96,40",
+          "AltTitleVisible": false,
+          "DashboardInteraction": {
+            "Ident": "Text",
+            "OnHover": "ShowToolTip",
+            "OnClick": "OpenHyperlink",
+            "HyperlinkDestination": "NewTab"
+          },
+          "Text": "<font size=\"12\"><b>Area</b></font>",
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;",
+          "Title": {
+            "Text": "Text",
+            "Visible": false
+          }
+        },
+        "3": {
+          "Ident": "StiComboBoxElement",
+          "Name": "InventoryAreaFilter",
+          "Guid": "203d1a172e1239ef2a45f4a66f9c2719",
+          "ClientRectangle": "499,0,299,40",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "96,48,384,40",
+          "ShowAllValue": true,
+          "SelectionMode": "Multi",
+          "NameMeter": {
+            "Ident": "NameComboBoxMeter",
+            "Key": "InventoryAreaFilterName",
+            "Expression": "inventory_detail.area",
+            "Label": "Area"
+          },
+          "KeyMeter": {
+            "Ident": "KeyComboBoxMeter",
+            "Key": "InventoryAreaFilterKey",
+            "Expression": "inventory_detail.area",
+            "Label": "Area"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;",
+          "DashboardInteraction": {
+            "Ident": "Filter",
+            "OnHover": "ShowToolTip",
+            "OnClick": "ApplyFilter",
+            "HyperlinkDestination": "NewTab"
+          }
+        },
+        "4": {
+          "Ident": "StiIndicatorElement",
+          "Name": "InventoryUnits",
+          "Guid": "d83e2042ee05aaed9d7a722e3cc3679e",
+          "ClientRectangle": "0,48,294,120",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "0,96,236,150",
+          "TextFormat": {
+            "Ident": "StiNumberFormatService",
+            "NegativePattern": 1,
+            "DecimalDigits": 0,
+            "GroupSeparator": ",",
+            "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+          },
+          "TargetFormat": {
+            "Ident": "StiPercentageFormatService",
+            "DecimalDigits": 2,
+            "GroupSeparator": ",",
+            "Symbol": "%"
+          },
+          "Value": {
+            "Ident": "ValueIndicatorMeter",
+            "Key": "InventoryUnitsValue",
+            "Expression": "Count(inventory_detail.serialNo)",
+            "Label": "Units in stock"
+          },
+          "Title": {
+            "Text": "Units in stock"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;",
+          "DashboardInteraction": {
+            "Ident": "Indicator",
+            "OnHover": "ShowToolTip",
+            "OnClick": "None",
+            "HyperlinkDestination": "NewTab"
+          }
+        },
+        "5": {
+          "Ident": "StiIndicatorElement",
+          "Name": "InventoryAvgAging",
+          "Guid": "b5f72af9c1ae6d721dbbfe403f97c59c",
+          "ClientRectangle": "302,48,294,120",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "244,96,236,150",
+          "TextFormat": {
+            "Ident": "StiNumberFormatService",
+            "NegativePattern": 1,
+            "DecimalDigits": 0,
+            "GroupSeparator": ",",
+            "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+          },
+          "TargetFormat": {
+            "Ident": "StiPercentageFormatService",
+            "DecimalDigits": 2,
+            "GroupSeparator": ",",
+            "Symbol": "%"
+          },
+          "Value": {
+            "Ident": "ValueIndicatorMeter",
+            "Key": "InventoryAvgAgingValue",
+            "Expression": "Avg(inventory_detail.agingDays)",
+            "Label": "Average aging (days)"
+          },
+          "Title": {
+            "Text": "Average aging (days)"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;",
+          "DashboardInteraction": {
+            "Ident": "Indicator",
+            "OnHover": "ShowToolTip",
+            "OnClick": "None",
+            "HyperlinkDestination": "NewTab"
+          }
+        },
+        "6": {
+          "Ident": "StiIndicatorElement",
+          "Name": "InventoryBranches",
+          "Guid": "b2102f84bc9fa13c181f11ae728b97e1",
+          "ClientRectangle": "604,48,294,120",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "0,254,236,150",
+          "TextFormat": {
+            "Ident": "StiNumberFormatService",
+            "NegativePattern": 1,
+            "DecimalDigits": 0,
+            "GroupSeparator": ",",
+            "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+          },
+          "TargetFormat": {
+            "Ident": "StiPercentageFormatService",
+            "DecimalDigits": 2,
+            "GroupSeparator": ",",
+            "Symbol": "%"
+          },
+          "Value": {
+            "Ident": "ValueIndicatorMeter",
+            "Key": "InventoryBranchesValue",
+            "Expression": "DistinctCount(inventory_detail.branch)",
+            "Label": "Branches with stock"
+          },
+          "Title": {
+            "Text": "Branches with stock"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;",
+          "DashboardInteraction": {
+            "Ident": "Indicator",
+            "OnHover": "ShowToolTip",
+            "OnClick": "None",
+            "HyperlinkDestination": "NewTab"
+          }
+        },
+        "7": {
+          "Ident": "StiIndicatorElement",
+          "Name": "InventoryModels",
+          "Guid": "2ce2ab4efaa0cb26fce72c89afbdc12b",
+          "ClientRectangle": "906,48,294,120",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "244,254,236,150",
+          "TextFormat": {
+            "Ident": "StiNumberFormatService",
+            "NegativePattern": 1,
+            "DecimalDigits": 0,
+            "GroupSeparator": ",",
+            "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+          },
+          "TargetFormat": {
+            "Ident": "StiPercentageFormatService",
+            "DecimalDigits": 2,
+            "GroupSeparator": ",",
+            "Symbol": "%"
+          },
+          "Value": {
+            "Ident": "ValueIndicatorMeter",
+            "Key": "InventoryModelsValue",
+            "Expression": "DistinctCount(inventory_detail.skuCode)",
+            "Label": "Models in stock"
+          },
+          "Title": {
+            "Text": "Models in stock"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;",
+          "DashboardInteraction": {
+            "Ident": "Indicator",
+            "OnHover": "ShowToolTip",
+            "OnClick": "None",
+            "HyperlinkDestination": "NewTab"
+          }
+        },
+        "8": {
+          "Ident": "StiChartElement",
+          "Name": "InventoryAgingBuckets",
+          "Guid": "f43ac30ae79de2697dec6c48a7fd8165",
+          "ClientRectangle": "0,176,596,340",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "0,412,480,300",
+          "Values": {
+            "0": {
+              "Ident": "ValueChartMeter",
+              "Key": "InventoryAgingBucketsValue",
+              "Expression": "Count(inventory_detail.serialNo)",
+              "Label": "Units by aging"
+            }
+          },
+          "Arguments": {
+            "0": {
+              "Ident": "ArgumentChartMeter",
+              "Key": "InventoryAgingBucketsArgument",
+              "Expression": "inventory_detail.agingBucket",
+              "Label": "Aging Bucket"
+            }
+          },
+          "DashboardInteraction": {
+            "Ident": "Chart",
+            "OnHover": "ShowToolTip",
+            "OnClick": "ApplyFilter",
+            "HyperlinkDestination": "NewTab"
+          },
+          "Title": {
+            "Text": "Units by aging"
+          },
+          "ManuallyEnteredChartMeter": {
+            "Ident": "ValueChartMeter",
+            "Key": "aa7683f53d04fa0c3dabe20f18eb73ba"
+          },
+          "ArgumentFormat": {
+            "Ident": "StiGeneralFormatService"
+          },
+          "ValueFormat": {
+            "Ident": "StiNumberFormatService",
+            "NegativePattern": 1,
+            "DecimalDigits": 0,
+            "GroupSeparator": ",",
+            "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+          },
+          "Area": {
+            "SideBySide": true,
+            "GridLinesHor": {
+              "Color": "Transparent"
+            },
+            "GridLinesVert": {
+              "Color": "Transparent"
+            },
+            "InterlacingHor": {
+              "Color": "Transparent"
+            },
+            "InterlacingVert": {
+              "Color": "Transparent"
+            },
+            "Indicator": {
+              "Title": {
+                "Text": ""
+              }
+            }
+          },
+          "Labels": {
+            "Position": "None"
+          },
+          "Options3D": {
+            "Opacity": 1,
+            "Lighting": "Gradient"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;"
+        },
+        "9": {
+          "Ident": "StiChartElement",
+          "Name": "InventoryDealerType",
+          "Guid": "1d7892b24ba6e8c48403de01da1380d5",
+          "ClientRectangle": "604,176,596,340",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "0,720,480,300",
+          "Values": {
+            "0": {
+              "Ident": "ValueChartMeter",
+              "Key": "InventoryDealerTypeValue",
+              "Expression": "Count(inventory_detail.serialNo)",
+              "Label": "Units by dealer type",
+              "SeriesType": "Doughnut"
+            }
+          },
+          "Arguments": {
+            "0": {
+              "Ident": "ArgumentChartMeter",
+              "Key": "InventoryDealerTypeArgument",
+              "Expression": "inventory_detail.dealerType",
+              "Label": "Dealer Type"
+            }
+          },
+          "DashboardInteraction": {
+            "Ident": "Chart",
+            "OnHover": "ShowToolTip",
+            "OnClick": "ApplyFilter",
+            "HyperlinkDestination": "NewTab"
+          },
+          "Title": {
+            "Text": "Units by dealer type"
+          },
+          "ManuallyEnteredChartMeter": {
+            "Ident": "ValueChartMeter",
+            "Key": "3d2a3c8cf385fc10159a2ffd96973ccc"
+          },
+          "ArgumentFormat": {
+            "Ident": "StiGeneralFormatService"
+          },
+          "ValueFormat": {
+            "Ident": "StiNumberFormatService",
+            "NegativePattern": 1,
+            "DecimalDigits": 0,
+            "GroupSeparator": ",",
+            "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+          },
+          "Area": {
+            "SideBySide": true,
+            "GridLinesHor": {
+              "Color": "Transparent"
+            },
+            "GridLinesVert": {
+              "Color": "Transparent"
+            },
+            "InterlacingHor": {
+              "Color": "Transparent"
+            },
+            "InterlacingVert": {
+              "Color": "Transparent"
+            },
+            "Indicator": {
+              "Title": {
+                "Text": ""
+              }
+            }
+          },
+          "Labels": {
+            "DoughnutPosition": "None",
+            "Position": "None"
+          },
+          "Options3D": {
+            "Opacity": 1,
+            "Lighting": "Gradient"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;"
+        },
+        "10": {
+          "Ident": "StiChartElement",
+          "Name": "InventoryTopBranches",
+          "Guid": "fb1826d62046e4edada9bceb84b60837",
+          "ClientRectangle": "0,524,596,340",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "0,1028,480,300",
+          "TransformSorts": {
+            "0": {
+              "Key": "InventoryTopBranchesValue",
+              "Direction": "Descending"
+            }
+          },
+          "Values": {
+            "0": {
+              "Ident": "ValueChartMeter",
+              "Key": "InventoryTopBranchesValue",
+              "Expression": "Count(inventory_detail.serialNo)",
+              "Label": "Top 10 branches by units",
+              "SeriesType": "ClusteredBar"
+            }
+          },
+          "Arguments": {
+            "0": {
+              "Ident": "ArgumentChartMeter",
+              "Key": "InventoryTopBranchesArgument",
+              "Expression": "inventory_detail.branch",
+              "Label": "Branch"
+            }
+          },
+          "TopN": {
+            "Mode": "Top",
+            "Count": 10,
+            "ShowOthers": false,
+            "MeasureField": "InventoryTopBranchesValue"
+          },
+          "DashboardInteraction": {
+            "Ident": "Chart",
+            "OnHover": "ShowToolTip",
+            "OnClick": "ApplyFilter",
+            "HyperlinkDestination": "NewTab"
+          },
+          "Title": {
+            "Text": "Top 10 branches by units"
+          },
+          "ManuallyEnteredChartMeter": {
+            "Ident": "ValueChartMeter",
+            "Key": "c7351911efb92a083f90ee9d53482dc9"
+          },
+          "ArgumentFormat": {
+            "Ident": "StiGeneralFormatService"
+          },
+          "ValueFormat": {
+            "Ident": "StiNumberFormatService",
+            "NegativePattern": 1,
+            "DecimalDigits": 0,
+            "GroupSeparator": ",",
+            "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+          },
+          "Area": {
+            "SideBySide": true,
+            "GridLinesHor": {
+              "Color": "Transparent"
+            },
+            "GridLinesVert": {
+              "Color": "Transparent"
+            },
+            "InterlacingHor": {
+              "Color": "Transparent"
+            },
+            "InterlacingVert": {
+              "Color": "Transparent"
+            },
+            "Indicator": {
+              "Title": {
+                "Text": ""
+              }
+            }
+          },
+          "Labels": {
+            "Position": "None"
+          },
+          "Options3D": {
+            "Opacity": 1,
+            "Lighting": "Gradient"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;"
+        },
+        "11": {
+          "Ident": "StiChartElement",
+          "Name": "InventoryTopModels",
+          "Guid": "35e68010cc8c4a3caf1e5e30aeefe5fb",
+          "ClientRectangle": "604,524,596,340",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "0,1336,480,300",
+          "TransformSorts": {
+            "0": {
+              "Key": "InventoryTopModelsValue",
+              "Direction": "Descending"
+            }
+          },
+          "Values": {
+            "0": {
+              "Ident": "ValueChartMeter",
+              "Key": "InventoryTopModelsValue",
+              "Expression": "Count(inventory_detail.serialNo)",
+              "Label": "Top 10 models by units",
+              "SeriesType": "ClusteredBar"
+            }
+          },
+          "Arguments": {
+            "0": {
+              "Ident": "ArgumentChartMeter",
+              "Key": "InventoryTopModelsArgument",
+              "Expression": "inventory_detail.model",
+              "Label": "Model"
+            }
+          },
+          "TopN": {
+            "Mode": "Top",
+            "Count": 10,
+            "ShowOthers": false,
+            "MeasureField": "InventoryTopModelsValue"
+          },
+          "DashboardInteraction": {
+            "Ident": "Chart",
+            "OnHover": "ShowToolTip",
+            "OnClick": "ApplyFilter",
+            "HyperlinkDestination": "NewTab"
+          },
+          "Title": {
+            "Text": "Top 10 models by units"
+          },
+          "ManuallyEnteredChartMeter": {
+            "Ident": "ValueChartMeter",
+            "Key": "329ea245ff3a2d33ee3c91295d6baabe"
+          },
+          "ArgumentFormat": {
+            "Ident": "StiGeneralFormatService"
+          },
+          "ValueFormat": {
+            "Ident": "StiNumberFormatService",
+            "NegativePattern": 1,
+            "DecimalDigits": 0,
+            "GroupSeparator": ",",
+            "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+          },
+          "Area": {
+            "SideBySide": true,
+            "GridLinesHor": {
+              "Color": "Transparent"
+            },
+            "GridLinesVert": {
+              "Color": "Transparent"
+            },
+            "InterlacingHor": {
+              "Color": "Transparent"
+            },
+            "InterlacingVert": {
+              "Color": "Transparent"
+            },
+            "Indicator": {
+              "Title": {
+                "Text": ""
+              }
+            }
+          },
+          "Labels": {
+            "Position": "None"
+          },
+          "Options3D": {
+            "Opacity": 1,
+            "Lighting": "Gradient"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;"
+        },
+        "12": {
+          "Ident": "StiTableElement",
+          "Name": "InventoryBranchTable",
+          "Guid": "5778c486508a7c77ff3d57d9a40961ef",
+          "ClientRectangle": "0,872,1200,360",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "0,1644,480,320",
+          "Columns": {
+            "0": {
+              "Ident": "DimensionColumn",
+              "Key": "InventoryBranchTable_branch",
+              "Expression": "inventory_detail.branch",
+              "Label": "Branch",
+              "Size": {
+                "MinWidth": 30,
+                "MaxWidth": 300,
+                "MaxHeight": 300
+              },
+              "DashboardInteraction": {
+                "Ident": "TableColumn",
+                "OnHover": "None",
+                "OnClick": "None",
+                "HyperlinkDestination": "NewTab"
+              }
+            },
+            "1": {
+              "Ident": "DimensionColumn",
+              "Key": "InventoryBranchTable_area",
+              "Expression": "inventory_detail.area",
+              "Label": "Area",
+              "Size": {
+                "MinWidth": 30,
+                "MaxWidth": 300,
+                "MaxHeight": 300
+              },
+              "DashboardInteraction": {
+                "Ident": "TableColumn",
+                "OnHover": "None",
+                "OnClick": "None",
+                "HyperlinkDestination": "NewTab"
+              }
+            },
+            "2": {
+              "Ident": "MeasureColumn",
+              "Key": "InventoryBranchTable_serialNo",
+              "Expression": "Count(inventory_detail.serialNo)",
+              "Label": "Units",
+              "TextFormat": {
+                "Ident": "StiNumberFormatService",
+                "NegativePattern": 1,
+                "DecimalDigits": 0,
+                "GroupSeparator": ",",
+                "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+              },
+              "Size": {
+                "MinWidth": 30,
+                "MaxWidth": 300,
+                "MaxHeight": 300
+              },
+              "DashboardInteraction": {
+                "Ident": "TableColumn",
+                "OnHover": "None",
+                "OnClick": "None",
+                "HyperlinkDestination": "NewTab"
+              }
+            },
+            "3": {
+              "Ident": "MeasureColumn",
+              "Key": "InventoryBranchTable_agingDays",
+              "Expression": "Avg(inventory_detail.agingDays)",
+              "Label": "Avg aging (days)",
+              "TextFormat": {
+                "Ident": "StiNumberFormatService",
+                "NegativePattern": 1,
+                "DecimalDigits": 0,
+                "GroupSeparator": ",",
+                "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+              },
+              "Size": {
+                "MinWidth": 30,
+                "MaxWidth": 300,
+                "MaxHeight": 300
+              },
+              "DashboardInteraction": {
+                "Ident": "TableColumn",
+                "OnHover": "None",
+                "OnClick": "None",
+                "HyperlinkDestination": "NewTab"
+              }
+            }
+          },
+          "HeaderFont": ";10;;",
+          "FooterFont": ";10;;",
+          "Title": {
+            "Text": "Stock and aging by branch"
+          },
+          "DashboardInteraction": {
+            "Ident": "Table",
+            "OnHover": "ShowToolTip",
+            "OnClick": "ApplyFilter",
+            "HyperlinkDestination": "NewTab"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;"
+        }
+      },
+      "Height": 1240,
+      "Border": ";;2;;;;;solid:Black",
+      "AltSize": "480,1972"
+    }
+  }
+}

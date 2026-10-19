@@ -20,6 +20,26 @@ interface CustomDashboardViewerProps {
 
 type Range = { from: string; to: string };
 
+/** Viewer toolbar height, in layout units, added to the frame's aspect ratio. */
+const TOOLBAR_ALLOWANCE = 48;
+
+/**
+ * Stimulsoft scales a dashboard to fit its frame, so the frame takes the
+ * dashboard's own aspect ratio (desktop size, and the mobile layout size when
+ * one was designed). Defaults match Stimulsoft's new-dashboard canvas.
+ */
+function templateCanvas(template: Record<string, unknown>) {
+  const page = (template.Pages as Record<string, { Width?: number; Height?: number; AltSize?: string }> | undefined)?.["0"];
+  const width = Number(page?.Width) || 1200;
+  const height = Number(page?.Height) || 600;
+  const [altWidth, altHeight] = String(page?.AltSize ?? "").split(",").map(Number);
+  const mobile = altWidth > 0 && altHeight > 0 ? { width: altWidth, height: altHeight } : { width, height };
+  return {
+    desktopRatio: `${width} / ${height + TOOLBAR_ALLOWANCE}`,
+    mobileRatio: `${mobile.width} / ${mobile.height + TOOLBAR_ALLOWANCE}`,
+  };
+}
+
 type LoadOutcome =
   | { status: "ERROR"; message: string }
   | { status: "READY"; rows: Partial<Record<DatasetKey, DatasetRow[]>>; denied: DatasetKey[]; truncated: boolean };
@@ -27,6 +47,8 @@ type LoadOutcome =
 /** Renders a saved layout with data loaded under the viewer's own access. */
 export function CustomDashboardViewer({ template }: CustomDashboardViewerProps) {
   const keys = useMemo(() => templateDatasetKeys(template), [template]);
+  const hasDatedData = keys.some((key) => DATASET_CATALOG[key].dashboardDateRange);
+  const canvas = useMemo(() => templateCanvas(template), [template]);
   const [draft, setDraft] = useState<Range>(() => defaultDashboardRange());
   const [range, setRange] = useState<Range>(draft);
   const [loaded, setLoaded] = useState<{ range: Range; outcome: LoadOutcome } | null>(null);
@@ -39,22 +61,33 @@ export function CustomDashboardViewer({ template }: CustomDashboardViewerProps) 
       if (!cancelled) setLoaded({ range, outcome: next });
     };
 
-    loadDatasetsAction({ keys, params: range, skipDenied: true })
-      .then((result) => {
-        if (!result.success) {
-          settle({ status: "ERROR", message: result.error });
-          return;
-        }
+    // The date range only applies to period datasets; point-in-time ones load as of now.
+    const dated = keys.filter((key) => DATASET_CATALOG[key].dashboardDateRange);
+    const current = keys.filter((key) => !DATASET_CATALOG[key].dashboardDateRange);
+    Promise.all([
+      dated.length > 0 ? loadDatasetsAction({ keys: dated, params: range, skipDenied: true }) : null,
+      current.length > 0 ? loadDatasetsAction({ keys: current, skipDenied: true }) : null,
+    ])
+      .then((results) => {
         const rows: Partial<Record<DatasetKey, DatasetRow[]>> = {};
+        const denied: DatasetKey[] = [];
         let truncated = false;
-        for (const [key, data] of Object.entries(result.datasets)) {
-          if (!data) continue;
-          rows[key as DatasetKey] = data.rows;
-          truncated ||= data.truncated;
+        for (const result of results) {
+          if (!result) continue;
+          if (!result.success) {
+            settle({ status: "ERROR", message: result.error });
+            return;
+          }
+          for (const [key, data] of Object.entries(result.datasets)) {
+            if (!data) continue;
+            rows[key as DatasetKey] = data.rows;
+            truncated ||= data.truncated;
+          }
+          denied.push(...result.denied);
         }
         // Denied datasets still bind (empty) so their elements render blank, not broken.
-        for (const key of result.denied) rows[key] = [];
-        settle({ status: "READY", rows, denied: result.denied, truncated });
+        for (const key of denied) rows[key] = [];
+        settle({ status: "READY", rows, denied, truncated });
       })
       .catch((error: unknown) => {
         console.error("[custom-dashboards] load failed", error);
@@ -88,39 +121,41 @@ export function CustomDashboardViewer({ template }: CustomDashboardViewerProps) 
 
   return (
     <div className="space-y-4">
-      <form
-        className="flex flex-wrap items-end gap-4 rounded-xl border bg-card p-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          setRange({ ...draft });
-        }}
-      >
-        <div className="space-y-2">
-          <Label htmlFor="custom-dashboard-from">From</Label>
-          <Input
-            id="custom-dashboard-from"
-            type="date"
-            value={draft.from}
-            max={draft.to}
-            onChange={(e) => setDraft((d) => ({ ...d, from: e.target.value }))}
-            required
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="custom-dashboard-to">To</Label>
-          <Input
-            id="custom-dashboard-to"
-            type="date"
-            value={draft.to}
-            min={draft.from}
-            onChange={(e) => setDraft((d) => ({ ...d, to: e.target.value }))}
-            required
-          />
-        </div>
-        <Button type="submit" variant="outline">
-          Apply dates
-        </Button>
-      </form>
+      {hasDatedData ? (
+        <form
+          className="flex flex-wrap items-end gap-4 rounded-xl border bg-card p-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setRange({ ...draft });
+          }}
+        >
+          <div className="space-y-2">
+            <Label htmlFor="custom-dashboard-from">From</Label>
+            <Input
+              id="custom-dashboard-from"
+              type="date"
+              value={draft.from}
+              max={draft.to}
+              onChange={(e) => setDraft((d) => ({ ...d, from: e.target.value }))}
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="custom-dashboard-to">To</Label>
+            <Input
+              id="custom-dashboard-to"
+              type="date"
+              value={draft.to}
+              min={draft.from}
+              onChange={(e) => setDraft((d) => ({ ...d, to: e.target.value }))}
+              required
+            />
+          </div>
+          <Button type="submit" variant="outline">
+            Apply dates
+          </Button>
+        </form>
+      ) : null}
 
       {!outcome ? (
         <div className="flex min-h-60 items-center justify-center rounded-xl border bg-card text-sm text-muted-foreground">
@@ -145,11 +180,20 @@ export function CustomDashboardViewer({ template }: CustomDashboardViewerProps) 
           {ready.truncated ? (
             <p className="text-sm text-muted-foreground">Some datasets hit the row limit. Narrow the dates to see everything.</p>
           ) : null}
-          <StimulsoftViewer
-            variant="DASHBOARD"
-            frameClassName="h-[calc(100dvh-16rem)] min-h-[560px]"
-            createReport={createReport}
-          />
+          <div
+            style={
+              {
+                "--sti-desktop-ratio": canvas.desktopRatio,
+                "--sti-mobile-ratio": canvas.mobileRatio,
+              } as React.CSSProperties
+            }
+          >
+            <StimulsoftViewer
+              variant="DASHBOARD"
+              frameClassName="[aspect-ratio:var(--sti-mobile-ratio)] md:[aspect-ratio:var(--sti-desktop-ratio)]"
+              createReport={createReport}
+            />
+          </div>
         </>
       ) : null}
     </div>

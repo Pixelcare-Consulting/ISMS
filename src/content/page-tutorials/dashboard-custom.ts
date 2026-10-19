@@ -11,12 +11,13 @@ export const DASHBOARD_CUSTOM_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "What this page is for",
       description:
-        "Custom Dashboards lists the dashboards you built and the ones colleagues shared with the company.",
+        "Custom Dashboards has ready-made dashboards for everyone, plus the dashboards you built and the ones colleagues shared with the company.",
     },
     {
       title: "Building a dashboard",
       bullets: [
-        "Choose New dashboard, name it, then add charts, tables and indicators in the designer.",
+        "Open a ready-made dashboard and choose Copy and customize to make your own editable version.",
+        "Or choose New dashboard, name it, then add charts, tables and indicators in the designer.",
         "Drag fields from the ISMS datasets in the Dictionary panel onto an element, then Save.",
         "Set up a separate phone layout from the designer's mobile view so it reads well on small screens.",
       ],

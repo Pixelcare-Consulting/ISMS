@@ -1,10 +1,10 @@
 {
   "ReportVersion": "2026.4.1",
-  "ReportGuid": "4d59f98e4e5d11b6efc1958402a9740d",
+  "ReportGuid": "81cc91b32406fb4ee2f8a4cdd744d761",
   "ReportName": "inventory",
   "ReportAlias": "Inventory",
-  "ReportCreated": "/Date(1792383321000+0800)/",
-  "ReportChanged": "/Date(1792383321000+0800)/",
+  "ReportCreated": "/Date(1792384725000+0800)/",
+  "ReportChanged": "/Date(1792384725000+0800)/",
   "EngineVersion": "EngineV2",
   "ReportUnit": "Centimeters",
   "ScriptLanguage": "CSharp",
@@ -145,6 +145,12 @@
             "NameInSource": "countRemark",
             "Alias": "Latest Count Remark",
             "Type": "System.String"
+          },
+          "15": {
+            "Name": "agingBucket",
+            "NameInSource": "agingBucket",
+            "Alias": "Aging Bucket",
+            "Type": "System.String"
           }
         },
         "NameInSource": "inventory_detail.inventory_detail"
@@ -155,7 +161,7 @@
     "0": {
       "Ident": "StiPage",
       "Name": "Page1",
-      "Guid": "c933890b99032775be2c09a34b0c982b",
+      "Guid": "afd88d7d133332943c7c4934fe981541",
       "Interaction": {
         "Ident": "StiInteraction"
       },

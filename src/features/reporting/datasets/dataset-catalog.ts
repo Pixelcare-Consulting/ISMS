@@ -17,8 +17,12 @@ export interface DatasetColumn {
 export interface DatasetMeta {
   label: string;
   description: string;
-  /** Row-level datasets can be picked in the custom dashboard designer. */
-  group: "REPORT" | "ANALYTICS";
+  /**
+   * Whether a dashboard's From/To range applies. Point-in-time datasets
+   * (current stock, KPI snapshots) ignore it so a dashboard date picker
+   * doesn't silently hide current stock.
+   */
+  dashboardDateRange: boolean;
   columns: readonly DatasetColumn[];
 }
 
@@ -33,7 +37,7 @@ export const DATASET_CATALOG = {
   sales_lines: {
     label: "Sales lines",
     description: "Branch sales with serial numbers and ATR/return status.",
-    group: "REPORT",
+    dashboardDateRange: true,
     columns: [
       date("date", "Date"),
       str("transactionNo", "Transaction No"),
@@ -53,7 +57,7 @@ export const DATASET_CATALOG = {
   transfers: {
     label: "Transfers",
     description: "Branch-to-branch transfers with status.",
-    group: "REPORT",
+    dashboardDateRange: true,
     columns: [
       str("transferNo", "Transfer No"),
       str("fromBranch", "From Branch"),
@@ -66,7 +70,7 @@ export const DATASET_CATALOG = {
   processed_orders: {
     label: "Processed orders",
     description: "Approved branch order lines with SPA approval details.",
-    group: "REPORT",
+    dashboardDateRange: true,
     columns: [
       date("dateProcessed", "Date Processed"),
       str("dealerName", "Dealer"),
@@ -89,7 +93,7 @@ export const DATASET_CATALOG = {
   daily_stock: {
     label: "Daily stock",
     description: "Planogram shelf max vs on-hand and sold quantity for one day.",
-    group: "REPORT",
+    dashboardDateRange: false,
     columns: [
       date("date", "Date"),
       str("branch", "Branch"),
@@ -103,7 +107,7 @@ export const DATASET_CATALOG = {
   inventory_detail: {
     label: "Inventory serials",
     description: "Branch inventory per serial with dealer classification, DR and aging.",
-    group: "REPORT",
+    dashboardDateRange: false,
     columns: [
       str("dealer", "Dealer"),
       str("branch", "Branch"),
@@ -120,18 +124,20 @@ export const DATASET_CATALOG = {
       date("drDate", "DR Date"),
       num("agingDays", "Aging (days)"),
       str("countRemark", "Latest Count Remark"),
+      // Derived on the server from agingDays (see AGING_BUCKETS).
+      str("agingBucket", "Aging Bucket"),
     ],
   },
   inventory_summary: {
     label: "Inventory summary",
     description: "Inventory quantity per branch, SKU and status.",
-    group: "REPORT",
+    dashboardDateRange: false,
     columns: [str("branch", "Branch"), str("skuCode", "SKU"), str("status", "Status"), num("qty", "Qty")],
   },
   ops_kpis: {
     label: "Operations KPIs",
     description: "Single-row operations counters (same as the Operations dashboard).",
-    group: "ANALYTICS",
+    dashboardDateRange: false,
     columns: [
       num("pendingOrderApprovals", "Pending Approvals"),
       num("deliveryInTransit", "Delivery In Transit"),
@@ -148,19 +154,19 @@ export const DATASET_CATALOG = {
   inventory_by_status: {
     label: "Inventory by status",
     description: "Serial count per inventory status.",
-    group: "ANALYTICS",
+    dashboardDateRange: false,
     columns: STATUS_COUNT_COLUMNS,
   },
   orders_by_status: {
     label: "Orders by status",
     description: "Branch order count per status.",
-    group: "ANALYTICS",
+    dashboardDateRange: false,
     columns: STATUS_COUNT_COLUMNS,
   },
   sales_kpis: {
     label: "Sales KPIs",
     description: "Single-row sales counters for the current month.",
-    group: "ANALYTICS",
+    dashboardDateRange: false,
     columns: [
       num("salesThisMonth", "Sales This Month"),
       num("saleAmountThisMonth", "Sale Amount This Month"),
@@ -171,25 +177,25 @@ export const DATASET_CATALOG = {
   sale_status_mix: {
     label: "Sale status mix",
     description: "Serial count per sale status.",
-    group: "ANALYTICS",
+    dashboardDateRange: false,
     columns: STATUS_COUNT_COLUMNS,
   },
   atr_return_pipeline: {
     label: "ATR and return pipeline",
     description: "ATR and return request count per stage.",
-    group: "ANALYTICS",
+    dashboardDateRange: false,
     columns: STATUS_COUNT_COLUMNS,
   },
   top_branches: {
     label: "Top branches",
     description: "Branches ranked by sale amount this month.",
-    group: "ANALYTICS",
+    dashboardDateRange: false,
     columns: RANKING_COLUMNS,
   },
   top_models: {
     label: "Top models",
     description: "Models ranked by units sold this month.",
-    group: "ANALYTICS",
+    dashboardDateRange: false,
     columns: RANKING_COLUMNS,
   },
 } as const satisfies Record<string, DatasetMeta>;
@@ -204,3 +210,15 @@ export function isDatasetKey(value: string): value is DatasetKey {
 
 export type DatasetRow = Record<string, string | number | null>;
 
+/** Aging buckets for inventory_detail.agingBucket; labels sort in bucket order. */
+export const AGING_BUCKETS = [
+  { maxDays: 30, label: "0-30 days" },
+  { maxDays: 60, label: "31-60 days" },
+  { maxDays: 90, label: "61-90 days" },
+  { maxDays: 180, label: "91-180 days" },
+  { maxDays: Number.POSITIVE_INFINITY, label: "Over 180 days" },
+] as const;
+
+export function agingBucketLabel(days: number): string {
+  return (AGING_BUCKETS.find((bucket) => days <= bucket.maxDays) ?? AGING_BUCKETS[AGING_BUCKETS.length - 1]).label;
+}

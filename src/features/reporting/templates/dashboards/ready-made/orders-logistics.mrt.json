@@ -1,0 +1,855 @@
+{
+  "ReportVersion": "2026.4.1",
+  "ReportGuid": "4dff9e83c491c656b2b5f18c1e6dbffc",
+  "ReportName": "orders-logistics",
+  "ReportAlias": "Orders & Logistics",
+  "ReportCreated": "/Date(1792384725000+0800)/",
+  "ReportChanged": "/Date(1792384725000+0800)/",
+  "EngineVersion": "EngineV2",
+  "ReportUnit": "Centimeters",
+  "ScriptLanguage": "CSharp",
+  "UsePlatformDependentScript": false,
+  "CalculationMode": "Interpretation",
+  "Dictionary": {
+    "DataSources": {
+      "0": {
+        "Ident": "StiDataTableSource",
+        "Name": "ops_kpis",
+        "Alias": "ops_kpis",
+        "Columns": {
+          "0": {
+            "Name": "pendingOrderApprovals",
+            "NameInSource": "pendingOrderApprovals",
+            "Alias": "Pending Approvals",
+            "Type": "System.Decimal"
+          },
+          "1": {
+            "Name": "deliveryInTransit",
+            "NameInSource": "deliveryInTransit",
+            "Alias": "Delivery In Transit",
+            "Type": "System.Decimal"
+          },
+          "2": {
+            "Name": "stockCount",
+            "NameInSource": "stockCount",
+            "Alias": "Stock On Hand",
+            "Type": "System.Decimal"
+          },
+          "3": {
+            "Name": "openAtr",
+            "NameInSource": "openAtr",
+            "Alias": "Open ATR",
+            "Type": "System.Decimal"
+          },
+          "4": {
+            "Name": "belowPlanogramCapacity",
+            "NameInSource": "belowPlanogramCapacity",
+            "Alias": "Below Planogram",
+            "Type": "System.Decimal"
+          },
+          "5": {
+            "Name": "milBreaches",
+            "NameInSource": "milBreaches",
+            "Alias": "MIL Breaches",
+            "Type": "System.Decimal"
+          },
+          "6": {
+            "Name": "allocationGapCount",
+            "NameInSource": "allocationGapCount",
+            "Alias": "Allocation Gaps",
+            "Type": "System.Decimal"
+          },
+          "7": {
+            "Name": "draftSuggestedOrders",
+            "NameInSource": "draftSuggestedOrders",
+            "Alias": "Draft Suggested Orders",
+            "Type": "System.Decimal"
+          },
+          "8": {
+            "Name": "ordersThisMonth",
+            "NameInSource": "ordersThisMonth",
+            "Alias": "Orders This Month",
+            "Type": "System.Decimal"
+          },
+          "9": {
+            "Name": "salesThisMonth",
+            "NameInSource": "salesThisMonth",
+            "Alias": "Sales This Month",
+            "Type": "System.Decimal"
+          }
+        },
+        "NameInSource": "ops_kpis.ops_kpis"
+      },
+      "1": {
+        "Ident": "StiDataTableSource",
+        "Name": "processed_orders",
+        "Alias": "processed_orders",
+        "Columns": {
+          "0": {
+            "Name": "dateProcessed",
+            "NameInSource": "dateProcessed",
+            "Alias": "Date Processed",
+            "Type": "System.DateTime"
+          },
+          "1": {
+            "Name": "dealerName",
+            "NameInSource": "dealerName",
+            "Alias": "Dealer",
+            "Type": "System.String"
+          },
+          "2": {
+            "Name": "branch",
+            "NameInSource": "branch",
+            "Alias": "Branch",
+            "Type": "System.String"
+          },
+          "3": {
+            "Name": "brand",
+            "NameInSource": "brand",
+            "Alias": "Brand",
+            "Type": "System.String"
+          },
+          "4": {
+            "Name": "soNumber",
+            "NameInSource": "soNumber",
+            "Alias": "SO",
+            "Type": "System.String"
+          },
+          "5": {
+            "Name": "skuCode",
+            "NameInSource": "skuCode",
+            "Alias": "SKU",
+            "Type": "System.String"
+          },
+          "6": {
+            "Name": "orderedQty",
+            "NameInSource": "orderedQty",
+            "Alias": "Ordered Qty",
+            "Type": "System.Decimal"
+          },
+          "7": {
+            "Name": "approvedQty",
+            "NameInSource": "approvedQty",
+            "Alias": "Approved Qty",
+            "Type": "System.Decimal"
+          },
+          "8": {
+            "Name": "orderRemarks",
+            "NameInSource": "orderRemarks",
+            "Alias": "Order Remarks",
+            "Type": "System.String"
+          },
+          "9": {
+            "Name": "spaRemarks",
+            "NameInSource": "spaRemarks",
+            "Alias": "SPA Remarks",
+            "Type": "System.String"
+          },
+          "10": {
+            "Name": "lastUpdatedBy",
+            "NameInSource": "lastUpdatedBy",
+            "Alias": "Last Updated By",
+            "Type": "System.String"
+          },
+          "11": {
+            "Name": "spaApprovedBy",
+            "NameInSource": "spaApprovedBy",
+            "Alias": "SPA Approved By",
+            "Type": "System.String"
+          },
+          "12": {
+            "Name": "spaApprovedAt",
+            "NameInSource": "spaApprovedAt",
+            "Alias": "SPA Approved At",
+            "Type": "System.String"
+          },
+          "13": {
+            "Name": "deliveryDueDate",
+            "NameInSource": "deliveryDueDate",
+            "Alias": "Delivery Due Date",
+            "Type": "System.DateTime"
+          },
+          "14": {
+            "Name": "totalCbm",
+            "NameInSource": "totalCbm",
+            "Alias": "Total CBM",
+            "Type": "System.Decimal"
+          },
+          "15": {
+            "Name": "area",
+            "NameInSource": "area",
+            "Alias": "Area",
+            "Type": "System.String"
+          }
+        },
+        "NameInSource": "processed_orders.processed_orders"
+      },
+      "2": {
+        "Ident": "StiDataTableSource",
+        "Name": "transfers",
+        "Alias": "transfers",
+        "Columns": {
+          "0": {
+            "Name": "transferNo",
+            "NameInSource": "transferNo",
+            "Alias": "Transfer No",
+            "Type": "System.String"
+          },
+          "1": {
+            "Name": "fromBranch",
+            "NameInSource": "fromBranch",
+            "Alias": "From Branch",
+            "Type": "System.String"
+          },
+          "2": {
+            "Name": "toBranch",
+            "NameInSource": "toBranch",
+            "Alias": "To Branch",
+            "Type": "System.String"
+          },
+          "3": {
+            "Name": "status",
+            "NameInSource": "status",
+            "Alias": "Status",
+            "Type": "System.String"
+          },
+          "4": {
+            "Name": "date",
+            "NameInSource": "date",
+            "Alias": "Date",
+            "Type": "System.DateTime"
+          },
+          "5": {
+            "Name": "notes",
+            "NameInSource": "notes",
+            "Alias": "Notes",
+            "Type": "System.String"
+          }
+        },
+        "NameInSource": "transfers.transfers"
+      },
+      "3": {
+        "Ident": "StiDataTableSource",
+        "Name": "orders_by_status",
+        "Alias": "orders_by_status",
+        "Columns": {
+          "0": {
+            "Name": "code",
+            "NameInSource": "code",
+            "Alias": "Code",
+            "Type": "System.String"
+          },
+          "1": {
+            "Name": "name",
+            "NameInSource": "name",
+            "Alias": "Status",
+            "Type": "System.String"
+          },
+          "2": {
+            "Name": "count",
+            "NameInSource": "count",
+            "Alias": "Count",
+            "Type": "System.Decimal"
+          }
+        },
+        "NameInSource": "orders_by_status.orders_by_status"
+      }
+    }
+  },
+  "Pages": {
+    "0": {
+      "Ident": "StiDashboard",
+      "Name": "orderslogistics",
+      "Guid": "12d2f4dc4db4fa6236d24951b4d83d83",
+      "Alias": "Orders & Logistics",
+      "Interaction": {
+        "Ident": "StiInteraction"
+      },
+      "Brush": "solid:",
+      "Components": {
+        "0": {
+          "Ident": "StiIndicatorElement",
+          "Name": "OpsPending",
+          "Guid": "41c1388bae4bba49a78f23eec6fb1618",
+          "ClientRectangle": "0,0,294,120",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "0,0,236,150",
+          "TextFormat": {
+            "Ident": "StiNumberFormatService",
+            "NegativePattern": 1,
+            "DecimalDigits": 0,
+            "GroupSeparator": ",",
+            "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+          },
+          "TargetFormat": {
+            "Ident": "StiPercentageFormatService",
+            "DecimalDigits": 2,
+            "GroupSeparator": ",",
+            "Symbol": "%"
+          },
+          "Value": {
+            "Ident": "ValueIndicatorMeter",
+            "Key": "OpsPendingValue",
+            "Expression": "Sum(ops_kpis.pendingOrderApprovals)",
+            "Label": "Pending approvals"
+          },
+          "Title": {
+            "Text": "Pending approvals"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;",
+          "DashboardInteraction": {
+            "Ident": "Indicator",
+            "OnHover": "ShowToolTip",
+            "OnClick": "None",
+            "HyperlinkDestination": "NewTab"
+          }
+        },
+        "1": {
+          "Ident": "StiIndicatorElement",
+          "Name": "OpsInTransit",
+          "Guid": "051d4c1f12023edf321a72d4ae16cdef",
+          "ClientRectangle": "302,0,294,120",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "244,0,236,150",
+          "TextFormat": {
+            "Ident": "StiNumberFormatService",
+            "NegativePattern": 1,
+            "DecimalDigits": 0,
+            "GroupSeparator": ",",
+            "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+          },
+          "TargetFormat": {
+            "Ident": "StiPercentageFormatService",
+            "DecimalDigits": 2,
+            "GroupSeparator": ",",
+            "Symbol": "%"
+          },
+          "Value": {
+            "Ident": "ValueIndicatorMeter",
+            "Key": "OpsInTransitValue",
+            "Expression": "Sum(ops_kpis.deliveryInTransit)",
+            "Label": "Delivery in transit"
+          },
+          "Title": {
+            "Text": "Delivery in transit"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;",
+          "DashboardInteraction": {
+            "Ident": "Indicator",
+            "OnHover": "ShowToolTip",
+            "OnClick": "None",
+            "HyperlinkDestination": "NewTab"
+          }
+        },
+        "2": {
+          "Ident": "StiIndicatorElement",
+          "Name": "OpsApprovedQty",
+          "Guid": "a3abeb31cb27f0c9a9c55e511d95938e",
+          "ClientRectangle": "604,0,294,120",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "0,158,236,150",
+          "TextFormat": {
+            "Ident": "StiNumberFormatService",
+            "NegativePattern": 1,
+            "DecimalDigits": 0,
+            "GroupSeparator": ",",
+            "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+          },
+          "TargetFormat": {
+            "Ident": "StiPercentageFormatService",
+            "DecimalDigits": 2,
+            "GroupSeparator": ",",
+            "Symbol": "%"
+          },
+          "Value": {
+            "Ident": "ValueIndicatorMeter",
+            "Key": "OpsApprovedQtyValue",
+            "Expression": "Sum(processed_orders.approvedQty)",
+            "Label": "Approved qty"
+          },
+          "Title": {
+            "Text": "Approved qty"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;",
+          "DashboardInteraction": {
+            "Ident": "Indicator",
+            "OnHover": "ShowToolTip",
+            "OnClick": "None",
+            "HyperlinkDestination": "NewTab"
+          }
+        },
+        "3": {
+          "Ident": "StiIndicatorElement",
+          "Name": "OpsTransfers",
+          "Guid": "c307cb175b5186603e7b394dcf854128",
+          "ClientRectangle": "906,0,294,120",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "244,158,236,150",
+          "TextFormat": {
+            "Ident": "StiNumberFormatService",
+            "NegativePattern": 1,
+            "DecimalDigits": 0,
+            "GroupSeparator": ",",
+            "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+          },
+          "TargetFormat": {
+            "Ident": "StiPercentageFormatService",
+            "DecimalDigits": 2,
+            "GroupSeparator": ",",
+            "Symbol": "%"
+          },
+          "Value": {
+            "Ident": "ValueIndicatorMeter",
+            "Key": "OpsTransfersValue",
+            "Expression": "DistinctCount(transfers.transferNo)",
+            "Label": "Transfers"
+          },
+          "Title": {
+            "Text": "Transfers"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;",
+          "DashboardInteraction": {
+            "Ident": "Indicator",
+            "OnHover": "ShowToolTip",
+            "OnClick": "None",
+            "HyperlinkDestination": "NewTab"
+          }
+        },
+        "4": {
+          "Ident": "StiChartElement",
+          "Name": "OpsApprovedDaily",
+          "Guid": "8984a73a8aedcd05414bb7e0c0d4b005",
+          "ClientRectangle": "0,128,1200,360",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "0,316,480,320",
+          "Values": {
+            "0": {
+              "Ident": "ValueChartMeter",
+              "Key": "OpsApprovedDailyValue",
+              "Expression": "Sum(processed_orders.approvedQty)",
+              "Label": "Approved quantity by day"
+            }
+          },
+          "Arguments": {
+            "0": {
+              "Ident": "ArgumentChartMeter",
+              "Key": "OpsApprovedDailyArgument",
+              "Expression": "processed_orders.dateProcessed",
+              "Label": "Date Processed"
+            }
+          },
+          "DashboardInteraction": {
+            "Ident": "Chart",
+            "OnHover": "ShowToolTip",
+            "OnClick": "ApplyFilter",
+            "HyperlinkDestination": "NewTab"
+          },
+          "Title": {
+            "Text": "Approved quantity by day"
+          },
+          "ManuallyEnteredChartMeter": {
+            "Ident": "ValueChartMeter",
+            "Key": "ad406a147de2455532d602dede1f37c4"
+          },
+          "ArgumentFormat": {
+            "Ident": "StiDateFormatService",
+            "StringFormat": "yyyy-MM-dd",
+            "NullDisplay": ""
+          },
+          "ValueFormat": {
+            "Ident": "StiNumberFormatService",
+            "NegativePattern": 1,
+            "DecimalDigits": 0,
+            "GroupSeparator": ",",
+            "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+          },
+          "Area": {
+            "SideBySide": true,
+            "GridLinesHor": {
+              "Color": "Transparent"
+            },
+            "GridLinesVert": {
+              "Color": "Transparent"
+            },
+            "InterlacingHor": {
+              "Color": "Transparent"
+            },
+            "InterlacingVert": {
+              "Color": "Transparent"
+            },
+            "Indicator": {
+              "Title": {
+                "Text": ""
+              }
+            }
+          },
+          "Labels": {
+            "Position": "None"
+          },
+          "Options3D": {
+            "Opacity": 1,
+            "Lighting": "Gradient"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;"
+        },
+        "5": {
+          "Ident": "StiChartElement",
+          "Name": "OpsOrdersByStatus",
+          "Guid": "3d602495c4b67a56088f1139a21473c7",
+          "ClientRectangle": "0,496,596,340",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "0,644,480,300",
+          "Values": {
+            "0": {
+              "Ident": "ValueChartMeter",
+              "Key": "OpsOrdersByStatusValue",
+              "Expression": "Sum(orders_by_status.count)",
+              "Label": "Orders by status (current)",
+              "SeriesType": "ClusteredBar"
+            }
+          },
+          "Arguments": {
+            "0": {
+              "Ident": "ArgumentChartMeter",
+              "Key": "OpsOrdersByStatusArgument",
+              "Expression": "orders_by_status.name",
+              "Label": "Status"
+            }
+          },
+          "DashboardInteraction": {
+            "Ident": "Chart",
+            "OnHover": "ShowToolTip",
+            "OnClick": "ApplyFilter",
+            "HyperlinkDestination": "NewTab"
+          },
+          "Title": {
+            "Text": "Orders by status (current)"
+          },
+          "ManuallyEnteredChartMeter": {
+            "Ident": "ValueChartMeter",
+            "Key": "b9efcd79794a7e0156fbaf9c5f953011"
+          },
+          "ArgumentFormat": {
+            "Ident": "StiGeneralFormatService"
+          },
+          "ValueFormat": {
+            "Ident": "StiNumberFormatService",
+            "NegativePattern": 1,
+            "DecimalDigits": 0,
+            "GroupSeparator": ",",
+            "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+          },
+          "Area": {
+            "SideBySide": true,
+            "GridLinesHor": {
+              "Color": "Transparent"
+            },
+            "GridLinesVert": {
+              "Color": "Transparent"
+            },
+            "InterlacingHor": {
+              "Color": "Transparent"
+            },
+            "InterlacingVert": {
+              "Color": "Transparent"
+            },
+            "Indicator": {
+              "Title": {
+                "Text": ""
+              }
+            }
+          },
+          "Labels": {
+            "Position": "None"
+          },
+          "Options3D": {
+            "Opacity": 1,
+            "Lighting": "Gradient"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;"
+        },
+        "6": {
+          "Ident": "StiChartElement",
+          "Name": "OpsTransfersByStatus",
+          "Guid": "a2fdabc77fb77cbc901ab8f03f858666",
+          "ClientRectangle": "604,496,596,340",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "0,952,480,300",
+          "Values": {
+            "0": {
+              "Ident": "ValueChartMeter",
+              "Key": "OpsTransfersByStatusValue",
+              "Expression": "DistinctCount(transfers.transferNo)",
+              "Label": "Transfers by status",
+              "SeriesType": "Doughnut"
+            }
+          },
+          "Arguments": {
+            "0": {
+              "Ident": "ArgumentChartMeter",
+              "Key": "OpsTransfersByStatusArgument",
+              "Expression": "transfers.status",
+              "Label": "Status"
+            }
+          },
+          "DashboardInteraction": {
+            "Ident": "Chart",
+            "OnHover": "ShowToolTip",
+            "OnClick": "ApplyFilter",
+            "HyperlinkDestination": "NewTab"
+          },
+          "Title": {
+            "Text": "Transfers by status"
+          },
+          "ManuallyEnteredChartMeter": {
+            "Ident": "ValueChartMeter",
+            "Key": "66d1f54d10ceace78b14847f2f4385f3"
+          },
+          "ArgumentFormat": {
+            "Ident": "StiGeneralFormatService"
+          },
+          "ValueFormat": {
+            "Ident": "StiNumberFormatService",
+            "NegativePattern": 1,
+            "DecimalDigits": 0,
+            "GroupSeparator": ",",
+            "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+          },
+          "Area": {
+            "SideBySide": true,
+            "GridLinesHor": {
+              "Color": "Transparent"
+            },
+            "GridLinesVert": {
+              "Color": "Transparent"
+            },
+            "InterlacingHor": {
+              "Color": "Transparent"
+            },
+            "InterlacingVert": {
+              "Color": "Transparent"
+            },
+            "Indicator": {
+              "Title": {
+                "Text": ""
+              }
+            }
+          },
+          "Labels": {
+            "DoughnutPosition": "None",
+            "Position": "None"
+          },
+          "Options3D": {
+            "Opacity": 1,
+            "Lighting": "Gradient"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;"
+        },
+        "7": {
+          "Ident": "StiChartElement",
+          "Name": "OpsTopBranches",
+          "Guid": "83dcf87d4c91bc19191f0bab19d7a115",
+          "ClientRectangle": "0,844,596,340",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "0,1260,480,300",
+          "TransformSorts": {
+            "0": {
+              "Key": "OpsTopBranchesValue",
+              "Direction": "Descending"
+            }
+          },
+          "Values": {
+            "0": {
+              "Ident": "ValueChartMeter",
+              "Key": "OpsTopBranchesValue",
+              "Expression": "Sum(processed_orders.approvedQty)",
+              "Label": "Top 10 branches by approved qty",
+              "SeriesType": "ClusteredBar"
+            }
+          },
+          "Arguments": {
+            "0": {
+              "Ident": "ArgumentChartMeter",
+              "Key": "OpsTopBranchesArgument",
+              "Expression": "processed_orders.branch",
+              "Label": "Branch"
+            }
+          },
+          "TopN": {
+            "Mode": "Top",
+            "Count": 10,
+            "ShowOthers": false,
+            "MeasureField": "OpsTopBranchesValue"
+          },
+          "DashboardInteraction": {
+            "Ident": "Chart",
+            "OnHover": "ShowToolTip",
+            "OnClick": "ApplyFilter",
+            "HyperlinkDestination": "NewTab"
+          },
+          "Title": {
+            "Text": "Top 10 branches by approved qty"
+          },
+          "ManuallyEnteredChartMeter": {
+            "Ident": "ValueChartMeter",
+            "Key": "ca274da23872c6edd0f692746554f8f2"
+          },
+          "ArgumentFormat": {
+            "Ident": "StiGeneralFormatService"
+          },
+          "ValueFormat": {
+            "Ident": "StiNumberFormatService",
+            "NegativePattern": 1,
+            "DecimalDigits": 0,
+            "GroupSeparator": ",",
+            "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+          },
+          "Area": {
+            "SideBySide": true,
+            "GridLinesHor": {
+              "Color": "Transparent"
+            },
+            "GridLinesVert": {
+              "Color": "Transparent"
+            },
+            "InterlacingHor": {
+              "Color": "Transparent"
+            },
+            "InterlacingVert": {
+              "Color": "Transparent"
+            },
+            "Indicator": {
+              "Title": {
+                "Text": ""
+              }
+            }
+          },
+          "Labels": {
+            "Position": "None"
+          },
+          "Options3D": {
+            "Opacity": 1,
+            "Lighting": "Gradient"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;"
+        },
+        "8": {
+          "Ident": "StiChartElement",
+          "Name": "OpsApprovedByBrand",
+          "Guid": "c834f9dac6d717d5b82f20ff722d901a",
+          "ClientRectangle": "604,844,596,340",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "0,1568,480,300",
+          "Values": {
+            "0": {
+              "Ident": "ValueChartMeter",
+              "Key": "OpsApprovedByBrandValue",
+              "Expression": "Sum(processed_orders.approvedQty)",
+              "Label": "Approved qty by brand",
+              "SeriesType": "Doughnut"
+            }
+          },
+          "Arguments": {
+            "0": {
+              "Ident": "ArgumentChartMeter",
+              "Key": "OpsApprovedByBrandArgument",
+              "Expression": "processed_orders.brand",
+              "Label": "Brand"
+            }
+          },
+          "DashboardInteraction": {
+            "Ident": "Chart",
+            "OnHover": "ShowToolTip",
+            "OnClick": "ApplyFilter",
+            "HyperlinkDestination": "NewTab"
+          },
+          "Title": {
+            "Text": "Approved qty by brand"
+          },
+          "ManuallyEnteredChartMeter": {
+            "Ident": "ValueChartMeter",
+            "Key": "2975af87191d7641c906c0f6c0b1b1e5"
+          },
+          "ArgumentFormat": {
+            "Ident": "StiGeneralFormatService"
+          },
+          "ValueFormat": {
+            "Ident": "StiNumberFormatService",
+            "NegativePattern": 1,
+            "DecimalDigits": 0,
+            "GroupSeparator": ",",
+            "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+          },
+          "Area": {
+            "SideBySide": true,
+            "GridLinesHor": {
+              "Color": "Transparent"
+            },
+            "GridLinesVert": {
+              "Color": "Transparent"
+            },
+            "InterlacingHor": {
+              "Color": "Transparent"
+            },
+            "InterlacingVert": {
+              "Color": "Transparent"
+            },
+            "Indicator": {
+              "Title": {
+                "Text": ""
+              }
+            }
+          },
+          "Labels": {
+            "DoughnutPosition": "None",
+            "Position": "None"
+          },
+          "Options3D": {
+            "Opacity": 1,
+            "Lighting": "Gradient"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;"
+        }
+      },
+      "Height": 1192,
+      "Border": ";;2;;;;;solid:Black",
+      "AltSize": "480,1876"
+    }
+  }
+}
