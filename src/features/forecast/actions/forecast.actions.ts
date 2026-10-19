@@ -238,18 +238,11 @@ export async function generateSuggestedOrdersAction(periodId: string) {
 }
 
 export async function submitSuggestedOrdersAction() {
-  const session = await requireForecastManage();
-
-  try {
-    const orders = await suggestedOrderService.submitDraftOrdersForReview(
-      session.user.tenantId,
-      session.user.id,
-    );
-    revalidatePlanning();
-    return { success: true as const, orders };
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : "Submit failed" };
-  }
+  await requireForecastManage();
+  return {
+    error:
+      "Shelf-gap drafts are no longer submitted from here. Auto replenish suggestions come from a released Supply Planning run via Suggested Orders.",
+  };
 }
 
 export async function listDraftSuggestedOrdersAction(input?: {

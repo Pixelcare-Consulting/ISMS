@@ -67,9 +67,16 @@ const FIELDS: Array<{
   },
 ];
 
+type SaveAssistantPolicy = (
+  input: AiAssistantPolicyInput,
+) => Promise<{ error?: string; success?: boolean }>;
+
 export function AiAssistantPolicyForm(props: {
   initialValues: AiAssistantPolicyInput;
   canEdit: boolean;
+  /** Defaults to the signed-in company's settings action. */
+  savePolicy?: SaveAssistantPolicy;
+  readOnlyMessage?: string;
 }) {
   const router = useRouter();
   const [enabled, setEnabled] = useState(props.initialValues.enabled);
@@ -98,7 +105,8 @@ export function AiAssistantPolicyForm(props: {
     event.preventDefault();
     if (!props.canEdit) return;
     startTransition(async () => {
-      const result = await updateAiAssistantPolicyAction({ enabled, ...limits });
+      const save = props.savePolicy ?? updateAiAssistantPolicyAction;
+      const result = await save({ enabled, ...limits });
       if (result.error) {
         toast.error("Could not save assistant settings", { description: result.error });
         return;
@@ -147,7 +155,7 @@ export function AiAssistantPolicyForm(props: {
         </Button>
       ) : (
         <p className="text-sm text-muted-foreground">
-          Contact a company admin to turn the assistant on.
+          {props.readOnlyMessage ?? "Contact a company admin to turn the assistant on."}
         </p>
       )}
     </form>

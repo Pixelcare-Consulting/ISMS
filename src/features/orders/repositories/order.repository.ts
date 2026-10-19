@@ -221,7 +221,11 @@ export const orderRepository = {
     });
   },
 
-  /** Replace an order's lines and restart its approval chain from the top. */
+  /**
+   * Replace an order's lines and restart its approval chain from the top.
+   * Lines that stay on the same model keep their id so suggestion allocations survive.
+   * `syncAllocations` runs inside the lock of this transaction and may reject the edit.
+   */
   async updateLines(
     tenantId: string,
     orderId: string,
@@ -229,12 +233,67 @@ export const orderRepository = {
       orderType: BranchOrderType;
       details: { modelId: string; quantity: number; amount?: number | null }[];
     },
+    hooks?: {
+      syncAllocations?: (tx: Prisma.TransactionClient) => Promise<Record<string, number>>;
+    },
   ) {
     const approvalChain = getOrderApprovalChain(data.orderType);
     const initialStatus = getInitialOrderStatus(data.orderType);
 
     return prisma.$transaction(async (tx) => {
-      await tx.branchOrderDetail.deleteMany({ where: { orderId } });
+      const allocationQtyByDetailId = hooks?.syncAllocations
+        ? await hooks.syncAllocations(tx)
+        : {};
+
+      const existing = await tx.branchOrderDetail.findMany({
+        where: { orderId },
+        select: { id: true, modelId: true },
+      });
+      const byModel = new Map<string, string>();
+      const removeIds = new Set<string>();
+      for (const detail of existing) {
+        if (byModel.has(detail.modelId)) {
+          removeIds.add(detail.id);
+          continue;
+        }
+        byModel.set(detail.modelId, detail.id);
+      }
+
+      const nextModelIds = new Set(data.details.map((line) => line.modelId));
+      for (const detail of existing) {
+        if (!nextModelIds.has(detail.modelId)) removeIds.add(detail.id);
+      }
+      if (removeIds.size > 0) {
+        await tx.branchOrderDetail.deleteMany({ where: { id: { in: [...removeIds] } } });
+      }
+
+      for (const line of data.details) {
+        const detailId = byModel.get(line.modelId);
+        if (detailId && !removeIds.has(detailId)) {
+          await tx.branchOrderDetail.update({
+            where: { id: detailId },
+            data: { quantity: line.quantity, amount: line.amount ?? null },
+          });
+          const nextAllocated = allocationQtyByDetailId[detailId];
+          if (nextAllocated != null) {
+            await tx.orderSuggestionAllocation.update({
+              where: { orderDetailId: detailId },
+              data: { allocatedQty: nextAllocated },
+            });
+          }
+          continue;
+        }
+
+        await tx.branchOrderDetail.create({
+          data: {
+            orderId,
+            modelId: line.modelId,
+            quantity: line.quantity,
+            amount: line.amount ?? null,
+          },
+        });
+      }
+
       await tx.branchOrderApprovalLevel.deleteMany({ where: { orderId } });
 
       return tx.branchOrder.update({
@@ -245,13 +304,6 @@ export const orderRepository = {
           processedAt: null,
           spaRemarks: null,
           deliveryDueDate: null,
-          details: {
-            create: data.details.map((line) => ({
-              modelId: line.modelId,
-              quantity: line.quantity,
-              amount: line.amount ?? null,
-            })),
-          },
           approvalLevels: {
             create: approvalChain.map((step) => ({
               level: step.level,
@@ -273,11 +325,17 @@ export const orderRepository = {
     tenantId: string,
     orderId: string,
     orderType: BranchOrderType,
+    hooks?: {
+      beforeStatusChange?: (tx: Prisma.TransactionClient) => Promise<void>;
+    },
   ) {
     const approvalChain = getOrderApprovalChain(orderType);
     const initialStatus = getInitialOrderStatus(orderType);
 
     return prisma.$transaction(async (tx) => {
+      if (hooks?.beforeStatusChange) {
+        await hooks.beforeStatusChange(tx);
+      }
       await tx.branchOrderApprovalLevel.deleteMany({ where: { orderId } });
 
       return tx.branchOrder.update({

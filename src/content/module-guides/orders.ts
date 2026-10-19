@@ -42,9 +42,12 @@ export const SPECIAL_ORDERS_MODULE_GUIDE: ModuleGuideContent = {
 export const AUTO_REPLENISH_ORDERS_MODULE_GUIDE: ModuleGuideContent = {
   title: "Auto replenish orders",
   description:
-    "Review suggested restock from Settings → Planning. This page shows Orders and Order History only — there is no Create order or Order Analytics here. Approval is Team Leader → Supply Planning. Logistics fulfills only after Supply Planning’s final approval.",
+    "Review suggestions from Suggested Orders on this screen. They become a draft when you add them, and they are not submitted until you submit that draft. This page shows Orders and Order History. Approval is Team Leader, then Supply Planning. Logistics fulfills only after Supply Planning’s final approval.",
   tips: [
-    { label: "Orders from Supply Planning Release land here already waiting for Team Leader" },
+    {
+      label:
+        "Open Suggested Orders, choose a branch, and add the quantities you want. The order stays a draft until you submit it",
+    },
     {
       label:
         "Draft rows from Suggested orders can be discarded with Delete before Submit for review — submitted orders use Review to reject or cancel instead",
