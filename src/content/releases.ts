@@ -66,6 +66,45 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.74.4",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T19:50:00+08:00",
+    title: "Easier Branch Inventory lists",
+    highlights: [
+      "Branch Inventory groups are easier to scan.",
+      "Serial lists no longer repeat the branch and model already shown above them.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Branch Inventory groups are easier to scan, and serial lists no longer repeat the branch and model already shown above them.",
+      },
+    ],
+  },
+  {
+    version: "0.74.3",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T19:15:00+08:00",
+    title: "Finden icon in the browser",
+    highlights: [
+      "The browser tab, bookmarks, and phone home screen show the Finden icon.",
+      "Product lists and the dashboard open faster when several people use them at the same time.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "The browser tab, bookmarks, and phone home screen show the Finden icon.",
+      },
+      {
+        type: "fix",
+        description:
+          "Product lists and the dashboard open faster. When several people open them at the same time, they share one load instead of each person waiting on their own.",
+      },
+    ],
+  },
+  {
     version: "0.74.2",
     date: "2026-10-16",
     releasedAt: "2026-10-16T17:40:00+08:00",

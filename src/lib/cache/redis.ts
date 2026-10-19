@@ -41,14 +41,28 @@ export function cacheKey(...parts: string[]): string {
 const LOCAL_MAX_TTL_MS = 30_000;
 const LOCAL_MAX_ENTRIES = 500;
 
+type LocalEntry = { value: unknown; expiresAt: number; gen: number };
+
 const globalForLocalCache = globalThis as unknown as {
-  appLocalCache: Map<string, { value: unknown; expiresAt: number }> | undefined;
+  appLocalCache: Map<string, LocalEntry> | undefined;
+  /** In-flight `getOrSet` loads, so concurrent misses share one fetch. */
+  appCacheInflight: Map<string, Promise<unknown>> | undefined;
+  /** Bumped by `deleteCache` so a load still in flight does not write the key back. */
+  appCacheInflightGen: Map<string, number> | undefined;
 };
 
-const localCache =
-  globalForLocalCache.appLocalCache ??
-  new Map<string, { value: unknown; expiresAt: number }>();
+const localCache = globalForLocalCache.appLocalCache ?? new Map<string, LocalEntry>();
 globalForLocalCache.appLocalCache = localCache;
+
+const inflight = globalForLocalCache.appCacheInflight ?? new Map<string, Promise<unknown>>();
+globalForLocalCache.appCacheInflight = inflight;
+
+const inflightGen = globalForLocalCache.appCacheInflightGen ?? new Map<string, number>();
+globalForLocalCache.appCacheInflightGen = inflightGen;
+
+function generation(key: string): number {
+  return inflightGen.get(key) ?? 0;
+}
 
 function localGet<T>(key: string): { hit: true; value: T } | { hit: false } {
   const entry = localCache.get(key);
@@ -60,11 +74,11 @@ function localGet<T>(key: string): { hit: true; value: T } | { hit: false } {
   return { hit: true, value: entry.value as T };
 }
 
-function localSet(key: string, value: unknown, ttlSeconds: number): void {
+function localSet(key: string, value: unknown, ttlSeconds: number, gen = generation(key)): void {
   const ttlMs = Math.min(ttlSeconds * 1000, LOCAL_MAX_TTL_MS);
   if (ttlMs <= 0) return;
   localCache.delete(key);
-  localCache.set(key, { value, expiresAt: Date.now() + ttlMs });
+  localCache.set(key, { value, expiresAt: Date.now() + ttlMs, gen });
   while (localCache.size > LOCAL_MAX_ENTRIES) {
     const oldest = localCache.keys().next();
     if (oldest.done) break;
@@ -72,45 +86,103 @@ function localSet(key: string, value: unknown, ttlSeconds: number): void {
   }
 }
 
+/** Keep a value only when this load was not invalidated while it was running. */
+function storeLocal(key: string, value: unknown, ttlSeconds: number, gen: number): boolean {
+  if (generation(key) !== gen) return false;
+  localSet(key, value, ttlSeconds, gen);
+  return true;
+}
+
+function dropLocalIfGen(key: string, gen: number): void {
+  const entry = localCache.get(key);
+  if (entry && entry.gen === gen) localCache.delete(key);
+}
+
 function localDelete(key: string): void {
   localCache.delete(key);
 }
 
+export type GetOrSetOptions = {
+  /**
+   * Keep the value in this process only. Never read or write Redis.
+   * Still capped by `LOCAL_MAX_TTL_MS` and still single-flight.
+   */
+  localOnly?: boolean;
+};
+
 /**
  * Read-through cache with graceful fallback when Upstash is not configured.
+ * Concurrent misses on the same key share one in-flight load.
  */
 export async function getOrSet<T>(
   key: string,
   ttlSeconds: number,
   fetchFn: () => Promise<T>,
+  options?: GetOrSetOptions,
 ): Promise<T> {
   const local = localGet<T>(key);
   if (local.hit) return local.value;
 
-  const client = getRedisClient();
-  if (!client) {
-    const value = await fetchFn();
-    localSet(key, value, ttlSeconds);
-    return value;
-  }
+  const pending = inflight.get(key) as Promise<T> | undefined;
+  if (pending) return pending;
 
-  try {
-    const cached = (await client.get(key)) as T | null;
-    if (cached !== null && cached !== undefined) {
-      localSet(key, cached, ttlSeconds);
-      return cached;
+  const gen = generation(key);
+  const localOnly = options?.localOnly === true;
+  const slot: { current: Promise<T> | null } = { current: null };
+  const flight = loadThrough(key, ttlSeconds, fetchFn, localOnly, gen).finally(() => {
+    if (inflight.get(key) === slot.current) inflight.delete(key);
+  });
+  slot.current = flight;
+  inflight.set(key, flight);
+  return flight;
+}
+
+async function loadThrough<T>(
+  key: string,
+  ttlSeconds: number,
+  fetchFn: () => Promise<T>,
+  localOnly: boolean,
+  gen: number,
+): Promise<T> {
+  if (!localOnly) {
+    const client = getRedisClient();
+    if (client) {
+      try {
+        const cached = (await client.get(key)) as T | null;
+        if (cached !== null && cached !== undefined) {
+          storeLocal(key, cached, ttlSeconds, gen);
+          return cached;
+        }
+      } catch {
+        // Redis read failure — fall through to source
+      }
     }
-  } catch {
-    // Redis read failure — fall through to source
   }
 
   const value = await fetchFn();
-  localSet(key, value, ttlSeconds);
+  if (!storeLocal(key, value, ttlSeconds, gen)) return value;
+  if (localOnly) return value;
+
+  const client = getRedisClient();
+  if (!client) return value;
+  if (generation(key) !== gen) {
+    dropLocalIfGen(key, gen);
+    return value;
+  }
 
   try {
     await client.set(key, value, { ex: ttlSeconds });
   } catch {
     // Redis write failure — return fresh value
+  }
+
+  if (generation(key) !== gen) {
+    dropLocalIfGen(key, gen);
+    try {
+      await client.del(key);
+    } catch {
+      // ignore cache invalidation failures
+    }
   }
 
   return value;
@@ -129,10 +201,14 @@ export async function getCache<T>(key: string): Promise<T | null> {
     return null;
   }
 
+  const gen = generation(key);
   try {
     const cached = (await client.get(key)) as T | null;
     if (cached === null || cached === undefined) {
       return null;
+    }
+    if (generation(key) === gen) {
+      localSet(key, cached, LOCAL_MAX_TTL_MS / 1000, gen);
     }
     return cached;
   } catch {
@@ -195,6 +271,8 @@ export async function setIfNotExists(
 
 export async function deleteCache(key: string): Promise<void> {
   localDelete(key);
+  inflightGen.set(key, generation(key) + 1);
+  inflight.delete(key);
 
   const client = getRedisClient();
   if (!client) {

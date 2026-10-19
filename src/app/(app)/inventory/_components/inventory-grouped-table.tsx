@@ -1,5 +1,6 @@
 "use client";
 
+import { createColumnHelper } from "@tanstack/react-table";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -9,8 +10,14 @@ import {
   type ReactNode,
 } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { toast } from "sonner";
 
+import { InventoryGroupCounts } from "@/app/(app)/inventory/_components/inventory-group-counts";
+import { createInventorySerialColumns } from "@/app/(app)/inventory/_components/inventory-serial-columns";
+import {
+  buildStockUnitsHref,
+  stockUnitsHrefForView,
+} from "@/app/(app)/inventory/_components/stock-units-url";
+import { StockUnitsViewSwitch } from "@/app/(app)/inventory/_components/stock-units-view-switch";
 import {
   listInventoryGroupChildrenAction,
   type InventoryGroupBranchInModelItemDto,
@@ -19,35 +26,24 @@ import {
   type InventoryListItem,
 } from "@/features/inventory/actions/inventory.actions";
 import type { StockUnitsGroupBy } from "@/features/inventory/constants/stock-units-group";
-import { TableIndexCell, TableIndexHead } from "@/components/data-table";
+import type { StockUnitsView } from "@/features/inventory/constants/stock-units-view";
 import {
   parseTablePageSize,
   type TablePageSize,
 } from "@/components/data-table/table-page-size";
 import { TablePagination } from "@/components/data-table/table-pagination";
-import { GlobalDataTable } from "@/lib/data-table";
-import type { PaginatedResult } from "@/lib/shared/pagination";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  DataTable,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
+import type { PaginatedResult } from "@/lib/shared/pagination";
 import { cn } from "@/utils/cn";
 
-import { InventoryGroupCounts } from "@/app/(app)/inventory/_components/inventory-group-counts";
-import { InventorySerialLeafRow } from "@/app/(app)/inventory/_components/inventory-serial-leaf-row";
-import {
-  buildStockUnitsHref,
-  stockUnitsHrefForView,
-} from "@/app/(app)/inventory/_components/stock-units-url";
-import { StockUnitsViewSwitch } from "@/app/(app)/inventory/_components/stock-units-view-switch";
-import type { StockUnitsView } from "@/features/inventory/constants/stock-units-view";
-
 type GroupTopItem = InventoryGroupBranchItemDto | InventoryGroupModelItemDto;
+type GroupMidItem = InventoryGroupModelItemDto | InventoryGroupBranchInModelItemDto;
 
 type PaginatedSlice<T> = {
   items: T[];
@@ -56,16 +52,25 @@ type PaginatedSlice<T> = {
   totalPages: number;
   limit: number;
   loading: boolean;
+  error: string | null;
 };
 
+const groupHelper = createColumnHelper<DataTableFeatures, GroupTopItem>();
+
 function emptySlice(limit: number): PaginatedSlice<never> {
-  return { items: [], total: 0, page: 1, totalPages: 1, limit, loading: false };
+  return {
+    items: [],
+    total: 0,
+    page: 1,
+    totalPages: 1,
+    limit,
+    loading: false,
+    error: null,
+  };
 }
 
-function cacheKey(
-  parts: (string | number | undefined | null)[],
-): string {
-  return parts.filter((p) => p !== undefined && p !== null && p !== "").join(":");
+function cacheKey(parts: (string | number | undefined | null)[]): string {
+  return parts.filter((part) => part !== undefined && part !== null && part !== "").join(":");
 }
 
 function listFiltersCacheSuffix(filters: {
@@ -80,6 +85,19 @@ function listFiltersCacheSuffix(filters: {
     filters.offPlanogram ? "1" : "0",
     filters.q ?? "",
   ].join("|");
+}
+
+function topIdOf(groupBy: StockUnitsGroupBy, row: GroupTopItem): string {
+  switch (groupBy) {
+    case "by-branch":
+      return (row as InventoryGroupBranchItemDto).branch.id;
+    case "by-model":
+      return (row as InventoryGroupModelItemDto).model.id;
+    default: {
+      const exhaustive: never = groupBy;
+      return exhaustive;
+    }
+  }
 }
 
 interface InventoryGroupedTableProps {
@@ -127,7 +145,7 @@ export function InventoryGroupedTable({
   const [serialPageByPair, setSerialPageByPair] = useState<Record<string, number>>({});
 
   const [midCache, setMidCache] = useState<
-    Map<string, PaginatedSlice<InventoryGroupModelItemDto | InventoryGroupBranchInModelItemDto>>
+    Map<string, PaginatedSlice<GroupMidItem>>
   >(() => new Map());
 
   const [serialCache, setSerialCache] = useState<
@@ -168,21 +186,18 @@ export function InventoryGroupedTable({
   }
 
   const filterSuffix = listFiltersCacheSuffix(listFilters);
+  const midLabel = groupBy === "by-branch" ? "Models" : "Branches";
+  const midError = groupBy === "by-branch"
+    ? "Could not load models"
+    : "Could not load branches";
 
   const loadMidLevel = useCallback(
     async (topId: string, page = 1) => {
-      const key = cacheKey([
-        "mid",
-        groupBy,
-        topId,
-        page,
-        pageSize,
-        filterSuffix,
-      ]);
+      const key = cacheKey(["mid", groupBy, topId, page, pageSize, filterSuffix]);
       setMidCache((prev) => {
         const next = new Map(prev);
         const existing = next.get(key) ?? emptySlice(pageSize);
-        next.set(key, { ...existing, loading: true });
+        next.set(key, { ...existing, loading: true, error: null });
         return next;
       });
 
@@ -209,28 +224,25 @@ export function InventoryGroupedTable({
         setMidCache((prev) => {
           const next = new Map(prev);
           next.set(key, {
-            items: response.items as (
-              | InventoryGroupModelItemDto
-              | InventoryGroupBranchInModelItemDto
-            )[],
+            items: response.items as GroupMidItem[],
             total: response.total,
             page: response.page,
             totalPages: response.totalPages,
             limit: response.limit,
             loading: false,
+            error: null,
           });
           return next;
         });
       } catch {
-        toast.error("Could not load group details");
         setMidCache((prev) => {
           const next = new Map(prev);
-          next.set(key, emptySlice(pageSize));
+          next.set(key, { ...emptySlice(pageSize), error: midError });
           return next;
         });
       }
     },
-    [groupBy, filterSuffix, listFilters, pageSize],
+    [filterSuffix, groupBy, listFilters, midError, pageSize],
   );
 
   const loadSerials = useCallback(
@@ -247,7 +259,7 @@ export function InventoryGroupedTable({
       setSerialCache((prev) => {
         const next = new Map(prev);
         const existing = next.get(key) ?? emptySlice(pageSize);
-        next.set(key, { ...existing, loading: true });
+        next.set(key, { ...existing, loading: true, error: null });
         return next;
       });
 
@@ -271,52 +283,27 @@ export function InventoryGroupedTable({
             totalPages: response.totalPages,
             limit: response.limit,
             loading: false,
+            error: null,
           });
           return next;
         });
       } catch {
-        toast.error("Could not load serial numbers");
         setSerialCache((prev) => {
           const next = new Map(prev);
-          next.set(key, emptySlice(pageSize));
+          next.set(key, {
+            ...emptySlice(pageSize),
+            error: "Could not load serial numbers",
+          });
           return next;
         });
       }
     },
-    [groupBy, filterSuffix, listFilters, pageSize],
+    [filterSuffix, groupBy, listFilters, pageSize],
   );
-
-  function toggleTop(id: string) {
-    if (expandedTopId === id) {
-      setExpandedTopId(null);
-      setExpandedMidId(null);
-      return;
-    }
-    setExpandedTopId(id);
-    setExpandedMidId(null);
-    setMidPageByTop((prev) => ({ ...prev, [id]: 1 }));
-    void loadMidLevel(id, 1);
-  }
-
-  function toggleMid(
-    _topId: string,
-    midId: string,
-    branchId: string,
-    modelId: string,
-  ) {
-    if (expandedMidId === midId) {
-      setExpandedMidId(null);
-      return;
-    }
-    setExpandedMidId(midId);
-    const pairKey = cacheKey([branchId, modelId]);
-    setSerialPageByPair((prev) => ({ ...prev, [pairKey]: 1 }));
-    void loadSerials(branchId, modelId, 1);
-  }
 
   function resolveBranchModelIds(
     topId: string,
-    midItem: InventoryGroupModelItemDto | InventoryGroupBranchInModelItemDto,
+    midItem: GroupMidItem,
   ): { branchId: string; modelId: string; midKey: string } {
     if (groupBy === "by-branch") {
       const model = midItem as InventoryGroupModelItemDto;
@@ -332,6 +319,41 @@ export function InventoryGroupedTable({
       modelId: topId,
       midKey: branch.branch.id,
     };
+  }
+
+  const midKeyForTop = useCallback(
+    (topId: string, page: number) =>
+      cacheKey(["mid", groupBy, topId, page, pageSize, filterSuffix]),
+    [filterSuffix, groupBy, pageSize],
+  );
+
+  const serialKey = useCallback(
+    (branchId: string, modelId: string, page: number) =>
+      cacheKey(["serial", groupBy, branchId, modelId, page, pageSize, filterSuffix]),
+    [filterSuffix, groupBy, pageSize],
+  );
+
+  const indexOffset = (result.page - 1) * result.limit;
+  const topLabel = groupBy === "by-branch" ? "Branch" : "Model";
+
+  const columns = useMemo(
+    () => createGroupColumns(groupBy, topLabel, indexOffset),
+    [groupBy, indexOffset, topLabel],
+  );
+
+  const getExpandLabel = useCallback((row: GroupTopItem, open: boolean) => {
+    const name = groupTitleText(groupBy, row);
+    return open ? `Collapse ${name}` : `Expand ${name}`;
+  }, [groupBy]);
+
+  function handleExpandedRowIds(ids: string[]) {
+    const nextId = ids.length === 0 ? null : (ids[ids.length - 1] ?? null);
+    if (nextId === expandedTopId) return;
+    setExpandedTopId(nextId);
+    setExpandedMidId(null);
+    if (!nextId) return;
+    setMidPageByTop((prev) => ({ ...prev, [nextId]: 1 }));
+    void loadMidLevel(nextId, 1);
   }
 
   const filterBanner =
@@ -354,27 +376,63 @@ export function InventoryGroupedTable({
       </div>
     ) : null;
 
-  const topLabel = groupBy === "by-branch" ? "Branch" : "Model";
-  const midLabel = groupBy === "by-branch" ? "Models" : "Branches";
-
-  const midKeyForTop = (topId: string, page: number) =>
-    cacheKey(["mid", groupBy, topId, page, pageSize, filterSuffix]);
-
-  const serialKey = (branchId: string, modelId: string, page: number) =>
-    cacheKey([
-      "serial",
-      groupBy,
-      branchId,
-      modelId,
-      page,
-      pageSize,
-      filterSuffix,
-    ]);
-
   return (
-    <GlobalDataTable
+    <DataTable
+      data={result.items}
+      columns={columns}
+      getRowId={(row) => topIdOf(groupBy, row)}
+      manualSorting
+      manualPagination
+      enableExpansion
+      expandedRowIds={expandedTopId ? [expandedTopId] : []}
+      onExpandedRowIdsChange={handleExpandedRowIds}
+      getExpandLabel={getExpandLabel}
+      renderExpandedRow={(row) => {
+        const topId = topIdOf(groupBy, row);
+        const midPage = midPageByTop[topId] ?? 1;
+        const midSlice =
+          midCache.get(midKeyForTop(topId, midPage)) ??
+          ({ ...emptySlice(pageSize), loading: true } as PaginatedSlice<GroupMidItem>);
+        return (
+          <NestedMidPanel
+            label={midLabel}
+            slice={midSlice}
+            onPageChange={(page) => {
+              setMidPageByTop((prev) => ({ ...prev, [topId]: page }));
+              void loadMidLevel(topId, page);
+            }}
+            onRetry={() => {
+              void loadMidLevel(topId, midPage);
+            }}
+            groupBy={groupBy}
+            expandedMidId={expandedMidId}
+            onToggleMid={(midItem) => {
+              const ids = resolveBranchModelIds(topId, midItem);
+              if (expandedMidId === ids.midKey) {
+                setExpandedMidId(null);
+                return;
+              }
+              setExpandedMidId(ids.midKey);
+              const pairKey = cacheKey([ids.branchId, ids.modelId]);
+              setSerialPageByPair((prev) => ({ ...prev, [pairKey]: 1 }));
+              void loadSerials(ids.branchId, ids.modelId, 1);
+            }}
+            serialCache={serialCache}
+            serialKey={serialKey}
+            onSerialPageChange={(branchId, modelId, page) => {
+              const pairKey = cacheKey([branchId, modelId]);
+              setSerialPageByPair((prev) => ({ ...prev, [pairKey]: page }));
+              void loadSerials(branchId, modelId, page);
+            }}
+            onSerialRetry={(branchId, modelId, page) => {
+              void loadSerials(branchId, modelId, page);
+            }}
+            serialPageByPair={serialPageByPair}
+            resolveBranchModelIds={(midItem) => resolveBranchModelIds(topId, midItem)}
+          />
+        );
+      }}
       stickyHeader
-      scrollable
       search={{
         value: searchDraft,
         onChange: setSearchDraft,
@@ -386,7 +444,7 @@ export function InventoryGroupedTable({
             : "Search serial, SKU, model, branch…",
       }}
       searchTrailing={
-        <Button type="button" size="sm" variant="outline" onClick={applySearch}>
+        <Button type="button" size="sm" variant="outline" className="min-h-11" onClick={applySearch}>
           Search
         </Button>
       }
@@ -409,7 +467,7 @@ export function InventoryGroupedTable({
             id="off-planogram-grouped"
             type="checkbox"
             checked={offPlanogramOnly}
-            onChange={(e) => toggleOffPlanogram(e.target.checked)}
+            onChange={(event) => toggleOffPlanogram(event.target.checked)}
           />
           <Label htmlFor="off-planogram-grouped" className="font-normal">
             Off-planogram only
@@ -440,223 +498,127 @@ export function InventoryGroupedTable({
           </p>
         ) : null
       }
-    >
-      <TableHeader>
-        <TableRow>
-          <TableHead className="w-10" aria-label="Expand" />
-          <TableIndexHead />
-          <TableHead>{topLabel}</TableHead>
-          <TableHead className="min-w-72">Stocks</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {result.items.map((row, index) => {
-          const topId =
-            groupBy === "by-branch"
-              ? (row as InventoryGroupBranchItemDto).branch.id
-              : (row as InventoryGroupModelItemDto).model.id;
-          const isTopOpen = expandedTopId === topId;
-          const midPage = midPageByTop[topId] ?? 1;
-          const midPageKey = midKeyForTop(topId, midPage);
-          const midSlice =
-            midCache.get(midPageKey) ??
-            (isTopOpen ? { ...emptySlice(pageSize), loading: true } : undefined);
-
-          return (
-            <TopGroupRows
-              key={topId}
-              groupBy={groupBy}
-              row={row}
-              index={(result.page - 1) * result.limit + index + 1}
-              isOpen={isTopOpen}
-              onToggle={() => toggleTop(topId)}
-              midLabel={midLabel}
-              midSlice={isTopOpen ? midSlice : undefined}
-              onMidPageChange={(page) => {
-                setMidPageByTop((prev) => ({ ...prev, [topId]: page }));
-                void loadMidLevel(topId, page);
-              }}
-              expandedMidId={expandedMidId}
-              onToggleMid={(midItem) => {
-                const { branchId, modelId, midKey } = resolveBranchModelIds(
-                  topId,
-                  midItem,
-                );
-                toggleMid(topId, midKey, branchId, modelId);
-              }}
-              serialCache={serialCache}
-              serialKey={serialKey}
-              onSerialPageChange={(branchId, modelId, page) => {
-                const pairKey = cacheKey([branchId, modelId]);
-                setSerialPageByPair((prev) => ({ ...prev, [pairKey]: page }));
-                void loadSerials(branchId, modelId, page);
-              }}
-              serialPageByPair={serialPageByPair}
-              resolveBranchModelIds={(midItem) =>
-                resolveBranchModelIds(topId, midItem)
-              }
-              hideBranch={hideBranch}
-            />
-          );
-        })}
-      </TableBody>
-    </GlobalDataTable>
+    />
   );
 }
 
-interface TopGroupRowsProps {
-  groupBy: StockUnitsGroupBy;
-  row: GroupTopItem;
-  index: number;
-  isOpen: boolean;
-  onToggle: () => void;
-  midLabel: string;
-  midSlice?: PaginatedSlice<
-    InventoryGroupModelItemDto | InventoryGroupBranchInModelItemDto
-  >;
-  onMidPageChange: (page: number) => void;
-  expandedMidId: string | null;
-  onToggleMid: (
-    mid: InventoryGroupModelItemDto | InventoryGroupBranchInModelItemDto,
-  ) => void;
-  serialCache: Map<string, PaginatedSlice<InventoryListItem>>;
-  serialKey: (branchId: string, modelId: string, page: number) => string;
-  onSerialPageChange: (branchId: string, modelId: string, page: number) => void;
-  serialPageByPair: Record<string, number>;
-  resolveBranchModelIds: (
-    mid: InventoryGroupModelItemDto | InventoryGroupBranchInModelItemDto,
-  ) => { branchId: string; modelId: string; midKey: string };
-  hideBranch: boolean;
+function createGroupColumns(
+  groupBy: StockUnitsGroupBy,
+  topLabel: string,
+  indexOffset: number,
+): DataTableColumn<GroupTopItem>[] {
+  return [
+    groupHelper.display({
+      id: "index",
+      header: "#",
+      enableSorting: false,
+      enableHiding: false,
+      cell: ({ row }) => indexOffset + row.index + 1,
+      meta: {
+        mobile: "primary",
+        className: "w-12 text-center tabular-nums text-muted-foreground",
+      },
+    }),
+    groupHelper.display({
+      id: "group",
+      header: topLabel,
+      cell: ({ row }) => <GroupTitle groupBy={groupBy} row={row.original} />,
+      meta: { wrap: true, mobile: "primary", className: "min-w-0" },
+    }),
+    groupHelper.display({
+      id: "stocks",
+      header: "Stocks",
+      cell: ({ row }) => <InventoryGroupCounts counts={row.original.counts} />,
+      meta: {
+        wrap: true,
+        mobile: "primary",
+        className: "w-36 max-w-36 align-top md:w-auto md:max-w-none",
+      },
+    }),
+  ];
 }
 
-function TopGroupRows({
-  groupBy,
-  row,
-  index,
-  isOpen,
-  onToggle,
-  midLabel,
-  midSlice,
-  onMidPageChange,
-  expandedMidId,
-  onToggleMid,
-  serialCache,
-  serialKey,
-  onSerialPageChange,
-  serialPageByPair,
-  resolveBranchModelIds,
-  hideBranch,
-}: TopGroupRowsProps) {
-  const title =
-    groupBy === "by-branch" ? (
-      <>
-        <span className="font-medium">
-          {(row as InventoryGroupBranchItemDto).branch.name}
-        </span>
-        <span className="ml-2 font-mono text-xs text-muted-foreground">
-          {(row as InventoryGroupBranchItemDto).branch.sapCode}
-        </span>
-      </>
-    ) : (
-      <>
-        <span className="font-mono font-medium">
-          {(row as InventoryGroupModelItemDto).model.sku}
-        </span>
-        <span className="ml-2 text-sm text-muted-foreground">
-          {(row as InventoryGroupModelItemDto).model.name}
-        </span>
-        {(row as InventoryGroupModelItemDto).model.brand?.name ? (
-          <span className="ml-2 text-xs text-muted-foreground">
-            {(row as InventoryGroupModelItemDto).model.brand?.name}
-          </span>
-        ) : null}
-      </>
-    );
+function groupTitleText(groupBy: StockUnitsGroupBy, row: GroupTopItem): string {
+  switch (groupBy) {
+    case "by-branch":
+      return (row as InventoryGroupBranchItemDto).branch.name;
+    case "by-model":
+      return (row as InventoryGroupModelItemDto).model.sku;
+    default: {
+      const exhaustive: never = groupBy;
+      return exhaustive;
+    }
+  }
+}
 
-  return (
-    <>
-      <TableRow className={cn(isOpen && "bg-muted/30")}>
-        <TableCell className="w-10 px-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-8"
-            onClick={onToggle}
-            aria-expanded={isOpen}
-            aria-label={isOpen ? "Collapse group" : "Expand group"}
-          >
-            {isOpen ? (
-              <ChevronDown className="size-4" aria-hidden />
-            ) : (
-              <ChevronRight className="size-4" aria-hidden />
-            )}
-          </Button>
-        </TableCell>
-        <TableIndexCell index={index} />
-        <TableCell className="min-w-0 whitespace-normal">{title}</TableCell>
-        <TableCell className="align-top whitespace-normal">
-          <InventoryGroupCounts counts={row.counts} />
-        </TableCell>
-      </TableRow>
-      {isOpen ? (
-        <TableRow className="hover:bg-transparent">
-          <TableCell colSpan={4} className="bg-muted/20 p-0">
-            <NestedMidPanel
-              label={midLabel}
-              slice={midSlice}
-              onPageChange={onMidPageChange}
-              groupBy={groupBy}
-              expandedMidId={expandedMidId}
-              onToggleMid={onToggleMid}
-              serialCache={serialCache}
-              serialKey={serialKey}
-              onSerialPageChange={onSerialPageChange}
-              serialPageByPair={serialPageByPair}
-              resolveBranchModelIds={resolveBranchModelIds}
-              hideBranch={hideBranch}
-            />
-          </TableCell>
-        </TableRow>
-      ) : null}
-    </>
-  );
+function GroupTitle({ groupBy, row }: { groupBy: StockUnitsGroupBy; row: GroupTopItem }) {
+  switch (groupBy) {
+    case "by-branch": {
+      const branch = (row as InventoryGroupBranchItemDto).branch;
+      return (
+        <>
+          <span className="font-medium">{branch.name}</span>
+          <span className="ml-2 font-mono text-xs text-muted-foreground">{branch.sapCode}</span>
+        </>
+      );
+    }
+    case "by-model": {
+      const model = (row as InventoryGroupModelItemDto).model;
+      return (
+        <>
+          <span className="font-mono font-medium">{model.sku}</span>
+          <span className="ml-2 text-sm text-muted-foreground">{model.name}</span>
+          {model.brand?.name ? (
+            <span className="ml-2 text-xs text-muted-foreground">{model.brand.name}</span>
+          ) : null}
+        </>
+      );
+    }
+    default: {
+      const exhaustive: never = groupBy;
+      return exhaustive;
+    }
+  }
 }
 
 function NestedMidPanel({
   label,
   slice,
   onPageChange,
+  onRetry,
   groupBy,
   expandedMidId,
   onToggleMid,
   serialCache,
   serialKey,
   onSerialPageChange,
+  onSerialRetry,
   serialPageByPair,
   resolveBranchModelIds,
-  hideBranch,
 }: {
   label: string;
-  slice?: PaginatedSlice<
-    InventoryGroupModelItemDto | InventoryGroupBranchInModelItemDto
-  >;
+  slice: PaginatedSlice<GroupMidItem>;
   onPageChange: (page: number) => void;
+  onRetry: () => void;
   groupBy: StockUnitsGroupBy;
   expandedMidId: string | null;
-  onToggleMid: (
-    mid: InventoryGroupModelItemDto | InventoryGroupBranchInModelItemDto,
-  ) => void;
+  onToggleMid: (mid: GroupMidItem) => void;
   serialCache: Map<string, PaginatedSlice<InventoryListItem>>;
   serialKey: (branchId: string, modelId: string, page: number) => string;
   onSerialPageChange: (branchId: string, modelId: string, page: number) => void;
+  onSerialRetry: (branchId: string, modelId: string, page: number) => void;
   serialPageByPair: Record<string, number>;
-  resolveBranchModelIds: (
-    mid: InventoryGroupModelItemDto | InventoryGroupBranchInModelItemDto,
-  ) => { branchId: string; modelId: string; midKey: string };
-  hideBranch: boolean;
+  resolveBranchModelIds: (mid: GroupMidItem) => {
+    branchId: string;
+    modelId: string;
+    midKey: string;
+  };
 }) {
-  if (!slice || (slice.loading && slice.items.length === 0)) {
+  if (slice.error && slice.items.length === 0) {
+    return <InlineLoadError message={slice.error} onRetry={onRetry} />;
+  }
+
+  if (slice.loading && slice.items.length === 0) {
     return (
       <p className="px-4 py-3 text-sm text-muted-foreground">Loading {label.toLowerCase()}…</p>
     );
@@ -671,213 +633,175 @@ function NestedMidPanel({
   }
 
   return (
-    <div
-      className={cn(
-        "border-t border-border/60 px-3 py-3 sm:px-4",
-        slice.loading && "opacity-70",
-      )}
-    >
-      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+    <div className={cn("border-t bg-muted/15 px-3 py-3 sm:px-4", slice.loading && "opacity-70")}>
+      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
         {label}
       </p>
-      <div className="overflow-hidden rounded-md border border-border/70 bg-background">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
-            <tr>
-              <th className="w-10 p-2" />
-              <th className="p-2">{groupBy === "by-branch" ? "Model" : "Branch"}</th>
-              <th className="min-w-72 p-2">Stocks</th>
-            </tr>
-          </thead>
-          <tbody>
-            {slice.items.map((mid) => {
-              const { branchId, modelId, midKey } = resolveBranchModelIds(mid);
-              const isMidOpen = expandedMidId === midKey;
-              const pairKey = cacheKey([branchId, modelId]);
-              const serialPage = serialPageByPair[pairKey] ?? 1;
-              const serialSliceKey = serialKey(branchId, modelId, serialPage);
-              const serialSlice = isMidOpen
-                ? serialCache.get(serialSliceKey) ??
-                  ({ ...emptySlice(slice.limit), loading: true } as PaginatedSlice<InventoryListItem>)
-                : undefined;
+      <div>
+        {slice.items.map((mid) => {
+          const { branchId, modelId, midKey } = resolveBranchModelIds(mid);
+          const isMidOpen = expandedMidId === midKey;
+          const pairKey = cacheKey([branchId, modelId]);
+          const serialPage = serialPageByPair[pairKey] ?? 1;
+          const serialSlice = isMidOpen
+            ? serialCache.get(serialKey(branchId, modelId, serialPage)) ??
+              ({ ...emptySlice(slice.limit), loading: true } as PaginatedSlice<InventoryListItem>)
+            : undefined;
+          const title = midTitle(groupBy, mid);
 
-              const midTitle =
-                groupBy === "by-branch" ? (
-                  <>
-                    <span className="font-mono">
-                      {(mid as InventoryGroupModelItemDto).model.sku}
-                    </span>
-                    <span className="ml-2 text-muted-foreground">
-                      {(mid as InventoryGroupModelItemDto).model.name}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <span className="font-medium">
-                      {(mid as InventoryGroupBranchInModelItemDto).branch.name}
-                    </span>
-                    <span className="ml-2 font-mono text-xs text-muted-foreground">
-                      {(mid as InventoryGroupBranchInModelItemDto).branch.sapCode}
-                    </span>
-                  </>
-                );
-
-              return (
-                <MidRows
-                  key={midKey}
-                  isOpen={isMidOpen}
-                  onToggle={() => onToggleMid(mid)}
-                  title={midTitle}
-                  counts={mid.counts}
-                  serialSlice={serialSlice}
-                  hideBranch={hideBranch}
-                  onSerialPageChange={(page) =>
-                    onSerialPageChange(branchId, modelId, page)
-                  }
+          return (
+            <div key={midKey} className="border-t border-border/50 first:border-t-0">
+              <div
+                className={cn(
+                  "flex flex-wrap items-start gap-2 py-2",
+                  isMidOpen && "bg-muted/25",
+                )}
+              >
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-11 shrink-0"
+                  onClick={() => onToggleMid(mid)}
+                  aria-expanded={isMidOpen}
+                  aria-label={isMidOpen ? `Collapse ${title.text}` : `Expand ${title.text}`}
+                >
+                  {isMidOpen ? (
+                    <ChevronDown className="size-4" aria-hidden />
+                  ) : (
+                    <ChevronRight className="size-4" aria-hidden />
+                  )}
+                </Button>
+                <div className="min-w-0 flex-1 pt-2.5">{title.node}</div>
+                <div className="w-full min-w-0 pt-1 md:w-auto md:pt-2">
+                  <InventoryGroupCounts counts={mid.counts} compact />
+                </div>
+              </div>
+              {isMidOpen && serialSlice ? (
+                <GroupedSerialTable
+                  slice={serialSlice}
+                  onPageChange={(page) => onSerialPageChange(branchId, modelId, page)}
+                  onRetry={() => onSerialRetry(branchId, modelId, serialSlice.page)}
                 />
-              );
-            })}
-          </tbody>
-        </table>
+              ) : null}
+            </div>
+          );
+        })}
       </div>
       {slice.totalPages > 1 ? (
-        <div className="mt-2 flex justify-end">
-          <TablePagination
-            meta={{
-              total: slice.total,
-              page: slice.page,
-              totalPages: slice.totalPages,
-              itemLabel: label.toLowerCase(),
-            }}
-            onPageChange={onPageChange}
-          />
-        </div>
+        <TablePagination
+          meta={{
+            total: slice.total,
+            page: slice.page,
+            totalPages: slice.totalPages,
+            itemLabel: label.toLowerCase(),
+          }}
+          onPageChange={onPageChange}
+          buttonClassName="min-h-11 min-w-11"
+        />
       ) : null}
     </div>
   );
 }
 
-function MidRows({
-  isOpen,
-  onToggle,
-  title,
-  counts,
-  serialSlice,
-  hideBranch,
-  onSerialPageChange,
-}: {
-  isOpen: boolean;
-  onToggle: () => void;
-  title: ReactNode;
-  counts: GroupTopItem["counts"];
-  serialSlice?: PaginatedSlice<InventoryListItem>;
-  hideBranch: boolean;
-  onSerialPageChange: (page: number) => void;
-}) {
-  return (
-    <>
-      <tr className={cn("border-t border-border/50", isOpen && "bg-muted/20")}>
-        <td className="p-2 align-top">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-8"
-            onClick={onToggle}
-            aria-expanded={isOpen}
-          >
-            {isOpen ? (
-              <ChevronDown className="size-4" aria-hidden />
-            ) : (
-              <ChevronRight className="size-4" aria-hidden />
-            )}
-          </Button>
-        </td>
-        <td className="p-2 align-top">{title}</td>
-        <td className="p-2 align-top whitespace-normal">
-          <InventoryGroupCounts counts={counts} compact />
-        </td>
-      </tr>
-      {isOpen ? (
-        <tr>
-          <td colSpan={3} className="bg-muted/10 p-0">
-            <SerialNestedTable
-              slice={serialSlice}
-              hideBranch={hideBranch}
-              onPageChange={onSerialPageChange}
-            />
-          </td>
-        </tr>
-      ) : null}
-    </>
-  );
+function midTitle(
+  groupBy: StockUnitsGroupBy,
+  mid: GroupMidItem,
+): { text: string; node: ReactNode } {
+  switch (groupBy) {
+    case "by-branch": {
+      const model = (mid as InventoryGroupModelItemDto).model;
+      return {
+        text: model.sku,
+        node: (
+          <>
+            <span className="font-mono">{model.sku}</span>
+            <span className="ml-2 text-muted-foreground">{model.name}</span>
+          </>
+        ),
+      };
+    }
+    case "by-model": {
+      const branch = (mid as InventoryGroupBranchInModelItemDto).branch;
+      return {
+        text: branch.name,
+        node: (
+          <>
+            <span className="font-medium">{branch.name}</span>
+            <span className="ml-2 font-mono text-xs text-muted-foreground">{branch.sapCode}</span>
+          </>
+        ),
+      };
+    }
+    default: {
+      const exhaustive: never = groupBy;
+      return exhaustive;
+    }
+  }
 }
 
-function SerialNestedTable({
+function GroupedSerialTable({
   slice,
-  hideBranch,
   onPageChange,
+  onRetry,
 }: {
-  slice?: PaginatedSlice<InventoryListItem>;
-  hideBranch: boolean;
+  slice: PaginatedSlice<InventoryListItem>;
   onPageChange: (page: number) => void;
+  onRetry: () => void;
 }) {
-  if (!slice || (slice.loading && slice.items.length === 0)) {
-    return (
-      <p className="px-4 py-3 text-sm text-muted-foreground">Loading serial numbers…</p>
-    );
-  }
-
-  if (slice.total === 0) {
-    return (
-      <p className="px-4 py-3 text-sm text-muted-foreground">No serial numbers in this group</p>
-    );
-  }
-
-  const startIndex = (slice.page - 1) * slice.limit;
+  const columns = useMemo(
+    () =>
+      createInventorySerialColumns({
+        indexOffset: (slice.page - 1) * slice.limit,
+        includeBranch: false,
+        includeModel: false,
+        sortable: false,
+      }),
+    [slice.limit, slice.page],
+  );
 
   return (
-    <div className={cn("px-2 py-2 sm:px-3", slice.loading && "opacity-70")}>
-      <div className="overflow-x-auto rounded-md border border-border/60 bg-background">
-        <table className="min-w-full text-sm">
-          <thead className="bg-muted/30 text-left text-xs text-muted-foreground">
-            <tr>
-              <th className="w-12 p-2 text-center">#</th>
-              {hideBranch ? null : <th className="p-2">Branch</th>}
-              <th className="p-2">Model</th>
-              <th className="p-2">Serial</th>
-              <th className="p-2">DR#</th>
-              <th className="p-2">DR date</th>
-              <th className="p-2">Planogram</th>
-              <th className="p-2 text-center">Aging</th>
-              <th className="p-2">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {slice.items.map((item, i) => (
-              <InventorySerialLeafRow
-                key={item.id}
-                row={item}
-                index={startIndex + i + 1}
-                hideBranch={hideBranch}
-              />
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {slice.totalPages > 1 ? (
-        <div className="mt-2 flex justify-end">
-          <TablePagination
-            meta={{
+    <DataTable
+      chrome="plain"
+      data={slice.items}
+      columns={columns}
+      getRowId={(row) => row.id}
+      manualSorting
+      manualPagination
+      loading={slice.loading}
+      loadingMessage={slice.items.length === 0 ? "Loading serial numbers…" : undefined}
+      errorMessage={slice.error ?? undefined}
+      onRetry={onRetry}
+      empty={!slice.loading && !slice.error && slice.total === 0}
+      emptyMessage="No serial numbers in this group"
+      pagination={
+        slice.totalPages > 1
+          ? {
               total: slice.total,
               page: slice.page,
               totalPages: slice.totalPages,
               itemLabel: "serial",
-            }}
-            onPageChange={onPageChange}
-          />
-        </div>
-      ) : null}
+              onPageChange,
+            }
+          : undefined
+      }
+    />
+  );
+}
+
+function InlineLoadError({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry: () => void;
+}) {
+  return (
+    <div role="alert" className="flex flex-wrap items-center gap-3 px-4 py-3 text-sm">
+      <p className="text-destructive">{message}</p>
+      <Button type="button" variant="outline" className="min-h-11" onClick={onRetry}>
+        Retry
+      </Button>
     </div>
   );
 }
