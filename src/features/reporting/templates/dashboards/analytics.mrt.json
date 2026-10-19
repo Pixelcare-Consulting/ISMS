@@ -1,0 +1,1157 @@
+{
+  "ReportVersion": "2026.4.1",
+  "ReportGuid": "089aa13f05a68e46256071f857737aa1",
+  "ReportName": "analytics",
+  "ReportAlias": "Analytics",
+  "ReportCreated": "/Date(1792380577000+0800)/",
+  "ReportChanged": "/Date(1792380577000+0800)/",
+  "EngineVersion": "EngineV2",
+  "ReportUnit": "Centimeters",
+  "ScriptLanguage": "CSharp",
+  "UsePlatformDependentScript": false,
+  "CalculationMode": "Interpretation",
+  "Dictionary": {
+    "DataSources": {
+      "0": {
+        "Ident": "StiDataTableSource",
+        "Name": "ops_kpis",
+        "Alias": "ops_kpis",
+        "Columns": {
+          "0": {
+            "Name": "pendingOrderApprovals",
+            "NameInSource": "pendingOrderApprovals",
+            "Alias": "Pending Approvals",
+            "Type": "System.Decimal"
+          },
+          "1": {
+            "Name": "deliveryInTransit",
+            "NameInSource": "deliveryInTransit",
+            "Alias": "Delivery In Transit",
+            "Type": "System.Decimal"
+          },
+          "2": {
+            "Name": "stockCount",
+            "NameInSource": "stockCount",
+            "Alias": "Stock On Hand",
+            "Type": "System.Decimal"
+          },
+          "3": {
+            "Name": "openAtr",
+            "NameInSource": "openAtr",
+            "Alias": "Open ATR",
+            "Type": "System.Decimal"
+          },
+          "4": {
+            "Name": "belowPlanogramCapacity",
+            "NameInSource": "belowPlanogramCapacity",
+            "Alias": "Below Planogram",
+            "Type": "System.Decimal"
+          },
+          "5": {
+            "Name": "milBreaches",
+            "NameInSource": "milBreaches",
+            "Alias": "MIL Breaches",
+            "Type": "System.Decimal"
+          },
+          "6": {
+            "Name": "allocationGapCount",
+            "NameInSource": "allocationGapCount",
+            "Alias": "Allocation Gaps",
+            "Type": "System.Decimal"
+          },
+          "7": {
+            "Name": "draftSuggestedOrders",
+            "NameInSource": "draftSuggestedOrders",
+            "Alias": "Draft Suggested Orders",
+            "Type": "System.Decimal"
+          },
+          "8": {
+            "Name": "ordersThisMonth",
+            "NameInSource": "ordersThisMonth",
+            "Alias": "Orders This Month",
+            "Type": "System.Decimal"
+          },
+          "9": {
+            "Name": "salesThisMonth",
+            "NameInSource": "salesThisMonth",
+            "Alias": "Sales This Month",
+            "Type": "System.Decimal"
+          }
+        },
+        "NameInSource": "ops_kpis.ops_kpis"
+      },
+      "1": {
+        "Ident": "StiDataTableSource",
+        "Name": "inventory_by_status",
+        "Alias": "inventory_by_status",
+        "Columns": {
+          "0": {
+            "Name": "code",
+            "NameInSource": "code",
+            "Alias": "Code",
+            "Type": "System.String"
+          },
+          "1": {
+            "Name": "name",
+            "NameInSource": "name",
+            "Alias": "Status",
+            "Type": "System.String"
+          },
+          "2": {
+            "Name": "count",
+            "NameInSource": "count",
+            "Alias": "Count",
+            "Type": "System.Decimal"
+          }
+        },
+        "NameInSource": "inventory_by_status.inventory_by_status"
+      },
+      "2": {
+        "Ident": "StiDataTableSource",
+        "Name": "orders_by_status",
+        "Alias": "orders_by_status",
+        "Columns": {
+          "0": {
+            "Name": "code",
+            "NameInSource": "code",
+            "Alias": "Code",
+            "Type": "System.String"
+          },
+          "1": {
+            "Name": "name",
+            "NameInSource": "name",
+            "Alias": "Status",
+            "Type": "System.String"
+          },
+          "2": {
+            "Name": "count",
+            "NameInSource": "count",
+            "Alias": "Count",
+            "Type": "System.Decimal"
+          }
+        },
+        "NameInSource": "orders_by_status.orders_by_status"
+      },
+      "3": {
+        "Ident": "StiDataTableSource",
+        "Name": "sales_kpis",
+        "Alias": "sales_kpis",
+        "Columns": {
+          "0": {
+            "Name": "salesThisMonth",
+            "NameInSource": "salesThisMonth",
+            "Alias": "Sales This Month",
+            "Type": "System.Decimal"
+          },
+          "1": {
+            "Name": "saleAmountThisMonth",
+            "NameInSource": "saleAmountThisMonth",
+            "Alias": "Sale Amount This Month",
+            "Type": "System.Decimal"
+          },
+          "2": {
+            "Name": "openAtr",
+            "NameInSource": "openAtr",
+            "Alias": "Open ATR",
+            "Type": "System.Decimal"
+          },
+          "3": {
+            "Name": "returnsInProgress",
+            "NameInSource": "returnsInProgress",
+            "Alias": "Returns In Progress",
+            "Type": "System.Decimal"
+          }
+        },
+        "NameInSource": "sales_kpis.sales_kpis"
+      },
+      "4": {
+        "Ident": "StiDataTableSource",
+        "Name": "sale_status_mix",
+        "Alias": "sale_status_mix",
+        "Columns": {
+          "0": {
+            "Name": "code",
+            "NameInSource": "code",
+            "Alias": "Code",
+            "Type": "System.String"
+          },
+          "1": {
+            "Name": "name",
+            "NameInSource": "name",
+            "Alias": "Status",
+            "Type": "System.String"
+          },
+          "2": {
+            "Name": "count",
+            "NameInSource": "count",
+            "Alias": "Count",
+            "Type": "System.Decimal"
+          }
+        },
+        "NameInSource": "sale_status_mix.sale_status_mix"
+      },
+      "5": {
+        "Ident": "StiDataTableSource",
+        "Name": "atr_return_pipeline",
+        "Alias": "atr_return_pipeline",
+        "Columns": {
+          "0": {
+            "Name": "code",
+            "NameInSource": "code",
+            "Alias": "Code",
+            "Type": "System.String"
+          },
+          "1": {
+            "Name": "name",
+            "NameInSource": "name",
+            "Alias": "Status",
+            "Type": "System.String"
+          },
+          "2": {
+            "Name": "count",
+            "NameInSource": "count",
+            "Alias": "Count",
+            "Type": "System.Decimal"
+          }
+        },
+        "NameInSource": "atr_return_pipeline.atr_return_pipeline"
+      },
+      "6": {
+        "Ident": "StiDataTableSource",
+        "Name": "top_branches",
+        "Alias": "top_branches",
+        "Columns": {
+          "0": {
+            "Name": "name",
+            "NameInSource": "name",
+            "Alias": "Name",
+            "Type": "System.String"
+          },
+          "1": {
+            "Name": "value",
+            "NameInSource": "value",
+            "Alias": "Value",
+            "Type": "System.Decimal"
+          }
+        },
+        "NameInSource": "top_branches.top_branches"
+      },
+      "7": {
+        "Ident": "StiDataTableSource",
+        "Name": "top_models",
+        "Alias": "top_models",
+        "Columns": {
+          "0": {
+            "Name": "name",
+            "NameInSource": "name",
+            "Alias": "Name",
+            "Type": "System.String"
+          },
+          "1": {
+            "Name": "value",
+            "NameInSource": "value",
+            "Alias": "Value",
+            "Type": "System.Decimal"
+          }
+        },
+        "NameInSource": "top_models.top_models"
+      }
+    }
+  },
+  "Pages": {
+    "0": {
+      "Ident": "StiDashboard",
+      "Name": "Analytics",
+      "Guid": "d5c544e7d543dae0da67450f84bd4d88",
+      "Alias": "Analytics",
+      "Interaction": {
+        "Ident": "StiInteraction"
+      },
+      "Brush": "solid:",
+      "Components": {
+        "0": {
+          "Ident": "StiIndicatorElement",
+          "Name": "OpsPendingApprovals",
+          "Guid": "7f32a7396251ceeecb7e34af62807bb3",
+          "ClientRectangle": "0,0,193,120",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "0,0,236,110",
+          "TextFormat": {
+            "Ident": "StiNumberFormatService",
+            "NegativePattern": 1,
+            "DecimalDigits": 0,
+            "GroupSeparator": ",",
+            "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+          },
+          "TargetFormat": {
+            "Ident": "StiPercentageFormatService",
+            "DecimalDigits": 2,
+            "GroupSeparator": ",",
+            "Symbol": "%"
+          },
+          "Value": {
+            "Ident": "ValueIndicatorMeter",
+            "Key": "OpsPendingApprovalsValue",
+            "Expression": "Sum(ops_kpis.pendingOrderApprovals)",
+            "Label": "Pending approvals"
+          },
+          "Title": {
+            "Text": "Pending approvals"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;",
+          "DashboardInteraction": {
+            "Ident": "Indicator",
+            "OnHover": "ShowToolTip",
+            "OnClick": "None",
+            "HyperlinkDestination": "NewTab"
+          }
+        },
+        "1": {
+          "Ident": "StiIndicatorElement",
+          "Name": "OpsDeliveryInTransit",
+          "Guid": "f72ce6d5244729a6a67815583261e5ac",
+          "ClientRectangle": "201,0,193,120",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "244,0,236,110",
+          "TextFormat": {
+            "Ident": "StiNumberFormatService",
+            "NegativePattern": 1,
+            "DecimalDigits": 0,
+            "GroupSeparator": ",",
+            "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+          },
+          "TargetFormat": {
+            "Ident": "StiPercentageFormatService",
+            "DecimalDigits": 2,
+            "GroupSeparator": ",",
+            "Symbol": "%"
+          },
+          "Value": {
+            "Ident": "ValueIndicatorMeter",
+            "Key": "OpsDeliveryInTransitValue",
+            "Expression": "Sum(ops_kpis.deliveryInTransit)",
+            "Label": "Delivery in transit"
+          },
+          "Title": {
+            "Text": "Delivery in transit"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;",
+          "DashboardInteraction": {
+            "Ident": "Indicator",
+            "OnHover": "ShowToolTip",
+            "OnClick": "None",
+            "HyperlinkDestination": "NewTab"
+          }
+        },
+        "2": {
+          "Ident": "StiIndicatorElement",
+          "Name": "OpsStockOnHand",
+          "Guid": "b85f6f214697e264b694593d31fac248",
+          "ClientRectangle": "403,0,193,120",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "0,118,236,110",
+          "TextFormat": {
+            "Ident": "StiNumberFormatService",
+            "NegativePattern": 1,
+            "DecimalDigits": 0,
+            "GroupSeparator": ",",
+            "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+          },
+          "TargetFormat": {
+            "Ident": "StiPercentageFormatService",
+            "DecimalDigits": 2,
+            "GroupSeparator": ",",
+            "Symbol": "%"
+          },
+          "Value": {
+            "Ident": "ValueIndicatorMeter",
+            "Key": "OpsStockOnHandValue",
+            "Expression": "Sum(ops_kpis.stockCount)",
+            "Label": "Stock on hand"
+          },
+          "Title": {
+            "Text": "Stock on hand"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;",
+          "DashboardInteraction": {
+            "Ident": "Indicator",
+            "OnHover": "ShowToolTip",
+            "OnClick": "None",
+            "HyperlinkDestination": "NewTab"
+          }
+        },
+        "3": {
+          "Ident": "StiIndicatorElement",
+          "Name": "OpsOpenAtr",
+          "Guid": "adbc9785dba2371fe6bd51c9406818f2",
+          "ClientRectangle": "604,0,193,120",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "244,118,236,110",
+          "TextFormat": {
+            "Ident": "StiNumberFormatService",
+            "NegativePattern": 1,
+            "DecimalDigits": 0,
+            "GroupSeparator": ",",
+            "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+          },
+          "TargetFormat": {
+            "Ident": "StiPercentageFormatService",
+            "DecimalDigits": 2,
+            "GroupSeparator": ",",
+            "Symbol": "%"
+          },
+          "Value": {
+            "Ident": "ValueIndicatorMeter",
+            "Key": "OpsOpenAtrValue",
+            "Expression": "Sum(ops_kpis.openAtr)",
+            "Label": "Open ATR"
+          },
+          "Title": {
+            "Text": "Open ATR"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;",
+          "DashboardInteraction": {
+            "Ident": "Indicator",
+            "OnHover": "ShowToolTip",
+            "OnClick": "None",
+            "HyperlinkDestination": "NewTab"
+          }
+        },
+        "4": {
+          "Ident": "StiIndicatorElement",
+          "Name": "OpsOrdersThisMonth",
+          "Guid": "5ea642f86a4d2208ab6093788b2d6afc",
+          "ClientRectangle": "805,0,193,120",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "0,236,236,110",
+          "TextFormat": {
+            "Ident": "StiNumberFormatService",
+            "NegativePattern": 1,
+            "DecimalDigits": 0,
+            "GroupSeparator": ",",
+            "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+          },
+          "TargetFormat": {
+            "Ident": "StiPercentageFormatService",
+            "DecimalDigits": 2,
+            "GroupSeparator": ",",
+            "Symbol": "%"
+          },
+          "Value": {
+            "Ident": "ValueIndicatorMeter",
+            "Key": "OpsOrdersThisMonthValue",
+            "Expression": "Sum(ops_kpis.ordersThisMonth)",
+            "Label": "Orders this month"
+          },
+          "Title": {
+            "Text": "Orders this month"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;",
+          "DashboardInteraction": {
+            "Ident": "Indicator",
+            "OnHover": "ShowToolTip",
+            "OnClick": "None",
+            "HyperlinkDestination": "NewTab"
+          }
+        },
+        "5": {
+          "Ident": "StiIndicatorElement",
+          "Name": "OpsBelowPlanogram",
+          "Guid": "da4d42f2671224a6737e62e131d67d12",
+          "ClientRectangle": "1007,0,193,120",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "244,236,236,110",
+          "TextFormat": {
+            "Ident": "StiNumberFormatService",
+            "NegativePattern": 1,
+            "DecimalDigits": 0,
+            "GroupSeparator": ",",
+            "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+          },
+          "TargetFormat": {
+            "Ident": "StiPercentageFormatService",
+            "DecimalDigits": 2,
+            "GroupSeparator": ",",
+            "Symbol": "%"
+          },
+          "Value": {
+            "Ident": "ValueIndicatorMeter",
+            "Key": "OpsBelowPlanogramValue",
+            "Expression": "Sum(ops_kpis.belowPlanogramCapacity)",
+            "Label": "Below planogram"
+          },
+          "Title": {
+            "Text": "Below planogram"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;",
+          "DashboardInteraction": {
+            "Ident": "Indicator",
+            "OnHover": "ShowToolTip",
+            "OnClick": "None",
+            "HyperlinkDestination": "NewTab"
+          }
+        },
+        "6": {
+          "Ident": "StiChartElement",
+          "Name": "OpsInventoryByStatus",
+          "Guid": "581b54f9712e40bbde756eb5265f7731",
+          "ClientRectangle": "0,128,596,340",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "0,354,480,300",
+          "Values": {
+            "0": {
+              "Ident": "ValueChartMeter",
+              "Key": "OpsInventoryByStatusValue",
+              "Expression": "Sum(inventory_by_status.count)",
+              "Label": "Count",
+              "SeriesType": "Doughnut"
+            }
+          },
+          "Arguments": {
+            "0": {
+              "Ident": "ArgumentChartMeter",
+              "Key": "OpsInventoryByStatusArgument",
+              "Expression": "inventory_by_status.name",
+              "Label": "Status"
+            }
+          },
+          "DashboardInteraction": {
+            "Ident": "Chart",
+            "OnHover": "ShowToolTip",
+            "OnClick": "ApplyFilter",
+            "HyperlinkDestination": "NewTab"
+          },
+          "Title": {
+            "Text": "Inventory by status"
+          },
+          "ManuallyEnteredChartMeter": {
+            "Ident": "ValueChartMeter",
+            "Key": "4f22b4f1e3aa18b69892b09a9effcdf4"
+          },
+          "ArgumentFormat": {
+            "Ident": "StiGeneralFormatService"
+          },
+          "ValueFormat": {
+            "Ident": "StiNumberFormatService",
+            "NegativePattern": 1,
+            "DecimalDigits": 0,
+            "GroupSeparator": ",",
+            "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+          },
+          "Area": {
+            "SideBySide": true,
+            "GridLinesHor": {
+              "Color": "Transparent"
+            },
+            "GridLinesVert": {
+              "Color": "Transparent"
+            },
+            "InterlacingHor": {
+              "Color": "Transparent"
+            },
+            "InterlacingVert": {
+              "Color": "Transparent"
+            },
+            "Indicator": {
+              "Title": {
+                "Text": ""
+              }
+            }
+          },
+          "Labels": {
+            "DoughnutPosition": "None",
+            "Position": "None"
+          },
+          "Options3D": {
+            "Opacity": 1,
+            "Lighting": "Gradient"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;"
+        },
+        "7": {
+          "Ident": "StiChartElement",
+          "Name": "OpsOrdersByStatus",
+          "Guid": "6df672a5d831f2bfa21abc81fe834491",
+          "ClientRectangle": "604,128,596,340",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "0,662,480,300",
+          "Values": {
+            "0": {
+              "Ident": "ValueChartMeter",
+              "Key": "OpsOrdersByStatusValue",
+              "Expression": "Sum(orders_by_status.count)",
+              "Label": "Count",
+              "SeriesType": "ClusteredBar"
+            }
+          },
+          "Arguments": {
+            "0": {
+              "Ident": "ArgumentChartMeter",
+              "Key": "OpsOrdersByStatusArgument",
+              "Expression": "orders_by_status.name",
+              "Label": "Status"
+            }
+          },
+          "DashboardInteraction": {
+            "Ident": "Chart",
+            "OnHover": "ShowToolTip",
+            "OnClick": "ApplyFilter",
+            "HyperlinkDestination": "NewTab"
+          },
+          "Title": {
+            "Text": "Orders by status"
+          },
+          "ManuallyEnteredChartMeter": {
+            "Ident": "ValueChartMeter",
+            "Key": "9bc32853095df96078da9996bba72993"
+          },
+          "ArgumentFormat": {
+            "Ident": "StiGeneralFormatService"
+          },
+          "ValueFormat": {
+            "Ident": "StiNumberFormatService",
+            "NegativePattern": 1,
+            "DecimalDigits": 0,
+            "GroupSeparator": ",",
+            "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+          },
+          "Area": {
+            "SideBySide": true,
+            "GridLinesHor": {
+              "Color": "Transparent"
+            },
+            "GridLinesVert": {
+              "Color": "Transparent"
+            },
+            "InterlacingHor": {
+              "Color": "Transparent"
+            },
+            "InterlacingVert": {
+              "Color": "Transparent"
+            },
+            "Indicator": {
+              "Title": {
+                "Text": ""
+              }
+            }
+          },
+          "Labels": {
+            "Position": "None"
+          },
+          "Options3D": {
+            "Opacity": 1,
+            "Lighting": "Gradient"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;"
+        },
+        "8": {
+          "Ident": "StiIndicatorElement",
+          "Name": "SalesCount",
+          "Guid": "c8915d3d526af14704e5fb4af50fefd3",
+          "ClientRectangle": "0,476,294,120",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "0,970,236,110",
+          "TextFormat": {
+            "Ident": "StiNumberFormatService",
+            "NegativePattern": 1,
+            "DecimalDigits": 0,
+            "GroupSeparator": ",",
+            "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+          },
+          "TargetFormat": {
+            "Ident": "StiPercentageFormatService",
+            "DecimalDigits": 2,
+            "GroupSeparator": ",",
+            "Symbol": "%"
+          },
+          "Value": {
+            "Ident": "ValueIndicatorMeter",
+            "Key": "SalesCountValue",
+            "Expression": "Sum(sales_kpis.salesThisMonth)",
+            "Label": "Sales"
+          },
+          "Title": {
+            "Text": "Sales"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;",
+          "DashboardInteraction": {
+            "Ident": "Indicator",
+            "OnHover": "ShowToolTip",
+            "OnClick": "None",
+            "HyperlinkDestination": "NewTab"
+          }
+        },
+        "9": {
+          "Ident": "StiIndicatorElement",
+          "Name": "SalesAmount",
+          "Guid": "18de5f56292d5e8dd7341122138f9665",
+          "ClientRectangle": "302,476,294,120",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "244,970,236,110",
+          "TextFormat": {
+            "Ident": "StiNumberFormatService",
+            "NegativePattern": 1,
+            "DecimalDigits": 2,
+            "GroupSeparator": ",",
+            "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+          },
+          "TargetFormat": {
+            "Ident": "StiPercentageFormatService",
+            "DecimalDigits": 2,
+            "GroupSeparator": ",",
+            "Symbol": "%"
+          },
+          "Value": {
+            "Ident": "ValueIndicatorMeter",
+            "Key": "SalesAmountValue",
+            "Expression": "Sum(sales_kpis.saleAmountThisMonth)",
+            "Label": "Sale amount"
+          },
+          "Title": {
+            "Text": "Sale amount"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;",
+          "DashboardInteraction": {
+            "Ident": "Indicator",
+            "OnHover": "ShowToolTip",
+            "OnClick": "None",
+            "HyperlinkDestination": "NewTab"
+          }
+        },
+        "10": {
+          "Ident": "StiIndicatorElement",
+          "Name": "SalesOpenAtr",
+          "Guid": "cbc837190849519f77800ef66732b31a",
+          "ClientRectangle": "604,476,294,120",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "0,1088,236,110",
+          "TextFormat": {
+            "Ident": "StiNumberFormatService",
+            "NegativePattern": 1,
+            "DecimalDigits": 0,
+            "GroupSeparator": ",",
+            "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+          },
+          "TargetFormat": {
+            "Ident": "StiPercentageFormatService",
+            "DecimalDigits": 2,
+            "GroupSeparator": ",",
+            "Symbol": "%"
+          },
+          "Value": {
+            "Ident": "ValueIndicatorMeter",
+            "Key": "SalesOpenAtrValue",
+            "Expression": "Sum(sales_kpis.openAtr)",
+            "Label": "Open ATR"
+          },
+          "Title": {
+            "Text": "Open ATR"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;",
+          "DashboardInteraction": {
+            "Ident": "Indicator",
+            "OnHover": "ShowToolTip",
+            "OnClick": "None",
+            "HyperlinkDestination": "NewTab"
+          }
+        },
+        "11": {
+          "Ident": "StiIndicatorElement",
+          "Name": "SalesReturnsInProgress",
+          "Guid": "acc93143e86560eab244f82df558f17c",
+          "ClientRectangle": "906,476,294,120",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "244,1088,236,110",
+          "TextFormat": {
+            "Ident": "StiNumberFormatService",
+            "NegativePattern": 1,
+            "DecimalDigits": 0,
+            "GroupSeparator": ",",
+            "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+          },
+          "TargetFormat": {
+            "Ident": "StiPercentageFormatService",
+            "DecimalDigits": 2,
+            "GroupSeparator": ",",
+            "Symbol": "%"
+          },
+          "Value": {
+            "Ident": "ValueIndicatorMeter",
+            "Key": "SalesReturnsInProgressValue",
+            "Expression": "Sum(sales_kpis.returnsInProgress)",
+            "Label": "Returns in progress"
+          },
+          "Title": {
+            "Text": "Returns in progress"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;",
+          "DashboardInteraction": {
+            "Ident": "Indicator",
+            "OnHover": "ShowToolTip",
+            "OnClick": "None",
+            "HyperlinkDestination": "NewTab"
+          }
+        },
+        "12": {
+          "Ident": "StiChartElement",
+          "Name": "SalesStatusMix",
+          "Guid": "d182cd0df6abde599960a4be7b797483",
+          "ClientRectangle": "0,604,596,340",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "0,1206,480,300",
+          "Values": {
+            "0": {
+              "Ident": "ValueChartMeter",
+              "Key": "SalesStatusMixValue",
+              "Expression": "Sum(sale_status_mix.count)",
+              "Label": "Count",
+              "SeriesType": "Doughnut"
+            }
+          },
+          "Arguments": {
+            "0": {
+              "Ident": "ArgumentChartMeter",
+              "Key": "SalesStatusMixArgument",
+              "Expression": "sale_status_mix.name",
+              "Label": "Status"
+            }
+          },
+          "DashboardInteraction": {
+            "Ident": "Chart",
+            "OnHover": "ShowToolTip",
+            "OnClick": "ApplyFilter",
+            "HyperlinkDestination": "NewTab"
+          },
+          "Title": {
+            "Text": "Sale status mix"
+          },
+          "ManuallyEnteredChartMeter": {
+            "Ident": "ValueChartMeter",
+            "Key": "1013d477471d429cbebae809bd1ff236"
+          },
+          "ArgumentFormat": {
+            "Ident": "StiGeneralFormatService"
+          },
+          "ValueFormat": {
+            "Ident": "StiNumberFormatService",
+            "NegativePattern": 1,
+            "DecimalDigits": 0,
+            "GroupSeparator": ",",
+            "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+          },
+          "Area": {
+            "SideBySide": true,
+            "GridLinesHor": {
+              "Color": "Transparent"
+            },
+            "GridLinesVert": {
+              "Color": "Transparent"
+            },
+            "InterlacingHor": {
+              "Color": "Transparent"
+            },
+            "InterlacingVert": {
+              "Color": "Transparent"
+            },
+            "Indicator": {
+              "Title": {
+                "Text": ""
+              }
+            }
+          },
+          "Labels": {
+            "DoughnutPosition": "None",
+            "Position": "None"
+          },
+          "Options3D": {
+            "Opacity": 1,
+            "Lighting": "Gradient"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;"
+        },
+        "13": {
+          "Ident": "StiChartElement",
+          "Name": "SalesAtrReturnPipeline",
+          "Guid": "9e66a1b43dbbb025272af14d5f32b293",
+          "ClientRectangle": "604,604,596,340",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "0,1514,480,300",
+          "Values": {
+            "0": {
+              "Ident": "ValueChartMeter",
+              "Key": "SalesAtrReturnPipelineValue",
+              "Expression": "Sum(atr_return_pipeline.count)",
+              "Label": "Count",
+              "SeriesType": "ClusteredBar"
+            }
+          },
+          "Arguments": {
+            "0": {
+              "Ident": "ArgumentChartMeter",
+              "Key": "SalesAtrReturnPipelineArgument",
+              "Expression": "atr_return_pipeline.name",
+              "Label": "Status"
+            }
+          },
+          "DashboardInteraction": {
+            "Ident": "Chart",
+            "OnHover": "ShowToolTip",
+            "OnClick": "ApplyFilter",
+            "HyperlinkDestination": "NewTab"
+          },
+          "Title": {
+            "Text": "ATR and return pipeline"
+          },
+          "ManuallyEnteredChartMeter": {
+            "Ident": "ValueChartMeter",
+            "Key": "5384a9429b6e8ea745a86f3f05b1ef24"
+          },
+          "ArgumentFormat": {
+            "Ident": "StiGeneralFormatService"
+          },
+          "ValueFormat": {
+            "Ident": "StiNumberFormatService",
+            "NegativePattern": 1,
+            "DecimalDigits": 0,
+            "GroupSeparator": ",",
+            "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+          },
+          "Area": {
+            "SideBySide": true,
+            "GridLinesHor": {
+              "Color": "Transparent"
+            },
+            "GridLinesVert": {
+              "Color": "Transparent"
+            },
+            "InterlacingHor": {
+              "Color": "Transparent"
+            },
+            "InterlacingVert": {
+              "Color": "Transparent"
+            },
+            "Indicator": {
+              "Title": {
+                "Text": ""
+              }
+            }
+          },
+          "Labels": {
+            "Position": "None"
+          },
+          "Options3D": {
+            "Opacity": 1,
+            "Lighting": "Gradient"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;"
+        },
+        "14": {
+          "Ident": "StiChartElement",
+          "Name": "SalesTopBranches",
+          "Guid": "e80335e3a2d0c145f1aabdd8dc992733",
+          "ClientRectangle": "0,952,596,340",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "0,1822,480,300",
+          "Values": {
+            "0": {
+              "Ident": "ValueChartMeter",
+              "Key": "SalesTopBranchesValue",
+              "Expression": "Sum(top_branches.value)",
+              "Label": "Value",
+              "SeriesType": "ClusteredBar"
+            }
+          },
+          "Arguments": {
+            "0": {
+              "Ident": "ArgumentChartMeter",
+              "Key": "SalesTopBranchesArgument",
+              "Expression": "top_branches.name",
+              "Label": "Name"
+            }
+          },
+          "DashboardInteraction": {
+            "Ident": "Chart",
+            "OnHover": "ShowToolTip",
+            "OnClick": "ApplyFilter",
+            "HyperlinkDestination": "NewTab"
+          },
+          "Title": {
+            "Text": "Top branches by sale amount"
+          },
+          "ManuallyEnteredChartMeter": {
+            "Ident": "ValueChartMeter",
+            "Key": "5573f6ade32c64e2e454e379afc889ea"
+          },
+          "ArgumentFormat": {
+            "Ident": "StiGeneralFormatService"
+          },
+          "ValueFormat": {
+            "Ident": "StiNumberFormatService",
+            "NegativePattern": 1,
+            "DecimalDigits": 2,
+            "GroupSeparator": ",",
+            "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+          },
+          "Area": {
+            "SideBySide": true,
+            "GridLinesHor": {
+              "Color": "Transparent"
+            },
+            "GridLinesVert": {
+              "Color": "Transparent"
+            },
+            "InterlacingHor": {
+              "Color": "Transparent"
+            },
+            "InterlacingVert": {
+              "Color": "Transparent"
+            },
+            "Indicator": {
+              "Title": {
+                "Text": ""
+              }
+            }
+          },
+          "Labels": {
+            "Position": "None"
+          },
+          "Options3D": {
+            "Opacity": 1,
+            "Lighting": "Gradient"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;"
+        },
+        "15": {
+          "Ident": "StiTableElement",
+          "Name": "SalesTopModels",
+          "Guid": "cdfdf851625bd3b0bc306b40b19eab95",
+          "ClientRectangle": "604,952,596,340",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;",
+          "AltClientRectangle": "0,2130,480,300",
+          "Columns": {
+            "0": {
+              "Ident": "DimensionColumn",
+              "Key": "SalesTopModels_name",
+              "Expression": "top_models.name",
+              "Label": "Name",
+              "Size": {
+                "MinWidth": 30,
+                "MaxWidth": 300,
+                "MaxHeight": 300
+              },
+              "DashboardInteraction": {
+                "Ident": "TableColumn",
+                "OnHover": "None",
+                "OnClick": "None",
+                "HyperlinkDestination": "NewTab"
+              }
+            },
+            "1": {
+              "Ident": "MeasureColumn",
+              "Key": "SalesTopModels_value",
+              "Expression": "Sum(top_models.value)",
+              "Label": "Value",
+              "TextFormat": {
+                "Ident": "StiNumberFormatService",
+                "NegativePattern": 1,
+                "DecimalDigits": 0,
+                "GroupSeparator": ",",
+                "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+              },
+              "Size": {
+                "MinWidth": 30,
+                "MaxWidth": 300,
+                "MaxHeight": 300
+              },
+              "DashboardInteraction": {
+                "Ident": "TableColumn",
+                "OnHover": "None",
+                "OnClick": "None",
+                "HyperlinkDestination": "NewTab"
+              }
+            }
+          },
+          "HeaderFont": ";10;;",
+          "FooterFont": ";10;;",
+          "Title": {
+            "Text": "Top models by units sold"
+          },
+          "DashboardInteraction": {
+            "Ident": "Table",
+            "OnHover": "ShowToolTip",
+            "OnClick": "ApplyFilter",
+            "HyperlinkDestination": "NewTab"
+          },
+          "CornerRadius": "0, 0, 0, 0",
+          "Shadow": ";;;"
+        }
+      },
+      "Height": 1300,
+      "Border": ";;2;;;;;solid:Black",
+      "AltSize": "480,2438"
+    }
+  }
+}

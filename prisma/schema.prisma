@@ -288,6 +288,7 @@ model Tenant {
   aiReplenishmentProposals    AiReplenishmentProposal[]
   aiAssistantPolicy           AiAssistantPolicy?
   aiReplenishmentConfirmations AiReplenishmentConfirmation[]
+  customDashboards            CustomDashboard[]
 
   @@index([isPlatform])
   @@map("tenants")
@@ -367,6 +368,7 @@ model User {
   aiAutomationRunsActed              AiAutomationRun[]             @relation("AiAutomationRunActor")
   aiReplenishmentProposalsConfirmed  AiReplenishmentProposal[]     @relation("AiReplenishmentProposalConfirmedBy")
   aiReplenishmentConfirmations       AiReplenishmentConfirmation[]
+  customDashboardsOwned              CustomDashboard[]             @relation("CustomDashboardOwner")
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -3421,4 +3423,31 @@ model AiReplenishmentConfirmation {
 
   @@index([tenantId, userId, proposalId])
   @@map("ai_replenishment_confirmations")
+}
+
+enum CustomDashboardVisibility {
+  PRIVATE
+  TENANT
+}
+
+/// User-built Stimulsoft dashboard. `template` holds the Dashboards.JS JSON
+/// layout only — never data. Data is loaded at view time through the
+/// reporting dataset registry with the viewer's own permissions and AOR.
+model CustomDashboard {
+  id          String                    @id @default(cuid())
+  tenantId    String                    @map("tenant_id")
+  ownerUserId String                    @map("owner_user_id")
+  name        String
+  description String?
+  template    Json
+  visibility  CustomDashboardVisibility @default(PRIVATE)
+  createdAt   DateTime                  @default(now()) @map("created_at")
+  updatedAt   DateTime                  @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  owner  User   @relation("CustomDashboardOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, visibility])
+  @@index([tenantId, ownerUserId])
+  @@map("custom_dashboards")
 }

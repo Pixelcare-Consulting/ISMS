@@ -1,7 +1,12 @@
 "use server";
 
 import { branchService } from "@/features/branches/services/branch.service";
-import { ORDER_VIEW_REPORT_PERMISSIONS } from "@/features/orders/constants/order-permissions";
+import {
+  INVENTORY_REPORT_ACCESS,
+  REPORT_ACCESS,
+  SALES_REPORT_ACCESS,
+  TRANSFER_REPORT_ACCESS,
+} from "@/features/reports/constants/report-access";
 import { exportInventoryReportSchema } from "@/features/reports/schemas/inventory-report.schema";
 import { reportsService } from "@/features/reports/services/reports.service";
 import { requirePermission } from "@/lib/auth/permissions";
@@ -14,8 +19,6 @@ import { reasonStatusService } from "@/features/reason-status/services/reason-st
 import { requireAnyPermission } from "@/lib/auth/permissions";
 import { getUserBranchIds } from "@/lib/aor/scope";
 
-const REPORT_ACCESS = ["reports.view", ...ORDER_VIEW_REPORT_PERMISSIONS] as const;
-const INVENTORY_REPORT_ACCESS = ["reports.view", "inventory.view"] as const;
 
 async function resolveReportBranchIds(tenantId: string, userId: string): Promise<string[]> {
   return (await getUserBranchIds(tenantId, userId)) ?? [];
@@ -98,12 +101,7 @@ export async function exportTransferReportCsvAction(input?: {
   from?: string;
   to?: string;
 }) {
-  const session = await requireAnyPermission([
-    ...REPORT_ACCESS,
-    "logistics.view",
-    "logistics.create",
-    "logistics.manage",
-  ]);
+  const session = await requireAnyPermission([...TRANSFER_REPORT_ACCESS]);
   const branchIds = await resolveReportBranchIds(session.user.tenantId, session.user.id);
 
   const csv = await transferReportService.generateCsv(session.user.tenantId, {
@@ -120,7 +118,7 @@ export async function exportTransferReportCsvAction(input?: {
 }
 
 export async function exportSalesReportCsvAction(input?: { from?: string; to?: string }) {
-  const session = await requireAnyPermission([...REPORT_ACCESS, "sales.create"]);
+  const session = await requireAnyPermission([...SALES_REPORT_ACCESS]);
   const branchIds = await resolveReportBranchIds(session.user.tenantId, session.user.id);
 
   const csv = await salesReportService.generateCsv(session.user.tenantId, {

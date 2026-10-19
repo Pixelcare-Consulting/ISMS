@@ -1,0 +1,738 @@
+{
+  "ReportVersion": "2026.4.1",
+  "ReportGuid": "bb58e8eca2026e53d63d797e2a9e8a86",
+  "ReportName": "daily-stock",
+  "ReportAlias": "Daily Stock",
+  "ReportCreated": "/Date(1792380577000+0800)/",
+  "ReportChanged": "/Date(1792380577000+0800)/",
+  "EngineVersion": "EngineV2",
+  "ReportUnit": "Centimeters",
+  "ScriptLanguage": "CSharp",
+  "UsePlatformDependentScript": false,
+  "CalculationMode": "Interpretation",
+  "Dictionary": {
+    "Variables": {
+      "0": {
+        "Name": "FilterSummary",
+        "Alias": "FilterSummary",
+        "Type": "System.String"
+      }
+    },
+    "DataSources": {
+      "0": {
+        "Ident": "StiDataTableSource",
+        "Name": "daily_stock",
+        "Alias": "daily_stock",
+        "Columns": {
+          "0": {
+            "Name": "date",
+            "NameInSource": "date",
+            "Alias": "Date",
+            "Type": "System.DateTime"
+          },
+          "1": {
+            "Name": "branch",
+            "NameInSource": "branch",
+            "Alias": "Branch",
+            "Type": "System.String"
+          },
+          "2": {
+            "Name": "skuCode",
+            "NameInSource": "skuCode",
+            "Alias": "SKU",
+            "Type": "System.String"
+          },
+          "3": {
+            "Name": "model",
+            "NameInSource": "model",
+            "Alias": "Model",
+            "Type": "System.String"
+          },
+          "4": {
+            "Name": "shelfMax",
+            "NameInSource": "shelfMax",
+            "Alias": "Shelf Max",
+            "Type": "System.Decimal"
+          },
+          "5": {
+            "Name": "invQty",
+            "NameInSource": "invQty",
+            "Alias": "Inventory",
+            "Type": "System.Decimal"
+          },
+          "6": {
+            "Name": "soldQty",
+            "NameInSource": "soldQty",
+            "Alias": "Sold",
+            "Type": "System.Decimal"
+          }
+        },
+        "NameInSource": "daily_stock.daily_stock"
+      }
+    }
+  },
+  "Pages": {
+    "0": {
+      "Ident": "StiPage",
+      "Name": "Page1",
+      "Guid": "321bd036726373321a0ca6ad6085814e",
+      "Interaction": {
+        "Ident": "StiInteraction"
+      },
+      "Border": ";;2;;;;;solid:Black",
+      "Brush": "solid:",
+      "Components": {
+        "0": {
+          "Ident": "StiReportTitleBand",
+          "Name": "ReportTitle",
+          "CanGrow": true,
+          "ClientRectangle": "0,0,0,1.1",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;;;;solid:Black",
+          "Brush": "solid:",
+          "Components": {
+            "0": {
+              "Ident": "StiText",
+              "Name": "TitleText",
+              "ClientRectangle": "0,0,11.4,0.8",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "Daily Stock"
+              },
+              "VertAlignment": "Center",
+              "Font": ";14;Bold;",
+              "Border": ";;;;;;;solid:Black",
+              "Brush": "solid:",
+              "TextBrush": "solid:15,23,42",
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            },
+            "1": {
+              "Ident": "StiText",
+              "Name": "TitleFilters",
+              "ClientRectangle": "11.4,0,7.6,0.8",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "{FilterSummary}"
+              },
+              "HorAlignment": "Right",
+              "VertAlignment": "Center",
+              "Border": ";;;;;;;solid:Black",
+              "Brush": "solid:",
+              "TextBrush": "solid:100,116,139",
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            }
+          }
+        },
+        "1": {
+          "Ident": "StiPageFooterBand",
+          "Name": "PageFooter",
+          "CanGrow": true,
+          "ClientRectangle": "0,0,0,0.6",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;;;;solid:Black",
+          "Brush": "solid:",
+          "Components": {
+            "0": {
+              "Ident": "StiText",
+              "Name": "FooterGenerated",
+              "ClientRectangle": "0,0,9.5,0.6",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "Generated {Format(\"{0:yyyy-MM-dd HH:mm}\", DateTime.Now)}"
+              },
+              "VertAlignment": "Center",
+              "Font": ";7;;",
+              "Border": ";;;;;;;solid:Black",
+              "Brush": "solid:",
+              "TextBrush": "solid:100,116,139",
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            },
+            "1": {
+              "Ident": "StiText",
+              "Name": "FooterPage",
+              "ClientRectangle": "9.5,0,9.5,0.6",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "Page {PageNumber} of {TotalPageCount}"
+              },
+              "HorAlignment": "Right",
+              "VertAlignment": "Center",
+              "Font": ";7;;",
+              "Border": ";;;;;;;solid:Black",
+              "Brush": "solid:",
+              "TextBrush": "solid:100,116,139",
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            }
+          }
+        },
+        "2": {
+          "Ident": "StiHeaderBand",
+          "Name": "S0ColumnHeader",
+          "CanGrow": true,
+          "ClientRectangle": "0,0,0,0.7",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;;;;solid:Black",
+          "Brush": "solid:",
+          "Components": {
+            "0": {
+              "Ident": "StiText",
+              "Name": "S0H_skuCode",
+              "ClientRectangle": "0,0,4.34,0.7",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "SKU"
+              },
+              "VertAlignment": "Center",
+              "Font": ";;Bold;",
+              "Border": "Bottom;203,213,225;;;;;;solid:Black",
+              "Brush": "solid:241,245,249",
+              "TextBrush": "solid:15,23,42",
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            },
+            "1": {
+              "Ident": "StiText",
+              "Name": "S0H_model",
+              "ClientRectangle": "4.34,0,8.14,0.7",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "Model"
+              },
+              "VertAlignment": "Center",
+              "Font": ";;Bold;",
+              "Border": "Bottom;203,213,225;;;;;;solid:Black",
+              "Brush": "solid:241,245,249",
+              "TextBrush": "solid:15,23,42",
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            },
+            "2": {
+              "Ident": "StiText",
+              "Name": "S0H_shelfMax",
+              "ClientRectangle": "12.49,0,2.17,0.7",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "Shelf Max"
+              },
+              "HorAlignment": "Right",
+              "VertAlignment": "Center",
+              "Font": ";;Bold;",
+              "Border": "Bottom;203,213,225;;;;;;solid:Black",
+              "Brush": "solid:241,245,249",
+              "TextBrush": "solid:15,23,42",
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            },
+            "3": {
+              "Ident": "StiText",
+              "Name": "S0H_invQty",
+              "ClientRectangle": "14.66,0,2.17,0.7",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "Inventory"
+              },
+              "HorAlignment": "Right",
+              "VertAlignment": "Center",
+              "Font": ";;Bold;",
+              "Border": "Bottom;203,213,225;;;;;;solid:Black",
+              "Brush": "solid:241,245,249",
+              "TextBrush": "solid:15,23,42",
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            },
+            "4": {
+              "Ident": "StiText",
+              "Name": "S0H_soldQty",
+              "ClientRectangle": "16.83,0,2.17,0.7",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "Sold"
+              },
+              "HorAlignment": "Right",
+              "VertAlignment": "Center",
+              "Font": ";;Bold;",
+              "Border": "Bottom;203,213,225;;;;;;solid:Black",
+              "Brush": "solid:241,245,249",
+              "TextBrush": "solid:15,23,42",
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            }
+          }
+        },
+        "3": {
+          "Ident": "StiGroupHeaderBand",
+          "Name": "S0Group",
+          "CanGrow": true,
+          "ClientRectangle": "0,0,0,0.7",
+          "Interaction": {
+            "Ident": "StiBandInteraction"
+          },
+          "Border": ";;;;;;;solid:Black",
+          "Brush": "solid:",
+          "Components": {
+            "0": {
+              "Ident": "StiText",
+              "Name": "S0GroupText",
+              "ClientRectangle": "0,0,19,0.7",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "{daily_stock.branch}"
+              },
+              "VertAlignment": "Center",
+              "Font": ";;Bold;",
+              "Border": ";;;;;;;solid:Black",
+              "Brush": "solid:248,250,252",
+              "TextBrush": "solid:15,23,42",
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            }
+          },
+          "Condition": {
+            "Value": "{daily_stock.branch}"
+          }
+        },
+        "4": {
+          "Ident": "StiDataBand",
+          "Name": "S0Data",
+          "CanGrow": true,
+          "ClientRectangle": "0,0,0,0.6",
+          "Interaction": {
+            "Ident": "StiBandInteraction"
+          },
+          "Border": ";;;;;;;solid:Black",
+          "Brush": "solid:",
+          "Components": {
+            "0": {
+              "Ident": "StiText",
+              "Name": "S0D_skuCode",
+              "ClientRectangle": "0,0,4.34,0.6",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "{daily_stock.skuCode}"
+              },
+              "VertAlignment": "Center",
+              "Border": "Bottom;203,213,225;;;;;;solid:Black",
+              "Brush": "solid:",
+              "TextBrush": "solid:15,23,42",
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            },
+            "1": {
+              "Ident": "StiText",
+              "Name": "S0D_model",
+              "ClientRectangle": "4.34,0,8.14,0.6",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "{daily_stock.model}"
+              },
+              "VertAlignment": "Center",
+              "Border": "Bottom;203,213,225;;;;;;solid:Black",
+              "Brush": "solid:",
+              "TextBrush": "solid:15,23,42",
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            },
+            "2": {
+              "Ident": "StiText",
+              "Name": "S0D_shelfMax",
+              "ClientRectangle": "12.49,0,2.17,0.6",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "{daily_stock.shelfMax}"
+              },
+              "HorAlignment": "Right",
+              "VertAlignment": "Center",
+              "Border": "Bottom;203,213,225;;;;;;solid:Black",
+              "Brush": "solid:",
+              "TextBrush": "solid:15,23,42",
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              },
+              "TextFormat": {
+                "Ident": "StiNumberFormatService",
+                "NegativePattern": 1,
+                "DecimalDigits": 0,
+                "GroupSeparator": ",",
+                "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+              }
+            },
+            "3": {
+              "Ident": "StiText",
+              "Name": "S0D_invQty",
+              "ClientRectangle": "14.66,0,2.17,0.6",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "{daily_stock.invQty}"
+              },
+              "HorAlignment": "Right",
+              "VertAlignment": "Center",
+              "Border": "Bottom;203,213,225;;;;;;solid:Black",
+              "Brush": "solid:",
+              "TextBrush": "solid:15,23,42",
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              },
+              "TextFormat": {
+                "Ident": "StiNumberFormatService",
+                "NegativePattern": 1,
+                "DecimalDigits": 0,
+                "GroupSeparator": ",",
+                "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+              }
+            },
+            "4": {
+              "Ident": "StiText",
+              "Name": "S0D_soldQty",
+              "ClientRectangle": "16.83,0,2.17,0.6",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "{daily_stock.soldQty}"
+              },
+              "HorAlignment": "Right",
+              "VertAlignment": "Center",
+              "Border": "Bottom;203,213,225;;;;;;solid:Black",
+              "Brush": "solid:",
+              "TextBrush": "solid:15,23,42",
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              },
+              "TextFormat": {
+                "Ident": "StiNumberFormatService",
+                "NegativePattern": 1,
+                "DecimalDigits": 0,
+                "GroupSeparator": ",",
+                "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+              }
+            }
+          },
+          "DataSourceName": "daily_stock"
+        },
+        "5": {
+          "Ident": "StiGroupFooterBand",
+          "Name": "S0GroupFooter",
+          "CanGrow": true,
+          "ClientRectangle": "0,0,0,0.6",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;;;;solid:Black",
+          "Brush": "solid:",
+          "Components": {
+            "0": {
+              "Ident": "StiText",
+              "Name": "S0GF_shelfMax",
+              "ClientRectangle": "12.49,0,2.17,0.6",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "{Sum(S0Data,daily_stock.shelfMax)}"
+              },
+              "HorAlignment": "Right",
+              "VertAlignment": "Center",
+              "Font": ";;Bold;",
+              "Border": ";;;;;;;solid:Black",
+              "Brush": "solid:",
+              "TextBrush": "solid:15,23,42",
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              },
+              "TextFormat": {
+                "Ident": "StiNumberFormatService",
+                "NegativePattern": 1,
+                "DecimalDigits": 0,
+                "GroupSeparator": ",",
+                "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+              }
+            },
+            "1": {
+              "Ident": "StiText",
+              "Name": "S0GF_invQty",
+              "ClientRectangle": "14.66,0,2.17,0.6",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "{Sum(S0Data,daily_stock.invQty)}"
+              },
+              "HorAlignment": "Right",
+              "VertAlignment": "Center",
+              "Font": ";;Bold;",
+              "Border": ";;;;;;;solid:Black",
+              "Brush": "solid:",
+              "TextBrush": "solid:15,23,42",
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              },
+              "TextFormat": {
+                "Ident": "StiNumberFormatService",
+                "NegativePattern": 1,
+                "DecimalDigits": 0,
+                "GroupSeparator": ",",
+                "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+              }
+            },
+            "2": {
+              "Ident": "StiText",
+              "Name": "S0GF_soldQty",
+              "ClientRectangle": "16.83,0,2.17,0.6",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "{Sum(S0Data,daily_stock.soldQty)}"
+              },
+              "HorAlignment": "Right",
+              "VertAlignment": "Center",
+              "Font": ";;Bold;",
+              "Border": ";;;;;;;solid:Black",
+              "Brush": "solid:",
+              "TextBrush": "solid:15,23,42",
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              },
+              "TextFormat": {
+                "Ident": "StiNumberFormatService",
+                "NegativePattern": 1,
+                "DecimalDigits": 0,
+                "GroupSeparator": ",",
+                "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+              }
+            }
+          }
+        },
+        "6": {
+          "Ident": "StiFooterBand",
+          "Name": "S0Footer",
+          "CanGrow": true,
+          "ClientRectangle": "0,0,0,0.7",
+          "Interaction": {
+            "Ident": "StiInteraction"
+          },
+          "Border": ";;;;;;;solid:Black",
+          "Brush": "solid:",
+          "Components": {
+            "0": {
+              "Ident": "StiText",
+              "Name": "S0RowCount",
+              "ClientRectangle": "0,0,5.7,0.7",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "{Count(S0Data)} rows"
+              },
+              "VertAlignment": "Center",
+              "Border": ";;;;;;;solid:Black",
+              "Brush": "solid:",
+              "TextBrush": "solid:100,116,139",
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            },
+            "1": {
+              "Ident": "StiText",
+              "Name": "S0T_shelfMax",
+              "ClientRectangle": "12.49,0,2.17,0.7",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "{Sum(S0Data,daily_stock.shelfMax)}"
+              },
+              "HorAlignment": "Right",
+              "VertAlignment": "Center",
+              "Font": ";;Bold;",
+              "Border": ";;;;;;;solid:Black",
+              "Brush": "solid:241,245,249",
+              "TextBrush": "solid:15,23,42",
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              },
+              "TextFormat": {
+                "Ident": "StiNumberFormatService",
+                "NegativePattern": 1,
+                "DecimalDigits": 0,
+                "GroupSeparator": ",",
+                "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+              }
+            },
+            "2": {
+              "Ident": "StiText",
+              "Name": "S0T_invQty",
+              "ClientRectangle": "14.66,0,2.17,0.7",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "{Sum(S0Data,daily_stock.invQty)}"
+              },
+              "HorAlignment": "Right",
+              "VertAlignment": "Center",
+              "Font": ";;Bold;",
+              "Border": ";;;;;;;solid:Black",
+              "Brush": "solid:241,245,249",
+              "TextBrush": "solid:15,23,42",
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              },
+              "TextFormat": {
+                "Ident": "StiNumberFormatService",
+                "NegativePattern": 1,
+                "DecimalDigits": 0,
+                "GroupSeparator": ",",
+                "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+              }
+            },
+            "3": {
+              "Ident": "StiText",
+              "Name": "S0T_soldQty",
+              "ClientRectangle": "16.83,0,2.17,0.7",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "{Sum(S0Data,daily_stock.soldQty)}"
+              },
+              "HorAlignment": "Right",
+              "VertAlignment": "Center",
+              "Font": ";;Bold;",
+              "Border": ";;;;;;;solid:Black",
+              "Brush": "solid:241,245,249",
+              "TextBrush": "solid:15,23,42",
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              },
+              "TextFormat": {
+                "Ident": "StiNumberFormatService",
+                "NegativePattern": 1,
+                "DecimalDigits": 0,
+                "GroupSeparator": ",",
+                "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
+              }
+            }
+          }
+        }
+      },
+      "PaperSize": "A4"
+    }
+  }
+}

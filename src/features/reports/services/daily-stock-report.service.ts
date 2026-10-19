@@ -25,8 +25,19 @@ function dayBounds(date: Date): { start: Date; end: Date } {
   return { start, end };
 }
 
+export interface DailyStockReportRow {
+  date: string;
+  branch: string;
+  skuCode: string;
+  model: string;
+  shelfMax: number;
+  invQty: number;
+  soldQty: number;
+}
+
 export const dailyStockReportService = {
-  async generateCsv(tenantId: string, filters: DailyStockReportFilters) {
+  /** One row per planogram entry; shared by the CSV export and the Stimulsoft dataset. */
+  async listRows(tenantId: string, filters: DailyStockReportFilters): Promise<DailyStockReportRow[]> {
     const { start, end } = dayBounds(filters.date);
     const dateLabel = start.toISOString().slice(0, 10);
 
@@ -50,7 +61,7 @@ export const dailyStockReportService = {
       orderBy: [{ branch: { name: "asc" } }, { model: { skuCode: "asc" } }],
     });
 
-    const rows: (string | number | null | undefined)[][] = [];
+    const rows: DailyStockReportRow[] = [];
 
     for (const entry of planograms) {
       const invCount = stkCodeId
@@ -78,17 +89,25 @@ export const dailyStockReportService = {
         },
       });
 
-      rows.push([
-        dateLabel,
-        entry.branch.name,
-        entry.model.skuCode,
-        entry.model.name,
-        entry.maxQty,
-        invCount,
-        soldCount,
-      ]);
+      rows.push({
+        date: dateLabel,
+        branch: entry.branch.name,
+        skuCode: entry.model.skuCode,
+        model: entry.model.name,
+        shelfMax: entry.maxQty,
+        invQty: invCount,
+        soldQty: soldCount,
+      });
     }
 
-    return buildCsvContent(HEADERS, rows);
+    return rows;
+  },
+
+  async generateCsv(tenantId: string, filters: DailyStockReportFilters) {
+    const rows = await this.listRows(tenantId, filters);
+    return buildCsvContent(
+      HEADERS,
+      rows.map((r) => [r.date, r.branch, r.skuCode, r.model, r.shelfMax, r.invQty, r.soldQty]),
+    );
   },
 };

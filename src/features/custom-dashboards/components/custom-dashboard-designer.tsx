@@ -1,0 +1,116 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+
+import { LoadingIndicator } from "@/components/ui/loading-indicator";
+import { saveCustomDashboardTemplateAction } from "@/features/custom-dashboards/actions/custom-dashboard.actions";
+import { defaultDashboardRange } from "@/features/custom-dashboards/lib/default-range";
+import { loadDatasetsAction } from "@/features/reporting/actions/reporting.actions";
+import type { DatasetKey, DatasetRow } from "@/features/reporting/datasets/dataset-catalog";
+import { ensureDataSources, registerDatasets } from "@/features/reporting/lib/create-report";
+import { loadStimulsoftDesigner, type StimulsoftApi } from "@/features/reporting/lib/stimulsoft-client";
+
+interface CustomDashboardDesignerProps {
+  id: string;
+  template: Record<string, unknown>;
+  /** Datasets the current user may open (resolved on the server). */
+  datasetKeys: DatasetKey[];
+}
+
+function prefersDark(): boolean {
+  return window.matchMedia("(prefers-color-scheme: dark)").matches;
+}
+
+/**
+ * Dashboard designer locked to ISMS datasets: users can't add connections,
+ * data sources or resources, only lay out elements over the catalog data.
+ */
+function buildDesignerOptions(api: StimulsoftApi) {
+  const D = api.Designer;
+  const options = new D.StiDesignerOptions();
+  options.height = "100%";
+  options.appearance.allowChangeWindowTitle = false;
+  options.appearance.theme = prefersDark() ? D.StiDesignerTheme.Office2022DarkGrayBlue : D.StiDesignerTheme.Office2022WhiteBlue;
+  options.toolbar.showFileMenu = false;
+  options.toolbar.showAboutButton = false;
+  options.toolbar.showPublishButton = false;
+  options.toolbar.showNewPageButton = false;
+  options.dictionary.showAdaptersInNewConnectionForm = false;
+  options.dictionary.dataConnectionsPermissions = D.StiDesignerPermissions.None;
+  options.dictionary.dataSourcesPermissions = D.StiDesignerPermissions.View;
+  options.dictionary.dataRelationsPermissions = D.StiDesignerPermissions.View;
+  options.dictionary.businessObjectsPermissions = D.StiDesignerPermissions.None;
+  options.dictionary.resourcesPermissions = D.StiDesignerPermissions.None;
+  return options;
+}
+
+export function CustomDashboardDesigner({ id, template, datasetKeys }: CustomDashboardDesignerProps) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const [state, setState] = useState<"LOADING" | "READY" | "ERROR">("LOADING");
+
+  useEffect(() => {
+    const host = hostRef.current;
+    let disposed = false;
+    let designer: { dispose(): void } | null = null;
+
+    // Last 30 days of real data so elements preview while designing.
+    Promise.all([
+      loadStimulsoftDesigner(),
+      datasetKeys.length > 0
+        ? loadDatasetsAction({ keys: datasetKeys, params: defaultDashboardRange(), skipDenied: true })
+        : Promise.resolve(null),
+    ])
+      .then(([api, result]) => {
+        if (disposed || !host) return;
+        const rows: Partial<Record<DatasetKey, DatasetRow[]>> = {};
+        if (result?.success) {
+          for (const [key, data] of Object.entries(result.datasets)) if (data) rows[key as DatasetKey] = data.rows;
+        }
+
+        const report = new api.Report.StiReport();
+        report.load(template);
+        ensureDataSources(api, report, datasetKeys);
+        registerDatasets(api, report, rows);
+
+        const instance = new api.Designer.StiDesigner(buildDesignerOptions(api), `sti-designer-${id}`, false);
+        instance.onSaveReport = (args) => {
+          const json = JSON.parse(args.report.saveToJsonString()) as Record<string, unknown>;
+          void saveCustomDashboardTemplateAction({ id, template: json }).then((saved) => {
+            if (saved.success) toast.success("Dashboard saved");
+            else toast.error("Could not save dashboard", { description: saved.error });
+          });
+        };
+        instance.renderHtml(host);
+        instance.report = report;
+        designer = instance;
+        setState("READY");
+      })
+      .catch((error: unknown) => {
+        console.error("[custom-dashboards] designer failed to load", error);
+        if (!disposed) setState("ERROR");
+      });
+
+    return () => {
+      disposed = true;
+      designer?.dispose();
+      if (host) host.innerHTML = "";
+    };
+  }, [id, template, datasetKeys]);
+
+  return (
+    <div className="relative h-[calc(100dvh-11rem)] min-h-[600px] overflow-hidden rounded-xl border bg-card">
+      {state === "LOADING" ? (
+        <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
+          <LoadingIndicator label="Loading designer" />
+        </div>
+      ) : null}
+      {state === "ERROR" ? (
+        <p role="alert" className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted-foreground">
+          The designer could not load. Check your connection and reload the page.
+        </p>
+      ) : null}
+      <div ref={hostRef} className="h-full w-full" />
+    </div>
+  );
+}

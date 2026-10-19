@@ -146,6 +146,14 @@ const PERSONA_KPI_ORDER: Record<DashboardPersona, DashboardKpiKey[]> = {
   ],
 };
 
+/** Approvers and branch managers see tenant-wide dashboard numbers instead of their AOR. */
+export function hasDashboardFullAccess(permissions: string[] | undefined): boolean {
+  return (
+    hasAnyOrderPermission(permissions, "approve") ||
+    hasPermission(permissions, "branches.manage")
+  );
+}
+
 /** Ops / inventory / orders / logistics / planning — Operations dashboard nav + page. */
 export function canAccessOperationsDashboard(
   permissions: string[] | undefined,
