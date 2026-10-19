@@ -5,8 +5,10 @@ import {
   getOrderApprovalChain,
 } from "@/features/orders/constants/order-workflow";
 import { nextSalesOrderNumber } from "@/features/orders/utils/next-sales-order-number";
-import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
-import type { Prisma } from "@prisma/client";
+import type { BranchOrderStatus, BranchOrderType, Prisma } from "@prisma/client";
+
+/** Shown when approval is attempted against a row that changed after it was opened. */
+export const ORDER_CHANGED_MESSAGE = "This order changed. Refresh and review again.";
 
 const orderListInclude = {
   branch: { select: { id: true, name: true, sapCode: true, deliverySchedule: true } },
@@ -224,6 +226,7 @@ export const orderRepository = {
   /**
    * Replace an order's lines and restart its approval chain from the top.
    * Lines that stay on the same model keep their id so suggestion allocations survive.
+   * Existing lines update quantity and amount only, so requester remarks and SP remarks stay.
    * `syncAllocations` runs inside the lock of this transaction and may reject the edit.
    */
   async updateLines(
@@ -453,37 +456,90 @@ export const orderRepository = {
     });
   },
 
+  /**
+   * Final approval in one transaction: level, quantities, SP remarks, snapshot,
+   * status, overall remarks, and delivery due date. SAP emission stays outside.
+   */
   async finalizeApproved(
     tenantId: string,
     orderId: string,
     data: {
+      fromStatus: BranchOrderStatus;
+      expectedUpdatedAt?: Date;
+      level: number;
       approvedById: string;
+      comment?: string;
       spaRemarks?: string;
       deliveryDueDate?: Date;
       brandId?: string | null;
-      lineApprovedQty: { detailId: string; approvedQty: number }[];
+      reviewSnapshot?: Prisma.InputJsonValue | null;
+      lines: {
+        detailId: string;
+        approvedQty: number;
+        spRemarks?: string | null;
+      }[];
     },
   ) {
     const processedAt = new Date();
+    const reviewSnapshot = data.reviewSnapshot;
 
-    await prisma.$transaction([
-      ...data.lineApprovedQty.map((line) =>
-        prisma.branchOrderDetail.update({
-          where: { id: line.detailId },
-          data: { approvedQty: line.approvedQty },
-        }),
-      ),
-      prisma.branchOrder.update({
-        where: { id: orderId, tenantId },
+    await prisma.$transaction(async (tx) => {
+      const approved = await tx.branchOrder.updateMany({
+        where: {
+          id: orderId,
+          tenantId,
+          status: data.fromStatus,
+          ...(data.expectedUpdatedAt ? { updatedAt: data.expectedUpdatedAt } : {}),
+        },
         data: {
           status: "approved",
-          approvedById: data.approvedById,
           processedAt,
           spaRemarks: data.spaRemarks ?? null,
           deliveryDueDate: data.deliveryDueDate ?? null,
+          ...(reviewSnapshot != null
+            ? {
+                reviewSnapshot,
+                reviewSnapshotAt: processedAt,
+              }
+            : {}),
+        },
+      });
+      if (approved.count !== 1) {
+        throw new Error(ORDER_CHANGED_MESSAGE);
+      }
+
+      await tx.branchOrder.update({
+        where: { id: orderId },
+        data: {
+          approvedById: data.approvedById,
           brandId: data.brandId ?? null,
         },
-      }),
-    ]);
+      });
+
+      for (const line of data.lines) {
+        const lineData: Prisma.BranchOrderDetailUpdateManyMutationInput = {
+          approvedQty: line.approvedQty,
+        };
+        if (line.spRemarks !== undefined) {
+          lineData.spRemarks = line.spRemarks;
+        }
+        const updated = await tx.branchOrderDetail.updateMany({
+          where: { id: line.detailId, orderId },
+          data: lineData,
+        });
+        if (updated.count !== 1) {
+          throw new Error("One or more lines do not belong to this order.");
+        }
+      }
+
+      await tx.branchOrderApprovalLevel.update({
+        where: { orderId_level: { orderId, level: data.level } },
+        data: {
+          approvedAt: processedAt,
+          approvedById: data.approvedById,
+          comment: data.comment ?? null,
+        },
+      });
+    });
   },
 };

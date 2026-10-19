@@ -66,6 +66,134 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.76.2",
+    date: "2026-10-19",
+    releasedAt: "2026-10-19T15:50:00+08:00",
+    title: "Order sheet layout",
+    highlights: [
+      "Creating an order matches order details, and a line you do not want can be removed.",
+      "Order analytics shows stock and sales for that order type.",
+      "Stock badges use your inventory status colors, and totals sit in the page footer.",
+      "The model name is easier to scan, and the sheet shows 10 lines at a time.",
+      "Notes show in full.",
+      "A line removed while creating an order stays off the order.",
+      "A note can be typed straight through.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Creating an order matches order details, and a line you do not want can be removed.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Order analytics shows stock and sales for that order type, in the same layout as the order sheet.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The order sheet drops the Shelf column, labels each line No., and keeps that number only as wide as the digits. It shows the shelf maximum under the suggestion, and lists total lines and total quantity in the page footer. The model code stays on its own line, the model name wraps underneath, and the sheet fits without scrolling sideways.",
+      },
+      {
+        type: "improvement",
+        description: "The model name is easier to scan, and the sheet shows 10 lines at a time.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Stock badges on order analytics use the same colors as your inventory statuses.",
+      },
+      {
+        type: "improvement",
+        description: "Notes show in full.",
+      },
+      {
+        type: "fix",
+        description: "A note can be typed straight through without clicking the box for each letter.",
+      },
+      {
+        type: "fix",
+        description: "A line removed while creating an order stays off the order.",
+      },
+    ],
+  },
+  {
+    version: "0.76.1",
+    date: "2026-10-19",
+    releasedAt: "2026-10-19T15:30:00+08:00",
+    title: "Order sheet updates",
+    highlights: [
+      "The bell tells the next person when an order is submitted, approved, rejected, or cancelled.",
+      "Order analytics uses the same sheet as the order, and the extra tab is gone.",
+      "Auto replenish suggestions follow the released plan.",
+      "Approval history reads as a timeline.",
+      "CBM shows on the order sheet.",
+      "Extra items are picked in a window.",
+      "Approving an order saves again.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "The bell tells the next person when an order is submitted, approved, rejected, or cancelled.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Order analytics uses the same sheet as the order, and the extra tab is gone.",
+      },
+      {
+        type: "improvement",
+        description: "Auto replenish suggestions follow the released plan.",
+      },
+      {
+        type: "improvement",
+        description: "Approval history reads as a timeline.",
+      },
+      {
+        type: "improvement",
+        description: "CBM shows on the order sheet.",
+      },
+      {
+        type: "improvement",
+        description: "Extra items are picked in a window.",
+      },
+      {
+        type: "fix",
+        description: "Approving an order saves again.",
+      },
+    ],
+  },
+  {
+    version: "0.76.0",
+    date: "2026-10-19",
+    releasedAt: "2026-10-19T11:40:00+08:00",
+    title: "Order review sheet",
+    highlights: [
+      "Supply Planning can review a manual or special order on one sheet, with stock, sales, and line remarks, without opening Order Analytics.",
+      "A later plan change is a separate update. It does not replace the order you are reviewing.",
+      "From an order you can open edit and the branch analytics without leaving the details window.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Supply Planning can review a manual or special order on one sheet, with stock, sales, and line remarks, without opening Order Analytics.",
+      },
+      {
+        type: "improvement",
+        description:
+          "A later plan change is unrelated to this review. It does not change the sheet alread y open for a manual or special order.",
+      },
+      {
+        type: "improvement",
+        description:
+          "From an order you can open edit and the branch analytics without leaving the details window.",
+      },
+    ],
+  },
+  {
     version: "0.75.0",
     date: "2026-10-19",
     releasedAt: "2026-10-19T10:47:00+08:00",

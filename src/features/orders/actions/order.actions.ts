@@ -2,7 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { orderService } from "@/features/orders/services/order.service";
+import {
+  orderService,
+  type OrderApprovalLineAdjustment,
+} from "@/features/orders/services/order.service";
 import { suggestionApplyService } from "@/features/orders/services/suggestion-apply.service";
 import { orderRepository } from "@/features/orders/repositories/order.repository";
 import type {
@@ -39,7 +42,7 @@ import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { resolveActiveOrderPrice } from "@/features/master-data/utils/resolve-active-order-price";
 import type { OrderHistoryRow } from "@/features/orders/types/order-analytics";
 import { toClientOrderListItem } from "@/features/orders/utils/to-client-order-list";
-import type { BranchOrderType } from "@prisma/client";
+import type { BranchOrderType, Prisma } from "@prisma/client";
 
 function hasFullOrderAccess(permissions: string[] | undefined) {
   return (
@@ -434,8 +437,10 @@ export async function approveOrderAction(
   orderId: string,
   input?: {
     comment?: string;
-    lineAdjustments?: { detailId: string; approvedQty: number }[];
+    lineAdjustments?: OrderApprovalLineAdjustment[];
     deliveryDueDate?: string;
+    expectedUpdatedAt?: string;
+    reviewSnapshot?: Prisma.InputJsonValue | null;
   },
 ) {
   const session = await requireAuth();
@@ -462,6 +467,8 @@ export async function approveOrderAction(
             deliveryDueDate: input.deliveryDueDate
               ? new Date(input.deliveryDueDate)
               : undefined,
+            expectedUpdatedAt: input.expectedUpdatedAt,
+            reviewSnapshot: input.reviewSnapshot,
           }
         : undefined,
     );
@@ -561,7 +568,14 @@ export async function listOrderHistoryAction(input?: {
       orderNumber: order.orderNumber,
       orderType: order.orderType,
       status: order.status,
+      branchId: order.branchId,
       branchName: order.branch.name,
+      brandId: order.brandId,
+      notes: order.notes,
+      deliveryDueDate: order.deliveryDueDate?.toISOString() ?? null,
+      createdByName: order.createdBy.name?.trim() || order.createdBy.email,
+      reviewSnapshot: order.reviewSnapshot,
+      reviewSnapshotAt: order.reviewSnapshotAt?.toISOString() ?? null,
       orderQty,
       totalAmt,
       appQty,
@@ -569,6 +583,26 @@ export async function listOrderHistoryAction(input?: {
       createdAt: order.createdAt.toISOString(),
       updatedAt: order.updatedAt.toISOString(),
       lastUpdatedBy: lastUpdatedByName(order),
+      lines: order.details.map((detail) => ({
+        detailId: detail.id,
+        modelId: detail.model.id,
+        skuCode: detail.model.skuCode,
+        name: detail.model.name,
+        quantity: detail.quantity,
+        approvedQty: detail.approvedQty,
+        remarks: detail.remarks,
+        spRemarks: detail.spRemarks,
+      })),
+      approvalLevels: order.approvalLevels.map((level) => ({
+        level: level.level,
+        roleSlug: level.roleSlug,
+        approvedAt: level.approvedAt?.toISOString() ?? null,
+        rejectedAt: level.rejectedAt?.toISOString() ?? null,
+        comment: level.comment,
+        approvedBy: level.approvedBy
+          ? { name: level.approvedBy.name, email: level.approvedBy.email }
+          : null,
+      })),
     };
   });
 

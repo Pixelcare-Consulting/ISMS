@@ -8,10 +8,9 @@ const AUTO_REPLENISH_PAGE_TABS = ["orders", "history"] as const satisfies readon
 export function ordersPageTabsForType(orderType: BranchOrderType): readonly OrdersPageTab[] {
   switch (orderType) {
     case "auto_replenish":
-      return AUTO_REPLENISH_PAGE_TABS;
     case "manual":
     case "special":
-      return ORDERS_PAGE_TABS;
+      return AUTO_REPLENISH_PAGE_TABS;
     default: {
       const _exhaustive: never = orderType;
       return _exhaustive;

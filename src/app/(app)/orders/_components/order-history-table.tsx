@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 
+import { OrderDetailsDialog } from "@/app/(app)/orders/_components/order-details-dialog";
 import { TableAmountCell } from "@/components/data-table/table-amount-cell";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
@@ -21,6 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
 import { matchesTableSearch } from "@/utils/match-table-search";
 import type { BranchOrderStatus } from "@prisma/client";
 
@@ -36,6 +38,8 @@ interface OrderHistoryTableProps {
     totalPages: number;
   };
   basePath: string;
+  viewerRoleSlugs?: string[];
+  hasCreatePermission?: boolean;
   initialSort?: string;
   initialSortDir?: string;
 }
@@ -69,12 +73,15 @@ function formatHistoryDate(value: string): string {
 export function OrderHistoryTable({
   result,
   basePath,
+  viewerRoleSlugs = [],
+  hasCreatePermission = false,
   initialSort = "createdAt",
   initialSortDir = "desc",
 }: OrderHistoryTableProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
+  const [detailsRow, setDetailsRow] = useState<OrderHistoryRow | null>(null);
   const pageSize = parseTablePageSize(result.limit);
   const sort = (searchParams.get("sort") ?? initialSort) || "createdAt";
   const sortDir = (
@@ -114,6 +121,7 @@ export function OrderHistoryTable({
   );
 
   return (
+    <>
     <GlobalDataTable
       stickyHeader
       search={{
@@ -179,6 +187,9 @@ export function OrderHistoryTable({
           >
             Status
           </GlobalTableHead>
+          <GlobalTableHead className="w-28">
+            <span className="sr-only">View</span>
+          </GlobalTableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -209,9 +220,47 @@ export function OrderHistoryTable({
                 }
               />
             </TableCell>
+            <TableCell>
+              <Button type="button" size="sm" variant="outline" onClick={() => setDetailsRow(row)}>
+                View
+              </Button>
+            </TableCell>
           </TableRow>
         ))}
       </TableBody>
     </GlobalDataTable>
+    {detailsRow ? (
+      <OrderDetailsDialog
+        orderId={detailsRow.id}
+        orderNumber={detailsRow.orderNumber}
+        orderType={detailsRow.orderType}
+        branchId={detailsRow.branchId}
+        branchName={detailsRow.branchName}
+        status={detailsRow.status as BranchOrderStatus}
+        notes={detailsRow.notes}
+        deliveryDueDate={detailsRow.deliveryDueDate}
+        createdByName={detailsRow.createdByName}
+        reviewSnapshot={detailsRow.reviewSnapshot}
+        reviewSnapshotAt={detailsRow.reviewSnapshotAt}
+        lines={detailsRow.lines.map((line) => ({
+          detailId: line.detailId,
+          modelId: line.modelId,
+          skuCode: line.skuCode,
+          name: line.name,
+          quantity: line.quantity,
+          approvedQty: line.approvedQty,
+          remarks: line.remarks,
+          spRemarks: line.spRemarks,
+        }))}
+        approvalLevels={detailsRow.approvalLevels}
+        roleSlugs={viewerRoleSlugs}
+        hasCreatePermission={hasCreatePermission}
+        open
+        onOpenChange={(open) => {
+          if (!open) setDetailsRow(null);
+        }}
+      />
+    ) : null}
+    </>
   );
 }

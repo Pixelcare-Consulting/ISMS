@@ -55,8 +55,12 @@ interface OrderRow {
   orderType: string;
   status: string;
   branchId: string;
+  brandId?: string | null;
   notes?: string | null;
   spaRemarks?: string | null;
+  updatedAt?: string | Date | null;
+  reviewSnapshot?: unknown;
+  reviewSnapshotAt?: string | Date | null;
   deliveryDueDate?: string | Date | null;
   branch: { name: string; deliverySchedule?: unknown };
   createdBy: { name: string | null; email: string };
@@ -65,7 +69,8 @@ interface OrderRow {
     quantity: number;
     approvedQty?: number | null;
     remarks?: string | null;
-    model: { id: string; skuCode: string };
+    spRemarks?: string | null;
+    model: { id: string; skuCode: string; name?: string; brandId?: string | null };
   }[];
   approvalLevels?: {
     level: number;
@@ -164,7 +169,7 @@ export function OrdersTable({
   const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
   const [workflowOrder, setWorkflowOrder] = useState<OrderRow | null>(null);
-  const [detailsOrder, setDetailsOrder] = useState<OrderRow | null>(null);
+  const [detailsOrderId, setDetailsOrderId] = useState<string | null>(null);
   const [editingOrder, setEditingOrder] = useState<EditableOrder | null>(null);
   const [draftToDelete, setDraftToDelete] = useState<OrderRow | null>(null);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
@@ -212,6 +217,11 @@ export function OrdersTable({
     [result.items],
   );
 
+  const detailsOrder = useMemo(
+    () => result.items.find((item) => item.id === detailsOrderId) ?? null,
+    [detailsOrderId, result.items],
+  );
+
   const selection = useTableSelection(filtered.map((o) => o.id));
   const canSuperAdminBulkCancel = isSuperAdminOrderOverride(viewerRoleSlugs);
   const selectedOrderIds = useMemo(() => {
@@ -221,8 +231,17 @@ export function OrdersTable({
 
   function handleApprove(input?: {
     comment?: string;
-    lineAdjustments?: { detailId: string; approvedQty: number }[];
+    lineAdjustments?: {
+      detailId: string;
+      approvedQty: number;
+      spRemarks?: string | null;
+    }[];
     deliveryDueDate?: string;
+    expectedUpdatedAt?: string;
+    reviewSnapshot?: {
+      kind: "order-review-snapshot";
+      version: 1;
+    };
   }) {
     if (!workflowOrder) return;
     setProcessingAction("approve");
@@ -461,7 +480,7 @@ export function OrdersTable({
                       Edit
                     </Button>
                   ) : null}
-                  <Button size="sm" variant="outline" onClick={() => setDetailsOrder(o)}>
+                  <Button size="sm" variant="outline" onClick={() => setDetailsOrderId(o.id)}>
                     View details
                   </Button>
                 </div>
@@ -472,38 +491,54 @@ export function OrdersTable({
       </GlobalDataTable>
       {detailsOrder ? (
         <OrderDetailsDialog
+          orderId={detailsOrder.id}
           orderNumber={detailsOrder.orderNumber}
           orderType={detailsOrder.orderType as BranchOrderType}
+          branchId={detailsOrder.branchId}
           branchName={detailsOrder.branch.name}
           status={detailsOrder.status as BranchOrderStatus}
           notes={detailsOrder.notes}
           deliveryDueDate={detailsOrder.deliveryDueDate}
           createdByName={detailsOrder.createdBy.name ?? detailsOrder.createdBy.email}
+          reviewSnapshot={detailsOrder.reviewSnapshot}
+          reviewSnapshotAt={detailsOrder.reviewSnapshotAt}
           lines={detailsOrder.details.map((d) => ({
             detailId: d.id,
+            modelId: d.model.id,
             skuCode: d.model.skuCode,
+            name: d.model.name,
             quantity: d.quantity,
             approvedQty: d.approvedQty,
             remarks: d.remarks,
+            spRemarks: d.spRemarks,
           }))}
           approvalLevels={detailsOrder.approvalLevels}
+          roleSlugs={viewerRoleSlugs}
+          hasCreatePermission={canEdit}
           open
           onOpenChange={(open) => {
-            if (!open) setDetailsOrder(null);
+            if (!open) setDetailsOrderId(null);
           }}
         />
       ) : null}
       {workflowOrder ? (
         <OrderWorkflowDialog
+          orderId={workflowOrder.id}
           orderNumber={workflowOrder.orderNumber}
           orderType={workflowOrder.orderType as "auto_replenish" | "manual" | "special"}
+          branchId={workflowOrder.branchId}
           branchName={workflowOrder.branch.name}
+          updatedAt={workflowOrder.updatedAt}
           deliverySchedule={workflowOrder.branch.deliverySchedule}
           lines={workflowOrder.details.map((d) => ({
             detailId: d.id,
+            modelId: d.model.id,
             skuCode: d.model.skuCode,
             quantity: d.quantity,
+            remarks: d.remarks,
+            spRemarks: d.spRemarks,
           }))}
+          approvalLevels={workflowOrder.approvalLevels}
           status={workflowOrder.status as BranchOrderStatus}
           open
           pending={pending}

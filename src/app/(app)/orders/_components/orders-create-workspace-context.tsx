@@ -30,10 +30,12 @@ export function useOrdersCreateWorkspace() {
 export function OrdersCreateWorkspaceProvider({
   orderType,
   canEdit,
+  canCreateSpecial = false,
   children,
 }: {
   orderType: BranchOrderType;
   canEdit: boolean;
+  canCreateSpecial?: boolean;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -61,6 +63,7 @@ export function OrdersCreateWorkspaceProvider({
           }}
           fixedOrderType={orderType}
           prefill={prefill}
+          canCreateSpecial={canCreateSpecial}
         />
       ) : null}
     </OrdersCreateWorkspaceContext.Provider>

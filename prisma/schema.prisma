@@ -2037,9 +2037,11 @@ model BranchOrder {
   orderType       BranchOrderType   @map("order_type")
   status          BranchOrderStatus @default(pending_tl)
   orderNumber     String            @map("order_number")
-  notes           String?
-  spaRemarks      String?           @map("spa_remarks")
-  deliveryDueDate DateTime?         @map("delivery_due_date")
+  notes            String?
+  spaRemarks       String?           @map("spa_remarks")
+  reviewSnapshot   Json?             @map("review_snapshot")
+  reviewSnapshotAt DateTime?         @map("review_snapshot_at")
+  deliveryDueDate  DateTime?         @map("delivery_due_date")
   processedAt     DateTime?         @map("processed_at")
   sapDocRef       String?           @map("sap_doc_ref")
   createdById     String            @map("created_by_id")
@@ -2071,6 +2073,7 @@ model BranchOrderDetail {
   quantity    Int
   approvedQty Int?     @map("approved_qty")
   remarks     String?
+  spRemarks   String?  @map("sp_remarks")
   amount      Decimal? @db.Decimal(12, 2)
 
   order BranchOrder  @relation(fields: [orderId], references: [id], onDelete: Cascade)

@@ -1,4 +1,4 @@
-import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
+import type { BranchOrderStatus, BranchOrderType, Prisma } from "@prisma/client";
 
 import { auditService } from "@/features/audit/services/audit.service";
 import {
@@ -12,12 +12,18 @@ import {
   declineOrderStatus,
   getApprovalLevelForStatus,
   getInitialOrderStatus,
+  getOrderApprovalChain,
   getRoleSlugForApproval,
   isOrderEditable,
   isSuperAdminOrderOverride,
   nextStatusAfterApprove,
+  SUPPLY_PLANNING_APPROVER_SLUGS,
 } from "@/features/orders/constants/order-workflow";
-import { orderRepository } from "@/features/orders/repositories/order.repository";
+import { notificationService } from "@/features/notifications/services/notification.service";
+import {
+  ORDER_CHANGED_MESSAGE,
+  orderRepository,
+} from "@/features/orders/repositories/order.repository";
 import { suggestionApplyService } from "@/features/orders/services/suggestion-apply.service";
 import { validateOrderLines } from "@/features/orders/services/order-line-validation";
 import type {
@@ -47,6 +53,65 @@ export interface OrderKpis {
   statuses: OrderStatusKpi[];
 }
 
+export interface OrderApprovalLineAdjustment {
+  detailId: string;
+  approvedQty: number;
+  spRemarks?: string | null;
+}
+
+function canPersistSpRemarks(status: BranchOrderStatus, roleSlugs: string[]): boolean {
+  return (
+    status === "pending_sp" &&
+    SUPPLY_PLANNING_APPROVER_SLUGS.some((slug) => roleSlugs.includes(slug))
+  );
+}
+
+function isWholeApprovedQuantity(qty: number, requested: number): boolean {
+  return Number.isInteger(qty) && qty >= 1 && qty <= requested;
+}
+
+function parseExpectedUpdatedAt(value: Date | string | null | undefined): Date | undefined {
+  if (value == null || value === "") return undefined;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(ORDER_CHANGED_MESSAGE);
+  }
+  return date;
+}
+
+/**
+ * Every submitted line must belong to the order. Approved quantity is checked
+ * only on the final step. SP remarks are rejected outside pending SP.
+ */
+function indexApprovalLines(
+  details: { id: string; quantity: number }[],
+  adjustments: OrderApprovalLineAdjustment[],
+  opts: { validateApprovedQty: boolean; mayWriteSpRemarks: boolean },
+): Map<string, OrderApprovalLineAdjustment> {
+  const requestedById = new Map(details.map((detail) => [detail.id, detail.quantity]));
+  const byId = new Map<string, OrderApprovalLineAdjustment>();
+
+  for (const line of adjustments) {
+    const requested = requestedById.get(line.detailId);
+    if (requested == null) {
+      throw new Error("One or more lines do not belong to this order.");
+    }
+    if (line.spRemarks !== undefined && !opts.mayWriteSpRemarks) {
+      throw new Error(
+        "Only Supply Planning can save line remarks while the order is pending Supply Planning.",
+      );
+    }
+    if (opts.validateApprovedQty && !isWholeApprovedQuantity(line.approvedQty, requested)) {
+      throw new Error(
+        `Approved quantity must be a whole number from 1 through the requested quantity (${requested}).`,
+      );
+    }
+    byId.set(line.detailId, line);
+  }
+
+  return byId;
+}
+
 const ORDER_STATUS_ORDER = Object.keys(
   BRANCH_ORDER_STATUS_LABELS,
 ) as BranchOrderStatus[];
@@ -72,6 +137,57 @@ function orderAuditMetadata(order: {
     linesSummary: buildLinesSummary(order.details),
     ...(order.status ? { status: order.status } : {}),
   };
+}
+
+const ORDER_LIST_HREF: Record<BranchOrderType, string> = {
+  manual: "/orders/manual",
+  special: "/orders/special",
+  auto_replenish: "/orders/auto-replenish",
+};
+
+type OrderBellOrder = {
+  id: string;
+  orderNumber: string;
+  orderType: BranchOrderType;
+  createdById: string;
+  branch: { name: string };
+};
+
+function orderBellTitle(order: Pick<OrderBellOrder, "orderNumber" | "branch">): string {
+  return `${order.orderNumber} · ${order.branch.name}`;
+}
+
+/** In-app bell for the next person. Skips the actor when they are the only recipient. */
+async function notifyOrderStep(input: {
+  tenantId: string;
+  actorUserId: string;
+  order: OrderBellOrder;
+  audience: "ROLE" | "USER";
+  roleSlug?: string | null;
+  body: string;
+}) {
+  if (input.audience === "USER") {
+    if (!input.order.createdById || input.order.createdById === input.actorUserId) {
+      return;
+    }
+  } else if (!input.roleSlug) {
+    return;
+  }
+
+  await notificationService.createNotification({
+    tenantId: input.tenantId,
+    actorUserId: input.actorUserId,
+    data: {
+      audience: input.audience,
+      roleSlug: input.audience === "ROLE" ? input.roleSlug : null,
+      userId: input.audience === "USER" ? input.order.createdById : null,
+      type: "order",
+      title: orderBellTitle(input.order),
+      body: input.body,
+      href: ORDER_LIST_HREF[input.order.orderType],
+      metadata: { orderId: input.order.id },
+    },
+  });
 }
 
 function pendingApprovalEmail(status: BranchOrderStatus, orderType: BranchOrderType) {
@@ -454,6 +570,22 @@ export const orderService = {
       body: pendingApprovalEmail(nextStatus, order.orderType),
     });
 
+    const firstApprover = getOrderApprovalChain(order.orderType)[0]?.roleSlug ?? null;
+    await notifyOrderStep({
+      tenantId,
+      actorUserId: userId,
+      order: {
+        id: updated.id,
+        orderNumber: updated.orderNumber,
+        orderType: updated.orderType,
+        createdById: updated.createdById,
+        branch: { name: updated.branch.name },
+      },
+      audience: "ROLE",
+      roleSlug: firstApprover,
+      body: "Submitted for review.",
+    });
+
     return updated;
   },
 
@@ -605,6 +737,20 @@ export const orderService = {
         },
       });
 
+      await notifyOrderStep({
+        tenantId,
+        actorUserId: userId,
+        order: {
+          id: order.id,
+          orderNumber: order.orderNumber,
+          orderType: order.orderType,
+          createdById: order.createdById,
+          branch: { name: order.branch.name },
+        },
+        audience: "USER",
+        body: "Cancelled.",
+      });
+
       cancelled += 1;
     }
 
@@ -626,8 +772,10 @@ export const orderService = {
     roleSlugs: string[],
     input?: {
       comment?: string;
-      lineAdjustments?: { detailId: string; approvedQty: number }[];
+      lineAdjustments?: OrderApprovalLineAdjustment[];
       deliveryDueDate?: Date;
+      expectedUpdatedAt?: Date | string;
+      reviewSnapshot?: Prisma.InputJsonValue | null;
     },
   ) {
     const order = await orderRepository.findById(tenantId, orderId);
@@ -651,28 +799,14 @@ export const orderService = {
 
     const nextStatus = nextStatusAfterApprove(order.status, order.orderType);
     const isFinal = nextStatus === "approved";
-
-    const adjustmentMap = new Map(
-      (input?.lineAdjustments ?? []).map((l) => [l.detailId, l.approvedQty]),
-    );
-
-    if (isFinal) {
-      for (const line of order.details) {
-        const qty = adjustmentMap.get(line.id);
-        if (qty != null && (qty < 1 || qty > line.quantity)) {
-          throw new Error(
-            `Approved quantity must be between 1 and ordered quantity (${line.quantity})`,
-          );
-        }
-      }
-    }
-
-    await orderRepository.addApproval(orderId, {
-      level,
-      roleSlug,
-      approvedById: userId,
-      comment,
+    const adjustmentById = indexApprovalLines(order.details, input?.lineAdjustments ?? [], {
+      validateApprovedQty: isFinal,
+      mayWriteSpRemarks: canPersistSpRemarks(order.status, roleSlugs),
     });
+    const expectedUpdatedAt = parseExpectedUpdatedAt(input?.expectedUpdatedAt);
+    if (expectedUpdatedAt && order.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+      throw new Error(ORDER_CHANGED_MESSAGE);
+    }
 
     const deliveryResolution =
       isFinal && input?.deliveryDueDate
@@ -683,10 +817,16 @@ export const orderService = {
         : { dueDate: null as Date | null, rescheduled: false, rescheduledFrom: undefined as string | undefined };
 
     if (isFinal) {
-      const lineApprovedQty = order.details.map((line) => ({
-        detailId: line.id,
-        approvedQty: adjustmentMap.get(line.id) ?? line.quantity,
-      }));
+      const lines = order.details.map((line) => {
+        const adjustment = adjustmentById.get(line.id);
+        return {
+          detailId: line.id,
+          approvedQty: adjustment?.approvedQty ?? line.quantity,
+          ...(adjustment && adjustment.spRemarks !== undefined
+            ? { spRemarks: adjustment.spRemarks }
+            : {}),
+        };
+      });
 
       const brandIds = order.details
         .map((d) => d.model.brandId)
@@ -699,11 +839,16 @@ export const orderService = {
           : null;
 
       await orderRepository.finalizeApproved(tenantId, orderId, {
+        fromStatus: order.status,
+        expectedUpdatedAt,
+        level,
         approvedById: userId,
+        comment,
         spaRemarks: comment,
         deliveryDueDate: deliveryResolution.dueDate ?? undefined,
         brandId,
-        lineApprovedQty,
+        reviewSnapshot: input?.reviewSnapshot,
+        lines,
       });
 
       const refreshed = await orderRepository.findById(tenantId, orderId);
@@ -736,6 +881,12 @@ export const orderService = {
         }
       }
     } else {
+      await orderRepository.addApproval(orderId, {
+        level,
+        roleSlug,
+        approvedById: userId,
+        comment,
+      });
       await orderRepository.updateStatus(tenantId, orderId, nextStatus);
     }
 
@@ -771,6 +922,32 @@ export const orderService = {
         ? "Order approved. A branch delivery has been queued for logistics fulfillment."
         : `Order status is now ${nextStatus}.`,
     });
+
+    const bellOrder = {
+      id: order.id,
+      orderNumber: order.orderNumber,
+      orderType: order.orderType,
+      createdById: order.createdById,
+      branch: { name: order.branch.name },
+    };
+    if (isFinal) {
+      await notifyOrderStep({
+        tenantId,
+        actorUserId: userId,
+        order: bellOrder,
+        audience: "USER",
+        body: "Approved.",
+      });
+    } else if (order.orderType === "auto_replenish" && order.status === "pending_tl") {
+      await notifyOrderStep({
+        tenantId,
+        actorUserId: userId,
+        order: bellOrder,
+        audience: "ROLE",
+        roleSlug: "sp",
+        body: "Approved by the team leader. Waiting for supply planning.",
+      });
+    }
   },
 
   async reject(
@@ -810,6 +987,20 @@ export const orderService = {
         to: nextStatus,
         ...(comment ? { comment } : {}),
       },
+    });
+
+    await notifyOrderStep({
+      tenantId,
+      actorUserId: userId,
+      order: {
+        id: order.id,
+        orderNumber: order.orderNumber,
+        orderType: order.orderType,
+        createdById: order.createdById,
+        branch: { name: order.branch.name },
+      },
+      audience: "USER",
+      body: nextStatus === "cancelled" ? "Cancelled." : "Rejected.",
     });
   },
 

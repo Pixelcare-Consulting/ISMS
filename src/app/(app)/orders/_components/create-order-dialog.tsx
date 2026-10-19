@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import { WorksheetCreateOrderDialog } from "@/app/(app)/orders/_components/worksheet-create-order-dialog";
 import type { CreateOrderPrefill } from "@/app/(app)/orders/_components/orders-create-workspace-context";
 import { InventoryStatusChips } from "@/app/(app)/orders/_components/inventory-status-chips";
 import { Button } from "@/components/ui/button";
@@ -95,7 +96,7 @@ function lineLocked(
 
 const SUG_HINT = "Shelf gap (Shelf max − STK). Not Planning forecast.";
 
-export function CreateOrderDialog({
+function AutoReplenishCreateOrderDialog({
   onClose,
   fixedOrderType,
   prefill,
@@ -763,5 +764,35 @@ function CreateOrderSkuTableSkeleton() {
         </div>
       </div>
     </div>
+  );
+}
+
+export function CreateOrderDialog({
+  onClose,
+  fixedOrderType,
+  prefill,
+  canCreateSpecial = false,
+}: {
+  onClose: () => void;
+  fixedOrderType?: BranchOrderType;
+  prefill?: CreateOrderPrefill;
+  canCreateSpecial?: boolean;
+}) {
+  if (fixedOrderType === "auto_replenish") {
+    return (
+      <AutoReplenishCreateOrderDialog
+        onClose={onClose}
+        fixedOrderType={fixedOrderType}
+        prefill={prefill}
+      />
+    );
+  }
+  return (
+    <WorksheetCreateOrderDialog
+      onClose={onClose}
+      fixedOrderType={fixedOrderType === "special" ? "special" : "manual"}
+      prefill={prefill}
+      canCreateSpecial={canCreateSpecial}
+    />
   );
 }

@@ -22,6 +22,10 @@ jest.mock("@/lib/notifications/workflow-email", () => ({
   sendWorkflowEmail: jest.fn(),
 }));
 
+jest.mock("@/features/notifications/services/notification.service", () => ({
+  notificationService: { createNotification: jest.fn() },
+}));
+
 jest.mock("@/features/sap/services/sap.service", () => ({
   sapService: {},
 }));

@@ -5,16 +5,20 @@ import { decimalToNumber } from "@/lib/database/decimal";
 import { getUserBranchIds } from "@/lib/aor/scope";
 import { salesListDetailWhere } from "@/features/sales/constants/sales-list-status";
 import { planogramRepository } from "@/features/planogram/repositories/planogram.repository";
+import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
 import { masterDataRepository } from "@/features/master-data/repositories/master-data.repository";
 import { resolveActiveOrderPrice } from "@/features/master-data/utils/resolve-active-order-price";
 import { branchRepository } from "@/features/branches/repositories/branch.repository";
 import { orderingPolicyService } from "@/features/ordering/services/ordering-policy.service";
 import { checkOrderingAllowed } from "@/features/orders/utils/order-window";
 import { manilaMonthWindow } from "@/features/orders/utils/manila-calendar";
+import { loadOrderWorksheet } from "@/features/orders/services/order-worksheet.loader";
+import type { OrderWorksheetLoadOptions } from "@/features/orders/lib/order-worksheet";
 import type {
   OrderAnalyticsLine,
   OrderAnalyticsPayload,
   OrderInventoryStatusCount,
+  OrderWorksheetPayload,
   OrderWorkspaceAdditionalModel,
   OrderWorkspacePayload,
 } from "@/features/orders/types/order-analytics";
@@ -39,8 +43,19 @@ function typicalMilDays(thresholds: number[]): number {
   return best;
 }
 
+async function loadInventoryStatusColors(
+  tenantId: string,
+): Promise<Map<string, string | null>> {
+  const codes = await reasonStatusRepository.listActiveCodesByCategory(
+    tenantId,
+    "inventory_system",
+  );
+  return new Map(codes.map((code) => [code.code, code.color]));
+}
+
 function sortInventoryCounts(
   counts: Map<string, number>,
+  colorByCode?: ReadonlyMap<string, string | null>,
 ): OrderInventoryStatusCount[] {
   const codes = new Set([...INV_CODE_ORDER, ...counts.keys()]);
   return [...codes]
@@ -53,7 +68,11 @@ function sortInventoryCounts(
       if (bi === -1) return -1;
       return ai - bi;
     })
-    .map((code) => ({ code, count: counts.get(code) ?? 0 }));
+    .map((code) => ({
+      code,
+      count: counts.get(code) ?? 0,
+      color: colorByCode?.get(code) ?? null,
+    }));
 }
 
 function lineAmount(qty: number, srp: number, saleAmount: number | null): number {
@@ -122,7 +141,7 @@ async function loadAnalyticsPayload(
     : unfilteredEntries;
 
   const modelIds = brandEntries.map((e) => e.model.id);
-  const [invByModel, milRows, monthSales] = await Promise.all([
+  const [invByModel, milRows, monthSales, statusColors] = await Promise.all([
     planogramRepository.countInventoryByStatusForBranchModels(
       tenantId,
       input.branchId,
@@ -130,6 +149,7 @@ async function loadAnalyticsPayload(
     ),
     planogramRepository.listMilByBranch(tenantId, input.branchId),
     loadBranchBrandMtdSales(tenantId, input.branchId, brandId, modelIds),
+    loadInventoryStatusColors(tenantId),
   ]);
 
   const milByModel = new Map(
@@ -156,7 +176,7 @@ async function loadAnalyticsPayload(
       cbm,
       maxQty: entry.maxQty,
       milDays: milByModel.get(entry.model.id) ?? DEFAULT_MIL_DAYS,
-      inventory: sortInventoryCounts(inv),
+      inventory: sortInventoryCounts(inv, statusColors),
       stkQty,
       ditQty,
       salesQty: sales.qty,
@@ -216,8 +236,42 @@ export const orderAnalyticsService = {
   async getAnalytics(
     tenantId: string,
     input: { branchId: string; brandId?: string | null; orderType: BranchOrderType },
+    options?: { allBrands?: boolean },
   ): Promise<OrderAnalyticsPayload> {
-    return loadAnalyticsPayload(tenantId, input, "require-brand");
+    return loadAnalyticsPayload(
+      tenantId,
+      input,
+      options?.allBrands ? "all-when-unfiltered" : "require-brand",
+    );
+  },
+
+  async getWorksheet(
+    tenantId: string,
+    input: OrderWorksheetLoadOptions,
+  ): Promise<OrderWorksheetPayload> {
+    return loadOrderWorksheet(tenantId, input);
+  },
+
+  /** Active models for the special-order picker. Inventory is loaded with the worksheet. */
+  async listActiveModelsForSpecialOrder(tenantId: string) {
+    const rows = await prisma.productModel.findMany({
+      where: { tenantId, deletedAt: null, status: "active" },
+      select: {
+        id: true,
+        skuCode: true,
+        name: true,
+        brandId: true,
+        brand: { select: { name: true } },
+      },
+      orderBy: { skuCode: "asc" },
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      skuCode: row.skuCode,
+      name: row.name,
+      brandId: row.brandId,
+      brandName: row.brand?.name ?? null,
+    }));
   },
 
   async getWorkspace(
@@ -266,6 +320,7 @@ function toAdditionalModel(input: {
   onPlanogram: boolean;
   remainingCapacity: number;
   inv: Map<string, number>;
+  statusColors?: ReadonlyMap<string, string | null>;
 }): OrderWorkspaceAdditionalModel {
   const stkQty = input.inv.get("STK") ?? 0;
   const ditQty = input.inv.get("DIT") ?? 0;
@@ -276,7 +331,7 @@ function toAdditionalModel(input: {
     brandId: input.brandId,
     srp: input.srp,
     cbm: input.cbm,
-    inventory: sortInventoryCounts(input.inv),
+    inventory: sortInventoryCounts(input.inv, input.statusColors),
     stkQty,
     ditQty,
     onPlanogram: input.onPlanogram,
@@ -290,6 +345,7 @@ async function loadAdditionalModels(
   orderType: BranchOrderType,
   onGrid: Set<string>,
 ): Promise<OrderWorkspaceAdditionalModel[]> {
+  const statusColors = await loadInventoryStatusColors(tenantId);
   switch (orderType) {
     case "special": {
       const models = await masterDataRepository.listModels(tenantId);
@@ -316,6 +372,7 @@ async function loadAdditionalModels(
           onPlanogram: false,
           remainingCapacity: Number.MAX_SAFE_INTEGER,
           inv,
+          statusColors,
         });
       });
     }
@@ -349,6 +406,7 @@ async function loadAdditionalModels(
           onPlanogram: true,
           remainingCapacity: Math.max(0, entry.maxQty - stkQty),
           inv,
+          statusColors,
         });
       });
     }

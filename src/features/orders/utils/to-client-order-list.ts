@@ -16,6 +16,7 @@ export interface ClientOrderListDetail {
   quantity: number;
   approvedQty: number | null;
   remarks: string | null;
+  spRemarks: string | null;
   model: ClientOrderListModel;
 }
 
@@ -24,6 +25,7 @@ type OrderListDetailSource = {
   quantity: number;
   approvedQty: number | null;
   remarks: string | null;
+  spRemarks?: string | null;
   model: {
     id: string;
     skuCode: string;
@@ -38,6 +40,7 @@ export function toClientOrderListDetail(detail: OrderListDetailSource): ClientOr
     quantity: detail.quantity,
     approvedQty: detail.approvedQty,
     remarks: detail.remarks,
+    spRemarks: detail.spRemarks ?? null,
     model: {
       id: detail.model.id,
       skuCode: detail.model.skuCode,
