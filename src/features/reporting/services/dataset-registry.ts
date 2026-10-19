@@ -8,6 +8,11 @@ import {
 } from "@/features/dashboard/services/dashboard-kpi.service";
 import { getDashboardSalesAnalytics } from "@/features/dashboard/services/dashboard-sales.service";
 import {
+  narrowBranchScope,
+  resolveReportBranchScope,
+  type UnassignedBranchRule,
+} from "@/features/reports/lib/report-branch-scope";
+import {
   INVENTORY_REPORT_ACCESS,
   REPORT_ACCESS,
   SALES_REPORT_ACCESS,
@@ -27,7 +32,6 @@ import {
 import type { DatasetParams } from "@/features/reporting/schemas/dataset-params.schema";
 import { canAccessReturns } from "@/features/returns/constants/returns-permissions";
 import { canAccessSales } from "@/features/sales/constants/sales-permissions";
-import { getUserBranchIds } from "@/lib/aor/scope";
 import type { KpiStatusCount } from "@/lib/kpi-cards/types";
 
 /**
@@ -58,19 +62,18 @@ const canSeeOps = (permissions: string[]) => resolveDashboardCapabilities(permis
 const canSeeSalesAnalytics = (permissions: string[]) =>
   canAccessSales(permissions) || canAccessReturns(permissions);
 
-/** Same branch rule as the report exports: no AOR rows → empty list. */
-async function reportBranchIds(ctx: DatasetContext): Promise<string[]> {
-  return (await getUserBranchIds(ctx.tenantId, ctx.userId)) ?? [];
-}
-
-/** Narrows to the requested branch, refusing branches outside the caller's AOR. */
-async function scopedBranchIds(ctx: DatasetContext, params: DatasetParams): Promise<string[]> {
-  const aorIds = await reportBranchIds(ctx);
-  if (!params.branchId) return aorIds;
-  if (aorIds.length > 0 && !aorIds.includes(params.branchId)) {
-    throw new DatasetAccessError("Branch is outside your assigned area");
-  }
-  return [params.branchId];
+/**
+ * Same branch rule as the report exports (role/permission → AOR → the
+ * dataset's no-AOR fallback), optionally narrowed to one requested branch.
+ */
+async function scopedBranchIds(
+  ctx: DatasetContext,
+  params: DatasetParams,
+  unassigned: UnassignedBranchRule = "NO_BRANCHES",
+): Promise<string[] | undefined> {
+  const narrowed = narrowBranchScope(await resolveReportBranchScope(ctx, unassigned), params.branchId);
+  if (narrowed === null) throw new DatasetAccessError("Branch is outside your assigned area");
+  return narrowed;
 }
 
 function startOfDay(value: string): Date {
@@ -115,7 +118,7 @@ function statusRows(items: KpiStatusCount[]): DatasetRow[] {
 async function loadInventoryRows(ctx: DatasetContext, params: DatasetParams) {
   return buildInventoryReportRows(ctx.tenantId, {
     ...dateRange(params),
-    branchIds: await scopedBranchIds(ctx, params),
+    branchIds: await scopedBranchIds(ctx, params, "ALL_BRANCHES"),
     sku: params.sku || undefined,
     // Same default as the inventory export: omitted → STK only.
     statusCodes: params.statusCodes ?? ["STK"],

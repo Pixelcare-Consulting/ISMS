@@ -17,11 +17,19 @@ import { transferReportService } from "@/features/reports/services/transfer-repo
 import { salesReportService } from "@/features/reports/services/sales-report.service";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { requireAnyPermission } from "@/lib/auth/permissions";
-import { getUserBranchIds } from "@/lib/aor/scope";
+import {
+  narrowBranchScope,
+  resolveReportBranchScope,
+  type UnassignedBranchRule,
+} from "@/features/reports/lib/report-branch-scope";
+import type { AppSession } from "@/lib/auth/session";
 
-
-async function resolveReportBranchIds(tenantId: string, userId: string): Promise<string[]> {
-  return (await getUserBranchIds(tenantId, userId)) ?? [];
+/** Order-based reports: approvers/branch managers see all, others their AOR (none without one). */
+function resolveReportBranchIds(session: AppSession, unassigned: UnassignedBranchRule = "NO_BRANCHES") {
+  return resolveReportBranchScope(
+    { tenantId: session.user.tenantId, userId: session.user.id, permissions: session.user.permissions ?? [] },
+    unassigned,
+  );
 }
 
 export async function listProcessedOrdersReportAction(input?: {
@@ -30,7 +38,7 @@ export async function listProcessedOrdersReportAction(input?: {
   q?: string;
 }) {
   const session = await requirePermission("reports.view");
-  const branchIds = await resolveReportBranchIds(session.user.tenantId, session.user.id);
+  const branchIds = await resolveReportBranchIds(session);
   return reportsService.listProcessedOrders(session.user.tenantId, {
     branchIds,
     from: input?.from ? new Date(input.from) : undefined,
@@ -41,7 +49,7 @@ export async function listProcessedOrdersReportAction(input?: {
 
 export async function listDailyStockReportAction(input: { date: string }) {
   const session = await requirePermission("reports.view");
-  const branchIds = await resolveReportBranchIds(session.user.tenantId, session.user.id);
+  const branchIds = await resolveReportBranchIds(session);
   return reportsService.listDailyStock(session.user.tenantId, {
     date: new Date(input.date),
     branchIds,
@@ -50,7 +58,7 @@ export async function listDailyStockReportAction(input: { date: string }) {
 
 export async function listTransfersReportAction(input?: { from?: string; to?: string }) {
   const session = await requirePermission("reports.view");
-  const branchIds = await resolveReportBranchIds(session.user.tenantId, session.user.id);
+  const branchIds = await resolveReportBranchIds(session);
   return reportsService.listTransfers(session.user.tenantId, {
     branchIds,
     from: input?.from ? new Date(input.from) : undefined,
@@ -63,7 +71,7 @@ export async function exportProcessedOrdersCsvAction(input: {
   processedTo?: string;
 }) {
   const session = await requireAnyPermission([...REPORT_ACCESS]);
-  const branchIds = await resolveReportBranchIds(session.user.tenantId, session.user.id);
+  const branchIds = await resolveReportBranchIds(session);
 
   const csv = await processedOrdersReportService.generateCsv(session.user.tenantId, {
     processedFrom: input.processedFrom ? new Date(input.processedFrom) : undefined,
@@ -83,7 +91,7 @@ export async function exportProcessedOrdersCsvAction(input: {
 export async function exportDailyStockCsvAction(input: { date: string }) {
   const session = await requireAnyPermission([...REPORT_ACCESS]);
   if (!input.date) return { error: "Date is required" as const };
-  const branchIds = await resolveReportBranchIds(session.user.tenantId, session.user.id);
+  const branchIds = await resolveReportBranchIds(session);
 
   const csv = await dailyStockReportService.generateCsv(session.user.tenantId, {
     date: new Date(input.date),
@@ -102,7 +110,7 @@ export async function exportTransferReportCsvAction(input?: {
   to?: string;
 }) {
   const session = await requireAnyPermission([...TRANSFER_REPORT_ACCESS]);
-  const branchIds = await resolveReportBranchIds(session.user.tenantId, session.user.id);
+  const branchIds = await resolveReportBranchIds(session);
 
   const csv = await transferReportService.generateCsv(session.user.tenantId, {
     from: input?.from ? new Date(input.from) : undefined,
@@ -119,7 +127,7 @@ export async function exportTransferReportCsvAction(input?: {
 
 export async function exportSalesReportCsvAction(input?: { from?: string; to?: string }) {
   const session = await requireAnyPermission([...SALES_REPORT_ACCESS]);
-  const branchIds = await resolveReportBranchIds(session.user.tenantId, session.user.id);
+  const branchIds = await resolveReportBranchIds(session);
 
   const csv = await salesReportService.generateCsv(session.user.tenantId, {
     from: input?.from ? new Date(input.from) : undefined,
@@ -136,13 +144,9 @@ export async function exportSalesReportCsvAction(input?: { from?: string; to?: s
 
 export async function listInventoryReportBranchesAction() {
   const session = await requireAnyPermission([...INVENTORY_REPORT_ACCESS]);
-  const aorIds = await resolveReportBranchIds(
-    session.user.tenantId,
-    session.user.id,
-  );
+  const scope = await resolveReportBranchIds(session, "ALL_BRANCHES");
   const all = await branchService.listBranches(session.user.tenantId);
-  const branches =
-    aorIds.length > 0 ? all.filter((b) => aorIds.includes(b.id)) : all;
+  const branches = scope === undefined ? all : all.filter((b) => scope.includes(b.id));
   return branches.map((b) => ({ id: b.id, name: b.name }));
 }
 
@@ -166,18 +170,11 @@ export async function exportInventoryReportXlsxAction(input?: unknown) {
     return { error: "Invalid export filters" as const };
   }
 
-  const aorIds = await resolveReportBranchIds(
-    session.user.tenantId,
-    session.user.id,
-  );
-  const selectedBranchId = parsed.data.branchId?.trim();
-  if (selectedBranchId && aorIds.length > 0 && !aorIds.includes(selectedBranchId)) {
+  const scope = await resolveReportBranchIds(session, "ALL_BRANCHES");
+  const branchIds = narrowBranchScope(scope, parsed.data.branchId?.trim());
+  if (branchIds === null) {
     return { error: "Branch is outside your assigned area" as const };
   }
-
-  const branchIds = selectedBranchId
-    ? [selectedBranchId]
-    : aorIds;
 
   // Omitted → STK only; empty array → all statuses.
   const statusCodes =

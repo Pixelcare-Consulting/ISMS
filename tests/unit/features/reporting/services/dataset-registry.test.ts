@@ -69,6 +69,20 @@ describe("dataset branch scope", () => {
     });
   });
 
+  it("lifts the branch limit for branch managers and approvers", async () => {
+    branchIds.mockResolvedValue(["b1"]);
+    listTransfers.mockResolvedValue([]);
+    await loadDataset("transfers", ctx(["reports.view", "branches.manage"]), {});
+    expect(listTransfers).toHaveBeenCalledWith("t1", expect.objectContaining({ branchIds: undefined }));
+  });
+
+  it("keeps the inventory report's all-branches fallback when there's no AOR", async () => {
+    branchIds.mockResolvedValue(null);
+    inventoryRows.mockResolvedValue({ summaryRows: [], detailRows: [] });
+    await loadDataset("inventory_summary", ctx(["inventory.view"]), {});
+    expect(inventoryRows).toHaveBeenCalledWith("t1", expect.objectContaining({ branchIds: undefined }));
+  });
+
   it("rejects a branch outside the caller's AOR", async () => {
     branchIds.mockResolvedValue(["b1"]);
     await expect(loadDataset("transfers", ctx(["reports.view"]), { branchId: "b2" })).rejects.toThrow(
