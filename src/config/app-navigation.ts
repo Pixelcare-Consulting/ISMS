@@ -147,13 +147,6 @@ export const appNavigation: NavEntry[] = [
         anyPermissions: SALES_DASHBOARD_PERMISSIONS,
       },
       {
-        href: "/dashboard/custom",
-        label: "Custom Dashboards",
-        icon: LayoutTemplate,
-        anyPermissions: CUSTOM_DASHBOARD_ACCESS,
-        badge: "new",
-      },
-      {
         href: "/dashboard/pcount",
         label: "P-Count Dashboard",
         icon: ClipboardList,
@@ -172,6 +165,13 @@ export const appNavigation: NavEntry[] = [
         label: "Market Survey",
         icon: ChartColumn,
         permission: "competitors.view",
+      },
+      {
+        href: "/dashboard/custom",
+        label: "Custom Dashboards",
+        icon: LayoutTemplate,
+        anyPermissions: CUSTOM_DASHBOARD_ACCESS,
+        badge: "new",
       },
     ],
   },
