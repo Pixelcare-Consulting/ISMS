@@ -10,7 +10,10 @@ import {
   type AiAssistantPolicyInput,
 } from "@/features/ai/services/assistant-policy.service";
 import { tenantIdSchema } from "@/features/provider/schemas/provider.schema";
-import { providerService } from "@/features/provider/services/provider.service";
+import {
+  providerService,
+  type ProviderTenantDetail,
+} from "@/features/provider/services/provider.service";
 import { requirePlatformOperator } from "@/lib/auth/permissions";
 
 /**
@@ -25,7 +28,9 @@ function resolveTenantId(tenantId: string) {
   return parsed.success ? parsed.data.tenantId : null;
 }
 
-async function requireCustomerTenant(tenantId: string) {
+async function requireCustomerTenant(
+  tenantId: string,
+): Promise<{ error: string } | { tenant: ProviderTenantDetail }> {
   const target = resolveTenantId(tenantId);
   if (!target) return { error: "Tenant is required" as const };
   const tenant = await providerService.getCustomerDetail(target);

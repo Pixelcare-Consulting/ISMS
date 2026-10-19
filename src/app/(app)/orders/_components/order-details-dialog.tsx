@@ -33,7 +33,7 @@ export interface OrderDetailsLine {
   detailId: string;
   modelId: string;
   skuCode: string;
-  name?: string;
+  name?: string;  
   quantity: number;
   approvedQty?: number | null;
   remarks?: string | null;

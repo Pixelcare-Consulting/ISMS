@@ -66,7 +66,24 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
-    version: "0.76.2",
+    version: "0.76.3.1",
+    date: "2026-10-19",
+    releasedAt: "2026-10-19T17:30:00+08:00",
+    audience: "internal",
+    title: "Assistant switch saves",
+    highlights: [
+      "Saving the assistant switch for a company from Provider Console works again.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Saving the assistant switch for a company from Provider Console works again.",
+      },
+    ],
+  },
+  {
+    version: "0.76.3",
     date: "2026-10-19",
     releasedAt: "2026-10-19T15:50:00+08:00",
     title: "Order sheet layout",
