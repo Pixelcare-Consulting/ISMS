@@ -66,6 +66,59 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.75.0",
+    date: "2026-10-19",
+    releasedAt: "2026-10-19T10:47:00+08:00",
+    title: "Suggested Orders",
+    highlights: [
+      "Releasing a plan publishes suggestions for review. Planning no longer sends orders in by itself.",
+      "On Manual, Special, and Auto replenish, Suggested Orders opens a review for the branch. You choose quantities and create or update a draft. Nothing is submitted until you choose Submit for review.",
+      "Auto replenish suggestions come from the released plan. Manual suggestions are the shelf gap after stock and supply already on the way. Special orders are not given a made-up quantity.",
+      "A later plan update does not change quantities you already edited on a draft.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "On Manual, Special, and Auto replenish, Suggested Orders opens a review for the branch. You choose quantities and create or update a draft. Nothing is submitted until you choose Submit for review.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Releasing a plan publishes suggestions for review. Planning no longer sends orders in by itself.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Auto replenish suggestions come from the released plan. Manual suggestions are the shelf gap after stock and supply already on the way. Special orders are not given a made-up quantity.",
+      },
+      {
+        type: "improvement",
+        description:
+          "A later plan update does not change quantities you already edited on a draft.",
+      },
+    ],
+  },
+  {
+    version: "0.74.5",
+    date: "2026-10-19",
+    releasedAt: "2026-10-19T10:33:00+08:00",
+    audience: "internal",
+    title: "Turn the assistant on from Provider Console",
+    highlights: [
+      "Company Settings no longer shows the assistant on/off switch.",
+      "A provider turns the assistant on for a company from Provider Console, then Tenants, then the company, then Assistant.",
+      "The assistant stays off until a provider turns it on.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Company Settings no longer shows the assistant on/off switch. A provider turns the assistant on for a company from Provider Console, then Tenants, then the company, then Assistant. Ordinary company users still cannot see that switch. The assistant stays off until a provider turns it on.",
+      },
+    ],
+  },
+  {
     version: "0.74.4",
     date: "2026-10-16",
     releasedAt: "2026-10-16T19:50:00+08:00",

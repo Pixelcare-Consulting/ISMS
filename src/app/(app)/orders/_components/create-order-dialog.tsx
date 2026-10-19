@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
@@ -99,12 +98,10 @@ const SUG_HINT = "Shelf gap (Shelf max − STK). Not Planning forecast.";
 export function CreateOrderDialog({
   onClose,
   fixedOrderType,
-  canAccessSuggestedOrders = false,
   prefill,
 }: {
   onClose: () => void;
   fixedOrderType?: BranchOrderType;
-  canAccessSuggestedOrders?: boolean;
   prefill?: CreateOrderPrefill;
 }) {
   const router = useRouter();
@@ -508,11 +505,6 @@ export function CreateOrderDialog({
                     rows={3}
                   />
                 </div>
-                {orderType === "auto_replenish" && canAccessSuggestedOrders ? (
-                  <Button variant="outline" size="sm" asChild>
-                    <Link href="/settings/planning/runs">View suggested orders</Link>
-                  </Button>
-                ) : null}
               </>
             )}
           </aside>

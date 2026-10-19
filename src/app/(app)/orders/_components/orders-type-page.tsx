@@ -44,7 +44,7 @@ interface OrdersTypePageProps {
 function ordersTypePageDescription(orderType: BranchOrderType): string {
   switch (orderType) {
     case "auto_replenish":
-      return "Showing auto replenish requests waiting for your role. Approved orders are in Order History. Suggestions are generated under Settings → Planning.";
+      return "Showing auto replenish requests waiting for your role. Approved orders are in Order History. Review suggestions from Suggested Orders on this screen. They are not submitted until you submit the draft.";
     case "manual":
       return "Showing manual requests waiting for your role. Approved orders are in Order History. Path: Product Specialist submits → Pending SP (Team Leader may optionally edit) → Supply Planning approves.";
     case "special":
@@ -107,17 +107,13 @@ export async function OrdersTypePage({
         actions={
           canAccessSuggestedOrders ? (
             <Button variant="outline" asChild>
-              <Link href="/settings/planning">Planning & suggestions</Link>
+              <Link href="/settings/planning">Planning</Link>
             </Button>
           ) : undefined
         }
       />
       <ModuleGuide {...ordersModuleGuideForType(orderType)} />
-      <OrdersCreateWorkspaceProvider
-        orderType={orderType}
-        canEdit={canEdit}
-        canAccessSuggestedOrders={canAccessSuggestedOrders}
-      >
+      <OrdersCreateWorkspaceProvider orderType={orderType} canEdit={canEdit}>
         <OrdersPageTabs
           activeTab={activeTab}
           basePath={basePath}
@@ -130,7 +126,6 @@ export async function OrdersTypePage({
                   result={ordersResult}
                   viewerRoleSlugs={viewerRoleSlugs}
                   canEdit={canEdit}
-                  canAccessSuggestedOrders={canAccessSuggestedOrders}
                   fixedOrderType={orderType}
                   basePath={basePath}
                   initialSort={params.sort ?? ""}

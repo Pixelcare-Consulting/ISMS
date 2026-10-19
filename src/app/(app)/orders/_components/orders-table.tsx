@@ -20,6 +20,7 @@ import {
   isSuperAdminOrderOverride,
 } from "@/features/orders/constants/order-workflow";
 import { OrderDetailsDialog } from "@/app/(app)/orders/_components/order-details-dialog";
+import { SuggestedOrdersDialog } from "@/app/(app)/orders/_components/suggested-orders-dialog";
 import { OrderWorkflowDialog } from "@/app/(app)/orders/_components/order-workflow-dialog";
 import {
   EditOrderDialog,
@@ -89,8 +90,6 @@ interface OrdersTableProps {
   };
   viewerRoleSlugs: string[];
   canEdit?: boolean;
-  /** Same gate as Supply Planning (`forecast.manage` / `planogram.manage`). */
-  canAccessSuggestedOrders?: boolean;
   /** When set, list is type-scoped and create dialog locks this type. */
   fixedOrderType?: BranchOrderType;
   /** Base path for pagination links (defaults to `/orders`). */
@@ -156,7 +155,6 @@ export function OrdersTable({
   result,
   viewerRoleSlugs,
   canEdit = false,
-  canAccessSuggestedOrders = false,
   fixedOrderType,
   basePath = "/orders",
   initialSort = "",
@@ -169,6 +167,7 @@ export function OrdersTable({
   const [detailsOrder, setDetailsOrder] = useState<OrderRow | null>(null);
   const [editingOrder, setEditingOrder] = useState<EditableOrder | null>(null);
   const [draftToDelete, setDraftToDelete] = useState<OrderRow | null>(null);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [bulkCancelOpen, setBulkCancelOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [processingAction, setProcessingAction] = useState<"approve" | "reject" | null>(
@@ -296,9 +295,9 @@ export function OrdersTable({
                 ) : null}
               </>
             ) : null}
-            {canAccessSuggestedOrders ? (
-              <Button variant="outline" asChild>
-                <a href="/settings/planning/runs">Suggested orders</a>
+            {canEdit && fixedOrderType ? (
+              <Button type="button" variant="outline" onClick={() => setSuggestionsOpen(true)}>
+                Suggested orders
               </Button>
             ) : null}
             {canEdit && fixedOrderType !== "auto_replenish" ? (
@@ -404,9 +403,7 @@ export function OrdersTable({
                       onReview={() => setWorkflowOrder(o)}
                     />
                   ) : null}
-                  {canEdit &&
-                  o.status === "draft" &&
-                  o.orderType === "auto_replenish" ? (
+                  {canEdit && o.status === "draft" ? (
                     <Button
                       size="sm"
                       disabled={pending}
@@ -418,7 +415,7 @@ export function OrdersTable({
                             return;
                           }
                           toast.success("Submitted for review", {
-                            description: "Team Leader can review this order now.",
+                            description: draftSubmitDescription(o.orderType),
                           });
                           router.refresh();
                         });
@@ -596,6 +593,12 @@ export function OrdersTable({
           }}
         />
       ) : null}
+      {suggestionsOpen && fixedOrderType ? (
+        <SuggestedOrdersDialog
+          orderType={fixedOrderType}
+          onClose={() => setSuggestionsOpen(false)}
+        />
+      ) : null}
       <LoadingModal
         open={pending && processingAction !== null}
         title={
@@ -614,6 +617,13 @@ interface OrderReviewButtonProps {
   order: OrderRow;
   viewerRoleSlugs: string[];
   onReview: () => void;
+}
+
+function draftSubmitDescription(orderType: string): string {
+  if (orderType === "auto_replenish") {
+    return "Team Leader can review this order now.";
+  }
+  return "Supply Planning can review this order now.";
 }
 
 function OrderReviewButton({ order, viewerRoleSlugs, onReview }: OrderReviewButtonProps) {

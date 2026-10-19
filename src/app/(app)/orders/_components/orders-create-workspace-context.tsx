@@ -30,12 +30,10 @@ export function useOrdersCreateWorkspace() {
 export function OrdersCreateWorkspaceProvider({
   orderType,
   canEdit,
-  canAccessSuggestedOrders,
   children,
 }: {
   orderType: BranchOrderType;
   canEdit: boolean;
-  canAccessSuggestedOrders: boolean;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -62,7 +60,6 @@ export function OrdersCreateWorkspaceProvider({
             setPrefill(undefined);
           }}
           fixedOrderType={orderType}
-          canAccessSuggestedOrders={canAccessSuggestedOrders}
           prefill={prefill}
         />
       ) : null}

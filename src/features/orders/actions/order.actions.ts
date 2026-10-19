@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { orderService } from "@/features/orders/services/order.service";
+import { suggestionApplyService } from "@/features/orders/services/suggestion-apply.service";
 import { orderRepository } from "@/features/orders/repositories/order.repository";
 import type {
   OrderListSort,
@@ -257,6 +258,51 @@ export async function checkOrderWindowAction(
       : null,
   });
   return { blocked: reason !== null, reason };
+}
+
+export async function listOrderSuggestionsAction(input: {
+  branchId: string;
+  orderType: BranchOrderType;
+}) {
+  const session = await requireOrderTypePermission(input.orderType, "create");
+  if (!input.branchId) {
+    return { error: "Choose a branch to see suggestions." };
+  }
+  try {
+    const data = await suggestionApplyService.list(
+      {
+        tenantId: session.user.tenantId,
+        userId: session.user.id,
+        hasFullAccess: hasFullOrderAccess(session.user.permissions),
+      },
+      input,
+    );
+    return { success: true as const, data };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to load suggestions" };
+  }
+}
+
+export async function applyOrderSuggestionsAction(input: {
+  branchId: string;
+  orderType: BranchOrderType;
+  lines: { modelId: string; quantity: number }[];
+}) {
+  const session = await requireOrderTypePermission(input.orderType, "create");
+  try {
+    const data = await suggestionApplyService.apply(
+      {
+        tenantId: session.user.tenantId,
+        userId: session.user.id,
+        hasFullAccess: hasFullOrderAccess(session.user.permissions),
+      },
+      input,
+    );
+    revalidateOrderPaths(input.orderType);
+    return { success: true as const, ...data };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to add suggestions to the draft" };
+  }
 }
 
 export async function createOrderAction(input: {
