@@ -1,10 +1,10 @@
 {
   "ReportVersion": "2026.4.1",
-  "ReportGuid": "f9d6eca300f4f55bd3f30262bb9e9f1c",
+  "ReportGuid": "d63deedc2ff14bda0c46f60d1d1c8054",
   "ReportName": "daily-stock",
   "ReportAlias": "Daily Stock",
-  "ReportCreated": "/Date(1792384725000+0800)/",
-  "ReportChanged": "/Date(1792384725000+0800)/",
+  "ReportCreated": "/Date(1792388050000+0800)/",
+  "ReportChanged": "/Date(1792388050000+0800)/",
   "EngineVersion": "EngineV2",
   "ReportUnit": "Centimeters",
   "ScriptLanguage": "CSharp",
@@ -75,7 +75,7 @@
     "0": {
       "Ident": "StiPage",
       "Name": "Page1",
-      "Guid": "ab4b472d789405e573d80c4eefdde279",
+      "Guid": "9a4fc5bbabd7bdd3f9779a2ba29cdd88",
       "Interaction": {
         "Ident": "StiInteraction"
       },
@@ -211,8 +211,64 @@
           "Components": {
             "0": {
               "Ident": "StiText",
+              "Name": "S0H_date",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "0,0,2.14,0.7",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "DATE"
+              },
+              "VertAlignment": "Center",
+              "Font": "Geist;;Bold;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
+              "Brush": "solid:238,240,243",
+              "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            },
+            "1": {
+              "Ident": "StiText",
+              "Name": "S0H_branch",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "2.14,0,4.28,0.7",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "BRANCH"
+              },
+              "VertAlignment": "Center",
+              "Font": "Geist;;Bold;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
+              "Brush": "solid:238,240,243",
+              "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            },
+            "2": {
+              "Ident": "StiText",
               "Name": "S0H_skuCode",
-              "ClientRectangle": "0,0,4.34,0.7",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "6.41,0,2.85,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -224,51 +280,9 @@
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:238,240,243",
               "TextBrush": "solid:23,23,28",
-              "Margins": {
-                "Left": 2,
-                "Right": 2,
-                "Top": 0,
-                "Bottom": 0
-              }
-            },
-            "1": {
-              "Ident": "StiText",
-              "Name": "S0H_model",
-              "ClientRectangle": "4.34,0,8.14,0.7",
-              "Interaction": {
-                "Ident": "StiInteraction"
+              "TextOptions": {
+                "WordWrap": true
               },
-              "Text": {
-                "Value": "Model"
-              },
-              "VertAlignment": "Center",
-              "Font": "Geist;;Bold;",
-              "Border": "Bottom;228,230,234;;;;;;solid:Black",
-              "Brush": "solid:238,240,243",
-              "TextBrush": "solid:23,23,28",
-              "Margins": {
-                "Left": 2,
-                "Right": 2,
-                "Top": 0,
-                "Bottom": 0
-              }
-            },
-            "2": {
-              "Ident": "StiText",
-              "Name": "S0H_shelfMax",
-              "ClientRectangle": "12.49,0,2.17,0.7",
-              "Interaction": {
-                "Ident": "StiInteraction"
-              },
-              "Text": {
-                "Value": "Shelf Max"
-              },
-              "HorAlignment": "Right",
-              "VertAlignment": "Center",
-              "Font": "Geist;;Bold;",
-              "Border": "Bottom;228,230,234;;;;;;solid:Black",
-              "Brush": "solid:238,240,243",
-              "TextBrush": "solid:23,23,28",
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -278,20 +292,24 @@
             },
             "3": {
               "Ident": "StiText",
-              "Name": "S0H_invQty",
-              "ClientRectangle": "14.66,0,2.17,0.7",
+              "Name": "S0H_model",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "9.26,0,5.22,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "Inventory"
+                "Value": "MODEL NAME"
               },
-              "HorAlignment": "Right",
               "VertAlignment": "Center",
               "Font": "Geist;;Bold;",
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:238,240,243",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -301,13 +319,15 @@
             },
             "4": {
               "Ident": "StiText",
-              "Name": "S0H_soldQty",
-              "ClientRectangle": "16.83,0,2.17,0.7",
+              "Name": "S0H_shelfMax",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "14.49,0,1.66,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "Sold"
+                "Value": "SHELF MAX"
               },
               "HorAlignment": "Right",
               "VertAlignment": "Center",
@@ -315,6 +335,65 @@
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:238,240,243",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            },
+            "5": {
+              "Ident": "StiText",
+              "Name": "S0H_invQty",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "16.15,0,1.42,0.7",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "INV"
+              },
+              "HorAlignment": "Right",
+              "VertAlignment": "Center",
+              "Font": "Geist;;Bold;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
+              "Brush": "solid:238,240,243",
+              "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            },
+            "6": {
+              "Ident": "StiText",
+              "Name": "S0H_soldQty",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "17.58,0,1.42,0.7",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "SOLD"
+              },
+              "HorAlignment": "Right",
+              "VertAlignment": "Center",
+              "Font": "Geist;;Bold;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
+              "Brush": "solid:238,240,243",
+              "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -325,44 +404,6 @@
           }
         },
         "3": {
-          "Ident": "StiGroupHeaderBand",
-          "Name": "S0Group",
-          "CanGrow": true,
-          "ClientRectangle": "0,0,0,0.7",
-          "Interaction": {
-            "Ident": "StiBandInteraction"
-          },
-          "Border": ";;;;;;;solid:Black",
-          "Brush": "solid:",
-          "Components": {
-            "0": {
-              "Ident": "StiText",
-              "Name": "S0GroupText",
-              "ClientRectangle": "0,0,19,0.7",
-              "Interaction": {
-                "Ident": "StiInteraction"
-              },
-              "Text": {
-                "Value": "{daily_stock.branch}"
-              },
-              "VertAlignment": "Center",
-              "Font": "Geist;;Bold;",
-              "Border": ";;;;;;;solid:Black",
-              "Brush": "solid:247,248,254",
-              "TextBrush": "solid:23,23,28",
-              "Margins": {
-                "Left": 2,
-                "Right": 2,
-                "Top": 0,
-                "Bottom": 0
-              }
-            }
-          },
-          "Condition": {
-            "Value": "{daily_stock.branch}"
-          }
-        },
-        "4": {
           "Ident": "StiDataBand",
           "Name": "S0Data",
           "CanGrow": true,
@@ -375,8 +416,69 @@
           "Components": {
             "0": {
               "Ident": "StiText",
+              "Name": "S0D_date",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "0,0,2.14,0.6",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "{daily_stock.date}"
+              },
+              "VertAlignment": "Center",
+              "Font": "Geist;;;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
+              "Brush": "solid:",
+              "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              },
+              "TextFormat": {
+                "Ident": "StiDateFormatService",
+                "StringFormat": "yyyy-MM-dd",
+                "NullDisplay": ""
+              }
+            },
+            "1": {
+              "Ident": "StiText",
+              "Name": "S0D_branch",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "2.14,0,4.28,0.6",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "{daily_stock.branch}"
+              },
+              "VertAlignment": "Center",
+              "Font": "Geist;;;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
+              "Brush": "solid:",
+              "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            },
+            "2": {
+              "Ident": "StiText",
               "Name": "S0D_skuCode",
-              "ClientRectangle": "0,0,4.34,0.6",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "6.41,0,2.85,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -388,6 +490,9 @@
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -395,10 +500,12 @@
                 "Bottom": 0
               }
             },
-            "1": {
+            "3": {
               "Ident": "StiText",
               "Name": "S0D_model",
-              "ClientRectangle": "4.34,0,8.14,0.6",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "9.26,0,5.22,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -410,6 +517,9 @@
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -417,10 +527,12 @@
                 "Bottom": 0
               }
             },
-            "2": {
+            "4": {
               "Ident": "StiText",
               "Name": "S0D_shelfMax",
-              "ClientRectangle": "12.49,0,2.17,0.6",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "14.49,0,1.66,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -433,24 +545,22 @@
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
                 "Top": 0,
                 "Bottom": 0
-              },
-              "TextFormat": {
-                "Ident": "StiNumberFormatService",
-                "NegativePattern": 1,
-                "DecimalDigits": 0,
-                "GroupSeparator": ",",
-                "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
               }
             },
-            "3": {
+            "5": {
               "Ident": "StiText",
               "Name": "S0D_invQty",
-              "ClientRectangle": "14.66,0,2.17,0.6",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "16.15,0,1.42,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -463,24 +573,22 @@
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
                 "Top": 0,
                 "Bottom": 0
-              },
-              "TextFormat": {
-                "Ident": "StiNumberFormatService",
-                "NegativePattern": 1,
-                "DecimalDigits": 0,
-                "GroupSeparator": ",",
-                "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
               }
             },
-            "4": {
+            "6": {
               "Ident": "StiText",
               "Name": "S0D_soldQty",
-              "ClientRectangle": "16.83,0,2.17,0.6",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "17.58,0,1.42,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -493,250 +601,18 @@
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
                 "Top": 0,
                 "Bottom": 0
-              },
-              "TextFormat": {
-                "Ident": "StiNumberFormatService",
-                "NegativePattern": 1,
-                "DecimalDigits": 0,
-                "GroupSeparator": ",",
-                "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
               }
             }
           },
           "DataSourceName": "daily_stock"
-        },
-        "5": {
-          "Ident": "StiGroupFooterBand",
-          "Name": "S0GroupFooter",
-          "CanGrow": true,
-          "ClientRectangle": "0,0,0,0.6",
-          "Interaction": {
-            "Ident": "StiInteraction"
-          },
-          "Border": ";;;;;;;solid:Black",
-          "Brush": "solid:",
-          "Components": {
-            "0": {
-              "Ident": "StiText",
-              "Name": "S0GF_shelfMax",
-              "ClientRectangle": "12.49,0,2.17,0.6",
-              "Interaction": {
-                "Ident": "StiInteraction"
-              },
-              "Text": {
-                "Value": "{Sum(S0Data,daily_stock.shelfMax)}"
-              },
-              "HorAlignment": "Right",
-              "VertAlignment": "Center",
-              "Font": "Geist;;Bold;",
-              "Border": ";;;;;;;solid:Black",
-              "Brush": "solid:",
-              "TextBrush": "solid:23,23,28",
-              "Margins": {
-                "Left": 2,
-                "Right": 2,
-                "Top": 0,
-                "Bottom": 0
-              },
-              "TextFormat": {
-                "Ident": "StiNumberFormatService",
-                "NegativePattern": 1,
-                "DecimalDigits": 0,
-                "GroupSeparator": ",",
-                "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
-              }
-            },
-            "1": {
-              "Ident": "StiText",
-              "Name": "S0GF_invQty",
-              "ClientRectangle": "14.66,0,2.17,0.6",
-              "Interaction": {
-                "Ident": "StiInteraction"
-              },
-              "Text": {
-                "Value": "{Sum(S0Data,daily_stock.invQty)}"
-              },
-              "HorAlignment": "Right",
-              "VertAlignment": "Center",
-              "Font": "Geist;;Bold;",
-              "Border": ";;;;;;;solid:Black",
-              "Brush": "solid:",
-              "TextBrush": "solid:23,23,28",
-              "Margins": {
-                "Left": 2,
-                "Right": 2,
-                "Top": 0,
-                "Bottom": 0
-              },
-              "TextFormat": {
-                "Ident": "StiNumberFormatService",
-                "NegativePattern": 1,
-                "DecimalDigits": 0,
-                "GroupSeparator": ",",
-                "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
-              }
-            },
-            "2": {
-              "Ident": "StiText",
-              "Name": "S0GF_soldQty",
-              "ClientRectangle": "16.83,0,2.17,0.6",
-              "Interaction": {
-                "Ident": "StiInteraction"
-              },
-              "Text": {
-                "Value": "{Sum(S0Data,daily_stock.soldQty)}"
-              },
-              "HorAlignment": "Right",
-              "VertAlignment": "Center",
-              "Font": "Geist;;Bold;",
-              "Border": ";;;;;;;solid:Black",
-              "Brush": "solid:",
-              "TextBrush": "solid:23,23,28",
-              "Margins": {
-                "Left": 2,
-                "Right": 2,
-                "Top": 0,
-                "Bottom": 0
-              },
-              "TextFormat": {
-                "Ident": "StiNumberFormatService",
-                "NegativePattern": 1,
-                "DecimalDigits": 0,
-                "GroupSeparator": ",",
-                "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
-              }
-            }
-          }
-        },
-        "6": {
-          "Ident": "StiFooterBand",
-          "Name": "S0Footer",
-          "CanGrow": true,
-          "ClientRectangle": "0,0,0,0.7",
-          "Interaction": {
-            "Ident": "StiInteraction"
-          },
-          "Border": ";;;;;;;solid:Black",
-          "Brush": "solid:",
-          "Components": {
-            "0": {
-              "Ident": "StiText",
-              "Name": "S0RowCount",
-              "ClientRectangle": "0,0,5.7,0.7",
-              "Interaction": {
-                "Ident": "StiInteraction"
-              },
-              "Text": {
-                "Value": "{Count(S0Data)} rows"
-              },
-              "VertAlignment": "Center",
-              "Font": "Geist;;;",
-              "Border": ";;;;;;;solid:Black",
-              "Brush": "solid:",
-              "TextBrush": "solid:113,113,122",
-              "Margins": {
-                "Left": 2,
-                "Right": 2,
-                "Top": 0,
-                "Bottom": 0
-              }
-            },
-            "1": {
-              "Ident": "StiText",
-              "Name": "S0T_shelfMax",
-              "ClientRectangle": "12.49,0,2.17,0.7",
-              "Interaction": {
-                "Ident": "StiInteraction"
-              },
-              "Text": {
-                "Value": "{Sum(S0Data,daily_stock.shelfMax)}"
-              },
-              "HorAlignment": "Right",
-              "VertAlignment": "Center",
-              "Font": "Geist;;Bold;",
-              "Border": ";;;;;;;solid:Black",
-              "Brush": "solid:238,240,243",
-              "TextBrush": "solid:23,23,28",
-              "Margins": {
-                "Left": 2,
-                "Right": 2,
-                "Top": 0,
-                "Bottom": 0
-              },
-              "TextFormat": {
-                "Ident": "StiNumberFormatService",
-                "NegativePattern": 1,
-                "DecimalDigits": 0,
-                "GroupSeparator": ",",
-                "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
-              }
-            },
-            "2": {
-              "Ident": "StiText",
-              "Name": "S0T_invQty",
-              "ClientRectangle": "14.66,0,2.17,0.7",
-              "Interaction": {
-                "Ident": "StiInteraction"
-              },
-              "Text": {
-                "Value": "{Sum(S0Data,daily_stock.invQty)}"
-              },
-              "HorAlignment": "Right",
-              "VertAlignment": "Center",
-              "Font": "Geist;;Bold;",
-              "Border": ";;;;;;;solid:Black",
-              "Brush": "solid:238,240,243",
-              "TextBrush": "solid:23,23,28",
-              "Margins": {
-                "Left": 2,
-                "Right": 2,
-                "Top": 0,
-                "Bottom": 0
-              },
-              "TextFormat": {
-                "Ident": "StiNumberFormatService",
-                "NegativePattern": 1,
-                "DecimalDigits": 0,
-                "GroupSeparator": ",",
-                "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
-              }
-            },
-            "3": {
-              "Ident": "StiText",
-              "Name": "S0T_soldQty",
-              "ClientRectangle": "16.83,0,2.17,0.7",
-              "Interaction": {
-                "Ident": "StiInteraction"
-              },
-              "Text": {
-                "Value": "{Sum(S0Data,daily_stock.soldQty)}"
-              },
-              "HorAlignment": "Right",
-              "VertAlignment": "Center",
-              "Font": "Geist;;Bold;",
-              "Border": ";;;;;;;solid:Black",
-              "Brush": "solid:238,240,243",
-              "TextBrush": "solid:23,23,28",
-              "Margins": {
-                "Left": 2,
-                "Right": 2,
-                "Top": 0,
-                "Bottom": 0
-              },
-              "TextFormat": {
-                "Ident": "StiNumberFormatService",
-                "NegativePattern": 1,
-                "DecimalDigits": 0,
-                "GroupSeparator": ",",
-                "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
-              }
-            }
-          }
         }
       },
       "PaperSize": "A4"

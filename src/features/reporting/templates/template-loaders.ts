@@ -13,6 +13,7 @@ export const REPORT_TEMPLATES: Record<ReportKey, () => TemplateModule> = {
   transfers: () => import("./reports/transfers.mrt.json"),
   sales: () => import("./reports/sales.mrt.json"),
   inventory: () => import("./reports/inventory.mrt.json"),
+  pcount: () => import("./reports/pcount.mrt.json"),
 };
 
 export const READY_MADE_TEMPLATES: Record<ReadyMadeDashboardKey, () => TemplateModule> = {

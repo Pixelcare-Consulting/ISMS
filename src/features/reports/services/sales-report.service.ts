@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/database/client";
+import { SALES_REPORT_HEADERS } from "@/features/reports/constants/report-headers";
 import { buildCsvContent } from "@/lib/shared/csv";
 
 export interface SalesReportFilters {
@@ -6,21 +7,6 @@ export interface SalesReportFilters {
   to?: Date;
   branchIds?: string[];
 }
-
-const HEADERS = [
-  "DATE",
-  "TRANSACTION NO",
-  "BRANCH",
-  "STOCK SOURCE BRANCH",
-  "SERIAL NO",
-  "MODEL",
-  "PACKAGE",
-  "SALE AMOUNT",
-  "ATR STATUS",
-  "RETURN STATUS",
-  "CUSTOMER",
-  "SI/TRANS",
-];
 
 function formatDate(value: Date): string {
   return value.toISOString().slice(0, 10);
@@ -34,6 +20,8 @@ export interface SalesReportRow {
   serialNo: string;
   skuCode: string;
   model: string;
+  /** "SKU · Name", the approved CSV's MODEL column. */
+  modelLabel: string;
   packageType: string;
   saleAmount: number;
   atrStatus: string;
@@ -102,6 +90,7 @@ export const salesReportService = {
       serialNo: d.serialNumber?.serialNo ?? "",
       skuCode: d.model?.skuCode ?? "",
       model: d.model?.name ?? "",
+      modelLabel: d.model ? `${d.model.skuCode} · ${d.model.name}` : "",
       packageType: d.packageType?.name ?? "",
       saleAmount: Number(d.saleAmount ?? d.amount ?? 0),
       atrStatus: d.sale.atrStatus,
@@ -114,14 +103,14 @@ export const salesReportService = {
   async generateCsv(tenantId: string, filters: SalesReportFilters = {}) {
     const rows = await this.listRows(tenantId, filters);
     return buildCsvContent(
-      HEADERS,
+      [...SALES_REPORT_HEADERS],
       rows.map((r) => [
         r.date,
         r.transactionNo,
         r.branch,
         r.stockSourceBranch,
         r.serialNo,
-        r.skuCode ? `${r.skuCode} · ${r.model}` : "",
+        r.modelLabel,
         r.packageType,
         r.saleAmount.toString(),
         r.atrStatus,

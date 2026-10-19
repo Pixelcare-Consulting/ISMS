@@ -30,6 +30,11 @@ import {
   type DatasetRow,
 } from "@/features/reporting/datasets/dataset-catalog";
 import type { DatasetParams } from "@/features/reporting/schemas/dataset-params.schema";
+import {
+  PCOUNT_REPORT_ACCESS,
+  isPcountReportUnrestricted,
+} from "@/features/stock-audit/constants/pcount-report-access";
+import { stockAuditService } from "@/features/stock-audit/services/stock-audit.service";
 import { canAccessReturns } from "@/features/returns/constants/returns-permissions";
 import { canAccessSales } from "@/features/sales/constants/sales-permissions";
 import type { KpiStatusCount } from "@/lib/kpi-cards/types";
@@ -177,6 +182,29 @@ const DATASETS: Record<DatasetKey, DatasetDefinition> = {
     canAccess: anyOf(INVENTORY_REPORT_ACCESS),
     load: async (ctx, params) =>
       rowsFromCells("inventory_summary", (await loadInventoryRows(ctx, params)).summaryRows),
+  },
+  pcount_sessions: {
+    canAccess: anyOf(PCOUNT_REPORT_ACCESS),
+    // Same rows and branch rule as the P-Count report page.
+    load: async (ctx, params) => {
+      const { from, to } = dateRange(params);
+      const result = await stockAuditService.listClosedForReport(
+        ctx.tenantId,
+        ctx.userId,
+        isPcountReportUnrestricted(ctx.permissions),
+        { branchId: params.branchId, from, to, page: 1, limit: MAX_DATASET_ROWS + 1 },
+      );
+      return result.items.map((session) => ({
+        closedAt: session.closedAt ? session.closedAt.toISOString().slice(0, 10) : null,
+        sessionNo: session.sessionNo,
+        branch: session.branch.name,
+        branchSapCode: session.branch.sapCode,
+        createdBy: session.createdBy.name ?? session.createdBy.email,
+        lineCount: session.lineCount,
+        countedCount: session.countedCount,
+        varianceCount: session.varianceCount,
+      }));
+    },
   },
   ops_kpis: {
     canAccess: canSeeOps,

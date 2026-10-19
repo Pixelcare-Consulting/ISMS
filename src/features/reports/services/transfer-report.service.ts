@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/database/client";
+import { TRANSFER_REPORT_HEADERS } from "@/features/reports/constants/report-headers";
 import { buildCsvContent } from "@/lib/shared/csv";
 
 export interface TransferReportFilters {
@@ -6,8 +7,6 @@ export interface TransferReportFilters {
   to?: Date;
   branchIds?: string[];
 }
-
-const HEADERS = ["TRANSFER NO", "FROM BRANCH", "TO BRANCH", "STATUS", "DATE", "NOTES"];
 
 function formatDate(value: Date): string {
   return value.toISOString().slice(0, 10);
@@ -66,7 +65,7 @@ export const transferReportService = {
   async generateCsv(tenantId: string, filters: TransferReportFilters = {}) {
     const rows = await this.listRows(tenantId, filters);
     return buildCsvContent(
-      HEADERS,
+      [...TRANSFER_REPORT_HEADERS],
       rows.map((r) => [r.transferNo, r.fromBranch, r.toBranch, r.status, r.date, r.notes]),
     );
   },

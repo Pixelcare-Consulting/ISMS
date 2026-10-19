@@ -1,10 +1,10 @@
 {
   "ReportVersion": "2026.4.1",
-  "ReportGuid": "4dff9e83c491c656b2b5f18c1e6dbffc",
+  "ReportGuid": "8d272b8296677474d2564ea1f4091509",
   "ReportName": "orders-logistics",
   "ReportAlias": "Orders & Logistics",
-  "ReportCreated": "/Date(1792384725000+0800)/",
-  "ReportChanged": "/Date(1792384725000+0800)/",
+  "ReportCreated": "/Date(1792388050000+0800)/",
+  "ReportChanged": "/Date(1792388050000+0800)/",
   "EngineVersion": "EngineV2",
   "ReportUnit": "Centimeters",
   "ScriptLanguage": "CSharp",
@@ -176,6 +176,12 @@
             "Type": "System.Decimal"
           },
           "15": {
+            "Name": "totalCbmText",
+            "NameInSource": "totalCbmText",
+            "Alias": "Total CBM (as exported)",
+            "Type": "System.String"
+          },
+          "16": {
             "Name": "area",
             "NameInSource": "area",
             "Alias": "Area",
@@ -260,7 +266,7 @@
     "0": {
       "Ident": "StiDashboard",
       "Name": "orderslogistics",
-      "Guid": "12d2f4dc4db4fa6236d24951b4d83d83",
+      "Guid": "95ee38a9c2b6b0568e8631d99ee82604",
       "Alias": "Orders & Logistics",
       "Interaction": {
         "Ident": "StiInteraction"
@@ -270,7 +276,7 @@
         "0": {
           "Ident": "StiIndicatorElement",
           "Name": "OpsPending",
-          "Guid": "41c1388bae4bba49a78f23eec6fb1618",
+          "Guid": "fadc3e60fe4e77dce8ddac534b433987",
           "ClientRectangle": "0,0,294,120",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -311,7 +317,7 @@
         "1": {
           "Ident": "StiIndicatorElement",
           "Name": "OpsInTransit",
-          "Guid": "051d4c1f12023edf321a72d4ae16cdef",
+          "Guid": "6fbdd95d8b7ffa48071b81d0dec47099",
           "ClientRectangle": "302,0,294,120",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -352,7 +358,7 @@
         "2": {
           "Ident": "StiIndicatorElement",
           "Name": "OpsApprovedQty",
-          "Guid": "a3abeb31cb27f0c9a9c55e511d95938e",
+          "Guid": "efe4da1d80c4884ce2f849c5d56cc6c0",
           "ClientRectangle": "604,0,294,120",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -393,7 +399,7 @@
         "3": {
           "Ident": "StiIndicatorElement",
           "Name": "OpsTransfers",
-          "Guid": "c307cb175b5186603e7b394dcf854128",
+          "Guid": "28f3bca0b704afe317f170550afd56f9",
           "ClientRectangle": "906,0,294,120",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -434,7 +440,7 @@
         "4": {
           "Ident": "StiChartElement",
           "Name": "OpsApprovedDaily",
-          "Guid": "8984a73a8aedcd05414bb7e0c0d4b005",
+          "Guid": "afc48478e2bcf83cb1f1a19ef27c2a7a",
           "ClientRectangle": "0,128,1200,360",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -468,7 +474,7 @@
           },
           "ManuallyEnteredChartMeter": {
             "Ident": "ValueChartMeter",
-            "Key": "ad406a147de2455532d602dede1f37c4"
+            "Key": "ed29b9c5c7cf2f1be41c2115abc3999c"
           },
           "ArgumentFormat": {
             "Ident": "StiDateFormatService",
@@ -515,7 +521,7 @@
         "5": {
           "Ident": "StiChartElement",
           "Name": "OpsOrdersByStatus",
-          "Guid": "3d602495c4b67a56088f1139a21473c7",
+          "Guid": "f644aa4c909eb2566e5d113af3a1ce3c",
           "ClientRectangle": "0,496,596,340",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -550,7 +556,7 @@
           },
           "ManuallyEnteredChartMeter": {
             "Ident": "ValueChartMeter",
-            "Key": "b9efcd79794a7e0156fbaf9c5f953011"
+            "Key": "07c488a2ccc9aaca338e9d59630f9e98"
           },
           "ArgumentFormat": {
             "Ident": "StiGeneralFormatService"
@@ -595,7 +601,7 @@
         "6": {
           "Ident": "StiChartElement",
           "Name": "OpsTransfersByStatus",
-          "Guid": "a2fdabc77fb77cbc901ab8f03f858666",
+          "Guid": "597de53038e824954fed6553e4a23a8c",
           "ClientRectangle": "604,496,596,340",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -630,7 +636,7 @@
           },
           "ManuallyEnteredChartMeter": {
             "Ident": "ValueChartMeter",
-            "Key": "66d1f54d10ceace78b14847f2f4385f3"
+            "Key": "83a208f65d2bd466ee798087418b5bc3"
           },
           "ArgumentFormat": {
             "Ident": "StiGeneralFormatService"
@@ -676,7 +682,7 @@
         "7": {
           "Ident": "StiChartElement",
           "Name": "OpsTopBranches",
-          "Guid": "83dcf87d4c91bc19191f0bab19d7a115",
+          "Guid": "bb527a16c71587547113348285bf2bdc",
           "ClientRectangle": "0,844,596,340",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -723,7 +729,7 @@
           },
           "ManuallyEnteredChartMeter": {
             "Ident": "ValueChartMeter",
-            "Key": "ca274da23872c6edd0f692746554f8f2"
+            "Key": "d8a9748649f21d013f5d785cf29412ab"
           },
           "ArgumentFormat": {
             "Ident": "StiGeneralFormatService"
@@ -768,7 +774,7 @@
         "8": {
           "Ident": "StiChartElement",
           "Name": "OpsApprovedByBrand",
-          "Guid": "c834f9dac6d717d5b82f20ff722d901a",
+          "Guid": "6eced9a92d612b27f43552216ddd8bdd",
           "ClientRectangle": "604,844,596,340",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -803,7 +809,7 @@
           },
           "ManuallyEnteredChartMeter": {
             "Ident": "ValueChartMeter",
-            "Key": "2975af87191d7641c906c0f6c0b1b1e5"
+            "Key": "b228e7448ed40230053e1c25608b2100"
           },
           "ArgumentFormat": {
             "Ident": "StiGeneralFormatService"

@@ -1,10 +1,10 @@
 {
   "ReportVersion": "2026.4.1",
-  "ReportGuid": "81cc91b32406fb4ee2f8a4cdd744d761",
+  "ReportGuid": "ad0bfaf95f9c5f610b4d87921d1c69ba",
   "ReportName": "inventory",
   "ReportAlias": "Inventory",
-  "ReportCreated": "/Date(1792384725000+0800)/",
-  "ReportChanged": "/Date(1792384725000+0800)/",
+  "ReportCreated": "/Date(1792388050000+0800)/",
+  "ReportChanged": "/Date(1792388050000+0800)/",
   "EngineVersion": "EngineV2",
   "ReportUnit": "Centimeters",
   "ScriptLanguage": "CSharp",
@@ -161,7 +161,7 @@
     "0": {
       "Ident": "StiPage",
       "Name": "Page1",
-      "Guid": "afd88d7d133332943c7c4934fe981541",
+      "Guid": "e92fd3352772e0aef5d6ee8005ef9eea",
       "Interaction": {
         "Ident": "StiInteraction"
       },
@@ -303,7 +303,7 @@
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "Summary"
+                "Value": "SUMMARY"
               },
               "VertAlignment": "Center",
               "Font": "Geist;11;Bold;",
@@ -333,19 +333,24 @@
           "Components": {
             "0": {
               "Ident": "StiText",
-              "Name": "S0H_skuCode",
-              "ClientRectangle": "0,0,11.54,0.7",
+              "Name": "S0H_branch",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "0,0,10.72,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "SKU"
+                "Value": "BRANCH"
               },
               "VertAlignment": "Center",
-              "Font": "Geist;;Bold;",
+              "Font": "Geist;6;Bold;",
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:238,240,243",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -355,19 +360,24 @@
             },
             "1": {
               "Ident": "StiText",
-              "Name": "S0H_status",
-              "ClientRectangle": "11.54,0,11.54,0.7",
+              "Name": "S0H_skuCode",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "10.72,0,7.15,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "Status"
+                "Value": "SKU"
               },
               "VertAlignment": "Center",
-              "Font": "Geist;;Bold;",
+              "Font": "Geist;6;Bold;",
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:238,240,243",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -377,20 +387,52 @@
             },
             "2": {
               "Ident": "StiText",
-              "Name": "S0H_qty",
-              "ClientRectangle": "23.08,0,4.62,0.7",
+              "Name": "S0H_status",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "17.87,0,6.25,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "Qty"
+                "Value": "STATUS"
               },
-              "HorAlignment": "Right",
               "VertAlignment": "Center",
-              "Font": "Geist;;Bold;",
+              "Font": "Geist;6;Bold;",
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:238,240,243",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            },
+            "3": {
+              "Ident": "StiText",
+              "Name": "S0H_qty",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "24.13,0,3.57,0.7",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "QTY"
+              },
+              "HorAlignment": "Right",
+              "VertAlignment": "Center",
+              "Font": "Geist;6;Bold;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
+              "Brush": "solid:238,240,243",
+              "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -401,44 +443,6 @@
           }
         },
         "4": {
-          "Ident": "StiGroupHeaderBand",
-          "Name": "S0Group",
-          "CanGrow": true,
-          "ClientRectangle": "0,0,0,0.7",
-          "Interaction": {
-            "Ident": "StiBandInteraction"
-          },
-          "Border": ";;;;;;;solid:Black",
-          "Brush": "solid:",
-          "Components": {
-            "0": {
-              "Ident": "StiText",
-              "Name": "S0GroupText",
-              "ClientRectangle": "0,0,27.7,0.7",
-              "Interaction": {
-                "Ident": "StiInteraction"
-              },
-              "Text": {
-                "Value": "{inventory_summary.branch}"
-              },
-              "VertAlignment": "Center",
-              "Font": "Geist;;Bold;",
-              "Border": ";;;;;;;solid:Black",
-              "Brush": "solid:247,248,254",
-              "TextBrush": "solid:23,23,28",
-              "Margins": {
-                "Left": 2,
-                "Right": 2,
-                "Top": 0,
-                "Bottom": 0
-              }
-            }
-          },
-          "Condition": {
-            "Value": "{inventory_summary.branch}"
-          }
-        },
-        "5": {
           "Ident": "StiDataBand",
           "Name": "S0Data",
           "CanGrow": true,
@@ -451,19 +455,24 @@
           "Components": {
             "0": {
               "Ident": "StiText",
-              "Name": "S0D_skuCode",
-              "ClientRectangle": "0,0,11.54,0.6",
+              "Name": "S0D_branch",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "0,0,10.72,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "{inventory_summary.skuCode}"
+                "Value": "{inventory_summary.branch}"
               },
               "VertAlignment": "Center",
-              "Font": "Geist;;;",
+              "Font": "Geist;6;;",
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -473,19 +482,24 @@
             },
             "1": {
               "Ident": "StiText",
-              "Name": "S0D_status",
-              "ClientRectangle": "11.54,0,11.54,0.6",
+              "Name": "S0D_skuCode",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "10.72,0,7.15,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "{inventory_summary.status}"
+                "Value": "{inventory_summary.skuCode}"
               },
               "VertAlignment": "Center",
-              "Font": "Geist;;;",
+              "Font": "Geist;6;;",
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -495,8 +509,37 @@
             },
             "2": {
               "Ident": "StiText",
+              "Name": "S0D_status",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "17.87,0,6.25,0.6",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "{inventory_summary.status}"
+              },
+              "VertAlignment": "Center",
+              "Font": "Geist;6;;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
+              "Brush": "solid:",
+              "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            },
+            "3": {
+              "Ident": "StiText",
               "Name": "S0D_qty",
-              "ClientRectangle": "23.08,0,4.62,0.6",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "24.13,0,3.57,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -505,136 +548,24 @@
               },
               "HorAlignment": "Right",
               "VertAlignment": "Center",
-              "Font": "Geist;;;",
+              "Font": "Geist;6;;",
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
                 "Top": 0,
                 "Bottom": 0
-              },
-              "TextFormat": {
-                "Ident": "StiNumberFormatService",
-                "NegativePattern": 1,
-                "DecimalDigits": 0,
-                "GroupSeparator": ",",
-                "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
               }
             }
           },
           "DataSourceName": "inventory_summary"
         },
-        "6": {
-          "Ident": "StiGroupFooterBand",
-          "Name": "S0GroupFooter",
-          "CanGrow": true,
-          "ClientRectangle": "0,0,0,0.6",
-          "Interaction": {
-            "Ident": "StiInteraction"
-          },
-          "Border": ";;;;;;;solid:Black",
-          "Brush": "solid:",
-          "Components": {
-            "0": {
-              "Ident": "StiText",
-              "Name": "S0GF_qty",
-              "ClientRectangle": "23.08,0,4.62,0.6",
-              "Interaction": {
-                "Ident": "StiInteraction"
-              },
-              "Text": {
-                "Value": "{Sum(S0Data,inventory_summary.qty)}"
-              },
-              "HorAlignment": "Right",
-              "VertAlignment": "Center",
-              "Font": "Geist;;Bold;",
-              "Border": ";;;;;;;solid:Black",
-              "Brush": "solid:",
-              "TextBrush": "solid:23,23,28",
-              "Margins": {
-                "Left": 2,
-                "Right": 2,
-                "Top": 0,
-                "Bottom": 0
-              },
-              "TextFormat": {
-                "Ident": "StiNumberFormatService",
-                "NegativePattern": 1,
-                "DecimalDigits": 0,
-                "GroupSeparator": ",",
-                "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
-              }
-            }
-          }
-        },
-        "7": {
-          "Ident": "StiFooterBand",
-          "Name": "S0Footer",
-          "CanGrow": true,
-          "ClientRectangle": "0,0,0,0.7",
-          "Interaction": {
-            "Ident": "StiInteraction"
-          },
-          "Border": ";;;;;;;solid:Black",
-          "Brush": "solid:",
-          "Components": {
-            "0": {
-              "Ident": "StiText",
-              "Name": "S0RowCount",
-              "ClientRectangle": "0,0,8.31,0.7",
-              "Interaction": {
-                "Ident": "StiInteraction"
-              },
-              "Text": {
-                "Value": "{Count(S0Data)} rows"
-              },
-              "VertAlignment": "Center",
-              "Font": "Geist;;;",
-              "Border": ";;;;;;;solid:Black",
-              "Brush": "solid:",
-              "TextBrush": "solid:113,113,122",
-              "Margins": {
-                "Left": 2,
-                "Right": 2,
-                "Top": 0,
-                "Bottom": 0
-              }
-            },
-            "1": {
-              "Ident": "StiText",
-              "Name": "S0T_qty",
-              "ClientRectangle": "23.08,0,4.62,0.7",
-              "Interaction": {
-                "Ident": "StiInteraction"
-              },
-              "Text": {
-                "Value": "{Sum(S0Data,inventory_summary.qty)}"
-              },
-              "HorAlignment": "Right",
-              "VertAlignment": "Center",
-              "Font": "Geist;;Bold;",
-              "Border": ";;;;;;;solid:Black",
-              "Brush": "solid:238,240,243",
-              "TextBrush": "solid:23,23,28",
-              "Margins": {
-                "Left": 2,
-                "Right": 2,
-                "Top": 0,
-                "Bottom": 0
-              },
-              "TextFormat": {
-                "Ident": "StiNumberFormatService",
-                "NegativePattern": 1,
-                "DecimalDigits": 0,
-                "GroupSeparator": ",",
-                "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
-              }
-            }
-          }
-        },
-        "8": {
+        "5": {
           "Ident": "StiHeaderBand",
           "Name": "S1Heading",
           "CanGrow": true,
@@ -653,7 +584,7 @@
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "Serial detail"
+                "Value": "DETAIL"
               },
               "VertAlignment": "Center",
               "Font": "Geist;11;Bold;",
@@ -671,7 +602,7 @@
           "NewPageBefore": true,
           "PrintOnAllPages": false
         },
-        "9": {
+        "6": {
           "Ident": "StiHeaderBand",
           "Name": "S1ColumnHeader",
           "CanGrow": true,
@@ -684,19 +615,24 @@
           "Components": {
             "0": {
               "Ident": "StiText",
-              "Name": "S1H_serialNo",
-              "ClientRectangle": "0,0,3.6,0.7",
+              "Name": "S1H_dealer",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "0,0,2.44,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "Serial No"
+                "Value": "DEALER NAME"
               },
               "VertAlignment": "Center",
-              "Font": "Geist;;Bold;",
+              "Font": "Geist;6;Bold;",
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:238,240,243",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -706,19 +642,24 @@
             },
             "1": {
               "Ident": "StiText",
-              "Name": "S1H_skuCode",
-              "ClientRectangle": "3.6,0,2.77,0.7",
+              "Name": "S1H_branch",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "2.44,0,2.44,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "SKU"
+                "Value": "BRANCH NAME"
               },
               "VertAlignment": "Center",
-              "Font": "Geist;;Bold;",
+              "Font": "Geist;6;Bold;",
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:238,240,243",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -728,19 +669,24 @@
             },
             "2": {
               "Ident": "StiText",
-              "Name": "S1H_model",
-              "ClientRectangle": "6.37,0,4.43,0.7",
+              "Name": "S1H_dealerType",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "4.89,0,1.63,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "Model"
+                "Value": "DEALER TYPE"
               },
               "VertAlignment": "Center",
-              "Font": "Geist;;Bold;",
+              "Font": "Geist;6;Bold;",
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:238,240,243",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -750,19 +696,24 @@
             },
             "3": {
               "Ident": "StiText",
-              "Name": "S1H_status",
-              "ClientRectangle": "10.8,0,2.22,0.7",
+              "Name": "S1H_modeOfPayment",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "6.52,0,1.63,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "Status"
+                "Value": "MODE OF PAYMENT"
               },
               "VertAlignment": "Center",
-              "Font": "Geist;;Bold;",
+              "Font": "Geist;6;Bold;",
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:238,240,243",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -772,19 +723,24 @@
             },
             "4": {
               "Ident": "StiText",
-              "Name": "S1H_dealerType",
-              "ClientRectangle": "13.02,0,2.49,0.7",
+              "Name": "S1H_area",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "8.15,0,1.63,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "Dealer Type"
+                "Value": "AREA"
               },
               "VertAlignment": "Center",
-              "Font": "Geist;;Bold;",
+              "Font": "Geist;6;Bold;",
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:238,240,243",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -794,19 +750,24 @@
             },
             "5": {
               "Ident": "StiText",
-              "Name": "S1H_area",
-              "ClientRectangle": "15.51,0,2.49,0.7",
+              "Name": "S1H_dealerArea",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "9.78,0,1.63,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "Area"
+                "Value": "DEALER AREA"
               },
               "VertAlignment": "Center",
-              "Font": "Geist;;Bold;",
+              "Font": "Geist;6;Bold;",
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:238,240,243",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -816,19 +777,24 @@
             },
             "6": {
               "Ident": "StiText",
-              "Name": "S1H_drNo",
-              "ClientRectangle": "18,0,2.49,0.7",
+              "Name": "S1H_branchArea",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "11.41,0,1.63,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "DR No"
+                "Value": "BRANCH AREA"
               },
               "VertAlignment": "Center",
-              "Font": "Geist;;Bold;",
+              "Font": "Geist;6;Bold;",
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:238,240,243",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -838,19 +804,24 @@
             },
             "7": {
               "Ident": "StiText",
-              "Name": "S1H_drDate",
-              "ClientRectangle": "20.5,0,2.22,0.7",
+              "Name": "S1H_serialNo",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "13.04,0,2.44,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "DR Date"
+                "Value": "SERIAL NO"
               },
               "VertAlignment": "Center",
-              "Font": "Geist;;Bold;",
+              "Font": "Geist;6;Bold;",
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:238,240,243",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -860,20 +831,24 @@
             },
             "8": {
               "Ident": "StiText",
-              "Name": "S1H_agingDays",
-              "ClientRectangle": "22.71,0,1.66,0.7",
+              "Name": "S1H_skuCode",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "15.48,0,1.63,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "Aging (days)"
+                "Value": "SKU"
               },
-              "HorAlignment": "Right",
               "VertAlignment": "Center",
-              "Font": "Geist;;Bold;",
+              "Font": "Geist;6;Bold;",
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:238,240,243",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -883,54 +858,160 @@
             },
             "9": {
               "Ident": "StiText",
-              "Name": "S1H_countRemark",
-              "ClientRectangle": "24.38,0,3.32,0.7",
+              "Name": "S1H_model",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "17.11,0,2.72,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "Latest Count Remark"
+                "Value": "MODEL"
               },
               "VertAlignment": "Center",
-              "Font": "Geist;;Bold;",
+              "Font": "Geist;6;Bold;",
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:238,240,243",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
                 "Top": 0,
                 "Bottom": 0
               }
-            }
-          }
-        },
-        "10": {
-          "Ident": "StiGroupHeaderBand",
-          "Name": "S1Group",
-          "CanGrow": true,
-          "ClientRectangle": "0,0,0,0.7",
-          "Interaction": {
-            "Ident": "StiBandInteraction"
-          },
-          "Border": ";;;;;;;solid:Black",
-          "Brush": "solid:",
-          "Components": {
-            "0": {
+            },
+            "10": {
               "Ident": "StiText",
-              "Name": "S1GroupText",
-              "ClientRectangle": "0,0,27.7,0.7",
+              "Name": "S1H_status",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "19.82,0,1.36,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "{inventory_detail.branch}"
+                "Value": "STATUS"
               },
               "VertAlignment": "Center",
-              "Font": "Geist;;Bold;",
-              "Border": ";;;;;;;solid:Black",
-              "Brush": "solid:247,248,254",
+              "Font": "Geist;6;Bold;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
+              "Brush": "solid:238,240,243",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            },
+            "11": {
+              "Ident": "StiText",
+              "Name": "S1H_drNo",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "21.18,0,1.63,0.7",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "DR#"
+              },
+              "VertAlignment": "Center",
+              "Font": "Geist;6;Bold;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
+              "Brush": "solid:238,240,243",
+              "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            },
+            "12": {
+              "Ident": "StiText",
+              "Name": "S1H_drDate",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "22.81,0,1.63,0.7",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "DR DATE"
+              },
+              "VertAlignment": "Center",
+              "Font": "Geist;6;Bold;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
+              "Brush": "solid:238,240,243",
+              "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            },
+            "13": {
+              "Ident": "StiText",
+              "Name": "S1H_agingDays",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "24.44,0,1.09,0.7",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "AGING DAYS"
+              },
+              "HorAlignment": "Right",
+              "VertAlignment": "Center",
+              "Font": "Geist;6;Bold;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
+              "Brush": "solid:238,240,243",
+              "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            },
+            "14": {
+              "Ident": "StiText",
+              "Name": "S1H_countRemark",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "25.53,0,2.17,0.7",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "REMARKS"
+              },
+              "VertAlignment": "Center",
+              "Font": "Geist;6;Bold;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
+              "Brush": "solid:238,240,243",
+              "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -938,12 +1019,9 @@
                 "Bottom": 0
               }
             }
-          },
-          "Condition": {
-            "Value": "{inventory_detail.branch}"
           }
         },
-        "11": {
+        "7": {
           "Ident": "StiDataBand",
           "Name": "S1Data",
           "CanGrow": true,
@@ -956,19 +1034,24 @@
           "Components": {
             "0": {
               "Ident": "StiText",
-              "Name": "S1D_serialNo",
-              "ClientRectangle": "0,0,3.6,0.6",
+              "Name": "S1D_dealer",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "0,0,2.44,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "{inventory_detail.serialNo}"
+                "Value": "{inventory_detail.dealer}"
               },
               "VertAlignment": "Center",
-              "Font": "Geist;;;",
+              "Font": "Geist;6;;",
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -978,19 +1061,24 @@
             },
             "1": {
               "Ident": "StiText",
-              "Name": "S1D_skuCode",
-              "ClientRectangle": "3.6,0,2.77,0.6",
+              "Name": "S1D_branch",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "2.44,0,2.44,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "{inventory_detail.skuCode}"
+                "Value": "{inventory_detail.branch}"
               },
               "VertAlignment": "Center",
-              "Font": "Geist;;;",
+              "Font": "Geist;6;;",
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -1000,19 +1088,24 @@
             },
             "2": {
               "Ident": "StiText",
-              "Name": "S1D_model",
-              "ClientRectangle": "6.37,0,4.43,0.6",
+              "Name": "S1D_dealerType",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "4.89,0,1.63,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "{inventory_detail.model}"
+                "Value": "{inventory_detail.dealerType}"
               },
               "VertAlignment": "Center",
-              "Font": "Geist;;;",
+              "Font": "Geist;6;;",
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -1022,19 +1115,24 @@
             },
             "3": {
               "Ident": "StiText",
-              "Name": "S1D_status",
-              "ClientRectangle": "10.8,0,2.22,0.6",
+              "Name": "S1D_modeOfPayment",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "6.52,0,1.63,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "{inventory_detail.status}"
+                "Value": "{inventory_detail.modeOfPayment}"
               },
               "VertAlignment": "Center",
-              "Font": "Geist;;;",
+              "Font": "Geist;6;;",
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -1044,19 +1142,24 @@
             },
             "4": {
               "Ident": "StiText",
-              "Name": "S1D_dealerType",
-              "ClientRectangle": "13.02,0,2.49,0.6",
+              "Name": "S1D_area",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "8.15,0,1.63,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "{inventory_detail.dealerType}"
+                "Value": "{inventory_detail.area}"
               },
               "VertAlignment": "Center",
-              "Font": "Geist;;;",
+              "Font": "Geist;6;;",
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -1066,19 +1169,24 @@
             },
             "5": {
               "Ident": "StiText",
-              "Name": "S1D_area",
-              "ClientRectangle": "15.51,0,2.49,0.6",
+              "Name": "S1D_dealerArea",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "9.78,0,1.63,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "{inventory_detail.area}"
+                "Value": "{inventory_detail.dealerArea}"
               },
               "VertAlignment": "Center",
-              "Font": "Geist;;;",
+              "Font": "Geist;6;;",
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -1088,19 +1196,24 @@
             },
             "6": {
               "Ident": "StiText",
-              "Name": "S1D_drNo",
-              "ClientRectangle": "18,0,2.49,0.6",
+              "Name": "S1D_branchArea",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "11.41,0,1.63,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "{inventory_detail.drNo}"
+                "Value": "{inventory_detail.branchArea}"
               },
               "VertAlignment": "Center",
-              "Font": "Geist;;;",
+              "Font": "Geist;6;;",
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -1110,8 +1223,145 @@
             },
             "7": {
               "Ident": "StiText",
+              "Name": "S1D_serialNo",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "13.04,0,2.44,0.6",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "{inventory_detail.serialNo}"
+              },
+              "VertAlignment": "Center",
+              "Font": "Geist;6;;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
+              "Brush": "solid:",
+              "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            },
+            "8": {
+              "Ident": "StiText",
+              "Name": "S1D_skuCode",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "15.48,0,1.63,0.6",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "{inventory_detail.skuCode}"
+              },
+              "VertAlignment": "Center",
+              "Font": "Geist;6;;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
+              "Brush": "solid:",
+              "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            },
+            "9": {
+              "Ident": "StiText",
+              "Name": "S1D_model",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "17.11,0,2.72,0.6",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "{inventory_detail.model}"
+              },
+              "VertAlignment": "Center",
+              "Font": "Geist;6;;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
+              "Brush": "solid:",
+              "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            },
+            "10": {
+              "Ident": "StiText",
+              "Name": "S1D_status",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "19.82,0,1.36,0.6",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "{inventory_detail.status}"
+              },
+              "VertAlignment": "Center",
+              "Font": "Geist;6;;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
+              "Brush": "solid:",
+              "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            },
+            "11": {
+              "Ident": "StiText",
+              "Name": "S1D_drNo",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "21.18,0,1.63,0.6",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "{inventory_detail.drNo}"
+              },
+              "VertAlignment": "Center",
+              "Font": "Geist;6;;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
+              "Brush": "solid:",
+              "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            },
+            "12": {
+              "Ident": "StiText",
               "Name": "S1D_drDate",
-              "ClientRectangle": "20.5,0,2.22,0.6",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "22.81,0,1.63,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -1119,10 +1369,13 @@
                 "Value": "{inventory_detail.drDate}"
               },
               "VertAlignment": "Center",
-              "Font": "Geist;;;",
+              "Font": "Geist;6;;",
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -1135,10 +1388,12 @@
                 "NullDisplay": ""
               }
             },
-            "8": {
+            "13": {
               "Ident": "StiText",
               "Name": "S1D_agingDays",
-              "ClientRectangle": "22.71,0,1.66,0.6",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "24.44,0,1.09,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -1147,28 +1402,26 @@
               },
               "HorAlignment": "Right",
               "VertAlignment": "Center",
-              "Font": "Geist;;;",
+              "Font": "Geist;6;;",
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
                 "Top": 0,
                 "Bottom": 0
-              },
-              "TextFormat": {
-                "Ident": "StiNumberFormatService",
-                "NegativePattern": 1,
-                "DecimalDigits": 0,
-                "GroupSeparator": ",",
-                "State": "DecimalDigits, DecimalSeparator, GroupSeparator"
               }
             },
-            "9": {
+            "14": {
               "Ident": "StiText",
               "Name": "S1D_countRemark",
-              "ClientRectangle": "24.38,0,3.32,0.6",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "25.53,0,2.17,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -1176,10 +1429,13 @@
                 "Value": "{inventory_detail.countRemark}"
               },
               "VertAlignment": "Center",
-              "Font": "Geist;;;",
+              "Font": "Geist;6;;",
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -1189,41 +1445,6 @@
             }
           },
           "DataSourceName": "inventory_detail"
-        },
-        "12": {
-          "Ident": "StiFooterBand",
-          "Name": "S1Footer",
-          "CanGrow": true,
-          "ClientRectangle": "0,0,0,0.7",
-          "Interaction": {
-            "Ident": "StiInteraction"
-          },
-          "Border": ";;;;;;;solid:Black",
-          "Brush": "solid:",
-          "Components": {
-            "0": {
-              "Ident": "StiText",
-              "Name": "S1RowCount",
-              "ClientRectangle": "0,0,8.31,0.7",
-              "Interaction": {
-                "Ident": "StiInteraction"
-              },
-              "Text": {
-                "Value": "{Count(S1Data)} rows"
-              },
-              "VertAlignment": "Center",
-              "Font": "Geist;;;",
-              "Border": ";;;;;;;solid:Black",
-              "Brush": "solid:",
-              "TextBrush": "solid:113,113,122",
-              "Margins": {
-                "Left": 2,
-                "Right": 2,
-                "Top": 0,
-                "Bottom": 0
-              }
-            }
-          }
         }
       },
       "PaperSize": "A4",

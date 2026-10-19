@@ -385,7 +385,7 @@ export const stockAuditRepository = {
       from?: Date;
       to?: Date;
     },
-    pagination?: { page?: number },
+    pagination?: { page?: number; limit?: number },
     sort?: { field?: string; dir?: "asc" | "desc" },
   ) {
     const { limit, page, skip } = resolvePagination(pagination);

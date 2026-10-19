@@ -1,5 +1,10 @@
 "use server";
 
+import {
+  PCOUNT_REPORT_ACCESS,
+  isPcountReportUnrestricted,
+} from "@/features/stock-audit/constants/pcount-report-access";
+
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -18,15 +23,6 @@ import type {
   StockCountListSort,
   StockCountListSortDir,
 } from "@/features/stock-audit/repositories/stock-audit.repository";
-
-const PCOUNT_REPORT_ACCESS = ["reports.view", "inventory.view"] as const;
-
-function isUnrestricted(permissions: string[] | undefined) {
-  return (
-    hasPermission(permissions, "branches.manage") ||
-    hasPermission(permissions, "master_data.manage")
-  );
-}
 
 const STOCK_COUNT_SORT_FIELDS = new Set<StockCountListSort>([
   "session",
@@ -69,7 +65,7 @@ export async function listBranchesForStockCountAction() {
   const { error, session } = await requireStockCountManage();
   if (error || !session) return { error: error ?? STOCK_COUNT_PERMISSION_MESSAGE };
 
-  const unrestricted = isUnrestricted(session.user.permissions);
+  const unrestricted = isPcountReportUnrestricted(session.user.permissions);
   if (unrestricted) {
     const branches = await branchRepository.listByTenant(session.user.tenantId);
     return {
@@ -96,7 +92,7 @@ export async function listStockCountSessionsAction(input?: {
   sortDir?: string;
 }) {
   const session = await requirePermission("inventory.view");
-  const unrestricted = isUnrestricted(session.user.permissions);
+  const unrestricted = isPcountReportUnrestricted(session.user.permissions);
   const limit = parseTablePageSize(input?.limit);
   return stockAuditService.listForUser(
     session.user.tenantId,
@@ -109,7 +105,7 @@ export async function listStockCountSessionsAction(input?: {
 
 export async function getStockCountKpisAction() {
   const session = await requirePermission("inventory.view");
-  const unrestricted = isUnrestricted(session.user.permissions);
+  const unrestricted = isPcountReportUnrestricted(session.user.permissions);
   return stockAuditService.getKpis(
     session.user.tenantId,
     session.user.id,
@@ -345,7 +341,7 @@ export async function listPcountReportAction(input?: {
   sortDir?: "asc" | "desc";
 }) {
   const session = await requireAnyPermission([...PCOUNT_REPORT_ACCESS]);
-  const unrestricted = isUnrestricted(session.user.permissions);
+  const unrestricted = isPcountReportUnrestricted(session.user.permissions);
   return stockAuditService.listClosedForReport(
     session.user.tenantId,
     session.user.id,
@@ -363,7 +359,7 @@ export async function listPcountReportAction(input?: {
 
 export async function listBranchesForPcountReportAction() {
   const session = await requireAnyPermission([...PCOUNT_REPORT_ACCESS]);
-  const unrestricted = isUnrestricted(session.user.permissions);
+  const unrestricted = isPcountReportUnrestricted(session.user.permissions);
   if (unrestricted) {
     const branches = await branchRepository.listByTenant(session.user.tenantId);
     return branches.map((b) => ({ id: b.id, name: b.name }));

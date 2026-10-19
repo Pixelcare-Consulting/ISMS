@@ -111,6 +111,8 @@ function textCell(
     fill?: readonly [number, number, number];
     foreground?: readonly [number, number, number];
     bottomRule?: boolean;
+    /** Wrap long values onto more lines (the row grows) instead of clipping them. */
+    wrap?: boolean;
   },
 ) {
   const t = new sti.Report.Components.StiText();
@@ -120,8 +122,9 @@ function textCell(
   t.top = opts.top ?? 0;
   t.width = opts.width;
   t.height = opts.height;
-  t.wordWrap = false;
-  t.canGrow = false;
+  t.wordWrap = opts.wrap ?? false;
+  t.canGrow = opts.wrap ?? false;
+  t.growToHeight = opts.wrap ?? false;
   t.vertAlignment = sti.Base.Drawing.StiVertAlignment.Center;
   t.horAlignment =
     opts.align === "RIGHT"
@@ -151,13 +154,18 @@ function textCell(
 function columnLayout(section: ReportSectionSpec, usableWidth: number) {
   const totalWeight = section.columns.reduce((sum, c) => sum + c.weight, 0);
   let left = 0;
-  return section.columns.map((spec) => {
+  return section.columns.map((spec, index) => {
     const width = (spec.weight / totalWeight) * usableWidth;
-    const meta = columnMeta(section.datasetKey, spec.name);
-    const placed = { spec, meta, left, width };
+    const meta = spec.name ? columnMeta(section.datasetKey, spec.name) : null;
+    const placed = { spec, meta, left, width, id: spec.name ?? `Blank${index}` };
     left += width;
     return placed;
   });
+}
+
+/** Export-style values: dates as yyyy-MM-dd, everything else exactly as the dataset holds it. */
+function applyCellFormat(sti: Sti, cell: StimulsoftNamespace.Report.Components.StiText, meta: DatasetColumn | null) {
+  if (meta?.type === "date") cell.textFormat = dateFormat(sti);
 }
 
 function addSection(
@@ -166,11 +174,13 @@ function addSection(
   section: ReportSectionSpec,
   index: number,
   usableWidth: number,
+  fontSize: number,
 ) {
   const C = sti.Report.Components;
   const key = section.datasetKey;
   const columns = columnLayout(section, usableWidth);
   const prefix = `S${index}`;
+  const isNumber = (meta: DatasetColumn | null) => meta?.type === "number";
 
   if (section.heading) {
     const heading = new C.StiHeaderBand();
@@ -188,18 +198,20 @@ function addSection(
   header.name = `${prefix}ColumnHeader`;
   header.height = HEADER_HEIGHT;
   header.printOnAllPages = true;
-  for (const { spec, meta, left, width } of columns) {
+  for (const { spec, meta, left, width, id } of columns) {
     header.components.add(
       textCell(sti, {
-        name: `${prefix}H_${spec.name}`,
-        text: meta.label,
+        name: `${prefix}H_${id}`,
+        text: spec.header,
         left,
         width,
         height: HEADER_HEIGHT,
         bold: true,
-        align: meta.type === "number" ? "RIGHT" : "LEFT",
+        size: fontSize,
+        align: isNumber(meta) ? "RIGHT" : "LEFT",
         fill: COLORS.headerFill,
         bottomRule: true,
+        wrap: true,
       }),
     );
   }
@@ -218,6 +230,7 @@ function addSection(
         width: usableWidth,
         height: ROW_HEIGHT + 0.1,
         bold: true,
+        size: fontSize,
         fill: COLORS.groupFill,
       }),
     );
@@ -228,40 +241,48 @@ function addSection(
   data.name = `${prefix}Data`;
   data.dataSourceName = key;
   data.height = ROW_HEIGHT;
-  for (const { spec, meta, left, width } of columns) {
+  for (const { spec, meta, left, width, id } of columns) {
     const cell = textCell(sti, {
-      name: `${prefix}D_${spec.name}`,
-      text: `{${key}.${spec.name}}`,
+      name: `${prefix}D_${id}`,
+      text: spec.name ? `{${key}.${spec.name}}` : "",
       left,
       width,
       height: ROW_HEIGHT,
-      align: meta.type === "number" ? "RIGHT" : "LEFT",
+      size: fontSize,
+      align: isNumber(meta) ? "RIGHT" : "LEFT",
       bottomRule: true,
+      wrap: true,
     });
-    if (meta.type === "number") cell.textFormat = numberFormat(sti, spec.name === "saleAmount" ? 2 : spec.name === "totalCbm" ? 4 : 0);
-    if (meta.type === "date") cell.textFormat = dateFormat(sti);
+    applyCellFormat(sti, cell, meta);
     data.components.add(cell);
   }
   page.components.add(data);
 
-  const totals = columns.filter((c) => c.spec.total);
-  if (section.groupBy && totals.length > 0) {
+  // Totals only where a spec asks for them (approved exports have none).
+  const totals = columns.filter((c) => c.spec.total && c.spec.name);
+  if (totals.length === 0) return;
+
+  const totalCell = (name: string, column: (typeof totals)[number], height: number, fill?: readonly [number, number, number]) => {
+    const cell = textCell(sti, {
+      name,
+      text: `{Sum(${data.name},${key}.${column.spec.name})}`,
+      left: column.left,
+      width: column.width,
+      height,
+      bold: true,
+      size: fontSize,
+      align: "RIGHT",
+      fill,
+    });
+    applyCellFormat(sti, cell, column.meta);
+    return cell;
+  };
+
+  if (section.groupBy) {
     const groupFooter = new C.StiGroupFooterBand();
     groupFooter.name = `${prefix}GroupFooter`;
     groupFooter.height = ROW_HEIGHT;
-    for (const { spec, left, width } of totals) {
-      const cell = textCell(sti, {
-        name: `${prefix}GF_${spec.name}`,
-        text: `{Sum(${data.name},${key}.${spec.name})}`,
-        left,
-        width,
-        height: ROW_HEIGHT,
-        bold: true,
-        align: "RIGHT",
-      });
-      cell.textFormat = numberFormat(sti, spec.name === "saleAmount" ? 2 : spec.name === "totalCbm" ? 4 : 0);
-      groupFooter.components.add(cell);
-    }
+    for (const column of totals) groupFooter.components.add(totalCell(`${prefix}GF_${column.id}`, column, ROW_HEIGHT));
     page.components.add(groupFooter);
   }
 
@@ -275,23 +296,11 @@ function addSection(
       left: 0,
       width: usableWidth * 0.3,
       height: ROW_HEIGHT + 0.1,
+      size: fontSize,
       foreground: COLORS.muted,
     }),
   );
-  for (const { spec, left, width } of totals) {
-    const cell = textCell(sti, {
-      name: `${prefix}T_${spec.name}`,
-      text: `{Sum(${data.name},${key}.${spec.name})}`,
-      left,
-      width,
-      height: ROW_HEIGHT + 0.1,
-      bold: true,
-      align: "RIGHT",
-      fill: COLORS.headerFill,
-    });
-    cell.textFormat = numberFormat(sti, spec.name === "saleAmount" ? 2 : spec.name === "totalCbm" ? 4 : 0);
-    footer.components.add(cell);
-  }
+  for (const column of totals) footer.components.add(totalCell(`${prefix}T_${column.id}`, column, ROW_HEIGHT + 0.1, COLORS.headerFill));
   page.components.add(footer);
 }
 
@@ -344,7 +353,7 @@ function buildReport(sti: Sti, key: ReportKey, def: ReportDefinition): string {
   );
   page.components.add(pageFooter);
 
-  def.sections.forEach((section, i) => addSection(sti, page, section, i, usableWidth));
+  def.sections.forEach((section, i) => addSection(sti, page, section, i, usableWidth, def.fontSize ?? 8));
 
   return report.saveToJsonString();
 }

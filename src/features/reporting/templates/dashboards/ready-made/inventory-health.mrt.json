@@ -1,10 +1,10 @@
 {
   "ReportVersion": "2026.4.1",
-  "ReportGuid": "7810a35bc406cc6d0744bf25172e9b3e",
+  "ReportGuid": "22eef666fa5c1260abadb8b03af71430",
   "ReportName": "inventory-health",
   "ReportAlias": "Inventory Health",
-  "ReportCreated": "/Date(1792384725000+0800)/",
-  "ReportChanged": "/Date(1792384725000+0800)/",
+  "ReportCreated": "/Date(1792388050000+0800)/",
+  "ReportChanged": "/Date(1792388050000+0800)/",
   "EngineVersion": "EngineV2",
   "ReportUnit": "Centimeters",
   "ScriptLanguage": "CSharp",
@@ -122,7 +122,7 @@
     "0": {
       "Ident": "StiDashboard",
       "Name": "inventoryhealth",
-      "Guid": "a6eceb479afe8e1814e5a4ca643249fc",
+      "Guid": "75f7196528d2cd2eeb7e1300b3e3dc0f",
       "Alias": "Inventory Health",
       "Interaction": {
         "Ident": "StiInteraction"
@@ -132,7 +132,7 @@
         "0": {
           "Ident": "StiTextElement",
           "Name": "InventoryBranchFilterLabel",
-          "Guid": "c6f37709620eee4c630b54d5284a7e4b",
+          "Guid": "fce624687b1a5a004d257456a35fbd0a",
           "ClientRectangle": "0,0,96,40",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -157,7 +157,7 @@
         "1": {
           "Ident": "StiComboBoxElement",
           "Name": "InventoryBranchFilter",
-          "Guid": "954b0a35f6620a90938e1fe70e862835",
+          "Guid": "1e95e193480126614b3fbc7407a5de44",
           "ClientRectangle": "96,0,299,40",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -190,7 +190,7 @@
         "2": {
           "Ident": "StiTextElement",
           "Name": "InventoryAreaFilterLabel",
-          "Guid": "4af5397961572c0f56e338b093cbf9a9",
+          "Guid": "819f8920867cb211d64d60802df8f76c",
           "ClientRectangle": "403,0,96,40",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -215,7 +215,7 @@
         "3": {
           "Ident": "StiComboBoxElement",
           "Name": "InventoryAreaFilter",
-          "Guid": "203d1a172e1239ef2a45f4a66f9c2719",
+          "Guid": "ea11fe79d12d1152d0486ce0536957ae",
           "ClientRectangle": "499,0,299,40",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -248,7 +248,7 @@
         "4": {
           "Ident": "StiIndicatorElement",
           "Name": "InventoryUnits",
-          "Guid": "d83e2042ee05aaed9d7a722e3cc3679e",
+          "Guid": "f3d2bea0445905c8aaf97476f2080c39",
           "ClientRectangle": "0,48,294,120",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -289,7 +289,7 @@
         "5": {
           "Ident": "StiIndicatorElement",
           "Name": "InventoryAvgAging",
-          "Guid": "b5f72af9c1ae6d721dbbfe403f97c59c",
+          "Guid": "b99f3086b449d3cd1dad57e4e8f4da82",
           "ClientRectangle": "302,48,294,120",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -330,7 +330,7 @@
         "6": {
           "Ident": "StiIndicatorElement",
           "Name": "InventoryBranches",
-          "Guid": "b2102f84bc9fa13c181f11ae728b97e1",
+          "Guid": "5cfef334f0800017222d79b2433a545e",
           "ClientRectangle": "604,48,294,120",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -371,7 +371,7 @@
         "7": {
           "Ident": "StiIndicatorElement",
           "Name": "InventoryModels",
-          "Guid": "2ce2ab4efaa0cb26fce72c89afbdc12b",
+          "Guid": "5e3b4632cc9f476762472589f544e7c5",
           "ClientRectangle": "906,48,294,120",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -412,7 +412,7 @@
         "8": {
           "Ident": "StiChartElement",
           "Name": "InventoryAgingBuckets",
-          "Guid": "f43ac30ae79de2697dec6c48a7fd8165",
+          "Guid": "cf1779933dd4faf1c85edd0e4a04e2c8",
           "ClientRectangle": "0,176,596,340",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -446,7 +446,7 @@
           },
           "ManuallyEnteredChartMeter": {
             "Ident": "ValueChartMeter",
-            "Key": "aa7683f53d04fa0c3dabe20f18eb73ba"
+            "Key": "d61ffdbed138980c171a17b2a67e58da"
           },
           "ArgumentFormat": {
             "Ident": "StiGeneralFormatService"
@@ -491,7 +491,7 @@
         "9": {
           "Ident": "StiChartElement",
           "Name": "InventoryDealerType",
-          "Guid": "1d7892b24ba6e8c48403de01da1380d5",
+          "Guid": "dfe53c50ab1f98b3f0344fcee888646c",
           "ClientRectangle": "604,176,596,340",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -526,7 +526,7 @@
           },
           "ManuallyEnteredChartMeter": {
             "Ident": "ValueChartMeter",
-            "Key": "3d2a3c8cf385fc10159a2ffd96973ccc"
+            "Key": "1eeaeca1b206ff79aed238983c7c5d9d"
           },
           "ArgumentFormat": {
             "Ident": "StiGeneralFormatService"
@@ -572,7 +572,7 @@
         "10": {
           "Ident": "StiChartElement",
           "Name": "InventoryTopBranches",
-          "Guid": "fb1826d62046e4edada9bceb84b60837",
+          "Guid": "578cffdb448e8f0bb712171a5a0637c4",
           "ClientRectangle": "0,524,596,340",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -619,7 +619,7 @@
           },
           "ManuallyEnteredChartMeter": {
             "Ident": "ValueChartMeter",
-            "Key": "c7351911efb92a083f90ee9d53482dc9"
+            "Key": "c49ab41ecc26086a1c91b2c97e8240c0"
           },
           "ArgumentFormat": {
             "Ident": "StiGeneralFormatService"
@@ -664,7 +664,7 @@
         "11": {
           "Ident": "StiChartElement",
           "Name": "InventoryTopModels",
-          "Guid": "35e68010cc8c4a3caf1e5e30aeefe5fb",
+          "Guid": "cf4a05f46ce0b03c62b18b1090859059",
           "ClientRectangle": "604,524,596,340",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -711,7 +711,7 @@
           },
           "ManuallyEnteredChartMeter": {
             "Ident": "ValueChartMeter",
-            "Key": "329ea245ff3a2d33ee3c91295d6baabe"
+            "Key": "93b517fbb3f938de967663ca29c0d555"
           },
           "ArgumentFormat": {
             "Ident": "StiGeneralFormatService"
@@ -756,7 +756,7 @@
         "12": {
           "Ident": "StiTableElement",
           "Name": "InventoryBranchTable",
-          "Guid": "5778c486508a7c77ff3d57d9a40961ef",
+          "Guid": "f4147638e1e60a03308ab74957cfa167",
           "ClientRectangle": "0,872,1200,360",
           "Interaction": {
             "Ident": "StiInteraction"

@@ -1,10 +1,10 @@
 {
   "ReportVersion": "2026.4.1",
-  "ReportGuid": "d0066b00e6a43632892b06eb75dd8aba",
+  "ReportGuid": "73ce9432a6f37f5cf12287a397aca74a",
   "ReportName": "transfers",
   "ReportAlias": "Transfers",
-  "ReportCreated": "/Date(1792384725000+0800)/",
-  "ReportChanged": "/Date(1792384725000+0800)/",
+  "ReportCreated": "/Date(1792388050000+0800)/",
+  "ReportChanged": "/Date(1792388050000+0800)/",
   "EngineVersion": "EngineV2",
   "ReportUnit": "Centimeters",
   "ScriptLanguage": "CSharp",
@@ -69,7 +69,7 @@
     "0": {
       "Ident": "StiPage",
       "Name": "Page1",
-      "Guid": "21dceb646606e1cb9d71c59412f49703",
+      "Guid": "8b0521d59af50cb145b2ffdb096b14a4",
       "Interaction": {
         "Ident": "StiInteraction"
       },
@@ -205,19 +205,24 @@
           "Components": {
             "0": {
               "Ident": "StiText",
-              "Name": "S0H_date",
-              "ClientRectangle": "0,0,2.07,0.7",
+              "Name": "S0H_transferNo",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "0,0,2.89,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "Date"
+                "Value": "TRANSFER NO"
               },
               "VertAlignment": "Center",
               "Font": "Geist;;Bold;",
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:238,240,243",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -227,19 +232,24 @@
             },
             "1": {
               "Ident": "StiText",
-              "Name": "S0H_transferNo",
-              "ClientRectangle": "2.07,0,2.89,0.7",
+              "Name": "S0H_fromBranch",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "2.89,0,3.72,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "Transfer No"
+                "Value": "FROM BRANCH"
               },
               "VertAlignment": "Center",
               "Font": "Geist;;Bold;",
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:238,240,243",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -249,19 +259,24 @@
             },
             "2": {
               "Ident": "StiText",
-              "Name": "S0H_fromBranch",
-              "ClientRectangle": "4.96,0,3.72,0.7",
+              "Name": "S0H_toBranch",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "6.61,0,3.72,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "From Branch"
+                "Value": "TO BRANCH"
               },
               "VertAlignment": "Center",
               "Font": "Geist;;Bold;",
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:238,240,243",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -271,19 +286,24 @@
             },
             "3": {
               "Ident": "StiText",
-              "Name": "S0H_toBranch",
-              "ClientRectangle": "8.67,0,3.72,0.7",
+              "Name": "S0H_status",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "10.33,0,2.48,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "To Branch"
+                "Value": "STATUS"
               },
               "VertAlignment": "Center",
               "Font": "Geist;;Bold;",
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:238,240,243",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -293,19 +313,24 @@
             },
             "4": {
               "Ident": "StiText",
-              "Name": "S0H_status",
-              "ClientRectangle": "12.39,0,2.48,0.7",
+              "Name": "S0H_date",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "12.8,0,2.07,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "Status"
+                "Value": "DATE"
               },
               "VertAlignment": "Center",
               "Font": "Geist;;Bold;",
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:238,240,243",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -316,18 +341,23 @@
             "5": {
               "Ident": "StiText",
               "Name": "S0H_notes",
+              "CanGrow": true,
+              "GrowToHeight": true,
               "ClientRectangle": "14.87,0,4.13,0.7",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
               "Text": {
-                "Value": "Notes"
+                "Value": "NOTES"
               },
               "VertAlignment": "Center",
               "Font": "Geist;;Bold;",
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:238,240,243",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -350,8 +380,118 @@
           "Components": {
             "0": {
               "Ident": "StiText",
+              "Name": "S0D_transferNo",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "0,0,2.89,0.6",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "{transfers.transferNo}"
+              },
+              "VertAlignment": "Center",
+              "Font": "Geist;;;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
+              "Brush": "solid:",
+              "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            },
+            "1": {
+              "Ident": "StiText",
+              "Name": "S0D_fromBranch",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "2.89,0,3.72,0.6",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "{transfers.fromBranch}"
+              },
+              "VertAlignment": "Center",
+              "Font": "Geist;;;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
+              "Brush": "solid:",
+              "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            },
+            "2": {
+              "Ident": "StiText",
+              "Name": "S0D_toBranch",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "6.61,0,3.72,0.6",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "{transfers.toBranch}"
+              },
+              "VertAlignment": "Center",
+              "Font": "Geist;;;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
+              "Brush": "solid:",
+              "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            },
+            "3": {
+              "Ident": "StiText",
+              "Name": "S0D_status",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "10.33,0,2.48,0.6",
+              "Interaction": {
+                "Ident": "StiInteraction"
+              },
+              "Text": {
+                "Value": "{transfers.status}"
+              },
+              "VertAlignment": "Center",
+              "Font": "Geist;;;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
+              "Brush": "solid:",
+              "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
+              "Margins": {
+                "Left": 2,
+                "Right": 2,
+                "Top": 0,
+                "Bottom": 0
+              }
+            },
+            "4": {
+              "Ident": "StiText",
               "Name": "S0D_date",
-              "ClientRectangle": "0,0,2.07,0.6",
+              "CanGrow": true,
+              "GrowToHeight": true,
+              "ClientRectangle": "12.8,0,2.07,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
               },
@@ -363,6 +503,9 @@
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -375,97 +518,11 @@
                 "NullDisplay": ""
               }
             },
-            "1": {
-              "Ident": "StiText",
-              "Name": "S0D_transferNo",
-              "ClientRectangle": "2.07,0,2.89,0.6",
-              "Interaction": {
-                "Ident": "StiInteraction"
-              },
-              "Text": {
-                "Value": "{transfers.transferNo}"
-              },
-              "VertAlignment": "Center",
-              "Font": "Geist;;;",
-              "Border": "Bottom;228,230,234;;;;;;solid:Black",
-              "Brush": "solid:",
-              "TextBrush": "solid:23,23,28",
-              "Margins": {
-                "Left": 2,
-                "Right": 2,
-                "Top": 0,
-                "Bottom": 0
-              }
-            },
-            "2": {
-              "Ident": "StiText",
-              "Name": "S0D_fromBranch",
-              "ClientRectangle": "4.96,0,3.72,0.6",
-              "Interaction": {
-                "Ident": "StiInteraction"
-              },
-              "Text": {
-                "Value": "{transfers.fromBranch}"
-              },
-              "VertAlignment": "Center",
-              "Font": "Geist;;;",
-              "Border": "Bottom;228,230,234;;;;;;solid:Black",
-              "Brush": "solid:",
-              "TextBrush": "solid:23,23,28",
-              "Margins": {
-                "Left": 2,
-                "Right": 2,
-                "Top": 0,
-                "Bottom": 0
-              }
-            },
-            "3": {
-              "Ident": "StiText",
-              "Name": "S0D_toBranch",
-              "ClientRectangle": "8.67,0,3.72,0.6",
-              "Interaction": {
-                "Ident": "StiInteraction"
-              },
-              "Text": {
-                "Value": "{transfers.toBranch}"
-              },
-              "VertAlignment": "Center",
-              "Font": "Geist;;;",
-              "Border": "Bottom;228,230,234;;;;;;solid:Black",
-              "Brush": "solid:",
-              "TextBrush": "solid:23,23,28",
-              "Margins": {
-                "Left": 2,
-                "Right": 2,
-                "Top": 0,
-                "Bottom": 0
-              }
-            },
-            "4": {
-              "Ident": "StiText",
-              "Name": "S0D_status",
-              "ClientRectangle": "12.39,0,2.48,0.6",
-              "Interaction": {
-                "Ident": "StiInteraction"
-              },
-              "Text": {
-                "Value": "{transfers.status}"
-              },
-              "VertAlignment": "Center",
-              "Font": "Geist;;;",
-              "Border": "Bottom;228,230,234;;;;;;solid:Black",
-              "Brush": "solid:",
-              "TextBrush": "solid:23,23,28",
-              "Margins": {
-                "Left": 2,
-                "Right": 2,
-                "Top": 0,
-                "Bottom": 0
-              }
-            },
             "5": {
               "Ident": "StiText",
               "Name": "S0D_notes",
+              "CanGrow": true,
+              "GrowToHeight": true,
               "ClientRectangle": "14.87,0,4.13,0.6",
               "Interaction": {
                 "Ident": "StiInteraction"
@@ -478,6 +535,9 @@
               "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:",
               "TextBrush": "solid:23,23,28",
+              "TextOptions": {
+                "WordWrap": true
+              },
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -487,41 +547,6 @@
             }
           },
           "DataSourceName": "transfers"
-        },
-        "4": {
-          "Ident": "StiFooterBand",
-          "Name": "S0Footer",
-          "CanGrow": true,
-          "ClientRectangle": "0,0,0,0.7",
-          "Interaction": {
-            "Ident": "StiInteraction"
-          },
-          "Border": ";;;;;;;solid:Black",
-          "Brush": "solid:",
-          "Components": {
-            "0": {
-              "Ident": "StiText",
-              "Name": "S0RowCount",
-              "ClientRectangle": "0,0,5.7,0.7",
-              "Interaction": {
-                "Ident": "StiInteraction"
-              },
-              "Text": {
-                "Value": "{Count(S0Data)} rows"
-              },
-              "VertAlignment": "Center",
-              "Font": "Geist;;;",
-              "Border": ";;;;;;;solid:Black",
-              "Brush": "solid:",
-              "TextBrush": "solid:113,113,122",
-              "Margins": {
-                "Left": 2,
-                "Right": 2,
-                "Top": 0,
-                "Bottom": 0
-              }
-            }
-          }
         }
       },
       "PaperSize": "A4"

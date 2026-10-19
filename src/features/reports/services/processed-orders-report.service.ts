@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/database/client";
+import { PROCESSED_ORDERS_REPORT_HEADERS } from "@/features/reports/constants/report-headers";
 import { buildCsvContent } from "@/lib/shared/csv";
 
 export interface ProcessedOrdersReportFilters {
@@ -6,27 +7,6 @@ export interface ProcessedOrdersReportFilters {
   processedTo?: Date;
   branchIds?: string[];
 }
-
-const HEADERS = [
-  "DATE PROCESSED",
-  "DEALER NAME",
-  "BRANCH NAME",
-  "BRAND",
-  "SO",
-  "MODEL",
-  "BRANCH ORDER",
-  "APPROVED QTY",
-  "ORDER REMARKS",
-  "SPA REMARKS",
-  "LAST UPDATED BY",
-  "SPA APPROVED BY",
-  "SPA DATETIME APPROVED",
-  "DELIVERY DUE DATE",
-  "TOTAL CBM",
-  "AREA",
-  "REGION",
-  "PROVINCE",
-];
 
 function formatDate(value: Date | null | undefined): string {
   if (!value) return "";
@@ -55,6 +35,8 @@ export interface ProcessedOrdersReportRow {
   deliveryDueDate: string;
   /** Null when the model has no CBM configured. */
   totalCbm: number | null;
+  /** The approved CSV's TOTAL CBM text: 4 decimals, blank when there's no CBM. */
+  totalCbmText: string;
   area: string;
 }
 
@@ -175,6 +157,7 @@ export const processedOrdersReportService = {
           spaApprovedAt: formatDateTime(spLevel?.approvedAt ?? order.processedAt),
           deliveryDueDate: formatDate(order.deliveryDueDate),
           totalCbm: cbmPerUnit > 0 ? Number((cbmPerUnit * approvedQty).toFixed(4)) : null,
+          totalCbmText: cbmPerUnit > 0 ? (cbmPerUnit * approvedQty).toFixed(4) : "",
           area: areaName,
         });
       }
@@ -186,7 +169,7 @@ export const processedOrdersReportService = {
   async generateCsv(tenantId: string, filters: ProcessedOrdersReportFilters = {}) {
     const rows = await this.listRows(tenantId, filters);
     return buildCsvContent(
-      HEADERS,
+      [...PROCESSED_ORDERS_REPORT_HEADERS],
       rows.map((r) => [
         r.dateProcessed,
         r.dealerName,
@@ -202,7 +185,7 @@ export const processedOrdersReportService = {
         r.spaApprovedBy,
         r.spaApprovedAt,
         r.deliveryDueDate,
-        r.totalCbm === null ? "" : r.totalCbm.toFixed(4),
+        r.totalCbmText,
         r.area,
         "",
         "",

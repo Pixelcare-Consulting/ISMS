@@ -25,6 +25,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/utils/cn";
+import { ReportPreview } from "@/features/reporting/components/report-preview";
+import { describeDateRange } from "@/features/reporting/lib/filter-summary";
+import type { DatasetParams } from "@/features/reporting/schemas/dataset-params.schema";
 
 interface ClosedSessionRow {
   id: string;
@@ -97,6 +100,7 @@ export function PcountReportPanel({
   const [from, setFrom] = useState(currentFrom ?? "");
   const [to, setTo] = useState(currentTo ?? "");
   const [refsLoaded, setRefsLoaded] = useState(false);
+  const [previewParams, setPreviewParams] = useState<DatasetParams | null>(null);
 
   const activeFilters = {
     branchId: currentBranchId,
@@ -222,6 +226,16 @@ export function PcountReportPanel({
               <Button type="button" onClick={applyFilters}>
                 Apply filters
               </Button>
+              {/* Prints every session matching the applied filters, not just this page. */}
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() =>
+                  setPreviewParams({ branchId: currentBranchId, from: currentFrom, to: currentTo })
+                }
+              >
+                Preview report
+              </Button>
             </div>
           </div>
         </div>
@@ -345,6 +359,12 @@ export function PcountReportPanel({
           </>
         )}
       </DataTableShell>
+
+      <ReportPreview
+        reportKey="pcount"
+        params={previewParams}
+        filterSummary={describeDateRange(previewParams?.from, previewParams?.to)}
+      />
     </div>
   );
 }

@@ -19,6 +19,9 @@ jest.mock("@/features/dashboard/services/dashboard-kpi.service", () => ({
   getDashboardKpis: jest.fn(),
   getDashboardAnalytics: jest.fn(),
 }));
+jest.mock("@/features/stock-audit/services/stock-audit.service", () => ({
+  stockAuditService: { listClosedForReport: jest.fn() },
+}));
 jest.mock("@/features/dashboard/services/dashboard-sales.service", () => ({ getDashboardSalesAnalytics: jest.fn() }));
 
 import { buildInventoryReportRows } from "@/features/reports/services/inventory-report.service";
@@ -30,11 +33,13 @@ import {
   listAccessibleDatasetKeys,
   loadDataset,
 } from "@/features/reporting/services/dataset-registry";
+import { stockAuditService } from "@/features/stock-audit/services/stock-audit.service";
 import { getUserBranchIds } from "@/lib/aor/scope";
 
 const branchIds = getUserBranchIds as jest.Mock;
 const listTransfers = transferReportService.listRows as jest.Mock;
 const inventoryRows = buildInventoryReportRows as jest.Mock;
+const listClosed = stockAuditService.listClosedForReport as jest.Mock;
 
 const ctx = (permissions: string[]) => ({ tenantId: "t1", userId: "u1", permissions });
 
@@ -95,6 +100,36 @@ describe("dataset branch scope", () => {
     listTransfers.mockResolvedValue([]);
     await loadDataset("transfers", ctx(["reports.view"]), { branchId: "b2" });
     expect(listTransfers).toHaveBeenCalledWith("t1", expect.objectContaining({ branchIds: ["b2"] }));
+  });
+});
+
+describe("P-Count sessions dataset", () => {
+  it("uses the P-Count page's own unrestricted rule and fetches one large page", async () => {
+    listClosed.mockResolvedValue({
+      items: [
+        {
+          closedAt: new Date("2026-10-06T08:00:00Z"),
+          sessionNo: "CNT-1",
+          branch: { name: "Branch A", sapCode: "A001" },
+          createdBy: { name: null, email: "x@y.z" },
+          lineCount: 3,
+          countedCount: 2,
+          varianceCount: 1,
+        },
+      ],
+    });
+    const { rows } = await loadDataset("pcount_sessions", ctx(["inventory.view", "master_data.manage"]), {});
+    expect(listClosed).toHaveBeenCalledWith("t1", "u1", true, expect.objectContaining({ page: 1, limit: MAX_DATASET_ROWS + 1 }));
+    expect(rows[0]).toEqual({
+      closedAt: "2026-10-06",
+      sessionNo: "CNT-1",
+      branch: "Branch A",
+      branchSapCode: "A001",
+      createdBy: "x@y.z",
+      lineCount: 3,
+      countedCount: 2,
+      varianceCount: 1,
+    });
   });
 });
 

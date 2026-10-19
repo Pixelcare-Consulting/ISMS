@@ -1,21 +1,12 @@
 import { prisma } from "@/lib/database/client";
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
+import { DAILY_STOCK_REPORT_HEADERS } from "@/features/reports/constants/report-headers";
 import { buildCsvContent } from "@/lib/shared/csv";
 
 export interface DailyStockReportFilters {
   date: Date;
   branchIds?: string[];
 }
-
-const HEADERS = [
-  "DATE",
-  "BRANCH",
-  "SKU",
-  "MODEL NAME",
-  "SHELF MAX",
-  "INV",
-  "SOLD",
-];
 
 function dayBounds(date: Date): { start: Date; end: Date } {
   const start = new Date(date);
@@ -106,7 +97,7 @@ export const dailyStockReportService = {
   async generateCsv(tenantId: string, filters: DailyStockReportFilters) {
     const rows = await this.listRows(tenantId, filters);
     return buildCsvContent(
-      HEADERS,
+      [...DAILY_STOCK_REPORT_HEADERS],
       rows.map((r) => [r.date, r.branch, r.skuCode, r.model, r.shelfMax, r.invQty, r.soldQty]),
     );
   },

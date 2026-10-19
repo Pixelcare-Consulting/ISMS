@@ -1,10 +1,10 @@
 {
   "ReportVersion": "2026.4.1",
-  "ReportGuid": "c50d81207cfef71843073d6e79937ce6",
+  "ReportGuid": "8162082fec6cec683645a9e1ac549721",
   "ReportName": "sales-trends",
   "ReportAlias": "Sales Trends",
-  "ReportCreated": "/Date(1792384725000+0800)/",
-  "ReportChanged": "/Date(1792384725000+0800)/",
+  "ReportCreated": "/Date(1792388050000+0800)/",
+  "ReportChanged": "/Date(1792388050000+0800)/",
   "EngineVersion": "EngineV2",
   "ReportUnit": "Centimeters",
   "ScriptLanguage": "CSharp",
@@ -60,36 +60,42 @@
             "Type": "System.String"
           },
           "7": {
+            "Name": "modelLabel",
+            "NameInSource": "modelLabel",
+            "Alias": "Model (SKU · Name)",
+            "Type": "System.String"
+          },
+          "8": {
             "Name": "packageType",
             "NameInSource": "packageType",
             "Alias": "Package",
             "Type": "System.String"
           },
-          "8": {
+          "9": {
             "Name": "saleAmount",
             "NameInSource": "saleAmount",
             "Alias": "Sale Amount",
             "Type": "System.Decimal"
           },
-          "9": {
+          "10": {
             "Name": "atrStatus",
             "NameInSource": "atrStatus",
             "Alias": "ATR Status",
             "Type": "System.String"
           },
-          "10": {
+          "11": {
             "Name": "returnStatus",
             "NameInSource": "returnStatus",
             "Alias": "Return Status",
             "Type": "System.String"
           },
-          "11": {
+          "12": {
             "Name": "customer",
             "NameInSource": "customer",
             "Alias": "Customer",
             "Type": "System.String"
           },
-          "12": {
+          "13": {
             "Name": "siTrans",
             "NameInSource": "siTrans",
             "Alias": "SI/Trans",
@@ -104,7 +110,7 @@
     "0": {
       "Ident": "StiDashboard",
       "Name": "salestrends",
-      "Guid": "818b6df1865f53029205b7f74827be3a",
+      "Guid": "4e209792d662a314080959f3604a052d",
       "Alias": "Sales Trends",
       "Interaction": {
         "Ident": "StiInteraction"
@@ -114,7 +120,7 @@
         "0": {
           "Ident": "StiTextElement",
           "Name": "SalesBranchFilterLabel",
-          "Guid": "a7b7fc1a8f58ae5df11a789ee84c8e59",
+          "Guid": "28a23766de8edb48b0f6ef805439140b",
           "ClientRectangle": "0,0,96,40",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -139,7 +145,7 @@
         "1": {
           "Ident": "StiComboBoxElement",
           "Name": "SalesBranchFilter",
-          "Guid": "fc5ff43cb17ac93fdea271eae5740ef0",
+          "Guid": "cace5fc04b3b949fd697101364419dfe",
           "ClientRectangle": "96,0,299,40",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -172,7 +178,7 @@
         "2": {
           "Ident": "StiIndicatorElement",
           "Name": "SalesUnits",
-          "Guid": "7a54df8be2fef509f5f604558741a352",
+          "Guid": "6cb9f77964e5fbb180274d8615f8efa0",
           "ClientRectangle": "0,48,294,120",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -213,7 +219,7 @@
         "3": {
           "Ident": "StiIndicatorElement",
           "Name": "SalesAmount",
-          "Guid": "ccca648c9cc6912df85d53d0fc722e31",
+          "Guid": "cb09e24cde3985fc056c73f7dd8d9979",
           "ClientRectangle": "302,48,294,120",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -254,7 +260,7 @@
         "4": {
           "Ident": "StiIndicatorElement",
           "Name": "SalesTransactions",
-          "Guid": "b3477852f6a1c45ea2fd410636a0a21b",
+          "Guid": "a87523fdabdbccf2502d68e159defcff",
           "ClientRectangle": "604,48,294,120",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -295,7 +301,7 @@
         "5": {
           "Ident": "StiIndicatorElement",
           "Name": "SalesBranches",
-          "Guid": "4cc0684332cca90cc9997e99797f6dd2",
+          "Guid": "4261de3eaaeff016de4ede0d0c4b3e80",
           "ClientRectangle": "906,48,294,120",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -336,7 +342,7 @@
         "6": {
           "Ident": "StiChartElement",
           "Name": "SalesDaily",
-          "Guid": "4b11dce216a662c934c19a535065cdb8",
+          "Guid": "2b29e166d32362fb52e8fe95192bfa1f",
           "ClientRectangle": "0,176,1200,360",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -370,7 +376,7 @@
           },
           "ManuallyEnteredChartMeter": {
             "Ident": "ValueChartMeter",
-            "Key": "3ba41ebb0dd0212bd474887677c98459"
+            "Key": "81c33073e61e4b2df4523002630dd491"
           },
           "ArgumentFormat": {
             "Ident": "StiDateFormatService",
@@ -417,7 +423,7 @@
         "7": {
           "Ident": "StiChartElement",
           "Name": "SalesTopBranches",
-          "Guid": "73a30b1221272156cd51088d88f25e7c",
+          "Guid": "97fea3b6bccc51858453036902f3225b",
           "ClientRectangle": "0,544,596,340",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -464,7 +470,7 @@
           },
           "ManuallyEnteredChartMeter": {
             "Ident": "ValueChartMeter",
-            "Key": "a1ef4c6df6e88b70006db4c404c02123"
+            "Key": "685c2d036ce6f1d15c111bfc284c6523"
           },
           "ArgumentFormat": {
             "Ident": "StiGeneralFormatService"
@@ -509,7 +515,7 @@
         "8": {
           "Ident": "StiChartElement",
           "Name": "SalesTopModels",
-          "Guid": "47b21b73a320f4904e2c752116517739",
+          "Guid": "a9d79700b398dcfdf474d8cb919a3b00",
           "ClientRectangle": "604,544,596,340",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -556,7 +562,7 @@
           },
           "ManuallyEnteredChartMeter": {
             "Ident": "ValueChartMeter",
-            "Key": "da5b76660fdfcb7edad6bd6dba71e42e"
+            "Key": "ddc80f2904464fc7150d1459c483a3c4"
           },
           "ArgumentFormat": {
             "Ident": "StiGeneralFormatService"
@@ -601,7 +607,7 @@
         "9": {
           "Ident": "StiChartElement",
           "Name": "SalesAtrMix",
-          "Guid": "6c8a27591a8f0effe5d751f43642002f",
+          "Guid": "abaa466055006211019e6f87d320f405",
           "ClientRectangle": "0,892,596,340",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -636,7 +642,7 @@
           },
           "ManuallyEnteredChartMeter": {
             "Ident": "ValueChartMeter",
-            "Key": "496c5c9e190a33e28624de83d077ca4e"
+            "Key": "c31f7643c199d48d1ebcb8191185b4d4"
           },
           "ArgumentFormat": {
             "Ident": "StiGeneralFormatService"
@@ -682,7 +688,7 @@
         "10": {
           "Ident": "StiChartElement",
           "Name": "SalesPackageMix",
-          "Guid": "5ddb0aa9cc3d2c5e34998fdaa06a9203",
+          "Guid": "415aa6214cbead67937d5add41a378f1",
           "ClientRectangle": "604,892,596,340",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -717,7 +723,7 @@
           },
           "ManuallyEnteredChartMeter": {
             "Ident": "ValueChartMeter",
-            "Key": "ecd912e74f18e8eebef928c75aa64d40"
+            "Key": "3b64296b857534f61d52919c1cb0a04f"
           },
           "ArgumentFormat": {
             "Ident": "StiGeneralFormatService"
