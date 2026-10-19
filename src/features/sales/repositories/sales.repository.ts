@@ -167,6 +167,7 @@ export const salesRepository = {
               branchId: true,
               alternateBranchId: true,
               branch: { select: { id: true, name: true } },
+              stockSourceBranch: { select: { id: true, name: true } },
               returnRequest: { select: { id: true, status: true } },
             },
           },

@@ -4,10 +4,7 @@ import { z } from "zod";
 import { PIXELCARE_AI_LIMITS } from "@/features/pixelcare-ai/constants/limits";
 import { isPixelcareAiSampleMode } from "@/features/pixelcare-ai/constants/permissions";
 import { computeSugQty } from "@/features/pixelcare-ai/lib/sug";
-import {
-  confirmReplenishmentProposal,
-  prepareReplenishmentProposalForUser,
-} from "@/features/pixelcare-ai/automations/replenishment";
+import { prepareReplenishmentProposalForUser } from "@/features/pixelcare-ai/automations/replenishment";
 import { PROPOSED_NOT_CREATED } from "@/features/pixelcare-ai/automations/proposal-lines";
 import {
   assertPermittedBranch,
@@ -26,6 +23,7 @@ import {
   retrievedAt,
   truncatePayload,
 } from "@/features/pixelcare-ai/tools/tool-payload";
+import { sealPixelcareReadTools } from "@/features/pixelcare-ai/tools/guard-read-tools";
 import { buildWorkflowOpsTools } from "@/features/pixelcare-ai/tools/workflow-ops-tools";
 import { inventoryService } from "@/features/inventory/services/inventory.service";
 import { hasAnyOrderPermission, hasOrderPermission } from "@/features/orders/constants/order-permissions";
@@ -40,6 +38,9 @@ export function buildPixelcareAiTools(
     defaultBranchId?: string | null;
     /** SO numbers already present in the latest user message. */
     messageOrderNumbers?: readonly string[];
+    maxToolSteps?: number;
+    requestTimeoutMs?: number;
+    abortSignal?: AbortSignal;
   },
 ) {
   const sampleMode = isPixelcareAiSampleMode();
@@ -59,7 +60,7 @@ export function buildPixelcareAiTools(
     return defaultBranchId;
   }
 
-  return {
+  const tools = {
     ...buildPlanningOpsTools(session),
     ...buildWorkflowOpsTools(session, { defaultBranchId }),
 
@@ -299,12 +300,9 @@ export function buildPixelcareAiTools(
               },
             ],
           });
-        } catch (error) {
+        } catch {
           return {
-            error:
-              error instanceof Error
-                ? error.message
-                : "Could not load shelf gap analytics. Pick a brand if the screen requires one.",
+            error: "Could not load shelf gap analytics. Pick a brand if the screen requires one.",
           };
         }
       },
@@ -391,46 +389,18 @@ export function buildPixelcareAiTools(
               sapCode: access.branch.sapCode,
             },
           });
-        } catch (error) {
-          return {
-            error: error instanceof Error ? error.message : "Could not prepare a proposal.",
-          };
+        } catch {
+          return { error: "Could not prepare a proposal." };
         }
       },
     }),
-
-    confirmReplenishmentProposal: tool({
-      description:
-        "Create one Auto replenish order for a proposal the user has explicitly confirmed. Pass that proposal id only. A repeat call returns the existing order and does not create another. Does not submit, approve, cancel, delete, or post to SAP.",
-      inputSchema: z.object({
-        proposalId: z.string().min(1).describe("Proposal id the user just confirmed."),
-      }),
-      execute: async ({ proposalId }) => {
-        if (sampleMode) {
-          return { error: "Sample mode cannot confirm a live replenishment proposal." };
-        }
-        if (!hasOrderPermission(permissions, "auto_replenish", "create")) {
-          return { error: "You do not have permission to create an auto replenish order." };
-        }
-        try {
-          const result = await confirmReplenishmentProposal({
-            tenantId: session.user.tenantId,
-            actorUserId: session.user.id,
-            proposalId,
-          });
-          return truncatePayload({
-            sample: false,
-            retrievedAt: retrievedAt(),
-            ...result,
-          });
-        } catch (error) {
-          return {
-            error: error instanceof Error ? error.message : "Could not confirm the proposal.",
-          };
-        }
-      },
-    }),
-
   };
+
+  return sealPixelcareReadTools(tools, {
+    session,
+    maxToolSteps: options?.maxToolSteps ?? PIXELCARE_AI_LIMITS.maxToolSteps,
+    requestTimeoutMs: options?.requestTimeoutMs ?? PIXELCARE_AI_LIMITS.requestTimeoutMs,
+    abortSignal: options?.abortSignal,
+  });
 }
 

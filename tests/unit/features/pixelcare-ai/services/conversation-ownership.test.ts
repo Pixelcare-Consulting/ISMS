@@ -34,6 +34,13 @@ describe("conversation ownership", () => {
     ).rejects.toThrow("Conversation not found.");
   });
 
+  it("loads a conversation only for the requesting user", async () => {
+    repo.findOwned.mockResolvedValue(null);
+    await conversationService.getOwned("tenant-a", "user-b", "conv-1");
+    expect(repo.findOwned).toHaveBeenCalledWith("tenant-a", "user-b", "conv-1");
+    expect(repo.findOwned).not.toHaveBeenCalledWith("tenant-a", "user-a", "conv-1");
+  });
+
   it("allows assertOwned for matching tenant and user", async () => {
     repo.findOwnedMeta.mockResolvedValue({
       id: "conv-1",

@@ -1,7 +1,10 @@
+import { MONTHLY_SIR_VARIANCE_LABELS } from "@/features/monthly-sir/constants/monthly-sir";
 import {
   isPcountUploadStatus,
-  PCOUNT_VARIANCE_REMARK,
+  pcountDisplayRemark,
   pcountRemarkForUploadedRow,
+  serialFromUncataloguedVariance,
+  uncataloguedSerialVarianceDescription,
 } from "@/features/monthly-sir/constants/pcount-upload";
 
 describe("P-Count upload statuses and variance remarks", () => {
@@ -13,14 +16,14 @@ describe("P-Count upload statuses and variance remarks", () => {
     expect(isPcountUploadStatus("VAR")).toBe(false);
   });
 
-  it("marks surplus and status mismatches the way Generate Variance does", () => {
+  it("writes the same labels Generate Variance uses", () => {
     expect(
       pcountRemarkForUploadedRow({
         pcount: "STK",
         expectedInCount: true,
         systemStatus: "STK",
       }),
-    ).toBe("P-COUNT: STK");
+    ).toBe(MONTHLY_SIR_VARIANCE_LABELS.matched);
 
     expect(
       pcountRemarkForUploadedRow({
@@ -28,7 +31,7 @@ describe("P-Count upload statuses and variance remarks", () => {
         expectedInCount: true,
         systemStatus: "DEF",
       }),
-    ).toBe("P-COUNT: DEF");
+    ).toBe("IN FILE AND IN STK");
 
     expect(
       pcountRemarkForUploadedRow({
@@ -36,7 +39,7 @@ describe("P-Count upload statuses and variance remarks", () => {
         expectedInCount: true,
         systemStatus: "DU",
       }),
-    ).toBe("P-COUNT: DU");
+    ).toBe("IN FILE AND IN STK");
 
     expect(
       pcountRemarkForUploadedRow({
@@ -44,7 +47,7 @@ describe("P-Count upload statuses and variance remarks", () => {
         expectedInCount: true,
         systemStatus: "STK",
       }),
-    ).toBe(PCOUNT_VARIANCE_REMARK);
+    ).toBe("IN FILE NOT IN STK");
 
     expect(
       pcountRemarkForUploadedRow({
@@ -52,6 +55,65 @@ describe("P-Count upload statuses and variance remarks", () => {
         expectedInCount: false,
         systemStatus: null,
       }),
-    ).toBe(PCOUNT_VARIANCE_REMARK);
+    ).toBe("IN FILE NOT IN STK");
+  });
+
+  it("derives labels from the line and variance, including older P-COUNT notes", () => {
+    expect(
+      pcountDisplayRemark({
+        expectedInCount: true,
+        lineStatus: "counted",
+        notes: "P-COUNT: STK",
+      }),
+    ).toBe("IN FILE AND IN STK");
+
+    expect(
+      pcountDisplayRemark({
+        expectedInCount: true,
+        lineStatus: "counted",
+        notes: "P-COUNT: DEF",
+      }),
+    ).toBe("IN FILE AND IN STK");
+
+    expect(
+      pcountDisplayRemark({
+        expectedInCount: true,
+        lineStatus: "variance",
+        varianceType: "status_mismatch",
+        notes: "P-COUNT: VAR",
+      }),
+    ).toBe("IN FILE NOT IN STK");
+
+    expect(
+      pcountDisplayRemark({
+        expectedInCount: false,
+        lineStatus: "variance",
+        varianceType: "surplus",
+        notes: "P-COUNT: VAR",
+      }),
+    ).toBe("IN FILE NOT IN STK");
+
+    expect(
+      pcountDisplayRemark({
+        expectedInCount: true,
+        lineStatus: "variance",
+        varianceType: "missing",
+        notes: "P-COUNT: VAR",
+      }),
+    ).toBe("STK NOT IN FILE");
+
+    expect(
+      pcountDisplayRemark({
+        expectedInCount: true,
+        lineStatus: "pending",
+        notes: null,
+      }),
+    ).toBe("");
+  });
+
+  it("reads the serial from a catalog-unknown surplus variance", () => {
+    const description = uncataloguedSerialVarianceDescription("sn-new");
+    expect(serialFromUncataloguedVariance(description)).toBe("sn-new");
+    expect(serialFromUncataloguedVariance("Expected unit not scanned")).toBeNull();
   });
 });

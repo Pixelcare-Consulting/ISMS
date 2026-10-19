@@ -1,6 +1,11 @@
 import { auditService } from "@/features/audit/services/audit.service";
 
-export type AiAuditAction = "ai.copilot.ask" | "ai.briefing.generate";
+export type AiAuditAction =
+  | "ai.copilot.ask"
+  | "ai.briefing.generate"
+  | "ai.pixelcare.chat"
+  | "ai.pixelcare.tool"
+  | "ai.replenishment.confirm";
 
 export async function logAiAction(input: {
   tenantId: string;

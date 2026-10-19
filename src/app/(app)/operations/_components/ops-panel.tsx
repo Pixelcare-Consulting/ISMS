@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { toast } from "sonner";
 
+import { PulloutRequestDialog } from "@/app/(app)/logistics/_components/pullout-request-dialog";
+import { TransferRequestDialog } from "@/app/(app)/logistics/_components/transfer-request-dialog";
 import {
   acceptDeliveryAction,
   createPulloutAction,
@@ -28,14 +30,6 @@ import {
 } from "@/components/data-table/data-table-shell";
 import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { GlobalTableHead, useClientTableSort } from "@/lib/data-table";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
@@ -68,7 +62,6 @@ interface OpsPanelProps {
     toBranch: { name: string };
   }[];
   pullouts: { id: string; statusCode: StatusCodeRef; branch: { name: string } }[];
-  branches: { id: string; name: string }[];
 }
 
 interface PendingDeliveryAction {
@@ -78,13 +71,10 @@ interface PendingDeliveryAction {
   action: "accept" | "reject";
 }
 
-export function OpsPanel({ deliveries, transfers, pullouts, branches }: OpsPanelProps) {
+export function OpsPanel({ deliveries, transfers, pullouts }: OpsPanelProps) {
   const router = useRouter();
   const [transferOpen, setTransferOpen] = useState(false);
   const [pulloutOpen, setPulloutOpen] = useState(false);
-  const [fromBranchId, setFromBranchId] = useState(branches[0]?.id ?? "");
-  const [toBranchId, setToBranchId] = useState(branches[1]?.id ?? branches[0]?.id ?? "");
-  const [pulloutBranchId, setPulloutBranchId] = useState(branches[0]?.id ?? "");
   const [pendingDelivery, setPendingDelivery] = useState<PendingDeliveryAction | null>(
     null,
   );
@@ -132,28 +122,24 @@ export function OpsPanel({ deliveries, transfers, pullouts, branches }: OpsPanel
     });
   }
 
-  function submitTransfer(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    startTransition(async () => {
-      const result = await createTransferAction(formData);
-      if (result.error) { toast.error(result.error); return; }
-      toast.success("Transfer created");
-      setTransferOpen(false);
-      router.refresh();
-    });
+  function submitTransfer(input: {
+    fromBranchId: string;
+    toBranchId: string;
+    modelId: string;
+    quantity: number;
+    serialNumberIds: string[];
+    notes?: string;
+  }) {
+    return createTransferAction(input);
   }
 
-  function submitPullout(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    startTransition(async () => {
-      const result = await createPulloutAction(formData);
-      if (result.error) { toast.error(result.error); return; }
-      toast.success("Pull-out created");
-      setPulloutOpen(false);
-      router.refresh();
-    });
+  function submitPullout(input: {
+    branchId: string;
+    warehouseId: string;
+    reasonStatusCodeId: string;
+    serialNumberIds: string[];
+  }) {
+    return createPulloutAction(input);
   }
 
   return (
@@ -339,53 +325,18 @@ export function OpsPanel({ deliveries, transfers, pullouts, branches }: OpsPanel
         </DataTableScroll>
       </DataTableShell>
 
-      <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>New branch transfer</DialogTitle></DialogHeader>
-          <form onSubmit={submitTransfer} className="space-y-4">
-            <SearchableSelect
-              label="From branch"
-              name="fromBranchId"
-              options={branches.map((b) => ({ id: b.id, label: b.name }))}
-              value={fromBranchId}
-              onChange={setFromBranchId}
-              placeholder="Select branch…"
-              searchPlaceholder="Search branches…"
-              disabled={pending}
-            />
-            <SearchableSelect
-              label="To branch"
-              name="toBranchId"
-              options={branches.map((b) => ({ id: b.id, label: b.name }))}
-              value={toBranchId}
-              onChange={setToBranchId}
-              placeholder="Select branch…"
-              searchPlaceholder="Search branches…"
-              disabled={pending}
-            />
-            <DialogFooter><Button type="submit" disabled={pending}>Create</Button></DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={pulloutOpen} onOpenChange={setPulloutOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>New pull-out</DialogTitle></DialogHeader>
-          <form onSubmit={submitPullout} className="space-y-4">
-            <SearchableSelect
-              label="Branch"
-              name="branchId"
-              options={branches.map((b) => ({ id: b.id, label: b.name }))}
-              value={pulloutBranchId}
-              onChange={setPulloutBranchId}
-              placeholder="Select branch…"
-              searchPlaceholder="Search branches…"
-              disabled={pending}
-            />
-            <DialogFooter><Button type="submit" disabled={pending}>Create</Button></DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <TransferRequestDialog
+        open={transferOpen}
+        onOpenChange={setTransferOpen}
+        onSubmit={submitTransfer}
+        onCreated={() => router.refresh()}
+      />
+      <PulloutRequestDialog
+        open={pulloutOpen}
+        onOpenChange={setPulloutOpen}
+        onSubmit={submitPullout}
+        onCreated={() => router.refresh()}
+      />
 
       <AlertDialog
         open={pendingDelivery !== null}

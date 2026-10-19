@@ -6,6 +6,10 @@ import { ArrowDown, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { MarkdownMessage } from "@/features/pixelcare-ai/components/markdown-message";
+import {
+  proposalIdsFromToolOutput,
+  ReplenishmentConfirmButton,
+} from "@/features/pixelcare-ai/components/replenishment-confirm-button";
 import { ResultTable } from "@/features/pixelcare-ai/components/result-table";
 import { tableFromToolOutput } from "@/features/pixelcare-ai/lib/tool-result-table";
 import { cn } from "@/utils/cn";
@@ -62,6 +66,11 @@ function ToolActivity(props: {
       {structuredTable ? (
         <ResultTable {...structuredTable} className="my-0.5" />
       ) : null}
+      {props.name === "prepareReplenishmentProposal" && !isLoading
+        ? proposalIdsFromToolOutput(props.output).map((proposalId) => (
+            <ReplenishmentConfirmButton key={proposalId} proposalId={proposalId} />
+          ))
+        : null}
       <div className="rounded-md border bg-muted/30 text-xs">
         <button
           type="button"

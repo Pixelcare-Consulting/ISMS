@@ -4,15 +4,34 @@ jest.mock("@/lib/database/client", () => ({
     aiAutomationRun: { create: jest.fn(), update: jest.fn() },
   },
 }));
-jest.mock("@/lib/shared/logger", () => ({ logger: { error: jest.fn() } }));
+jest.mock("@/lib/shared/logger", () => ({ logger: { error: jest.fn(), info: jest.fn() } }));
+jest.mock("@/features/ai/services/assistant-policy.service", () => ({
+  readAiAssistantGate: jest.fn(async () => ({
+    ok: true,
+    limits: {
+      maxRequestsPerUser: 30,
+      windowSeconds: 600,
+      maxOutputTokens: 2048,
+      maxToolSteps: 5,
+      requestTimeoutMs: 60_000,
+      maxRequestsPerTenant: 300,
+      maxUserConcurrency: 2,
+      maxTenantConcurrency: 20,
+      maxContextMessages: 24,
+    },
+  })),
+}));
 jest.mock("@/lib/auth/permissions", () => ({
   hasPermission: (permissions: string[] | undefined, permission: string) =>
     permissions?.includes(permission) ?? false,
 }));
 
+import { readAiAssistantGate } from "@/features/ai/services/assistant-policy.service";
 import { automationExecutors } from "@/features/pixelcare-ai/automations/executors";
 import { runDueAiAutomations } from "@/features/pixelcare-ai/automations/run-scheduled";
 import { prisma } from "@/lib/database/client";
+
+const readPolicy = readAiAssistantGate as jest.Mock;
 
 const findMany = prisma.aiAutomation.findMany as jest.Mock;
 const createRun = prisma.aiAutomationRun.create as jest.Mock;
@@ -36,7 +55,26 @@ function automation() {
   };
 }
 
+const enabledPolicy = {
+  ok: true as const,
+  limits: {
+    maxRequestsPerUser: 30,
+    windowSeconds: 600,
+    maxOutputTokens: 2048,
+    maxToolSteps: 5,
+    requestTimeoutMs: 60_000,
+    maxRequestsPerTenant: 300,
+    maxUserConcurrency: 2,
+    maxTenantConcurrency: 20,
+    maxContextMessages: 24,
+  },
+};
+
 describe("runDueAiAutomations", () => {
+  beforeEach(() => {
+    readPolicy.mockResolvedValue(enabledPolicy);
+  });
+
   afterEach(() => {
     delete automationExecutors.replenishment_review;
     jest.resetAllMocks();
@@ -114,6 +152,18 @@ describe("runDueAiAutomations", () => {
       }),
     );
     expect(outcomes[0]?.outcome).toBe("succeeded");
+  });
+
+  it("does not run an automation when the assistant is turned off", async () => {
+    findMany.mockResolvedValue([automation()]);
+    readPolicy.mockResolvedValue({ ok: false, reason: "disabled" });
+    automationExecutors.replenishment_review = jest.fn();
+
+    const outcomes = await runDueAiAutomations(dueNow);
+
+    expect(outcomes[0]?.outcome).toBe("failed");
+    expect(createRun).not.toHaveBeenCalled();
+    expect(automationExecutors.replenishment_review).not.toHaveBeenCalled();
   });
 
   it("does not claim a run before the local scheduled time", async () => {

@@ -1,6 +1,21 @@
+import { z } from "zod";
+
 import { auditService } from "@/features/audit/services/audit.service";
 import { aorRepository } from "@/features/aors/repositories/aor.repository";
-import { z } from "zod";
+import { Prisma } from "@/lib/database/generated/prisma/client";
+
+const ASSIGNMENT_CONFLICT_MESSAGE =
+  "That assignment already exists. Refresh the page and try again.";
+
+function rethrowAssignmentConflict(error: unknown): never {
+  if (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2002"
+  ) {
+    throw new Error(ASSIGNMENT_CONFLICT_MESSAGE);
+  }
+  throw error;
+}
 
 const createAorSchema = z.object({
   userId: z.string().min(1),
@@ -73,10 +88,15 @@ export const aorService = {
       return aor;
     }
 
-    const aor = await aorRepository.create(input.tenantId, {
-      ...parsed.data,
-      createdById: input.actorUserId,
-    });
+    let aor;
+    try {
+      aor = await aorRepository.create(input.tenantId, {
+        ...parsed.data,
+        createdById: input.actorUserId,
+      });
+    } catch (error) {
+      rethrowAssignmentConflict(error);
+    }
     await auditService.log({
       tenantId: input.tenantId,
       userId: input.actorUserId,
@@ -128,17 +148,21 @@ export const aorService = {
     const toCreate = targetBranchIds.filter((id) => !existingBranchIds.has(id));
     const skippedCount = targetBranchIds.length - toCreate.length;
 
-    const aors =
-      toCreate.length === 0
-        ? []
-        : await aorRepository.createMany(
-            input.tenantId,
-            toCreate.map((branchId) => ({
-              userId: parsed.data.userId,
-              branchId,
-              createdById: input.actorUserId,
-            })),
-          );
+    let aors: Awaited<ReturnType<typeof aorRepository.createMany>> = [];
+    if (toCreate.length > 0) {
+      try {
+        aors = await aorRepository.createMany(
+          input.tenantId,
+          toCreate.map((branchId) => ({
+            userId: parsed.data.userId,
+            branchId,
+            createdById: input.actorUserId,
+          })),
+        );
+      } catch (error) {
+        rethrowAssignmentConflict(error);
+      }
+    }
 
     if (aors.length > 0) {
       await auditService.log({
@@ -296,10 +320,6 @@ export const aorService = {
       ...serviceCenterIdsToDelete,
     ];
 
-    if (idsToDelete.length > 0) {
-      await aorRepository.deleteMany(input.tenantId, idsToDelete);
-    }
-
     const rowsToCreate = [
       ...branchIdsToCreate.map((branchId) => ({
         userId: parsed.data.userId,
@@ -323,12 +343,24 @@ export const aorService = {
       })),
     ];
 
-    const createdAors =
-      rowsToCreate.length === 0
-        ? []
-        : await aorRepository.createMany(input.tenantId, rowsToCreate);
-
-    const deletedCount = idsToDelete.length;
+    let createdAors: Awaited<
+      ReturnType<typeof aorRepository.applySync>
+    >["created"] = [];
+    let deletedCount = 0;
+    if (idsToDelete.length > 0 || rowsToCreate.length > 0) {
+      try {
+        const applied = await aorRepository.applySync(
+          input.tenantId,
+          parsed.data.userId,
+          idsToDelete,
+          rowsToCreate,
+        );
+        createdAors = applied.created;
+        deletedCount = applied.deletedCount;
+      } catch (error) {
+        rethrowAssignmentConflict(error);
+      }
+    }
     const createdCount = createdAors.length;
 
     if (createdCount > 0 || deletedCount > 0) {

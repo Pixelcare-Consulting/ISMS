@@ -1,25 +1,29 @@
 /**
  * Workbook contract for bulk branch-quota import (Settings → Branch Quotas).
  *
- * Sheet "Branch Quotas" — branch_sap_code, brand_name, month (YYYY-MM), quota_amount.
- * Unique key is branch + brand + month (first of month). Unknown SAP / brand → row error.
+ * Sheet "Branch Quotas" — branch_name, brand_name, month (YYYY-MM), quota_amount.
+ * Unique key is branch + brand + month (first of month). Unknown name / brand → row error.
+ * Names match after trim, ignoring case. More than one branch with that name is an error.
+ * A file that still uses the branch SAP code does not match these columns.
  * Existing rows update quota_amount; missing rows create.
  */
 
 export const BRANCH_QUOTA_SHEET_NAME = "Branch Quotas";
 
 export const BRANCH_QUOTA_SHEET_HEADERS = [
-  "branch_sap_code",
+  "branch_name",
   "brand_name",
   "month",
   "quota_amount",
 ] as const;
 
-/** Normalized header → canonical key. */
+/**
+ * Normalized header → canonical key.
+ * SAP-code headers are intentionally absent so old files fail column checks.
+ */
 export const BRANCH_QUOTA_IMPORT_ALIAS_MAP: Record<string, string> = {
-  branchsapcode: "branchsapcode",
-  sapcode: "branchsapcode",
-  branchcode: "branchsapcode",
+  branchname: "branchname",
+  branch: "branchname",
   brandname: "brandname",
   brand: "brandname",
   month: "month",
@@ -31,7 +35,7 @@ export const BRANCH_QUOTA_IMPORT_ALIAS_MAP: Record<string, string> = {
 };
 
 export const BRANCH_QUOTA_IMPORT_REQUIRED_COLUMNS = [
-  "branchsapcode",
+  "branchname",
   "brandname",
   "month",
   "quotaamount",

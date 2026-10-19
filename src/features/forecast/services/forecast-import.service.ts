@@ -29,6 +29,7 @@ import { hasPermission } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/database/client";
 import { decimalToNumber } from "@/lib/database/decimal";
 import { mapWithConcurrency } from "@/lib/shared/concurrency";
+import { indexBranchesByName, resolveBranchByName } from "@/lib/shared/match-branch-by-name";
 import {
   getCachedPlan,
   invalidatePlan,
@@ -41,7 +42,7 @@ const APPLY_CHUNK_SIZE = 250;
 const WRITE_CONCURRENCY = 8;
 const PLAN_NAMESPACE = "forecast-import";
 const SAMPLE_PERIOD = "Dec-25";
-const SAMPLE_SAP_CODE = "WMK-001";
+const SAMPLE_BRANCH_NAME = "Western Makati";
 const SAMPLE_SKU = "32STW101";
 const SAMPLE_FORECAST_QTY = 20;
 
@@ -171,10 +172,10 @@ async function loadTemplateRows(actor: ForecastImportActor): Promise<SfeTemplate
     select: {
       branchId: true,
       modelId: true,
-      branch: { select: { sapCode: true } },
+      branch: { select: { name: true } },
       model: { select: { skuCode: true } },
     },
-    orderBy: [{ branch: { sapCode: "asc" } }, { model: { skuCode: "asc" } }],
+    orderBy: [{ branch: { name: "asc" } }, { model: { skuCode: "asc" } }],
   });
 
   if (planogramEntries.length === 0) return [];
@@ -195,7 +196,7 @@ async function loadTemplateRows(actor: ForecastImportActor): Promise<SfeTemplate
 
   return planogramEntries.map((entry) => ({
     period: period.label,
-    sapCode: entry.branch.sapCode,
+    branchName: entry.branch.name,
     sku: entry.model.skuCode,
     forecastQty: qtyByPair.get(`${entry.branchId}::${entry.modelId}`) ?? 0,
   }));
@@ -210,7 +211,7 @@ function collectPeriodLabel(
 ): string {
   let periodLabel = current;
   for (const row of sheet.rows) {
-    const sapCode = row.values.sap_code?.trim() ?? "";
+    const branchName = row.values.branch_name?.trim() ?? "";
     const rawPeriod = row.values.period?.trim() ?? "";
     const period = normalizePeriodLabel(rawPeriod) ?? rawPeriod;
     if (fields.every((field) => isBlankOrDash(row.values[field]))) continue;
@@ -221,7 +222,7 @@ function collectPeriodLabel(
         errors.push({
           sheet: sheetName,
           rowNumber: row.rowNumber,
-          sapCode: sapCode || "—",
+          sapCode: branchName || "—",
           period: rawPeriod || period,
           sku: row.values.sku?.trim() || undefined,
           message: `All rows must use the same period. This file already uses "${periodLabel}".`,
@@ -258,7 +259,7 @@ async function buildPlan(
       sheets.sfe,
       SFE_SHEET_NAME,
       errors,
-      ["sap_code", "period", "sku", "forecast_qty"],
+      ["branch_name", "period", "sku", "forecast_qty"],
       periodLabel,
     );
   }
@@ -269,18 +270,18 @@ async function buildPlan(
 
   if (sheets.sfe.present) {
     for (const row of sheets.sfe.rows) {
-      const sapCode = row.values.sap_code?.trim() ?? "";
+      const branchName = row.values.branch_name?.trim() ?? "";
       const sku = row.values.sku?.trim() ?? "";
-      if (isBlankOrDash(sapCode) || isBlankOrDash(sku)) continue;
-      const key = `${lookupKey(sapCode)}::${lookupKey(sku)}`;
+      if (isBlankOrDash(branchName) || isBlankOrDash(sku)) continue;
+      const key = `${lookupKey(branchName)}::${lookupKey(sku)}`;
       if (seenSfe.has(key)) {
         errors.push({
           sheet: SFE_SHEET_NAME,
           rowNumber: row.rowNumber,
-          sapCode,
+          sapCode: branchName,
           period: row.values.period?.trim() || periodLabel || "—",
           sku,
-          message: `Duplicate of row ${seenSfe.get(key)} (${sapCode} / ${sku}). Keep one SFE row per branch and SKU.`,
+          message: `Duplicate of row ${seenSfe.get(key)} (${branchName} / ${sku}). Keep one SFE row per branch and SKU.`,
         });
         continue;
       }
@@ -318,7 +319,7 @@ async function buildPlan(
       : Promise.resolve(null),
   ]);
 
-  const branchBySap = new Map(branches.map((branch) => [lookupKey(branch.sapCode), branch]));
+  const branchByName = indexBranchesByName(branches);
   const modelBySku = new Map(models.map((model) => [lookupKey(model.skuCode), model]));
   const srpByModelId = new Map(
     models.map((model) => [model.id, resolveModelSrp(model.priceLists, model.srp)]),
@@ -357,12 +358,12 @@ async function buildPlan(
 
   if (sheets.sfe.present) {
     for (const row of sheets.sfe.rows) {
-      const sapCode = row.values.sap_code?.trim() ?? "";
+      const branchName = row.values.branch_name?.trim() ?? "";
       const rawPeriod = row.values.period?.trim() ?? "";
       const period = normalizePeriodLabel(rawPeriod) ?? rawPeriod;
       const sku = row.values.sku?.trim() ?? "";
       if (
-        isBlankOrDash(sapCode) &&
+        isBlankOrDash(branchName) &&
         isBlankOrDash(rawPeriod) &&
         isBlankOrDash(sku) &&
         isBlankOrDash(row.values.forecast_qty)
@@ -374,7 +375,7 @@ async function buildPlan(
         errors.push({
           sheet: SFE_SHEET_NAME,
           rowNumber: row.rowNumber,
-          sapCode: sapCode || "—",
+          sapCode: branchName || "—",
           period: rawPeriod || periodLabel || "—",
           sku: sku || undefined,
           message,
@@ -386,15 +387,15 @@ async function buildPlan(
         continue;
       }
       if (lookupKey(period) !== lookupKey(periodLabel)) continue;
-      if (isBlankOrDash(sapCode)) {
-        pushError("branch_sap_code is empty.");
+      if (isBlankOrDash(branchName)) {
+        pushError("branch_name is empty.");
         continue;
       }
       if (isBlankOrDash(sku)) {
         pushError("sku is empty.");
         continue;
       }
-      if (seenSfe.get(`${lookupKey(sapCode)}::${lookupKey(sku)}`) !== row.rowNumber) continue;
+      if (seenSfe.get(`${lookupKey(branchName)}::${lookupKey(sku)}`) !== row.rowNumber) continue;
 
       const forecastQty = parseNonNegativeInt(row.values.forecast_qty);
       if (typeof forecastQty !== "number") {
@@ -402,19 +403,22 @@ async function buildPlan(
         continue;
       }
 
-      const branch = branchBySap.get(lookupKey(sapCode));
-      if (!branch) {
-        pushError(
-          `Branch "${sapCode}" was not found. Import or sync branches first — this file does not create branches.`,
-        );
+      const resolved = resolveBranchByName(
+        branchByName,
+        branchName,
+        `Branch "${branchName}" was not found. Import or sync branches first — this file does not create branches.`,
+      );
+      if ("error" in resolved) {
+        pushError(resolved.error);
         continue;
       }
+      const branch = resolved.branch;
       if (branch.status !== "active") {
-        pushError(`Branch "${sapCode}" is not active.`);
+        pushError(`Branch "${branchName}" is not active.`);
         continue;
       }
       if (scopedSet && !scopedSet.has(branch.id)) {
-        pushError(`Branch "${sapCode}" is outside your area of responsibility.`);
+        pushError(`Branch "${branchName}" is outside your area of responsibility.`);
         continue;
       }
 
@@ -473,13 +477,13 @@ async function buildPlan(
 
   let quotaRowNumber = 1;
   for (const entry of [...branchRevenue.values()].sort((a, b) =>
-    a.sapCode.localeCompare(b.sapCode),
+    a.branchName.localeCompare(b.branchName),
   )) {
     quotaRowNumber += 1;
     // ₱0 Target Quota is allowed (FREE / 0 SRP or zero forecast qty) — warn, do not block.
     if (entry.revenue <= 0) {
       warnings.push(
-        `Target Quota for "${entry.sapCode}" is ₱0 (FREE or zero forecast qty). Import can continue.`,
+        `Target Quota for "${entry.branchName}" is ₱0 (FREE or zero forecast qty). Import can continue.`,
       );
     }
 
@@ -525,7 +529,7 @@ async function buildPlan(
       rowNumber: 2,
       sapCode: "—",
       period: "—",
-      message: "Add at least one SFE row (period, branch_sap_code, sku, forecast_qty).",
+      message: "Add at least one SFE row (period, branch_name, sku, forecast_qty).",
     });
   }
 
@@ -535,7 +539,7 @@ async function buildPlan(
       rowNumber: 1,
       sapCode: "—",
       period: "—",
-      message: `Add a sheet named "${SFE_SHEET_NAME}" with period, branch_sap_code, sku, and forecast_qty.`,
+      message: `Add a sheet named "${SFE_SHEET_NAME}" with period, branch_name, sku, and forecast_qty.`,
     });
   }
 
@@ -741,7 +745,7 @@ export const forecastImportService = {
       return buildForecastTemplateWorkbook([
         {
           period: SAMPLE_PERIOD,
-          sapCode: SAMPLE_SAP_CODE,
+          branchName: SAMPLE_BRANCH_NAME,
           sku: SAMPLE_SKU,
           forecastQty: SAMPLE_FORECAST_QTY,
         },

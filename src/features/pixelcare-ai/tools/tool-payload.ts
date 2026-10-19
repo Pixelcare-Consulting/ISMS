@@ -9,7 +9,6 @@ export function truncatePayload<T>(value: T): T {
   if (raw.length <= PIXELCARE_AI_LIMITS.maxToolPayloadChars) return value;
   return {
     truncated: true,
-    note: "Result truncated for size.",
-    preview: raw.slice(0, PIXELCARE_AI_LIMITS.maxToolPayloadChars),
+    note: "Result was too large to include.",
   } as T;
 }

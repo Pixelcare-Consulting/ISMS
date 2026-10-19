@@ -241,15 +241,16 @@ export function ImportForecastDialog({
             <div className="space-y-2 leading-relaxed">
               <p>
                 Download the template — it pre-fills one row per active branch and that
-                branch’s planogram models (period and SAP code ready; forecast qty starts
+                branch’s planogram models (period and branch name ready; forecast qty starts
                 at 0 or your current SFE value). Branches without planogram models are
                 skipped.
               </p>
               <p>
-                The <strong>SFE</strong> sheet is required (period, branch SAP code, SKU,
-                forecast qty). <strong>Target Quota</strong> for each branch is calculated
-                automatically as forecast qty × price list SRP — there is no separate
-                quota sheet.
+                The <strong>SFE</strong> sheet is required (period, branch name, SKU,
+                forecast qty). A file that still uses the branch SAP code will not import.
+                If more than one branch uses the same name, that row is rejected.{" "}
+                <strong>Target Quota</strong> for each branch is calculated automatically
+                as forecast qty × price list SRP — there is no separate quota sheet.
               </p>
               <p>
                 Keep the period as text (for example <strong>Dec-25</strong>), not as an
@@ -388,7 +389,7 @@ export function ImportForecastDialog({
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Branch SAP</TableHead>
+                        <TableHead>Branch</TableHead>
                         <TableHead>SKU</TableHead>
                         <TableHead className="text-right">Forecast qty</TableHead>
                         <TableHead>Action</TableHead>
@@ -397,8 +398,8 @@ export function ImportForecastDialog({
                     </TableHeader>
                     <TableBody>
                       {preview.sfeRows.map((row) => (
-                        <TableRow key={`sfe-${row.sapCode}-${row.sku}-${row.rowNumber}`}>
-                          <TableCell className="font-mono text-xs">{row.sapCode}</TableCell>
+                        <TableRow key={`sfe-${row.branchName}-${row.sku}-${row.rowNumber}`}>
+                          <TableCell className="text-sm">{row.branchName}</TableCell>
                           <TableCell className="font-mono text-xs">{row.sku}</TableCell>
                           <TableCell className="text-right tabular-nums text-sm">
                             {row.forecastQty.toLocaleString("en-PH")}
@@ -430,7 +431,6 @@ export function ImportForecastDialog({
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Branch SAP code</TableHead>
                         <TableHead>Branch</TableHead>
                         <TableHead className="text-right">Target Quota</TableHead>
                         <TableHead>Action</TableHead>
@@ -439,8 +439,7 @@ export function ImportForecastDialog({
                     </TableHeader>
                     <TableBody>
                       {preview.rows.map((row) => (
-                        <TableRow key={`${row.sapCode}-${row.rowNumber}`}>
-                          <TableCell className="font-mono text-xs">{row.sapCode}</TableCell>
+                        <TableRow key={`${row.branchName}-${row.rowNumber}`}>
                           <TableCell className="text-sm">{row.branchName}</TableCell>
                           <TableCell className="text-right tabular-nums text-sm">
                             {row.revenueTarget.toLocaleString("en-PH")}

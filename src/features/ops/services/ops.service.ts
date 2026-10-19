@@ -1,5 +1,7 @@
-import { auditService } from "@/features/audit/services/audit.service";
 import { deliveryPostingService } from "@/features/logistics/services/delivery-posting.service";
+import { pulloutPostingService } from "@/features/logistics/services/pullout-posting.service";
+import type { PostingActor } from "@/features/logistics/services/posting-support";
+import { transferPostingService } from "@/features/logistics/services/transfer-posting.service";
 import { opsRepository } from "@/features/ops/repositories/ops.repository";
 
 export const opsService = {
@@ -39,56 +41,31 @@ export const opsService = {
     });
   },
 
-  async createTransfer(input: {
-    tenantId: string;
-    actorUserId: string;
-    fromBranchId: string;
-    toBranchId: string;
-    notes?: string;
-  }) {
-    if (input.fromBranchId === input.toBranchId) {
-      throw new Error("Source and destination must differ");
-    }
-    const transfer = await opsRepository.createTransfer(input.tenantId, input);
-    await auditService.log({
-      tenantId: input.tenantId,
-      userId: input.actorUserId,
-      action: "transfer.created",
-      entityType: "BranchTransfer",
-      entityId: transfer.id,
-      metadata: {
-        transferNo: transfer.transferNo,
-        from: transfer.fromBranch.name,
-        to: transfer.toBranch.name,
-      },
-    });
-    return transfer;
+  createTransfer(
+    actor: PostingActor,
+    input: {
+      fromBranchId: string;
+      toBranchId: string;
+      modelId: string;
+      quantity: number;
+      serialNumberIds: string[];
+      notes?: string;
+    },
+  ) {
+    return transferPostingService.create(actor, input);
   },
 
-  async createPullout(input: {
-    tenantId: string;
-    actorUserId: string;
-    branchId: string;
-    warehouseId: string;
-    notes?: string;
-  }) {
-    const pullout = await opsRepository.createPullout(input.tenantId, {
-      branchId: input.branchId,
-      warehouseId: input.warehouseId,
-      notes: input.notes,
-    });
-    await auditService.log({
-      tenantId: input.tenantId,
-      userId: input.actorUserId,
-      action: "pullout.created",
-      entityType: "BranchPullout",
-      entityId: pullout.id,
-      metadata: {
-        pulloutNo: pullout.pulloutNo,
-        branchName: pullout.branch.name,
-      },
-    });
-    return pullout;
+  createPullout(
+    actor: PostingActor,
+    input: {
+      branchId: string;
+      warehouseId: string;
+      reasonStatusCodeId: string;
+      serialNumberIds: string[];
+      notes?: string;
+    },
+  ) {
+    return pulloutPostingService.create(actor, input);
   },
 
   countPendingDeliveries(tenantId: string) {

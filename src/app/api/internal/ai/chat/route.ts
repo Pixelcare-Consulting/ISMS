@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { AI_ASSISTANT_FAILED_MESSAGE } from "@/features/ai/constants/assistant-limits";
+import { AssistantUserError } from "@/features/ai/lib/assistant-messages";
 import { requirePixelcareAiApiAccess } from "@/features/pixelcare-ai/lib/access";
 import { chatRequestSchema } from "@/features/pixelcare-ai/schemas/conversation.schema";
 import { streamPixelcareAiChat } from "@/features/pixelcare-ai/services/chat.service";
@@ -43,13 +45,16 @@ export async function POST(request: Request) {
 
     return streamed.response;
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Pixelcare AI chat failed.";
+    if (error instanceof AssistantUserError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    const message = error instanceof Error ? error.message : "";
     if (message.includes("Conversation not found")) {
-      return NextResponse.json({ error: message }, { status: 404 });
+      return NextResponse.json({ error: "Conversation not found." }, { status: 404 });
     }
     if (message.includes("not configured")) {
-      return NextResponse.json({ error: "AI provider not configured." }, { status: 503 });
+      return NextResponse.json({ error: "The assistant is not connected yet." }, { status: 503 });
     }
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: AI_ASSISTANT_FAILED_MESSAGE }, { status: 500 });
   }
 }

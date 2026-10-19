@@ -328,7 +328,6 @@ export const SAMPLE_RETURN_STATUS = {
       dealerRsNo: "RS-SAMPLE-001",
       transactionNo: "TRN-SAMPLE-001",
       atrStatus: "open",
-      customerName: "Sample Customer",
       branchId: "sample-branch",
       branchName: SAMPLE_BRANCH_LABEL.name,
       sapCode: SAMPLE_BRANCH_LABEL.sapCode,

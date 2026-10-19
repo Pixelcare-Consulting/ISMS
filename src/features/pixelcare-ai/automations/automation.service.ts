@@ -1,5 +1,6 @@
 import type { AiAutomationTemplate, Prisma } from "@/lib/database/generated/prisma/client";
 
+import { issueReplenishmentConfirmation } from "@/features/pixelcare-ai/automations/confirmation";
 import { runSavedAutomation } from "@/features/pixelcare-ai/automations/manual-run";
 import { zonedClock } from "@/features/pixelcare-ai/automations/schedule";
 import {
@@ -79,7 +80,7 @@ export async function loadAutomationWorkspace(session: AppSession): Promise<Auto
   ]);
 
   const byTemplate = new Map(rows.map((row) => [row.template, row]));
-  const cards: AutomationCardView[] = AUTOMATION_TEMPLATES.map((template) => {
+  const cards: AutomationCardView[] = await Promise.all(AUTOMATION_TEMPLATES.map(async (template) => {
     const row = byTemplate.get(template);
     const copy = templateCopy(template);
     if (!row) {
@@ -98,18 +99,36 @@ export async function loadAutomationWorkspace(session: AppSession): Promise<Auto
         proposals: [],
       };
     }
-    const proposals: AutomationProposalView[] = row.runs.flatMap((run) =>
-      run.proposals.map((proposal) => ({
-        id: proposal.id,
-        branchId: proposal.branchId,
-        branchName: proposal.branch.name,
-        status: proposal.status,
-        orderId: proposal.orderId,
-        orderNumber: proposal.order?.orderNumber ?? null,
-        lines: proposal.lines,
-        label: proposal.orderId ? "Order created" : PROPOSED_NOT_CREATED,
-      })),
-    );
+    const proposals: AutomationProposalView[] = [];
+    for (const run of row.runs) {
+      for (const proposal of run.proposals) {
+        const open = proposal.status === "proposed" && !proposal.orderId;
+        let confirmationToken: string | null = null;
+        if (open) {
+          try {
+            const issued = await issueReplenishmentConfirmation({
+              tenantId: session.user.tenantId,
+              userId: session.user.id,
+              proposalId: proposal.id,
+            });
+            confirmationToken = issued.token;
+          } catch {
+            confirmationToken = null;
+          }
+        }
+        proposals.push({
+          id: proposal.id,
+          branchId: proposal.branchId,
+          branchName: proposal.branch.name,
+          status: proposal.status,
+          orderId: proposal.orderId,
+          orderNumber: proposal.order?.orderNumber ?? null,
+          lines: proposal.lines,
+          label: proposal.orderId ? "Order created" : PROPOSED_NOT_CREATED,
+          confirmationToken,
+        });
+      }
+    }
     const runs: AutomationRunView[] = row.runs.map((run) => ({
       id: run.id,
       trigger: run.trigger,
@@ -132,7 +151,7 @@ export async function loadAutomationWorkspace(session: AppSession): Promise<Auto
       runs,
       proposals,
     };
-  });
+  }));
 
   return {
     cards,

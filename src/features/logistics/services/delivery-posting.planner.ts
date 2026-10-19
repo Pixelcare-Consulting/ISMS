@@ -182,6 +182,114 @@ export function planDispatch(
   return { ok: true, warehouseId: warehouseId ?? "", moves };
 }
 
+export interface DispatchSerialRef {
+  serialNumberId: string;
+  serialNo: string;
+}
+
+/** A branch shelf row that already holds a serial being dispatched. */
+export interface DispatchShelf {
+  serialNumberId: string;
+  branchId: string;
+  branchName: string;
+  status: BranchUnitStatus;
+}
+
+export type DispatchBranchPlacementPlan =
+  | { ok: true; inserts: string[]; updates: string[] }
+  | PlanFailure;
+
+type DispatchShelfAction =
+  | { action: "insert" }
+  | { action: "update" }
+  | { action: "reject"; message: string };
+
+function dispatchShelfConflict(serialNo: string, shelf: DispatchShelf): string {
+  switch (shelf.status) {
+    case "SLD":
+      return `Serial ${serialNo} is already sold at ${shelf.branchName}.`;
+    case "DEF":
+      return `Serial ${serialNo} is defective at ${shelf.branchName}.`;
+    case "DIT":
+    case "STK":
+    case "OTHER":
+      return `Serial ${serialNo} is already at ${shelf.branchName}.`;
+    default: {
+      const unreachable: never = shelf.status;
+      return unreachable;
+    }
+  }
+}
+
+function classifyDispatchShelf(
+  deliveryBranchId: string,
+  serialNo: string,
+  shelves: readonly DispatchShelf[],
+): DispatchShelfAction {
+  for (const shelf of shelves) {
+    switch (shelf.status) {
+      case "SLD":
+      case "DEF":
+        return { action: "reject", message: dispatchShelfConflict(serialNo, shelf) };
+      case "DIT":
+      case "STK":
+      case "OTHER":
+        break;
+      default: {
+        const unreachable: never = shelf.status;
+        return unreachable;
+      }
+    }
+  }
+
+  const elsewhere = shelves.find((shelf) => shelf.branchId !== deliveryBranchId);
+  if (elsewhere) {
+    return { action: "reject", message: dispatchShelfConflict(serialNo, elsewhere) };
+  }
+
+  if (shelves.some((shelf) => shelf.branchId === deliveryBranchId)) {
+    return { action: "update" };
+  }
+
+  return { action: "insert" };
+}
+
+/**
+ * Decide how each dispatched serial lands on a branch shelf.
+ * Missing rows are inserted as in-transit. A row already on this delivery's
+ * branch is updated. Another branch, or a sold or defective unit, stops the post.
+ */
+export function planDispatchBranchPlacement(
+  deliveryBranchId: string,
+  serials: readonly DispatchSerialRef[],
+  shelves: readonly DispatchShelf[],
+): DispatchBranchPlacementPlan {
+  const inserts: string[] = [];
+  const updates: string[] = [];
+
+  for (const serial of serials) {
+    const ownShelves = shelves.filter((shelf) => shelf.serialNumberId === serial.serialNumberId);
+    const decision = classifyDispatchShelf(deliveryBranchId, serial.serialNo, ownShelves);
+    const action = decision.action;
+    switch (action) {
+      case "insert":
+        inserts.push(serial.serialNumberId);
+        break;
+      case "update":
+        updates.push(serial.serialNumberId);
+        break;
+      case "reject":
+        return { ok: false, error: decision.message };
+      default: {
+        const unreachable: never = action;
+        return unreachable;
+      }
+    }
+  }
+
+  return { ok: true, inserts, updates };
+}
+
 export function planAccept(
   delivery: DeliveryPostingView,
   requestedSerialIds: string[] | null,

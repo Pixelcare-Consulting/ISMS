@@ -1,18 +1,17 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import { TransferRequestDialog } from "@/app/(app)/logistics/_components/transfer-request-dialog";
 import {
   approveTransferAction,
   createTransferAction,
-  executeTransferAction,
   rejectTransferAction,
-  receiveTransferAction,
 } from "@/features/logistics/actions/logistics.actions";
 import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
-import { listStkSerialsForBranchAction } from "@/features/sales/actions/sales.actions";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { TableIndexCell, TableIndexHead } from "@/components/data-table";
 import {
@@ -35,12 +34,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
-import { LogisticsLoadRefsButton } from "@/app/(app)/logistics/_components/logistics-load-refs-button";
 import {
   buildLogisticsPageHref,
   LOGISTICS_TRANSFERS_PATH,
 } from "@/app/(app)/logistics/_components/logistics-paths";
-import { useLogisticsRefs } from "@/app/(app)/logistics/_components/use-logistics-refs";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
 interface StatusCodeRef {
@@ -81,15 +78,8 @@ type PendingConfirm = {
   id: string;
   transferNo: string;
   route: string;
-  fromBranchId: string;
-  action: "approve" | "reject" | "execute" | "receive";
+  action: "approve" | "reject";
 };
-
-interface SerialOption {
-  id: string;
-  serialNo: string;
-  skuCode: string;
-}
 
 export function TransfersPanel({
   transfers,
@@ -101,10 +91,8 @@ export function TransfersPanel({
   const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
-  const { branches, loadRefs } = useLogisticsRefs();
+  const [createOpen, setCreateOpen] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
-  const [executeSerials, setExecuteSerials] = useState<SerialOption[]>([]);
-  const [selectedSerialIds, setSelectedSerialIds] = useState<string[]>([]);
   const pageSize = parseTablePageSize(transfers.limit);
   const sort = (searchParams.get("sort") ?? initialSort) || "";
   const sortDir = (
@@ -152,69 +140,28 @@ export function TransfersPanel({
 
   const selection = useTableSelection(filtered.map((t) => t.id));
 
-  async function openExecuteConfirm(transfer: TransferRow) {
-    const serials = await listStkSerialsForBranchAction(transfer.fromBranch.id);
-    setExecuteSerials(serials);
-    setSelectedSerialIds(serials.slice(0, 1).map((s) => s.id));
-    setPendingConfirm({
-      id: transfer.id,
-      transferNo: transfer.transferNo,
-      route: `${transfer.fromBranch.name} → ${transfer.toBranch.name}`,
-      fromBranchId: transfer.fromBranch.id,
-      action: "execute",
-    });
-  }
-
   function confirmPendingAction() {
     if (!pendingConfirm) return;
     startTransition(async () => {
-      if (pendingConfirm.action === "approve") {
-        await approveTransferAction(pendingConfirm.id);
-        toast.success("Transfer endorsed by TL");
-      } else if (pendingConfirm.action === "reject") {
-        await rejectTransferAction(pendingConfirm.id);
-        toast.success("Transfer rejected");
-      } else if (pendingConfirm.action === "execute") {
-        const result = await executeTransferAction(pendingConfirm.id, {
-          serialNumberIds: selectedSerialIds,
-        });
-        if (result.error) {
-          toast.error(result.error);
-          return;
-        }
-        toast.success("Transfer dispatched — in transit");
-      } else {
-        const result = await receiveTransferAction(pendingConfirm.id);
-        if (result.error) {
-          toast.error(result.error);
-          return;
-        }
-        toast.success("Transfer received — stock updated");
+      const result =
+        pendingConfirm.action === "approve"
+          ? await approveTransferAction(pendingConfirm.id)
+          : await rejectTransferAction(pendingConfirm.id);
+      if ("error" in result) {
+        toast.error(result.error);
+        return;
       }
+      toast.success(pendingConfirm.action === "approve" ? "Transfer approved" : "Transfer rejected");
       setPendingConfirm(null);
-      setExecuteSerials([]);
-      setSelectedSerialIds([]);
       router.refresh();
     });
   }
 
-  const confirmTitle =
-    pendingConfirm?.action === "approve"
-      ? "Approve transfer?"
-      : pendingConfirm?.action === "reject"
-        ? "Reject transfer?"
-      : pendingConfirm?.action === "execute"
-        ? "Execute transfer?"
-        : "Receive transfer?";
-
+  const confirmTitle = pendingConfirm?.action === "reject" ? "Reject transfer?" : "Approve transfer?";
   const confirmDescription =
-    pendingConfirm?.action === "approve"
-      ? "Team Lead approval routes the request to the releasing branch."
-      : pendingConfirm?.action === "reject"
-        ? "Rejected transfer requests are closed and excluded from dispatch."
-      : pendingConfirm?.action === "execute"
-        ? "Logistics will mark units in transit after serial selection at the releasing branch."
-        : "Receiving branch confirms arrival and updates stock.";
+    pendingConfirm?.action === "reject"
+      ? "Rejected requests release only the units reserved on this transfer."
+      : "Team Lead approval keeps the units reserved and sends the request to the releasing branch. Stock at the receiving branch does not increase.";
 
   return (
     <>
@@ -229,21 +176,12 @@ export function TransfersPanel({
                 {selection.selectedCount} selected
               </Button>
             ) : null}
-            <LogisticsLoadRefsButton onClick={loadRefs} />
-          {capabilities.canCreate && branches.length >= 2 ? (
+          {capabilities.canCreate ? (
             <Button
               size="sm"
               className="w-full sm:w-auto"
               disabled={pending}
-              onClick={() =>
-                startTransition(async () => {
-                  await createTransferAction({
-                    fromBranchId: branches[0].id,
-                    toBranchId: branches[1].id,
-                  });
-                  router.refresh();
-                })
-              }
+              onClick={() => setCreateOpen(true)}
             >
               New transfer request
             </Button>
@@ -316,7 +254,11 @@ export function TransfersPanel({
                   <TableIndexCell
                     index={(transfers.page - 1) * transfers.limit + index + 1}
                   />
-                  <TableCell>{t.transferNo}</TableCell>
+                  <TableCell>
+                    <Link href={`/logistics/transfers/${t.id}`} className="font-medium hover:underline">
+                      {t.transferNo}
+                    </Link>
+                  </TableCell>
                   <TableCell>
                     {t.fromBranch.name} → {t.toBranch.name}
                   </TableCell>
@@ -339,7 +281,6 @@ export function TransfersPanel({
                             id: t.id,
                             transferNo: t.transferNo,
                             route: `${t.fromBranch.name} → ${t.toBranch.name}`,
-                            fromBranchId: t.fromBranch.id,
                             action: "approve",
                           })
                         }
@@ -358,7 +299,6 @@ export function TransfersPanel({
                             id: t.id,
                             transferNo: t.transferNo,
                             route: `${t.fromBranch.name} → ${t.toBranch.name}`,
-                            fromBranchId: t.fromBranch.id,
                             action: "reject",
                           })
                         }
@@ -366,35 +306,9 @@ export function TransfersPanel({
                         Reject
                       </Button>
                     ) : null}
-                    {["approved", "for_transfer"].includes(t.statusCode.code) &&
-                    capabilities.canExecuteTransfer ? (
-                      <Button
-                        size="sm"
-                        disabled={pending}
-                        onClick={() => openExecuteConfirm(t)}
-                      >
-                        Execute
-                      </Button>
-                    ) : null}
-                    {t.statusCode.code === "in_transit" &&
-                    capabilities.canReceiveTransfer ? (
-                      <Button
-                        size="sm"
-                        disabled={pending}
-                        className="bg-emerald-600 text-white hover:bg-emerald-700"
-                        onClick={() =>
-                          setPendingConfirm({
-                            id: t.id,
-                            transferNo: t.transferNo,
-                            route: `${t.fromBranch.name} → ${t.toBranch.name}`,
-                            fromBranchId: t.fromBranch.id,
-                            action: "receive",
-                          })
-                        }
-                      >
-                        Receive
-                      </Button>
-                    ) : null}
+                    <Button size="sm" variant="outline" asChild>
+                      <Link href={`/logistics/transfers/${t.id}`}>Open</Link>
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}
@@ -424,42 +338,10 @@ export function TransfersPanel({
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          {pendingConfirm?.action === "execute" ? (
-            <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border p-2">
-              {executeSerials.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No STK serials at source branch.
-                </p>
-              ) : (
-                executeSerials.map((s) => (
-                  <label
-                    key={s.id}
-                    className="flex items-center gap-2 text-sm"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedSerialIds.includes(s.id)}
-                      onChange={(e) => {
-                        setSelectedSerialIds((prev) =>
-                          e.target.checked
-                            ? [...prev, s.id]
-                            : prev.filter((id) => id !== s.id),
-                        );
-                      }}
-                    />
-                    {s.serialNo} · {s.skuCode}
-                  </label>
-                ))
-              )}
-            </div>
-          ) : null}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              disabled={
-                pending ||
-                (pendingConfirm?.action === "execute" && selectedSerialIds.length === 0)
-              }
+              disabled={pending}
               onClick={(event) => {
                 event.preventDefault();
                 confirmPendingAction();
@@ -470,6 +352,12 @@ export function TransfersPanel({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <TransferRequestDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onSubmit={createTransferAction}
+        onCreated={() => router.refresh()}
+      />
     </>
   );
 }

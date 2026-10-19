@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
+import { cn } from "@/utils/cn";
 
 /** How many page number buttons to show around the current page. */
 const PAGE_WINDOW_SIZE = 6;
@@ -23,6 +24,8 @@ interface TablePaginationProps {
   page?: number;
   totalPages?: number;
   label?: string;
+  /** Extra classes on each page control. Defaults leave existing tables unchanged. */
+  buttonClassName?: string;
 }
 
 /**
@@ -54,20 +57,24 @@ function PaginationControl({
   isCurrent = false,
   buildHref,
   onPageChange,
+  buttonClassName,
   children,
 }: {
   page: number;
   isCurrent?: boolean;
   buildHref?: (page: number) => string;
   onPageChange?: (page: number) => void;
+  buttonClassName?: string;
   children: ReactNode;
 }) {
+  const className = cn("min-w-8 px-2.5", buttonClassName);
+
   if (isCurrent) {
     return (
       <Button
         variant="default"
         size="sm"
-        className="min-w-8 px-2.5"
+        className={className}
         aria-current="page"
       >
         {children}
@@ -80,7 +87,7 @@ function PaginationControl({
       <Button
         variant="outline"
         size="sm"
-        className="min-w-8 px-2.5"
+        className={className}
         type="button"
         onClick={() => onPageChange(page)}
       >
@@ -94,7 +101,7 @@ function PaginationControl({
   }
 
   return (
-    <Button variant="outline" size="sm" className="min-w-8 px-2.5" asChild>
+    <Button variant="outline" size="sm" className={className} asChild>
       <Link href={buildHref(page)}>{children}</Link>
     </Button>
   );
@@ -113,6 +120,7 @@ export function TablePagination({
   page,
   totalPages,
   label = "item",
+  buttonClassName,
 }: TablePaginationProps) {
   const resolvedTotal = meta?.total ?? total ?? 0;
   const resolvedPage = meta?.page ?? page ?? 1;
@@ -137,7 +145,12 @@ export function TablePagination({
       </span>
       <div className="flex flex-wrap items-center gap-1.5">
         {showFirst ? (
-          <PaginationControl page={1} buildHref={buildHref} onPageChange={onPageChange}>
+          <PaginationControl
+            page={1}
+            buildHref={buildHref}
+            onPageChange={onPageChange}
+            buttonClassName={buttonClassName}
+          >
             First
           </PaginationControl>
         ) : null}
@@ -146,6 +159,7 @@ export function TablePagination({
             page={resolvedPage - 1}
             buildHref={buildHref}
             onPageChange={onPageChange}
+            buttonClassName={buttonClassName}
           >
             Previous
           </PaginationControl>
@@ -158,6 +172,7 @@ export function TablePagination({
             isCurrent={pageNumber === resolvedPage}
             buildHref={buildHref}
             onPageChange={onPageChange}
+            buttonClassName={buttonClassName}
           >
             {pageNumber}
           </PaginationControl>
@@ -168,6 +183,7 @@ export function TablePagination({
             page={resolvedPage + 1}
             buildHref={buildHref}
             onPageChange={onPageChange}
+            buttonClassName={buttonClassName}
           >
             Next
           </PaginationControl>
@@ -177,6 +193,7 @@ export function TablePagination({
             page={resolvedTotalPages}
             buildHref={buildHref}
             onPageChange={onPageChange}
+            buttonClassName={buttonClassName}
           >
             Last
           </PaginationControl>

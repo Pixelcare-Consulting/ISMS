@@ -6,6 +6,7 @@ import {
   assertExclusiveClaim,
   planAccept,
   planDispatch,
+  planDispatchBranchPlacement,
   planReject,
   selectDispatchCandidates,
   type BranchUnitStatus,
@@ -239,6 +240,40 @@ export const deliveryPostingService = {
         "This delivery has already been dispatched",
       );
 
+      const moveIds = plan.moves.map((move) => move.serialNumberId);
+      const [serialRows, shelfRows] = await Promise.all([
+        tx.serialNumber.findMany({
+          where: { tenantId: input.tenantId, id: { in: moveIds } },
+          select: { id: true, serialNo: true },
+        }),
+        tx.branchInventory.findMany({
+          where: { tenantId: input.tenantId, serialNumberId: { in: moveIds } },
+          select: {
+            serialNumberId: true,
+            branchId: true,
+            branch: { select: { name: true } },
+            statusCode: { select: { code: true } },
+          },
+        }),
+      ]);
+      const serialNoById = new Map(serialRows.map((row) => [row.id, row.serialNo]));
+      const placement = planDispatchBranchPlacement(
+        preview.branchId,
+        moveIds.map((serialNumberId) => ({
+          serialNumberId,
+          serialNo: serialNoById.get(serialNumberId) ?? serialNumberId,
+        })),
+        shelfRows.map((row) => ({
+          serialNumberId: row.serialNumberId,
+          branchId: row.branchId,
+          branchName: row.branch.name,
+          status: asBranchStatus(row.statusCode.code) ?? "OTHER",
+        })),
+      );
+      if (!placement.ok) {
+        throw new Error(placement.error);
+      }
+
       const removed = await tx.warehouseInventory.deleteMany({
         where: {
           tenantId: input.tenantId,
@@ -252,15 +287,33 @@ export const deliveryPostingService = {
         "One or more serials are missing, already allocated, or not in that warehouse",
       );
 
-      await tx.branchInventory.createMany({
-        data: plan.moves.map((move) => ({
-          tenantId: input.tenantId,
-          branchId: preview.branchId,
-          serialNumberId: move.serialNumberId,
-          statusCodeId: ditCodeId,
-          updatedById: input.userId,
-        })),
-      });
+      if (placement.inserts.length > 0) {
+        await tx.branchInventory.createMany({
+          data: placement.inserts.map((serialNumberId) => ({
+            tenantId: input.tenantId,
+            branchId: preview.branchId,
+            serialNumberId,
+            statusCodeId: ditCodeId,
+            updatedById: input.userId,
+          })),
+        });
+      }
+
+      if (placement.updates.length > 0) {
+        const updated = await tx.branchInventory.updateMany({
+          where: {
+            tenantId: input.tenantId,
+            branchId: preview.branchId,
+            serialNumberId: { in: placement.updates },
+          },
+          data: { statusCodeId: ditCodeId, updatedById: input.userId },
+        });
+        assertExclusiveClaim(
+          updated.count,
+          placement.updates.length,
+          "One or more serials are no longer on this branch",
+        );
+      }
 
       await tx.branchDeliveryLine.createMany({
         data: plan.moves.map((move) => ({

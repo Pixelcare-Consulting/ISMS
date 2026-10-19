@@ -3,11 +3,13 @@ import { HelpSupportPortal } from "@/app/(app)/help/_components/help-support-por
 import { HelpAssistPanel } from "@/features/ai/components/help-assist-panel";
 import { canUseAiAssist } from "@/features/ai/constants/ai-permissions";
 import { isAiConfigured } from "@/features/ai/lib/provider";
+import { readAiAssistantGate } from "@/features/ai/services/assistant-policy.service";
 import { requireAuth } from "@/lib/auth/permissions";
 
 export default async function HelpPage() {
   const session = await requireAuth();
   const showAssist = canUseAiAssist(session.user.permissions);
+  const assistantOn = (await readAiAssistantGate(session.user.tenantId)).ok;
 
   return (
     <div className="space-y-6">
@@ -15,7 +17,7 @@ export default async function HelpPage() {
         title="Help & Support"
         description="Workflow guides, FAQs, and quick links for ISMS."
       />
-      {showAssist ? <HelpAssistPanel configured={isAiConfigured()} /> : null}
+      {showAssist ? <HelpAssistPanel configured={isAiConfigured() && assistantOn} /> : null}
       <HelpSupportPortal />
     </div>
   );

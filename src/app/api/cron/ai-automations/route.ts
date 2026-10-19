@@ -30,9 +30,8 @@ export async function GET(request: Request) {
   try {
     const outcomes = await runDueAiAutomations(new Date());
     return NextResponse.json({ ranAt: new Date().toISOString(), outcomes });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    logger.error({ err: message }, "ai automations cron failed");
-    return NextResponse.json({ error: message }, { status: 500 });
+  } catch {
+    logger.error({ event: "ai.automations.cron.failed" }, "ai automations cron failed");
+    return NextResponse.json({ error: "The automation run could not finish." }, { status: 500 });
   }
 }

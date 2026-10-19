@@ -7,11 +7,11 @@ import {
 } from "@/features/pixelcare-ai/constants/permissions";
 
 describe("pixelcare-ai access", () => {
-  it("is always enabled (no kill switch)", () => {
-    expect(isPixelcareAiEnabled()).toBe(true);
-    expect(isPixelcareAiEnabled("false")).toBe(true);
-    expect(isPixelcareAiEnabled("true")).toBe(true);
-    expect(isPixelcareAiEnabled(undefined)).toBe(true);
+  it("does not treat an env flag as turning the assistant on", () => {
+    expect(isPixelcareAiEnabled()).toBe(false);
+    expect(isPixelcareAiEnabled("false")).toBe(false);
+    expect(isPixelcareAiEnabled("true")).toBe(false);
+    expect(isPixelcareAiEnabled(undefined)).toBe(false);
   });
 
   it("allows any authenticated user when allowlist is empty", () => {

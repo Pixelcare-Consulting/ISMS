@@ -66,6 +66,280 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.74.4",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T19:50:00+08:00",
+    title: "Easier Branch Inventory lists",
+    highlights: [
+      "Branch Inventory groups are easier to scan.",
+      "Serial lists no longer repeat the branch and model already shown above them.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Branch Inventory groups are easier to scan, and serial lists no longer repeat the branch and model already shown above them.",
+      },
+    ],
+  },
+  {
+    version: "0.74.3",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T19:15:00+08:00",
+    title: "Finden icon in the browser",
+    highlights: [
+      "The browser tab, bookmarks, and phone home screen show the Finden icon.",
+      "Product lists and the dashboard open faster when several people use them at the same time.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "The browser tab, bookmarks, and phone home screen show the Finden icon.",
+      },
+      {
+        type: "fix",
+        description:
+          "Product lists and the dashboard open faster. When several people open them at the same time, they share one load instead of each person waiting on their own.",
+      },
+    ],
+  },
+  {
+    version: "0.74.2",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T17:40:00+08:00",
+    title: "Document number on a serial log",
+    highlights: [
+      "A delivery, return, replacement, defect, or status update keeps its document number on the serial log.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Serial number logs keep the document reference on a delivery, return, replacement, defect, status update, and similar movements. The reference is the document number, with the full details underneath. A status update no longer shows the branch code as the reference. A transfer, sale, pull-out, or count is not listed twice.",
+      },
+    ],
+  },
+  {
+    version: "0.74.1",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T17:25:00+08:00",
+    title: "Branch and model amount on sales",
+    highlights: [
+      "The sales list shows the branch and the alternate branch.",
+      "The monthly sale amount, and the top-branch ranking that uses it, uses the model amount.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "The sales list shows the branch and the alternate branch. If no alternate was set, the alternate column repeats the sold branch.",
+      },
+      {
+        type: "fix",
+        description:
+          "The sales dashboard sale amount for the month, and the top-branch ranking that uses that amount, uses the model amount. A line with no model amount still uses its sale amount.",
+      },
+    ],
+  },
+  {
+    version: "0.74.0",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T17:15:00+08:00",
+    title: "Upload by the branch name",
+    highlights: [
+      "Planogram, branch quota, and Planning & Forecast uploads match the branch name.",
+      "A planogram upload includes Shelf max.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Planogram, branch quota, and Planning & Forecast uploads match the branch name instead of the branch code. A name that matches more than one branch is rejected. Downloaded templates use the branch name. A file that still uses the branch code will not import.",
+      },
+      {
+        type: "improvement",
+        description:
+          "A planogram upload includes Shelf max, a whole number of at least 1, and saves it on new and existing rows.",
+      },
+    ],
+  },
+  {
+    version: "0.73.0",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T17:00:00+08:00",
+    title: "Physical count on the count days",
+    highlights: [
+      "A Product Specialist can upload a physical count only on the count days.",
+      "Inventory Report detail shows the same remarks as the count sheet.",
+      "A serial that is not in the catalog still appears on the count and variance sheets.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "A Product Specialist can upload a physical count only on the 14th, 15th, and 16th, the last three days of the month, and the 1st of the next month. That 1st closes the previous month. There is no half-month upload limit. Any other day blocks the upload, including a request that was already approved. Team Leader uploads stay as they are.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Inventory Report detail has a remarks column after aging. It uses the same wording as the count sheet: IN FILE AND IN STK, IN FILE NOT IN STK, and STK NOT IN FILE. The remark is blank when that serial has no completed count. Older remarks show as those same phrases.",
+      },
+      {
+        type: "fix",
+        description:
+          "A serial that was not in the catalog still shows on the filled count sheet and the variance sheet, with a blank model and the remark IN FILE NOT IN STK. No new serial is added to the catalog.",
+      },
+    ],
+  },
+  {
+    version: "0.72.2",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T16:50:00+08:00",
+    title: "Current statuses on a branch row",
+    highlights: [
+      "A branch or model row shows only the statuses that currently have units.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "On Branch Inventory, a branch or model row shows only the statuses that currently have units, such as stock or defective, plus the total. Statuses with nothing on that row stay off the row. The summary cards at the top still show every status.",
+      },
+    ],
+  },
+  {
+    version: "0.72.1",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T16:30:00+08:00",
+    title: "See where a unit's story starts",
+    highlights: [
+      "A serial's lifecycle timeline reads from the first event down to where the unit is now, with earlier steps faded.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "On a serial's lifecycle timeline, the oldest event is at the top and marked Start. The latest event is at the bottom and marked Current, in color. Earlier steps are gray so you can see where the unit is today.",
+      },
+    ],
+  },
+  {
+    version: "0.72.0",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T15:45:00+08:00",
+    title: "Send a transfer and a pull-out",
+    highlights: [
+      "Request a transfer, approve it, send it, and receive the units that arrived.",
+      "Request a pull-out through to in transit. Receiving those units at the warehouse is not in this update.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "You can request a transfer between branches, approve it, send the units, and receive only the serials that arrived. The rest stay in transit until they do. A defective unit stays defective when it is received.",
+      },
+      {
+        type: "feature",
+        description:
+          "You can request a pull-out, approve it, save the logistics list, and send it. The units stay in transit at the branch. Warehouse receipt is not in this update.",
+      },
+    ],
+  },
+  {
+    version: "0.71.2",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T14:35:00+08:00",
+    audience: "internal",
+    title: "Ask the assistant on this server",
+    highlights: [
+      "You can ask the assistant again on this server without extra setup.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Questions go through again on a single server. The same request limits still apply.",
+      },
+    ],
+  },
+  {
+    version: "0.71.1",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T14:25:00+08:00",
+    audience: "internal",
+    title: "Clearer assistant messages",
+    highlights: [
+      "If the assistant cannot take a question, you see a short sentence instead of a code error.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "A failed question shows a short sentence, including when the assistant is turned off or cannot take questions right now.",
+      },
+    ],
+  },
+  {
+    version: "0.71.0",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T14:00:00+08:00",
+    audience: "internal",
+    title: "Turn the assistant on for your company",
+    highlights: [
+      "The assistant stays off until it is turned on for the company.",
+      "A replenishment order is created only after you press Confirm order.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "The assistant stays off until it is turned on for the company. Company settings does not show that switch.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The assistant keeps to the stores and records you can already open, and an order is created only after you confirm that same proposal.",
+      },
+      {
+        type: "fix",
+        description: "The assistant no longer runs when it has not been turned on.",
+      },
+    ],
+  },
+  {
+    version: "0.70.5",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T11:00:00+08:00",
+    title: "Dispatch a serial already at the branch",
+    highlights: [
+      "A warehouse serial that is already listed at the destination branch can be dispatched.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Dispatch no longer stops when that serial is already on the branch. If it is at a different branch, sold, or defective, the message names the serial and where it is.",
+      },
+    ],
+  },
+  {
+    version: "0.70.4",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T10:45:00+08:00",
+    title: "Edit an area of responsibility",
+    highlights: [
+      "Change someone’s branch assignments without removing them first.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "On Areas of responsibility, use Edit to update a person’s branches and other locations. Assignments you keep stay in place.",
+      },
+    ],
+  },
+  {
     version: "0.70.3",
     date: "2026-10-16",
     releasedAt: "2026-10-16T10:30:00+08:00",

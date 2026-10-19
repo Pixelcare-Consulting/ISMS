@@ -34,6 +34,7 @@ describe("inventoryGroupRepository.listBranchGroups", () => {
           def: 1,
           rsv: 0,
           pending_inspection: 0,
+          status_counts: { DIT: 1, STK: 4, SLD: 2, DEF: 1, FW: 0 },
         },
       ])
       .mockResolvedValueOnce([{ count: 1 }]);
@@ -43,6 +44,13 @@ describe("inventoryGroupRepository.listBranchGroups", () => {
       ["b1"],
       { page: 1, limit: 10 },
       { q: "SN-001" },
+      [
+        { id: "dit", code: "DIT" },
+        { id: "stk", code: "STK" },
+        { id: "sld", code: "SLD" },
+        { id: "def", code: "DEF" },
+        { id: "fw", code: "FW" },
+      ],
     );
 
     expect(page.total).toBe(1);
@@ -54,6 +62,7 @@ describe("inventoryGroupRepository.listBranchGroups", () => {
       defective: 1,
       reserved: 0,
       pendingInspection: 0,
+      statusCounts: { DIT: 1, STK: 4, SLD: 2, DEF: 1, FW: 0 },
       total: 5,
     });
     expect(queryRaw).toHaveBeenCalledTimes(2);
@@ -80,6 +89,16 @@ describe("inventoryGroupRepository.listGroupSerials", () => {
       ["b1"],
       { page: 1, limit: 25 },
       { branchId: "b1", modelId: "m1", q: "X" },
+      [
+        { id: "dit", code: "DIT" },
+        { id: "stk", code: "STK" },
+        { id: "sld", code: "SLD" },
+        { id: "ofs", code: "OFS" },
+        { id: "rsv", code: "RSV" },
+        { id: "def", code: "DEF" },
+        { id: "fpo", code: "FPO" },
+        { id: "fw", code: "FW" },
+      ],
     );
 
     expect(findMany).toHaveBeenCalledWith(
@@ -89,7 +108,9 @@ describe("inventoryGroupRepository.listGroupSerials", () => {
             expect.objectContaining({
               branchId: "b1",
               serialNumber: expect.objectContaining({ modelId: "m1" }),
-              statusCode: { code: { in: ["STK", "DEF", "RSV"] } },
+              statusCodeId: {
+                in: ["dit", "stk", "sld", "ofs", "rsv", "def", "fpo", "fw"],
+              },
             }),
           ]),
         }),

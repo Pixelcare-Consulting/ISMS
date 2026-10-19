@@ -30,7 +30,7 @@ export default async function TransfersPage({ searchParams }: TransfersPageProps
   return (
     <div className="space-y-4">
       <SectionPageLead>
-        PS requests → TL approves → logistics executes → receiving branch accepts.
+        Request a transfer, approve it, send it, then receive the units that arrived.
       </SectionPageLead>
       <TransferKpisStrip kpis={kpis} />
       <TransfersPanel

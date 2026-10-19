@@ -1,7 +1,4 @@
-import {
-  DEFAULT_PS_MONTHLY_FREE_SLOTS,
-  DEFAULT_TL_MONTHLY_FREE_SLOTS,
-} from "@/features/monthly-sir/constants/monthly-sir";
+import { DEFAULT_TL_MONTHLY_FREE_SLOTS } from "@/features/monthly-sir/constants/monthly-sir";
 import { manilaMonthWindow } from "@/features/orders/utils/manila-calendar";
 
 export type PcountAllowanceRole = "unlimited" | "tl" | "ps" | "none";
@@ -28,13 +25,13 @@ export interface PcountUploadAllowance {
   mustRequest: boolean;
   /** Free slots still usable today (0 when request-only). Null when unlimited. */
   slotsRemainingToday: number | null;
-  /** Free slots left in the Manila month (unused halves for PS). Null when unlimited. */
+  /** Free slots left in the Manila month. Null when unlimited or when PS has no slot cap. */
   slotsRemainingMonth: number | null;
-  /** Monthly free-slot budget for this role. Null when unlimited / none. */
+  /** Monthly free-slot budget for this role. Null when unlimited, none, or PS. */
   slotsTotalMonth: number | null;
-  /** Active PS half when role is ps; otherwise null. */
+  /** Active PS half when role is ps; otherwise null. PS no longer uses halves. */
   activeHalf: PcountHalfWindow | null;
-  /** End-user guidance (wrong half-window, exhausted, etc.). */
+  /** End-user guidance (closed calendar day, exhausted TL slot, etc.). */
   message: string | null;
 }
 
@@ -47,28 +44,71 @@ export interface ResolvePcountUploadAllowanceInput {
    * Does not include request+approval extras.
    */
   tlFreeStartsInMonth?: number;
-  /** Free/direct Starts with `createdAt` in days 1–15 (PS). */
+  /** Manila calendar year. Required for the PS last-3-days check (February length). */
+  manilaYear?: number;
+  /** Manila calendar month (1–12). Required with `manilaYear` for PS. */
+  manilaMonth?: number;
+  /** Free/direct Starts with `createdAt` in days 1–15 (unused; PS has no slot cap). */
   psFreeStartsH1?: number;
-  /** Free/direct Starts with `createdAt` in days 16–end (PS). */
+  /** Free/direct Starts with `createdAt` in days 16–end (unused; PS has no slot cap). */
   psFreeStartsH2?: number;
   /** Tenant TL monthly free-slot budget (defaults to 1). */
   tlMonthlyFreeSlots?: number;
-  /** Tenant PS monthly free-slot budget (defaults to 2; split across halves). */
+  /** Unused for the PS calendar gate. Kept so older callers still type-check. */
   psMonthlyFreeSlots?: number;
 }
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-/** Split a PS monthly budget across H1 (ceil) and H2 (floor). */
-export function splitPsMonthlyFreeSlots(monthlyFreeSlots: number): {
-  h1Quota: number;
-  h2Quota: number;
-} {
-  const total = Math.max(0, Math.floor(monthlyFreeSlots));
-  return {
-    h1Quota: Math.ceil(total / 2),
-    h2Quota: Math.floor(total / 2),
-  };
+export const PS_PCOUNT_UPLOAD_CLOSED_MESSAGE =
+  "P-COUNT upload is closed today, even when a request is already approved. Product Specialists can upload on the 14th, 15th, 16th, the last 3 days of the month, and the 1st of the next month.";
+
+/** Days in a Gregorian month. `month` is 1–12. Leap years change February. */
+export function manilaDaysInMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+/**
+ * PS may upload on the 14th–16th, the last 3 days of the month, and the 1st.
+ * The 1st closes the previous month.
+ */
+export function isPsPcountUploadDay(
+  year: number,
+  month: number,
+  day: number,
+): boolean {
+  if (day === 1 || day === 14 || day === 15 || day === 16) return true;
+  const last = manilaDaysInMonth(year, month);
+  return day >= last - 2 && day <= last;
+}
+
+export function psPcountUploadOpenMessage(day: number): string {
+  if (day === 1) {
+    return "You can upload a P-COUNT today. The 1st closes the previous month.";
+  }
+  return "You can upload a P-COUNT today.";
+}
+
+/** Throws when a PS user tries to upload outside the Manila calendar window. */
+export function assertPsPcountUploadAllowed(input: {
+  role: PcountAllowanceRole;
+  year: number;
+  month: number;
+  day: number;
+}): void {
+  switch (input.role) {
+    case "unlimited":
+    case "tl":
+    case "none":
+      return;
+    case "ps":
+      if (isPsPcountUploadDay(input.year, input.month, input.day)) return;
+      throw new Error(PS_PCOUNT_UPLOAD_CLOSED_MESSAGE);
+    default: {
+      const _exhaustive: never = input.role;
+      throw new Error(`Unknown P-COUNT role: ${String(_exhaustive)}`);
+    }
+  }
 }
 
 function sanitizeSlotBudget(value: number | undefined, fallback: number): number {
@@ -76,7 +116,7 @@ function sanitizeSlotBudget(value: number | undefined, fallback: number): number
   return Math.max(0, Math.floor(value));
 }
 
-/** Resolve Manila month + PS half-month windows for allowance checks. */
+/** Resolve Manila month bounds. Half-month instants are unused by the PS calendar gate. */
 export function pcountMonthWindows(at: Date = new Date()): PcountMonthWindows {
   const { year, month, day, start, endExclusive } = manilaMonthWindow(at);
   const h1Start = start;
@@ -183,50 +223,43 @@ export function resolvePcountUploadAllowance(
     };
   }
 
-  // role === "ps"
-  const monthlyBudget = sanitizeSlotBudget(
-    input.psMonthlyFreeSlots,
-    DEFAULT_PS_MONTHLY_FREE_SLOTS,
-  );
-  const { h1Quota, h2Quota } = splitPsMonthlyFreeSlots(monthlyBudget);
-  const usedH1 = Math.max(0, input.psFreeStartsH1 ?? 0);
-  const usedH2 = Math.max(0, input.psFreeStartsH2 ?? 0);
-  const h1Remaining = Math.max(0, h1Quota - usedH1);
-  const h2Remaining = Math.max(0, h2Quota - usedH2);
-  const slotsRemainingMonth = h1Remaining + h2Remaining;
-  const activeHalf: PcountHalfWindow = manilaDay <= 15 ? "h1" : "h2";
-  const activeRemaining = activeHalf === "h1" ? h1Remaining : h2Remaining;
-  const otherRemaining = activeHalf === "h1" ? h2Remaining : h1Remaining;
-  const canDirectUpload = activeRemaining > 0;
+  if (role !== "ps") {
+    const _exhaustive: never = role;
+    return _exhaustive;
+  }
 
-  let message: string;
-  if (canDirectUpload) {
-    message =
-      activeHalf === "h1"
-        ? `${activeRemaining} free upload${activeRemaining === 1 ? "" : "s"} in days 1–15.`
-        : `${activeRemaining} free upload${activeRemaining === 1 ? "" : "s"} in days 16–end.`;
-    if (otherRemaining > 0 && activeHalf === "h1") {
-      message += " More open on the 16th.";
-    }
-  } else if (otherRemaining > 0) {
-    message =
-      activeHalf === "h1"
-        ? "Days 1–15 used. Next free slot opens on the 16th, or request an extra now."
-        : "Days 16–end used. Request an extra upload.";
-  } else {
-    message = "Both free uploads used. Request an extra upload.";
+  // Calendar days only. No half-month slot cap.
+  const year = input.manilaYear;
+  const month = input.manilaMonth;
+  const uploadOpen =
+    typeof year === "number" && typeof month === "number"
+      ? isPsPcountUploadDay(year, month, manilaDay)
+      : manilaDay === 1 || manilaDay === 14 || manilaDay === 15 || manilaDay === 16;
+
+  if (!uploadOpen) {
+    return {
+      role: "ps",
+      unlimited: false,
+      canDirectUpload: false,
+      mustRequest: true,
+      slotsRemainingToday: 0,
+      slotsRemainingMonth: null,
+      slotsTotalMonth: null,
+      activeHalf: null,
+      message: PS_PCOUNT_UPLOAD_CLOSED_MESSAGE,
+    };
   }
 
   return {
     role: "ps",
     unlimited: false,
-    canDirectUpload,
-    mustRequest: !canDirectUpload,
-    slotsRemainingToday: activeRemaining,
-    slotsRemainingMonth,
-    slotsTotalMonth: monthlyBudget,
-    activeHalf,
-    message,
+    canDirectUpload: true,
+    mustRequest: false,
+    slotsRemainingToday: null,
+    slotsRemainingMonth: null,
+    slotsTotalMonth: null,
+    activeHalf: null,
+    message: psPcountUploadOpenMessage(manilaDay),
   };
 }
 

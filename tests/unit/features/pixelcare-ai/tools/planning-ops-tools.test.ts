@@ -141,6 +141,7 @@ import { branchQuotaService } from "@/features/branch-quotas/services/branch-quo
 import { demandPlanningRunService } from "@/features/demand-planning/services/demand-planning-run.service";
 import { buildPlanningOpsTools } from "@/features/pixelcare-ai/tools/planning-ops-tools";
 import type { AppSession } from "@/lib/auth/session";
+import { prisma } from "@/lib/database/client";
 
 function sessionWithPermissions(permissions: string[]): AppSession {
   return {
@@ -220,6 +221,56 @@ describe("planning-ops tools gates", () => {
     expect(branchQuotaService.list).toHaveBeenCalled();
     expect(result.quotas).toHaveLength(1);
     expect(result.quotas[0]?.branchId).toBe("clbranchabp00000000000001");
+  });
+
+  it("drops demand-planning branches outside the user area", async () => {
+    (demandPlanningRunService.getRun as jest.Mock).mockResolvedValue({
+      id: "run-1",
+      documentNumber: "DP-1",
+      version: 1,
+      status: "generated",
+      name: "Oct",
+      periodId: "period-1",
+      periodLabel: "2026-10",
+      createdAt: "2026-10-01T00:00:00.000Z",
+      releasedAt: null,
+      branchCount: 2,
+      branches: [
+        {
+          id: "row-1",
+          branchId: "clbranchabp00000000000001",
+          sapCode: "ABP001",
+          name: "ABENSON",
+          planStatus: "planned",
+        },
+        {
+          id: "row-2",
+          branchId: "clbranchxyz00000000000002",
+          sapCode: "XYZ999",
+          name: "Other Store",
+          planStatus: "planned",
+        },
+      ],
+    });
+    const tools = buildPlanningOpsTools(sessionWithPermissions(["forecast.view"]));
+    const result = (await tools.getDemandPlanningRun.execute!(
+      { runId: "run-1" },
+      toolOpts("t-run"),
+    )) as { branches: Array<{ branchId: string }> };
+
+    expect(result.branches).toEqual([
+      expect.objectContaining({ branchId: "clbranchabp00000000000001" }),
+    ]);
+    expect(JSON.stringify(result)).not.toContain("XYZ999");
+  });
+
+  it("does not select customerName for return lookups", async () => {
+    const findMany = prisma.branchReturnRequest.findMany as jest.Mock;
+    findMany.mockResolvedValue([]);
+    const tools = buildPlanningOpsTools(sessionWithPermissions(["returns.view"]));
+    await tools.findReturnStatus.execute!({ query: "ATR-1" }, toolOpts("t-return"));
+    const select = findMany.mock.calls[0]?.[0]?.select as { sale?: { select?: Record<string, unknown> } };
+    expect(select?.sale?.select).not.toHaveProperty("customerName");
   });
 
   it("denies listAllocationGaps without forecast.manage / planogram.manage", async () => {

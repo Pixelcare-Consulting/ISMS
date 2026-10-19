@@ -57,6 +57,16 @@ import { cn } from "@/utils/cn";
 const XLSX_MIME =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
+function allowanceBadgeLabel(allowance: PcountUploadAllowance): string {
+  if (allowance.role === "ps") {
+    return allowance.canDirectUpload ? "Upload open today" : "Upload closed today";
+  }
+  if ((allowance.slotsRemainingToday ?? 0) > 0) {
+    return `${allowance.slotsRemainingToday} of ${allowance.slotsTotalMonth} free left`;
+  }
+  return "0 free · request needed";
+}
+
 interface MonthlySirRow {
   id: string;
   purpose: string;
@@ -162,6 +172,8 @@ export function MonthlySirPanel({
   );
   const canDirectUpload = allowanceForBranch?.canDirectUpload ?? false;
   const startMode = canDirectUpload ? "direct" : "request";
+  const psUploadClosed =
+    allowanceForBranch?.role === "ps" && !allowanceForBranch.canDirectUpload;
 
   useEffect(() => {
     if (!selectedBranchId || allowanceBranchId === selectedBranchId) return;
@@ -345,7 +357,7 @@ export function MonthlySirPanel({
       .filter((scan) => scan.status !== "duplicate")
       .map((scan) => scan.serialNo);
     if (serialNos.length === 0) {
-      toast.error("Scan at least one valid serial number");
+      toast.error("Scan at least one serial number");
       return;
     }
     setDownloadKind("scans-excel");
@@ -455,9 +467,7 @@ export function MonthlySirPanel({
             (allowanceForBranch.role === "tl" ||
               allowanceForBranch.role === "ps") ? (
               <Badge variant="outline" className="font-normal text-muted-foreground">
-                {(allowanceForBranch.slotsRemainingToday ?? 0) > 0
-                  ? `${allowanceForBranch.slotsRemainingToday} of ${allowanceForBranch.slotsTotalMonth} free left`
-                  : "0 free · request needed"}
+                {allowanceBadgeLabel(allowanceForBranch)}
               </Badge>
             ) : null}
             <Button
@@ -547,6 +557,12 @@ export function MonthlySirPanel({
                               <Button
                                 size="sm"
                                 variant="outline"
+                                disabled={psUploadClosed}
+                                title={
+                                  psUploadClosed
+                                    ? allowanceForBranch?.message ?? undefined
+                                    : undefined
+                                }
                                 onClick={() => setUploadRow(row)}
                               >
                                 Upload P-COUNT
@@ -622,9 +638,13 @@ export function MonthlySirPanel({
               {canDirectUpload ? "Upload P-COUNT" : "Request Monthly SIR"}
             </DialogTitle>
             <DialogDescription>
-              {canDirectUpload
-                ? "Start a free P-COUNT for this branch. Starting uses one free slot right away."
-                : "Submit a branch P-COUNT request for inventory approval."}
+              {allowanceForBranch?.role === "ps"
+                ? canDirectUpload
+                  ? "Start a P-COUNT for this branch. Upload is open today."
+                  : "Submit a request for approval. The file can only be uploaded on an open day."
+                : canDirectUpload
+                  ? "Start a free P-COUNT for this branch. Starting uses one free slot right away."
+                  : "Submit a branch P-COUNT request for inventory approval."}
             </DialogDescription>
           </DialogHeader>
           <SearchableSelect
@@ -641,20 +661,24 @@ export function MonthlySirPanel({
           {allowanceForBranch && !allowanceForBranch.unlimited ? (
             <div className="space-y-1.5 rounded-lg border bg-muted/30 px-3 py-3">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Slots
-              </p>
-              <p className="text-sm font-medium text-foreground">
-                {(allowanceForBranch.slotsRemainingToday ?? 0) > 0
-                  ? `${allowanceForBranch.slotsRemainingToday} remaining`
-                  : "No free slots left today"}
+                {allowanceForBranch.role === "ps" ? "Upload days" : "Slots"}
               </p>
               {allowanceForBranch.role === "ps" ? (
+                <p className="text-sm font-medium text-foreground">
+                  {allowanceForBranch.canDirectUpload
+                    ? "Upload open today"
+                    : "Upload closed today"}
+                </p>
+              ) : (
+                <p className="text-sm font-medium text-foreground">
+                  {(allowanceForBranch.slotsRemainingToday ?? 0) > 0
+                    ? `${allowanceForBranch.slotsRemainingToday} remaining`
+                    : "No free slots left today"}
+                </p>
+              )}
+              {allowanceForBranch.role === "ps" ? (
                 <p className="text-xs text-muted-foreground">
-                  This period:{" "}
-                  {allowanceForBranch.activeHalf === "h1"
-                    ? "days 1–15"
-                    : "days 16–end"}{" "}
-                  · {allowanceForBranch.slotsTotalMonth} free per month
+                  {allowanceForBranch.message}
                 </p>
               ) : null}
               {allowanceForBranch.role === "tl" ? (
@@ -663,7 +687,7 @@ export function MonthlySirPanel({
                   branch
                 </p>
               ) : null}
-              {allowanceForBranch.mustRequest ? (
+              {allowanceForBranch.role !== "ps" && allowanceForBranch.mustRequest ? (
                 <p className="text-xs font-medium text-amber-800 dark:text-amber-200">
                   Extra upload needs approval first
                 </p>
@@ -791,8 +815,9 @@ export function MonthlySirPanel({
             <DialogTitle>Scan serials</DialogTitle>
             <DialogDescription>
               Keep the cursor in the field and scan with a scanner.
-              Each Enter adds one serial. Build the Excel file, review it, then use
-              Upload P-COUNT.
+              Each Enter adds one serial. Serials that are not in the catalog
+              are still included, with a blank model. Build the Excel file,
+              review it, then use Upload P-COUNT.
             </DialogDescription>
           </DialogHeader>
           <form className="flex gap-2" onSubmit={addScan}>
@@ -887,7 +912,9 @@ export function MonthlySirPanel({
               disabled={
                 downloadKind === "scans-excel" ||
                 scans.some((scan) => scan.status === "validating") ||
-                !scans.some((scan) => scan.status === "valid")
+                !scans.some(
+                  (scan) => scan.status === "valid" || scan.status === "invalid",
+                )
               }
               onClick={buildExcelFromScans}
             >

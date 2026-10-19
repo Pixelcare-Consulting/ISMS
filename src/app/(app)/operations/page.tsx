@@ -1,6 +1,5 @@
 import {
   listDeliveriesAction,
-  listOpsBranchOptionsAction,
   listPulloutsAction,
   listTransfersAction,
 } from "@/features/ops/actions/ops.actions";
@@ -11,11 +10,10 @@ import { OpsPanel } from "@/app/(app)/operations/_components/ops-panel";
 
 export default async function OperationsPage() {
   await requirePermission("inventory.view");
-  const [deliveries, transfers, pullouts, branches] = await Promise.all([
+  const [deliveries, transfers, pullouts] = await Promise.all([
     listDeliveriesAction(),
     listTransfersAction(),
     listPulloutsAction(),
-    listOpsBranchOptionsAction(),
   ]);
 
   return (
@@ -29,7 +27,6 @@ export default async function OperationsPage() {
         deliveries={deliveries}
         transfers={transfers}
         pullouts={pullouts}
-        branches={branches}
       />
     </div>
   );

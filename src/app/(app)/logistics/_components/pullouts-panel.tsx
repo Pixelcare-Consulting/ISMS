@@ -1,18 +1,17 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import { PulloutRequestDialog } from "@/app/(app)/logistics/_components/pullout-request-dialog";
 import {
   approvePulloutTlAction,
-  completePulloutAction,
   createPulloutAction,
-  releasePulloutAction,
-  schedulePulloutAction,
+  rejectPulloutAction,
 } from "@/features/logistics/actions/logistics.actions";
 import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
-import { listStkSerialsForBranchAction } from "@/features/sales/actions/sales.actions";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { TableIndexCell, TableIndexHead } from "@/components/data-table";
 import {
@@ -24,14 +23,11 @@ import { uniqueSearchSuggestions } from "@/components/data-table/table-search-ba
 import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { SearchableSelect } from "@/components/ui/searchable-select";
 import { TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
-import { LogisticsLoadRefsButton } from "@/app/(app)/logistics/_components/logistics-load-refs-button";
 import {
   buildLogisticsPageHref,
   LOGISTICS_PICKUPS_PATH,
 } from "@/app/(app)/logistics/_components/logistics-paths";
-import { useLogisticsRefs } from "@/app/(app)/logistics/_components/use-logistics-refs";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
 interface StatusCodeRef {
@@ -78,20 +74,7 @@ export function PulloutsPanel({
   const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
-  const {
-    branches,
-    warehouses,
-    pulloutReasons,
-    selectedReasonId,
-    setSelectedReasonId,
-    loadRefs,
-  } = useLogisticsRefs();
-
-  const [selectedBranchId, setSelectedBranchId] = useState("");
-  const [pulloutSerials, setPulloutSerials] = useState<
-    { id: string; serialNo: string; skuCode: string }[]
-  >([]);
-  const [selectedPulloutSerialIds, setSelectedPulloutSerialIds] = useState<string[]>([]);
+  const [createOpen, setCreateOpen] = useState(false);
   const pageSize = parseTablePageSize(pullouts.limit);
   const sort = (searchParams.get("sort") ?? initialSort) || "";
   const sortDir = (
@@ -143,15 +126,23 @@ export function PulloutsPanel({
 
   const selection = useTableSelection(filtered.map((p) => p.id));
 
-  function runAction(action: () => Promise<unknown>, message: string) {
+  function runAction(
+    action: () => Promise<{ error: string } | { success: true }>,
+    message: string,
+  ) {
     startTransition(async () => {
-      await action();
+      const result = await action();
+      if ("error" in result) {
+        toast.error(result.error);
+        return;
+      }
       toast.success(message);
       router.refresh();
     });
   }
 
   return (
+    <>
     <GlobalDataTable
       stickyHeader
       scrollable
@@ -163,90 +154,18 @@ export function PulloutsPanel({
               {selection.selectedCount} selected
             </Button>
           ) : null}
-        {pulloutReasons.length > 0 ? (
-          <SearchableSelect
-            className="w-full sm:w-[200px]"
-            options={pulloutReasons.map((r) => ({
-              id: r.id,
-              label: `${r.name} (${r.code})`,
-            }))}
-            value={selectedReasonId}
-            onChange={setSelectedReasonId}
-            placeholder="Pull-out reason"
-            searchPlaceholder="Search reasons…"
-          />
-        ) : null}
-        <LogisticsLoadRefsButton
-          onClick={async () => {
-            await loadRefs();
-            if (branches[0]) {
-              setSelectedBranchId(branches[0].id);
-              const serials = await listStkSerialsForBranchAction(branches[0].id);
-              setPulloutSerials(serials);
-              setSelectedPulloutSerialIds(serials.slice(0, 1).map((s) => s.id));
-            }
-          }}
-        />
-        {branches.length > 0 ? (
-          <SearchableSelect
-            className="w-full sm:w-[200px]"
-            options={branches.map((b) => ({ id: b.id, label: b.name }))}
-            value={selectedBranchId || branches[0]?.id || ""}
-            onChange={async (next) => {
-              setSelectedBranchId(next);
-              const serials = await listStkSerialsForBranchAction(next);
-              setPulloutSerials(serials);
-              setSelectedPulloutSerialIds(serials.slice(0, 1).map((s) => s.id));
-            }}
-            placeholder="Branch"
-            searchPlaceholder="Search branches…"
-          />
-        ) : null}
-        {capabilities.canCreate && branches[0] && warehouses[0] ? (
+        {capabilities.canCreate ? (
           <Button
             size="sm"
             className="w-full sm:w-auto"
             disabled={pending}
-            onClick={() =>
-              runAction(
-                () =>
-                  createPulloutAction({
-                    branchId: selectedBranchId || branches[0].id,
-                    warehouseId: warehouses[0].id,
-                    reasonStatusCodeId: selectedReasonId || undefined,
-                    serialNumberIds:
-                      selectedPulloutSerialIds.length > 0
-                        ? selectedPulloutSerialIds
-                        : undefined,
-                  }),
-                "Pull-out request submitted",
-              )
-            }
+            onClick={() => setCreateOpen(true)}
           >
             New pull-out
           </Button>
         ) : null}
         </>
       }
-      banner={pulloutSerials.length > 0 ? (
-        <div className="border-b px-4 py-2 text-sm">
-          <span className="text-muted-foreground">Serials to pull out: </span>
-          {pulloutSerials.map((s) => (
-            <label key={s.id} className="mr-3 inline-flex items-center gap-1">
-              <input
-                type="checkbox"
-                checked={selectedPulloutSerialIds.includes(s.id)}
-                onChange={(e) =>
-                  setSelectedPulloutSerialIds((prev) =>
-                    e.target.checked ? [...prev, s.id] : prev.filter((id) => id !== s.id),
-                  )
-                }
-              />
-              {s.serialNo}
-            </label>
-          ))}
-        </div>
-      ) : null}
       pagination={{
         total: pullouts.total,
         page: pullouts.page,
@@ -329,7 +248,11 @@ export function PulloutsPanel({
                 <TableIndexCell
                   index={(pullouts.page - 1) * pullouts.limit + index + 1}
                 />
-                <TableCell>{p.pulloutNo}</TableCell>
+                <TableCell>
+                  <Link href={`/logistics/pickups/${p.id}`} className="font-medium hover:underline">
+                    {p.pulloutNo}
+                  </Link>
+                </TableCell>
                 <TableCell>{p.branch.name}</TableCell>
                 <TableCell>{p.warehouse.name}</TableCell>
                 <TableCell>
@@ -357,65 +280,38 @@ export function PulloutsPanel({
                       disabled={pending}
                       className="bg-amber-600 text-white hover:bg-amber-700"
                       onClick={() =>
-                        runAction(
-                          () => approvePulloutTlAction(p.id),
-                          "TL approved — for pull-out",
-                        )
+                        runAction(() => approvePulloutTlAction(p.id), "Pull-out approved")
                       }
                     >
                       TL approve
                     </Button>
                   ) : null}
-                  {p.statusCode.code === "for_pullout" &&
-                  capabilities.canSchedulePullout ? (
+                  {p.statusCode.code === "pending_tl" && capabilities.canRejectTransfer ? (
                     <Button
                       size="sm"
+                      variant="outline"
                       disabled={pending}
                       onClick={() =>
-                        runAction(
-                          () => schedulePulloutAction(p.id),
-                          "Logistics scheduled pick-up",
-                        )
+                        runAction(() => rejectPulloutAction(p.id), "Pull-out rejected")
                       }
                     >
-                      Schedule
+                      Reject
                     </Button>
                   ) : null}
-                  {p.statusCode.code === "pending_logistics" &&
-                  capabilities.canReleasePullout ? (
-                    <Button
-                      size="sm"
-                      disabled={pending}
-                      onClick={() =>
-                        runAction(
-                          () => releasePulloutAction(p.id),
-                          "Released — pull-out in transit",
-                        )
-                      }
-                    >
-                      Release
-                    </Button>
-                  ) : null}
-                  {p.statusCode.code === "in_transit" &&
-                  capabilities.canCompletePullout ? (
-                    <Button
-                      size="sm"
-                      disabled={pending}
-                      className="bg-emerald-600 text-white hover:bg-emerald-700"
-                      onClick={() =>
-                        runAction(
-                          () => completePulloutAction(p.id),
-                          "Pull-out validated and completed",
-                        )
-                      }
-                    >
-                      Complete
-                    </Button>
-                  ) : null}
+                  <Button size="sm" variant="outline" asChild>
+                    <Link href={`/logistics/pickups/${p.id}`}>Open</Link>
+                  </Button>
                 </TableCell>
               </TableRow>
             ))}
           </TableBody>
     </GlobalDataTable>
+    <PulloutRequestDialog
+      open={createOpen}
+      onOpenChange={setCreateOpen}
+      onSubmit={createPulloutAction}
+      onCreated={() => router.refresh()}
+    />
+    </>
   );
 }
