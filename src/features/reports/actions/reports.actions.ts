@@ -1,6 +1,7 @@
 "use server";
 
 import { branchService } from "@/features/branches/services/branch.service";
+import { manilaDayWindow } from "@/features/orders/utils/manila-calendar";
 import {
   INVENTORY_REPORT_ACCESS,
   REPORT_ACCESS,
@@ -49,11 +50,10 @@ export async function listProcessedOrdersReportAction(input?: {
 
 export async function listDailyStockReportAction(input: { date: string }) {
   const session = await requirePermission("reports.view");
+  const day = manilaDayWindow(input.date);
+  if (!day) return [];
   const branchIds = await resolveReportBranchIds(session);
-  return reportsService.listDailyStock(session.user.tenantId, {
-    date: new Date(input.date),
-    branchIds,
-  });
+  return reportsService.listDailyStock(session.user.tenantId, { day, branchIds });
 }
 
 export async function listTransfersReportAction(input?: { from?: string; to?: string }) {
@@ -90,13 +90,11 @@ export async function exportProcessedOrdersCsvAction(input: {
 
 export async function exportDailyStockCsvAction(input: { date: string }) {
   const session = await requireAnyPermission([...REPORT_ACCESS]);
-  if (!input.date) return { error: "Date is required" as const };
+  const day = manilaDayWindow(input.date ?? "");
+  if (!day) return { error: "Date is required" as const };
   const branchIds = await resolveReportBranchIds(session);
 
-  const csv = await dailyStockReportService.generateCsv(session.user.tenantId, {
-    date: new Date(input.date),
-    branchIds,
-  });
+  const csv = await dailyStockReportService.generateCsv(session.user.tenantId, { day, branchIds });
 
   return {
     success: true as const,

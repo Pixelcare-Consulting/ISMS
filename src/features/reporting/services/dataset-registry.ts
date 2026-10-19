@@ -19,6 +19,7 @@ import {
   TRANSFER_REPORT_ACCESS,
 } from "@/features/reports/constants/report-access";
 import { dailyStockReportService } from "@/features/reports/services/daily-stock-report.service";
+import { manilaDayWindow, manilaTodayIso } from "@/features/orders/utils/manila-calendar";
 import { buildInventoryReportRows } from "@/features/reports/services/inventory-report.service";
 import { processedOrdersReportService } from "@/features/reports/services/processed-orders-report.service";
 import { salesReportService } from "@/features/reports/services/sales-report.service";
@@ -96,10 +97,6 @@ function dateRange(params: DatasetParams) {
   };
 }
 
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 /** Maps positional rows (inventory workbook shape) onto catalog column names. */
 function rowsFromCells(key: DatasetKey, cells: (string | number | null | undefined)[][]): DatasetRow[] {
   const columns = DATASET_CATALOG[key].columns;
@@ -164,11 +161,14 @@ const DATASETS: Record<DatasetKey, DatasetDefinition> = {
   },
   daily_stock: {
     canAccess: anyOf(REPORT_ACCESS),
-    load: async (ctx, params) =>
-      asRows(await dailyStockReportService.listRows(ctx.tenantId, {
-        date: new Date(params.date ?? todayIso()),
-        branchIds: await scopedBranchIds(ctx, params),
-      })),
+    load: async (ctx, params) => {
+      // Schema already enforces YYYY-MM-DD; the fallback is today in Manila.
+      const day = manilaDayWindow(params.date ?? manilaTodayIso());
+      if (!day) return [];
+      return asRows(
+        await dailyStockReportService.listRows(ctx.tenantId, { day, branchIds: await scopedBranchIds(ctx, params) }),
+      );
+    },
   },
   inventory_detail: {
     canAccess: anyOf(INVENTORY_REPORT_ACCESS),

@@ -1,3 +1,4 @@
+import type { ManilaDayWindow } from "@/features/orders/utils/manila-calendar";
 import { prisma } from "@/lib/database/client";
 
 interface ProcessedOrdersFilters {
@@ -8,7 +9,8 @@ interface ProcessedOrdersFilters {
 }
 
 interface DailyStockFilters {
-  date: Date;
+  /** The Manila calendar day to report on. */
+  day: ManilaDayWindow;
   branchIds?: string[];
 }
 
@@ -154,10 +156,7 @@ export const reportsService = {
   },
 
   async listDailyStock(tenantId: string, filters: DailyStockFilters) {
-    const dateEnd = new Date(filters.date);
-    dateEnd.setHours(23, 59, 59, 999);
-    const dateStart = new Date(filters.date);
-    dateStart.setHours(0, 0, 0, 0);
+    const { start: dateStart, end: dateEnd } = filters.day;
 
     const planogramRows = await prisma.branchPlanogram.findMany({
       where: {
@@ -234,7 +233,7 @@ export const reportsService = {
     return planogramRows.map((row) => {
       const key = `${row.branchId}:${row.modelId}`;
       return {
-        date: toDateOnly(filters.date),
+        date: filters.day.date,
         branch: row.branch.name,
         skuCode: row.model.skuCode,
         model: row.model.name,

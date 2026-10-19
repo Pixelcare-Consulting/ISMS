@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { manilaTodayIso } from "@/features/orders/utils/manila-calendar";
 import { exportDailyStockCsvAction } from "@/features/reports/actions/reports.actions";
 import { ReportPreview } from "@/features/reporting/components/report-preview";
 import type { DatasetParams } from "@/features/reporting/schemas/dataset-params.schema";
@@ -13,7 +14,7 @@ import { downloadCsvFile } from "@/lib/shared/download-csv";
 
 export function DailyStockReportPanel() {
   const [pending, startTransition] = useTransition();
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => manilaTodayIso());
   const [previewParams, setPreviewParams] = useState<DatasetParams | null>(null);
 
   function handleExport() {

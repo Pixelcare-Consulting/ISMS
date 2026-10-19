@@ -1,19 +1,13 @@
 import { prisma } from "@/lib/database/client";
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
+import type { ManilaDayWindow } from "@/features/orders/utils/manila-calendar";
 import { DAILY_STOCK_REPORT_HEADERS } from "@/features/reports/constants/report-headers";
 import { buildCsvContent } from "@/lib/shared/csv";
 
 export interface DailyStockReportFilters {
-  date: Date;
+  /** The Manila calendar day to report on. */
+  day: ManilaDayWindow;
   branchIds?: string[];
-}
-
-function dayBounds(date: Date): { start: Date; end: Date } {
-  const start = new Date(date);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(date);
-  end.setHours(23, 59, 59, 999);
-  return { start, end };
 }
 
 export interface DailyStockReportRow {
@@ -29,8 +23,8 @@ export interface DailyStockReportRow {
 export const dailyStockReportService = {
   /** One row per planogram entry; shared by the CSV export and the Stimulsoft dataset. */
   async listRows(tenantId: string, filters: DailyStockReportFilters): Promise<DailyStockReportRow[]> {
-    const { start, end } = dayBounds(filters.date);
-    const dateLabel = start.toISOString().slice(0, 10);
+    // Manila day bounds regardless of the server's time zone.
+    const { start, end, date: dateLabel } = filters.day;
 
     const stkCode = await reasonStatusRepository.findCodeId(
       tenantId,
