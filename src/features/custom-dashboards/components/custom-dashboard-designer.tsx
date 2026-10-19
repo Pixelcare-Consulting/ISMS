@@ -9,6 +9,7 @@ import { defaultDashboardRange } from "@/features/custom-dashboards/lib/default-
 import { loadDatasetsAction } from "@/features/reporting/actions/reporting.actions";
 import type { DatasetKey, DatasetRow } from "@/features/reporting/datasets/dataset-catalog";
 import { ensureDataSources, registerDatasets } from "@/features/reporting/lib/create-report";
+import { applyIsmsDashboardTheme, ismsDesignerTheme } from "@/features/reporting/lib/reporting-theme";
 import { loadStimulsoftDesigner, type StimulsoftApi } from "@/features/reporting/lib/stimulsoft-client";
 
 interface CustomDashboardDesignerProps {
@@ -16,10 +17,6 @@ interface CustomDashboardDesignerProps {
   template: Record<string, unknown>;
   /** Datasets the current user may open (resolved on the server). */
   datasetKeys: DatasetKey[];
-}
-
-function prefersDark(): boolean {
-  return window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
 /**
@@ -31,7 +28,7 @@ function buildDesignerOptions(api: StimulsoftApi) {
   const options = new D.StiDesignerOptions();
   options.height = "100%";
   options.appearance.allowChangeWindowTitle = false;
-  options.appearance.theme = prefersDark() ? D.StiDesignerTheme.Office2022DarkGrayBlue : D.StiDesignerTheme.Office2022WhiteBlue;
+  options.appearance.theme = ismsDesignerTheme(api);
   options.toolbar.showFileMenu = false;
   options.toolbar.showAboutButton = false;
   options.toolbar.showPublishButton = false;
@@ -72,6 +69,8 @@ export function CustomDashboardDesigner({ id, template, datasetKeys }: CustomDas
         report.load(template);
         ensureDataSources(api, report, datasetKeys);
         registerDatasets(api, report, rows);
+        // New elements start on the ISMS style; it's also selectable in the style picker.
+        applyIsmsDashboardTheme(api, report);
 
         const instance = new api.Designer.StiDesigner(buildDesignerOptions(api), `sti-designer-${id}`, false);
         instance.onSaveReport = (args) => {
@@ -110,7 +109,7 @@ export function CustomDashboardDesigner({ id, template, datasetKeys }: CustomDas
           The designer could not load. Check your connection and reload the page.
         </p>
       ) : null}
-      <div ref={hostRef} className="h-full w-full" />
+      <div ref={hostRef} className="stimulsoft-host h-full w-full" />
     </div>
   );
 }

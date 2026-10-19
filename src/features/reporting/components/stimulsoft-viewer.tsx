@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { LoadingIndicator } from "@/components/ui/loading-indicator";
 import { cn } from "@/utils/cn";
 import type { StiReport } from "@/features/reporting/lib/create-report";
+import { ismsViewerTheme } from "@/features/reporting/lib/reporting-theme";
 import { loadStimulsoftViewer, type StimulsoftApi } from "@/features/reporting/lib/stimulsoft-client";
 
 interface StimulsoftViewerProps {
@@ -16,19 +17,13 @@ interface StimulsoftViewerProps {
   frameClassName?: string;
 }
 
-function prefersDark(): boolean {
-  return typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches;
-}
-
 function buildOptions(api: StimulsoftApi, variant: StimulsoftViewerProps["variant"]) {
   const options = new api.Viewer.StiViewerOptions();
   // Fill the frame so it can resize without re-creating the viewer.
   options.height = "100%";
   options.appearance.scrollbarsMode = true;
   options.appearance.fullScreenMode = false;
-  options.appearance.theme = prefersDark()
-    ? api.Viewer.StiViewerTheme.Office2022DarkGrayBlue
-    : api.Viewer.StiViewerTheme.Office2022WhiteBlue;
+  options.appearance.theme = ismsViewerTheme(api);
   options.toolbar.showOpenButton = false;
   options.toolbar.showDesignButton = false;
   options.toolbar.showAboutButton = false;
@@ -95,7 +90,7 @@ export function StimulsoftViewer({ createReport, variant, frameClassName = "h-[7
           The report viewer could not load. Check your connection and reload the page.
         </div>
       ) : null}
-      <div ref={hostRef} className="h-full w-full" />
+      <div ref={hostRef} className="stimulsoft-host h-full w-full" />
     </div>
   );
 }

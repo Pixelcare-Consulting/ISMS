@@ -13,6 +13,7 @@ import {
 } from "@/features/reporting/dashboards/analytics-layout";
 import type { DatasetKey, DatasetRow } from "@/features/reporting/datasets/dataset-catalog";
 import { registerDatasets, type StiReport } from "@/features/reporting/lib/create-report";
+import { applyIsmsDashboardTheme } from "@/features/reporting/lib/reporting-theme";
 import type { StimulsoftApi } from "@/features/reporting/lib/stimulsoft-client";
 import { loadAnalyticsTemplate } from "@/features/reporting/templates/template-loaders";
 import type { Stimulsoft } from "stimulsoft-dashboards-js-react/stimulsoft.reports";
@@ -101,6 +102,7 @@ export function AnalyticsDashboard({ visibleElements }: AnalyticsDashboardProps)
       report.load(ready?.template as object);
       if (ready) {
         applyVisibility(api, report, ready.visible);
+        applyIsmsDashboardTheme(api, report);
         registerDatasets(api, report, ready.rows);
       }
       return report;

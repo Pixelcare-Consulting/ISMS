@@ -1,10 +1,10 @@
 {
   "ReportVersion": "2026.4.1",
-  "ReportGuid": "7045945d31975a09897e3e7268df0c6e",
+  "ReportGuid": "635ba9be84bcc79d4ddd677ba3f0a475",
   "ReportName": "sales",
   "ReportAlias": "Sales & Returns",
-  "ReportCreated": "/Date(1792380577000+0800)/",
-  "ReportChanged": "/Date(1792380577000+0800)/",
+  "ReportCreated": "/Date(1792383321000+0800)/",
+  "ReportChanged": "/Date(1792383321000+0800)/",
   "EngineVersion": "EngineV2",
   "ReportUnit": "Centimeters",
   "ScriptLanguage": "CSharp",
@@ -111,7 +111,7 @@
     "0": {
       "Ident": "StiPage",
       "Name": "Page1",
-      "Guid": "46aa6ef7a23645f7d49823bf15092c9d",
+      "Guid": "cb2849089f1c00e930cdf9571524c612",
       "Interaction": {
         "Ident": "StiInteraction"
       },
@@ -140,10 +140,10 @@
                 "Value": "Sales & Returns"
               },
               "VertAlignment": "Center",
-              "Font": ";14;Bold;",
+              "Font": "Geist;14;Bold;",
               "Border": ";;;;;;;solid:Black",
               "Brush": "solid:",
-              "TextBrush": "solid:15,23,42",
+              "TextBrush": "solid:23,23,28",
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -163,9 +163,10 @@
               },
               "HorAlignment": "Right",
               "VertAlignment": "Center",
+              "Font": "Geist;;;",
               "Border": ";;;;;;;solid:Black",
               "Brush": "solid:",
-              "TextBrush": "solid:100,116,139",
+              "TextBrush": "solid:113,113,122",
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -197,10 +198,10 @@
                 "Value": "Generated {Format(\"{0:yyyy-MM-dd HH:mm}\", DateTime.Now)}"
               },
               "VertAlignment": "Center",
-              "Font": ";7;;",
+              "Font": "Geist;7;;",
               "Border": ";;;;;;;solid:Black",
               "Brush": "solid:",
-              "TextBrush": "solid:100,116,139",
+              "TextBrush": "solid:113,113,122",
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -220,10 +221,10 @@
               },
               "HorAlignment": "Right",
               "VertAlignment": "Center",
-              "Font": ";7;;",
+              "Font": "Geist;7;;",
               "Border": ";;;;;;;solid:Black",
               "Brush": "solid:",
-              "TextBrush": "solid:100,116,139",
+              "TextBrush": "solid:113,113,122",
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -255,10 +256,10 @@
                 "Value": "Date"
               },
               "VertAlignment": "Center",
-              "Font": ";;Bold;",
-              "Border": "Bottom;203,213,225;;;;;;solid:Black",
-              "Brush": "solid:241,245,249",
-              "TextBrush": "solid:15,23,42",
+              "Font": "Geist;;Bold;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
+              "Brush": "solid:238,240,243",
+              "TextBrush": "solid:23,23,28",
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -277,10 +278,10 @@
                 "Value": "Transaction No"
               },
               "VertAlignment": "Center",
-              "Font": ";;Bold;",
-              "Border": "Bottom;203,213,225;;;;;;solid:Black",
-              "Brush": "solid:241,245,249",
-              "TextBrush": "solid:15,23,42",
+              "Font": "Geist;;Bold;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
+              "Brush": "solid:238,240,243",
+              "TextBrush": "solid:23,23,28",
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -299,10 +300,10 @@
                 "Value": "Serial No"
               },
               "VertAlignment": "Center",
-              "Font": ";;Bold;",
-              "Border": "Bottom;203,213,225;;;;;;solid:Black",
-              "Brush": "solid:241,245,249",
-              "TextBrush": "solid:15,23,42",
+              "Font": "Geist;;Bold;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
+              "Brush": "solid:238,240,243",
+              "TextBrush": "solid:23,23,28",
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -321,10 +322,10 @@
                 "Value": "SKU"
               },
               "VertAlignment": "Center",
-              "Font": ";;Bold;",
-              "Border": "Bottom;203,213,225;;;;;;solid:Black",
-              "Brush": "solid:241,245,249",
-              "TextBrush": "solid:15,23,42",
+              "Font": "Geist;;Bold;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
+              "Brush": "solid:238,240,243",
+              "TextBrush": "solid:23,23,28",
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -343,10 +344,10 @@
                 "Value": "Model"
               },
               "VertAlignment": "Center",
-              "Font": ";;Bold;",
-              "Border": "Bottom;203,213,225;;;;;;solid:Black",
-              "Brush": "solid:241,245,249",
-              "TextBrush": "solid:15,23,42",
+              "Font": "Geist;;Bold;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
+              "Brush": "solid:238,240,243",
+              "TextBrush": "solid:23,23,28",
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -365,10 +366,10 @@
                 "Value": "Package"
               },
               "VertAlignment": "Center",
-              "Font": ";;Bold;",
-              "Border": "Bottom;203,213,225;;;;;;solid:Black",
-              "Brush": "solid:241,245,249",
-              "TextBrush": "solid:15,23,42",
+              "Font": "Geist;;Bold;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
+              "Brush": "solid:238,240,243",
+              "TextBrush": "solid:23,23,28",
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -388,10 +389,10 @@
               },
               "HorAlignment": "Right",
               "VertAlignment": "Center",
-              "Font": ";;Bold;",
-              "Border": "Bottom;203,213,225;;;;;;solid:Black",
-              "Brush": "solid:241,245,249",
-              "TextBrush": "solid:15,23,42",
+              "Font": "Geist;;Bold;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
+              "Brush": "solid:238,240,243",
+              "TextBrush": "solid:23,23,28",
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -410,10 +411,10 @@
                 "Value": "ATR Status"
               },
               "VertAlignment": "Center",
-              "Font": ";;Bold;",
-              "Border": "Bottom;203,213,225;;;;;;solid:Black",
-              "Brush": "solid:241,245,249",
-              "TextBrush": "solid:15,23,42",
+              "Font": "Geist;;Bold;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
+              "Brush": "solid:238,240,243",
+              "TextBrush": "solid:23,23,28",
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -432,10 +433,10 @@
                 "Value": "Return Status"
               },
               "VertAlignment": "Center",
-              "Font": ";;Bold;",
-              "Border": "Bottom;203,213,225;;;;;;solid:Black",
-              "Brush": "solid:241,245,249",
-              "TextBrush": "solid:15,23,42",
+              "Font": "Geist;;Bold;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
+              "Brush": "solid:238,240,243",
+              "TextBrush": "solid:23,23,28",
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -454,10 +455,10 @@
                 "Value": "Customer"
               },
               "VertAlignment": "Center",
-              "Font": ";;Bold;",
-              "Border": "Bottom;203,213,225;;;;;;solid:Black",
-              "Brush": "solid:241,245,249",
-              "TextBrush": "solid:15,23,42",
+              "Font": "Geist;;Bold;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
+              "Brush": "solid:238,240,243",
+              "TextBrush": "solid:23,23,28",
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -489,10 +490,10 @@
                 "Value": "{sales_lines.branch}"
               },
               "VertAlignment": "Center",
-              "Font": ";;Bold;",
+              "Font": "Geist;;Bold;",
               "Border": ";;;;;;;solid:Black",
-              "Brush": "solid:248,250,252",
-              "TextBrush": "solid:15,23,42",
+              "Brush": "solid:247,248,254",
+              "TextBrush": "solid:23,23,28",
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -527,9 +528,10 @@
                 "Value": "{sales_lines.date}"
               },
               "VertAlignment": "Center",
-              "Border": "Bottom;203,213,225;;;;;;solid:Black",
+              "Font": "Geist;;;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:",
-              "TextBrush": "solid:15,23,42",
+              "TextBrush": "solid:23,23,28",
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -553,9 +555,10 @@
                 "Value": "{sales_lines.transactionNo}"
               },
               "VertAlignment": "Center",
-              "Border": "Bottom;203,213,225;;;;;;solid:Black",
+              "Font": "Geist;;;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:",
-              "TextBrush": "solid:15,23,42",
+              "TextBrush": "solid:23,23,28",
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -574,9 +577,10 @@
                 "Value": "{sales_lines.serialNo}"
               },
               "VertAlignment": "Center",
-              "Border": "Bottom;203,213,225;;;;;;solid:Black",
+              "Font": "Geist;;;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:",
-              "TextBrush": "solid:15,23,42",
+              "TextBrush": "solid:23,23,28",
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -595,9 +599,10 @@
                 "Value": "{sales_lines.skuCode}"
               },
               "VertAlignment": "Center",
-              "Border": "Bottom;203,213,225;;;;;;solid:Black",
+              "Font": "Geist;;;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:",
-              "TextBrush": "solid:15,23,42",
+              "TextBrush": "solid:23,23,28",
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -616,9 +621,10 @@
                 "Value": "{sales_lines.model}"
               },
               "VertAlignment": "Center",
-              "Border": "Bottom;203,213,225;;;;;;solid:Black",
+              "Font": "Geist;;;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:",
-              "TextBrush": "solid:15,23,42",
+              "TextBrush": "solid:23,23,28",
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -637,9 +643,10 @@
                 "Value": "{sales_lines.packageType}"
               },
               "VertAlignment": "Center",
-              "Border": "Bottom;203,213,225;;;;;;solid:Black",
+              "Font": "Geist;;;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:",
-              "TextBrush": "solid:15,23,42",
+              "TextBrush": "solid:23,23,28",
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -659,9 +666,10 @@
               },
               "HorAlignment": "Right",
               "VertAlignment": "Center",
-              "Border": "Bottom;203,213,225;;;;;;solid:Black",
+              "Font": "Geist;;;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:",
-              "TextBrush": "solid:15,23,42",
+              "TextBrush": "solid:23,23,28",
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -687,9 +695,10 @@
                 "Value": "{sales_lines.atrStatus}"
               },
               "VertAlignment": "Center",
-              "Border": "Bottom;203,213,225;;;;;;solid:Black",
+              "Font": "Geist;;;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:",
-              "TextBrush": "solid:15,23,42",
+              "TextBrush": "solid:23,23,28",
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -708,9 +717,10 @@
                 "Value": "{sales_lines.returnStatus}"
               },
               "VertAlignment": "Center",
-              "Border": "Bottom;203,213,225;;;;;;solid:Black",
+              "Font": "Geist;;;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:",
-              "TextBrush": "solid:15,23,42",
+              "TextBrush": "solid:23,23,28",
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -729,9 +739,10 @@
                 "Value": "{sales_lines.customer}"
               },
               "VertAlignment": "Center",
-              "Border": "Bottom;203,213,225;;;;;;solid:Black",
+              "Font": "Geist;;;",
+              "Border": "Bottom;228,230,234;;;;;;solid:Black",
               "Brush": "solid:",
-              "TextBrush": "solid:15,23,42",
+              "TextBrush": "solid:23,23,28",
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -765,10 +776,10 @@
               },
               "HorAlignment": "Right",
               "VertAlignment": "Center",
-              "Font": ";;Bold;",
+              "Font": "Geist;;Bold;",
               "Border": ";;;;;;;solid:Black",
               "Brush": "solid:",
-              "TextBrush": "solid:15,23,42",
+              "TextBrush": "solid:23,23,28",
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -807,9 +818,10 @@
                 "Value": "{Count(S0Data)} rows"
               },
               "VertAlignment": "Center",
+              "Font": "Geist;;;",
               "Border": ";;;;;;;solid:Black",
               "Brush": "solid:",
-              "TextBrush": "solid:100,116,139",
+              "TextBrush": "solid:113,113,122",
               "Margins": {
                 "Left": 2,
                 "Right": 2,
@@ -829,10 +841,10 @@
               },
               "HorAlignment": "Right",
               "VertAlignment": "Center",
-              "Font": ";;Bold;",
+              "Font": "Geist;;Bold;",
               "Border": ";;;;;;;solid:Black",
-              "Brush": "solid:241,245,249",
-              "TextBrush": "solid:15,23,42",
+              "Brush": "solid:238,240,243",
+              "TextBrush": "solid:23,23,28",
               "Margins": {
                 "Left": 2,
                 "Right": 2,

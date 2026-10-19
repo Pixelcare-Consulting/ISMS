@@ -1,10 +1,10 @@
 {
   "ReportVersion": "2026.4.1",
-  "ReportGuid": "089aa13f05a68e46256071f857737aa1",
+  "ReportGuid": "4ad677ed7bfb19481cdb29f84c4e75c5",
   "ReportName": "analytics",
   "ReportAlias": "Analytics",
-  "ReportCreated": "/Date(1792380577000+0800)/",
-  "ReportChanged": "/Date(1792380577000+0800)/",
+  "ReportCreated": "/Date(1792383321000+0800)/",
+  "ReportChanged": "/Date(1792383321000+0800)/",
   "EngineVersion": "EngineV2",
   "ReportUnit": "Centimeters",
   "ScriptLanguage": "CSharp",
@@ -262,7 +262,7 @@
     "0": {
       "Ident": "StiDashboard",
       "Name": "Analytics",
-      "Guid": "d5c544e7d543dae0da67450f84bd4d88",
+      "Guid": "03300038fd37a2a3136c0aa24037176b",
       "Alias": "Analytics",
       "Interaction": {
         "Ident": "StiInteraction"
@@ -272,7 +272,7 @@
         "0": {
           "Ident": "StiIndicatorElement",
           "Name": "OpsPendingApprovals",
-          "Guid": "7f32a7396251ceeecb7e34af62807bb3",
+          "Guid": "9b19536d0c09afeedc05cd15181e6278",
           "ClientRectangle": "0,0,193,120",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -313,7 +313,7 @@
         "1": {
           "Ident": "StiIndicatorElement",
           "Name": "OpsDeliveryInTransit",
-          "Guid": "f72ce6d5244729a6a67815583261e5ac",
+          "Guid": "8f17276dea97cbe87516a15e71882eff",
           "ClientRectangle": "201,0,193,120",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -354,7 +354,7 @@
         "2": {
           "Ident": "StiIndicatorElement",
           "Name": "OpsStockOnHand",
-          "Guid": "b85f6f214697e264b694593d31fac248",
+          "Guid": "7e46d1b466044893308cc8cc9509c178",
           "ClientRectangle": "403,0,193,120",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -395,7 +395,7 @@
         "3": {
           "Ident": "StiIndicatorElement",
           "Name": "OpsOpenAtr",
-          "Guid": "adbc9785dba2371fe6bd51c9406818f2",
+          "Guid": "db214eda3f676ddb92c51c082d44afcd",
           "ClientRectangle": "604,0,193,120",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -436,7 +436,7 @@
         "4": {
           "Ident": "StiIndicatorElement",
           "Name": "OpsOrdersThisMonth",
-          "Guid": "5ea642f86a4d2208ab6093788b2d6afc",
+          "Guid": "a025446941aa0ea81a750b744a4a42a4",
           "ClientRectangle": "805,0,193,120",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -477,7 +477,7 @@
         "5": {
           "Ident": "StiIndicatorElement",
           "Name": "OpsBelowPlanogram",
-          "Guid": "da4d42f2671224a6737e62e131d67d12",
+          "Guid": "9f40bbaf036243d741e2109a60eca336",
           "ClientRectangle": "1007,0,193,120",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -518,7 +518,7 @@
         "6": {
           "Ident": "StiChartElement",
           "Name": "OpsInventoryByStatus",
-          "Guid": "581b54f9712e40bbde756eb5265f7731",
+          "Guid": "3c5d5a29b5b728f4142421edff4f3295",
           "ClientRectangle": "0,128,596,340",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -553,7 +553,7 @@
           },
           "ManuallyEnteredChartMeter": {
             "Ident": "ValueChartMeter",
-            "Key": "4f22b4f1e3aa18b69892b09a9effcdf4"
+            "Key": "59d71b0dbb5a8832cb35d30f3ff10cb1"
           },
           "ArgumentFormat": {
             "Ident": "StiGeneralFormatService"
@@ -599,7 +599,7 @@
         "7": {
           "Ident": "StiChartElement",
           "Name": "OpsOrdersByStatus",
-          "Guid": "6df672a5d831f2bfa21abc81fe834491",
+          "Guid": "f46ec7408707dee81118a4b3c5c9c329",
           "ClientRectangle": "604,128,596,340",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -634,7 +634,7 @@
           },
           "ManuallyEnteredChartMeter": {
             "Ident": "ValueChartMeter",
-            "Key": "9bc32853095df96078da9996bba72993"
+            "Key": "da417bb6eb8c3326a8e987c6bff5d870"
           },
           "ArgumentFormat": {
             "Ident": "StiGeneralFormatService"
@@ -679,7 +679,7 @@
         "8": {
           "Ident": "StiIndicatorElement",
           "Name": "SalesCount",
-          "Guid": "c8915d3d526af14704e5fb4af50fefd3",
+          "Guid": "a1c660cb1016af68c87f9d7bf500ed73",
           "ClientRectangle": "0,476,294,120",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -720,7 +720,7 @@
         "9": {
           "Ident": "StiIndicatorElement",
           "Name": "SalesAmount",
-          "Guid": "18de5f56292d5e8dd7341122138f9665",
+          "Guid": "5d5c8307901b566653c10ae99ba79cab",
           "ClientRectangle": "302,476,294,120",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -761,7 +761,7 @@
         "10": {
           "Ident": "StiIndicatorElement",
           "Name": "SalesOpenAtr",
-          "Guid": "cbc837190849519f77800ef66732b31a",
+          "Guid": "856803e43a898b0b582b529df9f057e5",
           "ClientRectangle": "604,476,294,120",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -802,7 +802,7 @@
         "11": {
           "Ident": "StiIndicatorElement",
           "Name": "SalesReturnsInProgress",
-          "Guid": "acc93143e86560eab244f82df558f17c",
+          "Guid": "a88814482e0356bf1f474944c2afa642",
           "ClientRectangle": "906,476,294,120",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -843,7 +843,7 @@
         "12": {
           "Ident": "StiChartElement",
           "Name": "SalesStatusMix",
-          "Guid": "d182cd0df6abde599960a4be7b797483",
+          "Guid": "7e72e90adf9f059e60e43ae33c0a3b61",
           "ClientRectangle": "0,604,596,340",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -878,7 +878,7 @@
           },
           "ManuallyEnteredChartMeter": {
             "Ident": "ValueChartMeter",
-            "Key": "1013d477471d429cbebae809bd1ff236"
+            "Key": "be7e1f0d8062b2c15ad7c1d414cb3e2d"
           },
           "ArgumentFormat": {
             "Ident": "StiGeneralFormatService"
@@ -924,7 +924,7 @@
         "13": {
           "Ident": "StiChartElement",
           "Name": "SalesAtrReturnPipeline",
-          "Guid": "9e66a1b43dbbb025272af14d5f32b293",
+          "Guid": "98d4656869d565a19a8d8de5f2751344",
           "ClientRectangle": "604,604,596,340",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -959,7 +959,7 @@
           },
           "ManuallyEnteredChartMeter": {
             "Ident": "ValueChartMeter",
-            "Key": "5384a9429b6e8ea745a86f3f05b1ef24"
+            "Key": "c3ec4f965087377ef072b0e07613bcf2"
           },
           "ArgumentFormat": {
             "Ident": "StiGeneralFormatService"
@@ -1004,7 +1004,7 @@
         "14": {
           "Ident": "StiChartElement",
           "Name": "SalesTopBranches",
-          "Guid": "e80335e3a2d0c145f1aabdd8dc992733",
+          "Guid": "59f8749f3fd4f5c2edc2efafc83ee25a",
           "ClientRectangle": "0,952,596,340",
           "Interaction": {
             "Ident": "StiInteraction"
@@ -1039,7 +1039,7 @@
           },
           "ManuallyEnteredChartMeter": {
             "Ident": "ValueChartMeter",
-            "Key": "5573f6ade32c64e2e454e379afc889ea"
+            "Key": "0cbf663d540108aa12aac902b73c66c6"
           },
           "ArgumentFormat": {
             "Ident": "StiGeneralFormatService"
@@ -1084,7 +1084,7 @@
         "15": {
           "Ident": "StiTableElement",
           "Name": "SalesTopModels",
-          "Guid": "cdfdf851625bd3b0bc306b40b19eab95",
+          "Guid": "95ab8bcc4efc583bb00ab7f518e33185",
           "ClientRectangle": "604,952,596,340",
           "Interaction": {
             "Ident": "StiInteraction"

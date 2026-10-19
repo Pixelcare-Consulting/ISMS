@@ -27,6 +27,7 @@ import {
   type DatasetKey,
 } from "../../src/features/reporting/datasets/dataset-catalog";
 import { ensureDataSources } from "../../src/features/reporting/lib/create-report";
+import { ISMS_THEME } from "../../src/features/reporting/lib/reporting-theme";
 import {
   REPORT_DEFINITIONS,
   type ReportDefinition,
@@ -38,16 +39,16 @@ type Sti = typeof StimulsoftNamespace;
 
 const OUT_DIR = path.resolve(__dirname, "../../src/features/reporting/templates");
 
-/** Brand-neutral, print-friendly palette (matches the app's slate neutrals). */
+/** Print palette from the shared ISMS theme (white paper, app neutrals, teal accent). */
 const COLORS = {
-  ink: [15, 23, 42],
-  muted: [100, 116, 139],
-  rule: [203, 213, 225],
-  headerFill: [241, 245, 249],
-  groupFill: [248, 250, 252],
+  ink: ISMS_THEME.colors.foreground,
+  muted: ISMS_THEME.colors.mutedForeground,
+  rule: ISMS_THEME.colors.border,
+  headerFill: ISMS_THEME.colors.muted,
+  groupFill: ISMS_THEME.colors.stripe,
 } as const;
 
-const FONT = "Arial";
+const FONT = ISMS_THEME.fontFamily;
 
 async function loadStimulsoft(): Promise<Sti> {
   const { Stimulsoft } = await import("stimulsoft-dashboards-js-react/stimulsoft.reports.engine.mjs");

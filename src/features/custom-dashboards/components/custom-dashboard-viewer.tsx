@@ -11,6 +11,7 @@ import { loadDatasetsAction } from "@/features/reporting/actions/reporting.actio
 import { StimulsoftViewer } from "@/features/reporting/components/stimulsoft-viewer";
 import { DATASET_CATALOG, type DatasetKey, type DatasetRow } from "@/features/reporting/datasets/dataset-catalog";
 import { registerDatasets, templateDatasetKeys } from "@/features/reporting/lib/create-report";
+import { applyIsmsDashboardTheme } from "@/features/reporting/lib/reporting-theme";
 import type { StimulsoftApi } from "@/features/reporting/lib/stimulsoft-client";
 
 interface CustomDashboardViewerProps {
@@ -70,6 +71,7 @@ export function CustomDashboardViewer({ template }: CustomDashboardViewerProps) 
     (api: StimulsoftApi) => {
       const report = new api.Report.StiReport();
       report.load(template);
+      applyIsmsDashboardTheme(api, report);
       if (ready) registerDatasets(api, report, ready.rows);
       return report;
     },
