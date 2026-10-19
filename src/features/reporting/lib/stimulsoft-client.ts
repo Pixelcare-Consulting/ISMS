@@ -57,3 +57,18 @@ export function loadStimulsoftDesigner(): Promise<StimulsoftApi> {
     });
   return designerPromise;
 }
+
+/**
+ * Starts loading the viewer once the browser is idle, so a later "Preview"
+ * opens fast. Returns a cancel function for effect cleanup.
+ */
+export function preloadStimulsoftViewer(): () => void {
+  const load = () => void loadStimulsoftViewer().catch(() => undefined); // retried on real use
+  // Safari has no requestIdleCallback.
+  if (typeof window.requestIdleCallback === "function") {
+    const handle = window.requestIdleCallback(load, { timeout: 5_000 });
+    return () => window.cancelIdleCallback(handle);
+  }
+  const handle = window.setTimeout(load, 2_000);
+  return () => window.clearTimeout(handle);
+}

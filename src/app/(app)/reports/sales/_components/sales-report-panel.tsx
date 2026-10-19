@@ -55,7 +55,7 @@ export function SalesReportPanel() {
           </Button>
         </div>
       </div>
-      <ReportPreview reportKey="sales" params={previewParams} filterSummary={describeDateRange(previewParams?.from, previewParams?.to)} />
+      <ReportPreview reportKey="sales" params={previewParams} filterSummary={describeDateRange(previewParams?.from, previewParams?.to)} onClose={() => setPreviewParams(null)} />
     </div>
   );
 }

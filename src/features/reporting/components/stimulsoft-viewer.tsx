@@ -2,8 +2,8 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 
-import { LoadingIndicator } from "@/components/ui/loading-indicator";
 import { cn } from "@/utils/cn";
+import { ReportingLoading } from "@/features/reporting/components/reporting-loading";
 import type { StiReport } from "@/features/reporting/lib/create-report";
 import { ismsViewerTheme } from "@/features/reporting/lib/reporting-theme";
 import { loadStimulsoftViewer, type StimulsoftApi } from "@/features/reporting/lib/stimulsoft-client";
@@ -43,6 +43,24 @@ function buildOptions(api: StimulsoftApi, variant: StimulsoftViewerProps["varian
 }
 
 /**
+ * Resolves once the element has a layout size. Stimulsoft measures its host on
+ * creation; Safari renders a blank page if that happens at 0×0 (e.g. while a
+ * dialog is still laying out).
+ */
+function whenSized(element: HTMLElement | null, track: (observer: ResizeObserver) => void): Promise<void> {
+  if (!element || (element.clientWidth > 0 && element.clientHeight > 0)) return Promise.resolve();
+  return new Promise((resolve) => {
+    const observer = new ResizeObserver(() => {
+      if (element.clientWidth === 0 || element.clientHeight === 0) return;
+      observer.disconnect();
+      resolve();
+    });
+    track(observer);
+    observer.observe(element);
+  });
+}
+
+/**
  * Hosts a Stimulsoft viewer. Stimulsoft scripts load on first mount only;
  * the viewer instance is disposed on unmount.
  */
@@ -57,7 +75,10 @@ export function StimulsoftViewer({ createReport, variant, frameClassName = "h-[7
     let disposed = false;
     let viewer: { dispose(): void } | null = null;
 
+    let sizeObserver: ResizeObserver | null = null;
+
     loadStimulsoftViewer()
+      .then((api) => whenSized(host, (observer) => (sizeObserver = observer)).then(() => api))
       .then((api) => {
         if (disposed || !host) return;
         const instance = new api.Viewer.StiViewer(buildOptions(api, variant), viewerId, false);
@@ -73,6 +94,7 @@ export function StimulsoftViewer({ createReport, variant, frameClassName = "h-[7
 
     return () => {
       disposed = true;
+      sizeObserver?.disconnect();
       viewer?.dispose();
       if (host) host.innerHTML = "";
     };
@@ -81,9 +103,7 @@ export function StimulsoftViewer({ createReport, variant, frameClassName = "h-[7
   return (
     <div className={cn("relative min-h-60 overflow-hidden rounded-xl border bg-card", frameClassName)}>
       {state === "LOADING" ? (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <LoadingIndicator label="Loading viewer" />
-        </div>
+        <ReportingLoading label="Preparing the viewer" className="absolute inset-0" />
       ) : null}
       {state === "ERROR" ? (
         <div role="alert" className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted-foreground">

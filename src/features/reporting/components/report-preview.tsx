@@ -2,12 +2,19 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { LoadingIndicator } from "@/components/ui/loading-indicator";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { loadDatasetsAction } from "@/features/reporting/actions/reporting.actions";
+import { ReportingLoading } from "@/features/reporting/components/reporting-loading";
 import { StimulsoftViewer } from "@/features/reporting/components/stimulsoft-viewer";
 import type { DatasetKey, DatasetRow } from "@/features/reporting/datasets/dataset-catalog";
 import { createReportFromTemplate, setReportVariable } from "@/features/reporting/lib/create-report";
-import type { StimulsoftApi } from "@/features/reporting/lib/stimulsoft-client";
+import { preloadStimulsoftViewer, type StimulsoftApi } from "@/features/reporting/lib/stimulsoft-client";
 import {
   REPORT_DEFINITIONS,
   reportDatasetKeys,
@@ -22,6 +29,8 @@ interface ReportPreviewProps {
   params: DatasetParams | null;
   /** Printed in the report header, e.g. "2026-10-01 to 2026-10-19". */
   filterSummary: string;
+  /** Closes the modal; callers reset `params` to null. */
+  onClose: () => void;
 }
 
 type PreviewOutcome =
@@ -36,8 +45,8 @@ type PreviewOutcome =
 
 type PreviewState = { status: "IDLE" } | { status: "LOADING" } | PreviewOutcome;
 
-/** On-screen preview, print and PDF/Excel export for one report definition. */
-export function ReportPreview({ reportKey, params, filterSummary }: ReportPreviewProps) {
+/** Modal with on-screen preview, print and PDF/Excel export for one report definition. */
+export function ReportPreview({ reportKey, params, filterSummary, onClose }: ReportPreviewProps) {
   // Outcome is tagged with the params it answers; anything else is still loading.
   const [loaded, setLoaded] = useState<{ params: DatasetParams; outcome: PreviewOutcome } | null>(null);
   const state: PreviewState = !params
@@ -45,6 +54,8 @@ export function ReportPreview({ reportKey, params, filterSummary }: ReportPrevie
     : loaded?.params === params
       ? loaded.outcome
       : { status: "LOADING" };
+
+  useEffect(() => preloadStimulsoftViewer(), []);
 
   useEffect(() => {
     if (!params) return;
@@ -93,38 +104,48 @@ export function ReportPreview({ reportKey, params, filterSummary }: ReportPrevie
     [ready, filterSummary],
   );
 
-  if (state.status === "IDLE") return null;
+  const title = REPORT_DEFINITIONS[reportKey].title;
 
   return (
-    <section aria-label={`${REPORT_DEFINITIONS[reportKey].title} preview`} className="space-y-2">
-      {state.status === "LOADING" ? (
-        <div className="flex min-h-40 items-center justify-center rounded-xl border bg-card text-sm text-muted-foreground">
-          <LoadingIndicator label="Loading report data" />
-        </div>
-      ) : null}
+    <Dialog open={state.status !== "IDLE"} onOpenChange={(open) => !open && onClose()}>
+      {/* Pinned by insets, not a calc() height: Safari collapsed the dialog to its header. */}
+      <DialogContent className="inset-2 flex w-auto max-w-none max-h-none translate-x-0 translate-y-0 flex-col gap-3 overflow-hidden p-3 sm:inset-4 sm:p-4 lg:inset-x-8">
+        <DialogHeader className="pr-8 text-left">
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{filterSummary}</DialogDescription>
+        </DialogHeader>
 
-      {state.status === "ERROR" ? (
-        <p role="alert" className="rounded-xl border border-destructive/40 bg-card p-4 text-sm text-destructive">
-          {state.message}
-        </p>
-      ) : null}
+        {ready?.truncated ? (
+          <p className="text-sm text-muted-foreground">
+            Showing the first rows only. Narrow the date range to see everything, or use the export.
+          </p>
+        ) : null}
 
-      {ready && ready.rowCount === 0 ? (
-        <p className="rounded-xl border bg-card p-6 text-center text-sm text-muted-foreground">
-          No rows match these filters.
-        </p>
-      ) : null}
+        <div className="relative min-h-0 flex-1">
+          {state.status === "LOADING" ? (
+            <ReportingLoading label="Loading report data" className="absolute inset-0 rounded-xl border bg-card" />
+          ) : null}
 
-      {ready && ready.rowCount > 0 ? (
-        <>
-          {ready.truncated ? (
-            <p className="text-sm text-muted-foreground">
-              Showing the first rows only. Narrow the date range to see everything, or use the export.
+          {state.status === "ERROR" ? (
+            <p
+              role="alert"
+              className="absolute inset-0 flex items-center justify-center rounded-xl border border-destructive/40 bg-card p-4 text-center text-sm text-destructive"
+            >
+              {state.message}
             </p>
           ) : null}
-          <StimulsoftViewer variant="REPORT" createReport={createReport} />
-        </>
-      ) : null}
-    </section>
+
+          {ready && ready.rowCount === 0 ? (
+            <p className="absolute inset-0 flex items-center justify-center rounded-xl border bg-card p-6 text-center text-sm text-muted-foreground">
+              No rows match these filters.
+            </p>
+          ) : null}
+
+          {ready && ready.rowCount > 0 ? (
+            <StimulsoftViewer variant="REPORT" createReport={createReport} frameClassName="absolute inset-0" />
+          ) : null}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

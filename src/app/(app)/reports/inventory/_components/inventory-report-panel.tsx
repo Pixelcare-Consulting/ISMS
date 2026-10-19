@@ -176,7 +176,7 @@ export function InventoryReportPanel() {
           </Button>
         </div>
       </div>
-      <ReportPreview reportKey="inventory" params={previewParams} filterSummary={describeDateRange(previewParams?.from, previewParams?.to)} />
+      <ReportPreview reportKey="inventory" params={previewParams} filterSummary={describeDateRange(previewParams?.from, previewParams?.to)} onClose={() => setPreviewParams(null)} />
     </div>
   );
 }

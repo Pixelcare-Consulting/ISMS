@@ -364,6 +364,7 @@ export function PcountReportPanel({
         reportKey="pcount"
         params={previewParams}
         filterSummary={describeDateRange(previewParams?.from, previewParams?.to)}
+        onClose={() => setPreviewParams(null)}
       />
     </div>
   );

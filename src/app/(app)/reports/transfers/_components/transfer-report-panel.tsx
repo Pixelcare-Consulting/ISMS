@@ -55,7 +55,7 @@ export function TransferReportPanel() {
           </Button>
         </div>
       </div>
-      <ReportPreview reportKey="transfers" params={previewParams} filterSummary={describeDateRange(previewParams?.from, previewParams?.to)} />
+      <ReportPreview reportKey="transfers" params={previewParams} filterSummary={describeDateRange(previewParams?.from, previewParams?.to)} onClose={() => setPreviewParams(null)} />
     </div>
   );
 }

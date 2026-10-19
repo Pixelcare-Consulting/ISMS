@@ -54,7 +54,7 @@ export function DailyStockReportPanel() {
           </Button>
         </div>
       </div>
-      <ReportPreview reportKey="daily-stock" params={previewParams} filterSummary={previewParams?.date ?? ""} />
+      <ReportPreview reportKey="daily-stock" params={previewParams} filterSummary={previewParams?.date ?? ""} onClose={() => setPreviewParams(null)} />
     </div>
   );
 }
