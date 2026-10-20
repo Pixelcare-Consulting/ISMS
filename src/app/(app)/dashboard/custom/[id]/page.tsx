@@ -40,7 +40,7 @@ export default async function CustomDashboardPage({ params }: { params: Promise<
           </div>
         }
       />
-      <CustomDashboardViewer template={dashboard.template} />
+      <CustomDashboardViewer template={dashboard.template} defaultPeriod={dashboard.defaultPeriod} />
     </div>
   );
 }

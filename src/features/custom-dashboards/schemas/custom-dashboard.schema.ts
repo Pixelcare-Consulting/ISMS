@@ -9,6 +9,32 @@ export const CUSTOM_DASHBOARD_VISIBILITY_LABELS: Record<CustomDashboardVisibilit
   TENANT: "Shared with my company",
 };
 
+export const CUSTOM_DASHBOARD_PERIODS = [
+  "TODAY",
+  "YESTERDAY",
+  "LAST_7_DAYS",
+  "LAST_30_DAYS",
+  "LAST_90_DAYS",
+  "THIS_MONTH",
+  "LAST_MONTH",
+  "THIS_YEAR",
+] as const;
+export type CustomDashboardPeriod = (typeof CUSTOM_DASHBOARD_PERIODS)[number];
+
+export const DEFAULT_CUSTOM_DASHBOARD_PERIOD: CustomDashboardPeriod = "LAST_30_DAYS";
+
+/** Frontend labels for the backend period values (single source). */
+export const CUSTOM_DASHBOARD_PERIOD_LABELS: Record<CustomDashboardPeriod, string> = {
+  TODAY: "Today",
+  YESTERDAY: "Yesterday",
+  LAST_7_DAYS: "Last 7 days",
+  LAST_30_DAYS: "Last 30 days",
+  LAST_90_DAYS: "Last 90 days",
+  THIS_MONTH: "This month",
+  LAST_MONTH: "Last month",
+  THIS_YEAR: "This year",
+};
+
 /** Saved layouts are a few hundred KB at most; anything bigger is likely embedded data. */
 export const MAX_TEMPLATE_BYTES = 2_000_000;
 
@@ -25,6 +51,11 @@ export const updateCustomDashboardDetailsSchema = customDashboardDetailsSchema.e
 export const saveCustomDashboardTemplateSchema = z.object({
   id,
   template: z.record(z.string(), z.unknown()),
+});
+
+export const updateCustomDashboardPeriodSchema = z.object({
+  id,
+  period: z.enum(CUSTOM_DASHBOARD_PERIODS),
 });
 
 export const customDashboardIdSchema = z.object({ id });

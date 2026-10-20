@@ -22,7 +22,7 @@ export default async function CustomDashboardEditPage({ params }: { params: Prom
     <div className="space-y-4">
       <PageHeader
         title={`Design: ${dashboard.name}`}
-        description="Drag ISMS dataset fields onto elements, then Save. Data shown is the last 30 days."
+        description="Drag ISMS dataset fields onto elements, then Save. The preview uses the default period."
         actions={
           <Button asChild variant="outline">
             <Link href={`/dashboard/custom/${dashboard.id}`}>View dashboard</Link>
@@ -33,6 +33,7 @@ export default async function CustomDashboardEditPage({ params }: { params: Prom
         key={dashboard.id}
         id={dashboard.id}
         template={dashboard.template}
+        defaultPeriod={dashboard.defaultPeriod}
         datasetKeys={listAccessibleDatasetKeys(session.user.permissions ?? [])}
       />
     </div>

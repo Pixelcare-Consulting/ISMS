@@ -3,8 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { saveCustomDashboardTemplateAction } from "@/features/custom-dashboards/actions/custom-dashboard.actions";
-import { defaultDashboardRange } from "@/features/custom-dashboards/lib/default-range";
+import { Label } from "@/components/ui/label";
+import {
+  saveCustomDashboardTemplateAction,
+  updateCustomDashboardPeriodAction,
+} from "@/features/custom-dashboards/actions/custom-dashboard.actions";
+import { DashboardPeriodSelect } from "@/features/custom-dashboards/components/dashboard-period-select";
+import { resolveDashboardPeriod } from "@/features/custom-dashboards/lib/dashboard-period";
+import {
+  CUSTOM_DASHBOARD_PERIOD_LABELS,
+  type CustomDashboardPeriod,
+} from "@/features/custom-dashboards/schemas/custom-dashboard.schema";
 import { loadDatasetsAction } from "@/features/reporting/actions/reporting.actions";
 import { ReportingLoading } from "@/features/reporting/components/reporting-loading";
 import type { DatasetKey, DatasetRow } from "@/features/reporting/datasets/dataset-catalog";
@@ -17,7 +26,11 @@ interface CustomDashboardDesignerProps {
   template: Record<string, unknown>;
   /** Datasets the current user may open (resolved on the server). */
   datasetKeys: DatasetKey[];
+  defaultPeriod: CustomDashboardPeriod;
 }
+
+type PreviewRows = Partial<Record<DatasetKey, DatasetRow[]>>;
+type StiDesignerInstance = InstanceType<StimulsoftApi["Designer"]["StiDesigner"]>;
 
 /**
  * Dashboard designer locked to ISMS datasets: users can't add connections,
@@ -46,33 +59,57 @@ function buildDesignerOptions(api: StimulsoftApi) {
   return options;
 }
 
+/** Real rows for the period, so elements preview what viewers will open on. */
+async function loadPreviewRows(keys: DatasetKey[], period: CustomDashboardPeriod): Promise<PreviewRows> {
+  if (keys.length === 0) return {};
+  const result = await loadDatasetsAction({ keys, params: resolveDashboardPeriod(period), skipDenied: true });
+  if (!result.success) throw new Error(result.error);
+  const rows: PreviewRows = {};
+  for (const [key, data] of Object.entries(result.datasets)) if (data) rows[key as DatasetKey] = data.rows;
+  return rows;
+}
+
+/**
+ * The designer only re-reads data when its report is replaced, so rebuild one
+ * from the live layout. Unsaved edits survive; the undo history does not.
+ */
+function swapPreviewRows(api: StimulsoftApi, designer: StiDesignerInstance, keys: DatasetKey[], rows: PreviewRows) {
+  if (!designer.report) return;
+  const next = new api.Report.StiReport();
+  next.load(designer.report.saveToJsonString());
+  ensureDataSources(api, next, keys);
+  registerDatasets(api, next, rows);
+  designer.report = next;
+}
+
 /** Mount with `key={id}`: the props are only the starting state. */
 export function CustomDashboardDesigner(props: CustomDashboardDesignerProps) {
   // Captured once. Router refreshes (session cookie, or revalidation after a
   // save) re-send these props and must not rebuild the designer mid-edit.
-  const [{ id, template, datasetKeys }] = useState(props);
+  const [{ id, template, datasetKeys, defaultPeriod: initialPeriod }] = useState(props);
   const hostRef = useRef<HTMLDivElement>(null);
+  const designerRef = useRef<{ api: StimulsoftApi; instance: StiDesignerInstance } | null>(null);
   const [state, setState] = useState<"LOADING" | "READY" | "ERROR">("LOADING");
+  const [period, setPeriod] = useState(initialPeriod);
+  const [periodPending, setPeriodPending] = useState(false);
 
   useEffect(() => {
     const host = hostRef.current;
     let disposed = false;
-    let designer: { dispose(): void } | null = null;
+    let designer: StiDesignerInstance | null = null;
     let renderObserver: MutationObserver | null = null;
 
-    // Last 30 days of real data so elements preview while designing.
     Promise.all([
       loadStimulsoftDesigner(),
-      datasetKeys.length > 0
-        ? loadDatasetsAction({ keys: datasetKeys, params: defaultDashboardRange(), skipDenied: true })
-        : Promise.resolve(null),
+      loadPreviewRows(datasetKeys, initialPeriod).catch((error: unknown) => {
+        // Layout still works without data; elements just preview empty.
+        console.error("[custom-dashboards] preview data failed to load", error);
+        toast.error("Preview data could not load", { description: "Elements will show empty until you reload." });
+        return {};
+      }),
     ])
-      .then(([api, result]) => {
+      .then(([api, rows]) => {
         if (disposed || !host) return;
-        const rows: Partial<Record<DatasetKey, DatasetRow[]>> = {};
-        if (result?.success) {
-          for (const [key, data] of Object.entries(result.datasets)) if (data) rows[key as DatasetKey] = data.rows;
-        }
 
         const report = new api.Report.StiReport();
         report.load(template);
@@ -100,6 +137,7 @@ export function CustomDashboardDesigner(props: CustomDashboardDesignerProps) {
         instance.renderHtml(host);
         instance.report = report;
         designer = instance;
+        designerRef.current = { api, instance };
       })
       .catch((error: unknown) => {
         console.error("[custom-dashboards] designer failed to load", error);
@@ -108,23 +146,61 @@ export function CustomDashboardDesigner(props: CustomDashboardDesignerProps) {
 
     return () => {
       disposed = true;
+      designerRef.current = null;
       renderObserver?.disconnect();
       designer?.dispose();
       if (host) host.innerHTML = "";
     };
-  }, [id, template, datasetKeys]);
+  }, [id, template, datasetKeys, initialPeriod]);
+
+  async function changePeriod(next: CustomDashboardPeriod) {
+    const previous = period;
+    setPeriod(next);
+    setPeriodPending(true);
+    try {
+      const saved = await updateCustomDashboardPeriodAction({ id, period: next });
+      if (!saved.success) {
+        setPeriod(previous);
+        toast.error("Could not save the default period", { description: saved.error });
+        return;
+      }
+      const current = designerRef.current;
+      if (current) swapPreviewRows(current.api, current.instance, datasetKeys, await loadPreviewRows(datasetKeys, next));
+      toast.success(`Default period set to ${CUSTOM_DASHBOARD_PERIOD_LABELS[next]}`);
+    } catch (error: unknown) {
+      // The period is saved at this point; only the preview refresh failed.
+      console.error("[custom-dashboards] preview reload failed", error);
+      toast.error("Default period saved, but the preview could not reload", { description: "Reload the page to see it." });
+    } finally {
+      setPeriodPending(false);
+    }
+  }
 
   return (
-    <div className="relative h-[calc(100dvh-11rem)] min-h-[600px] overflow-hidden rounded-xl border bg-card">
-      {state === "LOADING" ? (
-        <ReportingLoading label="Loading designer" className="absolute inset-0" />
-      ) : null}
-      {state === "ERROR" ? (
-        <p role="alert" className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted-foreground">
-          The designer could not load. Check your connection and reload the page.
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <Label htmlFor="custom-dashboard-default-period">Default period</Label>
+        <DashboardPeriodSelect
+          id="custom-dashboard-default-period"
+          value={period}
+          onChange={(next) => void changePeriod(next)}
+          disabled={state !== "READY" || periodPending}
+        />
+        <p className="text-sm text-muted-foreground" aria-live="polite">
+          {periodPending ? "Updating preview…" : "Viewers open the dashboard on this period and can switch it."}
         </p>
-      ) : null}
-      <div ref={hostRef} className="stimulsoft-host h-full w-full" />
+      </div>
+      <div className="relative h-[calc(100dvh-14rem)] min-h-[600px] overflow-hidden rounded-xl border bg-card">
+        {state === "LOADING" ? (
+          <ReportingLoading label="Loading designer" className="absolute inset-0" />
+        ) : null}
+        {state === "ERROR" ? (
+          <p role="alert" className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted-foreground">
+            The designer could not load. Check your connection and reload the page.
+          </p>
+        ) : null}
+        <div ref={hostRef} className="stimulsoft-host h-full w-full" />
+      </div>
     </div>
   );
 }

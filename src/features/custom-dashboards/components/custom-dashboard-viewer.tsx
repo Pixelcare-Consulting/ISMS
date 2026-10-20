@@ -5,21 +5,32 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { defaultDashboardRange } from "@/features/custom-dashboards/lib/default-range";
+import {
+  DashboardPeriodSelect,
+  type DashboardPeriodChoice,
+} from "@/features/custom-dashboards/components/dashboard-period-select";
+import { resolveDashboardPeriod, type DashboardRange } from "@/features/custom-dashboards/lib/dashboard-period";
+import {
+  DEFAULT_CUSTOM_DASHBOARD_PERIOD,
+  type CustomDashboardPeriod,
+} from "@/features/custom-dashboards/schemas/custom-dashboard.schema";
 import { loadDatasetsAction } from "@/features/reporting/actions/reporting.actions";
 import { ReportingLoading } from "@/features/reporting/components/reporting-loading";
 import { StimulsoftViewer } from "@/features/reporting/components/stimulsoft-viewer";
 import { DATASET_CATALOG, type DatasetKey, type DatasetRow } from "@/features/reporting/datasets/dataset-catalog";
 import { registerDatasets, templateDatasetKeys } from "@/features/reporting/lib/create-report";
+import { describeDateRange } from "@/features/reporting/lib/filter-summary";
 import { applyIsmsDashboardTheme } from "@/features/reporting/lib/reporting-theme";
 import type { StimulsoftApi } from "@/features/reporting/lib/stimulsoft-client";
 import { useJsonStable } from "@/hooks/use-json-stable";
 
 interface CustomDashboardViewerProps {
   template: Record<string, unknown>;
+  /** The owner's saved period; the viewer can switch for this session only. */
+  defaultPeriod?: CustomDashboardPeriod;
 }
 
-type Range = { from: string; to: string };
+type Range = DashboardRange;
 
 /** Viewer toolbar height, in layout units, added to the frame's aspect ratio. */
 const TOOLBAR_ALLOWANCE = 48;
@@ -52,7 +63,9 @@ export function CustomDashboardViewer(props: CustomDashboardViewerProps) {
   const keys = useMemo(() => templateDatasetKeys(template), [template]);
   const hasDatedData = keys.some((key) => DATASET_CATALOG[key].dashboardDateRange);
   const canvas = useMemo(() => templateCanvas(template), [template]);
-  const [draft, setDraft] = useState<Range>(() => defaultDashboardRange());
+  const initialPeriod = props.defaultPeriod ?? DEFAULT_CUSTOM_DASHBOARD_PERIOD;
+  const [period, setPeriod] = useState<DashboardPeriodChoice>(initialPeriod);
+  const [draft, setDraft] = useState<Range>(() => resolveDashboardPeriod(initialPeriod));
   const [range, setRange] = useState<Range>(draft);
   const [loaded, setLoaded] = useState<{ range: Range; outcome: LoadOutcome } | null>(null);
   const outcome = loaded?.range === range ? loaded.outcome : null;
@@ -133,30 +146,52 @@ export function CustomDashboardViewer(props: CustomDashboardViewerProps) {
           }}
         >
           <div className="space-y-2">
-            <Label htmlFor="custom-dashboard-from">From</Label>
-            <Input
-              id="custom-dashboard-from"
-              type="date"
-              value={draft.from}
-              max={draft.to}
-              onChange={(e) => setDraft((d) => ({ ...d, from: e.target.value }))}
-              required
+            <Label htmlFor="custom-dashboard-period">Period</Label>
+            <DashboardPeriodSelect
+              id="custom-dashboard-period"
+              value={period}
+              allowCustom
+              onChange={(next) => {
+                setPeriod(next);
+                // Custom keeps the current dates as a starting point and waits for Apply.
+                if (next === "CUSTOM") return;
+                const resolved = resolveDashboardPeriod(next);
+                setDraft(resolved);
+                setRange(resolved);
+              }}
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="custom-dashboard-to">To</Label>
-            <Input
-              id="custom-dashboard-to"
-              type="date"
-              value={draft.to}
-              min={draft.from}
-              onChange={(e) => setDraft((d) => ({ ...d, to: e.target.value }))}
-              required
-            />
-          </div>
-          <Button type="submit" variant="outline">
-            Apply dates
-          </Button>
+          {period === "CUSTOM" ? (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="custom-dashboard-from">From</Label>
+                <Input
+                  id="custom-dashboard-from"
+                  type="date"
+                  value={draft.from}
+                  max={draft.to}
+                  onChange={(e) => setDraft((d) => ({ ...d, from: e.target.value }))}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="custom-dashboard-to">To</Label>
+                <Input
+                  id="custom-dashboard-to"
+                  type="date"
+                  value={draft.to}
+                  min={draft.from}
+                  onChange={(e) => setDraft((d) => ({ ...d, to: e.target.value }))}
+                  required
+                />
+              </div>
+              <Button type="submit" variant="outline">
+                Apply dates
+              </Button>
+            </>
+          ) : (
+            <p className="pb-2 text-sm text-muted-foreground">{describeDateRange(range.from, range.to)}</p>
+          )}
         </form>
       ) : null}
 

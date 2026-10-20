@@ -3430,19 +3430,32 @@ enum CustomDashboardVisibility {
   TENANT
 }
 
+/// Rolling date window a custom dashboard opens on; viewers can override it per session.
+enum CustomDashboardPeriod {
+  TODAY
+  YESTERDAY
+  LAST_7_DAYS
+  LAST_30_DAYS
+  LAST_90_DAYS
+  THIS_MONTH
+  LAST_MONTH
+  THIS_YEAR
+}
+
 /// User-built Stimulsoft dashboard. `template` holds the Dashboards.JS JSON
 /// layout only — never data. Data is loaded at view time through the
 /// reporting dataset registry with the viewer's own permissions and AOR.
 model CustomDashboard {
-  id          String                    @id @default(cuid())
-  tenantId    String                    @map("tenant_id")
-  ownerUserId String                    @map("owner_user_id")
-  name        String
-  description String?
-  template    Json
-  visibility  CustomDashboardVisibility @default(PRIVATE)
-  createdAt   DateTime                  @default(now()) @map("created_at")
-  updatedAt   DateTime                  @updatedAt @map("updated_at")
+  id            String                    @id @default(cuid())
+  tenantId      String                    @map("tenant_id")
+  ownerUserId   String                    @map("owner_user_id")
+  name          String
+  description   String?
+  template      Json
+  visibility    CustomDashboardVisibility @default(PRIVATE)
+  defaultPeriod CustomDashboardPeriod     @default(LAST_30_DAYS) @map("default_period")
+  createdAt     DateTime                  @default(now()) @map("created_at")
+  updatedAt     DateTime                  @updatedAt @map("updated_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   owner  User   @relation("CustomDashboardOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)

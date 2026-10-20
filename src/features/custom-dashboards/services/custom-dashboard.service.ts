@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 
 import type {
+  CustomDashboardPeriod,
   CustomDashboardVisibility,
 } from "@/features/custom-dashboards/schemas/custom-dashboard.schema";
 import { prisma } from "@/lib/database/client";
@@ -17,6 +18,7 @@ export interface CustomDashboardSummary {
 
 export interface CustomDashboardDetail extends CustomDashboardSummary {
   template: Record<string, unknown>;
+  defaultPeriod: CustomDashboardPeriod;
 }
 
 interface DetailsInput {
@@ -79,10 +81,14 @@ export const customDashboardService = {
   async findReadable(tenantId: string, userId: string, id: string): Promise<CustomDashboardDetail | null> {
     const row = await prisma.customDashboard.findFirst({
       where: { id, ...readableWhere(tenantId, userId) },
-      select: { ...SUMMARY_SELECT, template: true },
+      select: { ...SUMMARY_SELECT, template: true, defaultPeriod: true },
     });
     if (!row) return null;
-    return { ...toSummary(row, userId), template: row.template as Record<string, unknown> };
+    return {
+      ...toSummary(row, userId),
+      template: row.template as Record<string, unknown>,
+      defaultPeriod: row.defaultPeriod,
+    };
   },
 
   async create(
@@ -126,6 +132,14 @@ export const customDashboardService = {
     const { count } = await prisma.customDashboard.updateMany({
       where: { id, tenantId, ownerUserId: userId },
       data: { template: template as Prisma.InputJsonObject },
+    });
+    return count > 0;
+  },
+
+  async savePeriod(tenantId: string, userId: string, id: string, period: CustomDashboardPeriod): Promise<boolean> {
+    const { count } = await prisma.customDashboard.updateMany({
+      where: { id, tenantId, ownerUserId: userId },
+      data: { defaultPeriod: period },
     });
     return count > 0;
   },

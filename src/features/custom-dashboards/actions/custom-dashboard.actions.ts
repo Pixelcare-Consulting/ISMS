@@ -11,6 +11,7 @@ import {
   customDashboardIdSchema,
   saveCustomDashboardTemplateSchema,
   updateCustomDashboardDetailsSchema,
+  updateCustomDashboardPeriodSchema,
 } from "@/features/custom-dashboards/schemas/custom-dashboard.schema";
 import { customDashboardService } from "@/features/custom-dashboards/services/custom-dashboard.service";
 import blankTemplate from "@/features/reporting/templates/dashboards/blank.mrt.json";
@@ -103,6 +104,28 @@ export async function saveCustomDashboardTemplateAction(input: unknown): Promise
   } catch (error) {
     logger.error({ err: error, id: parsed.data.id }, "custom-dashboards: save failed");
     return { success: false, error: "Could not save the dashboard" };
+  }
+}
+
+/** Sets the rolling period a dashboard opens on. Viewers can still pick another one. */
+export async function updateCustomDashboardPeriodAction(input: unknown): Promise<ActionResult> {
+  const session = await requirePermission(CUSTOM_DASHBOARD_MANAGE);
+  const parsed = updateCustomDashboardPeriodSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: "Invalid period" };
+
+  try {
+    const saved = await customDashboardService.savePeriod(
+      session.user.tenantId,
+      session.user.id,
+      parsed.data.id,
+      parsed.data.period,
+    );
+    if (!saved) return { success: false, error: NOT_FOUND };
+    revalidateCustomDashboards(parsed.data.id);
+    return { success: true };
+  } catch (error) {
+    logger.error({ err: error, id: parsed.data.id }, "custom-dashboards: save period failed");
+    return { success: false, error: "Could not save the default period" };
   }
 }
 
