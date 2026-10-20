@@ -21,6 +21,7 @@ import {
   isSuperAdminOrderOverride,
 } from "@/features/orders/constants/order-workflow";
 import { OrderDetailsDialog } from "@/app/(app)/orders/_components/order-details-dialog";
+import { SuggestedOrdersDialog } from "@/app/(app)/orders/_components/suggested-orders-dialog";
 import { OrderWorkflowDialog } from "@/app/(app)/orders/_components/order-workflow-dialog";
 import {
   EditOrderDialog,
@@ -52,8 +53,12 @@ interface OrderRow {
   orderType: string;
   status: string;
   branchId: string;
+  brandId?: string | null;
   notes?: string | null;
   spaRemarks?: string | null;
+  updatedAt?: string | Date | null;
+  reviewSnapshot?: unknown;
+  reviewSnapshotAt?: string | Date | null;
   deliveryDueDate?: string | Date | null;
   branch: { name: string; deliverySchedule?: unknown };
   createdBy: { name: string | null; email: string };
@@ -62,7 +67,8 @@ interface OrderRow {
     quantity: number;
     approvedQty?: number | null;
     remarks?: string | null;
-    model: { id: string; skuCode: string };
+    spRemarks?: string | null;
+    model: { id: string; skuCode: string; name?: string; brandId?: string | null };
   }[];
   approvalLevels?: {
     level: number;
@@ -89,8 +95,6 @@ interface OrdersTableProps {
   };
   viewerRoleSlugs: string[];
   canEdit?: boolean;
-  /** Same gate as Supply Planning (`forecast.manage` / `planogram.manage`). */
-  canAccessSuggestedOrders?: boolean;
   /** When set, list is type-scoped and create dialog locks this type. */
   fixedOrderType?: BranchOrderType;
   /** Base path for pagination links (defaults to `/orders`). */
@@ -156,7 +160,6 @@ export function OrdersTable({
   result,
   viewerRoleSlugs,
   canEdit = false,
-  canAccessSuggestedOrders = false,
   fixedOrderType,
   basePath = "/orders",
   initialSort = "",
@@ -166,9 +169,10 @@ export function OrdersTable({
   const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
   const [workflowOrder, setWorkflowOrder] = useState<OrderRow | null>(null);
-  const [detailsOrder, setDetailsOrder] = useState<OrderRow | null>(null);
+  const [detailsOrderId, setDetailsOrderId] = useState<string | null>(null);
   const [editingOrder, setEditingOrder] = useState<EditableOrder | null>(null);
   const [draftToDelete, setDraftToDelete] = useState<OrderRow | null>(null);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [bulkCancelOpen, setBulkCancelOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [processingAction, setProcessingAction] = useState<"approve" | "reject" | null>(
@@ -214,6 +218,10 @@ export function OrdersTable({
   );
 
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const detailsOrder = useMemo(
+    () => result.items.find((item) => item.id === detailsOrderId) ?? null,
+    [detailsOrderId, result.items],
+  );
   const canSuperAdminBulkCancel = isSuperAdminOrderOverride(viewerRoleSlugs);
   const selectedOrderIds = useMemo(
     () => filtered.map((order) => order.id).filter((id) => rowSelection[id]),
@@ -223,8 +231,17 @@ export function OrdersTable({
 
   function handleApprove(input?: {
     comment?: string;
-    lineAdjustments?: { detailId: string; approvedQty: number }[];
+    lineAdjustments?: {
+      detailId: string;
+      approvedQty: number;
+      spRemarks?: string | null;
+    }[];
     deliveryDueDate?: string;
+    expectedUpdatedAt?: string;
+    reviewSnapshot?: {
+      kind: "order-review-snapshot";
+      version: 1;
+    };
   }) {
     if (!workflowOrder) return;
     setProcessingAction("approve");
@@ -332,9 +349,7 @@ export function OrdersTable({
                   onReview={() => setWorkflowOrder(order)}
                 />
               ) : null}
-              {canEdit &&
-              order.status === "draft" &&
-              order.orderType === "auto_replenish" ? (
+              {canEdit && order.status === "draft" ? (
                 <Button
                   size="sm"
                   disabled={pending}
@@ -346,7 +361,7 @@ export function OrdersTable({
                         return;
                       }
                       toast.success("Submitted for review", {
-                        description: "Team Leader can review this order now.",
+                        description: draftSubmitDescription(order.orderType),
                       });
                       router.refresh();
                     });
@@ -392,7 +407,7 @@ export function OrdersTable({
                   Edit
                 </Button>
               ) : null}
-              <Button size="sm" variant="outline" onClick={() => setDetailsOrder(order)}>
+              <Button size="sm" variant="outline" onClick={() => setDetailsOrderId(order.id)}>
                 View details
               </Button>
             </div>
@@ -449,9 +464,9 @@ export function OrdersTable({
                 ) : null}
               </>
             ) : null}
-            {canAccessSuggestedOrders ? (
-              <Button variant="outline" asChild>
-                <a href="/settings/planning/runs">Suggested orders</a>
+            {canEdit && fixedOrderType ? (
+              <Button type="button" variant="outline" onClick={() => setSuggestionsOpen(true)}>
+                Suggested orders
               </Button>
             ) : null}
             {canEdit && fixedOrderType !== "auto_replenish" ? (
@@ -481,38 +496,54 @@ export function OrdersTable({
       />
       {detailsOrder ? (
         <OrderDetailsDialog
+          orderId={detailsOrder.id}
           orderNumber={detailsOrder.orderNumber}
           orderType={detailsOrder.orderType as BranchOrderType}
+          branchId={detailsOrder.branchId}
           branchName={detailsOrder.branch.name}
           status={detailsOrder.status as BranchOrderStatus}
           notes={detailsOrder.notes}
           deliveryDueDate={detailsOrder.deliveryDueDate}
           createdByName={detailsOrder.createdBy.name ?? detailsOrder.createdBy.email}
+          reviewSnapshot={detailsOrder.reviewSnapshot}
+          reviewSnapshotAt={detailsOrder.reviewSnapshotAt}
           lines={detailsOrder.details.map((d) => ({
             detailId: d.id,
+            modelId: d.model.id,
             skuCode: d.model.skuCode,
+            name: d.model.name,
             quantity: d.quantity,
             approvedQty: d.approvedQty,
             remarks: d.remarks,
+            spRemarks: d.spRemarks,
           }))}
           approvalLevels={detailsOrder.approvalLevels}
+          roleSlugs={viewerRoleSlugs}
+          hasCreatePermission={canEdit}
           open
           onOpenChange={(open) => {
-            if (!open) setDetailsOrder(null);
+            if (!open) setDetailsOrderId(null);
           }}
         />
       ) : null}
       {workflowOrder ? (
         <OrderWorkflowDialog
+          orderId={workflowOrder.id}
           orderNumber={workflowOrder.orderNumber}
           orderType={workflowOrder.orderType as "auto_replenish" | "manual" | "special"}
+          branchId={workflowOrder.branchId}
           branchName={workflowOrder.branch.name}
+          updatedAt={workflowOrder.updatedAt}
           deliverySchedule={workflowOrder.branch.deliverySchedule}
           lines={workflowOrder.details.map((d) => ({
             detailId: d.id,
+            modelId: d.model.id,
             skuCode: d.model.skuCode,
             quantity: d.quantity,
+            remarks: d.remarks,
+            spRemarks: d.spRemarks,
           }))}
+          approvalLevels={workflowOrder.approvalLevels}
           status={workflowOrder.status as BranchOrderStatus}
           open
           pending={pending}
@@ -602,6 +633,12 @@ export function OrdersTable({
           }}
         />
       ) : null}
+      {suggestionsOpen && fixedOrderType ? (
+        <SuggestedOrdersDialog
+          orderType={fixedOrderType}
+          onClose={() => setSuggestionsOpen(false)}
+        />
+      ) : null}
       <LoadingModal
         open={pending && processingAction !== null}
         title={
@@ -620,6 +657,13 @@ interface OrderReviewButtonProps {
   order: OrderRow;
   viewerRoleSlugs: string[];
   onReview: () => void;
+}
+
+function draftSubmitDescription(orderType: string): string {
+  if (orderType === "auto_replenish") {
+    return "Team Leader can review this order now.";
+  }
+  return "Supply Planning can review this order now.";
 }
 
 function OrderReviewButton({ order, viewerRoleSlugs, onReview }: OrderReviewButtonProps) {

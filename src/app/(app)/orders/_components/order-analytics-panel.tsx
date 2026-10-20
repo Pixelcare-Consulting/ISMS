@@ -76,7 +76,14 @@ function persistBrand(orderType: BranchOrderType, nextBrandId: string) {
   sessionStorage.setItem(analyticsBrandStorageKey(orderType), nextBrandId);
 }
 
-export function OrderAnalyticsPanel({ orderType }: { orderType: BranchOrderType }) {
+export function OrderAnalyticsPanel({
+  orderType,
+  initialBranchId,
+}: {
+  orderType: BranchOrderType;
+  /** When set and assigned to the viewer, the panel opens on this branch. */
+  initialBranchId?: string;
+}) {
   const { canEdit, openCreate } = useOrdersCreateWorkspace();
   const [branches, setBranches] = useState<
     { id: string; name: string; dealerId: string | null }[]
@@ -192,12 +199,18 @@ export function OrderAnalyticsPanel({ orderType }: { orderType: BranchOrderType 
         return;
       }
 
+      const preferredBranch =
+        initialBranchId && rows.some((row) => row.id === initialBranchId)
+          ? initialBranchId
+          : null;
       const initialBranch =
         rows.length === 1
           ? rows[0].id
-          : storedBranchValid && storedBranch
-            ? storedBranch
-            : "";
+          : preferredBranch
+            ? preferredBranch
+            : storedBranchValid && storedBranch
+              ? storedBranch
+              : "";
 
       if (!initialBranch) {
         setPickerOpen(true);
@@ -207,7 +220,11 @@ export function OrderAnalyticsPanel({ orderType }: { orderType: BranchOrderType 
 
       setBranchId(initialBranch);
       setPendingBranchId(initialBranch);
-      persistBranch(orderType, initialBranch);
+      const keepSavedBranch =
+        preferredBranch != null && initialBranch === preferredBranch && rows.length !== 1;
+      if (!keepSavedBranch) {
+        persistBranch(orderType, initialBranch);
+      }
 
       const result = await getOrderAnalyticsAction({
         branchId: initialBranch,
@@ -226,14 +243,16 @@ export function OrderAnalyticsPanel({ orderType }: { orderType: BranchOrderType 
       setCardBrands(brands);
       const initialBrand = resolveBrandId(brands, storedBrand);
       setBrandId(initialBrand);
-      persistBrand(orderType, initialBrand);
+      if (!keepSavedBranch) {
+        persistBrand(orderType, initialBrand);
+      }
       setBranchesReady(true);
     });
 
     return () => {
       cancelled = true;
     };
-  }, [orderType]);
+  }, [initialBranchId, orderType]);
 
   useEffect(() => {
     if (!branchId || !brandId) return;
@@ -450,6 +469,7 @@ export function OrderAnalyticsPanel({ orderType }: { orderType: BranchOrderType 
             <div className="w-56 min-w-44">
               <SearchableSelect
                 label="Brand"
+                popoverClassName={initialBranchId ? "z-[100]" : undefined}
                 options={brandOptions}
                 value={brandId}
                 onChange={assignBrand}
@@ -506,7 +526,13 @@ export function OrderAnalyticsPanel({ orderType }: { orderType: BranchOrderType 
           closePicker();
         }}
       >
-        <DialogContent className="flex max-h-[min(36rem,calc(100svh-2rem))] flex-col gap-0 overflow-hidden p-0">
+        <DialogContent
+          overlayClassName={initialBranchId ? "z-[90]" : undefined}
+          className={cn(
+            "flex max-h-[min(36rem,calc(100svh-2rem))] flex-col gap-0 overflow-hidden p-0",
+            initialBranchId && "z-[100]",
+          )}
+        >
           <DialogHeader className="shrink-0 border-b px-4 py-4 sm:px-6">
             <DialogTitle>Select branch</DialogTitle>
           </DialogHeader>

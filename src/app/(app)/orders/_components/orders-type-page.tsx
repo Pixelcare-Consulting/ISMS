@@ -18,7 +18,6 @@ import { hasPermission, requireAnyPermission } from "@/lib/auth/permissions";
 import { ordersModuleGuideForType } from "@/content/module-guides/orders";
 import { BRANCH_ORDERS_PAGE_TUTORIAL } from "@/content/page-tutorials/branch-orders";
 import { PageHeader } from "@/app/(app)/_components/page-header";
-import { OrderAnalyticsPanel } from "@/app/(app)/orders/_components/order-analytics-panel";
 import { OrderHistoryTable } from "@/app/(app)/orders/_components/order-history-table";
 import { OrdersCreateWorkspaceProvider } from "@/app/(app)/orders/_components/orders-create-workspace-context";
 import { OrdersPageTabs } from "@/app/(app)/orders/_components/orders-page-tabs";
@@ -44,7 +43,7 @@ interface OrdersTypePageProps {
 function ordersTypePageDescription(orderType: BranchOrderType): string {
   switch (orderType) {
     case "auto_replenish":
-      return "Showing auto replenish requests waiting for your role. Approved orders are in Order History. Suggestions are generated under Settings → Planning.";
+      return "Showing auto replenish requests waiting for your role. Approved orders are in Order History. Review suggestions from Suggested Orders on this screen. They are not submitted until you submit the draft.";
     case "manual":
       return "Showing manual requests waiting for your role. Approved orders are in Order History. Path: Product Specialist submits → Pending SP (Team Leader may optionally edit) → Supply Planning approves.";
     case "special":
@@ -63,12 +62,12 @@ export async function OrdersTypePage({
   const session = await requireAnyPermission(orderTypeAccessPermissions(orderType));
   const params = await searchParams;
   const pageTabs = ordersPageTabsForType(orderType);
-  const showAnalytics = pageTabs.includes("analytics");
   const activeTab = parseOrdersPageTab(params.tab, pageTabs);
   const page = Number(params.page) || 1;
   const limit = parseTablePageSize(params.limit);
   const viewerRoleSlugs = session.user.roleSlugs ?? [];
   const canEdit = hasOrderPermission(session.user.permissions, orderType, "create");
+  const canCreateSpecial = hasOrderPermission(session.user.permissions, "special", "create");
   const canAccessSuggestedOrders =
     hasPermission(session.user.permissions, "forecast.manage") ||
     hasPermission(session.user.permissions, "planogram.manage");
@@ -107,7 +106,7 @@ export async function OrdersTypePage({
         actions={
           canAccessSuggestedOrders ? (
             <Button variant="outline" asChild>
-              <Link href="/settings/planning">Planning & suggestions</Link>
+              <Link href="/settings/planning">Planning</Link>
             </Button>
           ) : undefined
         }
@@ -116,7 +115,7 @@ export async function OrdersTypePage({
       <OrdersCreateWorkspaceProvider
         orderType={orderType}
         canEdit={canEdit}
-        canAccessSuggestedOrders={canAccessSuggestedOrders}
+        canCreateSpecial={canCreateSpecial}
       >
         <OrdersPageTabs
           activeTab={activeTab}
@@ -130,7 +129,6 @@ export async function OrdersTypePage({
                   result={ordersResult}
                   viewerRoleSlugs={viewerRoleSlugs}
                   canEdit={canEdit}
-                  canAccessSuggestedOrders={canAccessSuggestedOrders}
                   fixedOrderType={orderType}
                   basePath={basePath}
                   initialSort={params.sort ?? ""}
@@ -139,16 +137,13 @@ export async function OrdersTypePage({
               </div>
             ) : null
           }
-          analyticsContent={
-            showAnalytics && activeTab === "analytics" ? (
-              <OrderAnalyticsPanel key={orderType} orderType={orderType} />
-            ) : null
-          }
           historyContent={
             historyResult ? (
               <OrderHistoryTable
                 result={historyResult}
                 basePath={basePath}
+                viewerRoleSlugs={viewerRoleSlugs}
+                hasCreatePermission={canEdit}
                 initialSort={params.sort ?? "createdAt"}
                 initialSortDir={params.dir ?? "desc"}
               />

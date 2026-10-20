@@ -271,6 +271,7 @@ model Tenant {
   demandPlanningRunBranches   DemandPlanningRunBranch[]
   demandPlanningLines         DemandPlanningLine[]
   demandPlanningOverrides     DemandPlanningOverride[]
+  orderSuggestionAllocations  OrderSuggestionAllocation[]
   stockCountSessions          StockCountSession[]
   monthlySirRequests          MonthlySirRequest[]
   stockVariances              StockVariance[]
@@ -684,6 +685,7 @@ model ProductModel {
   branchMilSettings                  BranchMilSetting[]
   branchAllowedModels                BranchAllowedModel[]
   branchOrderDetails                 BranchOrderDetail[]
+  orderSuggestionAllocations         OrderSuggestionAllocation[]
   branchAllocations                  BranchAllocation[]
   skuForecastTargets                 SkuForecastTarget[]
   demandPlanningLines                DemandPlanningLine[]
@@ -1280,6 +1282,7 @@ model Branch {
   branchAllowedModels       BranchAllowedModel[]
   deliveryScheduleConfig    BranchDeliverySchedule?
   branchOrders              BranchOrder[]
+  orderSuggestionAllocations OrderSuggestionAllocation[]
   branchDeliveries          BranchDelivery[]
   transfersFrom             BranchTransfer[]          @relation("TransferFromBranch")
   transfersTo               BranchTransfer[]          @relation("TransferToBranch")
@@ -1789,6 +1792,7 @@ model PlanningPeriod {
   skuForecastTargets SkuForecastTarget[]
   allocations        BranchAllocation[]
   demandPlanningRuns DemandPlanningRun[]
+  orderSuggestionAllocations OrderSuggestionAllocation[]
 
   @@unique([tenantId, label])
   @@index([tenantId])
@@ -1897,6 +1901,7 @@ model DemandPlanningRun {
   branches     DemandPlanningRunBranch[]
   lines        DemandPlanningLine[]
   overrides    DemandPlanningOverride[]
+  orderSuggestionAllocations OrderSuggestionAllocation[]
 
   @@unique([tenantId, documentNumber])
   @@index([tenantId, periodId])
@@ -2032,9 +2037,11 @@ model BranchOrder {
   orderType       BranchOrderType   @map("order_type")
   status          BranchOrderStatus @default(pending_tl)
   orderNumber     String            @map("order_number")
-  notes           String?
-  spaRemarks      String?           @map("spa_remarks")
-  deliveryDueDate DateTime?         @map("delivery_due_date")
+  notes            String?
+  spaRemarks       String?           @map("spa_remarks")
+  reviewSnapshot   Json?             @map("review_snapshot")
+  reviewSnapshotAt DateTime?         @map("review_snapshot_at")
+  deliveryDueDate  DateTime?         @map("delivery_due_date")
   processedAt     DateTime?         @map("processed_at")
   sapDocRef       String?           @map("sap_doc_ref")
   createdById     String            @map("created_by_id")
@@ -2066,13 +2073,50 @@ model BranchOrderDetail {
   quantity    Int
   approvedQty Int?     @map("approved_qty")
   remarks     String?
+  spRemarks   String?  @map("sp_remarks")
   amount      Decimal? @db.Decimal(12, 2)
 
   order BranchOrder  @relation(fields: [orderId], references: [id], onDelete: Cascade)
   model ProductModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  suggestionAllocation OrderSuggestionAllocation?
 
   @@index([orderId])
   @@map("branch_order_details")
+}
+
+/// Quantity of a published suggestion consumed by one order line.
+/// `sourceKind` is `planning_drop1` or `shelf_gap` only (`SuggestionSourceKind`).
+/// Stored as text so this migration does not add an enum.
+model OrderSuggestionAllocation {
+  id            String          @id @default(cuid())
+  tenantId      String          @map("tenant_id")
+  orderDetailId String          @unique @map("order_detail_id")
+  branchId      String          @map("branch_id")
+  modelId       String          @map("model_id")
+  orderType     BranchOrderType @map("order_type")
+  sourceKind    String          @map("source_kind")
+  /// Planning period. Null for shelf-gap rows.
+  periodId      String?         @map("period_id")
+  /// Released run that published the suggestion. SetNull when that run is removed.
+  planningRunId String?         @map("planning_run_id")
+  /// Amount taken from the suggestion pool.
+  allocatedQty  Int             @map("allocated_qty")
+  /// Published suggestion at apply time, used only to detect "suggestion changed".
+  sourceQty     Int             @map("source_qty")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+
+  tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orderDetail BranchOrderDetail  @relation(fields: [orderDetailId], references: [id], onDelete: Cascade)
+  branch      Branch             @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  model       ProductModel       @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  period      PlanningPeriod?    @relation(fields: [periodId], references: [id], onDelete: SetNull)
+  planningRun DemandPlanningRun? @relation(fields: [planningRunId], references: [id], onDelete: SetNull)
+
+  /// Postgres identifiers max out at 63 bytes; the default name for this index would be truncated.
+  @@index([tenantId, branchId, modelId, orderType], map: "osa_tenant_branch_model_order_type_idx")
+  @@index([periodId])
+  @@map("order_suggestion_allocations")
 }
 
 model BranchOrderApprovalLevel {

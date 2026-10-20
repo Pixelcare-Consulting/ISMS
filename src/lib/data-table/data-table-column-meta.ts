@@ -10,4 +10,6 @@ export interface DataTableColumnMeta {
   mobile?: DataTableMobile;
   className?: string;
   headClassName?: string;
+  /** Applied as the cell width. Use a fixed size for columns that should hug their content. */
+  width?: string;
 }

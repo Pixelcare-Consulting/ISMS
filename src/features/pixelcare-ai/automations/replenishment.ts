@@ -1,5 +1,6 @@
 import type { Prisma } from "@/lib/database/generated/prisma/client";
 
+import { AssistantUserError } from "@/features/ai/lib/assistant-messages";
 import type { AutomationExecutorContext } from "@/features/pixelcare-ai/automations/executors";
 import {
   assertCanCreateReplenishment,
@@ -10,10 +11,8 @@ import {
 import {
   automationLocalDay,
   buildReplenishmentLines,
-  confirmOpenProposal,
   isUniqueConflict,
   localDayToDate,
-  orderableReplenishmentLines,
   PROPOSED_NOT_CREATED,
   readMinSug,
   REPLENISHMENT_ANALYTICS_HREF,
@@ -22,8 +21,6 @@ import {
 } from "@/features/pixelcare-ai/automations/proposal-lines";
 import { hashOrderableLines } from "@/features/pixelcare-ai/automations/line-hash";
 import { orderAnalyticsService } from "@/features/orders/services/order-analytics.service";
-import { orderService } from "@/features/orders/services/order.service";
-import { ORDER_TYPE_ROUTE } from "@/features/orders/constants/order-permissions";
 import { prisma } from "@/lib/database/client";
 
 const MAX_PROPOSAL_LINES = 200;
@@ -208,16 +205,6 @@ export async function executeReplenishmentReview(
   };
 }
 
-type StoredProposal = {
-  id: string;
-  tenantId: string;
-  branchId: string;
-  status: "proposed" | "confirmed" | "superseded";
-  orderId: string | null;
-  lines: Prisma.JsonValue;
-  run: { automation: { ownerUserId: string } };
-};
-
 export function parseStoredProposalLines(value: Prisma.JsonValue): ReplenishmentLine[] {
   if (!Array.isArray(value)) throw new Error("Proposal lines are missing.");
   return value.map((entry) => {
@@ -261,10 +248,6 @@ export type ConfirmProposalResult = {
   label: string;
 };
 
-/**
- * Creates one auto-replenish order through `orderService.create` when the
- * proposal is still proposed and has no order. A retry returns that order.
- */
 /** Chat tool: propose for one branch the owner can access. Does not create an order. */
 export async function prepareReplenishmentProposalForUser(input: {
   tenantId: string;
@@ -339,124 +322,16 @@ export async function prepareReplenishmentProposalForUser(input: {
   }
 }
 
-export async function confirmReplenishmentProposal(input: {
+/**
+ * Confirm no longer inserts an auto-replenish order. Review the suggestion in
+ * Suggested Orders on the Auto replenish screen.
+ */
+export async function confirmReplenishmentProposal(_input: {
   tenantId: string;
   actorUserId: string;
   proposalId: string;
 }): Promise<ConfirmProposalResult> {
-  const existing = await prisma.aiReplenishmentProposal.findFirst({
-    where: { id: input.proposalId, tenantId: input.tenantId },
-    select: {
-      id: true,
-      tenantId: true,
-      branchId: true,
-      status: true,
-      orderId: true,
-      lines: true,
-      run: { select: { automation: { select: { ownerUserId: true } } } },
-    },
-  });
-  if (!existing) throw new Error("Proposal not found.");
-  if (existing.run.automation.ownerUserId !== input.actorUserId) {
-    throw new Error("Only the automation owner can confirm this proposal.");
-  }
-
-  const outcome = await prisma.$transaction(
-    async (tx) => {
-      await tx.$queryRaw`SELECT id FROM ai_replenishment_proposals WHERE id = ${input.proposalId} AND tenant_id = ${input.tenantId} FOR UPDATE`;
-      const locked = await tx.aiReplenishmentProposal.findFirst({
-        where: { id: input.proposalId, tenantId: input.tenantId },
-        select: {
-          id: true,
-          tenantId: true,
-          branchId: true,
-          status: true,
-          orderId: true,
-          lines: true,
-          run: { select: { automation: { select: { ownerUserId: true } } } },
-        },
-      });
-      return confirmLockedProposal(locked, input.actorUserId, tx);
-    },
-    { timeout: 20_000 },
-  );
-
-  const order = await prisma.branchOrder.findFirst({
-    where: { id: outcome.orderId, tenantId: input.tenantId },
-    select: { id: true, orderNumber: true, status: true },
-  });
-  return {
-    created: outcome.kind === "created",
-    orderId: outcome.orderId,
-    orderNumber: order?.orderNumber ?? null,
-    status: order?.status ?? null,
-    href: ORDER_TYPE_ROUTE[REPLENISHMENT_ORDER_TYPE],
-    label: outcome.kind === "created" ? "Order created" : "Existing order",
-  };
-}
-
-async function confirmLockedProposal(
-  locked: StoredProposal | null,
-  actorUserId: string,
-  tx: Prisma.TransactionClient,
-) {
-  return confirmOpenProposal(
-    locked ? { status: locked.status, orderId: locked.orderId } : null,
-    {
-      assertMayConfirm: async () => {
-        if (!locked) throw new Error("Proposal not found.");
-        const access = await loadOwnerAccess(locked.tenantId, actorUserId);
-        assertCanCreateReplenishment(access);
-        resolveScopedBranches([locked.branchId], access);
-        const lines = orderableReplenishmentLines(parseStoredProposalLines(locked.lines));
-        if (lines.length === 0) {
-          throw new Error("No orderable shelf gaps on this proposal.");
-        }
-      },
-      createDraft: async () => {
-        if (!locked) throw new Error("Proposal not found.");
-        const access = await loadOwnerAccess(locked.tenantId, actorUserId);
-        const orderable = orderableReplenishmentLines(parseStoredProposalLines(locked.lines));
-        const order = await orderService.create(locked.tenantId, actorUserId, {
-          branchId: locked.branchId,
-          orderType: REPLENISHMENT_ORDER_TYPE,
-          notes: `Pixelcare replenishment proposal ${locked.id}`,
-          brandId: null,
-          hasFullAccess: access.fullOrderAccess,
-          details: orderable.map((line) => ({
-            modelId: line.modelId,
-            quantity: line.sug,
-            remarks: "Shelf max − STK",
-          })),
-        });
-        return { id: order.id };
-      },
-      reread: async () => {
-        const again = await tx.aiReplenishmentProposal.findFirst({
-          where: { id: locked?.id ?? "", tenantId: locked?.tenantId ?? "" },
-          select: { status: true, orderId: true },
-        });
-        if (!again) return null;
-        return { status: again.status, orderId: again.orderId };
-      },
-      attach: async (orderId: string) => {
-        if (!locked) return false;
-        const updated = await tx.aiReplenishmentProposal.updateMany({
-          where: {
-            id: locked.id,
-            tenantId: locked.tenantId,
-            status: "proposed",
-            orderId: null,
-          },
-          data: {
-            status: "confirmed",
-            orderId,
-            confirmedById: actorUserId,
-            confirmedAt: new Date(),
-          },
-        });
-        return updated.count === 1;
-      },
-    },
+  throw new AssistantUserError(
+    "Replenishment orders are reviewed in Suggested Orders on the Auto replenish screen.",
   );
 }

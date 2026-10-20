@@ -53,6 +53,8 @@ export async function getOrderAnalyticsAction(input: {
   branchId: string;
   brandId?: string | null;
   orderType: BranchOrderType;
+  /** When true and no brand is chosen, include every brand on the branch. */
+  allBrands?: boolean;
 }) {
   const session = await requireAnyPermission(orderTypeAccessPermissions(input.orderType));
   try {
@@ -62,9 +64,12 @@ export async function getOrderAnalyticsAction(input: {
       input.branchId,
       hasFullOrderAccess(session.user.permissions),
     );
+    const { allBrands, ...query } = input;
     return {
       success: true as const,
-      data: await orderAnalyticsService.getAnalytics(session.user.tenantId, input),
+      data: await orderAnalyticsService.getAnalytics(session.user.tenantId, query, {
+        allBrands,
+      }),
     };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to load order analytics" };

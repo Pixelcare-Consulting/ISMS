@@ -11,6 +11,12 @@ import {
   updateOrderAction,
 } from "@/features/orders/actions/order.actions";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 
@@ -39,9 +45,12 @@ export interface EditableOrder {
 export function EditOrderDialog({
   order,
   onClose,
+  stacked = false,
 }: {
   order: EditableOrder;
   onClose: () => void;
+  /** Raise above an already open dialog, such as View details. */
+  stacked?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -112,18 +121,25 @@ export function EditOrderDialog({
   }
 
   const availableToAdd = models.filter((m) => !lines.some((l) => l.modelId === m.id));
+  const editSummary = `${order.branchName} — ${
+    order.orderType === "manual"
+      ? "you can adjust lines while Supply Planning reviews."
+      : "editing resubmits the order for review."
+  }`;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md max-h-[calc(100svh-2rem)] overflow-y-auto space-y-4 rounded-xl border bg-card p-4 sm:p-6 shadow-lg">
+  const body = (
+    <>
         <div>
-          <h3 className="font-medium">Edit order {order.orderNumber}</h3>
-          <p className="text-sm text-muted-foreground">
-            {order.branchName} —{" "}
-            {order.orderType === "manual"
-              ? "you can adjust lines while Supply Planning reviews."
-              : "editing resubmits the order for review."}
-          </p>
+          {stacked ? (
+            <DialogTitle className="font-medium">Edit order {order.orderNumber}</DialogTitle>
+          ) : (
+            <h3 className="font-medium">Edit order {order.orderNumber}</h3>
+          )}
+          {stacked ? (
+            <DialogDescription>{editSummary}</DialogDescription>
+          ) : (
+            <p className="text-sm text-muted-foreground">{editSummary}</p>
+          )}
         </div>
 
         {!loaded ? (
@@ -157,7 +173,7 @@ export function EditOrderDialog({
                       size="icon"
                       onClick={() => removeLine(line.modelId)}
                       disabled={pending}
-                      aria-label={`Remove ${line.skuCode}`}
+                      aria-label={`Remove line ${line.skuCode}`}
                     >
                       <Trash2 className="size-4" />
                     </Button>
@@ -174,6 +190,7 @@ export function EditOrderDialog({
                     id: m.id,
                     label: `${m.skuCode} — ${m.name}${m.maxQty != null ? ` (Shelf max ${m.maxQty})` : ""}`,
                   }))}
+                  popoverClassName={stacked ? "z-[100]" : undefined}
                   value={addModelId}
                   onChange={setAddModelId}
                   placeholder="Select model…"
@@ -200,6 +217,32 @@ export function EditOrderDialog({
             </div>
           </>
         )}
+    </>
+  );
+
+  if (stacked) {
+    return (
+      <Dialog
+        open
+        onOpenChange={(next) => {
+          if (!next && !pending) onClose();
+        }}
+      >
+        <DialogContent
+          showCloseButton={false}
+          overlayClassName="z-[70]"
+          className="z-[80] max-w-md"
+        >
+          {body}
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-md max-h-[calc(100svh-2rem)] overflow-y-auto space-y-4 rounded-xl border bg-card p-4 sm:p-6 shadow-lg">
+        {body}
       </div>
     </div>
   );

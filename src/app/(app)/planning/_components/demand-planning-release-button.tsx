@@ -2,7 +2,6 @@
 
 import type { DemandPlanningPlanStatus } from "@prisma/client";
 import { useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import {
@@ -36,7 +35,7 @@ function formatSkipSummary(
   skipped: Array<{ branchName: string; reason: string }> | undefined,
 ): string {
   if (!skipped || skipped.length === 0) {
-    return "No branches had Drop 1 quantity to send (or each already has an open Auto Replenish for this period).";
+    return "No branches had Drop 1 quantity to publish.";
   }
   const byReason = new Map<string, number>();
   for (const item of skipped) {
@@ -51,7 +50,7 @@ function branchLabel(branch: ReleaseBranchHint): string {
   return `${branch.sapCode} ${branch.name}`;
 }
 
-/** Client-side hint before the server preview loads (open orders unknown). */
+/** Client-side hint before the server preview loads. */
 function hintPreview(branches: ReleaseBranchHint[] | undefined): DemandPlanReleasePreview | null {
   if (!branches || branches.length === 0) return null;
   const willRelease: DemandPlanReleasePreview["willRelease"] = [];
@@ -116,7 +115,6 @@ export function DemandPlanningReleaseButton({
   branches?: ReleaseBranchHint[];
   onReleased?: () => void;
 }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
   const [loadingPreview, setLoadingPreview] = useState(false);
@@ -153,7 +151,7 @@ export function DemandPlanningReleaseButton({
   }
 
   const willReleaseCount = preview?.willRelease.length ?? 0;
-  const skippedCount = (preview?.noDrop1.length ?? 0) + (preview?.openOrder.length ?? 0);
+  const skippedCount = preview?.noDrop1.length ?? 0;
   const noHistoryCount = preview?.noHistory.length ?? 0;
 
   return (
@@ -169,9 +167,9 @@ export function DemandPlanningReleaseButton({
           <AlertDialogDescription asChild>
             <div className="space-y-3 text-left">
               <p>
-                Drop 1 quantities freeze on this document. Branches with Drop 1 above zero go
-                straight to Team Leader as Auto Replenish. You can still release when some
-                branches have no sales history.
+                Drop 1 quantities freeze on this document. The plan is published for Suggested
+                Orders review and no order is submitted. You can still release when some branches
+                have no sales history.
               </p>
               {loadingPreview && !preview ? (
                 <p className="text-muted-foreground text-sm">Checking branches…</p>
@@ -182,8 +180,8 @@ export function DemandPlanningReleaseButton({
               {preview ? (
                 <>
                   <p className="text-foreground text-sm font-medium">
-                    {willReleaseCount} → Team Leader
-                    {skippedCount > 0 ? ` · ${skippedCount} skipped` : ""}
+                    {willReleaseCount} published for Suggested Orders
+                    {skippedCount > 0 ? ` · ${skippedCount} not published` : ""}
                     {noHistoryCount > 0 ? ` · ${noHistoryCount} no sales history` : ""}
                     {loadingPreview ? " (updating…)" : ""}
                   </p>
@@ -191,14 +189,7 @@ export function DemandPlanningReleaseButton({
                     title="No sales history (still release)"
                     items={preview.noHistory}
                   />
-                  <BranchNameList title="No Drop 1 (skip)" items={preview.noDrop1} />
-                  <BranchNameList
-                    title="Open Auto Replenish for this period (skip)"
-                    items={preview.openOrder.map((item) => ({
-                      branchName: item.branchName,
-                      detail: item.detail ? `open ${item.detail}` : undefined,
-                    }))}
-                  />
+                  <BranchNameList title="No Drop 1 (not published)" items={preview.noDrop1} />
                 </>
               ) : null}
             </div>
@@ -216,27 +207,15 @@ export function DemandPlanningReleaseButton({
                   return;
                 }
                 if (!("orders" in result)) return;
-                const count = result.orders.length;
                 onReleased?.();
-                if (count === 0) {
-                  toast.warning("No Auto Replenish orders sent to Team Leader", {
-                    description: formatSkipSummary(
-                      "skipped" in result ? result.skipped : undefined,
-                    ),
-                  });
-                  return;
-                }
-                toast.success(
-                  `Released ${count} Auto Replenish order${count === 1 ? "" : "s"} to Team Leader`,
-                  {
-                    description: "Open Auto Replenish to approve.",
-                    action: {
-                      label: "Open Auto Replenish",
-                      onClick: () => router.push("/orders/auto-replenish"),
-                    },
-                  },
-                );
-                router.push("/orders/auto-replenish");
+                const skipped = "skipped" in result ? result.skipped : undefined;
+                const skipSummary =
+                  skipped && skipped.length > 0 ? formatSkipSummary(skipped) : null;
+                toast.success("Plan published for Suggested Orders review", {
+                  description: skipSummary
+                    ? `No order was submitted. ${skipSummary}`
+                    : "No order was submitted.",
+                });
               });
             }}
           >

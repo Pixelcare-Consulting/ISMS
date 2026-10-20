@@ -2,11 +2,6 @@ import type { DemandPlanningPlanStatus } from "@prisma/client";
 
 import { auditService } from "@/features/audit/services/audit.service";
 import {
-  getInitialOrderStatus,
-  getOrderApprovalChain,
-} from "@/features/orders/constants/order-workflow";
-import { nextSalesOrderNumber } from "@/features/orders/utils/next-sales-order-number";
-import {
   freezeReleasedDrop1Qty,
   orderDetailsFromDrop1Lines,
   shouldSkipBranchForRelease,
@@ -17,7 +12,6 @@ import type {
   ReleasePreviewBranch,
 } from "@/features/demand-planning/types/run.types";
 import { prisma } from "@/lib/database/client";
-import { sendWorkflowEmail } from "@/lib/notifications/workflow-email";
 
 export type ReleasedOrderResult = {
   id: string;
@@ -33,13 +27,9 @@ export type SkippedReleaseBranch = {
 export type { DemandPlanReleasePreview, ReleasePreviewBranch } from "@/features/demand-planning/types/run.types";
 
 type ReleaseBranchClassification = {
-  branchId: string;
   branchName: string;
   planStatus: DemandPlanningPlanStatus;
   details: Array<{ modelId: string; quantity: number }>;
-  openOrderNumber: string | null;
-  /** Period label from open-order notes when available (e.g. Oct-26). */
-  openOrderPeriodHint: string | null;
 };
 
 type ClassifiedReleaseRun = {
@@ -72,42 +62,16 @@ async function classifyBranchesForRelease(
     linesByBranch.set(line.runBranchId, list);
   }
 
-  const periodLabel = run.period.label.trim();
   const classifications: ReleaseBranchClassification[] = [];
   for (const branch of run.branches) {
     const branchName = `${branch.branch.sapCode} ${branch.branch.name}`;
-    if (shouldSkipBranchForRelease(branch.planStatus)) {
-      classifications.push({
-        branchId: branch.branchId,
-        branchName,
-        planStatus: branch.planStatus,
-        details: [],
-        openOrderNumber: null,
-        openOrderPeriodHint: null,
-      });
-      continue;
-    }
-
-    const details = orderDetailsFromDrop1Lines(linesByBranch.get(branch.id) ?? []);
-    let openOrderNumber: string | null = null;
-    let openOrderPeriodHint: string | null = null;
-    if (details.length > 0) {
-      const existingOpen = await demandPlanningRepository.findExistingOpenAutoReplenish(
-        tenantId,
-        branch.branchId,
-        periodLabel,
-        run.documentNumber,
-      );
-      openOrderNumber = existingOpen?.orderNumber ?? null;
-      openOrderPeriodHint = existingOpen ? periodLabel : null;
-    }
+    const details = shouldSkipBranchForRelease(branch.planStatus)
+      ? []
+      : orderDetailsFromDrop1Lines(linesByBranch.get(branch.id) ?? []);
     classifications.push({
-      branchId: branch.branchId,
       branchName,
       planStatus: branch.planStatus,
       details,
-      openOrderNumber,
-      openOrderPeriodHint,
     });
   }
 
@@ -120,21 +84,10 @@ function previewFromClassifications(
   const willRelease: ReleasePreviewBranch[] = [];
   const noHistory: ReleasePreviewBranch[] = [];
   const noDrop1: ReleasePreviewBranch[] = [];
-  const openOrder: ReleasePreviewBranch[] = [];
 
   for (const row of classifications) {
     if (shouldSkipBranchForRelease(row.planStatus) || row.details.length === 0) {
       noDrop1.push({ branchName: row.branchName });
-      continue;
-    }
-    if (row.openOrderNumber) {
-      const periodSuffix = row.openOrderPeriodHint
-        ? ` · ${row.openOrderPeriodHint}`
-        : "";
-      openOrder.push({
-        branchName: row.branchName,
-        detail: `${row.openOrderNumber}${periodSuffix}`,
-      });
       continue;
     }
     willRelease.push({ branchName: row.branchName });
@@ -143,7 +96,7 @@ function previewFromClassifications(
     }
   }
 
-  return { willRelease, noHistory, noDrop1, openOrder };
+  return { willRelease, noHistory, noDrop1, openOrder: [] };
 }
 
 export const demandPlanningReleaseService = {
@@ -183,8 +136,6 @@ export const demandPlanningReleaseService = {
 
     const created: ReleasedOrderResult[] = [];
     const skipped: SkippedReleaseBranch[] = [];
-    const approvalChain = getOrderApprovalChain("auto_replenish");
-    const initialStatus = getInitialOrderStatus("auto_replenish");
 
     for (const row of classifications) {
       if (shouldSkipBranchForRelease(row.planStatus)) {
@@ -193,53 +144,7 @@ export const demandPlanningReleaseService = {
       }
       if (row.details.length === 0) {
         skipped.push({ branchName: row.branchName, reason: "no Drop 1 quantity" });
-        continue;
       }
-      if (row.openOrderNumber) {
-        const periodHint = row.openOrderPeriodHint
-          ? ` for ${row.openOrderPeriodHint}`
-          : " for this period";
-        skipped.push({
-          branchName: row.branchName,
-          reason: `open order ${row.openOrderNumber} already exists${periodHint}`,
-        });
-        continue;
-      }
-
-      const orderNumber = await nextSalesOrderNumber(tenantId);
-      const order = await prisma.branchOrder.create({
-        data: {
-          tenantId,
-          branchId: row.branchId,
-          orderType: "auto_replenish",
-          orderNumber,
-          status: initialStatus,
-          createdById: actorUserId,
-          notes: `Supply Planning ${run.documentNumber} Drop 1 (${run.period.label})`,
-          details: {
-            create: row.details.map((detail) => ({
-              modelId: detail.modelId,
-              quantity: detail.quantity,
-            })),
-          },
-          approvalLevels: {
-            create: approvalChain.map((step) => ({
-              level: step.level,
-              roleSlug: step.roleSlug,
-            })),
-          },
-        },
-      });
-      created.push({
-        id: order.id,
-        orderNumber: order.orderNumber,
-        branchName: row.branchName,
-      });
-
-      await sendWorkflowEmail({
-        subject: `Branch order ${order.orderNumber} submitted for review`,
-        body: "Order pending Team Leader review.",
-      });
     }
 
     await auditService.log({

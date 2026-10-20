@@ -21,6 +21,7 @@ describe("toClientOrderListItem", () => {
           quantity: 2,
           approvedQty: 1,
           remarks: null,
+          spRemarks: "Line note from SP",
           amount: new Decimal("180000.00"),
           model: {
             id: "model-1",
@@ -47,6 +48,7 @@ describe("toClientOrderListItem", () => {
         quantity: 2,
         approvedQty: 1,
         remarks: null,
+        spRemarks: "Line note from SP",
         model: {
           id: "model-1",
           skuCode: "SKU-1",

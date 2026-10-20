@@ -12,13 +12,13 @@ export const BRANCH_ORDERS_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "What this page is for",
       description:
-        "Manual and Special have Orders, Order Analytics, and Order History. Auto replenish shows Orders and Order History only — suggestions stay in Planning. Order counts sit under the Orders tab for your current work queue. Logistics fulfills only after final Supply Planning approval.",
+        "Manual, Special, and Auto replenish each show Orders and Order History. Open Order analytics on an order to see stock, sales, and days of cover. Order counts sit under the Orders tab for your current work queue. Logistics fulfills only after final Supply Planning approval.",
     },
     {
       title: "Orders, Analytics, and History",
       bullets: [
         "Orders — requests waiting for your role so you can Review or Edit. Approved, rejected, and cancelled SO#s stay in Order History.",
-        "Order Analytics (Manual and Special) — use Change to pick a branch, then a brand, in one dialog. A large heading shows what you chose. DII, inventory, this month’s sales, and suggested quantities stay hidden until both are set. Long lists use pages. Proceed to order opens the create workspace with that branch and brand filled in.",
+        "Order analytics — from an order, opens stock, sales, sell-through, and days of cover for that branch. Suggest follows the order type. It is separate from the order sheet.",
         "Order History — past SO#s with ordered and approved quantities and amounts, date, and who last updated the request.",
       ],
     },
@@ -26,7 +26,7 @@ export const BRANCH_ORDERS_PAGE_TUTORIAL: PageTutorialContent = {
       title: "Create a branch order",
       bullets: [
         "Create order opens a wide workspace: dealer, branch, optional brand, and notes on the left; models on the right. Leave brand empty to see every model at the branch, or pick a brand to narrow the list.",
-        "Use Additional item below the table to add extras — pick several at once; they appear at the bottom. Rows are numbered. Delete a wrong line; that model returns to Additional item so you can add it again.",
+        "Additional item sits to the right of the filters. On a special order it opens a search window for active models that are not already on the sheet. On a manual order it opens a separate special order and does not add those lines here.",
         "Enter a branch quantity of 1 or more to include a model. Manual starts at 0; Auto replenish starts from the suggested quantity. Full shelves stay visible but stay locked on Manual and Auto replenish.",
         "Manual and Auto replenish extras come from other planogram models at the branch. Special can add an extra item that is not on the planogram.",
       ],

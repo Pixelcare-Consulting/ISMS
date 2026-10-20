@@ -24,6 +24,11 @@ interface TablePaginationProps {
   page?: number;
   totalPages?: number;
   label?: string;
+  /**
+   * Replaces the default "{total} {label}s · page N of N" text.
+   * Page buttons stay. Other tables omit this and keep their count.
+   */
+  summary?: string;
   /** Extra classes on each page control. Defaults leave existing tables unchanged. */
   buttonClassName?: string;
 }
@@ -120,6 +125,7 @@ export function TablePagination({
   page,
   totalPages,
   label = "item",
+  summary,
   buttonClassName,
 }: TablePaginationProps) {
   const resolvedTotal = meta?.total ?? total ?? 0;
@@ -141,7 +147,8 @@ export function TablePagination({
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-3 text-sm text-muted-foreground">
       <span>
-        {resolvedTotal} {pluralLabel} · page {resolvedPage} of {resolvedTotalPages}
+        {summary ??
+          `${resolvedTotal} ${pluralLabel} · page ${resolvedPage} of ${resolvedTotalPages}`}
       </span>
       <div className="flex flex-wrap items-center gap-1.5">
         {showFirst ? (

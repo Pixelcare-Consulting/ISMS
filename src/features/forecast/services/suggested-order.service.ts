@@ -1,8 +1,3 @@
-import { auditService } from "@/features/audit/services/audit.service";
-import { forecastRepository } from "@/features/forecast/repositories/forecast.repository";
-import { orderRepository } from "@/features/orders/repositories/order.repository";
-import { getOrderApprovalChain } from "@/features/orders/constants/order-workflow";
-import { nextSalesOrderNumber } from "@/features/orders/utils/next-sales-order-number";
 import { prisma } from "@/lib/database/client";
 import {
   resolvePagination,
@@ -62,119 +57,22 @@ function draftSuggestedOrdersWhere(
   };
 }
 
+const SHELF_GAP_DRAFTS_RETIRED =
+  "Shelf-gap drafts are no longer generated here. Auto replenish suggestions come from a released Supply Planning run via Suggested Orders.";
+
 export const suggestedOrderService = {
   async generateSuggestedOrders(
-    tenantId: string,
-    periodId: string,
-    createdById: string,
+    _tenantId: string,
+    _periodId: string,
+    _createdById: string,
   ) {
-    const period = await forecastRepository.findPeriodById(tenantId, periodId);
-    if (!period) throw new Error("Planning period not found");
-
-    const allocations = await forecastRepository.listAllocationsForPeriod(
-      tenantId,
-      periodId,
-    );
-    if (allocations.length === 0) {
-      throw new Error("No allocation gaps. Run allocation first.");
-    }
-
-    const byBranch = new Map<string, typeof allocations>();
-    for (const row of allocations) {
-      const list = byBranch.get(row.branchId) ?? [];
-      list.push(row);
-      byBranch.set(row.branchId, list);
-    }
-
-    const created: { id: string; orderNumber: string; branchName: string }[] = [];
-
-    for (const [branchId, lines] of byBranch) {
-      const existingDraft = await prisma.branchOrder.findFirst({
-        where: {
-          tenantId,
-          branchId,
-          orderType: "auto_replenish",
-          status: "draft",
-        },
-      });
-      if (existingDraft) continue;
-
-      const approvalChain = getOrderApprovalChain("auto_replenish");
-      const orderNumber = await nextSalesOrderNumber(tenantId);
-      const order = await prisma.branchOrder.create({
-        data: {
-          tenantId,
-          branchId,
-          orderType: "auto_replenish",
-          orderNumber,
-          status: "draft",
-          createdById,
-          notes: `Suggested replenishment (${period.label})`,
-          details: {
-            create: lines.map((line) => ({
-              modelId: line.modelId,
-              quantity: line.gapQty,
-            })),
-          },
-          approvalLevels: {
-            create: approvalChain.map((step) => ({
-              level: step.level,
-              roleSlug: step.roleSlug,
-            })),
-          },
-        },
-        include: {
-          branch: { select: { name: true } },
-        },
-      });
-
-      created.push({
-        id: order.id,
-        orderNumber: order.orderNumber,
-        branchName: order.branch.name,
-      });
-    }
-
-    await auditService.log({
-      tenantId,
-      userId: createdById,
-      action: "forecast.suggested_orders_generated",
-      entityType: "PlanningPeriod",
-      entityId: periodId,
-      metadata: { orderCount: created.length },
-    });
-
-    return created;
+    throw new Error(SHELF_GAP_DRAFTS_RETIRED);
   },
 
-  async submitDraftOrdersForReview(tenantId: string, actorUserId: string) {
-    const drafts = await prisma.branchOrder.findMany({
-      where: { tenantId, orderType: "auto_replenish", status: "draft" },
-      include: { branch: { select: { name: true } } },
-    });
-
-    if (drafts.length === 0) {
-      throw new Error("No draft suggested orders to submit");
-    }
-
-    for (const order of drafts) {
-      await orderRepository.updateStatus(tenantId, order.id, "pending_tl");
-    }
-
-    await auditService.log({
-      tenantId,
-      userId: actorUserId,
-      action: "forecast.suggested_orders_submitted",
-      entityType: "BranchOrder",
-      entityId: drafts.map((o) => o.id).join(","),
-      metadata: { count: drafts.length },
-    });
-
-    return drafts.map((o) => ({
-      id: o.id,
-      orderNumber: o.orderNumber,
-      branchName: o.branch.name,
-    }));
+  async submitDraftOrdersForReview(_tenantId: string, _actorUserId: string) {
+    throw new Error(
+      "Shelf-gap drafts are no longer submitted from here. Auto replenish suggestions come from a released Supply Planning run via Suggested Orders.",
+    );
   },
 
   listDraftSuggestedOrders(tenantId: string) {
