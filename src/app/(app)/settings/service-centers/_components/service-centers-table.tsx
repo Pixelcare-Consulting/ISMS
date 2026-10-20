@@ -1,6 +1,7 @@
-"use client";
+﻿"use client";
 
-import { Fragment, useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
+import { createColumnHelper } from "@tanstack/react-table";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -14,11 +15,15 @@ import {
 import { SapSyncButton } from "@/features/sap/components/sap-sync-button";
 import {
   DeleteConfirmDialog,
-  TableEmptyRow,
   uniqueSearchSuggestions,
   useClientTablePagination,
 } from "@/components/data-table";
-import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
+import {
+  DataTable,
+  useClientTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,14 +36,9 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import {
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { cn } from "@/utils/cn";
 import { matchesTableSearch } from "@/utils/match-table-search";
+
+const centerColumn = createColumnHelper<DataTableFeatures, CenterRow>();
 
 interface LocationRow {
   id: string;
@@ -54,8 +54,6 @@ interface CenterRow {
   area: { name: string } | null;
   locations: LocationRow[];
 }
-
-const COL_COUNT = 4;
 
 export function ServiceCentersTable({
   centers,
@@ -221,9 +219,109 @@ export function ServiceCentersTable({
       ? "No service centers yet."
       : "No service centers match your search.";
 
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<CenterRow>[] = [
+      centerColumn.display({
+        id: "sapCode",
+        header: "SAP",
+        enableSorting: true,
+        cell: ({ row }) => row.original.sapCode,
+      }),
+      centerColumn.display({
+        id: "name",
+        header: "Name",
+        enableSorting: true,
+        cell: ({ row }) => row.original.name,
+      }),
+      centerColumn.display({
+        id: "area",
+        header: "Area",
+        enableSorting: true,
+        cell: ({ row }) => row.original.area?.name ?? "—",
+      }),
+      centerColumn.display({
+        id: "locations",
+        header: "Locations",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const open = expandedId === row.original.id;
+          return (
+            <div className="space-y-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setExpandedId(open ? null : row.original.id)}
+              >
+                {row.original.locations.length} location(s)
+              </Button>
+              {open ? (
+                <div className="space-y-2 rounded-md border bg-muted/30 p-3">
+                  {row.original.locations.map((loc) => (
+                    <div key={loc.id} className="flex items-center justify-between text-sm">
+                      <span>
+                        {loc.code} — {loc.name}
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={pending}
+                        onClick={() =>
+                          setDeletingLocation({
+                            centerId: row.original.id,
+                            location: loc,
+                          })
+                        }
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  ))}
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    <Input
+                      placeholder="Code"
+                      value={locCode}
+                      onChange={(e) => setLocCode(e.target.value)}
+                      className="w-28"
+                    />
+                    <Input
+                      placeholder="Name"
+                      value={locName}
+                      onChange={(e) => setLocName(e.target.value)}
+                      className="w-40"
+                    />
+                    <Button
+                      size="sm"
+                      disabled={pending || !locCode || !locName}
+                      onClick={() => addLocation(row.original.id)}
+                    >
+                      Add location
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          );
+        },
+        meta: { wrap: true, className: "min-w-[24rem]" },
+      }),
+    ];
+    return cols;
+  }, [expandedId, locCode, locName, pending]);
+
   return (
     <div className="space-y-4">
-      <GlobalDataTable
+      <DataTable
+        data={pageItems}
+        columns={columns}
+        getRowId={(row) => row.id}
+        manualSorting
+        manualPagination
+        enableSorting
+        sorting={{
+          sortKey: sort.sortKey,
+          sortDir: sort.sortDir,
+          onSort: sort.toggleSort,
+        }}
         stickyHeader
         search={{
           value: query,
@@ -249,6 +347,8 @@ export function ServiceCentersTable({
             </Button> */}
           </>
         }
+        empty={pageItems.length === 0}
+        emptyMessage={emptyMessage}
         pageSize={{ value: pageSize, onChange: setPageSize }}
         pagination={{
           total,
@@ -257,94 +357,7 @@ export function ServiceCentersTable({
           itemLabel: "service center",
           onPageChange: setPage,
         }}
-      >
-            <TableHeader>
-              <TableRow className="bg-muted/30 hover:bg-muted/30">
-                <GlobalTableHead {...sort.sortProps("sapCode")}>SAP</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("name")}>Name</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("area")}>Area</GlobalTableHead>
-                <GlobalTableHead>Locations</GlobalTableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.length === 0 ? (
-                <TableEmptyRow colSpan={COL_COUNT} message={emptyMessage} />
-              ) : (
-                pageItems.map((row, index) => (
-                  <Fragment key={row.id}>
-                    <TableRow className={cn(index % 2 === 1 && "bg-table-stripe")}>
-                      <TableCell>{row.sapCode}</TableCell>
-                      <TableCell>{row.name}</TableCell>
-                      <TableCell>{row.area?.name ?? "—"}</TableCell>
-                      <TableCell>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() =>
-                            setExpandedId((current) => (current === row.id ? null : row.id))
-                          }
-                        >
-                          {row.locations.length} location(s)
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                    {expandedId === row.id ? (
-                      <TableRow>
-                        <TableCell colSpan={COL_COUNT}>
-                          <div className="space-y-2 rounded-md border bg-muted/30 p-3">
-                            {row.locations.map((loc) => (
-                              <div
-                                key={loc.id}
-                                className="flex items-center justify-between text-sm"
-                              >
-                                <span>
-                                  {loc.code} — {loc.name}
-                                </span>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  disabled={pending}
-                                  onClick={() =>
-                                    setDeletingLocation({
-                                      centerId: row.id,
-                                      location: loc,
-                                    })
-                                  }
-                                >
-                                  Remove
-                                </Button>
-                              </div>
-                            ))}
-                            <div className="flex flex-wrap gap-2 pt-2">
-                              <Input
-                                placeholder="Code"
-                                value={locCode}
-                                onChange={(e) => setLocCode(e.target.value)}
-                                className="w-28"
-                              />
-                              <Input
-                                placeholder="Name"
-                                value={locName}
-                                onChange={(e) => setLocName(e.target.value)}
-                                className="w-40"
-                              />
-                              <Button
-                                size="sm"
-                                disabled={pending || !locCode || !locName}
-                                onClick={() => addLocation(row.id)}
-                              >
-                                Add location
-                              </Button>
-                            </div>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ) : null}
-                  </Fragment>
-                ))
-              )}
-            </TableBody>
-      </GlobalDataTable>
+      />
 
       <Sheet open={addOpen} onOpenChange={onAddOpenChange}>
         <SheetContent

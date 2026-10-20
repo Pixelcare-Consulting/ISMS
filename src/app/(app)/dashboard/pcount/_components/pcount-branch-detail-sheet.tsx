@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
+import { createColumnHelper } from "@tanstack/react-table";
 import { toast } from "sonner";
 
 import {
@@ -10,6 +11,11 @@ import {
   postStockCountDifferencesAction,
 } from "@/features/stock-audit/actions/stock-audit.actions";
 import type { PcountBranchDetail } from "@/features/stock-audit/services/pcount-dashboard.service";
+import {
+  DataTable,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,14 +25,9 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+
+type SessionRow = PcountBranchDetail["sessions"][number];
+const sessionColumn = createColumnHelper<DataTableFeatures, SessionRow>();
 
 interface PcountBranchDetailSheetProps {
   open: boolean;
@@ -97,6 +98,66 @@ export function PcountBranchDetailSheet({
       }
     });
   };
+
+  const sessionColumns = useMemo(() => {
+    const cols: DataTableColumn<SessionRow>[] = [
+      sessionColumn.display({
+        id: "session",
+        header: "Session",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <Link
+            href={`/inventory/stock-count/${row.original.id}`}
+            className="font-mono text-xs text-primary underline-offset-2 hover:underline"
+          >
+            {row.original.sessionNo}
+          </Link>
+        ),
+      }),
+      sessionColumn.display({
+        id: "by",
+        header: "By",
+        enableSorting: false,
+        cell: ({ row }) => row.original.createdByName ?? "—",
+        meta: { className: "max-w-28 truncate text-xs" },
+      }),
+      sessionColumn.display({
+        id: "counting",
+        header: "Counting",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <Badge variant="outline" className="whitespace-nowrap font-normal">
+            {row.original.counting}
+          </Badge>
+        ),
+      }),
+      sessionColumn.display({
+        id: "posting",
+        header: "Posting",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <Badge variant="outline" className="whitespace-nowrap font-normal">
+            {row.original.posting}
+          </Badge>
+        ),
+      }),
+      sessionColumn.display({
+        id: "closed",
+        header: "Closed",
+        enableSorting: false,
+        cell: ({ row }) => formatManilaDateTime(row.original.closedAt),
+        meta: { className: "whitespace-nowrap text-xs tabular-nums" },
+      }),
+      sessionColumn.display({
+        id: "sap",
+        header: "SAP doc",
+        enableSorting: false,
+        cell: ({ row }) => row.original.sapDocRef ?? "—",
+        meta: { className: "font-mono text-xs" },
+      }),
+    ];
+    return cols;
+  }, []);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -186,64 +247,15 @@ export function PcountBranchDetailSheet({
 
               <div>
                 <h3 className="mb-2 text-sm font-semibold">Session history</h3>
-                {detail.sessions.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    No count sessions for this branch yet.
-                  </p>
-                ) : (
-                  <div className="overflow-x-auto rounded-lg border border-border bg-card">
-                    <Table scrollContainer={false}>
-                      <TableHeader>
-                        <TableRow className="border-b bg-muted hover:bg-muted">
-                          <TableHead className="bg-muted">Session</TableHead>
-                          <TableHead className="bg-muted">By</TableHead>
-                          <TableHead className="bg-muted">Counting</TableHead>
-                          <TableHead className="bg-muted">Posting</TableHead>
-                          <TableHead className="bg-muted">Closed</TableHead>
-                          <TableHead className="bg-muted">SAP doc</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {detail.sessions.map((session, index) => (
-                          <TableRow
-                            key={session.id}
-                            className={
-                              index % 2 === 1 ? "bg-table-stripe" : "bg-card"
-                            }
-                          >
-                            <TableCell>
-                              <Link
-                                href={`/inventory/stock-count/${session.id}`}
-                                className="font-mono text-xs text-primary underline-offset-2 hover:underline"
-                              >
-                                {session.sessionNo}
-                              </Link>
-                            </TableCell>
-                            <TableCell className="max-w-[7rem] truncate text-xs">
-                              {session.createdByName ?? "—"}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className="whitespace-nowrap font-normal">
-                                {session.counting}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className="whitespace-nowrap font-normal">
-                                {session.posting}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="whitespace-nowrap text-xs tabular-nums">
-                              {formatManilaDateTime(session.closedAt)}
-                            </TableCell>
-                            <TableCell className="font-mono text-xs">
-                              {session.sapDocRef ?? "—"}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
+                <DataTable
+                  chrome="plain"
+                  data={detail.sessions}
+                  columns={sessionColumns}
+                  getRowId={(row) => row.id}
+                  stickyHeader
+                  empty={detail.sessions.length === 0}
+                  emptyMessage="No count sessions for this branch yet."
+                />
               </div>
             </>
           ) : null}

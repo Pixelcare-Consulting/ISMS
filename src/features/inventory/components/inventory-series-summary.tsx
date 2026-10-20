@@ -2,6 +2,7 @@
 
 import { ChevronDown, ChevronUp, Expand, Search } from "lucide-react";
 import { useMemo, useState, useSyncExternalStore, type KeyboardEvent } from "react";
+import { createColumnHelper } from "@tanstack/react-table";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -14,13 +15,11 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { GlobalTableHead, useClientTableSort } from "@/lib/data-table";
+  DataTable,
+  useClientTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import type { InventorySeriesSummary } from "@/features/inventory/services/inventory.service";
 import { cn } from "@/utils/cn";
 import { formatPeso } from "@/utils/format-currency";
@@ -69,6 +68,11 @@ interface InventorySeriesSummaryProps {
   summary: InventorySeriesSummary;
 }
 
+type SeriesRow = InventorySeriesSummary["rows"][number] & { isTotal?: false };
+type SeriesTableRow = SeriesRow | { series: string; qty: number; value: number; isTotal: true };
+
+const seriesColumn = createColumnHelper<DataTableFeatures, SeriesTableRow>();
+
 function SeriesSummaryTable({
   rows,
   totalQty,
@@ -89,62 +93,59 @@ function SeriesSummaryTable({
     value: (row) => row.value,
   });
 
+  const tableRows = useMemo(() => {
+    const body: SeriesTableRow[] = sort.sorted;
+    if (rows.length === 0) return body;
+    return [
+      ...body,
+      { series: "TOTAL", qty: totalQty, value: totalValue, isTotal: true as const },
+    ];
+  }, [rows.length, sort.sorted, totalQty, totalValue]);
+
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<SeriesTableRow>[] = [
+      seriesColumn.display({
+        id: "series",
+        header: "SERIES",
+        enableSorting: true,
+        cell: ({ row }) => (row.original.isTotal ? "TOTAL" : row.original.series),
+        meta: { className: "font-mono text-sm" },
+      }),
+      seriesColumn.display({
+        id: "qty",
+        header: "QTY",
+        enableSorting: true,
+        cell: ({ row }) => row.original.qty,
+        meta: { align: "end", className: "tabular-nums" },
+      }),
+      seriesColumn.display({
+        id: "value",
+        header: "VALUE",
+        enableSorting: true,
+        cell: ({ row }) => formatPeso(row.original.value),
+        meta: { align: "end", className: "tabular-nums" },
+      }),
+    ];
+    return cols;
+  }, []);
+
   return (
-    <Table scrollContainer={false}>
-      <TableHeader
-        className={cn(
-          freezeChrome &&
-            "sticky top-0 z-20 bg-card shadow-[inset_0_-1px_0_0_hsl(var(--border))]",
-        )}
-      >
-        <TableRow className="hover:bg-transparent">
-          <GlobalTableHead className="bg-card" {...sort.sortProps("series")}>
-            SERIES
-          </GlobalTableHead>
-          <GlobalTableHead className="bg-card text-right" {...sort.sortProps("qty")}>
-            QTY
-          </GlobalTableHead>
-          <GlobalTableHead className="bg-card text-right" {...sort.sortProps("value")}>
-            VALUE
-          </GlobalTableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {sort.sorted.length === 0 ? (
-          <TableRow>
-            <TableCell colSpan={3} className="py-6 text-center text-sm text-muted-foreground">
-              {emptyLabel}
-            </TableCell>
-          </TableRow>
-        ) : (
-          sort.sorted.map((row) => (
-            <TableRow key={row.series}>
-              <TableCell className="font-mono text-sm">{row.series}</TableCell>
-              <TableCell className="text-right tabular-nums">{row.qty}</TableCell>
-              <TableCell className="text-right tabular-nums">
-                {formatPeso(row.value)}
-              </TableCell>
-            </TableRow>
-          ))
-        )}
-      </TableBody>
-      {rows.length > 0 ? (
-        <tfoot
-          className={cn(
-            freezeChrome &&
-              "sticky bottom-0 z-20 shadow-[inset_0_1px_0_0_hsl(var(--border))]",
-          )}
-        >
-          <tr className="border-t bg-muted font-semibold">
-            <TableCell className="bg-muted">TOTAL</TableCell>
-            <TableCell className="bg-muted text-right tabular-nums">{totalQty}</TableCell>
-            <TableCell className="bg-muted text-right tabular-nums">
-              {formatPeso(totalValue)}
-            </TableCell>
-          </tr>
-        </tfoot>
-      ) : null}
-    </Table>
+    <DataTable
+      chrome="plain"
+      data={tableRows}
+      columns={columns}
+      getRowId={(row) => (row.isTotal ? "__total__" : row.series)}
+      manualSorting
+      enableSorting
+      sorting={{
+        sortKey: sort.sortKey,
+        sortDir: sort.sortDir,
+        onSort: sort.toggleSort,
+      }}
+      stickyHeader={freezeChrome}
+      empty={sort.sorted.length === 0}
+      emptyMessage={emptyLabel}
+    />
   );
 }
 

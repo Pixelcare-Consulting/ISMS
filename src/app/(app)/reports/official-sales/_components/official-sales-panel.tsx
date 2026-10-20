@@ -1,5 +1,6 @@
 "use client";
 
+import { createColumnHelper } from "@tanstack/react-table";
 import {
   useMemo,
   useRef,
@@ -18,11 +19,6 @@ import {
 } from "@/features/official-sales/actions/official-sales.actions";
 import {
   DeleteConfirmDialog,
-  TableEmptyRow,
-  TableIndexCell,
-  TableIndexHead,
-  TableRowCheckbox,
-  TableSelectAllCheckbox,
   TableSelectionBadge,
   TableStatusBadge,
   uniqueSearchSuggestions,
@@ -35,6 +31,7 @@ import {
   type ActionProgressState,
 } from "@/components/ui/action-progress-dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -45,16 +42,11 @@ import {
 } from "@/components/ui/dialog";
 import { usePersistedBoolean } from "@/hooks/use-persisted-boolean";
 import {
-  GlobalDataTable,
-  GlobalTableHead,
+  DataTable,
   useClientTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
 } from "@/lib/data-table";
-import {
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   Tooltip,
   TooltipContent,
@@ -92,10 +84,8 @@ interface OfficialSalesPanelProps {
   canManage: boolean;
 }
 
-/** Default: # Serial Branch SI Date SI/Trans Action Status Result (+ checkbox/Actions when manage) */
-const DEFAULT_COL_COUNT = 8;
-/** Extra dealer-template columns when "Show all columns" is on — incl. the DR pair */
-const SECONDARY_COL_COUNT = 7;
+const salesColumn = createColumnHelper<DataTableFeatures, OfficialSalesStagingRow>();
+
 const XLSX_MIME =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
@@ -122,15 +112,15 @@ const stickyHeadSerialSolo =
   "sticky left-12 z-40 min-w-[9rem] border-r border-border/60 bg-muted shadow-[4px_0_8px_-4px_rgba(0,0,0,0.08)]";
 
 const stickyCellCheckbox =
-  "sticky left-0 z-10 w-12 min-w-12 max-w-12 pl-3 pr-2 border-r border-border/60";
+  "sticky left-0 z-10 w-12 min-w-12 max-w-12 overflow-hidden border-r border-border/60 bg-card pl-3 pr-2";
 const stickyCellIndexManage =
-  "sticky left-12 z-10 w-12 min-w-12 border-r border-border/60";
+  "sticky left-12 z-10 w-12 min-w-12 max-w-12 overflow-hidden border-r border-border/60 bg-card";
 const stickyCellSerialManage =
-  "sticky left-24 z-10 min-w-[9rem] border-r border-border/60 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.06)]";
+  "sticky left-24 z-10 min-w-[9rem] max-w-[11rem] overflow-hidden border-r border-border/60 bg-card shadow-[4px_0_8px_-4px_rgba(0,0,0,0.06)]";
 const stickyCellIndexSolo =
-  "sticky left-0 z-10 w-12 min-w-12 border-r border-border/60";
+  "sticky left-0 z-10 w-12 min-w-12 max-w-12 overflow-hidden border-r border-border/60 bg-card";
 const stickyCellSerialSolo =
-  "sticky left-12 z-10 min-w-[9rem] border-r border-border/60 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.06)]";
+  "sticky left-12 z-10 min-w-[9rem] max-w-[11rem] overflow-hidden border-r border-border/60 bg-card shadow-[4px_0_8px_-4px_rgba(0,0,0,0.06)]";
 
 /** Turn the base64 workbook from the server action into a file download. */
 function downloadWorkbook(base64: string, filename: string) {
@@ -199,19 +189,19 @@ function SerialDetailCell({
   const condensed = joinDetailParts([primaryDetail || null, amountPackage || null]);
 
   return (
-    <TableCell className={cn("py-2 sm:py-2.5", className)}>
-      <div className="min-w-0">
-        <div className="font-mono text-sm font-medium">{row.serial}</div>
-        {!showAllColumns && condensed ? (
-          <p
-            className="mt-0.5 max-w-40 truncate text-xs text-muted-foreground sm:max-w-56"
-            title={condensed}
-          >
-            {condensed}
-          </p>
-        ) : null}
+    <div className={cn("min-w-0", className)}>
+      <div className="truncate font-mono text-sm font-medium" title={row.serial}>
+        {row.serial}
       </div>
-    </TableCell>
+      {!showAllColumns && condensed ? (
+        <p
+          className="mt-0.5 max-w-40 truncate text-xs text-muted-foreground sm:max-w-56"
+          title={condensed}
+        >
+          {condensed}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -219,29 +209,23 @@ function ResultCell({ result }: { result: string | null }) {
   const full = result && result.length > 0 ? result : null;
 
   if (!full) {
-    return (
-      <TableCell className="max-w-36 py-2 text-sm text-muted-foreground sm:max-w-48 sm:py-2.5">
-        —
-      </TableCell>
-    );
+    return <span className="text-sm text-muted-foreground">—</span>;
   }
 
   return (
-    <TableCell className="max-w-36 py-2 sm:max-w-48 sm:py-2.5">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            className="block max-w-36 cursor-default truncate text-sm text-muted-foreground sm:max-w-48"
-            title={full}
-          >
-            {full}
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side="top" className="max-w-sm whitespace-pre-wrap">
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          className="block max-w-36 cursor-default truncate text-sm text-muted-foreground sm:max-w-48"
+          title={full}
+        >
           {full}
-        </TooltipContent>
-      </Tooltip>
-    </TableCell>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-sm whitespace-pre-wrap">
+        {full}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -458,11 +442,6 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
   } = useClientTablePagination(rowSort.sorted, {
     resetKey: `${query}:${rowSort.sortKey}:${rowSort.sortDir}`,
   });
-
-  const colCount =
-    DEFAULT_COL_COUNT +
-    (showAllColumns ? SECONDARY_COL_COUNT : 0) +
-    (canManage ? 2 : 0);
 
   const selectedDeletableIds = useMemo(
     () => selection.selectedIds.filter((id) => selectableIdSet.has(id)),
@@ -726,11 +705,222 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
         ? `Delete ${deleteTarget.rowIds.length} selected staging row${deleteTarget.rowIds.length === 1 ? "" : "s"}? Only pending and failed rows can be removed — successfully processed rows stay protected.`
         : "";
 
+  const stickyIndexHead = canManage ? stickyHeadIndexManage : stickyHeadIndexSolo;
+  const stickySerialHead = canManage ? stickyHeadSerialManage : stickyHeadSerialSolo;
+  const stickyIndexCell = canManage ? stickyCellIndexManage : stickyCellIndexSolo;
+  const stickySerialCell = canManage ? stickyCellSerialManage : stickyCellSerialSolo;
+
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<OfficialSalesStagingRow>[] = [];
+    if (canManage) {
+      cols.push(
+        salesColumn.display({
+          id: "select",
+          header: () => (
+            <Checkbox
+              checked={
+                selection.isAllSelected ||
+                (selection.isPartiallySelected ? "indeterminate" : false)
+              }
+              onCheckedChange={(checked) => selection.toggleAll(checked === true)}
+              aria-label="Select all deletable staging rows"
+            />
+          ),
+          enableSorting: false,
+          enableHiding: false,
+          cell: ({ row }) => {
+            const deletable = canDeleteStatus(row.original.status);
+            return (
+              <Checkbox
+                checked={selection.isRowSelected(row.original.id)}
+                disabled={!deletable}
+                onCheckedChange={(checked) => {
+                  if (!deletable) return;
+                  selection.toggleRow(row.original.id, checked === true);
+                }}
+                aria-label={
+                  deletable
+                    ? `Select staging row ${row.original.serial}`
+                    : `Processed row ${row.original.serial} cannot be selected`
+                }
+              />
+            );
+          },
+          meta: {
+            headClassName: stickyHeadCheckbox,
+            className: cn(stickyCellCheckbox, "bg-card"),
+          },
+        }),
+      );
+    }
+    cols.push(
+      salesColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => indexOffset + row.index + 1,
+        meta: {
+          headClassName: stickyIndexHead,
+          className: cn(stickyIndexCell, "bg-card text-center tabular-nums text-muted-foreground"),
+        },
+      }),
+      salesColumn.display({
+        id: "serial",
+        header: "Serial",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <SerialDetailCell row={row.original} showAllColumns={showAllColumns} />
+        ),
+        meta: {
+          headClassName: stickySerialHead,
+          className: cn(stickySerialCell, "bg-card"),
+        },
+      }),
+    );
+    if (showAllColumns) {
+      cols.push(
+        salesColumn.display({
+          id: "dealer",
+          header: "Dealer",
+          enableSorting: true,
+          cell: ({ row }) => cellText(row.original.dealer),
+        }),
+        salesColumn.display({
+          id: "brand",
+          header: "Brand",
+          enableSorting: true,
+          cell: ({ row }) => cellText(row.original.brand),
+        }),
+      );
+    }
+    cols.push(
+      salesColumn.display({
+        id: "branchSold",
+        header: "Branch",
+        enableSorting: true,
+        cell: ({ row }) => cellText(row.original.branchSold),
+      }),
+      salesColumn.display({
+        id: "siDate",
+        header: "Date",
+        enableSorting: true,
+        cell: ({ row }) => cellText(row.original.siDate),
+        meta: { className: "tabular-nums" },
+      }),
+      salesColumn.display({
+        id: "siNo",
+        header: "SI/Trans No.",
+        enableSorting: true,
+        cell: ({ row }) => cellText(row.original.siNo),
+      }),
+    );
+    if (showAllColumns) {
+      cols.push(
+        salesColumn.display({
+          id: "drDate",
+          header: "DR Date",
+          enableSorting: true,
+          cell: ({ row }) => cellText(row.original.drDate),
+          meta: { className: "tabular-nums" },
+        }),
+        salesColumn.display({
+          id: "drNo",
+          header: "DR No.",
+          enableSorting: true,
+          cell: ({ row }) => cellText(row.original.drNo),
+        }),
+        salesColumn.display({
+          id: "itemModel",
+          header: "Item/Model",
+          enableSorting: true,
+          cell: ({ row }) => cellText(row.original.itemModel),
+        }),
+        salesColumn.display({
+          id: "saleAmount",
+          header: "Sale Amount",
+          enableSorting: true,
+          cell: ({ row }) => cellText(row.original.saleAmount),
+          meta: { className: "tabular-nums" },
+        }),
+        salesColumn.display({
+          id: "packageName",
+          header: "Package",
+          enableSorting: true,
+          cell: ({ row }) => cellText(row.original.packageName),
+        }),
+      );
+    }
+    cols.push(
+      salesColumn.display({
+        id: "action",
+        header: "Action",
+        enableSorting: true,
+        cell: ({ row }) => cellText(row.original.action),
+        meta: { className: "text-xs uppercase" },
+      }),
+      salesColumn.display({
+        id: "status",
+        header: "Status",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <TableStatusBadge
+            status={row.original.status}
+            variantMap={STATUS_VARIANT_MAP}
+            className="capitalize"
+          />
+        ),
+      }),
+      salesColumn.display({
+        id: "result",
+        header: "Result",
+        enableSorting: true,
+        cell: ({ row }) => <ResultCell result={row.original.result} />,
+      }),
+    );
+    if (canManage) {
+      cols.push(
+        salesColumn.display({
+          id: "actions",
+          header: "Actions",
+          enableSorting: false,
+          enableHiding: false,
+          cell: ({ row }) => (
+            <div className="text-right">
+              <Button size="sm" variant="outline" onClick={() => setDetailRow(row.original)}>
+                View
+              </Button>
+            </div>
+          ),
+        }),
+      );
+    }
+    return cols;
+  }, [
+    canManage,
+    indexOffset,
+    selection,
+    showAllColumns,
+    stickyIndexCell,
+    stickyIndexHead,
+    stickySerialCell,
+    stickySerialHead,
+  ]);
+
   return (
     <TooltipProvider delayDuration={300}>
-      <GlobalDataTable
+      <DataTable
+        data={rows.length === 0 ? [] : pageItems}
+        columns={columns}
+        getRowId={(row) => row.id}
+        manualSorting
+        manualPagination
+        enableSorting
+        sorting={{
+          sortKey: rowSort.sortKey,
+          sortDir: rowSort.sortDir,
+          onSort: rowSort.toggleSort,
+        }}
         stickyHeader
-        scrollable
         className="min-w-0"
         search={{
           value: query,
@@ -857,193 +1047,13 @@ export function OfficialSalesPanel({ rows, canManage }: OfficialSalesPanelProps)
               }
             : undefined
         }
-        footer={
-          rows.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              No staged rows yet. Download the template, then upload an Excel or CSV file to
-              stage sales.
-            </p>
-          ) : null
+        empty={pageItems.length === 0}
+        emptyMessage={
+          rows.length === 0
+            ? "No staged rows yet. Download the template, then upload an Excel or CSV file to stage sales."
+            : "No results match your search."
         }
-      >
-        {rows.length > 0 ? (
-          <>
-            <TableHeader>
-              <TableRow>
-                {canManage ? (
-                  <TableSelectAllCheckbox
-                    isAllSelected={selection.isAllSelected}
-                    isPartiallySelected={selection.isPartiallySelected}
-                    onToggleAll={selection.toggleAll}
-                    aria-label="Select all deletable staging rows"
-                    className={stickyHeadCheckbox}
-                  />
-                ) : null}
-                <TableIndexHead
-                  className={canManage ? stickyHeadIndexManage : stickyHeadIndexSolo}
-                />
-                <GlobalTableHead
-                  {...rowSort.sortProps("serial")}
-                  className={canManage ? stickyHeadSerialManage : stickyHeadSerialSolo}
-                >
-                  Serial
-                </GlobalTableHead>
-                {showAllColumns ? (
-                  <>
-                    <GlobalTableHead {...rowSort.sortProps("dealer")}>Dealer</GlobalTableHead>
-                    <GlobalTableHead {...rowSort.sortProps("brand")}>Brand</GlobalTableHead>
-                  </>
-                ) : null}
-                <GlobalTableHead {...rowSort.sortProps("branchSold")}>Branch</GlobalTableHead>
-                <GlobalTableHead {...rowSort.sortProps("siDate")}>Date</GlobalTableHead>
-                <GlobalTableHead {...rowSort.sortProps("siNo")}>SI/Trans No.</GlobalTableHead>
-                {showAllColumns ? (
-                  <>
-                    <GlobalTableHead {...rowSort.sortProps("drDate")}>DR Date</GlobalTableHead>
-                    <GlobalTableHead {...rowSort.sortProps("drNo")}>DR No.</GlobalTableHead>
-                    <GlobalTableHead {...rowSort.sortProps("itemModel")}>
-                      Item/Model
-                    </GlobalTableHead>
-                    <GlobalTableHead {...rowSort.sortProps("saleAmount")}>
-                      Sale Amount
-                    </GlobalTableHead>
-                    <GlobalTableHead {...rowSort.sortProps("packageName")}>
-                      Package
-                    </GlobalTableHead>
-                  </>
-                ) : null}
-                <GlobalTableHead {...rowSort.sortProps("action")}>Action</GlobalTableHead>
-                <GlobalTableHead {...rowSort.sortProps("status")}>Status</GlobalTableHead>
-                <GlobalTableHead {...rowSort.sortProps("result")}>Result</GlobalTableHead>
-                {canManage ? (
-                  <GlobalTableHead className="w-[1%] whitespace-nowrap text-right">
-                    Actions
-                  </GlobalTableHead>
-                ) : null}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.length === 0 ? (
-                <TableEmptyRow
-                  colSpan={colCount}
-                  message="No results match your search."
-                />
-              ) : (
-                pageItems.map((row, index) => {
-                  const deletable = canDeleteStatus(row.status);
-                  const stripe = index % 2 === 1;
-                  const stickyBg = cn(
-                    stripe ? "bg-table-stripe" : "bg-card",
-                    "group-data-[state=selected]:bg-accent",
-                    "group-hover:bg-accent/60",
-                  );
-                  return (
-                    <TableRow
-                      key={row.id}
-                      data-state={
-                        selection.isRowSelected(row.id) ? "selected" : undefined
-                      }
-                      className={cn("group", stripe && "bg-table-stripe")}
-                    >
-                      {canManage ? (
-                        <TableRowCheckbox
-                          checked={selection.isRowSelected(row.id)}
-                          disabled={!deletable}
-                          onCheckedChange={(checked) => {
-                            if (!deletable) return;
-                            selection.toggleRow(row.id, checked);
-                          }}
-                          aria-label={
-                            deletable
-                              ? `Select staging row ${row.serial}`
-                              : `Processed row ${row.serial} cannot be selected`
-                          }
-                          className={cn(stickyCellCheckbox, stickyBg)}
-                        />
-                      ) : null}
-                      <TableIndexCell
-                        index={indexOffset + index + 1}
-                        className={cn(
-                          canManage ? stickyCellIndexManage : stickyCellIndexSolo,
-                          stickyBg,
-                        )}
-                      />
-                      <SerialDetailCell
-                        row={row}
-                        showAllColumns={showAllColumns}
-                        className={cn(
-                          canManage ? stickyCellSerialManage : stickyCellSerialSolo,
-                          stickyBg,
-                        )}
-                      />
-                      {showAllColumns ? (
-                        <>
-                          <TableCell className="py-2 sm:py-2.5">
-                            {cellText(row.dealer)}
-                          </TableCell>
-                          <TableCell className="py-2 sm:py-2.5">
-                            {cellText(row.brand)}
-                          </TableCell>
-                        </>
-                      ) : null}
-                      <TableCell className="py-2 sm:py-2.5">
-                        {cellText(row.branchSold)}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap py-2 tabular-nums sm:py-2.5">
-                        {cellText(row.siDate)}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap py-2 sm:py-2.5">
-                        {cellText(row.siNo)}
-                      </TableCell>
-                      {showAllColumns ? (
-                        <>
-                          <TableCell className="whitespace-nowrap py-2 tabular-nums sm:py-2.5">
-                            {cellText(row.drDate)}
-                          </TableCell>
-                          <TableCell className="whitespace-nowrap py-2 sm:py-2.5">
-                            {cellText(row.drNo)}
-                          </TableCell>
-                          <TableCell className="py-2 sm:py-2.5">
-                            {cellText(row.itemModel)}
-                          </TableCell>
-                          <TableCell className="py-2 tabular-nums sm:py-2.5">
-                            {cellText(row.saleAmount)}
-                          </TableCell>
-                          <TableCell className="py-2 sm:py-2.5">
-                            {cellText(row.packageName)}
-                          </TableCell>
-                        </>
-                      ) : null}
-                      <TableCell className="py-2 text-xs uppercase sm:py-2.5">
-                        {cellText(row.action)}
-                      </TableCell>
-                      <TableCell className="py-2 sm:py-2.5">
-                        <TableStatusBadge
-                          status={row.status}
-                          variantMap={STATUS_VARIANT_MAP}
-                          className="capitalize"
-                        />
-                      </TableCell>
-                      <ResultCell result={row.result} />
-                      {canManage ? (
-                        <TableCell className="py-2 text-right sm:py-2.5">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setDetailRow(row)}
-                          >
-                            View
-                          </Button>
-                        </TableCell>
-                      ) : null}
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </>
-        ) : null}
-      </GlobalDataTable>
+      />
 
       <StagingRowDetailsDialog
         row={detailRow}

@@ -1,5 +1,6 @@
 "use client";
 
+import { createColumnHelper } from "@tanstack/react-table";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -33,11 +34,7 @@ import type { SalesActionCapabilities } from "@/features/sales/constants/sales-p
 import { atrOdrfDownloadUrl } from "@/features/sales/constants/process-return";
 import { TO_FOLLOW_SERIAL_LABEL } from "@/features/sales/constants/to-follow-serial";
 import { capturesDeliveryReceipt } from "@/features/sales/utils/delivery-method";
-import {
-  TableAmountCell,
-  TableEmptyRow,
-  uniqueSearchSuggestions,
-} from "@/components/data-table";
+import { uniqueSearchSuggestions } from "@/components/data-table";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   parseTablePageSize,
@@ -54,11 +51,14 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { usePersistedBoolean } from "@/hooks/use-persisted-boolean";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
-import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
-import { cn } from "@/utils/cn";
+import {
+  DataTable,
+  nextTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { formatPeso } from "@/utils/format-currency";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
@@ -139,10 +139,7 @@ type EditingLine = {
   showDelivery: boolean;
 };
 
-/** Compact report columns + ACTIONS */
-const COMPACT_COL_COUNT = 10;
-/** Extra when "Show all columns" */
-const SECONDARY_COL_COUNT = 8;
+const returnColumn = createColumnHelper<DataTableFeatures, ReturnRow>();
 
 function buildReturnsHref(
   page: number,
@@ -206,8 +203,6 @@ export function SalesReturnsTable({
     useState<ReplacementFlowTarget | null>(null);
   const [editingLine, setEditingLine] = useState<EditingLine | null>(null);
   const pageSize = parseTablePageSize(result.limit);
-  const colCount =
-    COMPACT_COL_COUNT + (showAllColumns ? SECONDARY_COL_COUNT : 0);
   const sort = (searchParams.get("sort") ?? initialSort) || "";
   const sortDir = (
     (searchParams.get("dir") ?? initialSortDir) === "asc" ? "asc" : "desc"
@@ -412,13 +407,226 @@ export function SalesReturnsTable({
     });
   }
 
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<ReturnRow>[] = [
+      returnColumn.display({
+        id: "returnStatus",
+        header: "STATUS",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <StatusCodeBadge
+            code={row.original.returnStatusCode.code}
+            name={row.original.returnStatusCode.name}
+            color={row.original.returnStatusCode.color}
+          />
+        ),
+      }),
+      returnColumn.display({
+        id: "documentType",
+        header: "DOC TYPE",
+        enableSorting: false,
+        cell: ({ row }) => row.original.documentTypeName?.trim() || "—",
+      }),
+      returnColumn.display({
+        id: "type",
+        header: "TYPE",
+        enableSorting: false,
+        cell: ({ row }) => actionTypeLabel(row.original.actionType),
+      }),
+      returnColumn.accessor((row) => row.branch.name, {
+        id: "branch",
+        header: "BRANCH SOLD",
+        enableSorting: true,
+      }),
+      returnColumn.display({
+        id: "origSerial",
+        header: "ORIG SN",
+        enableSorting: false,
+        cell: ({ row }) => row.original.origSerialNo ?? "—",
+        meta: { className: "font-mono" },
+      }),
+      returnColumn.display({
+        id: "transactionNo",
+        header: "ORIG TRN",
+        enableSorting: true,
+        cell: ({ row }) =>
+          row.original.transactionNo || row.original.saleId.slice(-8),
+        meta: { className: "font-mono font-semibold" },
+      }),
+      returnColumn.display({
+        id: "date",
+        header: "ORIG DATE",
+        enableSorting: true,
+        cell: ({ row }) => formatSaleDate(row.original.transactionDate),
+        meta: { className: "tabular-nums" },
+      }),
+    ];
+
+    if (showAllColumns) {
+      cols.push(
+        returnColumn.display({
+          id: "origPrice",
+          header: "ORIG PRICE",
+          enableSorting: false,
+          cell: ({ row }) => formatPeso(Number(row.original.origPrice)),
+          meta: { align: "end", className: "font-mono" },
+        }),
+        returnColumn.display({
+          id: "rsNo",
+          header: "RS NO",
+          enableSorting: false,
+          cell: ({ row }) => row.original.dealerRsNo?.trim() || "—",
+        }),
+        returnColumn.display({
+          id: "dateReturned",
+          header: "DATE RETURNED",
+          enableSorting: false,
+          cell: ({ row }) => formatSaleDate(row.original.actualDateReturned),
+          meta: { className: "tabular-nums" },
+        }),
+        returnColumn.display({
+          id: "replSerial",
+          header: "REPL SN",
+          enableSorting: false,
+          cell: ({ row }) => row.original.replSerialNo ?? "—",
+          meta: { className: "font-mono" },
+        }),
+        returnColumn.display({
+          id: "replBranch",
+          header: "REPL BRANCH",
+          enableSorting: false,
+          cell: ({ row }) => row.original.replBranchName ?? "—",
+        }),
+        returnColumn.display({
+          id: "replAmount",
+          header: "REPL AMOUNT",
+          enableSorting: false,
+          cell: ({ row }) =>
+            row.original.replAmount != null
+              ? formatPeso(Number(row.original.replAmount))
+              : "—",
+          meta: { align: "end", className: "font-mono" },
+        }),
+        returnColumn.display({
+          id: "replInvoice",
+          header: "REPL INVOICE",
+          enableSorting: false,
+          cell: ({ row }) => row.original.replInvoiceNo ?? "—",
+          meta: { className: "font-mono" },
+        }),
+      );
+    }
+
+    cols.push(
+      returnColumn.display({
+        id: "problem",
+        header: "PROBLEM",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const full =
+            row.original.problemDescriptionText?.trim() ||
+            row.original.requestNotes?.trim() ||
+            "";
+          return (
+            <span
+              className="block max-w-44 truncate text-sm text-muted-foreground"
+              title={full || undefined}
+            >
+              {truncateText(
+                row.original.problemDescriptionText ?? row.original.requestNotes,
+              )}
+            </span>
+          );
+        },
+      }),
+      returnColumn.display({
+        id: "atr",
+        header: "ATR/ODRF",
+        enableSorting: false,
+        cell: ({ row }) =>
+          row.original.hasAtrOdrfPdf ? (
+            <a
+              href={atrOdrfDownloadUrl(row.original.returnRequestId)}
+              className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+            >
+              Download
+            </a>
+          ) : (
+            <span className="text-sm text-muted-foreground">—</span>
+          ),
+      }),
+    );
+
+    if (showAllColumns) {
+      cols.push(
+        returnColumn.display({
+          id: "createdAt",
+          header: "CREATED",
+          enableSorting: true,
+          cell: ({ row }) => formatSaleDate(row.original.createdAt),
+          meta: { className: "tabular-nums" },
+        }),
+      );
+    }
+
+    cols.push(
+      returnColumn.display({
+        id: "actions",
+        header: "ACTIONS",
+        enableSorting: false,
+        enableHiding: false,
+        cell: ({ row }) => {
+          const canCompleteRow =
+            row.original.returnStatus === "approved" &&
+            capabilities.canCompleteReturn;
+          return (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={pending}
+                onClick={() => openSaleDetails(row.original.saleId)}
+              >
+                View details
+              </Button>
+              {canCompleteRow ? (
+                <Button
+                  size="sm"
+                  className="bg-emerald-600 text-white hover:bg-emerald-700"
+                  disabled={pending}
+                  onClick={() => startRowComplete(row.original)}
+                >
+                  {row.original.actionType === "replacement"
+                    ? "Replacement"
+                    : "Return"}
+                </Button>
+              ) : null}
+            </div>
+          );
+        },
+      }),
+    );
+
+    return cols;
+  }, [capabilities.canCompleteReturn, pending, showAllColumns]);
+
   const copy = pendingConfirm ? SALE_RETURN_CONFIRM_COPY[pendingConfirm.action] : null;
 
   return (
     <div className="space-y-4">
-      <GlobalDataTable
+      <DataTable
+        data={filtered}
+        columns={columns}
+        getRowId={(row) => row.id}
+        manualSorting
+        manualPagination
+        enableSorting
+        sorting={{
+          sortKey: sort,
+          sortDir,
+          onSort: (columnId) => toggleSort(columnId as ReturnsSortField),
+        }}
         stickyHeader
-        scrollable
         search={{
           value: query,
           onChange: setQuery,
@@ -452,206 +660,13 @@ export function SalesReturnsTable({
             ),
         }}
         pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
-      >
-        <TableHeader>
-          <TableRow>
-            <GlobalTableHead
-              sortKey="returnStatus"
-              activeSortKey={sort}
-              sortDirection={sortDir}
-              onSort={(key) => toggleSort(key as ReturnsSortField)}
-            >
-              STATUS
-            </GlobalTableHead>
-            <GlobalTableHead>DOC TYPE</GlobalTableHead>
-            <GlobalTableHead>TYPE</GlobalTableHead>
-            <GlobalTableHead
-              sortKey="branch"
-              activeSortKey={sort}
-              sortDirection={sortDir}
-              onSort={(key) => toggleSort(key as ReturnsSortField)}
-            >
-              BRANCH SOLD
-            </GlobalTableHead>
-            <GlobalTableHead>ORIG SN</GlobalTableHead>
-            <GlobalTableHead
-              sortKey="transactionNo"
-              activeSortKey={sort}
-              sortDirection={sortDir}
-              onSort={(key) => toggleSort(key as ReturnsSortField)}
-            >
-              ORIG TRN
-            </GlobalTableHead>
-            <GlobalTableHead
-              sortKey="date"
-              activeSortKey={sort}
-              sortDirection={sortDir}
-              onSort={(key) => toggleSort(key as ReturnsSortField)}
-            >
-              ORIG DATE
-            </GlobalTableHead>
-            {showAllColumns ? (
-              <>
-                <GlobalTableHead>ORIG PRICE</GlobalTableHead>
-                <GlobalTableHead>RS NO</GlobalTableHead>
-                <GlobalTableHead>DATE RETURNED</GlobalTableHead>
-                <GlobalTableHead>REPL SN</GlobalTableHead>
-                <GlobalTableHead>REPL BRANCH</GlobalTableHead>
-                <GlobalTableHead>REPL AMOUNT</GlobalTableHead>
-                <GlobalTableHead>REPL INVOICE</GlobalTableHead>
-              </>
-            ) : null}
-            <GlobalTableHead>PROBLEM</GlobalTableHead>
-            <GlobalTableHead>ATR/ODRF</GlobalTableHead>
-            {showAllColumns ? (
-              <GlobalTableHead
-                sortKey="createdAt"
-                activeSortKey={sort}
-                sortDirection={sortDir}
-                onSort={(key) => toggleSort(key as ReturnsSortField)}
-              >
-                CREATED
-              </GlobalTableHead>
-            ) : null}
-            <GlobalTableHead className="w-48">ACTIONS</GlobalTableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {filtered.length === 0 ? (
-            <TableEmptyRow
-              colSpan={colCount}
-              message={
-                result.total === 0
-                  ? "No return requests yet. Start one from Sales → View details → Request return."
-                  : "No results match your search."
-              }
-            />
-          ) : (
-            filtered.map((row, index) => {
-              const stripe = index % 2 === 1;
-              const canCompleteRow =
-                row.returnStatus === "approved" &&
-                capabilities.canCompleteReturn;
-
-              return (
-                <TableRow
-                  key={row.id}
-                  className={cn("group", stripe && "bg-table-stripe")}
-                >
-                  <TableCell className="py-2 sm:py-2.5">
-                    <StatusCodeBadge
-                      code={row.returnStatusCode.code}
-                      name={row.returnStatusCode.name}
-                      color={row.returnStatusCode.color}
-                    />
-                  </TableCell>
-                  <TableCell className="py-2 sm:py-2.5">
-                    {row.documentTypeName?.trim() || "—"}
-                  </TableCell>
-                  <TableCell className="py-2 sm:py-2.5">
-                    {actionTypeLabel(row.actionType)}
-                  </TableCell>
-                  <TableCell className="py-2 sm:py-2.5">
-                    {row.branch.name}
-                  </TableCell>
-                  <TableCell className="py-2 font-mono text-sm sm:py-2.5">
-                    {row.origSerialNo ?? "—"}
-                  </TableCell>
-                  <TableCell className="py-2 font-mono text-sm font-semibold sm:py-2.5">
-                    {row.transactionNo || row.saleId.slice(-8)}
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap py-2 tabular-nums sm:py-2.5">
-                    {formatSaleDate(row.transactionDate)}
-                  </TableCell>
-                  {showAllColumns ? (
-                    <>
-                      <TableAmountCell
-                        value={row.origPrice}
-                        className="py-2 sm:py-2.5"
-                      />
-                      <TableCell className="py-2 sm:py-2.5">
-                        {row.dealerRsNo?.trim() || "—"}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap py-2 tabular-nums sm:py-2.5">
-                        {formatSaleDate(row.actualDateReturned)}
-                      </TableCell>
-                      <TableCell className="py-2 font-mono text-sm sm:py-2.5">
-                        {row.replSerialNo ?? "—"}
-                      </TableCell>
-                      <TableCell className="py-2 sm:py-2.5">
-                        {row.replBranchName ?? "—"}
-                      </TableCell>
-                      <TableCell className="py-2 sm:py-2.5">
-                        {row.replAmount != null
-                          ? formatPeso(Number(row.replAmount))
-                          : "—"}
-                      </TableCell>
-                      <TableCell className="py-2 font-mono text-sm sm:py-2.5">
-                        {row.replInvoiceNo ?? "—"}
-                      </TableCell>
-                    </>
-                  ) : null}
-                  <TableCell className="max-w-44 py-2 sm:py-2.5">
-                    <span
-                      className="block truncate text-sm text-muted-foreground"
-                      title={
-                        row.problemDescriptionText?.trim() ||
-                        row.requestNotes?.trim() ||
-                        undefined
-                      }
-                    >
-                      {truncateText(
-                        row.problemDescriptionText ?? row.requestNotes,
-                      )}
-                    </span>
-                  </TableCell>
-                  <TableCell className="py-2 sm:py-2.5">
-                    {row.hasAtrOdrfPdf ? (
-                      <a
-                        href={atrOdrfDownloadUrl(row.returnRequestId)}
-                        className="text-sm font-medium text-primary underline-offset-4 hover:underline"
-                      >
-                        Download
-                      </a>
-                    ) : (
-                      <span className="text-sm text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
-                  {showAllColumns ? (
-                    <TableCell className="whitespace-nowrap py-2 tabular-nums sm:py-2.5">
-                      {formatSaleDate(row.createdAt)}
-                    </TableCell>
-                  ) : null}
-                  <TableCell className="whitespace-nowrap py-2 sm:py-2.5">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={pending}
-                        onClick={() => openSaleDetails(row.saleId)}
-                      >
-                        View details
-                      </Button>
-                      {canCompleteRow ? (
-                        <Button
-                          size="sm"
-                          className="bg-emerald-600 text-white hover:bg-emerald-700"
-                          disabled={pending}
-                          onClick={() => startRowComplete(row)}
-                        >
-                          {row.actionType === "replacement"
-                            ? "Replacement"
-                            : "Return"}
-                        </Button>
-                      ) : null}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              );
-            })
-          )}
-        </TableBody>
-      </GlobalDataTable>
+        empty={filtered.length === 0}
+        emptyMessage={
+          result.total === 0
+            ? "No return requests yet. Start one from Sales → View details → Request return."
+            : "No results match your search."
+        }
+      />
 
       {detailsSaleId && saleDetails ? (
         <SaleDetailsDialog

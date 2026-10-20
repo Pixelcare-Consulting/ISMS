@@ -1,5 +1,6 @@
 "use client";
 
+import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
@@ -13,16 +14,18 @@ import {
 } from "@/features/logistics/actions/logistics.actions";
 import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
-import { TableIndexCell, TableIndexHead } from "@/components/data-table";
 import {
   parseTablePageSize,
   type TablePageSize,
 } from "@/components/data-table/table-page-size";
-import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
-import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
+import {
+  DataTable,
+  nextTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,7 +36,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import {
   buildLogisticsPageHref,
   LOGISTICS_TRANSFERS_PATH,
@@ -70,6 +72,8 @@ interface TransfersPanelProps {
   initialSort?: string;
   initialSortDir?: string;
 }
+
+const transferColumn = createColumnHelper<DataTableFeatures, TransferRow>();
 
 type TransferSortField = "transferNo" | "fromBranch" | "toBranch" | "status";
 type TransferSortDir = "asc" | "desc";
@@ -138,7 +142,8 @@ export function TransfersPanel({
     [transfers.items],
   );
 
-  const selection = useTableSelection(filtered.map((t) => t.id));
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const selectedCount = filtered.filter((row) => rowSelection[row.id]).length;
 
   function confirmPendingAction() {
     if (!pendingConfirm) return;
@@ -163,17 +168,129 @@ export function TransfersPanel({
       ? "Rejected requests release only the units reserved on this transfer."
       : "Team Lead approval keeps the units reserved and sends the request to the releasing branch. Stock at the receiving branch does not increase.";
 
+  const indexOffset = (transfers.page - 1) * transfers.limit;
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<TransferRow>[] = [
+      transferColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => indexOffset + row.index + 1,
+        meta: { className: "text-center tabular-nums text-muted-foreground" },
+      }),
+      transferColumn.accessor((row) => row.transferNo, {
+        id: "transferNo",
+        header: "No.",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <Link
+            href={`/logistics/transfers/${row.original.id}`}
+            className="font-medium hover:underline"
+          >
+            {row.original.transferNo}
+          </Link>
+        ),
+      }),
+      transferColumn.display({
+        id: "fromBranch",
+        header: "From → To",
+        enableSorting: true,
+        cell: ({ row }) =>
+          `${row.original.fromBranch.name} → ${row.original.toBranch.name}`,
+      }),
+      transferColumn.display({
+        id: "status",
+        header: "Status",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <StatusCodeBadge
+            code={row.original.statusCode.code}
+            name={row.original.statusCode.name}
+            color={row.original.statusCode.color}
+          />
+        ),
+      }),
+      transferColumn.display({
+        id: "actions",
+        header: "Actions",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const transfer = row.original;
+          const route = `${transfer.fromBranch.name} → ${transfer.toBranch.name}`;
+          const awaitingTl = ["requested", "pending_tl"].includes(transfer.statusCode.code);
+          return (
+            <div className="flex flex-wrap gap-2">
+              {awaitingTl && capabilities.canApproveTl ? (
+                <Button
+                  size="sm"
+                  disabled={pending}
+                  className="bg-amber-600 text-white hover:bg-amber-700"
+                  onClick={() =>
+                    setPendingConfirm({
+                      id: transfer.id,
+                      transferNo: transfer.transferNo,
+                      route,
+                      action: "approve",
+                    })
+                  }
+                >
+                  TL approve
+                </Button>
+              ) : null}
+              {awaitingTl && capabilities.canRejectTransfer ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={pending}
+                  onClick={() =>
+                    setPendingConfirm({
+                      id: transfer.id,
+                      transferNo: transfer.transferNo,
+                      route,
+                      action: "reject",
+                    })
+                  }
+                >
+                  Reject
+                </Button>
+              ) : null}
+              <Button size="sm" variant="outline" asChild>
+                <Link href={`/logistics/transfers/${transfer.id}`}>Open</Link>
+              </Button>
+            </div>
+          );
+        },
+      }),
+    ];
+    return cols;
+  }, [capabilities.canApproveTl, capabilities.canRejectTransfer, indexOffset, pending]);
+
   return (
     <>
-      <GlobalDataTable
+      <DataTable
+        data={filtered}
+        columns={columns}
+        getRowId={(row) => row.id}
+        manualSorting
+        manualPagination
+        enableSorting
+        sorting={{
+          sortKey: sort,
+          sortDir,
+          onSort: (columnId) => toggleSort(columnId as TransferSortField),
+        }}
+        enableRowSelection
+        rowSelection={rowSelection}
+        onRowSelectionChange={setRowSelection}
+        selectAllLabel="Select all transfers"
+        getSelectionLabel={(row) => `Select transfer ${row.transferNo}`}
         stickyHeader
-        scrollable
         search={{ value: query, onChange: setQuery, placeholder: "Search transfers…", suggestions }}
         toolbarActions={
           <>
-            {selection.selectedCount > 0 ? (
-              <Button variant="secondary" onClick={selection.clearSelection}>
-                {selection.selectedCount} selected
+            {selectedCount > 0 ? (
+              <Button variant="secondary" onClick={() => setRowSelection({})}>
+                {selectedCount} selected
               </Button>
             ) : null}
           {capabilities.canCreate ? (
@@ -203,117 +320,9 @@ export function TransfersPanel({
             ),
         }}
         pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
-      >
-            <TableHeader>
-              <TableRow>
-                <GlobalTableHead className="w-10">
-                  <Checkbox
-                    checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
-                    onCheckedChange={(checked) => selection.toggleAll(checked === true)}
-                    aria-label="Select all transfers"
-                  />
-                </GlobalTableHead>
-                <TableIndexHead />
-                <GlobalTableHead
-                  sortKey="transferNo"
-                  activeSortKey={sort}
-                  sortDirection={sortDir}
-                  onSort={(key) => toggleSort(key as TransferSortField)}
-                >
-                  No.
-                </GlobalTableHead>
-                <GlobalTableHead
-                  sortKey="fromBranch"
-                  activeSortKey={sort}
-                  sortDirection={sortDir}
-                  onSort={(key) => toggleSort(key as TransferSortField)}
-                >
-                  From → To
-                </GlobalTableHead>
-                <GlobalTableHead
-                  sortKey="status"
-                  activeSortKey={sort}
-                  sortDirection={sortDir}
-                  onSort={(key) => toggleSort(key as TransferSortField)}
-                >
-                  Status
-                </GlobalTableHead>
-                <GlobalTableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((t, index) => (
-                <TableRow key={t.id} data-state={selection.isRowSelected(t.id) ? "selected" : undefined}>
-                  <TableCell>
-                    <Checkbox
-                      checked={selection.isRowSelected(t.id)}
-                      onCheckedChange={(checked) => selection.toggleRow(t.id, checked === true)}
-                      aria-label={`Select transfer ${t.transferNo}`}
-                    />
-                  </TableCell>
-                  <TableIndexCell
-                    index={(transfers.page - 1) * transfers.limit + index + 1}
-                  />
-                  <TableCell>
-                    <Link href={`/logistics/transfers/${t.id}`} className="font-medium hover:underline">
-                      {t.transferNo}
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    {t.fromBranch.name} → {t.toBranch.name}
-                  </TableCell>
-                  <TableCell>
-                    <StatusCodeBadge
-                      code={t.statusCode.code}
-                      name={t.statusCode.name}
-                      color={t.statusCode.color}
-                    />
-                  </TableCell>
-                  <TableCell className="space-x-2">
-                    {["requested", "pending_tl"].includes(t.statusCode.code) &&
-                    capabilities.canApproveTl ? (
-                      <Button
-                        size="sm"
-                        disabled={pending}
-                        className="bg-amber-600 text-white hover:bg-amber-700"
-                        onClick={() =>
-                          setPendingConfirm({
-                            id: t.id,
-                            transferNo: t.transferNo,
-                            route: `${t.fromBranch.name} → ${t.toBranch.name}`,
-                            action: "approve",
-                          })
-                        }
-                      >
-                        TL approve
-                      </Button>
-                    ) : null}
-                    {["requested", "pending_tl"].includes(t.statusCode.code) &&
-                    capabilities.canRejectTransfer ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={pending}
-                        onClick={() =>
-                          setPendingConfirm({
-                            id: t.id,
-                            transferNo: t.transferNo,
-                            route: `${t.fromBranch.name} → ${t.toBranch.name}`,
-                            action: "reject",
-                          })
-                        }
-                      >
-                        Reject
-                      </Button>
-                    ) : null}
-                    <Button size="sm" variant="outline" asChild>
-                      <Link href={`/logistics/transfers/${t.id}`}>Open</Link>
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-      </GlobalDataTable>
+        empty={filtered.length === 0}
+        emptyMessage={query.trim() ? "No results match your search." : "No transfers."}
+      />
 
       <AlertDialog
         open={pendingConfirm !== null}

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useRouter } from "next/navigation";
 import {
@@ -7,6 +7,7 @@ import {
   useTransition,
   type ReactNode,
 } from "react";
+import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
 
 import { toast } from "sonner";
 
@@ -21,29 +22,22 @@ import { CreateUserDialog } from "@/app/(app)/settings/users/_components/create-
 import { EditUserDialog } from "@/app/(app)/settings/users/_components/edit-user-dialog";
 import {
   DeleteConfirmDialog,
-  TableEmptyRow,
-  TableIndexCell,
-  TableIndexHead,
   TableRowActions,
-  TableRowCheckbox,
-  TableSelectAllCheckbox,
   TableSelectionBadge,
   uniqueSearchSuggestions,
   useClientTablePagination,
-  useTableSelection,
 } from "@/components/data-table";
-import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  DataTable,
+  useClientTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { getInitials } from "@/utils/get-initials";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
-const COLUMN_COUNT = 7;
+const userColumn = createColumnHelper<DataTableFeatures, UserRow>();
 
 interface RoleOption {
   slug: string;
@@ -146,7 +140,8 @@ export function UsersTable({
     [visibleRows],
   );
 
-  const selection = useTableSelection(filteredUsers.map((user) => user.id));
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const selectedCount = filteredUsers.filter((user) => rowSelection[user.id]).length;
   const sort = useClientTableSort(filteredUsers, {
     name: (user) => user.name,
     email: (user) => user.email,
@@ -187,34 +182,114 @@ export function UsersTable({
     });
   }
 
-  if (visibleRows.length === 0) {
-    return (
-      <GlobalDataTable
-        stickyHeader
-        search={{
-          value: query,
-          onChange: setQuery,
-          placeholder: "Search by name, email, role, or department…",
-          suggestions,
-        }}
-        toolbarLeading={
-          <TableSelectionBadge
-            count={selection.selectedCount}
-            onClear={selection.clearSelection}
-          />
-        }
-        toolbarActions={addUserAction}
-        empty
-        emptyMessage="No users yet."
-      >
-        <></>
-      </GlobalDataTable>
-    );
-  }
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<UserRow>[] = [
+      userColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => indexOffset + row.index + 1,
+        meta: { className: "tabular-nums text-muted-foreground" },
+      }),
+      userColumn.display({
+        id: "name",
+        header: "Name",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <div className="flex items-center gap-3">
+            <Avatar className="size-8">
+              {row.original.image ? (
+                <AvatarImage src={row.original.image} alt={row.original.name ?? row.original.email} />
+              ) : null}
+              <AvatarFallback className="bg-primary/10 text-primary">
+                {getInitials(row.original.name ?? row.original.email)}
+              </AvatarFallback>
+            </Avatar>
+            <span className="font-medium">{row.original.name ?? "—"}</span>
+          </div>
+        ),
+      }),
+      userColumn.display({
+        id: "email",
+        header: "Email",
+        enableSorting: true,
+        cell: ({ row }) => row.original.email,
+        meta: { className: "text-muted-foreground" },
+      }),
+      userColumn.display({
+        id: "roles",
+        header: "Roles",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <div className="flex flex-wrap gap-1">
+            {tenantVisibleRoleNames(row.original).length > 0 ? (
+              row.original.userRoles
+                .filter((userRole) => !isProviderOnlyRole(userRole.role.slug))
+                .map((userRole) => (
+                  <span
+                    key={userRole.role.slug}
+                    className="rounded-md bg-accent px-2 py-0.5 text-xs font-medium"
+                  >
+                    {userRole.role.name}
+                  </span>
+                ))
+            ) : (
+              <span className="text-muted-foreground">—</span>
+            )}
+          </div>
+        ),
+        meta: { wrap: true },
+      }),
+      userColumn.display({
+        id: "department",
+        header: "Department",
+        enableSorting: true,
+        cell: ({ row }) => row.original.department?.name ?? "—",
+        meta: { className: "text-muted-foreground" },
+      }),
+      userColumn.display({
+        id: "actions",
+        header: "Actions",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const isProtected = isProtectedUser(row.original, currentUserId);
+          return (
+            <TableRowActions
+              asCell={false}
+              onEdit={() => setEditingUser(row.original)}
+              onDelete={() => setDeletingUser(row.original)}
+              editDisabled={isProtected}
+              deleteDisabled={isProtected}
+              editTitle={isProtected ? "This user cannot be edited" : "Edit user"}
+              deleteTitle={isProtected ? "This user cannot be deleted" : "Delete user"}
+            />
+          );
+        },
+        meta: { align: "end" },
+      }),
+    ];
+    return cols;
+  }, [currentUserId, indexOffset]);
 
   return (
     <>
-      <GlobalDataTable
+      <DataTable
+        data={pageItems}
+        columns={columns}
+        getRowId={(row) => row.id}
+        manualSorting
+        manualPagination
+        enableSorting
+        sorting={{
+          sortKey: sort.sortKey,
+          sortDir: sort.sortDir,
+          onSort: sort.toggleSort,
+        }}
+        enableRowSelection
+        rowSelection={rowSelection}
+        onRowSelectionChange={setRowSelection}
+        selectAllLabel="Select all users"
+        getSelectionLabel={(row) => `Select user ${row.name ?? row.email}`}
         stickyHeader
         search={{
           value: query,
@@ -223,12 +298,13 @@ export function UsersTable({
           suggestions,
         }}
         toolbarLeading={
-          <TableSelectionBadge
-            count={selection.selectedCount}
-            onClear={selection.clearSelection}
-          />
+          <TableSelectionBadge count={selectedCount} onClear={() => setRowSelection({})} />
         }
         toolbarActions={addUserAction}
+        empty={pageItems.length === 0}
+        emptyMessage={
+          visibleRows.length === 0 ? "No users yet." : "No users match your search."
+        }
         pageSize={{ value: pageSize, onChange: setPageSize }}
         pagination={{
           total,
@@ -237,112 +313,7 @@ export function UsersTable({
           itemLabel: "user",
           onPageChange: setPage,
         }}
-      >
-            <TableHeader>
-              <TableRow className="bg-muted/30 hover:bg-muted/30">
-                <TableSelectAllCheckbox
-                  isAllSelected={selection.isAllSelected}
-                  isPartiallySelected={selection.isPartiallySelected}
-                  onToggleAll={selection.toggleAll}
-                  aria-label="Select all users"
-                />
-                <TableIndexHead />
-                <GlobalTableHead {...sort.sortProps("name")}>Name</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("email")}>Email</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("roles")}>Roles</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("department")}>Department</GlobalTableHead>
-                <GlobalTableHead className="w-28 text-right">Actions</GlobalTableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredUsers.length === 0 ? (
-                <TableEmptyRow
-                  colSpan={COLUMN_COUNT}
-                  message="No users match your search."
-                />
-              ) : (
-                pageItems.map((user, index) => {
-                  const isProtected = isProtectedUser(user, currentUserId);
-
-                  return (
-                    <TableRow
-                      key={user.id}
-                      data-state={
-                        selection.isRowSelected(user.id) ? "selected" : undefined
-                      }
-                      className={index % 2 === 1 ? "bg-table-stripe" : undefined}
-                    >
-                      <TableRowCheckbox
-                        checked={selection.isRowSelected(user.id)}
-                        onCheckedChange={(checked) =>
-                          selection.toggleRow(user.id, checked)
-                        }
-                        aria-label={`Select user ${user.name ?? user.email}`}
-                      />
-                      <TableIndexCell index={indexOffset + index + 1} />
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <Avatar className="size-8">
-                            {user.image ? (
-                              <AvatarImage
-                                src={user.image}
-                                alt={user.name ?? user.email}
-                              />
-                            ) : null}
-                            <AvatarFallback className="bg-primary/10 text-primary">
-                              {getInitials(user.name ?? user.email)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span className="font-medium">{user.name ?? "—"}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {user.email}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          {tenantVisibleRoleNames(user).length > 0 ? (
-                            user.userRoles
-                              .filter(
-                                (userRole) =>
-                                  !isProviderOnlyRole(userRole.role.slug),
-                              )
-                              .map((userRole) => (
-                                <span
-                                  key={userRole.role.slug}
-                                  className="rounded-md bg-accent px-2 py-0.5 text-xs font-medium"
-                                >
-                                  {userRole.role.name}
-                                </span>
-                              ))
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {user.department?.name ?? "—"}
-                      </TableCell>
-                      <TableRowActions
-                        onEdit={() => setEditingUser(user)}
-                        onDelete={() => setDeletingUser(user)}
-                        editDisabled={isProtected}
-                        deleteDisabled={isProtected}
-                        editTitle={
-                          isProtected ? "This user cannot be edited" : "Edit user"
-                        }
-                        deleteTitle={
-                          isProtected
-                            ? "This user cannot be deleted"
-                            : "Delete user"
-                        }
-                      />
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-      </GlobalDataTable>
+      />
 
       {editingUser ? (
         <EditUserDialog

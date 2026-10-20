@@ -1,5 +1,6 @@
 "use client";
 
+import { createColumnHelper } from "@tanstack/react-table";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -36,12 +37,7 @@ import {
   isOfficialSoldStatusCode,
 } from "@/features/sales/utils/sale-header-edit";
 import type { SalesActionCapabilities } from "@/features/sales/constants/sales-permissions";
-import {
-  TableAmountCell,
-  TableCodeCell,
-  TableEmptyRow,
-  uniqueSearchSuggestions,
-} from "@/components/data-table";
+import { uniqueSearchSuggestions } from "@/components/data-table";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   parseTablePageSize,
@@ -58,12 +54,14 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { usePersistedBoolean } from "@/hooks/use-persisted-boolean";
-import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
+import { DataTable, nextTableSort, type DataTableColumn, type DataTableFeatures } from "@/lib/data-table";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { cn } from "@/utils/cn";
+import { formatPeso } from "@/utils/format-currency";
 import { matchesTableSearch } from "@/utils/match-table-search";
+
+const saleColumn = createColumnHelper<DataTableFeatures, SaleRow>();
 
 /** One table row = one transaction detail (serial / TO-FOLLOW line). */
 interface SaleRow {
@@ -159,19 +157,19 @@ function TrnDetailCell({
   ]);
 
   return (
-    <TableCell className={cn("py-2 sm:py-2.5", className)}>
-      <div className="min-w-0">
-        <div className="font-mono text-sm font-semibold">{primary}</div>
-        {!showAllColumns && condensed ? (
-          <p
-            className="mt-0.5 max-w-40 truncate text-xs text-muted-foreground sm:max-w-56"
-            title={condensed}
-          >
-            {condensed}
-          </p>
-        ) : null}
+    <div className={cn("min-w-0", className)}>
+      <div className="truncate font-mono text-sm font-semibold" title={primary}>
+        {primary}
       </div>
-    </TableCell>
+      {!showAllColumns && condensed ? (
+        <p
+          className="mt-0.5 max-w-40 truncate text-xs text-muted-foreground sm:max-w-56"
+          title={condensed}
+        >
+          {condensed}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -210,20 +208,15 @@ function buildSaleIdMap(rows: SaleRow[]): Map<string, number> {
   return map;
 }
 
-/** Compact: ID TRN DATE BRANCH ALTERNATE BRANCH CUSTOMER SN SALE STATUS ACTIONS */
-const COMPACT_COL_COUNT = 10;
-/** Extra when "Show all columns": PACKAGE BRAND MODEL MODEL PRICE */
-const SECONDARY_COL_COUNT = 4;
-
 /** Sticky left freeze — ID → TRN NO. */
 const stickyHeadId =
-  "sticky left-0 z-40 w-12 min-w-12 border-r border-border/60 bg-muted";
+  "sticky left-0 z-40 w-12 min-w-12 max-w-12 border-r border-border/60 bg-card";
 const stickyHeadTrn =
-  "sticky left-12 z-40 min-w-[9rem] border-r border-border/60 bg-muted shadow-[4px_0_8px_-4px_rgba(0,0,0,0.08)]";
+  "sticky left-12 z-40 min-w-[11rem] max-w-[11rem] overflow-hidden border-r border-border/60 bg-card shadow-[4px_0_8px_-4px_rgba(0,0,0,0.08)]";
 const stickyCellId =
-  "sticky left-0 z-10 w-12 min-w-12 border-r border-border/60";
+  "sticky left-0 z-20 w-12 min-w-12 max-w-12 overflow-hidden border-r border-border/60 bg-card";
 const stickyCellTrn =
-  "sticky left-12 z-10 min-w-[9rem] border-r border-border/60 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.06)]";
+  "sticky left-12 z-20 min-w-[11rem] max-w-[11rem] overflow-hidden border-r border-border/60 bg-card shadow-[4px_0_8px_-4px_rgba(0,0,0,0.06)]";
 
 export function SalesTable({
   result,
@@ -252,8 +245,6 @@ export function SalesTable({
   const [replacementTarget, setReplacementTarget] =
     useState<ReplacementFlowTarget | null>(null);
   const pageSize = parseTablePageSize(result.limit);
-  const colCount =
-    COMPACT_COL_COUNT + (showAllColumns ? SECONDARY_COL_COUNT : 0);
   const sort = (searchParams.get("sort") ?? initialSort) || "";
   const sortDir = (
     (searchParams.get("dir") ?? initialSortDir) === "asc" ? "asc" : "desc"
@@ -305,6 +296,163 @@ export function SalesTable({
     [result.items],
   );
   const saleIdMap = useMemo(() => buildSaleIdMap(filtered), [filtered]);
+
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<SaleRow>[] = [
+      saleColumn.display({
+        id: "id",
+        header: "ID",
+        enableSorting: false,
+        enableHiding: false,
+        cell: ({ row }) => saleIdMap.get(row.original.saleId) ?? "—",
+        meta: {
+          headClassName: stickyHeadId,
+          className: cn(stickyCellId, "tabular-nums text-muted-foreground"),
+        },
+      }),
+      saleColumn.display({
+        id: "transactionNo",
+        header: "TRN NO.",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <TrnDetailCell row={row.original} showAllColumns={showAllColumns} />
+        ),
+        meta: {
+          headClassName: stickyHeadTrn,
+          className: stickyCellTrn,
+        },
+      }),
+      saleColumn.display({
+        id: "date",
+        header: "DATE",
+        enableSorting: true,
+        cell: ({ row }) => formatSaleDate(row.original.transactionDate),
+        meta: { className: "tabular-nums" },
+      }),
+      saleColumn.accessor((row) => row.branch.name, {
+        id: "branch",
+        header: "BRANCH",
+        enableSorting: true,
+      }),
+      saleColumn.accessor((row) => row.alternateBranch.name, {
+        id: "alternateBranch",
+        header: "ALTERNATE BRANCH",
+        enableSorting: false,
+      }),
+      saleColumn.display({
+        id: "customer",
+        header: "CUSTOMER",
+        enableSorting: true,
+        cell: ({ row }) => row.original.customerName?.trim() || "—",
+      }),
+    ];
+
+    if (showAllColumns) {
+      cols.push(
+        saleColumn.display({
+          id: "package",
+          header: "PACKAGE",
+          enableSorting: false,
+          cell: ({ row }) => row.original.packageName ?? "—",
+        }),
+        saleColumn.display({
+          id: "brand",
+          header: "BRAND",
+          enableSorting: false,
+          cell: ({ row }) => row.original.brandName ?? "—",
+        }),
+        saleColumn.display({
+          id: "model",
+          header: "MODEL",
+          enableSorting: false,
+          cell: ({ row }) => row.original.modelLabel ?? "—",
+          meta: { className: "font-mono" },
+        }),
+      );
+    }
+
+    cols.push(
+      saleColumn.display({
+        id: "serial",
+        header: "SN",
+        enableSorting: false,
+        cell: ({ row }) => saleSerialLabel(row.original),
+        meta: { className: "font-mono" },
+      }),
+      saleColumn.display({
+        id: "amount",
+        header: "SALE",
+        enableSorting: true,
+        cell: ({ row }) => formatPeso(Number(row.original.saleAmount)),
+        meta: { align: "end", className: "font-mono" },
+      }),
+    );
+
+    if (showAllColumns) {
+      cols.push(
+        saleColumn.display({
+          id: "modelPrice",
+          header: "MODEL PRICE",
+          enableSorting: false,
+          cell: ({ row }) =>
+            row.original.modelPrice != null
+              ? formatPeso(Number(row.original.modelPrice))
+              : "—",
+          meta: { align: "end", className: "font-mono" },
+        }),
+      );
+    }
+
+    cols.push(
+      saleColumn.display({
+        id: "status",
+        header: "STATUS",
+        enableSorting: false,
+        cell: ({ row }) =>
+          row.original.statusCode ? (
+            <StatusCodeBadge
+              code={row.original.statusCode.code}
+              name={row.original.statusCode.name}
+              color={row.original.statusCode.color}
+            />
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          ),
+      }),
+      saleColumn.display({
+        id: "actions",
+        header: "ACTIONS",
+        enableSorting: false,
+        enableHiding: false,
+        cell: ({ row }) => (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={pending}
+              onClick={() => openSaleDetails(row.original.saleId)}
+            >
+              View details
+            </Button>
+            {capabilities.canUpdateSaleHeader &&
+            saleSerialLabel(row.original) === TO_FOLLOW_SERIAL_LABEL &&
+            !isOfficialSoldStatusCode(row.original.statusCode?.code) ? (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={pending}
+                onClick={() => openHeaderEdit(row.original.saleId)}
+              >
+                Edit
+              </Button>
+            ) : null}
+          </div>
+        ),
+      }),
+    );
+
+    return cols;
+  }, [capabilities.canUpdateSaleHeader, pending, saleIdMap, showAllColumns]);
 
   function refreshSaleDetails(saleId: string) {
     startTransition(async () => {
@@ -458,10 +606,25 @@ export function SalesTable({
 
   return (
     <div className="space-y-4">
-      <GlobalDataTable
+      <DataTable
+        data={filtered}
+        columns={columns}
+        getRowId={(row) => row.id}
+        manualSorting
+        manualPagination
+        enableSorting
+        sorting={{
+          sortKey: sort,
+          sortDir,
+          onSort: (columnId) => toggleSort(columnId as SalesSortField),
+        }}
         stickyHeader
-        scrollable
-        search={{ value: query, onChange: setQuery, placeholder: "Search sales…", suggestions }}
+        search={{
+          value: query,
+          onChange: setQuery,
+          placeholder: "Search sales…",
+          suggestions,
+        }}
         toolbarActions={
           result.items.length > 0 ? (
             <Button
@@ -479,186 +642,13 @@ export function SalesTable({
           page: result.page,
           totalPages: result.totalPages,
           itemLabel: "sale line",
-          buildHref: (page) => buildSalesHref(page, pageSize, sort, sort ? sortDir : undefined),
+          buildHref: (page) =>
+            buildSalesHref(page, pageSize, sort, sort ? sortDir : undefined),
         }}
         pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
-      >
-        <TableHeader>
-          <TableRow>
-            <GlobalTableHead className={stickyHeadId}>ID</GlobalTableHead>
-            <GlobalTableHead
-              sortKey="transactionNo"
-              activeSortKey={sort}
-              sortDirection={sortDir}
-              onSort={(key) => toggleSort(key as SalesSortField)}
-              className={stickyHeadTrn}
-            >
-              TRN NO.
-            </GlobalTableHead>
-            <GlobalTableHead
-              sortKey="date"
-              activeSortKey={sort}
-              sortDirection={sortDir}
-              onSort={(key) => toggleSort(key as SalesSortField)}
-            >
-              DATE
-            </GlobalTableHead>
-            <GlobalTableHead
-              sortKey="branch"
-              activeSortKey={sort}
-              sortDirection={sortDir}
-              onSort={(key) => toggleSort(key as SalesSortField)}
-            >
-              BRANCH
-            </GlobalTableHead>
-            <GlobalTableHead>ALTERNATE BRANCH</GlobalTableHead>
-            <GlobalTableHead
-              sortKey="customer"
-              activeSortKey={sort}
-              sortDirection={sortDir}
-              onSort={(key) => toggleSort(key as SalesSortField)}
-            >
-              CUSTOMER
-            </GlobalTableHead>
-            {showAllColumns ? (
-              <>
-                <GlobalTableHead>PACKAGE</GlobalTableHead>
-                <GlobalTableHead>BRAND</GlobalTableHead>
-                <GlobalTableHead>MODEL</GlobalTableHead>
-              </>
-            ) : null}
-            <GlobalTableHead>SN</GlobalTableHead>
-            <GlobalTableHead
-              sortKey="amount"
-              activeSortKey={sort}
-              sortDirection={sortDir}
-              onSort={(key) => toggleSort(key as SalesSortField)}
-            >
-              SALE
-            </GlobalTableHead>
-            {showAllColumns ? (
-              <GlobalTableHead>MODEL PRICE</GlobalTableHead>
-            ) : null}
-            <GlobalTableHead>STATUS</GlobalTableHead>
-            <GlobalTableHead className="w-48">ACTIONS</GlobalTableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {filtered.length === 0 ? (
-            <TableEmptyRow
-              colSpan={colCount}
-              message="No results match your search."
-            />
-          ) : (
-            filtered.map((s, index) => {
-              const stripe = index % 2 === 1;
-              const stickyBg = cn(
-                stripe ? "bg-table-stripe" : "bg-card",
-                "group-hover:bg-accent/60",
-              );
-              return (
-                <TableRow
-                  key={s.id}
-                  className={cn("group", stripe && "bg-table-stripe")}
-                >
-                  <TableCell
-                    className={cn(
-                      stickyCellId,
-                      stickyBg,
-                      "py-2 tabular-nums text-muted-foreground sm:py-2.5",
-                    )}
-                  >
-                    {saleIdMap.get(s.saleId) ?? "—"}
-                  </TableCell>
-                  <TrnDetailCell
-                    row={s}
-                    showAllColumns={showAllColumns}
-                    className={cn(stickyCellTrn, stickyBg)}
-                  />
-                  <TableCell className="whitespace-nowrap py-2 tabular-nums sm:py-2.5">
-                    {formatSaleDate(s.transactionDate)}
-                  </TableCell>
-                  <TableCell className="py-2 sm:py-2.5">{s.branch.name}</TableCell>
-                  <TableCell className="py-2 sm:py-2.5">
-                    {s.alternateBranch.name}
-                  </TableCell>
-                  <TableCell className="py-2 sm:py-2.5">
-                    {s.customerName?.trim() || "—"}
-                  </TableCell>
-                  {showAllColumns ? (
-                    <>
-                      <TableCell className="py-2 sm:py-2.5">
-                        {s.packageName ?? "—"}
-                      </TableCell>
-                      <TableCell className="py-2 sm:py-2.5">
-                        {s.brandName ?? "—"}
-                      </TableCell>
-                      <TableCell className="py-2 font-mono text-sm sm:py-2.5">
-                        {s.modelLabel ?? "—"}
-                      </TableCell>
-                    </>
-                  ) : null}
-                  <TableCodeCell
-                    value={saleSerialLabel(s)}
-                    className="py-2 sm:py-2.5"
-                  />
-                  <TableAmountCell
-                    value={s.saleAmount}
-                    className="py-2 sm:py-2.5"
-                  />
-                  {showAllColumns ? (
-                    s.modelPrice != null ? (
-                      <TableAmountCell
-                        value={s.modelPrice}
-                        className="py-2 sm:py-2.5"
-                      />
-                    ) : (
-                      <TableCell className="py-2 text-muted-foreground sm:py-2.5">
-                        —
-                      </TableCell>
-                    )
-                  ) : null}
-                  <TableCell className="py-2 sm:py-2.5">
-                    {s.statusCode ? (
-                      <StatusCodeBadge
-                        code={s.statusCode.code}
-                        name={s.statusCode.name}
-                        color={s.statusCode.color}
-                      />
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap py-2 sm:py-2.5">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={pending}
-                        onClick={() => openSaleDetails(s.saleId)}
-                      >
-                        View details
-                      </Button>
-                      {capabilities.canUpdateSaleHeader &&
-                      saleSerialLabel(s) === TO_FOLLOW_SERIAL_LABEL &&
-                      !isOfficialSoldStatusCode(s.statusCode?.code) ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={pending}
-                          onClick={() => openHeaderEdit(s.saleId)}
-                        >
-                          Edit
-                        </Button>
-                      ) : null}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              );
-            })
-          )}
-        </TableBody>
-      </GlobalDataTable>
+        empty={filtered.length === 0}
+        emptyMessage="No results match your search."
+      />
 
       {detailsSaleId && saleDetails ? (
         <SaleDetailsDialog

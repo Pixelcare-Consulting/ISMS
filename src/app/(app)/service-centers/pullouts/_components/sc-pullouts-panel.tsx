@@ -1,5 +1,6 @@
 "use client";
 
+import { createColumnHelper } from "@tanstack/react-table";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -14,13 +15,13 @@ import {
 } from "@/features/service-center-ops/actions/sc-logistics.actions";
 import type { ScLogisticsActionCapabilities } from "@/features/service-center-ops/constants/sc-permissions";
 import { SearchableMultiSelect } from "@/features/aors/components/searchable-multi-select";
+import { useClientTablePagination } from "@/components/data-table";
 import {
-  TableEmptyRow,
-  TableIndexCell,
-  TableIndexHead,
-  useClientTablePagination,
-} from "@/components/data-table";
-import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
+  DataTable,
+  useClientTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SearchableSelect } from "@/components/ui/searchable-select";
@@ -32,16 +33,12 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import {
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
 type PulloutRow = Awaited<ReturnType<typeof listScPulloutsAction>>["items"][number];
 type CenterOption = Awaited<ReturnType<typeof listScCentersForOpsAction>>[number];
+
+const pulloutColumn = createColumnHelper<DataTableFeatures, PulloutRow>();
 
 export function ScPulloutsPanel({
   items,
@@ -163,9 +160,101 @@ export function ScPulloutsPanel({
     });
   }
 
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<PulloutRow>[] = [
+      pulloutColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => indexOffset + row.index + 1,
+        meta: { className: "text-center tabular-nums text-muted-foreground" },
+      }),
+      pulloutColumn.accessor((row) => row.pulloutNo, {
+        id: "pullout",
+        header: "Pull-out",
+        enableSorting: true,
+        meta: { className: "font-medium" },
+      }),
+      pulloutColumn.accessor((row) => row.serviceCenter.name, {
+        id: "center",
+        header: "Center",
+        enableSorting: true,
+      }),
+      pulloutColumn.display({
+        id: "serials",
+        header: "Serials",
+        enableSorting: false,
+        cell: ({ row }) =>
+          row.original.details.map((detail) => detail.serialNumber.serialNo).join(", ") || "—",
+      }),
+      pulloutColumn.display({
+        id: "status",
+        header: "Status",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <Badge variant="secondary">{row.original.statusCode?.code || "—"}</Badge>
+        ),
+      }),
+      pulloutColumn.display({
+        id: "actions",
+        header: "Actions",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const pullout = row.original;
+          const code = pullout.statusCode?.code ?? "";
+          return (
+            <div className="flex flex-col gap-1">
+              {capabilities.canApprovePullout && code === "pending_tl" ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={pending}
+                  onClick={() =>
+                    run(() => approveScPulloutAction(pullout.id), "Pull-out approved")
+                  }
+                >
+                  Approve
+                </Button>
+              ) : null}
+              {capabilities.canCompletePullout &&
+              ["for_pullout", "in_transit", "pending_logistics"].includes(code) ? (
+                <Button
+                  size="sm"
+                  disabled={pending}
+                  onClick={() =>
+                    run(() => completeScPulloutAction(pullout.id), "Pull-out completed")
+                  }
+                >
+                  Complete
+                </Button>
+              ) : null}
+            </div>
+          );
+        },
+      }),
+    ];
+    return cols;
+  }, [
+    capabilities.canApprovePullout,
+    capabilities.canCompletePullout,
+    indexOffset,
+    pending,
+  ]);
+
   return (
     <div className="space-y-4">
-      <GlobalDataTable
+      <DataTable
+        data={pageItems}
+        columns={columns}
+        getRowId={(row) => row.id}
+        manualSorting
+        manualPagination
+        enableSorting
+        sorting={{
+          sortKey: sort.sortKey,
+          sortDir: sort.sortDir,
+          onSort: sort.toggleSort,
+        }}
         stickyHeader
         search={{
           value: query,
@@ -179,8 +268,12 @@ export function ScPulloutsPanel({
             </Button>
           ) : null
         }
-        empty={items.length === 0}
-        emptyMessage="No service center pull-outs yet."
+        empty={pageItems.length === 0}
+        emptyMessage={
+          items.length === 0
+            ? "No service center pull-outs yet."
+            : "No pull-outs match your search."
+        }
         pageSize={{ value: pageSize, onChange: setPageSize }}
         pagination={{
           total,
@@ -189,77 +282,7 @@ export function ScPulloutsPanel({
           itemLabel: "pull-out",
           onPageChange: setPage,
         }}
-      >
-        <TableHeader>
-          <TableRow>
-            <TableIndexHead />
-            <GlobalTableHead {...sort.sortProps("pullout")}>Pull-out</GlobalTableHead>
-            <GlobalTableHead {...sort.sortProps("center")}>Center</GlobalTableHead>
-            <GlobalTableHead>Serials</GlobalTableHead>
-            <GlobalTableHead {...sort.sortProps("status")}>Status</GlobalTableHead>
-            <GlobalTableHead className="w-40">Actions</GlobalTableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {pageItems.length === 0 ? (
-            <TableEmptyRow colSpan={6} message="No pull-outs match your search." />
-          ) : (
-            pageItems.map((row, index) => {
-              const code = row.statusCode?.code ?? "";
-              return (
-                <TableRow key={row.id}>
-                  <TableIndexCell index={indexOffset + index + 1} />
-                  <TableCell className="font-medium">{row.pulloutNo}</TableCell>
-                  <TableCell>{row.serviceCenter.name}</TableCell>
-                  <TableCell>
-                    {row.details.map((d) => d.serialNumber.serialNo).join(", ") ||
-                      "—"}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">{code || "—"}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-col gap-1">
-                      {capabilities.canApprovePullout && code === "pending_tl" ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={pending}
-                          onClick={() =>
-                            run(
-                              () => approveScPulloutAction(row.id),
-                              "Pull-out approved",
-                            )
-                          }
-                        >
-                          Approve
-                        </Button>
-                      ) : null}
-                      {capabilities.canCompletePullout &&
-                      ["for_pullout", "in_transit", "pending_logistics"].includes(
-                        code,
-                      ) ? (
-                        <Button
-                          size="sm"
-                          disabled={pending}
-                          onClick={() =>
-                            run(
-                              () => completeScPulloutAction(row.id),
-                              "Pull-out completed",
-                            )
-                          }
-                        >
-                          Complete
-                        </Button>
-                      ) : null}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              );
-            })
-          )}
-        </TableBody>
-      </GlobalDataTable>
+      />
 
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
         <SheetContent className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-md">

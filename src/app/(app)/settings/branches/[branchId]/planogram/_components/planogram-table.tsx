@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
+import { createColumnHelper } from "@tanstack/react-table";
 import { toast } from "sonner";
 
 import {
@@ -13,17 +14,16 @@ import {
 } from "@/features/planogram/actions/planogram.actions";
 import type { PlanogramAddEmptyReason } from "@/features/planogram/services/planogram.service";
 import {
-  AppDataTable,
-  AppDataTableBody,
   DeleteConfirmDialog,
-  TableEmptyRow,
-  TableIndexCell,
-  TableIndexHead,
   TableRowActions,
-  TableSearchBar,
   uniqueSearchSuggestions,
 } from "@/components/data-table";
-import { GlobalTableHead, useClientTableSort } from "@/lib/data-table";
+import {
+  DataTable,
+  useClientTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -45,16 +45,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { matchesTableSearch } from "@/utils/match-table-search";
-import { cn } from "@/utils/cn";
 
 interface PlanogramRow {
   id: string;
@@ -73,6 +64,8 @@ interface PlanogramRow {
     brand: { name: string } | null;
   };
 }
+
+const planogramColumn = createColumnHelper<DataTableFeatures, PlanogramRow>();
 
 function messageForAddEmptyReason(reason: PlanogramAddEmptyReason): string {
   switch (reason) {
@@ -139,7 +132,83 @@ export function PlanogramTable({
     [rows],
   );
 
-  const colCount = canManage ? 7 : 6;
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<PlanogramRow>[] = [
+      planogramColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => row.index + 1,
+        meta: { className: "tabular-nums text-muted-foreground" },
+      }),
+      planogramColumn.display({
+        id: "sku",
+        header: "SKU",
+        enableSorting: true,
+        cell: ({ row }) => row.original.model.skuCode,
+        meta: { className: "font-mono text-sm" },
+      }),
+      planogramColumn.display({
+        id: "model",
+        header: "Model",
+        enableSorting: true,
+        cell: ({ row }) => row.original.model.name,
+      }),
+      planogramColumn.display({
+        id: "series",
+        header: "Series",
+        enableSorting: true,
+        cell: ({ row }) => row.original.model.series ?? "—",
+      }),
+      planogramColumn.display({
+        id: "maxQty",
+        header: "Shelf max",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <ShelfMaxCell
+            key={`${row.original.id}:${row.original.maxQty}`}
+            branchId={branchId}
+            planogramId={row.original.id}
+            maxQty={row.original.maxQty}
+            canManage={canManage}
+          />
+        ),
+      }),
+      planogramColumn.display({
+        id: "units",
+        header: "Units",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <Button variant="link" size="sm" className="h-auto p-0" asChild>
+            <Link
+              href={`/inventory?branch=${branchId}&sku=${encodeURIComponent(row.original.model.skuCode)}`}
+            >
+              View units
+            </Link>
+          </Button>
+        ),
+      }),
+    ];
+    if (canManage) {
+      cols.push(
+        planogramColumn.display({
+          id: "actions",
+          header: "",
+          enableSorting: false,
+          cell: ({ row }) => (
+            <TableRowActions
+              asCell={false}
+              onDelete={() => setDeleting(row.original)}
+              deleteDisabled={pending}
+              deleteTitle="Remove from planogram"
+            />
+          ),
+          meta: { align: "end" },
+        }),
+      );
+    }
+    return cols;
+  }, [branchId, canManage, pending]);
 
   function handleRemove() {
     if (!deleting) return;
@@ -170,68 +239,38 @@ export function PlanogramTable({
         </div>
       ) : null}
 
-      <AppDataTable
-        shellHeader={
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <TableSearchBar
-              value={query}
-              onChange={setQuery}
-              placeholder="Search by SKU, model, series…"
-              suggestions={suggestions}
-              className="sm:max-w-sm"
-            />
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              {canManage ? (
-                <Button size="sm" onClick={() => setShowAdd(true)}>
-                  Add model
-                </Button>
-              ) : null}
-            </div>
-          </div>
+      <DataTable
+        data={sort.sorted}
+        columns={columns}
+        getRowId={(row) => row.id}
+        manualSorting
+        enableSorting
+        sorting={{
+          sortKey: sort.sortKey,
+          sortDir: sort.sortDir,
+          onSort: sort.toggleSort,
+        }}
+        stickyHeader
+        search={{
+          value: query,
+          onChange: setQuery,
+          placeholder: "Search by SKU, model, series…",
+          suggestions,
+        }}
+        toolbarActions={
+          canManage ? (
+            <Button size="sm" onClick={() => setShowAdd(true)}>
+              Add model
+            </Button>
+          ) : null
         }
-      >
-        <AppDataTableBody>
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-muted/30 hover:bg-muted/30">
-                <TableIndexHead />
-                <GlobalTableHead {...sort.sortProps("sku")}>SKU</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("model")}>Model</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("series")}>Series</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("maxQty")} className="w-28">
-                  Shelf max
-                </GlobalTableHead>
-                <TableHead className="w-28">Units</TableHead>
-                {canManage ? <TableHead className="w-24" /> : null}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sort.sorted.length === 0 ? (
-                <TableEmptyRow
-                  colSpan={colCount}
-                  message={
-                    rows.length === 0
-                      ? "No models on this planogram yet."
-                      : "No planogram rows match your search."
-                  }
-                />
-              ) : (
-                sort.sorted.map((row, index) => (
-                  <PlanogramRowEditor
-                    key={row.id}
-                    index={index}
-                    branchId={branchId}
-                    row={row}
-                    canManage={canManage}
-                    pending={pending}
-                    onRemove={() => setDeleting(row)}
-                  />
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </AppDataTableBody>
-      </AppDataTable>
+        empty={sort.sorted.length === 0}
+        emptyMessage={
+          rows.length === 0
+            ? "No models on this planogram yet."
+            : "No planogram rows match your search."
+        }
+      />
       {showAdd ? (
         <AddPlanogramDialog
           branchId={branchId}
@@ -261,54 +300,6 @@ export function PlanogramTable({
         pending={pending}
       />
     </div>
-  );
-}
-
-function PlanogramRowEditor({
-  index,
-  branchId,
-  row,
-  canManage,
-  pending,
-  onRemove,
-}: {
-  index: number;
-  branchId: string;
-  row: PlanogramRow;
-  canManage: boolean;
-  pending: boolean;
-  onRemove: () => void;
-}) {
-  const inventoryHref = `/inventory?branch=${branchId}&sku=${encodeURIComponent(row.model.skuCode)}`;
-
-  return (
-    <TableRow className={cn(index % 2 === 1 && "bg-table-stripe")}>
-      <TableIndexCell index={index + 1} />
-      <TableCell className="font-mono text-sm">{row.model.skuCode}</TableCell>
-      <TableCell>{row.model.name}</TableCell>
-      <TableCell>{row.model.series ?? "—"}</TableCell>
-      <TableCell>
-        <ShelfMaxCell
-          key={`${row.id}:${row.maxQty}`}
-          branchId={branchId}
-          planogramId={row.id}
-          maxQty={row.maxQty}
-          canManage={canManage}
-        />
-      </TableCell>
-      <TableCell>
-        <Button variant="link" size="sm" className="h-auto p-0" asChild>
-          <Link href={inventoryHref}>View units</Link>
-        </Button>
-      </TableCell>
-      {canManage ? (
-        <TableRowActions
-          onDelete={onRemove}
-          deleteDisabled={pending}
-          deleteTitle="Remove from planogram"
-        />
-      ) : null}
-    </TableRow>
   );
 }
 

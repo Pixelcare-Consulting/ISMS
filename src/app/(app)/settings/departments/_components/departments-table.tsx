@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
+import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
 
 import { toast } from "sonner";
 
@@ -11,26 +12,20 @@ import { EditDepartmentDialog } from "@/app/(app)/settings/departments/_componen
 import { Badge } from "@/components/ui/badge";
 import {
   DeleteConfirmDialog,
-  TableEmptyRow,
-  TableIndexCell,
-  TableIndexHead,
   TableRowActions,
-  TableRowCheckbox,
-  TableSelectAllCheckbox,
   TableSelectionBadge,
   uniqueSearchSuggestions,
   useClientTablePagination,
-  useTableSelection,
 } from "@/components/data-table";
-import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
 import {
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  DataTable,
+  useClientTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { matchesTableSearch } from "@/utils/match-table-search";
-import { cn } from "@/utils/cn";
+
+const departmentColumn = createColumnHelper<DataTableFeatures, DepartmentRow>();
 
 interface DepartmentRow {
   id: string;
@@ -74,7 +69,8 @@ export function DepartmentsTable({ departments }: DepartmentsTableProps) {
     [rows],
   );
 
-  const selection = useTableSelection(filtered.map((department) => department.id));
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const selectedCount = filtered.filter((department) => rowSelection[department.id]).length;
   const sort = useClientTableSort(filtered, {
     name: (department) => department.name,
     users: (department) => department._count.users,
@@ -122,9 +118,67 @@ export function DepartmentsTable({ departments }: DepartmentsTableProps) {
     />
   );
 
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<DepartmentRow>[] = [
+      departmentColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => indexOffset + row.index + 1,
+        meta: { className: "tabular-nums text-muted-foreground" },
+      }),
+      departmentColumn.display({
+        id: "name",
+        header: "Name",
+        enableSorting: true,
+        cell: ({ row }) => row.original.name,
+        meta: { className: "font-medium" },
+      }),
+      departmentColumn.display({
+        id: "users",
+        header: "Users",
+        enableSorting: true,
+        cell: ({ row }) => <Badge variant="secondary">{row.original._count.users}</Badge>,
+        meta: { align: "end" },
+      }),
+      departmentColumn.display({
+        id: "actions",
+        header: "Actions",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <TableRowActions
+            asCell={false}
+            onEdit={() => setEditing(row.original)}
+            onDelete={() => setDeleting(row.original)}
+            editTitle={`Edit ${row.original.name}`}
+            deleteTitle={`Delete ${row.original.name}`}
+          />
+        ),
+        meta: { align: "end" },
+      }),
+    ];
+    return cols;
+  }, [indexOffset]);
+
   return (
     <>
-      <GlobalDataTable
+      <DataTable
+        data={pageItems}
+        columns={columns}
+        getRowId={(row) => row.id}
+        manualSorting
+        manualPagination
+        enableSorting
+        sorting={{
+          sortKey: sort.sortKey,
+          sortDir: sort.sortDir,
+          onSort: sort.toggleSort,
+        }}
+        enableRowSelection
+        rowSelection={rowSelection}
+        onRowSelectionChange={setRowSelection}
+        selectAllLabel="Select all departments"
+        getSelectionLabel={(row) => `Select department ${row.name}`}
         stickyHeader
         search={{
           value: query,
@@ -134,13 +188,17 @@ export function DepartmentsTable({ departments }: DepartmentsTableProps) {
         }}
         toolbarLeading={
           <TableSelectionBadge
-            count={selection.selectedCount}
-            onClear={selection.clearSelection}
+            count={selectedCount}
+            onClear={() => setRowSelection({})}
           />
         }
         toolbarActions={createAction}
-        empty={rows.length === 0}
-        emptyMessage="No departments yet. Add one or register a new organization to get defaults."
+        empty={pageItems.length === 0}
+        emptyMessage={
+          rows.length === 0
+            ? "No departments yet. Add one or register a new organization to get defaults."
+            : "No departments match your search."
+        }
         pageSize={{ value: pageSize, onChange: setPageSize }}
         pagination={{
           total,
@@ -149,64 +207,7 @@ export function DepartmentsTable({ departments }: DepartmentsTableProps) {
           itemLabel: "department",
           onPageChange: setPage,
         }}
-      >
-            <TableHeader>
-              <TableRow>
-                <TableSelectAllCheckbox
-                  isAllSelected={selection.isAllSelected}
-                  isPartiallySelected={selection.isPartiallySelected}
-                  onToggleAll={selection.toggleAll}
-                  aria-label="Select all departments"
-                />
-                <TableIndexHead />
-                <GlobalTableHead {...sort.sortProps("name")}>Name</GlobalTableHead>
-                <GlobalTableHead
-                  className="w-24 text-right"
-                  {...sort.sortProps("users")}
-                >
-                  Users
-                </GlobalTableHead>
-                <GlobalTableHead className="w-28 text-right">Actions</GlobalTableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.length === 0 ? (
-                <TableEmptyRow
-                  colSpan={5}
-                  message="No departments match your search."
-                />
-              ) : (
-                pageItems.map((department, index) => (
-                  <TableRow
-                    key={department.id}
-                    data-state={
-                      selection.isRowSelected(department.id) ? "selected" : undefined
-                    }
-                    className={cn(index % 2 === 1 && "bg-table-stripe")}
-                  >
-                    <TableRowCheckbox
-                      checked={selection.isRowSelected(department.id)}
-                      onCheckedChange={(checked) =>
-                        selection.toggleRow(department.id, checked)
-                      }
-                      aria-label={`Select department ${department.name}`}
-                    />
-                    <TableIndexCell index={indexOffset + index + 1} />
-                    <TableCell className="font-medium">{department.name}</TableCell>
-                    <TableCell className="text-right">
-                      <Badge variant="secondary">{department._count.users}</Badge>
-                    </TableCell>
-                    <TableRowActions
-                      onEdit={() => setEditing(department)}
-                      onDelete={() => setDeleting(department)}
-                      editTitle={`Edit ${department.name}`}
-                      deleteTitle={`Delete ${department.name}`}
-                    />
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-      </GlobalDataTable>
+      />
 
       <EditDepartmentDialog
         department={editing}

@@ -1,7 +1,8 @@
-"use client";
+﻿"use client";
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
+import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
 import { Pencil, Upload } from "lucide-react";
 import { toast } from "sonner";
 
@@ -20,17 +21,16 @@ import { ModelPriceSheet } from "@/app/(app)/settings/master-data/_components/mo
 import { ModelEditSheet } from "@/app/(app)/settings/master-data/_components/model-edit-sheet";
 import {
   DataTableEmptyState,
-  TableEmptyRow,
-  TableIndexCell,
-  TableIndexHead,
-  TableRowCheckbox,
-  TableSelectAllCheckbox,
   TableSelectionBadge,
   uniqueSearchSuggestions,
   useClientTablePagination,
-  useTableSelection,
 } from "@/components/data-table";
-import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
+import {
+  DataTable,
+  useClientTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,17 +43,10 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import {
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { formatPeso } from "@/utils/format-currency";
 import { matchesTableSearch } from "@/utils/match-table-search";
-import { cn } from "@/utils/cn";
 
-const COL_COUNT = 9;
+const modelColumn = createColumnHelper<DataTableFeatures, ClientModelRow>();
 
 export function MasterDataModelsTable({
   models,
@@ -123,7 +116,8 @@ export function MasterDataModelsTable({
     [rows],
   );
 
-  const selection = useTableSelection(filtered.map((model) => model.id));
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const selectedCount = filtered.filter((model) => rowSelection[model.id]).length;
   const sort = useClientTableSort(filtered, {
     sku: (m) => m.skuCode,
     name: (m) => m.name,
@@ -231,6 +225,109 @@ export function MasterDataModelsTable({
     });
   }
 
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<ClientModelRow>[] = [
+      modelColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => indexOffset + row.index + 1,
+        meta: { className: "tabular-nums text-muted-foreground" },
+      }),
+      modelColumn.display({
+        id: "sku",
+        header: "SKU",
+        enableSorting: true,
+        cell: ({ row }) => row.original.skuCode,
+        meta: { className: "font-mono text-sm" },
+      }),
+      modelColumn.display({
+        id: "name",
+        header: "Name",
+        enableSorting: true,
+        cell: ({ row }) => row.original.name,
+        meta: { className: "font-medium" },
+      }),
+      modelColumn.display({
+        id: "brand",
+        header: "Brand",
+        enableSorting: true,
+        cell: ({ row }) => row.original.brand?.name ?? "—",
+      }),
+      modelColumn.display({
+        id: "series",
+        header: "Series",
+        enableSorting: true,
+        cell: ({ row }) => row.original.series?.name ?? "—",
+      }),
+      modelColumn.display({
+        id: "srp",
+        header: "Price",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <div className="flex items-center justify-end gap-1.5">
+            {row.original.effectivePrice != null ? (
+              <span>{formatPeso(row.original.effectivePrice)}</span>
+            ) : (
+              <span className="text-xs font-normal text-muted-foreground">
+                Price not available
+              </span>
+            )}
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-6 text-muted-foreground hover:text-foreground"
+              aria-label={`Change price for ${row.original.skuCode}`}
+              onClick={() => setPriceModel(row.original)}
+            >
+              <Pencil className="size-3.5" />
+            </Button>
+          </div>
+        ),
+        meta: { align: "end", className: "tabular-nums" },
+      }),
+      modelColumn.display({
+        id: "status",
+        header: "Status",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <ModelStatusSelect
+            modelId={row.original.id}
+            status={row.original.status}
+            onUpdated={(nextStatus) => {
+              setStatusOverrides((current) => ({
+                ...current,
+                [row.original.id]: nextStatus,
+              }));
+              router.refresh();
+            }}
+          />
+        ),
+      }),
+      modelColumn.display({
+        id: "actions",
+        header: "",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-8 text-muted-foreground hover:bg-muted hover:text-foreground"
+            aria-label={`Edit ${row.original.skuCode}`}
+            title="Edit model"
+            onClick={() => setEditModel(row.original)}
+          >
+            <Pencil className="size-3.5" />
+          </Button>
+        ),
+        meta: { align: "end" },
+      }),
+    ];
+    return cols;
+  }, [indexOffset, router]);
+
   return (
     <div className="space-y-4">
       {rows.length === 0 ? (
@@ -263,7 +360,23 @@ export function MasterDataModelsTable({
           <DataTableEmptyState message="No product models yet." />
         </div>
       ) : (
-        <GlobalDataTable
+        <DataTable
+          data={pageItems}
+          columns={columns}
+          getRowId={(row) => row.id}
+          manualSorting
+          manualPagination
+          enableSorting
+          sorting={{
+            sortKey: sort.sortKey,
+            sortDir: sort.sortDir,
+            onSort: sort.toggleSort,
+          }}
+          enableRowSelection
+          rowSelection={rowSelection}
+          onRowSelectionChange={setRowSelection}
+          selectAllLabel="Select all models"
+          getSelectionLabel={(row) => `Select model ${row.skuCode}`}
           stickyHeader
           toolbarLeading={
             <span className="text-sm font-medium">Product models</span>
@@ -277,8 +390,8 @@ export function MasterDataModelsTable({
           toolbarActions={
             <>
               <TableSelectionBadge
-                count={selection.selectedCount}
-                onClear={selection.clearSelection}
+                count={selectedCount}
+                onClear={() => setRowSelection({})}
                 size="sm"
               />
               {canSync ? (
@@ -313,108 +426,10 @@ export function MasterDataModelsTable({
             itemLabel: "model",
             onPageChange: setPage,
           }}
+          empty={pageItems.length === 0}
+          emptyMessage="No models match your search."
           pageSize={{ value: pageSize, onChange: setPageSize }}
-        >
-              <TableHeader>
-                <TableRow className="bg-muted/30 hover:bg-muted/30">
-                  <TableSelectAllCheckbox
-                    isAllSelected={selection.isAllSelected}
-                    isPartiallySelected={selection.isPartiallySelected}
-                    onToggleAll={selection.toggleAll}
-                    aria-label="Select all models"
-                  />
-                  <TableIndexHead />
-                  <GlobalTableHead {...sort.sortProps("sku")}>SKU</GlobalTableHead>
-                  <GlobalTableHead {...sort.sortProps("name")}>Name</GlobalTableHead>
-                  <GlobalTableHead {...sort.sortProps("brand")}>Brand</GlobalTableHead>
-                  <GlobalTableHead {...sort.sortProps("series")}>Series</GlobalTableHead>
-                  <GlobalTableHead
-                    className="text-right"
-                    {...sort.sortProps("srp")}
-                  >
-                    Price
-                  </GlobalTableHead>
-                  <GlobalTableHead {...sort.sortProps("status")}>Status</GlobalTableHead>
-                  <GlobalTableHead className="w-12">
-                    <span className="sr-only">Actions</span>
-                  </GlobalTableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.length === 0 ? (
-                  <TableEmptyRow
-                    colSpan={COL_COUNT}
-                    message="No models match your search."
-                  />
-                ) : (
-                  pageItems.map((m, index) => (
-                    <TableRow
-                      key={m.id}
-                      data-state={selection.isRowSelected(m.id) ? "selected" : undefined}
-                      className={cn(index % 2 === 1 && "bg-table-stripe")}
-                    >
-                      <TableRowCheckbox
-                        checked={selection.isRowSelected(m.id)}
-                        onCheckedChange={(checked) => selection.toggleRow(m.id, checked)}
-                        aria-label={`Select model ${m.skuCode}`}
-                      />
-                      <TableIndexCell index={indexOffset + index + 1} />
-                      <TableCell className="font-mono text-sm">{m.skuCode}</TableCell>
-                      <TableCell className="font-medium">{m.name}</TableCell>
-                      <TableCell>{m.brand?.name ?? "—"}</TableCell>
-                      <TableCell>{m.series?.name ?? "—"}</TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {m.effectivePrice != null ? (
-                            <span>{formatPeso(m.effectivePrice)}</span>
-                          ) : (
-                            <span className="text-xs font-normal text-muted-foreground">
-                              Price not available
-                            </span>
-                          )}
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="size-6 text-muted-foreground hover:text-foreground"
-                            aria-label={`Change price for ${m.skuCode}`}
-                            onClick={() => setPriceModel(m)}
-                          >
-                            <Pencil className="size-3.5" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <ModelStatusSelect
-                          modelId={m.id}
-                          status={m.status}
-                          onUpdated={(nextStatus) => {
-                            setStatusOverrides((current) => ({
-                              ...current,
-                              [m.id]: nextStatus,
-                            }));
-                            router.refresh();
-                          }}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="size-8 text-muted-foreground hover:bg-muted hover:text-foreground"
-                          aria-label={`Edit ${m.skuCode}`}
-                          title="Edit model"
-                          onClick={() => setEditModel(m)}
-                        >
-                          <Pencil className="size-3.5" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-        </GlobalDataTable>
+        />
       )}
 
       <Sheet open={addOpen} onOpenChange={onAddOpenChange}>

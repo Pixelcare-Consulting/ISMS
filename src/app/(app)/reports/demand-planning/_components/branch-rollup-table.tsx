@@ -1,25 +1,20 @@
 "use client";
 
+import { createColumnHelper } from "@tanstack/react-table";
+import { useMemo } from "react";
 import type { DemandPlanningPlanStatus } from "@prisma/client";
 
-import {
-  DataTableScroll,
-  DataTableShell,
-  TableAmountCell,
-  TableEmptyRow,
-  TableStatusBadge,
-} from "@/components/data-table";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableFooter,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { TableStatusBadge } from "@/components/data-table";
 import type { CoverageBranchRow } from "@/features/demand-planning/services/coverage.service";
+import {
+  DataTable,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { formatPeso } from "@/utils/format-currency";
+
+const rollupColumn = createColumnHelper<DataTableFeatures, CoverageBranchRow>();
+const PLANNED_TOTAL_ID = "__planned_total__";
 
 interface BranchRollupTableProps {
   branches: CoverageBranchRow[];
@@ -45,6 +40,12 @@ function formatDays(value: number): string {
   return `${value.toFixed(1)} d`;
 }
 
+function pesoCell(value: number, emphasize = false) {
+  return (
+    <span className={emphasize ? "font-semibold" : undefined}>{formatPeso(value)}</span>
+  );
+}
+
 export function BranchRollupTable({ branches }: BranchRollupTableProps) {
   const planned = branches.filter((row) => row.planStatus === "planned");
   const totals = planned.reduce(
@@ -67,95 +68,132 @@ export function BranchRollupTable({ branches }: BranchRollupTableProps) {
     },
   );
 
+  const rows = useMemo(() => {
+    if (planned.length === 0) return branches;
+    const totalRow: CoverageBranchRow = {
+      branchId: PLANNED_TOTAL_ID,
+      name: "Planned total",
+      sapCode: "",
+      planStatus: "planned",
+      quotaPeso: totals.quotaPeso,
+      historyPeso: totals.historyPeso,
+      milQty: 0,
+      milPeso: totals.milPeso,
+      milDays: 0,
+      allocQty: 0,
+      allocPeso: totals.allocPeso,
+      allocationDays: 0,
+      targetDays: 0,
+      drop1Qty: 0,
+      drop1Peso: totals.drop1Peso,
+      totalInventoryPeso: totals.totalInventoryPeso,
+    };
+    return [...branches, totalRow];
+  }, [branches, planned.length, totals]);
+
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<CoverageBranchRow>[] = [
+      rollupColumn.display({
+        id: "branch",
+        header: "Branch",
+        cell: ({ row }) =>
+          row.original.branchId === PLANNED_TOTAL_ID ? (
+            <span className="font-semibold">Planned total</span>
+          ) : (
+            <div className="min-w-0">
+              <p className="font-medium">{row.original.name}</p>
+              <p className="font-mono text-xs text-muted-foreground">{row.original.sapCode}</p>
+            </div>
+          ),
+      }),
+      rollupColumn.display({
+        id: "status",
+        header: "Status",
+        cell: ({ row }) =>
+          row.original.branchId === PLANNED_TOTAL_ID ? null : (
+            <TableStatusBadge
+              status={row.original.planStatus}
+              activeValue="planned"
+              label={planStatusLabel(row.original.planStatus)}
+              variantMap={{
+                planned: "default",
+                no_history: "destructive",
+                awaiting: "outline",
+              }}
+            />
+          ),
+      }),
+      rollupColumn.display({
+        id: "quota",
+        header: "Quota",
+        cell: ({ row }) =>
+          pesoCell(row.original.quotaPeso, row.original.branchId === PLANNED_TOTAL_ID),
+        meta: { align: "end", className: "font-mono" },
+      }),
+      rollupColumn.display({
+        id: "history",
+        header: "History",
+        cell: ({ row }) =>
+          pesoCell(row.original.historyPeso, row.original.branchId === PLANNED_TOTAL_ID),
+        meta: { align: "end", className: "font-mono" },
+      }),
+      rollupColumn.display({
+        id: "mil",
+        header: "MIL",
+        cell: ({ row }) =>
+          pesoCell(row.original.milPeso, row.original.branchId === PLANNED_TOTAL_ID),
+        meta: { align: "end", className: "font-mono" },
+      }),
+      rollupColumn.display({
+        id: "allocation",
+        header: "Allocation",
+        cell: ({ row }) =>
+          pesoCell(row.original.allocPeso, row.original.branchId === PLANNED_TOTAL_ID),
+        meta: { align: "end", className: "font-mono" },
+      }),
+      rollupColumn.display({
+        id: "days",
+        header: "Alloc / target",
+        cell: ({ row }) =>
+          row.original.branchId === PLANNED_TOTAL_ID
+            ? null
+            : `${formatDays(row.original.allocationDays)} / ${formatDays(row.original.targetDays)}`,
+        meta: { align: "end" },
+      }),
+      rollupColumn.display({
+        id: "drop1",
+        header: "Drop 1",
+        cell: ({ row }) =>
+          pesoCell(row.original.drop1Peso, row.original.branchId === PLANNED_TOTAL_ID),
+        meta: { align: "end", className: "font-mono" },
+      }),
+      rollupColumn.display({
+        id: "inventory",
+        header: "Total inventory",
+        cell: ({ row }) =>
+          pesoCell(row.original.totalInventoryPeso, row.original.branchId === PLANNED_TOTAL_ID),
+        meta: { align: "end", className: "font-mono" },
+      }),
+    ];
+    return cols;
+  }, []);
+
   return (
-    <DataTableShell>
-      <div className="border-b px-4 py-3">
-        <h3 className="font-semibold">Branch roll-up</h3>
-        <p className="text-sm text-muted-foreground">
-          Every branch in the run, including NO HISTORY.
-        </p>
-      </div>
-      <DataTableScroll>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Branch</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Quota</TableHead>
-              <TableHead className="text-right">History</TableHead>
-              <TableHead className="text-right">MIL</TableHead>
-              <TableHead className="text-right">Allocation</TableHead>
-              <TableHead className="text-right">Alloc / target</TableHead>
-              <TableHead className="text-right">Drop 1</TableHead>
-              <TableHead className="text-right">Total inventory</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {branches.length === 0 ? (
-              <TableEmptyRow colSpan={9} message="This plan has no branch rows yet." />
-            ) : (
-              branches.map((row) => (
-                <TableRow key={row.branchId}>
-                  <TableCell>
-                    <div className="min-w-0">
-                      <p className="font-medium">{row.name}</p>
-                      <p className="font-mono text-xs text-muted-foreground">{row.sapCode}</p>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <TableStatusBadge
-                      status={row.planStatus}
-                      activeValue="planned"
-                      label={planStatusLabel(row.planStatus)}
-                      variantMap={{
-                        planned: "default",
-                        no_history: "destructive",
-                        awaiting: "outline",
-                      }}
-                    />
-                  </TableCell>
-                  <TableAmountCell value={row.quotaPeso} className="text-right" />
-                  <TableAmountCell value={row.historyPeso} className="text-right" />
-                  <TableAmountCell value={row.milPeso} className="text-right" />
-                  <TableAmountCell value={row.allocPeso} className="text-right" />
-                  <TableCell className="text-right tabular-nums text-sm">
-                    {formatDays(row.allocationDays)} / {formatDays(row.targetDays)}
-                  </TableCell>
-                  <TableAmountCell value={row.drop1Peso} className="text-right" />
-                  <TableAmountCell value={row.totalInventoryPeso} className="text-right" />
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-          {planned.length > 0 ? (
-            <TableFooter>
-              <TableRow className="hover:bg-transparent">
-                <TableCell className="font-semibold">Planned total</TableCell>
-                <TableCell />
-                <TableCell className="text-right font-mono text-sm font-semibold tabular-nums">
-                  {formatPeso(totals.quotaPeso)}
-                </TableCell>
-                <TableCell className="text-right font-mono text-sm font-semibold tabular-nums">
-                  {formatPeso(totals.historyPeso)}
-                </TableCell>
-                <TableCell className="text-right font-mono text-sm font-semibold tabular-nums">
-                  {formatPeso(totals.milPeso)}
-                </TableCell>
-                <TableCell className="text-right font-mono text-sm font-semibold tabular-nums">
-                  {formatPeso(totals.allocPeso)}
-                </TableCell>
-                <TableCell />
-                <TableCell className="text-right font-mono text-sm font-semibold tabular-nums">
-                  {formatPeso(totals.drop1Peso)}
-                </TableCell>
-                <TableCell className="text-right font-mono text-sm font-semibold tabular-nums">
-                  {formatPeso(totals.totalInventoryPeso)}
-                </TableCell>
-              </TableRow>
-            </TableFooter>
-          ) : null}
-        </Table>
-      </DataTableScroll>
-    </DataTableShell>
+    <DataTable
+      data={rows}
+      columns={columns}
+      getRowId={(row) => row.branchId}
+      stickyHeader
+      banner={
+        <div className="border-b px-4 py-3">
+          <h3 className="font-semibold">Branch roll-up</h3>
+          <p className="text-sm text-muted-foreground">
+            Every branch in the run, including NO HISTORY.
+          </p>
+        </div>
+      }
+      empty={branches.length === 0}
+      emptyMessage="This plan has no branch rows yet."
+    />
   );
 }

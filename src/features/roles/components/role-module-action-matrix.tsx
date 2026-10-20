@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
+import { createColumnHelper } from "@tanstack/react-table";
 import { Search } from "lucide-react";
 import { toast } from "sonner";
 
@@ -31,19 +32,15 @@ import type {
   RolesPermissionsMatrix,
 } from "@/features/roles/types/role.types";
 import { DataTableShell } from "@/components/data-table/data-table-shell";
+import {
+  DataTable,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { matchesTableSearch } from "@/utils/match-table-search";
-import { cn } from "@/utils/cn";
 
 interface RoleModuleActionMatrixProps {
   matrix: RolesPermissionsMatrix;
@@ -54,6 +51,8 @@ interface RoleModuleActionMatrixProps {
 interface ModuleActionCell {
   permission: PermissionRow | null;
 }
+
+const moduleColumn = createColumnHelper<DataTableFeatures, ModuleMatrixRow>();
 
 interface ModuleMatrixRow {
   moduleId: string;
@@ -339,6 +338,105 @@ export function RoleModuleActionMatrix({
     });
   }
 
+  const busy = isPending || bulkBusy;
+
+  const desktopColumns = useMemo(() => {
+    const cols: DataTableColumn<ModuleMatrixRow>[] = [
+      moduleColumn.display({
+        id: "module",
+        header: "Module",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const counts = moduleAssignedCount(row.original, assigned);
+          return (
+            <div>
+              <p className="font-medium">{row.original.moduleName}</p>
+              {row.original.description ? (
+                <p className="mt-0.5 text-xs text-muted-foreground">{row.original.description}</p>
+              ) : null}
+              <p className="mt-0.5 text-[11px] tabular-nums text-muted-foreground">
+                {counts.assigned} of {counts.total}
+              </p>
+            </div>
+          );
+        },
+        meta: {
+          wrap: true,
+          className:
+            "sticky left-0 z-10 min-w-48 border-r border-border/60 bg-card shadow-[4px_0_8px_-4px_rgba(0,0,0,0.06)]",
+          headClassName:
+            "sticky left-0 z-30 min-w-48 border-r border-border/60 bg-muted shadow-[4px_0_8px_-4px_rgba(0,0,0,0.08)]",
+        },
+      }),
+    ];
+
+    for (const column of actionColumns) {
+      cols.push(
+        moduleColumn.display({
+          id: column.value,
+          header: column.label,
+          enableSorting: false,
+          cell: ({ row }) => {
+            const permission = row.original.cells[column.value]?.permission ?? null;
+            if (!permission || !selectedRole) return "—";
+            return (
+              <div className="flex justify-center">
+                <PermissionToggle
+                  roleId={selectedRole.id}
+                  roleName={selectedRole.name}
+                  permissionSlug={permission.slug}
+                  permissionName={
+                    permission.name ||
+                    `${getPermissionActionLabel(column.value)} ${row.original.moduleName}`
+                  }
+                  checked={assigned.has(permission.slug)}
+                  disabled={isProtected}
+                  pending={busy}
+                  onToggleRequest={openChangeDialog}
+                />
+              </div>
+            );
+          },
+          meta: {
+            className: "min-w-20 text-center",
+            headClassName: "min-w-20 text-center normal-case",
+          },
+        }),
+      );
+    }
+
+    cols.push(
+      moduleColumn.display({
+        id: "row",
+        header: "Row",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const counts = moduleAssignedCount(row.original, assigned);
+          return (
+            <div className="flex justify-end">
+              <ModuleBulkActions
+                counts={counts}
+                disabled={isProtected || busy}
+                onSelectAll={() => handleModuleSelectAll(row.original, true)}
+                onClear={() => handleModuleSelectAll(row.original, false)}
+              />
+            </div>
+          );
+        },
+        meta: { align: "end", headClassName: "min-w-32 text-right normal-case" },
+      }),
+    );
+
+    return cols;
+  }, [
+    actionColumns,
+    assigned,
+    busy,
+    isProtected,
+    openChangeDialog,
+    selectedRole,
+  ]);
+
   if (roles.length === 0) {
     return (
       <DataTableShell>
@@ -354,8 +452,6 @@ export function RoleModuleActionMatrix({
   if (!selectedRole) {
     return null;
   }
-
-  const busy = isPending || bulkBusy;
 
   return (
     <>
@@ -493,113 +589,15 @@ export function RoleModuleActionMatrix({
               })}
             </div>
 
-            {/* Desktop: scrollable matrix with frozen header + module column */}
-            <div className="hidden max-h-[min(70vh,44rem)] overflow-auto lg:block">
-              <Table scrollContainer={false}>
-                <TableHeader>
-                  <TableRow className="bg-muted/30 hover:bg-muted/30">
-                    <TableHead className="sticky left-0 top-0 z-40 min-w-48 border-r border-border/60 bg-muted shadow-[4px_0_8px_-4px_rgba(0,0,0,0.08)]">
-                      Module
-                    </TableHead>
-                    {actionColumns.map((column) => (
-                      <TableHead
-                        key={column.value}
-                        className="sticky top-0 z-30 min-w-20 bg-muted text-center normal-case"
-                        title={column.value}
-                      >
-                        {column.label}
-                      </TableHead>
-                    ))}
-                    <TableHead className="sticky top-0 z-30 min-w-32 bg-muted text-right normal-case">
-                      Row
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredRows.map((row, index) => {
-                    const counts = moduleAssignedCount(row, assigned);
-                    const rowBg =
-                      index % 2 === 1 ? "bg-table-stripe" : "bg-card";
-
-                    return (
-                      <TableRow
-                        key={row.moduleId}
-                        className={cn(index % 2 === 1 && "bg-table-stripe")}
-                      >
-                        <TableCell
-                          className={cn(
-                            "sticky left-0 z-10 border-r border-border/60 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.06)]",
-                            rowBg,
-                          )}
-                        >
-                          <div>
-                            <p className="font-medium">{row.moduleName}</p>
-                            {row.description ? (
-                              <p className="mt-0.5 text-xs text-muted-foreground">
-                                {row.description}
-                              </p>
-                            ) : null}
-                            <p className="mt-0.5 text-[11px] tabular-nums text-muted-foreground">
-                              {counts.assigned} of {counts.total}
-                            </p>
-                          </div>
-                        </TableCell>
-                        {actionColumns.map((column) => {
-                          const permission =
-                            row.cells[column.value]?.permission ?? null;
-                          if (!permission) {
-                            return (
-                              <TableCell
-                                key={column.value}
-                                className={cn(
-                                  "text-center text-muted-foreground",
-                                  rowBg,
-                                )}
-                              >
-                                —
-                              </TableCell>
-                            );
-                          }
-                          return (
-                            <TableCell
-                              key={column.value}
-                              className={cn("text-center", rowBg)}
-                            >
-                              <div className="flex justify-center">
-                                <PermissionToggle
-                                  roleId={selectedRole.id}
-                                  roleName={selectedRole.name}
-                                  permissionSlug={permission.slug}
-                                  permissionName={
-                                    permission.name ||
-                                    `${getPermissionActionLabel(column.value)} ${row.moduleName}`
-                                  }
-                                  checked={assigned.has(permission.slug)}
-                                  disabled={isProtected}
-                                  pending={busy}
-                                  onToggleRequest={openChangeDialog}
-                                />
-                              </div>
-                            </TableCell>
-                          );
-                        })}
-                        <TableCell className={cn("text-right", rowBg)}>
-                          <div className="flex justify-end">
-                            <ModuleBulkActions
-                              counts={counts}
-                              disabled={isProtected || busy}
-                              onSelectAll={() =>
-                                handleModuleSelectAll(row, true)
-                              }
-                              onClear={() => handleModuleSelectAll(row, false)}
-                            />
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+            <div className="hidden lg:block">
+              <DataTable
+                chrome="plain"
+                data={filteredRows}
+                columns={desktopColumns}
+                getRowId={(row) => row.moduleId}
+                stickyHeader
+                className="max-h-[min(70vh,44rem)]"
+              />
             </div>
           </>
         )}

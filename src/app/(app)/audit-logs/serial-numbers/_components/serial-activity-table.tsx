@@ -1,5 +1,6 @@
 "use client";
 
+import { createColumnHelper } from "@tanstack/react-table";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 
@@ -12,7 +13,6 @@ import {
   formatSerialActivityTimestamp,
   formatSerialActivityType,
 } from "@/features/serial-activity/constants/serial-activity-display";
-import { TableCodeCell } from "@/components/data-table";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   parseTablePageSize,
@@ -24,12 +24,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+  DataTable,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { cn } from "@/utils/cn";
 
 interface SerialActivityTableProps {
@@ -46,6 +44,8 @@ interface SerialActivityTableProps {
   currentDateTo?: string;
   initialSortDir?: string;
 }
+
+const activityColumn = createColumnHelper<DataTableFeatures, SerialActivityEvent>();
 
 type SerialActivitySortDir = "asc" | "desc";
 
@@ -157,8 +157,108 @@ export function SerialActivityTable({
     router.push(buildHref(1, pageSize, { ...activeFilters, dir: next }));
   }
 
+  const indexOffset = (result.page - 1) * result.pageSize;
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<SerialActivityEvent>[] = [
+      activityColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => indexOffset + row.index + 1,
+        meta: { className: "tabular-nums text-muted-foreground" },
+      }),
+      activityColumn.display({
+        id: "timestamp",
+        header: "Date & time",
+        enableSorting: true,
+        cell: ({ row }) => formatSerialActivityTimestamp(row.original.timestamp),
+        meta: { className: "text-muted-foreground" },
+      }),
+      activityColumn.display({
+        id: "event",
+        header: "Event",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <span
+            className={cn(
+              "inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium",
+              TYPE_BADGE_CLASS[row.original.type],
+            )}
+          >
+            {formatSerialActivityType(row.original)}
+          </span>
+        ),
+      }),
+      activityColumn.display({
+        id: "serial",
+        header: "Serial",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <div>
+            <div className="font-mono text-sm font-medium tabular-nums">{row.original.serialNo}</div>
+            <div className="text-xs text-muted-foreground">{row.original.modelLabel}</div>
+          </div>
+        ),
+      }),
+      activityColumn.display({
+        id: "status",
+        header: "Status",
+        enableSorting: false,
+        cell: ({ row }) => row.original.status ?? "—",
+        meta: { className: "text-muted-foreground" },
+      }),
+      activityColumn.display({
+        id: "location",
+        header: "Location",
+        enableSorting: false,
+        cell: ({ row }) => row.original.location ?? "—",
+        meta: { className: "text-muted-foreground" },
+      }),
+      activityColumn.display({
+        id: "reference",
+        header: "Reference",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <div className="min-w-56 text-sm">
+            {row.original.reference ? (
+              <div className="font-medium tabular-nums">{row.original.reference}</div>
+            ) : null}
+            {row.original.referenceDetails.map((detail) => (
+              <div key={detail} className="text-xs text-muted-foreground">
+                {detail}
+              </div>
+            ))}
+            {!row.original.reference && row.original.referenceDetails.length === 0 ? (
+              <span className="text-muted-foreground">—</span>
+            ) : null}
+          </div>
+        ),
+        meta: { wrap: true },
+      }),
+      activityColumn.display({
+        id: "performedBy",
+        header: "Performed by",
+        enableSorting: false,
+        cell: ({ row }) => formatSerialActivityPerformedBy(row.original.performedBy),
+        meta: { className: "text-muted-foreground" },
+      }),
+    ];
+    return cols;
+  }, [indexOffset]);
+
   return (
-    <GlobalDataTable
+    <DataTable
+      data={rows}
+      columns={columns}
+      getRowId={(row) => row.id}
+      manualSorting
+      manualPagination
+      enableSorting
+      sorting={{
+        sortKey: "timestamp",
+        sortDir,
+        onSort: () => toggleSortDir(),
+      }}
       stickyHeader
       empty={rows.length === 0}
       emptyMessage={
@@ -232,79 +332,6 @@ export function SerialActivityTable({
         buildHref: (page) => buildHref(page, pageSize, activeFilters),
       }}
       pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
-    >
-      <TableHeader>
-        <TableRow className="bg-muted/30 hover:bg-muted/30">
-          <GlobalTableHead className="w-12">#</GlobalTableHead>
-          <GlobalTableHead
-            sortKey="timestamp"
-            activeSortKey="timestamp"
-            sortDirection={sortDir}
-            onSort={toggleSortDir}
-          >
-            Date &amp; time
-          </GlobalTableHead>
-          <GlobalTableHead>Event</GlobalTableHead>
-          <GlobalTableHead>Serial</GlobalTableHead>
-          <GlobalTableHead>Status</GlobalTableHead>
-          <GlobalTableHead>Location</GlobalTableHead>
-          <GlobalTableHead>Reference</GlobalTableHead>
-          <GlobalTableHead>Performed by</GlobalTableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map((row, index) => (
-          <TableRow
-            key={row.id}
-            className={cn(index % 2 === 1 && "bg-table-stripe")}
-          >
-            <TableCell className="tabular-nums text-muted-foreground">
-              {(result.page - 1) * result.pageSize + index + 1}
-            </TableCell>
-            <TableCell className="whitespace-nowrap text-muted-foreground">
-              {formatSerialActivityTimestamp(row.timestamp)}
-            </TableCell>
-            <TableCell>
-              <span
-                className={cn(
-                  "inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium",
-                  TYPE_BADGE_CLASS[row.type],
-                )}
-              >
-                {formatSerialActivityType(row)}
-              </span>
-            </TableCell>
-            <TableCodeCell>
-              <div className="font-medium tabular-nums">{row.serialNo}</div>
-              <div className="font-sans text-xs text-muted-foreground">
-                {row.modelLabel}
-              </div>
-            </TableCodeCell>
-            <TableCell className="text-sm text-muted-foreground">
-              {row.status ?? "—"}
-            </TableCell>
-            <TableCell className="text-sm text-muted-foreground">
-              {row.location ?? "—"}
-            </TableCell>
-            <TableCell className="min-w-56 text-sm">
-              {row.reference ? (
-                <div className="font-medium tabular-nums">{row.reference}</div>
-              ) : null}
-              {row.referenceDetails.map((detail) => (
-                <div key={detail} className="text-xs text-muted-foreground">
-                  {detail}
-                </div>
-              ))}
-              {!row.reference && row.referenceDetails.length === 0 ? (
-                <span className="text-muted-foreground">—</span>
-              ) : null}
-            </TableCell>
-            <TableCell className="text-sm text-muted-foreground">
-              {formatSerialActivityPerformedBy(row.performedBy)}
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </GlobalDataTable>
+    />
   );
 }

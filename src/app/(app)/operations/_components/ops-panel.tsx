@@ -1,7 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
+import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
 import { toast } from "sonner";
 
 import { PulloutRequestDialog } from "@/app/(app)/logistics/_components/pullout-request-dialog";
@@ -25,21 +26,11 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  DataTableScroll,
-  DataTableShell,
-} from "@/components/data-table/data-table-shell";
-import { useTableSelection } from "@/components/data-table/use-table-selection";
-import { GlobalTableHead, useClientTableSort } from "@/lib/data-table";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { useState } from "react";
+  DataTable,
+  useClientTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 
 interface StatusCodeRef {
   id: string;
@@ -64,6 +55,14 @@ interface OpsPanelProps {
   pullouts: { id: string; statusCode: StatusCodeRef; branch: { name: string } }[];
 }
 
+type DeliveryRow = OpsPanelProps["deliveries"][number];
+type TransferRow = OpsPanelProps["transfers"][number];
+type PulloutRow = OpsPanelProps["pullouts"][number];
+
+const deliveryColumn = createColumnHelper<DataTableFeatures, DeliveryRow>();
+const transferColumn = createColumnHelper<DataTableFeatures, TransferRow>();
+const pulloutColumn = createColumnHelper<DataTableFeatures, PulloutRow>();
+
 interface PendingDeliveryAction {
   id: string;
   deliveryNo: string;
@@ -79,9 +78,9 @@ export function OpsPanel({ deliveries, transfers, pullouts }: OpsPanelProps) {
     null,
   );
   const [pending, startTransition] = useTransition();
-  const deliverySelection = useTableSelection(deliveries.map((delivery) => delivery.id));
-  const transferSelection = useTableSelection(transfers.map((transfer) => transfer.id));
-  const pulloutSelection = useTableSelection(pullouts.map((pullout) => pullout.id));
+  const [deliverySelection, setDeliverySelection] = useState<RowSelectionState>({});
+  const [transferSelection, setTransferSelection] = useState<RowSelectionState>({});
+  const [pulloutSelection, setPulloutSelection] = useState<RowSelectionState>({});
 
   const deliverySort = useClientTableSort(deliveries, {
     branch: (d) => d.branch.name,
@@ -142,189 +141,220 @@ export function OpsPanel({ deliveries, transfers, pullouts }: OpsPanelProps) {
     return createPulloutAction(input);
   }
 
+  const deliveryColumns = useMemo(() => {
+    const cols: DataTableColumn<DeliveryRow>[] = [
+      deliveryColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => row.index + 1,
+        meta: { className: "tabular-nums text-muted-foreground" },
+      }),
+      deliveryColumn.display({
+        id: "branch",
+        header: "Branch",
+        enableSorting: true,
+        cell: ({ row }) => row.original.branch.name,
+      }),
+      deliveryColumn.display({
+        id: "reference",
+        header: "Reference",
+        enableSorting: true,
+        cell: ({ row }) => row.original.deliveryNo,
+      }),
+      deliveryColumn.display({
+        id: "status",
+        header: "Status",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <StatusCodeBadge
+            code={row.original.statusCode.code}
+            name={row.original.statusCode.name}
+            color={row.original.statusCode.color}
+          />
+        ),
+      }),
+      deliveryColumn.display({
+        id: "actions",
+        header: "Action",
+        enableSorting: false,
+        cell: ({ row }) =>
+          row.original.statusCode.code === "pending" ? (
+            <div className="flex justify-end gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={pending}
+                onClick={() =>
+                  setPendingDelivery({
+                    id: row.original.id,
+                    deliveryNo: row.original.deliveryNo,
+                    branchName: row.original.branch.name,
+                    action: "reject",
+                  })
+                }
+              >
+                Reject
+              </Button>
+              <Button
+                size="sm"
+                disabled={pending}
+                className="bg-emerald-600 text-white hover:bg-emerald-700"
+                onClick={() =>
+                  setPendingDelivery({
+                    id: row.original.id,
+                    deliveryNo: row.original.deliveryNo,
+                    branchName: row.original.branch.name,
+                    action: "accept",
+                  })
+                }
+              >
+                Accept
+              </Button>
+            </div>
+          ) : null,
+        meta: { align: "end" },
+      }),
+    ];
+    return cols;
+  }, [pending]);
+
+  const transferColumns = useMemo(() => {
+    const cols: DataTableColumn<TransferRow>[] = [
+      transferColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => row.index + 1,
+        meta: { className: "tabular-nums text-muted-foreground" },
+      }),
+      transferColumn.display({
+        id: "from",
+        header: "From",
+        enableSorting: true,
+        cell: ({ row }) => row.original.fromBranch.name,
+      }),
+      transferColumn.display({
+        id: "to",
+        header: "To",
+        enableSorting: true,
+        cell: ({ row }) => row.original.toBranch.name,
+      }),
+      transferColumn.display({
+        id: "status",
+        header: "Status",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <StatusCodeBadge
+            code={row.original.statusCode.code}
+            name={row.original.statusCode.name}
+            color={row.original.statusCode.color}
+          />
+        ),
+      }),
+    ];
+    return cols;
+  }, []);
+
+  const pulloutColumns = useMemo(() => {
+    const cols: DataTableColumn<PulloutRow>[] = [
+      pulloutColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => row.index + 1,
+        meta: { className: "tabular-nums text-muted-foreground" },
+      }),
+      pulloutColumn.display({
+        id: "branch",
+        header: "Branch",
+        enableSorting: true,
+        cell: ({ row }) => row.original.branch.name,
+      }),
+      pulloutColumn.display({
+        id: "status",
+        header: "Status",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <StatusCodeBadge
+            code={row.original.statusCode.code}
+            name={row.original.statusCode.name}
+            color={row.original.statusCode.color}
+          />
+        ),
+      }),
+    ];
+    return cols;
+  }, []);
+
   return (
     <div className="space-y-8">
-      <DataTableShell>
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
-          <h3 className="font-medium">Deliveries (accept DIT → Stock)</h3>
-        </div>
-        <DataTableScroll>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-10">
-                  <Checkbox
-                    checked={deliverySelection.isAllSelected || (deliverySelection.isPartiallySelected ? "indeterminate" : false)}
-                    onCheckedChange={(checked) => deliverySelection.toggleAll(checked === true)}
-                    aria-label="Select all deliveries"
-                  />
-                </TableHead>
-                <TableHead className="w-12">#</TableHead>
-                <GlobalTableHead {...deliverySort.sortProps("branch")}>Branch</GlobalTableHead>
-                <GlobalTableHead {...deliverySort.sortProps("reference")}>Reference</GlobalTableHead>
-                <GlobalTableHead {...deliverySort.sortProps("status")}>Status</GlobalTableHead>
-                <TableHead className="text-right">Action</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {deliverySort.sorted.map((d, index) => (
-                <TableRow key={d.id} data-state={deliverySelection.isRowSelected(d.id) ? "selected" : undefined}>
-                  <TableCell>
-                    <Checkbox
-                      checked={deliverySelection.isRowSelected(d.id)}
-                      onCheckedChange={(checked) => deliverySelection.toggleRow(d.id, checked === true)}
-                      aria-label={`Select delivery ${d.deliveryNo}`}
-                    />
-                  </TableCell>
-                  <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
-                  <TableCell>{d.branch.name}</TableCell>
-                  <TableCell>{d.deliveryNo}</TableCell>
-                  <TableCell>
-                    <StatusCodeBadge
-                      code={d.statusCode.code}
-                      name={d.statusCode.name}
-                      color={d.statusCode.color}
-                    />
-                  </TableCell>
-                  <TableCell className="space-x-2 text-right">
-                    {d.statusCode.code === "pending" ? (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={pending}
-                          onClick={() =>
-                            setPendingDelivery({
-                              id: d.id,
-                              deliveryNo: d.deliveryNo,
-                              branchName: d.branch.name,
-                              action: "reject",
-                            })
-                          }
-                        >
-                          Reject
-                        </Button>
-                        <Button
-                          size="sm"
-                          disabled={pending}
-                          className="bg-emerald-600 text-white hover:bg-emerald-700"
-                          onClick={() =>
-                            setPendingDelivery({
-                              id: d.id,
-                              deliveryNo: d.deliveryNo,
-                              branchName: d.branch.name,
-                              action: "accept",
-                            })
-                          }
-                        >
-                          Accept
-                        </Button>
-                      </>
-                    ) : null}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </DataTableScroll>
-      </DataTableShell>
+      <DataTable
+        data={deliverySort.sorted}
+        columns={deliveryColumns}
+        getRowId={(row) => row.id}
+        manualSorting
+        enableSorting
+        sorting={{
+          sortKey: deliverySort.sortKey,
+          sortDir: deliverySort.sortDir,
+          onSort: deliverySort.toggleSort,
+        }}
+        enableRowSelection
+        rowSelection={deliverySelection}
+        onRowSelectionChange={setDeliverySelection}
+        selectAllLabel="Select all deliveries"
+        getSelectionLabel={(row) => `Select delivery ${row.deliveryNo}`}
+        stickyHeader
+        toolbarLeading={<h3 className="font-medium">Deliveries (accept DIT → Stock)</h3>}
+        empty={deliverySort.sorted.length === 0}
+        emptyMessage="No deliveries."
+      />
+      <DataTable
+        data={transferSort.sorted}
+        columns={transferColumns}
+        getRowId={(row) => row.id}
+        manualSorting
+        enableSorting
+        sorting={{
+          sortKey: transferSort.sortKey,
+          sortDir: transferSort.sortDir,
+          onSort: transferSort.toggleSort,
+        }}
+        enableRowSelection
+        rowSelection={transferSelection}
+        onRowSelectionChange={setTransferSelection}
+        selectAllLabel="Select all transfers"
+        getSelectionLabel={(row) => `Select transfer ${row.id}`}
+        stickyHeader
+        toolbarLeading={<h3 className="font-medium">Branch transfers</h3>}
+        toolbarActions={<Button size="sm" onClick={() => setTransferOpen(true)}>New transfer</Button>}
+        empty={transferSort.sorted.length === 0}
+        emptyMessage="No transfers."
+      />
 
-      <DataTableShell>
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
-          <h3 className="font-medium">Branch transfers</h3>
-          <Button size="sm" onClick={() => setTransferOpen(true)}>New transfer</Button>
-        </div>
-        <DataTableScroll>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-10">
-                  <Checkbox
-                    checked={transferSelection.isAllSelected || (transferSelection.isPartiallySelected ? "indeterminate" : false)}
-                    onCheckedChange={(checked) => transferSelection.toggleAll(checked === true)}
-                    aria-label="Select all transfers"
-                  />
-                </TableHead>
-                <TableHead className="w-12">#</TableHead>
-                <GlobalTableHead {...transferSort.sortProps("from")}>From</GlobalTableHead>
-                <GlobalTableHead {...transferSort.sortProps("to")}>To</GlobalTableHead>
-                <GlobalTableHead {...transferSort.sortProps("status")}>Status</GlobalTableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {transferSort.sorted.map((t, index) => (
-                <TableRow key={t.id} data-state={transferSelection.isRowSelected(t.id) ? "selected" : undefined}>
-                  <TableCell>
-                    <Checkbox
-                      checked={transferSelection.isRowSelected(t.id)}
-                      onCheckedChange={(checked) => transferSelection.toggleRow(t.id, checked === true)}
-                      aria-label={`Select transfer ${t.id}`}
-                    />
-                  </TableCell>
-                  <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
-                  <TableCell>{t.fromBranch.name}</TableCell>
-                  <TableCell>{t.toBranch.name}</TableCell>
-                  <TableCell>
-                    <StatusCodeBadge
-                      code={t.statusCode.code}
-                      name={t.statusCode.name}
-                      color={t.statusCode.color}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </DataTableScroll>
-      </DataTableShell>
-
-      <DataTableShell>
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
-          <h3 className="font-medium">Pull-outs</h3>
-          <Button size="sm" onClick={() => setPulloutOpen(true)}>New pull-out</Button>
-        </div>
-        <DataTableScroll>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-10">
-                  <Checkbox
-                    checked={pulloutSelection.isAllSelected || (pulloutSelection.isPartiallySelected ? "indeterminate" : false)}
-                    onCheckedChange={(checked) => pulloutSelection.toggleAll(checked === true)}
-                    aria-label="Select all pull-outs"
-                  />
-                </TableHead>
-                <TableHead className="w-12">#</TableHead>
-                <GlobalTableHead {...pulloutSort.sortProps("branch")}>Branch</GlobalTableHead>
-                <GlobalTableHead {...pulloutSort.sortProps("status")}>Status</GlobalTableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {pulloutSort.sorted.map((p, index) => (
-                <TableRow key={p.id} data-state={pulloutSelection.isRowSelected(p.id) ? "selected" : undefined}>
-                  <TableCell>
-                    <Checkbox
-                      checked={pulloutSelection.isRowSelected(p.id)}
-                      onCheckedChange={(checked) => pulloutSelection.toggleRow(p.id, checked === true)}
-                      aria-label={`Select pull-out ${p.id}`}
-                    />
-                  </TableCell>
-                  <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
-                  <TableCell>{p.branch.name}</TableCell>
-                  <TableCell>
-                    <StatusCodeBadge
-                      code={p.statusCode.code}
-                      name={p.statusCode.name}
-                      color={p.statusCode.color}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </DataTableScroll>
-      </DataTableShell>
-
+      <DataTable
+        data={pulloutSort.sorted}
+        columns={pulloutColumns}
+        getRowId={(row) => row.id}
+        manualSorting
+        enableSorting
+        sorting={{
+          sortKey: pulloutSort.sortKey,
+          sortDir: pulloutSort.sortDir,
+          onSort: pulloutSort.toggleSort,
+        }}
+        enableRowSelection
+        rowSelection={pulloutSelection}
+        onRowSelectionChange={setPulloutSelection}
+        selectAllLabel="Select all pull-outs"
+        getSelectionLabel={(row) => `Select pull-out ${row.id}`}
+        stickyHeader
+        toolbarLeading={<h3 className="font-medium">Pull-outs</h3>}
+        toolbarActions={<Button size="sm" onClick={() => setPulloutOpen(true)}>New pull-out</Button>}
+        empty={pulloutSort.sorted.length === 0}
+        emptyMessage="No pull-outs."
+      />
       <TransferRequestDialog
         open={transferOpen}
         onOpenChange={setTransferOpen}

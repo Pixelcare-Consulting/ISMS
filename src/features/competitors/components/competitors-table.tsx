@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import { createColumnHelper } from "@tanstack/react-table";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -13,27 +14,22 @@ import {
 } from "@/features/competitors/components/competitor-form-dialog";
 import type { CompetitorObservationDto } from "@/features/competitors/services/competitor.service";
 import {
-  AppDataTable,
-  AppDataTableBody,
   DeleteConfirmDialog,
-  TableEmptyRow,
   TableRowActions,
-  TableSearchBar,
   uniqueSearchSuggestions,
 } from "@/components/data-table";
-import { GlobalTableHead, useClientTableSort } from "@/lib/data-table";
+import {
+  DataTable,
+  useClientTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { formatPeso } from "@/utils/format-currency";
 import { matchesTableSearch } from "@/utils/match-table-search";
-import { cn } from "@/utils/cn";
+
+const observationColumn = createColumnHelper<DataTableFeatures, CompetitorObservationDto>();
 
 interface CompetitorsTableProps {
   observations: CompetitorObservationDto[];
@@ -142,134 +138,155 @@ export function CompetitorsTable({
     });
   }
 
-  const colSpan = canManage ? 9 : 8;
   const emptyMessage =
     observations.length === 0
       ? "No competitor observations yet."
       : "No observations match your filters.";
 
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<CompetitorObservationDto>[] = [
+      observationColumn.display({
+        id: "competitor",
+        header: "Competitor",
+        enableSorting: true,
+        cell: ({ row }) => row.original.competitorName,
+        meta: { className: "font-medium" },
+      }),
+      observationColumn.display({
+        id: "branch",
+        header: "Branch",
+        enableSorting: true,
+        cell: ({ row }) =>
+          row.original.branch
+            ? `${row.original.branch.name} (${row.original.branch.sapCode})`
+            : "—",
+      }),
+      observationColumn.display({
+        id: "brandModel",
+        header: "Brand / Model",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <div className="flex flex-col">
+            <span>{brandDisplay(row.original) ?? "—"}</span>
+            {modelDisplay(row.original) ? (
+              <span className="text-xs text-muted-foreground">{modelDisplay(row.original)}</span>
+            ) : null}
+          </div>
+        ),
+      }),
+      observationColumn.display({
+        id: "price",
+        header: "Price",
+        enableSorting: true,
+        cell: ({ row }) => formatPeso(row.original.price),
+        meta: { align: "end", className: "tabular-nums" },
+      }),
+      observationColumn.display({
+        id: "promotion",
+        header: "Promotion",
+        enableSorting: true,
+        cell: ({ row }) => row.original.promotion ?? "—",
+        meta: { className: "max-w-[12rem] truncate" },
+      }),
+      observationColumn.display({
+        id: "observed",
+        header: "Observed",
+        enableSorting: true,
+        cell: ({ row }) => formatObservedDate(row.original.observedAt),
+      }),
+      observationColumn.display({
+        id: "notes",
+        header: "Notes",
+        enableSorting: false,
+        cell: ({ row }) => row.original.notes ?? "—",
+        meta: { className: "max-w-[14rem] truncate" },
+      }),
+      observationColumn.display({
+        id: "loggedBy",
+        header: "Logged by",
+        enableSorting: true,
+        cell: ({ row }) => row.original.createdBy.name ?? row.original.createdBy.email,
+      }),
+    ];
+    if (canManage) {
+      cols.push(
+        observationColumn.display({
+          id: "actions",
+          header: "Actions",
+          enableSorting: false,
+          cell: ({ row }) => (
+            <TableRowActions
+              asCell={false}
+              onEdit={() => openEdit(row.original)}
+              onDelete={() => setDeleting(row.original)}
+              editDisabled={pending}
+              deleteDisabled={pending}
+            />
+          ),
+          meta: { align: "end" },
+        }),
+      );
+    }
+    return cols;
+  }, [canManage, pending]);
+
   return (
     <div className="space-y-4">
-      <AppDataTable
-        title="Observations"
-        shellHeader={
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-              <TableSearchBar
-                value={query}
-                onChange={setQuery}
-                placeholder="Search competitor, promo, brand, model…"
-                suggestions={suggestions}
-                className="sm:max-w-sm"
-              />
-              {canManage ? (
-                <Button size="sm" onClick={openCreate} className="shrink-0">
-                  <Plus className="size-4" /> Add observation
-                </Button>
-              ) : null}
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <SearchableSelect
-                label="Branch"
-                id="filter-branch"
-                className="min-w-[10rem]"
-                options={branches.map((b) => ({ id: b.id, label: b.label }))}
-                value={branchFilter}
-                onChange={setBranchFilter}
-                allowClear
-                placeholder="All branches"
-                searchPlaceholder="Search branches…"
-              />
-              <SearchableSelect
-                label="Brand"
-                id="filter-brand"
-                className="min-w-[10rem]"
-                options={brands.map((b) => ({ id: b.id, label: b.label }))}
-                value={brandFilter}
-                onChange={setBrandFilter}
-                allowClear
-                placeholder="All brands"
-                searchPlaceholder="Search brands…"
-              />
-            </div>
+      <DataTable
+        data={sort.sorted}
+        columns={columns}
+        getRowId={(row) => row.id}
+        manualSorting
+        enableSorting
+        sorting={{
+          sortKey: sort.sortKey,
+          sortDir: sort.sortDir,
+          onSort: sort.toggleSort,
+        }}
+        stickyHeader
+        toolbarLeading={<span className="text-sm font-medium">Observations</span>}
+        search={{
+          value: query,
+          onChange: setQuery,
+          placeholder: "Search competitor, promo, brand, model…",
+          suggestions,
+        }}
+        toolbarActions={
+          canManage ? (
+            <Button size="sm" onClick={openCreate} className="shrink-0">
+              <Plus className="size-4" /> Add observation
+            </Button>
+          ) : null
+        }
+        banner={
+          <div className="flex flex-wrap gap-3 px-4 pb-3">
+            <SearchableSelect
+              label="Branch"
+              id="filter-branch"
+              className="min-w-[10rem]"
+              options={branches.map((b) => ({ id: b.id, label: b.label }))}
+              value={branchFilter}
+              onChange={setBranchFilter}
+              allowClear
+              placeholder="All branches"
+              searchPlaceholder="Search branches…"
+            />
+            <SearchableSelect
+              label="Brand"
+              id="filter-brand"
+              className="min-w-[10rem]"
+              options={brands.map((b) => ({ id: b.id, label: b.label }))}
+              value={brandFilter}
+              onChange={setBrandFilter}
+              allowClear
+              placeholder="All brands"
+              searchPlaceholder="Search brands…"
+            />
           </div>
         }
-        empty={observations.length === 0}
-        emptyMessage="No competitor observations yet."
-      >
-        <AppDataTableBody>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <GlobalTableHead {...sort.sortProps("competitor")}>Competitor</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("branch")}>Branch</GlobalTableHead>
-                <GlobalTableHead>Brand / Model</GlobalTableHead>
-                <GlobalTableHead className="text-right" {...sort.sortProps("price")}>
-                  Price
-                </GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("promotion")}>Promotion</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("observed")}>Observed</GlobalTableHead>
-                <GlobalTableHead>Notes</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("loggedBy")}>Logged by</GlobalTableHead>
-                {canManage ? <GlobalTableHead className="text-right">Actions</GlobalTableHead> : null}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sort.sorted.length === 0 ? (
-                <TableEmptyRow colSpan={colSpan} message={emptyMessage} />
-              ) : (
-                sort.sorted.map((row, index) => (
-                  <TableRow
-                    key={row.id}
-                    className={cn(index % 2 === 1 && "bg-table-stripe")}
-                  >
-                    <TableCell className="font-medium">{row.competitorName}</TableCell>
-                    <TableCell>
-                      {row.branch
-                        ? `${row.branch.name} (${row.branch.sapCode})`
-                        : "—"}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col">
-                        <span>{brandDisplay(row) ?? "—"}</span>
-                        {modelDisplay(row) ? (
-                          <span className="text-xs text-muted-foreground">
-                            {modelDisplay(row)}
-                          </span>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatPeso(row.price)}
-                    </TableCell>
-                    <TableCell
-                      className="max-w-[12rem] truncate"
-                      title={row.promotion ?? undefined}
-                    >
-                      {row.promotion ?? "—"}
-                    </TableCell>
-                    <TableCell>{formatObservedDate(row.observedAt)}</TableCell>
-                    <TableCell className="max-w-[14rem] truncate" title={row.notes ?? undefined}>
-                      {row.notes ?? "—"}
-                    </TableCell>
-                    <TableCell>
-                      {row.createdBy.name ?? row.createdBy.email}
-                    </TableCell>
-                    {canManage ? (
-                      <TableRowActions
-                        onEdit={() => openEdit(row)}
-                        onDelete={() => setDeleting(row)}
-                        editDisabled={pending}
-                        deleteDisabled={pending}
-                      />
-                    ) : null}
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </AppDataTableBody>
-      </AppDataTable>
+        empty={sort.sorted.length === 0}
+        emptyMessage={emptyMessage}
+      />
 
       {canManage ? (
         <CompetitorFormDialog

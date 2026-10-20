@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState, useTransition } from "react";
+import { createColumnHelper } from "@tanstack/react-table";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
@@ -16,15 +17,17 @@ import {
 } from "@/features/lookups/constants/lookup-registry";
 import { Button } from "@/components/ui/button";
 import {
-  TableEmptyRow,
-  TableIndexCell,
-  TableIndexHead,
   TableRowActions,
   TableStatusBadge,
   uniqueSearchSuggestions,
   useClientTablePagination,
 } from "@/components/data-table";
-import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
+import {
+  DataTable,
+  useClientTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import {
   Dialog,
   DialogContent,
@@ -36,14 +39,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import {
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { matchesTableSearch } from "@/utils/match-table-search";
-import { cn } from "@/utils/cn";
+
+const lookupColumn = createColumnHelper<DataTableFeatures, LookupRowData>();
 import type { LookupRecordStatus } from "@prisma/client";
 
 export interface LookupRowData {
@@ -260,20 +258,115 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
     config.parent?.required && (parentOptions?.length ?? 0) === 0,
   );
 
-  const colSpan =
-    3 +
-    (config.code ? 1 : 0) +
-    (config.classField ? 1 : 0) +
-    (config.quantityField ? 1 : 0) +
-    (config.parent ? 1 : 0);
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<LookupRowData>[] = [
+      lookupColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => indexOffset + row.index + 1,
+        meta: { className: "tabular-nums text-muted-foreground" },
+      }),
+      lookupColumn.display({
+        id: "name",
+        header: "Name",
+        enableSorting: true,
+        cell: ({ row }) => row.original.name,
+        meta: { className: "font-medium" },
+      }),
+    ];
+    if (config.code) {
+      cols.push(
+        lookupColumn.display({
+          id: "code",
+          header: "Code",
+          enableSorting: true,
+          cell: ({ row }) => row.original.code ?? "—",
+          meta: { className: "font-mono text-sm" },
+        }),
+      );
+    }
+    if (config.classField) {
+      cols.push(
+        lookupColumn.display({
+          id: "class",
+          header: "Class",
+          enableSorting: true,
+          cell: ({ row }) => row.original.class ?? "—",
+        }),
+      );
+    }
+    if (config.quantityField) {
+      cols.push(
+        lookupColumn.display({
+          id: "quantity",
+          header: "Qty",
+          enableSorting: true,
+          cell: ({ row }) => row.original.quantity ?? 1,
+          meta: { className: "tabular-nums" },
+        }),
+      );
+    }
+    if (config.parent) {
+      cols.push(
+        lookupColumn.display({
+          id: "parent",
+          header: config.parent.label,
+          enableSorting: true,
+          cell: ({ row }) => parentNameOf(row.original) ?? "—",
+        }),
+      );
+    }
+    cols.push(
+      lookupColumn.display({
+        id: "status",
+        header: "Status",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <TableStatusBadge
+            status={row.original.recordStatus}
+            label={row.original.recordStatus === "active" ? "Active" : "Inactive"}
+          />
+        ),
+      }),
+      lookupColumn.display({
+        id: "actions",
+        header: "",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <TableRowActions asCell={false} onEdit={() => openEdit(row.original)} editDisabled={pending}>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={pending}
+              onClick={() => toggleStatus(row.original)}
+            >
+              {row.original.recordStatus === "active" ? "Deactivate" : "Activate"}
+            </Button>
+          </TableRowActions>
+        ),
+        meta: { align: "end" },
+      }),
+    );
+    return cols;
+  }, [config, indexOffset, parentNameOf, pending]);
 
   return (
     <>
-      <GlobalDataTable
+      <DataTable
+        data={pageItems}
+        columns={columns}
+        getRowId={(row) => row.id}
+        manualSorting
+        manualPagination
+        enableSorting
+        sorting={{
+          sortKey: sort.sortKey,
+          sortDir: sort.sortDir,
+          onSort: sort.toggleSort,
+        }}
         stickyHeader
-        toolbarLeading={
-          title ? <span className="text-sm font-medium">{title}</span> : null
-        }
+        toolbarLeading={title ? <span className="text-sm font-medium">{title}</span> : null}
         search={{
           value: query,
           onChange: setQuery,
@@ -285,8 +378,12 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
             <Plus className="size-4" /> Add {config.singular}
           </Button>
         }
-        empty={rows.length === 0}
-        emptyMessage={`No ${config.label.toLowerCase()} yet.`}
+        empty={pageItems.length === 0}
+        emptyMessage={
+          rows.length === 0
+            ? `No ${config.label.toLowerCase()} yet.`
+            : "No results match your search."
+        }
         pageSize={{ value: pageSize, onChange: setPageSize }}
         pagination={{
           total,
@@ -295,73 +392,7 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
           itemLabel: config.singular,
           onPageChange: setPage,
         }}
-      >
-            <TableHeader>
-              <TableRow>
-                <TableIndexHead />
-                <GlobalTableHead {...sort.sortProps("name")}>Name</GlobalTableHead>
-                {config.code ? (
-                  <GlobalTableHead {...sort.sortProps("code")}>Code</GlobalTableHead>
-                ) : null}
-                {config.classField ? (
-                  <GlobalTableHead {...sort.sortProps("class")}>Class</GlobalTableHead>
-                ) : null}
-                {config.quantityField ? (
-                  <GlobalTableHead {...sort.sortProps("quantity")}>Qty</GlobalTableHead>
-                ) : null}
-                {config.parent ? (
-                  <GlobalTableHead {...sort.sortProps("parent")}>
-                    {config.parent.label}
-                  </GlobalTableHead>
-                ) : null}
-                <GlobalTableHead {...sort.sortProps("status")}>Status</GlobalTableHead>
-                <GlobalTableHead className="w-48" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.length === 0 ? (
-                <TableEmptyRow colSpan={colSpan} message="No results match your search." />
-              ) : (
-                pageItems.map((row, index) => (
-                  <TableRow
-                    key={row.id}
-                    className={cn(index % 2 === 1 && "bg-table-stripe")}
-                  >
-                    <TableIndexCell index={indexOffset + index + 1} />
-                    <TableCell className="font-medium">{row.name}</TableCell>
-                    {config.code ? (
-                      <TableCell className="font-mono text-sm">{row.code ?? "—"}</TableCell>
-                    ) : null}
-                    {config.classField ? (
-                      <TableCell>{row.class ?? "—"}</TableCell>
-                    ) : null}
-                    {config.quantityField ? (
-                      <TableCell className="tabular-nums">{row.quantity ?? 1}</TableCell>
-                    ) : null}
-                    {config.parent ? (
-                      <TableCell>{parentNameOf(row) ?? "—"}</TableCell>
-                    ) : null}
-                    <TableCell>
-                      <TableStatusBadge
-                        status={row.recordStatus}
-                        label={row.recordStatus === "active" ? "Active" : "Inactive"}
-                      />
-                    </TableCell>
-                    <TableRowActions onEdit={() => openEdit(row)} editDisabled={pending}>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={pending}
-                        onClick={() => toggleStatus(row)}
-                      >
-                        {row.recordStatus === "active" ? "Deactivate" : "Activate"}
-                      </Button>
-                    </TableRowActions>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-      </GlobalDataTable>
+      />
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>

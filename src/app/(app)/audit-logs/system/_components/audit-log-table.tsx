@@ -1,5 +1,6 @@
 "use client";
 
+import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 
@@ -18,21 +19,17 @@ import {
   parseTablePageSize,
   type TablePageSize,
 } from "@/components/data-table/table-page-size";
-import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { TableSearchBar, uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
-import { cn } from "@/utils/cn";
+  DataTable,
+  nextTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 
 interface AuditLogUser {
   id: string;
@@ -70,6 +67,8 @@ interface AuditLogTableProps {
   initialSort?: string;
   initialSortDir?: string;
 }
+
+const auditColumn = createColumnHelper<DataTableFeatures, AuditLogRow>();
 
 type AuditLogSortField = "createdAt" | "user" | "action" | "entityType";
 type AuditLogSortDir = "asc" | "desc";
@@ -148,7 +147,8 @@ export function AuditLogTable({
   ) as AuditLogSortDir;
 
   const rows = useMemo(() => result.items, [result.items]);
-  const selection = useTableSelection(rows.map((row) => row.id));
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const selectedCount = rows.filter((row) => rowSelection[row.id]).length;
 
   const suggestions = useMemo(
     () =>
@@ -219,8 +219,121 @@ export function AuditLogTable({
       currentDateTo,
   );
 
+  const indexOffset = (result.page - 1) * result.pageSize;
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<AuditLogRow>[] = [
+      auditColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => indexOffset + row.index + 1,
+        meta: { className: "tabular-nums text-muted-foreground" },
+      }),
+      auditColumn.display({
+        id: "createdAt",
+        header: "Date & time",
+        enableSorting: true,
+        cell: ({ row }) => formatAuditTimestamp(row.original.createdAt),
+        meta: { className: "text-muted-foreground" },
+      }),
+      auditColumn.display({
+        id: "user",
+        header: "User",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <div>
+            <div className="font-medium">
+              {row.original.user ? (row.original.user.name ?? row.original.user.email) : "System"}
+            </div>
+            {row.original.user?.name ? (
+              <div className="text-xs text-muted-foreground">{row.original.user.email}</div>
+            ) : null}
+          </div>
+        ),
+      }),
+      auditColumn.display({
+        id: "action",
+        header: "Activity",
+        enableSorting: true,
+        cell: ({ row }) => <AuditActionBadge action={row.original.action} />,
+      }),
+      auditColumn.display({
+        id: "entityType",
+        header: "Area",
+        enableSorting: true,
+        cell: ({ row }) => <AuditEntityBadge entityType={row.original.entityType} />,
+      }),
+      auditColumn.display({
+        id: "reference",
+        header: "Reference",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const entitySummary = formatAuditEntitySummary(row.original.entityType, row.original.metadata);
+          const reference = formatAuditReference(
+            row.original.entityType,
+            row.original.entityId,
+            row.original.metadata,
+            row.original.action,
+          );
+          return (
+            <div className="max-w-xs text-sm">
+              <div className="font-medium text-foreground">
+                {reference.number ?? entitySummary ?? "—"}
+              </div>
+              {reference.details.map((detail) => (
+                <div key={detail} className="text-xs text-muted-foreground">
+                  {detail}
+                </div>
+              ))}
+              <div className="text-xs text-muted-foreground">
+                {formatAuditTimestamp(row.original.createdAt)} ·{" "}
+                {row.original.user
+                  ? (row.original.user.name ?? row.original.user.email)
+                  : "System"}
+              </div>
+              {reference.recordId ? (
+                <div className="text-xs text-muted-foreground/70" title={reference.recordId}>
+                  Record #{reference.recordId.slice(-8)}
+                </div>
+              ) : null}
+            </div>
+          );
+        },
+        meta: { wrap: true },
+      }),
+      auditColumn.display({
+        id: "details",
+        header: "Details",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <div className="max-w-sm text-sm text-muted-foreground">
+            {formatAuditDetails(row.original.metadata, row.original.action)}
+          </div>
+        ),
+        meta: { wrap: true },
+      }),
+    ];
+    return cols;
+  }, [indexOffset]);
+
   return (
-    <GlobalDataTable
+    <DataTable
+      data={rows}
+      columns={columns}
+      getRowId={(row) => row.id}
+      manualSorting
+      manualPagination
+      enableSorting
+      sorting={{
+        sortKey: sort,
+        sortDir,
+        onSort: (columnId) => toggleSort(columnId as AuditLogSortField),
+      }}
+      enableRowSelection
+      rowSelection={rowSelection}
+      onRowSelectionChange={setRowSelection}
+      selectAllLabel="Select all audit log rows"
+      getSelectionLabel={(row) => `Select audit row ${row.id}`}
       stickyHeader
       empty={rows.length === 0}
       emptyMessage={
@@ -302,10 +415,10 @@ export function AuditLogTable({
               </div>
             </div>
           </div>
-          {selection.selectedCount > 0 ? (
+          {selectedCount > 0 ? (
             <div className="px-4 pb-2 pt-2">
-              <Button variant="secondary" size="sm" onClick={selection.clearSelection}>
-                {selection.selectedCount} selected
+              <Button variant="secondary" size="sm" onClick={() => setRowSelection({})}>
+                {selectedCount} selected
               </Button>
             </div>
           ) : null}
@@ -319,133 +432,6 @@ export function AuditLogTable({
         buildHref: (page) => buildAuditLogHref(page, pageSize, activeFilters),
       }}
       pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
-    >
-      <TableHeader>
-        <TableRow className="bg-muted/30 hover:bg-muted/30">
-          <GlobalTableHead className="w-10">
-            <Checkbox
-              checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
-              onCheckedChange={(checked) => selection.toggleAll(checked === true)}
-              aria-label="Select all audit log rows"
-            />
-          </GlobalTableHead>
-          <GlobalTableHead className="w-12">#</GlobalTableHead>
-          <GlobalTableHead
-            sortKey="createdAt"
-            activeSortKey={sort}
-            sortDirection={sortDir}
-            onSort={(key) => toggleSort(key as AuditLogSortField)}
-          >
-            Date & time
-          </GlobalTableHead>
-          <GlobalTableHead
-            sortKey="user"
-            activeSortKey={sort}
-            sortDirection={sortDir}
-            onSort={(key) => toggleSort(key as AuditLogSortField)}
-          >
-            User
-          </GlobalTableHead>
-          <GlobalTableHead
-            sortKey="action"
-            activeSortKey={sort}
-            sortDirection={sortDir}
-            onSort={(key) => toggleSort(key as AuditLogSortField)}
-          >
-            Activity
-          </GlobalTableHead>
-          <GlobalTableHead
-            sortKey="entityType"
-            activeSortKey={sort}
-            sortDirection={sortDir}
-            onSort={(key) => toggleSort(key as AuditLogSortField)}
-          >
-            Area
-          </GlobalTableHead>
-          <GlobalTableHead>Reference</GlobalTableHead>
-          <GlobalTableHead>Details</GlobalTableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map((row, index) => {
-          const entitySummary = formatAuditEntitySummary(
-            row.entityType,
-            row.metadata,
-          );
-          const details = formatAuditDetails(row.metadata, row.action);
-          const reference = formatAuditReference(
-            row.entityType,
-            row.entityId,
-            row.metadata,
-            row.action,
-          );
-
-          return (
-            <TableRow
-              key={row.id}
-              data-state={selection.isRowSelected(row.id) ? "selected" : undefined}
-              className={cn(index % 2 === 1 && "bg-table-stripe")}
-            >
-              <TableCell>
-                <Checkbox
-                  checked={selection.isRowSelected(row.id)}
-                  onCheckedChange={(checked) => selection.toggleRow(row.id, checked === true)}
-                  aria-label={`Select audit row ${row.id}`}
-                />
-              </TableCell>
-              <TableCell className="tabular-nums text-muted-foreground">
-                {(result.page - 1) * result.pageSize + index + 1}
-              </TableCell>
-              <TableCell className="whitespace-nowrap text-muted-foreground">
-                {formatAuditTimestamp(row.createdAt)}
-              </TableCell>
-              <TableCell>
-                <div className="font-medium">
-                  {row.user
-                    ? (row.user.name ?? row.user.email)
-                    : "System"}
-                </div>
-                {row.user?.name ? (
-                  <div className="text-xs text-muted-foreground">
-                    {row.user.email}
-                  </div>
-                ) : null}
-              </TableCell>
-              <TableCell>
-                <AuditActionBadge action={row.action} />
-              </TableCell>
-              <TableCell>
-                <AuditEntityBadge entityType={row.entityType} />
-              </TableCell>
-              <TableCell className="min-w-56 max-w-xs text-sm">
-                <div className="font-medium text-foreground">
-                  {reference.number ?? entitySummary ?? "—"}
-                </div>
-                {reference.details.map((detail) => (
-                  <div key={detail} className="text-xs text-muted-foreground">
-                    {detail}
-                  </div>
-                ))}
-                <div className="text-xs text-muted-foreground">
-                  {formatAuditTimestamp(row.createdAt)} ·{" "}
-                  {row.user ? (row.user.name ?? row.user.email) : "System"}
-                </div>
-                {reference.recordId ? (
-                  <div
-                    className="text-xs text-muted-foreground/70"
-                    title={reference.recordId}
-                  >
-                    Record #{reference.recordId.slice(-8)}
-                  </div>
-                ) : null}
-              </TableCell>
-              <TableCell className="max-w-sm text-sm text-muted-foreground">
-                {details}
-              </TableCell>
-            </TableRow>
-          );
-        })}
-      </TableBody>
-    </GlobalDataTable>
+    />
   );
 }

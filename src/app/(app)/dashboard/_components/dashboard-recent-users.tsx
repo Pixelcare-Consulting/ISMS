@@ -2,24 +2,19 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { createColumnHelper } from "@tanstack/react-table";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import {
-  DataTableScroll,
-  DataTableShell,
-} from "@/components/data-table/data-table-shell";
-import { TableSearchBar, uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  DataTable,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { getInitials } from "@/utils/get-initials";
 import { matchesTableSearch } from "@/utils/match-table-search";
-import { cn } from "@/utils/cn";
+
+const userColumn = createColumnHelper<DataTableFeatures, UserRow>();
 
 interface UserRow {
   id: string;
@@ -58,78 +53,73 @@ export function DashboardRecentUsers({ users }: DashboardRecentUsersProps) {
     [users],
   );
 
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<UserRow>[] = [
+      userColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => row.index + 1,
+        meta: { className: "text-center tabular-nums text-muted-foreground" },
+      }),
+      userColumn.display({
+        id: "name",
+        header: "Name",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <div className="flex items-center gap-2.5">
+            <Avatar className="size-7">
+              {row.original.image ? (
+                <AvatarImage src={row.original.image} alt={row.original.name ?? row.original.email} />
+              ) : null}
+              <AvatarFallback className="bg-primary/10 text-xs text-primary">
+                {getInitials(row.original.name ?? row.original.email)}
+              </AvatarFallback>
+            </Avatar>
+            <span className="font-medium">{row.original.name ?? "—"}</span>
+          </div>
+        ),
+      }),
+      userColumn.display({
+        id: "email",
+        header: "Email",
+        enableSorting: false,
+        cell: ({ row }) => row.original.email,
+        meta: { className: "text-muted-foreground" },
+      }),
+      userColumn.display({
+        id: "role",
+        header: "Role",
+        enableSorting: false,
+        cell: ({ row }) =>
+          row.original.userRoles.map((userRole) => userRole.role.name).join(", ") || "—",
+      }),
+    ];
+    return cols;
+  }, []);
+
   return (
-    <DataTableShell>
-      <div className="flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="font-semibold">Recent team members</h2>
-        <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
-          <TableSearchBar
-            value={query}
-            onChange={setQuery}
-            placeholder="Search team members…"
-            suggestions={suggestions}
-            className="sm:w-64"
-          />
-          <Link
-            href="/settings/users"
-            className="text-sm font-medium text-primary hover:underline"
-          >
-            View all
-          </Link>
-        </div>
-      </div>
-      {filteredUsers.length === 0 ? (
-        <div className="py-12 text-center text-muted-foreground">
-          No team members match your search.
-        </div>
-      ) : (
-        <DataTableScroll>
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-muted/30 hover:bg-muted/30">
-                <TableHead className="w-12 min-w-12 text-center text-muted-foreground">
-                  #
-                </TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Role</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredUsers.map((user, index) => (
-                <TableRow
-                  key={user.id}
-                  className={cn(index % 2 === 1 && "bg-table-stripe")}
-                >
-                  <TableCell className="text-center tabular-nums text-muted-foreground">
-                    {index + 1}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2.5">
-                      <Avatar className="size-7">
-                        {user.image ? (
-                          <AvatarImage
-                            src={user.image}
-                            alt={user.name ?? user.email}
-                          />
-                        ) : null}
-                        <AvatarFallback className="bg-primary/10 text-xs text-primary">
-                          {getInitials(user.name ?? user.email)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="font-medium">{user.name ?? "—"}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">{user.email}</TableCell>
-                  <TableCell>
-                    {user.userRoles.map((ur) => ur.role.name).join(", ") || "—"}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </DataTableScroll>
-      )}
-    </DataTableShell>
+    <DataTable
+      data={filteredUsers}
+      columns={columns}
+      getRowId={(row) => row.id}
+      stickyHeader
+      toolbarLeading={<h2 className="font-semibold">Recent team members</h2>}
+      search={{
+        value: query,
+        onChange: setQuery,
+        placeholder: "Search team members…",
+        suggestions,
+      }}
+      toolbarActions={
+        <Link href="/settings/users" className="text-sm font-medium text-primary hover:underline">
+          View all
+        </Link>
+      }
+      empty={filteredUsers.length === 0}
+      emptyMessage={
+        users.length === 0 ? "No team members yet." : "No team members match your search."
+      }
+    />
   );
 }

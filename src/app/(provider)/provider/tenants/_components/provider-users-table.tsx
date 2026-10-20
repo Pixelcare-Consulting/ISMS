@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
+import { createColumnHelper } from "@tanstack/react-table";
 import { toast } from "sonner";
 
 import { CreateProviderUserDialog } from "@/app/(provider)/provider/tenants/_components/create-provider-user-dialog";
@@ -9,29 +10,21 @@ import { EditProviderUserDialog } from "@/app/(provider)/provider/tenants/_compo
 import type { ProviderUserRow } from "@/app/(provider)/provider/tenants/_components/create-provider-user-dialog";
 import {
   DeleteConfirmDialog,
-  TableEmptyRow,
-  TableIndexCell,
-  TableIndexHead,
   TableRowActions,
   uniqueSearchSuggestions,
   useClientTablePagination,
 } from "@/components/data-table";
 import { Badge } from "@/components/ui/badge";
-import {
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { deleteProviderCustomerUserAction } from "@/features/provider/actions/provider.actions";
 import {
-  GlobalDataTable,
-  GlobalTableHead,
+  DataTable,
   useClientTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
 } from "@/lib/data-table";
-import { matchesTableSearch } from "@/utils/match-table-search";
 
-const COLUMN_COUNT = 6;
+const userColumn = createColumnHelper<DataTableFeatures, ProviderUserRow>();
+import { matchesTableSearch } from "@/utils/match-table-search";
 
 interface RoleOption {
   slug: string;
@@ -148,6 +141,87 @@ export function ProviderUsersTable({
     });
   }
 
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<ProviderUserRow>[] = [
+      userColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => indexOffset + row.index + 1,
+        meta: { className: "tabular-nums text-muted-foreground" },
+      }),
+      userColumn.display({
+        id: "name",
+        header: "Name",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <div className="flex flex-col gap-1">
+            <span className="font-medium">{row.original.name ?? "—"}</span>
+            <Badge variant="secondary" className="w-fit">
+              Active
+            </Badge>
+          </div>
+        ),
+      }),
+      userColumn.display({
+        id: "email",
+        header: "Email",
+        enableSorting: true,
+        cell: ({ row }) => row.original.email,
+        meta: { className: "text-muted-foreground" },
+      }),
+      userColumn.display({
+        id: "roles",
+        header: "Roles",
+        enableSorting: true,
+        cell: ({ row }) =>
+          row.original.userRoles.length > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {row.original.userRoles.map((userRole) => (
+                <span
+                  key={userRole.role.slug}
+                  className="rounded-md bg-accent px-2 py-0.5 text-xs font-medium"
+                >
+                  {userRole.role.name}
+                </span>
+              ))}
+            </div>
+          ) : (
+            "—"
+          ),
+      }),
+      userColumn.display({
+        id: "department",
+        header: "Department",
+        enableSorting: true,
+        cell: ({ row }) => row.original.department?.name ?? "—",
+        meta: { className: "text-muted-foreground" },
+      }),
+      userColumn.display({
+        id: "actions",
+        header: "Actions",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <TableRowActions
+            asCell={false}
+            onEdit={() => setEditingUser(row.original)}
+            onDelete={() => setDeletingUser(row.original)}
+            editDisabled={orgDisabled}
+            deleteDisabled={orgDisabled}
+            editTitle={
+              orgDisabled ? "Restore the organization to edit users" : "Edit user"
+            }
+            deleteTitle={
+              orgDisabled ? "Restore the organization to delete users" : "Delete user"
+            }
+          />
+        ),
+        meta: { align: "end" },
+      }),
+    ];
+    return cols;
+  }, [indexOffset, orgDisabled]);
+
   const toolbarActions = (
     <div className="flex flex-wrap items-center gap-2">
       <CreateProviderUserDialog
@@ -179,32 +253,20 @@ export function ProviderUsersTable({
     </div>
   );
 
-  if (rows.length === 0) {
-    return (
-      <GlobalDataTable
-        stickyHeader
-        search={{
-          value: query,
-          onChange: setQuery,
-          placeholder: "Search by name, email, role, or department…",
-          suggestions,
-        }}
-        toolbarActions={toolbarActions}
-        empty
-        emptyMessage={
-          orgDisabled
-            ? "No users. Restore the organization to add people."
-            : "No users yet. Add a user or Tenant Admin to get started."
-        }
-      >
-        <></>
-      </GlobalDataTable>
-    );
-  }
-
   return (
     <>
-      <GlobalDataTable
+      <DataTable
+        data={pageItems}
+        columns={columns}
+        getRowId={(row) => row.id}
+        manualSorting
+        manualPagination
+        enableSorting
+        sorting={{
+          sortKey: sort.sortKey,
+          sortDir: sort.sortDir,
+          onSort: sort.toggleSort,
+        }}
         stickyHeader
         search={{
           value: query,
@@ -221,90 +283,15 @@ export function ProviderUsersTable({
           itemLabel: "user",
           onPageChange: setPage,
         }}
-      >
-        <TableHeader>
-          <TableRow className="bg-muted/30 hover:bg-muted/30">
-            <TableIndexHead />
-            <GlobalTableHead {...sort.sortProps("name")}>Name</GlobalTableHead>
-            <GlobalTableHead {...sort.sortProps("email")}>Email</GlobalTableHead>
-            <GlobalTableHead {...sort.sortProps("roles")}>Roles</GlobalTableHead>
-            <GlobalTableHead {...sort.sortProps("department")}>
-              Department
-            </GlobalTableHead>
-            <GlobalTableHead className="w-28 text-right">
-              Actions
-            </GlobalTableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {filteredUsers.length === 0 ? (
-            <TableEmptyRow
-              colSpan={COLUMN_COUNT}
-              message="No users match your search."
-            />
-          ) : (
-            pageItems.map((user, index) => {
-              const actionsDisabled = orgDisabled;
-
-              return (
-                <TableRow
-                  key={user.id}
-                  className={index % 2 === 1 ? "bg-table-stripe" : undefined}
-                >
-                  <TableIndexCell index={indexOffset + index + 1} />
-                  <TableCell>
-                    <div className="flex flex-col gap-1">
-                      <span className="font-medium">{user.name ?? "—"}</span>
-                      <Badge variant="secondary" className="w-fit">
-                        Active
-                      </Badge>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {user.email}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap gap-1">
-                      {user.userRoles.length > 0 ? (
-                        user.userRoles.map((userRole) => (
-                          <span
-                            key={userRole.role.slug}
-                            className="rounded-md bg-accent px-2 py-0.5 text-xs font-medium"
-                          >
-                            {userRole.role.name}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {user.department?.name ?? "—"}
-                  </TableCell>
-                  <TableRowActions
-                    onEdit={() => setEditingUser(user)}
-                    onDelete={() => setDeletingUser(user)}
-                    editDisabled={actionsDisabled}
-                    deleteDisabled={actionsDisabled}
-                    editTitle={
-                      orgDisabled
-                        ? "Restore the organization to edit users"
-                        : "Edit user"
-                    }
-                    deleteTitle={
-                      orgDisabled
-                        ? "Restore the organization to delete users"
-                        : "Delete user"
-                    }
-                  />
-                </TableRow>
-              );
-            })
-          )}
-        </TableBody>
-      </GlobalDataTable>
-
+        empty={pageItems.length === 0}
+        emptyMessage={
+          rows.length === 0
+            ? orgDisabled
+              ? "No users. Restore the organization to add people."
+              : "No users yet. Add a user or Tenant Admin to get started."
+            : "No users match your search."
+        }
+      />
       {editingUser ? (
         <EditProviderUserDialog
           key={editingUser.id}

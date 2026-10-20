@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
+import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
 import { toast } from "sonner";
 
 import {
@@ -14,19 +15,22 @@ import { STOCK_COUNT_PERMISSION_MESSAGE } from "@/features/stock-audit/constants
 import {
   STOCK_COUNT_SESSION_LABELS,
 } from "@/features/stock-audit/constants/stock-count-workflow";
-import { TableIndexCell, TableIndexHead } from "@/components/data-table";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   parseTablePageSize,
   type TablePageSize,
 } from "@/components/data-table/table-page-size";
-import { useTableSelection } from "@/components/data-table/use-table-selection";
-import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
+import {
+  DataTable,
+  nextTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
+
+const sessionColumn = createColumnHelper<DataTableFeatures, SessionRow>();
 
 interface SessionRow {
   id: string;
@@ -82,7 +86,8 @@ export function StockCountListPanel({
   const [selectedBranchId, setSelectedBranchId] = useState("");
   const [refsLoaded, setRefsLoaded] = useState(false);
   const [permissionDialogOpen, setPermissionDialogOpen] = useState(false);
-  const selection = useTableSelection(sessions.items.map((session) => session.id));
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const indexOffset = (sessions.page - 1) * sessions.limit;
   const pageSize = parseTablePageSize(sessions.limit);
   const sort = (searchParams.get("sort") ?? initialSort) || "";
   const sortDir = (
@@ -139,11 +144,91 @@ export function StockCountListPanel({
     });
   }
 
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<SessionRow>[] = [
+      sessionColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => indexOffset + row.index + 1,
+        meta: { className: "tabular-nums text-muted-foreground" },
+      }),
+      sessionColumn.display({
+        id: "session",
+        header: "Session",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <Link href={`/inventory/stock-count/${row.original.id}`} className="font-medium hover:underline">
+            {row.original.sessionNo}
+          </Link>
+        ),
+      }),
+      sessionColumn.display({
+        id: "branch",
+        header: "Branch",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <>
+            {row.original.branch.name}
+            <span className="ml-1 text-xs text-muted-foreground">({row.original.branch.sapCode})</span>
+          </>
+        ),
+      }),
+      sessionColumn.display({
+        id: "status",
+        header: "Status",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <Badge variant="outline">{STOCK_COUNT_SESSION_LABELS[row.original.status]}</Badge>
+        ),
+      }),
+      sessionColumn.display({
+        id: "lines",
+        header: "Lines",
+        enableSorting: false,
+        cell: ({ row }) => row.original._count.lines,
+        meta: { align: "end" },
+      }),
+      sessionColumn.display({
+        id: "variances",
+        header: "Variances",
+        enableSorting: false,
+        cell: ({ row }) => row.original._count.variances,
+        meta: { align: "end" },
+      }),
+      sessionColumn.display({
+        id: "createdBy",
+        header: "Created by",
+        enableSorting: true,
+        cell: ({ row }) => row.original.createdBy.name ?? row.original.createdBy.email,
+        meta: { className: "text-sm text-muted-foreground" },
+      }),
+    ];
+    return cols;
+  }, [indexOffset]);
+
   return (
     <>
-      <GlobalDataTable
-      stickyHeader
-      scrollable
+      <DataTable
+        data={sessions.items}
+        columns={columns}
+        getRowId={(row) => row.id}
+        manualSorting
+        manualPagination
+        enableSorting
+        sorting={{
+          sortKey: sort,
+          sortDir,
+          onSort: (key) => toggleSort(key as StockCountSortField),
+        }}
+        enableRowSelection
+        rowSelection={rowSelection}
+        onRowSelectionChange={setRowSelection}
+        selectAllLabel="Select all stock count sessions"
+        getSelectionLabel={(row) => `Select session ${row.sessionNo}`}
+        stickyHeader
+        empty={sessions.items.length === 0}
+        emptyMessage="No count sessions yet."
       toolbarActions={
         <>
           <SearchableSelect
@@ -172,102 +257,7 @@ export function StockCountListPanel({
           buildStockCountHref(page, pageSize, sort, sort ? sortDir : undefined),
       }}
       pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
-    >
-          <TableHeader>
-            <TableRow>
-              <GlobalTableHead className="w-10">
-                <Checkbox
-                  checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
-                  onCheckedChange={(checked) => selection.toggleAll(checked === true)}
-                  aria-label="Select all stock count sessions"
-                />
-              </GlobalTableHead>
-              <TableIndexHead />
-              <GlobalTableHead
-                sortKey="session"
-                activeSortKey={sort}
-                sortDirection={sortDir}
-                onSort={(key) => toggleSort(key as StockCountSortField)}
-              >
-                Session
-              </GlobalTableHead>
-              <GlobalTableHead
-                sortKey="branch"
-                activeSortKey={sort}
-                sortDirection={sortDir}
-                onSort={(key) => toggleSort(key as StockCountSortField)}
-              >
-                Branch
-              </GlobalTableHead>
-              <GlobalTableHead
-                sortKey="status"
-                activeSortKey={sort}
-                sortDirection={sortDir}
-                onSort={(key) => toggleSort(key as StockCountSortField)}
-              >
-                Status
-              </GlobalTableHead>
-              <GlobalTableHead className="text-right">Lines</GlobalTableHead>
-              <GlobalTableHead className="text-right">Variances</GlobalTableHead>
-              <GlobalTableHead
-                sortKey="createdBy"
-                activeSortKey={sort}
-                sortDirection={sortDir}
-                onSort={(key) => toggleSort(key as StockCountSortField)}
-              >
-                Created by
-              </GlobalTableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {sessions.items.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={8} className="text-muted-foreground text-center">
-                  No count sessions yet.
-                </TableCell>
-              </TableRow>
-            ) : (
-              sessions.items.map((row, index) => (
-                <TableRow key={row.id} data-state={selection.isRowSelected(row.id) ? "selected" : undefined}>
-                  <TableCell>
-                    <Checkbox
-                      checked={selection.isRowSelected(row.id)}
-                      onCheckedChange={(checked) => selection.toggleRow(row.id, checked === true)}
-                      aria-label={`Select session ${row.sessionNo}`}
-                    />
-                  </TableCell>
-                  <TableIndexCell
-                    index={(sessions.page - 1) * sessions.limit + index + 1}
-                  />
-                  <TableCell>
-                    <Link
-                      href={`/inventory/stock-count/${row.id}`}
-                      className="font-medium hover:underline"
-                    >
-                      {row.sessionNo}
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    {row.branch.name}
-                    <span className="text-muted-foreground ml-1 text-xs">
-                      ({row.branch.sapCode})
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">
-                      {STOCK_COUNT_SESSION_LABELS[row.status]}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">{row._count.lines}</TableCell>
-                  <TableCell className="text-right">{row._count.variances}</TableCell>
-                  <TableCell className="text-muted-foreground text-sm">
-                    {row.createdBy.name ?? row.createdBy.email}
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-      </GlobalDataTable>
+      />
       <StockCountPermissionDialog
         open={permissionDialogOpen}
         onOpenChange={setPermissionDialogOpen}
