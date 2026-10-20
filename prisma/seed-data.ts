@@ -33,6 +33,8 @@ export const DEMO_USERS = [
 
 export const PERMISSIONS = [
   { slug: "dashboard.manage", name: "Manage Dashboard" },
+  { slug: "dashboard.custom.view", name: "View custom dashboards" },
+  { slug: "dashboard.custom.manage", name: "Build custom dashboards" },
   { slug: "ai.assist", name: "Use ISMS Assist" },
   { slug: "ai.internal", name: "Use Pixelcare AI (internal)" },
   { slug: "company.view", name: "View company settings" },
@@ -199,6 +201,8 @@ export const ROLES = [
     description: "Tenant administrator",
     permissions: [
       "dashboard.manage",
+      "dashboard.custom.view",
+      "dashboard.custom.manage",
       "ai.assist",
       ...SETTINGS_VIEW_WITH_MANAGE,
       "company.manage",

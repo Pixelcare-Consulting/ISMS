@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/database/client";
+import { PROCESSED_ORDERS_REPORT_HEADERS } from "@/features/reports/constants/report-headers";
 import { buildCsvContent } from "@/lib/shared/csv";
 
 export interface ProcessedOrdersReportFilters {
@@ -6,27 +7,6 @@ export interface ProcessedOrdersReportFilters {
   processedTo?: Date;
   branchIds?: string[];
 }
-
-const HEADERS = [
-  "DATE PROCESSED",
-  "DEALER NAME",
-  "BRANCH NAME",
-  "BRAND",
-  "SO",
-  "MODEL",
-  "BRANCH ORDER",
-  "APPROVED QTY",
-  "ORDER REMARKS",
-  "SPA REMARKS",
-  "LAST UPDATED BY",
-  "SPA APPROVED BY",
-  "SPA DATETIME APPROVED",
-  "DELIVERY DUE DATE",
-  "TOTAL CBM",
-  "AREA",
-  "REGION",
-  "PROVINCE",
-];
 
 function formatDate(value: Date | null | undefined): string {
   if (!value) return "";
@@ -38,8 +18,34 @@ function formatDateTime(value: Date | null | undefined): string {
   return value.toISOString().replace("T", " ").slice(0, 19);
 }
 
+export interface ProcessedOrdersReportRow {
+  dateProcessed: string;
+  dealerName: string;
+  branch: string;
+  brand: string;
+  soNumber: string;
+  skuCode: string;
+  orderedQty: number;
+  approvedQty: number;
+  orderRemarks: string;
+  spaRemarks: string;
+  lastUpdatedBy: string;
+  spaApprovedBy: string;
+  spaApprovedAt: string;
+  deliveryDueDate: string;
+  /** Null when the model has no CBM configured. */
+  totalCbm: number | null;
+  /** The approved CSV's TOTAL CBM text: 4 decimals, blank when there's no CBM. */
+  totalCbmText: string;
+  area: string;
+}
+
 export const processedOrdersReportService = {
-  async generateCsv(tenantId: string, filters: ProcessedOrdersReportFilters = {}) {
+  /** One row per approved order line; shared by the CSV export and the Stimulsoft dataset. */
+  async listRows(
+    tenantId: string,
+    filters: ProcessedOrdersReportFilters = {},
+  ): Promise<ProcessedOrdersReportRow[]> {
     const tenant = await prisma.tenant.findUnique({
       where: { id: tenantId },
       select: { name: true },
@@ -120,7 +126,7 @@ export const processedOrdersReportService = {
         : [];
     const spaUserById = new Map(spaUsers.map((u) => [u.id, u]));
 
-    const rows: (string | number | null | undefined)[][] = [];
+    const rows: ProcessedOrdersReportRow[] = [];
 
     for (const order of orders) {
       const spLevel = spLevelByOrder.get(order.id);
@@ -134,31 +140,56 @@ export const processedOrdersReportService = {
       for (const detail of order.details) {
         const approvedQty = detail.approvedQty ?? detail.quantity;
         const cbmPerUnit = detail.model.cbm ? Number(detail.model.cbm) : 0;
-        const totalCbm = cbmPerUnit > 0 ? (cbmPerUnit * approvedQty).toFixed(4) : "";
 
-        rows.push([
-          formatDate(order.processedAt),
-          tenant?.name ?? "",
-          order.branch.name,
-          order.brand?.name ?? detail.model.brand?.name ?? "",
-          order.orderNumber,
-          detail.model.skuCode,
-          detail.quantity,
+        rows.push({
+          dateProcessed: formatDate(order.processedAt),
+          dealerName: tenant?.name ?? "",
+          branch: order.branch.name,
+          brand: order.brand?.name ?? detail.model.brand?.name ?? "",
+          soNumber: order.orderNumber,
+          skuCode: detail.model.skuCode,
+          orderedQty: detail.quantity,
           approvedQty,
-          order.notes ?? "",
-          order.spaRemarks ?? "",
-          order.createdBy.name ?? order.createdBy.email,
-          spaName,
-          formatDateTime(spLevel?.approvedAt ?? order.processedAt),
-          formatDate(order.deliveryDueDate),
-          totalCbm,
-          areaName,
-          "",
-          "",
-        ]);
+          orderRemarks: order.notes ?? "",
+          spaRemarks: order.spaRemarks ?? "",
+          lastUpdatedBy: order.createdBy.name ?? order.createdBy.email,
+          spaApprovedBy: spaName,
+          spaApprovedAt: formatDateTime(spLevel?.approvedAt ?? order.processedAt),
+          deliveryDueDate: formatDate(order.deliveryDueDate),
+          totalCbm: cbmPerUnit > 0 ? Number((cbmPerUnit * approvedQty).toFixed(4)) : null,
+          totalCbmText: cbmPerUnit > 0 ? (cbmPerUnit * approvedQty).toFixed(4) : "",
+          area: areaName,
+        });
       }
     }
 
-    return buildCsvContent(HEADERS, rows);
+    return rows;
+  },
+
+  async generateCsv(tenantId: string, filters: ProcessedOrdersReportFilters = {}) {
+    const rows = await this.listRows(tenantId, filters);
+    return buildCsvContent(
+      [...PROCESSED_ORDERS_REPORT_HEADERS],
+      rows.map((r) => [
+        r.dateProcessed,
+        r.dealerName,
+        r.branch,
+        r.brand,
+        r.soNumber,
+        r.skuCode,
+        r.orderedQty,
+        r.approvedQty,
+        r.orderRemarks,
+        r.spaRemarks,
+        r.lastUpdatedBy,
+        r.spaApprovedBy,
+        r.spaApprovedAt,
+        r.deliveryDueDate,
+        r.totalCbmText,
+        r.area,
+        "",
+        "",
+      ]),
+    );
   },
 };

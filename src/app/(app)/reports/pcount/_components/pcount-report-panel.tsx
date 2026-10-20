@@ -18,6 +18,9 @@ import {
   type DataTableFeatures,
   type TableSortDirection,
 } from "@/lib/data-table";
+import { ReportPreview } from "@/features/reporting/components/report-preview";
+import { describeDateRange } from "@/features/reporting/lib/filter-summary";
+import type { DatasetParams } from "@/features/reporting/schemas/dataset-params.schema";
 
 const pcountColumn = createColumnHelper<DataTableFeatures, ClosedSessionRow>();
 
@@ -92,6 +95,7 @@ export function PcountReportPanel({
   const [from, setFrom] = useState(currentFrom ?? "");
   const [to, setTo] = useState(currentTo ?? "");
   const [refsLoaded, setRefsLoaded] = useState(false);
+  const [previewParams, setPreviewParams] = useState<DatasetParams | null>(null);
 
   const activeFilters = {
     branchId: currentBranchId,
@@ -305,6 +309,16 @@ export function PcountReportPanel({
               <Button type="button" onClick={applyFilters}>
                 Apply filters
               </Button>
+              {/* Prints every session matching the applied filters, not just this page. */}
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() =>
+                  setPreviewParams({ branchId: currentBranchId, from: currentFrom, to: currentTo })
+                }
+              >
+                Preview report
+              </Button>
             </div>
           </div>
         </div>
@@ -322,6 +336,13 @@ export function PcountReportPanel({
             ? "No closed P-Count sessions match your filters."
             : "No closed P-Count sessions yet."
         }
+      />
+
+      <ReportPreview
+        reportKey="pcount"
+        params={previewParams}
+        filterSummary={describeDateRange(previewParams?.from, previewParams?.to)}
+        onClose={() => setPreviewParams(null)}
       />
     </div>
   );

@@ -1,0 +1,25 @@
+{
+  "ReportVersion": "2026.4.1",
+  "ReportGuid": "e5e29568f0d8503120f0465a7831d781",
+  "ReportName": "custom-dashboard",
+  "ReportAlias": "Custom dashboard",
+  "ReportCreated": "/Date(1792388050000+0800)/",
+  "ReportChanged": "/Date(1792388050000+0800)/",
+  "EngineVersion": "EngineV2",
+  "ReportUnit": "Centimeters",
+  "ScriptLanguage": "CSharp",
+  "UsePlatformDependentScript": false,
+  "CalculationMode": "Interpretation",
+  "Pages": {
+    "0": {
+      "Ident": "StiDashboard",
+      "Name": "Dashboard1",
+      "Guid": "1c85fa2adcf3c57621f20f2aa0d4c35b",
+      "Interaction": {
+        "Ident": "StiInteraction"
+      },
+      "Brush": "solid:",
+      "Border": ";;2;;;;;solid:Black"
+    }
+  }
+}

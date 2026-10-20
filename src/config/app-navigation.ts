@@ -13,6 +13,7 @@ import {
   KeyRound,
   LayoutDashboard,
   LayoutGrid,
+  LayoutTemplate,
   MapPin,
   Megaphone,
   Network,
@@ -30,6 +31,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { getModuleNavPermission } from "@/config/app-modules";
+import { CUSTOM_DASHBOARD_ACCESS } from "@/features/custom-dashboards/constants/custom-dashboard-permissions";
 
 export interface NavLinkItem {
   href: string;
@@ -89,6 +91,34 @@ export function isNavSubGroup(child: NavGroupChild): child is NavSubGroupItem {
   return "items" in child;
 }
 
+const OPERATIONS_DASHBOARD_PERMISSIONS = [
+  "inventory.view",
+  "orders.view",
+  "orders.manual.view",
+  "orders.special.view",
+  "orders.auto_replenish.view",
+  "logistics.view",
+  "logistics.create",
+  "logistics.manage",
+  "forecast.view",
+  "forecast.manage",
+  "planogram.view",
+  "planogram.manage",
+];
+
+const SALES_DASHBOARD_PERMISSIONS = [
+  "sales.view",
+  "sales.create",
+  "sales.update",
+  "returns.view",
+  "returns.branch.view",
+  "returns.service.view",
+  "returns.request",
+  "returns.evaluate",
+  "returns.approve",
+  "returns.complete",
+];
+
 export const appNavigation: NavEntry[] = [
   {
     type: "group",
@@ -108,37 +138,13 @@ export const appNavigation: NavEntry[] = [
         href: "/dashboard/operations",
         label: "Operations",
         icon: Activity,
-        anyPermissions: [
-          "inventory.view",
-          "orders.view",
-          "orders.manual.view",
-          "orders.special.view",
-          "orders.auto_replenish.view",
-          "logistics.view",
-          "logistics.create",
-          "logistics.manage",
-          "forecast.view",
-          "forecast.manage",
-          "planogram.view",
-          "planogram.manage",
-        ],
+        anyPermissions: OPERATIONS_DASHBOARD_PERMISSIONS,
       },
       {
         href: "/dashboard/sales",
         label: "Sales",
         icon: Store,
-        anyPermissions: [
-          "sales.view",
-          "sales.create",
-          "sales.update",
-          "returns.view",
-          "returns.branch.view",
-          "returns.service.view",
-          "returns.request",
-          "returns.evaluate",
-          "returns.approve",
-          "returns.complete",
-        ],
+        anyPermissions: SALES_DASHBOARD_PERMISSIONS,
       },
       {
         href: "/dashboard/pcount",
@@ -159,6 +165,13 @@ export const appNavigation: NavEntry[] = [
         label: "Market Survey",
         icon: ChartColumn,
         permission: "competitors.view",
+      },
+      {
+        href: "/dashboard/custom",
+        label: "Custom Dashboards",
+        icon: LayoutTemplate,
+        anyPermissions: CUSTOM_DASHBOARD_ACCESS,
+        badge: "new",
       },
     ],
   },

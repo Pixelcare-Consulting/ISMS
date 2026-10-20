@@ -24,8 +24,8 @@ export const appModules: AppModule[] = [
     name: "Dashboard",
     route: "/dashboard",
     slugPrefix: "dashboard",
-    description: "Main overview, role dashboards, and module launcher",
-    actions: permissionActions("manage", "view"),
+    description: "Main overview, role dashboards, analytics and custom dashboards",
+    actions: permissionActions("manage", "view", "custom.view", "custom.manage"),
   },
   {
     id: "ai",

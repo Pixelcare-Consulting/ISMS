@@ -751,6 +751,8 @@ export const stockAuditService = {
       from?: Date;
       to?: Date;
       page?: number;
+      /** Page size; the Stimulsoft dataset asks for one large page. */
+      limit?: number;
       sort?: string;
       sortDir?: "asc" | "desc";
     },
@@ -764,7 +766,7 @@ export const stockAuditService = {
       return stockAuditRepository.listClosedSessions(
         tenantId,
         { branchIds: [] },
-        { page: filters?.page },
+        { page: filters?.page, limit: filters?.limit },
         sort,
       );
     }
@@ -777,7 +779,7 @@ export const stockAuditService = {
         from: filters?.from,
         to: filters?.to,
       },
-      { page: filters?.page },
+      { page: filters?.page, limit: filters?.limit },
       sort,
     );
   },

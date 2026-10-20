@@ -37,7 +37,8 @@
     "db:studio": "dotenv -e .env.local -- prisma studio",
     "docs:modules-matrix": "node scripts/generate-modules-workflow-excel.mjs",
     "docs:end-user-process-flow": "node scripts/generate-end-user-process-flow.mjs",
-    "docs:sap-b1-proposal": "node scripts/generate-sap-b1-automation-proposal.mjs"
+    "docs:sap-b1-proposal": "node scripts/generate-sap-b1-automation-proposal.mjs",
+    "reporting:templates": "tsx tools/stimulsoft/build-templates.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.83",
@@ -94,6 +95,7 @@
     "resend": "^6.32.0",
     "sanitize-html": "^2.18.0",
     "sonner": "^2.0.8",
+    "stimulsoft-dashboards-js-react": "2026.4.1",
     "tailwind-merge": "^3.7.0",
     "xlsx": "file:vendor/xlsx-0.20.3.tgz",
     "zod": "^4.6.5",
