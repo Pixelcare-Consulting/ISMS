@@ -30,6 +30,7 @@ export default async function CustomDashboardEditPage({ params }: { params: Prom
         }
       />
       <CustomDashboardDesigner
+        key={dashboard.id}
         id={dashboard.id}
         template={dashboard.template}
         datasetKeys={listAccessibleDatasetKeys(session.user.permissions ?? [])}

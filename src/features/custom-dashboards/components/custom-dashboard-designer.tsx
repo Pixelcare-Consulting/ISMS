@@ -3,10 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { LoadingIndicator } from "@/components/ui/loading-indicator";
 import { saveCustomDashboardTemplateAction } from "@/features/custom-dashboards/actions/custom-dashboard.actions";
 import { defaultDashboardRange } from "@/features/custom-dashboards/lib/default-range";
 import { loadDatasetsAction } from "@/features/reporting/actions/reporting.actions";
+import { ReportingLoading } from "@/features/reporting/components/reporting-loading";
 import type { DatasetKey, DatasetRow } from "@/features/reporting/datasets/dataset-catalog";
 import { ensureDataSources, registerDatasets } from "@/features/reporting/lib/create-report";
 import { applyIsmsDashboardTheme, ismsDesignerTheme } from "@/features/reporting/lib/reporting-theme";
@@ -28,13 +28,17 @@ function buildDesignerOptions(api: StimulsoftApi) {
   const options = new D.StiDesignerOptions();
   options.height = "100%";
   options.appearance.allowChangeWindowTitle = false;
+  // Saves go to the database, so skip the "File Name: x.mrt" prompt.
+  options.appearance.showSaveDialog = false;
   options.appearance.theme = ismsDesignerTheme(api);
   options.toolbar.showFileMenu = false;
   options.toolbar.showAboutButton = false;
   options.toolbar.showPublishButton = false;
   options.toolbar.showNewPageButton = false;
   options.dictionary.showAdaptersInNewConnectionForm = false;
-  options.dictionary.dataConnectionsPermissions = D.StiDesignerPermissions.None;
+  // Not None: the Dictionary nests each data source under its connection node,
+  // so hiding connections hides every dataset too. View still blocks new ones.
+  options.dictionary.dataConnectionsPermissions = D.StiDesignerPermissions.View;
   options.dictionary.dataSourcesPermissions = D.StiDesignerPermissions.View;
   options.dictionary.dataRelationsPermissions = D.StiDesignerPermissions.View;
   options.dictionary.businessObjectsPermissions = D.StiDesignerPermissions.None;
@@ -42,7 +46,11 @@ function buildDesignerOptions(api: StimulsoftApi) {
   return options;
 }
 
-export function CustomDashboardDesigner({ id, template, datasetKeys }: CustomDashboardDesignerProps) {
+/** Mount with `key={id}`: the props are only the starting state. */
+export function CustomDashboardDesigner(props: CustomDashboardDesignerProps) {
+  // Captured once. Router refreshes (session cookie, or revalidation after a
+  // save) re-send these props and must not rebuild the designer mid-edit.
+  const [{ id, template, datasetKeys }] = useState(props);
   const hostRef = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<"LOADING" | "READY" | "ERROR">("LOADING");
 
@@ -50,6 +58,7 @@ export function CustomDashboardDesigner({ id, template, datasetKeys }: CustomDas
     const host = hostRef.current;
     let disposed = false;
     let designer: { dispose(): void } | null = null;
+    let renderObserver: MutationObserver | null = null;
 
     // Last 30 days of real data so elements preview while designing.
     Promise.all([
@@ -80,10 +89,17 @@ export function CustomDashboardDesigner({ id, template, datasetKeys }: CustomDas
             else toast.error("Could not save dashboard", { description: saved.error });
           });
         };
+        // The designer builds its DOM some seconds after renderHtml; keep the
+        // loading state until it shows up instead of an empty frame.
+        renderObserver = new MutationObserver(() => {
+          if (host.childElementCount === 0) return;
+          renderObserver?.disconnect();
+          if (!disposed) setState("READY");
+        });
+        renderObserver.observe(host, { childList: true });
         instance.renderHtml(host);
         instance.report = report;
         designer = instance;
-        setState("READY");
       })
       .catch((error: unknown) => {
         console.error("[custom-dashboards] designer failed to load", error);
@@ -92,6 +108,7 @@ export function CustomDashboardDesigner({ id, template, datasetKeys }: CustomDas
 
     return () => {
       disposed = true;
+      renderObserver?.disconnect();
       designer?.dispose();
       if (host) host.innerHTML = "";
     };
@@ -100,9 +117,7 @@ export function CustomDashboardDesigner({ id, template, datasetKeys }: CustomDas
   return (
     <div className="relative h-[calc(100dvh-11rem)] min-h-[600px] overflow-hidden rounded-xl border bg-card">
       {state === "LOADING" ? (
-        <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
-          <LoadingIndicator label="Loading designer" />
-        </div>
+        <ReportingLoading label="Loading designer" className="absolute inset-0" />
       ) : null}
       {state === "ERROR" ? (
         <p role="alert" className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted-foreground">

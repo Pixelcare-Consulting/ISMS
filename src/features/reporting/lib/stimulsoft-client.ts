@@ -1,5 +1,7 @@
 import type { Stimulsoft as StimulsoftNamespace } from "stimulsoft-dashboards-js-react/stimulsoft.reports";
 
+import { ISMS_THEME } from "@/features/reporting/lib/reporting-theme";
+
 /**
  * Client-only, on-demand loader for Stimulsoft Reports + Dashboards.
  *
@@ -23,6 +25,33 @@ function applyLicense(api: StimulsoftApi): void {
   }
 }
 
+/** TTFs in public/fonts/geist (OFL, from the `geist` package). The weights the templates use. */
+const REPORT_FONT_FILES = [
+  { path: "/fonts/geist/Geist-Regular.ttf", style: "Regular" },
+  { path: "/fonts/geist/Geist-Bold.ttf", style: "Bold" },
+] as const;
+
+/**
+ * Registers Geist with Stimulsoft so PDF export embeds it. Without this the
+ * PDF only names the font and viewers without Geist installed substitute
+ * another one. A failure keeps the viewer working with the unembedded font.
+ */
+async function registerReportFonts(api: StimulsoftApi): Promise<void> {
+  // Fetched here rather than via addFontFileAsync, whose callback never fires on a failed download.
+  await Promise.all(
+    REPORT_FONT_FILES.map(async ({ path, style }) => {
+      try {
+        const response = await fetch(path, { signal: AbortSignal.timeout(15_000) });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        api.Base.StiFontCollection.addFontBytes(bytes, ISMS_THEME.fontFamily, api.System.Drawing.FontStyle[style]);
+      } catch (error: unknown) {
+        console.warn(`[reporting] could not register ${path}; PDFs will not embed it`, error);
+      }
+    }),
+  );
+}
+
 async function importViewerModules(): Promise<StimulsoftApi> {
   const { Stimulsoft } = await import("stimulsoft-dashboards-js-react/stimulsoft.reports.engine.mjs");
   await import("stimulsoft-dashboards-js-react/stimulsoft.reports.chart.mjs");
@@ -31,6 +60,7 @@ async function importViewerModules(): Promise<StimulsoftApi> {
   await import("stimulsoft-dashboards-js-react/stimulsoft.viewer.mjs");
   const api = Stimulsoft as StimulsoftApi;
   applyLicense(api);
+  await registerReportFonts(api);
   return api;
 }
 

@@ -5,14 +5,15 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LoadingIndicator } from "@/components/ui/loading-indicator";
 import { defaultDashboardRange } from "@/features/custom-dashboards/lib/default-range";
 import { loadDatasetsAction } from "@/features/reporting/actions/reporting.actions";
+import { ReportingLoading } from "@/features/reporting/components/reporting-loading";
 import { StimulsoftViewer } from "@/features/reporting/components/stimulsoft-viewer";
 import { DATASET_CATALOG, type DatasetKey, type DatasetRow } from "@/features/reporting/datasets/dataset-catalog";
 import { registerDatasets, templateDatasetKeys } from "@/features/reporting/lib/create-report";
 import { applyIsmsDashboardTheme } from "@/features/reporting/lib/reporting-theme";
 import type { StimulsoftApi } from "@/features/reporting/lib/stimulsoft-client";
+import { useJsonStable } from "@/hooks/use-json-stable";
 
 interface CustomDashboardViewerProps {
   template: Record<string, unknown>;
@@ -45,7 +46,9 @@ type LoadOutcome =
   | { status: "READY"; rows: Partial<Record<DatasetKey, DatasetRow[]>>; denied: DatasetKey[]; truncated: boolean };
 
 /** Renders a saved layout with data loaded under the viewer's own access. */
-export function CustomDashboardViewer({ template }: CustomDashboardViewerProps) {
+export function CustomDashboardViewer(props: CustomDashboardViewerProps) {
+  // Router refreshes re-send the template; keep it stable so data isn't reloaded.
+  const template = useJsonStable(props.template);
   const keys = useMemo(() => templateDatasetKeys(template), [template]);
   const hasDatedData = keys.some((key) => DATASET_CATALOG[key].dashboardDateRange);
   const canvas = useMemo(() => templateCanvas(template), [template]);
@@ -158,9 +161,7 @@ export function CustomDashboardViewer({ template }: CustomDashboardViewerProps) 
       ) : null}
 
       {!outcome ? (
-        <div className="flex min-h-60 items-center justify-center rounded-xl border bg-card text-sm text-muted-foreground">
-          <LoadingIndicator label="Loading dashboard data" />
-        </div>
+        <ReportingLoading label="Loading dashboard data" className="min-h-60 rounded-xl border bg-card" />
       ) : null}
 
       {outcome?.status === "ERROR" ? (
