@@ -1,30 +1,25 @@
 "use client";
 
+import { createColumnHelper } from "@tanstack/react-table";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { listBranchesForPcountReportAction } from "@/features/stock-audit/actions/stock-audit.actions";
-import {
-  DataTableEmpty,
-  DataTableScroll,
-  DataTableShell,
-} from "@/components/data-table/data-table-shell";
-import { TablePagination } from "@/components/data-table/table-pagination";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { GlobalTableHead, nextTableSort, type TableSortDirection } from "@/lib/data-table";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { cn } from "@/utils/cn";
+  DataTable,
+  nextTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+  type TableSortDirection,
+} from "@/lib/data-table";
+
+const pcountColumn = createColumnHelper<DataTableFeatures, ClosedSessionRow>();
 
 interface ClosedSessionRow {
   id: string;
@@ -156,6 +151,81 @@ export function PcountReportPanel({
     router.push("/reports/pcount");
   }
 
+  const indexOffset = (sessions.page - 1) * sessions.limit;
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<ClosedSessionRow>[] = [
+      pcountColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => indexOffset + row.index + 1,
+        meta: { className: "tabular-nums text-muted-foreground" },
+      }),
+      pcountColumn.display({
+        id: "session",
+        header: "Session",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href={`/inventory/stock-count/${row.original.id}`}
+              className="font-medium hover:underline"
+            >
+              {row.original.sessionNo}
+            </Link>
+            <Badge variant="outline">Closed</Badge>
+          </div>
+        ),
+      }),
+      pcountColumn.display({
+        id: "branch",
+        header: "Branch",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <>
+            {row.original.branch.name}
+            <span className="ml-1 text-xs text-muted-foreground">
+              ({row.original.branch.sapCode})
+            </span>
+          </>
+        ),
+      }),
+      pcountColumn.display({
+        id: "closed",
+        header: "Closed",
+        enableSorting: true,
+        cell: ({ row }) => formatDate(row.original.closedAt),
+        meta: { className: "text-muted-foreground" },
+      }),
+      pcountColumn.accessor((row) => row.lineCount, {
+        id: "lines",
+        header: "Lines",
+        enableSorting: true,
+        meta: { align: "end" },
+      }),
+      pcountColumn.accessor((row) => row.countedCount, {
+        id: "counted",
+        header: "Counted",
+        enableSorting: false,
+        meta: { align: "end" },
+      }),
+      pcountColumn.accessor((row) => row.varianceCount, {
+        id: "variances",
+        header: "Variances",
+        enableSorting: true,
+        meta: { align: "end" },
+      }),
+      pcountColumn.display({
+        id: "createdBy",
+        header: "Created by",
+        enableSorting: false,
+        cell: ({ row }) => row.original.createdBy.name ?? row.original.createdBy.email,
+        meta: { className: "text-muted-foreground" },
+      }),
+    ];
+    return cols;
+  }, [indexOffset]);
+
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-3">
@@ -173,7 +243,20 @@ export function PcountReportPanel({
         </div>
       </div>
 
-      <DataTableShell>
+      <DataTable
+        data={sessions.items}
+        columns={columns}
+        getRowId={(row) => row.id}
+        manualSorting
+        manualPagination
+        enableSorting
+        sorting={{
+          sortKey: currentSort,
+          sortDir: currentSortDir,
+          onSort: toggleSort,
+        }}
+        stickyHeader
+        banner={
         <div className="space-y-4 border-b px-4 py-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-end lg:gap-3">
             <SearchableSelect
@@ -225,126 +308,21 @@ export function PcountReportPanel({
             </div>
           </div>
         </div>
-
-        {sessions.items.length === 0 ? (
-          <DataTableEmpty
-            message={
-              hasActiveFilters
-                ? "No closed P-Count sessions match your filters."
-                : "No closed P-Count sessions yet."
-            }
-          />
-        ) : (
-          <>
-            <DataTableScroll>
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/30 hover:bg-muted/30">
-                    <GlobalTableHead className="w-12">#</GlobalTableHead>
-                    <GlobalTableHead
-                      sortKey="session"
-                      activeSortKey={currentSort}
-                      sortDirection={currentSortDir}
-                      onSort={toggleSort}
-                    >
-                      Session
-                    </GlobalTableHead>
-                    <GlobalTableHead
-                      sortKey="branch"
-                      activeSortKey={currentSort}
-                      sortDirection={currentSortDir}
-                      onSort={toggleSort}
-                    >
-                      Branch
-                    </GlobalTableHead>
-                    <GlobalTableHead
-                      sortKey="closed"
-                      activeSortKey={currentSort}
-                      sortDirection={currentSortDir}
-                      onSort={toggleSort}
-                    >
-                      Closed
-                    </GlobalTableHead>
-                    <GlobalTableHead
-                      className="text-right"
-                      sortKey="lines"
-                      activeSortKey={currentSort}
-                      sortDirection={currentSortDir}
-                      onSort={toggleSort}
-                    >
-                      Lines
-                    </GlobalTableHead>
-                    <GlobalTableHead className="text-right">Counted</GlobalTableHead>
-                    <GlobalTableHead
-                      className="text-right"
-                      sortKey="variances"
-                      activeSortKey={currentSort}
-                      sortDirection={currentSortDir}
-                      onSort={toggleSort}
-                    >
-                      Variances
-                    </GlobalTableHead>
-                    <GlobalTableHead>Created by</GlobalTableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sessions.items.map((row, index) => (
-                    <TableRow
-                      key={row.id}
-                      className={cn(index % 2 === 1 && "bg-table-stripe")}
-                    >
-                      <TableCell className="tabular-nums text-muted-foreground">
-                        {(sessions.page - 1) * sessions.limit + index + 1}
-                      </TableCell>
-                      <TableCell>
-                        <Link
-                          href={`/inventory/stock-count/${row.id}`}
-                          className="font-medium hover:underline"
-                        >
-                          {row.sessionNo}
-                        </Link>
-                        <Badge variant="outline" className="ml-2">
-                          Closed
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {row.branch.name}
-                        <span className="ml-1 text-xs text-muted-foreground">
-                          ({row.branch.sapCode})
-                        </span>
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-muted-foreground">
-                        {formatDate(row.closedAt)}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {row.lineCount}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {row.countedCount}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {row.varianceCount}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {row.createdBy.name ?? row.createdBy.email}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </DataTableScroll>
-            <TablePagination
-              meta={{
-                total: sessions.total,
-                page: sessions.page,
-                totalPages: sessions.totalPages,
-                itemLabel: "session",
-              }}
-              buildHref={(page) => buildHref(page, activeFilters)}
-            />
-          </>
-        )}
-      </DataTableShell>
+        }
+        pagination={{
+          total: sessions.total,
+          page: sessions.page,
+          totalPages: sessions.totalPages,
+          itemLabel: "session",
+          buildHref: (page) => buildHref(page, activeFilters),
+        }}
+        empty={sessions.items.length === 0}
+        emptyMessage={
+          hasActiveFilters
+            ? "No closed P-Count sessions match your filters."
+            : "No closed P-Count sessions yet."
+        }
+      />
     </div>
   );
 }

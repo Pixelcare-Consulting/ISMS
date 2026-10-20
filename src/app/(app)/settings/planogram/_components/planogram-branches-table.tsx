@@ -2,28 +2,25 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { createColumnHelper } from "@tanstack/react-table";
 import { ChevronRight, Upload } from "lucide-react";
 
 import { ImportPlanogramDialog } from "@/app/(app)/settings/planogram/_components/import-planogram-dialog";
 import {
   DataTableEmptyState,
-  TableEmptyRow,
-  TableIndexCell,
-  TableIndexHead,
   TableRowActions,
   uniqueSearchSuggestions,
   useClientTablePagination,
 } from "@/components/data-table";
-import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
+import {
+  DataTable,
+  useClientTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LoadingModal } from "@/components/ui/loading-modal";
-import {
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   ALLOWED_MODEL_CHIP_LIMIT,
   buildBranchPlanogramHref,
@@ -32,7 +29,8 @@ import {
   type PlanogramIndexView,
 } from "@/features/planogram/lib/planogram-index";
 import { matchesTableSearch } from "@/utils/match-table-search";
-import { cn } from "@/utils/cn";
+
+const planogramColumn = createColumnHelper<DataTableFeatures, PlanogramIndexBranch>();
 
 interface PlanogramBranchesTableProps {
   branches: PlanogramIndexBranch[];
@@ -41,8 +39,6 @@ interface PlanogramBranchesTableProps {
   onQueryChange: (query: string) => void;
   canManage?: boolean;
 }
-
-const COL_COUNT = 5;
 
 function emptyMessage(view: PlanogramIndexView | null): string {
   if (view == null) return "No branches match your search.";
@@ -146,6 +142,81 @@ export function PlanogramBranchesTable({
     resetKey: `${view ?? "all"}:${query}:${sort.sortKey}:${sort.sortDir}`,
   });
 
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<PlanogramIndexBranch>[] = [
+      planogramColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => indexOffset + row.index + 1,
+        meta: { className: "tabular-nums text-muted-foreground" },
+      }),
+      planogramColumn.display({
+        id: "sapCode",
+        header: "SAP code",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <button
+            type="button"
+            className="font-mono text-sm text-muted-foreground"
+            onClick={() => openBranch(row.original.id, row.original.name)}
+          >
+            {row.original.sapCode}
+          </button>
+        ),
+      }),
+      planogramColumn.display({
+        id: "name",
+        header: "Branch",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <button
+            type="button"
+            className="font-medium"
+            onClick={() => openBranch(row.original.id, row.original.name)}
+          >
+            {row.original.name}
+          </button>
+        ),
+      }),
+      planogramColumn.display({
+        id: "allowedModels",
+        header: "Allowed Models",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <button
+            type="button"
+            className="text-left"
+            onClick={() => openBranch(row.original.id, row.original.name)}
+          >
+            <AllowedModelChips skuCodes={row.original.allowedSkuCodes} />
+          </button>
+        ),
+        meta: { wrap: true, className: "min-w-[24rem]" },
+      }),
+      planogramColumn.display({
+        id: "actions",
+        header: "",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <TableRowActions asCell={false}>
+            <Button
+              variant="outline"
+              size="sm"
+              type="button"
+              onClick={() => openBranch(row.original.id, row.original.name)}
+            >
+              Open
+              <ChevronRight className="size-4" />
+            </Button>
+          </TableRowActions>
+        ),
+        meta: { align: "end" },
+      }),
+    ];
+    return cols;
+  }, [indexOffset, openingBranchName, query, view]);
+
   if (branches.length === 0) {
     return (
       <div className="space-y-4">
@@ -168,7 +239,18 @@ export function PlanogramBranchesTable({
   return (
     <div className="space-y-4">
       <h2 className="text-lg font-semibold">Branches</h2>
-      <GlobalDataTable
+      <DataTable
+        data={pageItems}
+        columns={columns}
+        getRowId={(row) => row.id}
+        manualSorting
+        manualPagination
+        enableSorting
+        sorting={{
+          sortKey: sort.sortKey,
+          sortDir: sort.sortDir,
+          onSort: sort.toggleSort,
+        }}
         stickyHeader
         search={{
           value: query,
@@ -184,6 +266,8 @@ export function PlanogramBranchesTable({
             </Button>
           ) : undefined
         }
+        empty={pageItems.length === 0}
+        emptyMessage={emptyMessage(view)}
         pageSize={{ value: pageSize, onChange: setPageSize }}
         pagination={{
           total,
@@ -192,62 +276,7 @@ export function PlanogramBranchesTable({
           itemLabel: "branches",
           onPageChange: setPage,
         }}
-      >
-          <TableHeader>
-            <TableRow className="bg-muted/30 hover:bg-muted/30">
-              <TableIndexHead />
-              <GlobalTableHead className="whitespace-nowrap" {...sort.sortProps("sapCode")}>
-                SAP code
-              </GlobalTableHead>
-              <GlobalTableHead className="whitespace-nowrap" {...sort.sortProps("name")}>
-                Branch
-              </GlobalTableHead>
-              <GlobalTableHead className="min-w-[24rem]" {...sort.sortProps("allowedModels")}>
-                Allowed Models
-              </GlobalTableHead>
-              <GlobalTableHead className="text-right"> </GlobalTableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filtered.length === 0 ? (
-              <TableEmptyRow colSpan={COL_COUNT} message={emptyMessage(view)} />
-            ) : (
-              pageItems.map((branch, index) => (
-                <TableRow
-                  key={branch.id}
-                  className={cn(
-                    "cursor-pointer",
-                    index % 2 === 1 && "bg-table-stripe",
-                  )}
-                  onClick={() => openBranch(branch.id, branch.name)}
-                >
-                  <TableIndexCell index={indexOffset + index + 1} />
-                  <TableCell className="font-mono text-sm text-muted-foreground">
-                    {branch.sapCode}
-                  </TableCell>
-                  <TableCell className="font-medium">{branch.name}</TableCell>
-                  <TableCell className="min-w-[24rem] py-2">
-                    <AllowedModelChips skuCodes={branch.allowedSkuCodes} />
-                  </TableCell>
-                  <TableRowActions>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        openBranch(branch.id, branch.name);
-                      }}
-                    >
-                      Open
-                      <ChevronRight className="size-4" />
-                    </Button>
-                  </TableRowActions>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-      </GlobalDataTable>
+      />
       {canManage ? (
         <ImportPlanogramDialog open={importing} onOpenChange={setImporting} />
       ) : null}

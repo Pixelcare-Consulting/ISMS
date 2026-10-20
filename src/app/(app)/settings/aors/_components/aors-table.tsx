@@ -1,7 +1,8 @@
-"use client";
+﻿"use client";
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
+import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
 import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -9,18 +10,17 @@ import { SearchableMultiSelect } from "@/features/aors/components/searchable-mul
 import { deleteAorAction, syncUserAorsAction } from "@/features/aors/actions/aor.actions";
 import {
   DeleteConfirmDialog,
-  TableEmptyRow,
-  TableIndexCell,
-  TableIndexHead,
   TableRowActions,
-  TableSelectAllCheckbox,
   TableSelectionBadge,
-  TableRowCheckbox,
   uniqueSearchSuggestions,
   useClientTablePagination,
-  useTableSelection,
 } from "@/components/data-table";
-import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
+import {
+  DataTable,
+  useClientTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -38,16 +38,10 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { matchesTableSearch } from "@/utils/match-table-search";
-import { cn } from "@/utils/cn";
+
+const aorColumn = createColumnHelper<DataTableFeatures, AorUserGroup>();
+const viewColumn = createColumnHelper<DataTableFeatures, AorRow>();
 
 const MAX_VISIBLE_BRANCHES = 3;
 
@@ -456,7 +450,8 @@ export function AorsTable({
     [groups],
   );
 
-  const selection = useTableSelection(filtered.map((group) => group.userId));
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const selectedCount = filtered.filter((group) => rowSelection[group.userId]).length;
   const sort = useClientTableSort(filtered, {
     user: (group) => formatPerson(group.user),
     branches: (group) => group.aors.filter((aor) => aor.branch).length,
@@ -544,7 +539,7 @@ export function AorsTable({
         toast.success("AOR updated");
       } else if (deletedCount > 0 && createdCount > 0) {
         toast.success(
-          `Synced AORs (+${createdCount}, −${deletedCount})`,
+          `Synced AORs (+${createdCount}, âˆ’${deletedCount})`,
         );
       } else if (deletedCount > 0) {
         toast.success(`Removed ${deletedCount} AOR${deletedCount === 1 ? "" : "s"}`);
@@ -646,9 +641,187 @@ export function AorsTable({
     ? viewingAll.aors.filter((aor) => aor.branch)
     : [];
 
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<AorUserGroup>[] = [
+      aorColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => indexOffset + row.index + 1,
+        meta: { className: "tabular-nums text-muted-foreground" },
+      }),
+      aorColumn.display({
+        id: "user",
+        header: "User",
+        enableSorting: true,
+        cell: ({ row }) => {
+          const userLabel = formatPerson(row.original.user);
+          return (
+            <div>
+              <div className="font-medium">{userLabel}</div>
+              {row.original.user.name ? (
+                <div className="text-xs text-muted-foreground">{row.original.user.email}</div>
+              ) : null}
+            </div>
+          );
+        },
+      }),
+      aorColumn.display({
+        id: "branches",
+        header: "Branches",
+        enableSorting: true,
+        cell: ({ row }) => {
+          const branchAors = row.original.aors.filter((aor) => aor.branch);
+          const branchCount = branchAors.length;
+          const visibleAors = branchAors.slice(0, MAX_VISIBLE_BRANCHES);
+          const hasOverflow = branchCount > MAX_VISIBLE_BRANCHES;
+          if (branchCount === 0) {
+            return <span className="text-sm text-muted-foreground">—</span>;
+          }
+          return (
+            <div className="space-y-1">
+              <ul className="space-y-0.5">
+                {visibleAors.map((aor) => (
+                  <li key={aor.id} className="min-w-0 text-sm">
+                    <div className="truncate font-medium leading-snug">
+                      {aor.branch?.name ?? "—"}
+                    </div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      {aor.branch?.sapCode ?? "—"}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              {hasOverflow ? (
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="h-auto px-0 py-0 text-xs"
+                  onClick={() => setViewingAll(row.original)}
+                  disabled={pending}
+                >
+                  View all ({branchCount})
+                </Button>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  {branchCount} branch{branchCount === 1 ? "" : "es"}
+                </p>
+              )}
+            </div>
+          );
+        },
+        meta: { wrap: true },
+      }),
+      aorColumn.display({
+        id: "assignedAt",
+        header: "Assigned at",
+        enableSorting: true,
+        cell: ({ row }) => formatAssignedAt(row.original.latestCreatedAt),
+        meta: { className: "text-muted-foreground" },
+      }),
+      aorColumn.display({
+        id: "assignedBy",
+        header: "Assigned by",
+        enableSorting: true,
+        cell: ({ row }) => row.original.assignedByLabel,
+      }),
+      aorColumn.display({
+        id: "actions",
+        header: "",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <TableRowActions
+            asCell={false}
+            onEdit={() => openEdit(row.original)}
+            editTitle="Edit AOR"
+            editDisabled={pending}
+            onDelete={() => setRemovingAll(row.original)}
+            deleteTitle="Remove all AORs"
+            deleteDisabled={pending}
+          />
+        ),
+        meta: { align: "end" },
+      }),
+    ];
+    return cols;
+  }, [indexOffset, pending]);
+
+  const viewColumns = useMemo(() => {
+    const userLabel = viewingAll ? formatPerson(viewingAll.user) : "user";
+    const cols: DataTableColumn<AorRow>[] = [
+      viewColumn.display({
+        id: "branch",
+        header: "Branch",
+        enableSorting: false,
+        cell: ({ row }) => row.original.branch?.name ?? "—",
+        meta: { className: "font-medium" },
+      }),
+      viewColumn.display({
+        id: "sap",
+        header: "SAP / code",
+        enableSorting: false,
+        cell: ({ row }) => row.original.branch?.sapCode ?? "—",
+        meta: { className: "text-muted-foreground" },
+      }),
+      viewColumn.display({
+        id: "assignedAt",
+        header: "Assigned at",
+        enableSorting: false,
+        cell: ({ row }) => formatAssignedAt(row.original.createdAt),
+        meta: { className: "whitespace-nowrap text-muted-foreground" },
+      }),
+      viewColumn.display({
+        id: "assignedBy",
+        header: "Assigned by",
+        enableSorting: false,
+        cell: ({ row }) => formatPerson(row.original.createdBy),
+      }),
+      viewColumn.display({
+        id: "remove",
+        header: "",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const label = branchLabel(row.original.branch) ?? "No branch";
+          return (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-8 cursor-pointer text-muted-foreground hover:text-destructive"
+              onClick={() => requestRemoveBranch(row.original, userLabel)}
+              aria-label={`Remove ${label}`}
+              disabled={pending}
+            >
+              <Trash2 className="size-4" />
+            </Button>
+          );
+        },
+        meta: { align: "end" },
+      }),
+    ];
+    return cols;
+  }, [pending, viewingAll]);
+
   return (
     <div className="space-y-4">
-      <GlobalDataTable
+      <DataTable
+        data={pageItems}
+        columns={columns}
+        getRowId={(row) => row.userId}
+        manualSorting
+        manualPagination
+        enableSorting
+        sorting={{
+          sortKey: sort.sortKey,
+          sortDir: sort.sortDir,
+          onSort: sort.toggleSort,
+        }}
+        enableRowSelection
+        rowSelection={rowSelection}
+        onRowSelectionChange={setRowSelection}
+        selectAllLabel="Select all AOR users"
+        getSelectionLabel={(row) => `Select AOR user ${formatPerson(row.user)}`}
         stickyHeader
         search={{
           value: query,
@@ -657,10 +830,7 @@ export function AorsTable({
           suggestions,
         }}
         toolbarLeading={
-          <TableSelectionBadge
-            count={selection.selectedCount}
-            onClear={selection.clearSelection}
-          />
+          <TableSelectionBadge count={selectedCount} onClear={() => setRowSelection({})} />
         }
         toolbarActions={
           <Button onClick={openAssign} disabled={pending}>
@@ -668,8 +838,10 @@ export function AorsTable({
             Assign AOR
           </Button>
         }
-        empty={rows.length === 0}
-        emptyMessage="No AORs assigned yet."
+        empty={pageItems.length === 0}
+        emptyMessage={
+          rows.length === 0 ? "No AORs assigned yet." : "No AORs match your search."
+        }
         pageSize={{ value: pageSize, onChange: setPageSize }}
         pagination={{
           total,
@@ -678,112 +850,7 @@ export function AorsTable({
           itemLabel: "user",
           onPageChange: setPage,
         }}
-      >
-            <TableHeader>
-              <TableRow>
-                <TableSelectAllCheckbox
-                  isAllSelected={selection.isAllSelected}
-                  isPartiallySelected={selection.isPartiallySelected}
-                  onToggleAll={selection.toggleAll}
-                  aria-label="Select all AOR users"
-                />
-                <TableIndexHead />
-                <GlobalTableHead {...sort.sortProps("user")}>User</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("branches")}>Branches</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("assignedAt")}>Assigned at</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("assignedBy")}>Assigned by</GlobalTableHead>
-                <GlobalTableHead className="w-24" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.length === 0 ? (
-                <TableEmptyRow colSpan={7} message="No AORs match your search." />
-              ) : (
-                pageItems.map((group, index) => {
-                  const branchAors = group.aors.filter((aor) => aor.branch);
-                  const branchCount = branchAors.length;
-                  const visibleAors = branchAors.slice(0, MAX_VISIBLE_BRANCHES);
-                  const hasOverflow = branchCount > MAX_VISIBLE_BRANCHES;
-                  const userLabel = formatPerson(group.user);
-                  return (
-                    <TableRow
-                      key={group.userId}
-                      data-state={
-                        selection.isRowSelected(group.userId) ? "selected" : undefined
-                      }
-                      className={cn(index % 2 === 1 && "bg-table-stripe")}
-                    >
-                      <TableRowCheckbox
-                        checked={selection.isRowSelected(group.userId)}
-                        onCheckedChange={(checked) =>
-                          selection.toggleRow(group.userId, checked)
-                        }
-                        aria-label={`Select AOR user ${userLabel}`}
-                      />
-                      <TableIndexCell index={indexOffset + index + 1} />
-                      <TableCell>
-                        <div className="font-medium">{userLabel}</div>
-                        {group.user.name ? (
-                          <div className="text-xs text-muted-foreground">
-                            {group.user.email}
-                          </div>
-                        ) : null}
-                      </TableCell>
-                      <TableCell>
-                        {branchCount === 0 ? (
-                          <span className="text-sm text-muted-foreground">—</span>
-                        ) : (
-                          <div className="space-y-1">
-                            <ul className="space-y-0.5">
-                              {visibleAors.map((aor) => (
-                                <li key={aor.id} className="min-w-0 text-sm">
-                                  <div className="truncate font-medium leading-snug">
-                                    {aor.branch?.name ?? "—"}
-                                  </div>
-                                  <div className="truncate text-xs text-muted-foreground">
-                                    {aor.branch?.sapCode ?? "—"}
-                                  </div>
-                                </li>
-                              ))}
-                            </ul>
-                            {hasOverflow ? (
-                              <Button
-                                type="button"
-                                variant="link"
-                                size="sm"
-                                className="h-auto px-0 py-0 text-xs"
-                                onClick={() => setViewingAll(group)}
-                                disabled={pending}
-                              >
-                                View all ({branchCount})
-                              </Button>
-                            ) : (
-                              <p className="text-xs text-muted-foreground">
-                                {branchCount} branch
-                                {branchCount === 1 ? "" : "es"}
-                              </p>
-                            )}
-                          </div>
-                        )}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-muted-foreground">
-                        {formatAssignedAt(group.latestCreatedAt)}
-                      </TableCell>
-                      <TableCell>{group.assignedByLabel}</TableCell>
-                      <TableRowActions
-                        onEdit={() => openEdit(group)}
-                        editTitle="Edit AOR"
-                        editDisabled={pending}
-                        onDelete={() => setRemovingAll(group)}
-                        deleteTitle="Remove all AORs"
-                        deleteDisabled={pending}
-                      />
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-      </GlobalDataTable>
+      />
 
       <Sheet open={sheetOpen} onOpenChange={onSheetOpenChange}>
         <SheetContent
@@ -897,60 +964,16 @@ export function AorsTable({
                 : "All branch assignments for this user."}
             </DialogDescription>
           </DialogHeader>
-          <div className="min-h-0 flex-1 overflow-y-auto rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Branch</TableHead>
-                  <TableHead>SAP / code</TableHead>
-                  <TableHead>Assigned at</TableHead>
-                  <TableHead>Assigned by</TableHead>
-                  <TableHead className="w-16 text-right"> </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {viewingAll
-                  ? viewingBranchAors.map((aor, index) => {
-                        const userLabel = formatPerson(viewingAll.user);
-                        const label = branchLabel(aor.branch) ?? "No branch";
-                        return (
-                          <TableRow
-                            key={aor.id}
-                            className={cn(index % 2 === 1 && "bg-table-stripe")}
-                          >
-                            <TableCell className="font-medium">
-                              {aor.branch?.name ?? "—"}
-                            </TableCell>
-                            <TableCell className="text-muted-foreground">
-                              {aor.branch?.sapCode ?? "—"}
-                            </TableCell>
-                            <TableCell className="whitespace-nowrap text-muted-foreground">
-                              {formatAssignedAt(aor.createdAt)}
-                            </TableCell>
-                            <TableCell>
-                              {formatPerson(aor.createdBy)}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="size-8 cursor-pointer text-muted-foreground hover:text-destructive"
-                                onClick={() =>
-                                  requestRemoveBranch(aor, userLabel)
-                                }
-                                aria-label={`Remove ${label}`}
-                                disabled={pending}
-                              >
-                                <Trash2 className="size-4" />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })
-                  : null}
-              </TableBody>
-            </Table>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <DataTable
+              chrome="plain"
+              data={viewingBranchAors}
+              columns={viewColumns}
+              getRowId={(row) => row.id}
+              stickyHeader
+              empty={viewingBranchAors.length === 0}
+              emptyMessage="No branch assignments."
+            />
           </div>
         </DialogContent>
       </Dialog>

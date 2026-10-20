@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { createColumnHelper } from "@tanstack/react-table";
 import { toast } from "sonner";
 
 import {
@@ -10,18 +11,17 @@ import {
   removeAllowedModelAction,
 } from "@/features/planogram/actions/planogram.actions";
 import {
-  AppDataTable,
-  AppDataTableBody,
   DeleteConfirmDialog,
-  TableEmptyRow,
-  TableIndexCell,
-  TableIndexHead,
   TableRowActions,
-  TableSearchBar,
   TableStatusBadge,
   uniqueSearchSuggestions,
 } from "@/components/data-table";
-import { GlobalTableHead, useClientTableSort } from "@/lib/data-table";
+import {
+  DataTable,
+  useClientTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -33,16 +33,9 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { matchesTableSearch } from "@/utils/match-table-search";
-import { cn } from "@/utils/cn";
+
+const allowedColumn = createColumnHelper<DataTableFeatures, AllowedModelRow>();
 
 interface AllowedModelRow {
   id: string;
@@ -133,7 +126,81 @@ export function AllowedModelsPanel({
     filteredCandidates.length > 0 &&
     filteredCandidates.every((c) => selectedIds.has(c.id));
 
-  const colCount = canManage ? 9 : 8;
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<AllowedModelRow>[] = [
+      allowedColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => row.index + 1,
+        meta: { className: "tabular-nums text-muted-foreground" },
+      }),
+      allowedColumn.display({
+        id: "sku",
+        header: "SKU",
+        enableSorting: true,
+        cell: ({ row }) => row.original.model.skuCode,
+        meta: { className: "font-mono text-sm" },
+      }),
+      allowedColumn.display({
+        id: "model",
+        header: "Model",
+        enableSorting: true,
+        cell: ({ row }) => row.original.model.name,
+      }),
+      allowedColumn.display({
+        id: "series",
+        header: "Series",
+        enableSorting: true,
+        cell: ({ row }) => row.original.model.series ?? "—",
+      }),
+      allowedColumn.display({
+        id: "srp",
+        header: "SRP",
+        enableSorting: true,
+        cell: ({ row }) => formatPeso(row.original.model.srp),
+        meta: { className: "tabular-nums" },
+      }),
+      allowedColumn.display({
+        id: "brand",
+        header: "Brand",
+        enableSorting: true,
+        cell: ({ row }) => row.original.model.brand?.name ?? "—",
+      }),
+      allowedColumn.display({
+        id: "effective",
+        header: "Effective",
+        enableSorting: true,
+        cell: ({ row }) => row.original.effectiveFrom ?? "—",
+        meta: { className: "text-sm text-muted-foreground" },
+      }),
+      allowedColumn.display({
+        id: "status",
+        header: "Status",
+        enableSorting: true,
+        cell: ({ row }) => <TableStatusBadge status={row.original.model.status} />,
+      }),
+    ];
+    if (canManage) {
+      cols.push(
+        allowedColumn.display({
+          id: "actions",
+          header: "",
+          enableSorting: false,
+          cell: ({ row }) => (
+            <TableRowActions
+              asCell={false}
+              onDelete={() => setRemoving(row.original)}
+              deleteDisabled={pending}
+              deleteTitle="Remove from allow-list"
+            />
+          ),
+          meta: { align: "end" },
+        }),
+      );
+    }
+    return cols;
+  }, [canManage, pending]);
 
   useEffect(() => {
     if (!addOpen) return;
@@ -239,86 +306,43 @@ export function AllowedModelsPanel({
         not affected.
       </p>
 
-      <AppDataTable
-        shellHeader={
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <TableSearchBar
-              value={query}
-              onChange={setQuery}
-              placeholder="Search by SKU, model, series…"
-              suggestions={suggestions}
-              className="sm:max-w-sm"
-            />
-            {canManage ? (
-              <Button
-                size="sm"
-                variant="outline"
-                type="button"
-                onClick={() => handleAddOpenChange(true)}
-              >
-                Add to allow-list
-              </Button>
-            ) : null}
-          </div>
+      <DataTable
+        data={sort.sorted}
+        columns={columns}
+        getRowId={(row) => row.id}
+        manualSorting
+        enableSorting
+        sorting={{
+          sortKey: sort.sortKey,
+          sortDir: sort.sortDir,
+          onSort: sort.toggleSort,
+        }}
+        stickyHeader
+        search={{
+          value: query,
+          onChange: setQuery,
+          placeholder: "Search by SKU, model, series…",
+          suggestions,
+        }}
+        toolbarActions={
+          canManage ? (
+            <Button
+              size="sm"
+              variant="outline"
+              type="button"
+              onClick={() => handleAddOpenChange(true)}
+            >
+              Add to allow-list
+            </Button>
+          ) : null
         }
-      >
-        <AppDataTableBody>
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-muted/30 hover:bg-muted/30">
-                <TableIndexHead />
-                <GlobalTableHead {...sort.sortProps("sku")}>SKU</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("model")}>Model</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("series")}>Series</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("srp")}>SRP</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("brand")}>Brand</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("effective")}>Effective</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("status")}>Status</GlobalTableHead>
-                {canManage ? <TableHead className="w-24" /> : null}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sort.sorted.length === 0 ? (
-                <TableEmptyRow
-                  colSpan={colCount}
-                  message={
-                    rows.length === 0
-                      ? "No allowed models configured for this branch yet."
-                      : "No models match your search."
-                  }
-                />
-              ) : (
-                sort.sorted.map((row, index) => (
-                  <TableRow
-                    key={row.id}
-                    className={cn(index % 2 === 1 && "bg-table-stripe")}
-                  >
-                    <TableIndexCell index={index + 1} />
-                    <TableCell className="font-mono text-sm">{row.model.skuCode}</TableCell>
-                    <TableCell>{row.model.name}</TableCell>
-                    <TableCell>{row.model.series ?? "—"}</TableCell>
-                    <TableCell className="tabular-nums">{formatPeso(row.model.srp)}</TableCell>
-                    <TableCell>{row.model.brand?.name ?? "—"}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {row.effectiveFrom ?? "—"}
-                    </TableCell>
-                    <TableCell>
-                      <TableStatusBadge status={row.model.status} />
-                    </TableCell>
-                    {canManage ? (
-                      <TableRowActions
-                        onDelete={() => setRemoving(row)}
-                        deleteDisabled={pending}
-                        deleteTitle="Remove from allow-list"
-                      />
-                    ) : null}
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </AppDataTableBody>
-      </AppDataTable>
+        empty={sort.sorted.length === 0}
+        emptyMessage={
+          rows.length === 0
+            ? "No allowed models configured for this branch yet."
+            : "No models match your search."
+        }
+      />
 
       <Dialog open={addOpen} onOpenChange={handleAddOpenChange}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">

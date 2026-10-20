@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import { createColumnHelper } from "@tanstack/react-table";
 import { useRouter } from "next/navigation";
 import { Plus, Upload } from "lucide-react";
 import { toast } from "sonner";
@@ -14,12 +15,16 @@ import {
 import { ImportDealersDialog } from "@/app/(app)/settings/dealers/_components/import-dealers-dialog";
 import {
   DeleteConfirmDialog,
-  TableEmptyRow,
   TableRowActions,
   uniqueSearchSuggestions,
   useClientTablePagination,
 } from "@/components/data-table";
-import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
+import {
+  DataTable,
+  useClientTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,14 +37,9 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import {
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { cn } from "@/utils/cn";
 import { matchesTableSearch } from "@/utils/match-table-search";
+
+const dealerColumn = createColumnHelper<DataTableFeatures, DealerRow>();
 
 interface DealerRow {
   id: string;
@@ -63,8 +63,6 @@ type Options = {
   dealerAreas: { id: string; name: string }[];
   modes: { id: string; name: string }[];
 };
-
-const COL_COUNT = 7;
 
 export function DealersTable({ dealers }: { dealers: DealerRow[] }) {
   const router = useRouter();
@@ -215,9 +213,97 @@ export function DealersTable({ dealers }: { dealers: DealerRow[] }) {
   const emptyMessage =
     rows.length === 0 ? "No dealers yet." : "No dealers match your search.";
 
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<DealerRow>[] = [
+      dealerColumn.display({
+        id: "name",
+        header: "Name",
+        enableSorting: true,
+        cell: ({ row }) => row.original.name,
+      }),
+      dealerColumn.display({
+        id: "sapCode",
+        header: "SAP",
+        enableSorting: true,
+        cell: ({ row }) => row.original.sapCode ?? "—",
+      }),
+      dealerColumn.display({
+        id: "type",
+        header: "Type",
+        enableSorting: true,
+        cell: ({ row }) => row.original.dealerType?.name ?? "—",
+      }),
+      dealerColumn.display({
+        id: "payment",
+        header: "Payment",
+        enableSorting: true,
+        cell: ({ row }) => row.original.modeOfPayment?.name ?? "—",
+      }),
+      dealerColumn.display({
+        id: "branches",
+        header: "Branches",
+        enableSorting: true,
+        cell: ({ row }) => row.original._count.branches,
+      }),
+      dealerColumn.display({
+        id: "status",
+        header: "Status",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <SearchableSelect
+            className="min-w-[8rem]"
+            options={[
+              { id: "active", label: "Active" },
+              { id: "inactive", label: "Inactive" },
+            ]}
+            value={row.original.status}
+            disabled={pending}
+            searchPlaceholder="Search status…"
+            onChange={(next) => {
+              startTransition(async () => {
+                const result = await updateDealerAction({
+                  dealerId: row.original.id,
+                  name: row.original.name,
+                  status: next as "active" | "inactive",
+                });
+                if (result.error) toast.error(String(result.error));
+                else router.refresh();
+              });
+            }}
+          />
+        ),
+      }),
+      dealerColumn.display({
+        id: "actions",
+        header: "Actions",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <TableRowActions
+            asCell={false}
+            onEdit={() => openEdit(row.original)}
+            onDelete={() => setDeleting(row.original)}
+          />
+        ),
+        meta: { align: "end" },
+      }),
+    ];
+    return cols;
+  }, [pending, router]);
+
   return (
     <div className="space-y-4">
-      <GlobalDataTable
+      <DataTable
+        data={pageItems}
+        columns={columns}
+        getRowId={(row) => row.id}
+        manualSorting
+        manualPagination
+        enableSorting
+        sorting={{
+          sortKey: sort.sortKey,
+          sortDir: sort.sortDir,
+          onSort: sort.toggleSort,
+        }}
         stickyHeader
         search={{
           value: query,
@@ -237,6 +323,8 @@ export function DealersTable({ dealers }: { dealers: DealerRow[] }) {
             </Button>
           </>
         }
+        empty={pageItems.length === 0}
+        emptyMessage={emptyMessage}
         pageSize={{ value: pageSize, onChange: setPageSize }}
         pagination={{
           total,
@@ -245,64 +333,7 @@ export function DealersTable({ dealers }: { dealers: DealerRow[] }) {
           itemLabel: "dealer",
           onPageChange: setPage,
         }}
-      >
-            <TableHeader>
-              <TableRow className="bg-muted/30 hover:bg-muted/30">
-                <GlobalTableHead {...sort.sortProps("name")}>Name</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("sapCode")}>SAP</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("type")}>Type</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("payment")}>Payment</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("branches")}>Branches</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("status")}>Status</GlobalTableHead>
-                <GlobalTableHead className="w-28 text-right">Actions</GlobalTableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.length === 0 ? (
-                <TableEmptyRow colSpan={COL_COUNT} message={emptyMessage} />
-              ) : (
-                pageItems.map((row, index) => (
-                  <TableRow
-                    key={row.id}
-                    className={cn(index % 2 === 1 && "bg-table-stripe")}
-                  >
-                    <TableCell>{row.name}</TableCell>
-                    <TableCell>{row.sapCode ?? "—"}</TableCell>
-                    <TableCell>{row.dealerType?.name ?? "—"}</TableCell>
-                    <TableCell>{row.modeOfPayment?.name ?? "—"}</TableCell>
-                    <TableCell>{row._count.branches}</TableCell>
-                    <TableCell>
-                      <SearchableSelect
-                        className="min-w-[8rem]"
-                        options={[
-                          { id: "active", label: "Active" },
-                          { id: "inactive", label: "Inactive" },
-                        ]}
-                        value={row.status}
-                        disabled={pending}
-                        searchPlaceholder="Search status…"
-                        onChange={(next) => {
-                          startTransition(async () => {
-                            const result = await updateDealerAction({
-                              dealerId: row.id,
-                              name: row.name,
-                              status: next as "active" | "inactive",
-                            });
-                            if (result.error) toast.error(String(result.error));
-                            else router.refresh();
-                          });
-                        }}
-                      />
-                    </TableCell>
-                    <TableRowActions
-                      onEdit={() => openEdit(row)}
-                      onDelete={() => setDeleting(row)}
-                    />
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-      </GlobalDataTable>
+      />
 
       <ImportDealersDialog open={importing} onOpenChange={setImporting} />
 

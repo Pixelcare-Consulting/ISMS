@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import { createColumnHelper } from "@tanstack/react-table";
 import { useRouter } from "next/navigation";
 import { Plus, Upload } from "lucide-react";
 import { toast } from "sonner";
@@ -14,14 +15,16 @@ import {
 } from "@/features/branch-quotas/actions/branch-quota.actions";
 import {
   DeleteConfirmDialog,
-  TableEmptyRow,
-  TableIndexCell,
-  TableIndexHead,
   TableRowActions,
   uniqueSearchSuggestions,
   useClientTablePagination,
 } from "@/components/data-table";
-import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
+import {
+  DataTable,
+  useClientTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -34,14 +37,9 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import {
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { cn } from "@/utils/cn";
 import { matchesTableSearch } from "@/utils/match-table-search";
+
+const quotaColumn = createColumnHelper<DataTableFeatures, QuotaRow>();
 
 interface QuotaRow {
   id: string;
@@ -73,8 +71,6 @@ function formatMonth(value: Date | string) {
     timeZone: "UTC",
   });
 }
-
-const COL_COUNT = 6;
 
 export function BranchQuotasTable({ quotas }: { quotas: QuotaRow[] }) {
   const router = useRouter();
@@ -200,9 +196,81 @@ export function BranchQuotasTable({ quotas }: { quotas: QuotaRow[] }) {
     });
   }
 
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<QuotaRow>[] = [
+      quotaColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => indexOffset + row.index + 1,
+        meta: { className: "tabular-nums text-muted-foreground" },
+      }),
+      quotaColumn.display({
+        id: "branch",
+        header: "Branch",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <div>
+            <div className="font-medium">{row.original.branch.name}</div>
+            <div className="mt-0.5 font-mono text-xs text-muted-foreground">
+              {row.original.branch.sapCode}
+            </div>
+          </div>
+        ),
+        meta: { wrap: true },
+      }),
+      quotaColumn.display({
+        id: "brand",
+        header: "Brand",
+        enableSorting: true,
+        cell: ({ row }) => row.original.brand.name,
+      }),
+      quotaColumn.display({
+        id: "month",
+        header: "Month",
+        enableSorting: true,
+        cell: ({ row }) => formatMonth(row.original.quotaDate),
+      }),
+      quotaColumn.display({
+        id: "quotaAmount",
+        header: "Quota",
+        enableSorting: true,
+        cell: ({ row }) => Number(row.original.quotaAmount).toLocaleString(),
+        meta: { align: "end", className: "tabular-nums" },
+      }),
+      quotaColumn.display({
+        id: "actions",
+        header: "",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <TableRowActions
+            asCell={false}
+            onEdit={() => openEdit(row.original)}
+            editDisabled={pending}
+            onDelete={() => setDeleting(row.original)}
+            deleteDisabled={pending}
+          />
+        ),
+        meta: { align: "end" },
+      }),
+    ];
+    return cols;
+  }, [indexOffset, pending]);
+
   return (
     <div className="space-y-4">
-      <GlobalDataTable
+      <DataTable
+        data={pageItems}
+        columns={columns}
+        getRowId={(row) => row.id}
+        manualSorting
+        manualPagination
+        enableSorting
+        sorting={{
+          sortKey: sort.sortKey,
+          sortDir: sort.sortDir,
+          onSort: sort.toggleSort,
+        }}
         stickyHeader
         search={{
           value: query,
@@ -222,8 +290,10 @@ export function BranchQuotasTable({ quotas }: { quotas: QuotaRow[] }) {
             </Button>
           </div>
         }
-        empty={rows.length === 0}
-        emptyMessage="No branch quotas yet."
+        empty={pageItems.length === 0}
+        emptyMessage={
+          rows.length === 0 ? "No branch quotas yet." : "No results match your search."
+        }
         pageSize={{ value: pageSize, onChange: setPageSize }}
         pagination={{
           total,
@@ -232,54 +302,7 @@ export function BranchQuotasTable({ quotas }: { quotas: QuotaRow[] }) {
           itemLabel: "quota",
           onPageChange: setPage,
         }}
-      >
-            <TableHeader>
-              <TableRow>
-                <TableIndexHead />
-                <GlobalTableHead {...sort.sortProps("branch")}>Branch</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("brand")}>Brand</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("month")}>Month</GlobalTableHead>
-                <GlobalTableHead
-                  className="text-right"
-                  {...sort.sortProps("quotaAmount")}
-                >
-                  Quota
-                </GlobalTableHead>
-                <GlobalTableHead className="w-40" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.length === 0 ? (
-                <TableEmptyRow colSpan={COL_COUNT} message="No results match your search." />
-              ) : (
-                pageItems.map((row, index) => (
-                  <TableRow
-                    key={row.id}
-                    className={cn(index % 2 === 1 && "bg-table-stripe")}
-                  >
-                    <TableIndexCell index={indexOffset + index + 1} />
-                    <TableCell className="font-medium">
-                      {row.branch.name}
-                      <span className="mt-0.5 block font-mono text-xs text-muted-foreground">
-                        {row.branch.sapCode}
-                      </span>
-                    </TableCell>
-                    <TableCell>{row.brand.name}</TableCell>
-                    <TableCell>{formatMonth(row.quotaDate)}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {Number(row.quotaAmount).toLocaleString()}
-                    </TableCell>
-                    <TableRowActions
-                      onEdit={() => openEdit(row)}
-                      editDisabled={pending}
-                      onDelete={() => setDeleting(row)}
-                      deleteDisabled={pending}
-                    />
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-      </GlobalDataTable>
+      />
 
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
         <SheetContent

@@ -1,6 +1,17 @@
 "use client";
 
-import type { PcountDealerGroup } from "@/features/stock-audit/services/pcount-dashboard.service";
+import { useMemo } from "react";
+import { createColumnHelper } from "@tanstack/react-table";
+
+import type {
+  PcountBranchRow,
+  PcountDealerGroup,
+} from "@/features/stock-audit/services/pcount-dashboard.service";
+import {
+  DataTable,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -8,15 +19,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { cn } from "@/utils/cn";
+
+const branchColumn = createColumnHelper<DataTableFeatures, PcountBranchRow>();
 
 interface PcountDealerGroupCardProps {
   group: PcountDealerGroup;
@@ -75,6 +80,59 @@ export function PcountDealerGroupCard({
   group,
   onSelectBranch,
 }: PcountDealerGroupCardProps) {
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<PcountBranchRow>[] = [
+      branchColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => row.index + 1,
+        meta: { className: "tabular-nums text-muted-foreground" },
+      }),
+      branchColumn.display({
+        id: "branch",
+        header: "Branch",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <button
+            type="button"
+            className={cn(
+              "w-full rounded-sm px-1 py-0.5 text-left",
+              statusTone(row.original.counting, row.original.posting, row.index),
+            )}
+            onClick={() => onSelectBranch(row.original.branchId)}
+          >
+            <p className="truncate text-sm font-medium">{row.original.branchName}</p>
+            <p className="truncate font-mono text-[11px] text-muted-foreground">
+              {row.original.branchSapCode}
+            </p>
+          </button>
+        ),
+      }),
+      branchColumn.display({
+        id: "counting",
+        header: "Counting",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <Badge variant="outline" className="whitespace-nowrap font-normal">
+            {row.original.counting}
+          </Badge>
+        ),
+      }),
+      branchColumn.display({
+        id: "posting",
+        header: "Posting",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <Badge variant="outline" className="whitespace-nowrap font-normal">
+            {row.original.posting}
+          </Badge>
+        ),
+      }),
+    ];
+    return cols;
+  }, [onSelectBranch]);
+
   const title =
     group.groupCode === group.groupName
       ? group.groupCode
@@ -107,50 +165,15 @@ export function PcountDealerGroupCard({
         </div>
       </CardHeader>
       <CardContent className="min-h-0 flex-1 overflow-y-auto px-0 pb-2 pt-0">
-        <Table scrollContainer={false}>
-          <TableHeader className="sticky top-0 z-10 bg-muted [&_tr]:border-border">
-            <TableRow className="border-b bg-muted hover:bg-muted">
-              <TableHead className="w-10 bg-muted pl-4">#</TableHead>
-              <TableHead className="bg-muted">Branch</TableHead>
-              <TableHead className="bg-muted">Counting</TableHead>
-              <TableHead className="bg-muted pr-4">Posting</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {group.branches.map((branch, index) => (
-              <TableRow
-                key={branch.branchId}
-                className={cn(
-                  "cursor-pointer border-border",
-                  statusTone(branch.counting, branch.posting, index),
-                )}
-                onClick={() => onSelectBranch(branch.branchId)}
-              >
-                <TableCell className="pl-4 tabular-nums text-muted-foreground">
-                  {index + 1}
-                </TableCell>
-                <TableCell>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{branch.branchName}</p>
-                    <p className="truncate font-mono text-[11px] text-muted-foreground">
-                      {branch.branchSapCode}
-                    </p>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <Badge variant="outline" className="whitespace-nowrap font-normal">
-                    {branch.counting}
-                  </Badge>
-                </TableCell>
-                <TableCell className="pr-4">
-                  <Badge variant="outline" className="whitespace-nowrap font-normal">
-                    {branch.posting}
-                  </Badge>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <DataTable
+          chrome="plain"
+          data={group.branches}
+          columns={columns}
+          getRowId={(row) => row.branchId}
+          stickyHeader
+          empty={group.branches.length === 0}
+          emptyMessage="No branches in this group."
+        />
       </CardContent>
     </Card>
   );

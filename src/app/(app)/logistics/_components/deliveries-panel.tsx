@@ -1,5 +1,6 @@
 "use client";
 
+import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -12,14 +13,17 @@ import {
 } from "@/features/logistics/actions/logistics.actions";
 import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
-import { TableIndexCell, TableIndexHead } from "@/components/data-table";
 import {
   parseTablePageSize,
   type TablePageSize,
 } from "@/components/data-table/table-page-size";
-import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
-import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
+import {
+  DataTable,
+  nextTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,7 +34,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -76,6 +79,8 @@ interface DeliveriesPanelProps {
   initialSort?: string;
   initialSortDir?: string;
 }
+
+const deliveryColumn = createColumnHelper<DataTableFeatures, DeliveryRow>();
 
 type DeliverySortField = "deliveryNo" | "orderNumber" | "branch" | "status";
 type DeliverySortDir = "asc" | "desc";
@@ -156,7 +161,8 @@ export function DeliveriesPanel({
     [deliveries.items],
   );
 
-  const selection = useTableSelection(filtered.map((d) => d.id));
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const selectedCount = filtered.filter((row) => rowSelection[row.id]).length;
 
   function confirmPendingAction() {
     if (!pendingConfirm) return;
@@ -221,16 +227,135 @@ export function DeliveriesPanel({
     });
   }
 
+  const indexOffset = (deliveries.page - 1) * deliveries.limit;
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<DeliveryRow>[] = [
+      deliveryColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => indexOffset + row.index + 1,
+        meta: { className: "text-center tabular-nums text-muted-foreground" },
+      }),
+      deliveryColumn.accessor((row) => row.deliveryNo, {
+        id: "deliveryNo",
+        header: "No.",
+        enableSorting: true,
+      }),
+      deliveryColumn.accessor((row) => row.order?.orderNumber ?? "", {
+        id: "orderNumber",
+        header: "Order",
+        enableSorting: true,
+        cell: ({ row }) => row.original.order?.orderNumber ?? "—",
+      }),
+      deliveryColumn.accessor((row) => row.branch.name, {
+        id: "branch",
+        header: "Branch",
+        enableSorting: true,
+      }),
+      deliveryColumn.display({
+        id: "status",
+        header: "Status",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <StatusCodeBadge
+            code={row.original.statusCode.code}
+            name={row.original.statusCode.name}
+            color={row.original.statusCode.color}
+          />
+        ),
+      }),
+      deliveryColumn.display({
+        id: "actions",
+        header: "Actions",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const delivery = row.original;
+          return (
+            <div className="flex justify-end gap-2">
+              {delivery.statusCode.code === "approved" && capabilities.canManage ? (
+                <Button size="sm" disabled={pending} onClick={() => openDispatch(delivery)}>
+                  Dispatch
+                </Button>
+              ) : null}
+              {(delivery.statusCode.code === "approved" ||
+                delivery.statusCode.code === "pending" ||
+                delivery.statusCode.code === "partial") &&
+              (delivery.statusCode.code === "approved"
+                ? capabilities.canManage
+                : capabilities.canAcceptDelivery) ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={pending}
+                  onClick={() =>
+                    setPendingConfirm({
+                      id: delivery.id,
+                      deliveryNo: delivery.deliveryNo,
+                      branchName: delivery.branch.name,
+                      orderNumber: delivery.order?.orderNumber,
+                      action: "reject",
+                      statusCode: delivery.statusCode.code,
+                    })
+                  }
+                >
+                  Reject
+                </Button>
+              ) : null}
+              {(delivery.statusCode.code === "pending" ||
+                delivery.statusCode.code === "partial") &&
+              capabilities.canAcceptDelivery ? (
+                <Button
+                  size="sm"
+                  disabled={pending}
+                  className="bg-emerald-600 text-white hover:bg-emerald-700"
+                  onClick={() =>
+                    setPendingConfirm({
+                      id: delivery.id,
+                      deliveryNo: delivery.deliveryNo,
+                      branchName: delivery.branch.name,
+                      orderNumber: delivery.order?.orderNumber,
+                      action: "accept",
+                      statusCode: delivery.statusCode.code,
+                    })
+                  }
+                >
+                  {delivery.statusCode.code === "partial" ? "Accept remaining" : "Accept"}
+                </Button>
+              ) : null}
+            </div>
+          );
+        },
+      }),
+    ];
+    return cols;
+  }, [capabilities.canAcceptDelivery, capabilities.canManage, indexOffset, pending]);
+
   return (
     <>
-      <GlobalDataTable
+      <DataTable
+        data={filtered}
+        columns={columns}
+        getRowId={(row) => row.id}
+        manualSorting
+        manualPagination
+        enableSorting
+        sorting={{
+          sortKey: sort,
+          sortDir,
+          onSort: (columnId) => toggleSort(columnId as DeliverySortField),
+        }}
+        enableRowSelection
+        rowSelection={rowSelection}
+        onRowSelectionChange={setRowSelection}
+        selectAllLabel="Select all deliveries"
+        getSelectionLabel={(row) => `Select delivery ${row.deliveryNo}`}
         stickyHeader
-        scrollable
         search={{ value: query, onChange: setQuery, placeholder: "Search deliveries…", suggestions }}
         toolbarActions={
-          selection.selectedCount > 0 ? (
-            <Button variant="secondary" onClick={selection.clearSelection}>
-              {selection.selectedCount} selected
+          selectedCount > 0 ? (
+            <Button variant="secondary" onClick={() => setRowSelection({})}>
+              {selectedCount} selected
             </Button>
           ) : null
         }
@@ -249,128 +374,9 @@ export function DeliveriesPanel({
             ),
         }}
         pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
-      >
-            <TableHeader>
-              <TableRow>
-                <GlobalTableHead className="w-10">
-                  <Checkbox
-                    checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
-                    onCheckedChange={(checked) => selection.toggleAll(checked === true)}
-                    aria-label="Select all deliveries"
-                  />
-                </GlobalTableHead>
-                <TableIndexHead />
-                <GlobalTableHead
-                  sortKey="deliveryNo"
-                  activeSortKey={sort}
-                  sortDirection={sortDir}
-                  onSort={(key) => toggleSort(key as DeliverySortField)}
-                >
-                  No.
-                </GlobalTableHead>
-                <GlobalTableHead
-                  sortKey="orderNumber"
-                  activeSortKey={sort}
-                  sortDirection={sortDir}
-                  onSort={(key) => toggleSort(key as DeliverySortField)}
-                >
-                  Order
-                </GlobalTableHead>
-                <GlobalTableHead
-                  sortKey="branch"
-                  activeSortKey={sort}
-                  sortDirection={sortDir}
-                  onSort={(key) => toggleSort(key as DeliverySortField)}
-                >
-                  Branch
-                </GlobalTableHead>
-                <GlobalTableHead
-                  sortKey="status"
-                  activeSortKey={sort}
-                  sortDirection={sortDir}
-                  onSort={(key) => toggleSort(key as DeliverySortField)}
-                >
-                  Status
-                </GlobalTableHead>
-                <GlobalTableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((d, index) => (
-                <TableRow key={d.id} data-state={selection.isRowSelected(d.id) ? "selected" : undefined}>
-                  <TableCell>
-                    <Checkbox
-                      checked={selection.isRowSelected(d.id)}
-                      onCheckedChange={(checked) => selection.toggleRow(d.id, checked === true)}
-                      aria-label={`Select delivery ${d.deliveryNo}`}
-                    />
-                  </TableCell>
-                  <TableIndexCell
-                    index={(deliveries.page - 1) * deliveries.limit + index + 1}
-                  />
-                  <TableCell>{d.deliveryNo}</TableCell>
-                  <TableCell>{d.order?.orderNumber ?? "—"}</TableCell>
-                  <TableCell>{d.branch.name}</TableCell>
-                  <TableCell>
-                    <StatusCodeBadge
-                      code={d.statusCode.code}
-                      name={d.statusCode.name}
-                      color={d.statusCode.color}
-                    />
-                  </TableCell>
-                  <TableCell className="space-x-2 text-right">
-                    {d.statusCode.code === "approved" && capabilities.canManage ? (
-                      <Button size="sm" disabled={pending} onClick={() => openDispatch(d)}>
-                        Dispatch
-                      </Button>
-                    ) : null}
-                    {(d.statusCode.code === "approved" ||
-                      d.statusCode.code === "pending" ||
-                      d.statusCode.code === "partial") &&
-                    (d.statusCode.code === "approved" ? capabilities.canManage : capabilities.canAcceptDelivery) ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={pending}
-                        onClick={() =>
-                          setPendingConfirm({
-                            id: d.id,
-                            deliveryNo: d.deliveryNo,
-                            branchName: d.branch.name,
-                            orderNumber: d.order?.orderNumber,
-                            action: "reject",
-                            statusCode: d.statusCode.code,
-                          })
-                        }
-                      >
-                        Reject
-                      </Button>
-                    ) : null}
-                    {(d.statusCode.code === "pending" || d.statusCode.code === "partial") &&
-                    capabilities.canAcceptDelivery ? (
-                      <Button
-                        size="sm"
-                        disabled={pending}
-                        className="bg-emerald-600 text-white hover:bg-emerald-700"
-                        onClick={() =>
-                          setPendingConfirm({
-                            id: d.id,
-                            deliveryNo: d.deliveryNo,
-                            branchName: d.branch.name,
-                            orderNumber: d.order?.orderNumber,
-                            action: "accept",
-                            statusCode: d.statusCode.code,
-                          })
-                        }
-                      >
-                        {d.statusCode.code === "partial" ? "Accept remaining" : "Accept"}
-                      </Button>
-                    ) : null}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-      </GlobalDataTable>
+        empty={filtered.length === 0}
+        emptyMessage={query.trim() ? "No results match your search." : "No deliveries."}
+      />
 
       <AlertDialog
         open={pendingConfirm !== null}

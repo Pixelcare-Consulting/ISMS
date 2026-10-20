@@ -1,25 +1,21 @@
 "use client";
 
+import { useMemo, useState } from "react";
+import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
+
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
-  DataTableScroll,
-  DataTableShell,
-} from "@/components/data-table/data-table-shell";
-import { useTableSelection } from "@/components/data-table/use-table-selection";
-import { GlobalTableHead, useClientTableSort } from "@/lib/data-table";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  DataTable,
+  useClientTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import {
   POLICY_STATUS_LABELS,
   type PolicyStatus,
 } from "@/features/policies/constants/policy-status";
+
+const versionColumn = createColumnHelper<DataTableFeatures, VersionRow>();
 
 interface VersionRow {
   id: string;
@@ -47,13 +43,80 @@ export function PolicyVersionHistory({
   selectedVersion,
   onSelectVersion,
 }: PolicyVersionHistoryProps) {
-  const selection = useTableSelection(versions.map((version) => version.id));
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const sort = useClientTableSort(versions, {
     version: (row) => row.version,
     status: (row) => row.status,
     author: (row) => row.authorName,
     date: (row) => row.createdAt,
   });
+
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<VersionRow>[] = [
+      versionColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => row.index + 1,
+        meta: { className: "tabular-nums text-muted-foreground" },
+      }),
+      versionColumn.display({
+        id: "version",
+        header: "Version",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <button
+            type="button"
+            className={row.original.version === selectedVersion ? "font-semibold" : "font-medium"}
+            onClick={() => onSelectVersion(row.original.version)}
+          >
+            v{row.original.version}
+          </button>
+        ),
+      }),
+      versionColumn.display({
+        id: "status",
+        header: "Status",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <button type="button" onClick={() => onSelectVersion(row.original.version)}>
+            <Badge variant={statusVariant(row.original.status)}>
+              {POLICY_STATUS_LABELS[row.original.status as PolicyStatus] ?? row.original.status}
+            </Badge>
+          </button>
+        ),
+      }),
+      versionColumn.display({
+        id: "author",
+        header: "Author",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <button
+            type="button"
+            className="text-muted-foreground"
+            onClick={() => onSelectVersion(row.original.version)}
+          >
+            {row.original.authorName}
+          </button>
+        ),
+      }),
+      versionColumn.display({
+        id: "date",
+        header: "Date",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <button
+            type="button"
+            className="text-muted-foreground"
+            onClick={() => onSelectVersion(row.original.version)}
+          >
+            {new Date(row.original.createdAt).toLocaleDateString()}
+          </button>
+        ),
+      }),
+    ];
+    return cols;
+  }, [onSelectVersion, selectedVersion]);
 
   if (versions.length === 0) {
     return (
@@ -62,60 +125,23 @@ export function PolicyVersionHistory({
   }
 
   return (
-    <DataTableShell>
-      <DataTableScroll>
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-muted/30 hover:bg-muted/30">
-              <TableHead className="w-10">
-                <Checkbox
-                  checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
-                  onCheckedChange={(checked) => selection.toggleAll(checked === true)}
-                  aria-label="Select all policy versions"
-                />
-              </TableHead>
-              <TableHead className="w-12">#</TableHead>
-              <GlobalTableHead {...sort.sortProps("version")}>Version</GlobalTableHead>
-              <GlobalTableHead {...sort.sortProps("status")}>Status</GlobalTableHead>
-              <GlobalTableHead {...sort.sortProps("author")}>Author</GlobalTableHead>
-              <GlobalTableHead {...sort.sortProps("date")}>Date</GlobalTableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {sort.sorted.map((row, index) => (
-              <TableRow
-                key={row.id}
-                className="cursor-pointer"
-                data-state={
-                  selection.isRowSelected(row.id) || row.version === selectedVersion ? "selected" : undefined
-                }
-                onClick={() => onSelectVersion(row.version)}
-              >
-                <TableCell onClick={(event) => event.stopPropagation()}>
-                  <Checkbox
-                    checked={selection.isRowSelected(row.id)}
-                    onCheckedChange={(checked) => selection.toggleRow(row.id, checked === true)}
-                    aria-label={`Select version ${row.version}`}
-                  />
-                </TableCell>
-                <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
-                <TableCell className="font-medium">v{row.version}</TableCell>
-                <TableCell>
-                  <Badge variant={statusVariant(row.status)}>
-                    {POLICY_STATUS_LABELS[row.status as PolicyStatus] ?? row.status}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {row.authorName}
-                </TableCell>
-                <TableCell className="whitespace-nowrap text-muted-foreground">
-                  {new Date(row.createdAt).toLocaleDateString()}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </DataTableScroll>
-    </DataTableShell>
+    <DataTable
+      data={sort.sorted}
+      columns={columns}
+      getRowId={(row) => row.id}
+      manualSorting
+      enableSorting
+      sorting={{
+        sortKey: sort.sortKey,
+        sortDir: sort.sortDir,
+        onSort: sort.toggleSort,
+      }}
+      enableRowSelection
+      rowSelection={rowSelection}
+      onRowSelectionChange={setRowSelection}
+      selectAllLabel="Select all policy versions"
+      getSelectionLabel={(row) => `Select version ${row.version}`}
+      stickyHeader
+    />
   );
 }

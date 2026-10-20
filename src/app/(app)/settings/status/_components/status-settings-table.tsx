@@ -1,7 +1,8 @@
-"use client";
+﻿"use client";
 
 import { useRouter } from "next/navigation";
 import { useMemo, useOptimistic, useState, useTransition } from "react";
+import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
 import {
   ArrowLeftRight,
   Info,
@@ -27,30 +28,22 @@ import {
   StatusCodeBadge,
 } from "@/features/reason-status/components/status-code-badge";
 import { StatusColorPicker } from "@/features/reason-status/components/status-color-picker";
-import {
-  TableEmptyRow,
-  TableIndexCell,
-  TableIndexHead,
-  TableRowCheckbox,
-  TableSelectAllCheckbox,
-  TableSelectionBadge,
-  useClientTablePagination,
-  useTableSelection,
-} from "@/components/data-table";
+import { TableSelectionBadge, useClientTablePagination } from "@/components/data-table";
 import { ModuleGuide } from "@/components/module-guide";
 import { statusModuleGuideForCategory } from "@/content/module-guides/status";
-import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
+import {
+  DataTable,
+  useClientTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { cn } from "@/utils/cn";
+
+const statusColumn = createColumnHelper<DataTableFeatures, StatusCodeRow>();
 import type { LookupRecordStatus, ReasonStatusCategory } from "@prisma/client";
 
 interface StatusCodeRow {
@@ -119,8 +112,6 @@ function applyOptimisticUpdate(
   }
 }
 
-const COL_COUNT = 9;
-
 const CATEGORY_ICONS: Record<ReasonStatusCategory, LucideIcon> = {
   inventory_system: Package,
   pullout_reason: Undo2,
@@ -146,7 +137,8 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
     [rows, expanded],
   );
   const activeCodes = activeGroup?.codes ?? [];
-  const selection = useTableSelection(activeCodes.map((code) => code.id));
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const selectedCount = activeCodes.filter((code) => rowSelection[code.id]).length;
   const sort = useClientTableSort(activeCodes, {
     code: (code) => code.code,
     name: (code) => code.name,
@@ -252,6 +244,88 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
       )
     : null;
 
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<StatusCodeRow>[] = [
+      statusColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => indexOffset + row.index + 1,
+        meta: { className: "tabular-nums text-muted-foreground" },
+      }),
+      statusColumn.display({
+        id: "code",
+        header: "Code",
+        enableSorting: true,
+        cell: ({ row }) => row.original.code,
+        meta: { className: "font-mono text-sm" },
+      }),
+      statusColumn.display({
+        id: "name",
+        header: "Name",
+        enableSorting: true,
+        cell: ({ row }) => row.original.name,
+      }),
+      statusColumn.display({
+        id: "preview",
+        header: "Preview",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <StatusCodeBadge
+            code={row.original.code}
+            name={row.original.name}
+            color={row.original.color}
+          />
+        ),
+      }),
+      statusColumn.display({
+        id: "color",
+        header: "Color",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <StatusColorPicker
+            value={resolveStatusColorKey(row.original.color, row.original.code)}
+            disabled={pending}
+            onChange={(color) => setCodeColor(row.original, color)}
+          />
+        ),
+      }),
+      statusColumn.display({
+        id: "type",
+        header: "Type",
+        enableSorting: true,
+        cell: ({ row }) =>
+          row.original.isSystem ? (
+            <Badge variant="secondary">System</Badge>
+          ) : (
+            <Badge variant="outline">Custom</Badge>
+          ),
+      }),
+      statusColumn.display({
+        id: "record",
+        header: "Record",
+        enableSorting: true,
+        cell: ({ row }) => <RecordStatusBadge status={row.original.recordStatus} />,
+      }),
+      statusColumn.display({
+        id: "actions",
+        header: "",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={pending}
+            onClick={() => toggleCodeStatus(row.original)}
+          >
+            {row.original.recordStatus === "active" ? "Deactivate" : "Activate"}
+          </Button>
+        ),
+      }),
+    ];
+    return cols;
+  }, [indexOffset, pending]);
+
   return (
     <div className="space-y-4">
       {activeGroup && statusGuide ? (
@@ -293,7 +367,23 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
 
       {activeGroup ? (
         <div className="space-y-4">
-          <GlobalDataTable
+          <DataTable
+            data={pageItems}
+            columns={columns}
+            getRowId={(row) => row.id}
+            manualSorting
+            manualPagination
+            enableSorting
+            sorting={{
+              sortKey: sort.sortKey,
+              sortDir: sort.sortDir,
+              onSort: sort.toggleSort,
+            }}
+            enableRowSelection
+            rowSelection={rowSelection}
+            onRowSelectionChange={setRowSelection}
+            selectAllLabel="Select all status codes"
+            getSelectionLabel={(row) => `Select status code ${row.code}`}
             stickyHeader
             toolbarLeading={
               <>
@@ -301,8 +391,8 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
                   Pick a color swatch to change how this status looks in the app.
                 </p>
                 <TableSelectionBadge
-                  count={selection.selectedCount}
-                  onClear={selection.clearSelection}
+                  count={selectedCount}
+                  onClear={() => setRowSelection({})}
                   size="sm"
                 />
               </>
@@ -348,92 +438,10 @@ export function StatusSettingsTable({ groups }: { groups: StatusGroupRow[] }) {
               itemLabel: "code",
               onPageChange: setPage,
             }}
+            empty={pageItems.length === 0}
+            emptyMessage="No status codes in this category yet."
             pageSize={{ value: pageSize, onChange: setPageSize }}
-          >
-            <TableHeader>
-              <TableRow className="bg-muted/30 hover:bg-muted/30">
-                <TableSelectAllCheckbox
-                  isAllSelected={selection.isAllSelected}
-                  isPartiallySelected={selection.isPartiallySelected}
-                  onToggleAll={selection.toggleAll}
-                  aria-label="Select all status codes"
-                />
-                <TableIndexHead />
-                <GlobalTableHead {...sort.sortProps("code")}>Code</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("name")}>Name</GlobalTableHead>
-                <GlobalTableHead>Preview</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("color")}>Color</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("type")}>Type</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("record")}>Record</GlobalTableHead>
-                <GlobalTableHead className="w-28" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {activeCodes.length === 0 ? (
-                <TableEmptyRow
-                  colSpan={COL_COUNT}
-                  message="No status codes in this category yet."
-                />
-              ) : (
-                pageItems.map((code, index) => (
-                  <TableRow
-                    key={code.id}
-                    data-state={
-                      selection.isRowSelected(code.id) ? "selected" : undefined
-                    }
-                    className={cn(index % 2 === 1 && "bg-table-stripe")}
-                  >
-                    <TableRowCheckbox
-                      checked={selection.isRowSelected(code.id)}
-                      onCheckedChange={(checked) =>
-                        selection.toggleRow(code.id, checked)
-                      }
-                      aria-label={`Select status code ${code.code}`}
-                    />
-                    <TableIndexCell index={indexOffset + index + 1} />
-                    <TableCell className="font-mono text-sm">{code.code}</TableCell>
-                    <TableCell>{code.name}</TableCell>
-                    <TableCell>
-                      <StatusCodeBadge
-                        code={code.code}
-                        name={code.name}
-                        color={code.color}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <StatusColorPicker
-                        value={resolveStatusColorKey(code.color, code.code)}
-                        disabled={pending}
-                        onChange={(color) => setCodeColor(code, color)}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      {code.isSystem ? (
-                        <Badge variant="secondary">System</Badge>
-                      ) : (
-                        <Badge variant="outline">Custom</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <RecordStatusBadge status={code.recordStatus} />
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={pending}
-                        onClick={() => toggleCodeStatus(code)}
-                      >
-                        {code.recordStatus === "active"
-                          ? "Deactivate"
-                          : "Activate"}
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </GlobalDataTable>
+          />
         </div>
       ) : null}
     </div>

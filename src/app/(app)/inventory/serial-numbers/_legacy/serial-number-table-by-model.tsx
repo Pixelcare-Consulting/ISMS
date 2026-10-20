@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Fragment, useMemo, useRef, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
+import { createColumnHelper } from "@tanstack/react-table";
 import { toast } from "sonner";
 
 import type { LookupRecordStatus } from "@prisma/client";
@@ -24,18 +25,18 @@ import {
   updateSerialNumberAction,
 } from "@/features/serial-numbers/actions/serial-number.actions";
 import { SapSyncButton } from "@/features/sap/components/sap-sync-button";
-import {
-  TableEmptyRow,
-  TableIndexCell,
-  TableIndexHead,
-  uniqueSearchSuggestions,
-} from "@/components/data-table";
+import { uniqueSearchSuggestions } from "@/components/data-table";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   parseTablePageSize,
   type TablePageSize,
 } from "@/components/data-table/table-page-size";
-import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
+import {
+  DataTable,
+  nextTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -47,13 +48,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import {
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { cn } from "@/utils/cn";
+
+const modelColumn = createColumnHelper<DataTableFeatures, SerialModelRow>();
 
 interface SerialModelOption {
   id: string;
@@ -94,8 +90,6 @@ interface SerialNumberTableProps {
 
 type SerialNumberSortField = "model";
 type SerialNumberSortDir = "asc" | "desc";
-
-const COL_COUNT = 4;
 
 const lastSyncFormatter = new Intl.DateTimeFormat("en-PH", {
   dateStyle: "medium",
@@ -163,6 +157,7 @@ export function SerialNumberTableByModel({
   ) as SerialNumberSortDir;
 
   const rows = result.items;
+  const indexOffset = (result.page - 1) * result.limit;
   const activeFilters = {
     q: currentSearch,
     status: currentStatus,
@@ -329,11 +324,96 @@ export function SerialNumberTableByModel({
     });
   }
 
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<SerialModelRow>[] = [
+      modelColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => indexOffset + row.index + 1,
+        meta: { className: "tabular-nums text-muted-foreground" },
+      }),
+      modelColumn.display({
+        id: "model",
+        header: "SKU / model",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <div className="flex min-w-0 items-baseline gap-2">
+            <span className="font-medium">{row.original.skuCode}</span>
+            <span className="truncate text-sm text-muted-foreground">{row.original.name}</span>
+          </div>
+        ),
+      }),
+      modelColumn.display({
+        id: "qty",
+        header: "Qty",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const expanded = expandedModelId === row.original.id;
+          const onHandRecorded = typeof row.original.sapOnHand === "number";
+          const page = serialsByModel[row.original.id];
+          return (
+            <div className="space-y-2">
+              <Button
+                type="button"
+                variant="ghost"
+                aria-expanded={expanded}
+                title={
+                  onHandRecorded
+                    ? "Units SAP still has on hand"
+                    : "On-hand stock has not been recorded yet in ISMS, sync from SAP first for this model"
+                }
+                className="h-auto px-2 text-sm font-medium tabular-nums"
+                onClick={() => toggleSerials(row.original)}
+              >
+                {formatOnHandQty(row.original.sapOnHand)}
+              </Button>
+              {expanded ? (
+                <ModelSerialsPanel
+                  skuCode={row.original.skuCode}
+                  modelName={row.original.name}
+                  page={page}
+                  canManage={canManage}
+                  pending={pending}
+                  onPageChange={(nextPage) =>
+                    startSerialLoad(() => loadSerials(row.original.id, nextPage))
+                  }
+                  onSearch={(query) => startSerialLoad(() => loadSerials(row.original.id, 1, query))}
+                  onEdit={(serial) => openEdit(row.original.id, serial)}
+                  onToggleStatus={(serial) => toggleStatus(row.original.id, serial)}
+                />
+              ) : null}
+            </div>
+          );
+        },
+        meta: { wrap: true, className: "min-w-[28rem]" },
+      }),
+      modelColumn.display({
+        id: "lastSync",
+        header: "Last sync",
+        enableSorting: false,
+        cell: ({ row }) => formatLastSync(row.original.lastSyncedAt),
+        meta: { className: "text-sm text-muted-foreground" },
+      }),
+    ];
+    return cols;
+  }, [canManage, expandedModelId, indexOffset, pending, serialsByModel]);
+
   return (
     <>
-      <GlobalDataTable
+      <DataTable
+        data={rows}
+        columns={columns}
+        getRowId={(row) => row.id}
+        manualSorting
+        manualPagination
+        enableSorting
+        sorting={{
+          sortKey: sort,
+          sortDir,
+          onSort: (key) => toggleSort(key as SerialNumberSortField),
+        }}
         stickyHeader
-        scrollable
         search={{
           value: search,
           onChange: setSearch,
@@ -385,82 +465,9 @@ export function SerialNumberTableByModel({
           itemLabel: "model",
           buildHref: (page) => buildHref(page, pageSize, activeFilters),
         }}
-      >
-        <TableHeader>
-          <TableRow className="bg-muted/30 hover:bg-muted/30">
-            <TableIndexHead />
-            <GlobalTableHead
-              sortKey="model"
-              activeSortKey={sort}
-              sortDirection={sortDir}
-              onSort={(key) => toggleSort(key as SerialNumberSortField)}
-            >
-              SKU / model
-            </GlobalTableHead>
-            <GlobalTableHead>Qty</GlobalTableHead>
-            <GlobalTableHead>Last sync</GlobalTableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.length === 0 ? (
-            <TableEmptyRow colSpan={COL_COUNT} message={emptyMessage} />
-          ) : (
-            rows.map((row, index) => {
-              const expanded = expandedModelId === row.id;
-              const onHandRecorded = typeof row.sapOnHand === "number";
-              return (
-                <Fragment key={row.id}>
-                  <TableRow className={cn(index % 2 === 1 && "bg-table-stripe")}>
-                    <TableIndexCell index={(result.page - 1) * result.limit + index + 1} />
-                    <TableCell>
-                      <div className="flex min-w-0 items-baseline gap-2">
-                        <span className="font-medium">{row.skuCode}</span>
-                        <span className="truncate text-sm text-muted-foreground">{row.name}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        aria-expanded={expanded}
-                        title={
-                          onHandRecorded
-                            ? "Units SAP still has on hand"
-                            : "On-hand stock has not been recorded yet in ISMS, sync from SAP first for this model"
-                        }
-                        className="h-auto px-2 text-sm font-medium tabular-nums"
-                        onClick={() => toggleSerials(row)}
-                      >
-                        {formatOnHandQty(row.sapOnHand)}
-                      </Button>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {formatLastSync(row.lastSyncedAt)}
-                    </TableCell>
-                  </TableRow>
-                  {expanded ? (
-                    <TableRow className="hover:bg-transparent">
-                      <TableCell colSpan={COL_COUNT} className="p-2 sm:p-3">
-                        <ModelSerialsPanel
-                          skuCode={row.skuCode}
-                          modelName={row.name}
-                          page={serialsByModel[row.id]}
-                          canManage={canManage}
-                          pending={pending}
-                          onPageChange={(page) => startSerialLoad(() => loadSerials(row.id, page))}
-                          onSearch={(query) => startSerialLoad(() => loadSerials(row.id, 1, query))}
-                          onEdit={(serial) => openEdit(row.id, serial)}
-                          onToggleStatus={(serial) => toggleStatus(row.id, serial)}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  ) : null}
-                </Fragment>
-              );
-            })
-          )}
-        </TableBody>
-      </GlobalDataTable>
+        empty={rows.length === 0}
+        emptyMessage={emptyMessage}
+      />
 
       {canManage ? (
         <Dialog open={open} onOpenChange={setOpen}>

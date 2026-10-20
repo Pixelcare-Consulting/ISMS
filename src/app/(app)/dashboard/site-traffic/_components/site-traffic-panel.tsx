@@ -1,8 +1,16 @@
 "use client";
 
+import { useMemo } from "react";
+import { createColumnHelper } from "@tanstack/react-table";
+
 import type { SiteTrafficOverview } from "@/features/dashboard/services/site-traffic.service";
 import { GlobalKpiCards } from "@/lib/kpi-cards";
 import type { KpiCardItem } from "@/lib/kpi-cards";
+import {
+  DataTable,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -11,15 +19,15 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+type RecentUserRow = SiteTrafficOverview["recentUsers"][number];
+type PageRow = SiteTrafficOverview["pages"][number];
+type TopPsRow = SiteTrafficOverview["topPs"][number];
+
+const recentColumn = createColumnHelper<DataTableFeatures, RecentUserRow>();
+const pageColumn = createColumnHelper<DataTableFeatures, PageRow>();
+const topPsColumn = createColumnHelper<DataTableFeatures, TopPsRow>();
 
 interface SiteTrafficPanelProps {
   overview: SiteTrafficOverview;
@@ -41,6 +49,91 @@ function relativeTime(value: Date | string): string {
 
 export function SiteTrafficPanel({ overview }: SiteTrafficPanelProps) {
   const { kpis } = overview;
+
+  const recentColumns = useMemo(() => {
+    const cols: DataTableColumn<RecentUserRow>[] = [
+      recentColumn.accessor("branchLabel", {
+        header: "Branch",
+        enableSorting: false,
+        meta: { className: "max-w-48 truncate" },
+      }),
+      recentColumn.display({
+        id: "user",
+        header: "User",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium">{row.original.userName}</p>
+            <p className="truncate text-xs text-muted-foreground">{row.original.email}</p>
+          </div>
+        ),
+      }),
+      recentColumn.accessor("roleLabel", {
+        header: "Type",
+        enableSorting: false,
+        meta: { className: "text-xs uppercase" },
+      }),
+      recentColumn.display({
+        id: "isLogin",
+        header: "Is login",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <Badge variant={row.original.isLogin ? "default" : "secondary"}>
+            {row.original.isLogin ? "Yes" : "No"}
+          </Badge>
+        ),
+      }),
+      recentColumn.accessor("lastAccess", {
+        header: "Last access",
+        enableSorting: false,
+        meta: { className: "text-xs text-muted-foreground" },
+      }),
+      recentColumn.display({
+        id: "timestamp",
+        header: "Timestamp",
+        enableSorting: false,
+        cell: ({ row }) => relativeTime(row.original.lastSeenAt),
+        meta: { className: "whitespace-nowrap text-xs tabular-nums" },
+      }),
+    ];
+    return cols;
+  }, []);
+
+  const pageColumns = useMemo(() => {
+    const cols: DataTableColumn<PageRow>[] = [
+      pageColumn.accessor("location", {
+        header: "Last location",
+        enableSorting: false,
+        meta: { className: "font-mono text-xs" },
+      }),
+      pageColumn.accessor("count", {
+        header: "Count",
+        enableSorting: false,
+        meta: { className: "tabular-nums" },
+      }),
+      pageColumn.display({
+        id: "timestamp",
+        header: "Timestamp",
+        enableSorting: false,
+        cell: ({ row }) => relativeTime(row.original.lastSeenAt),
+        meta: { className: "whitespace-nowrap text-xs tabular-nums" },
+      }),
+    ];
+    return cols;
+  }, []);
+
+  const topPsColumns = useMemo(() => {
+    const cols: DataTableColumn<TopPsRow>[] = [
+      topPsColumn.accessor("branchName", { header: "Branch", enableSorting: false }),
+      topPsColumn.accessor("userName", { header: "User", enableSorting: false }),
+      topPsColumn.accessor("count", {
+        header: "Count",
+        enableSorting: false,
+        meta: { className: "tabular-nums font-medium" },
+      }),
+    ];
+    return cols;
+  }, []);
 
   const kpiItems: KpiCardItem[] = [
     {
@@ -104,95 +197,28 @@ export function SiteTrafficPanel({ overview }: SiteTrafficPanelProps) {
             </TabsList>
 
             <TabsContent value="recent" className="mt-4">
-              {overview.recentUsers.length === 0 ? (
-                <p className="py-8 text-center text-sm text-muted-foreground">
-                  No session activity recorded yet.
-                </p>
-              ) : (
-                <div className="overflow-x-auto rounded-lg border border-border/60">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Branch</TableHead>
-                        <TableHead>User</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Is login</TableHead>
-                        <TableHead>Last access</TableHead>
-                        <TableHead>Timestamp</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {overview.recentUsers.map((row) => (
-                        <TableRow key={row.userId}>
-                          <TableCell className="max-w-[12rem] truncate">
-                            {row.branchLabel}
-                          </TableCell>
-                          <TableCell>
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-medium">
-                                {row.userName}
-                              </p>
-                              <p className="truncate text-xs text-muted-foreground">
-                                {row.email}
-                              </p>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-xs uppercase">
-                            {row.roleLabel}
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={row.isLogin ? "default" : "secondary"}
-                            >
-                              {row.isLogin ? "Yes" : "No"}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground">
-                            {row.lastAccess}
-                          </TableCell>
-                          <TableCell className="whitespace-nowrap text-xs tabular-nums">
-                            {relativeTime(row.lastSeenAt)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
+              <DataTable
+                chrome="plain"
+                data={overview.recentUsers}
+                columns={recentColumns}
+                getRowId={(row) => row.userId}
+                stickyHeader
+                empty={overview.recentUsers.length === 0}
+                emptyMessage="No session activity recorded yet."
+              />
             </TabsContent>
 
             <TabsContent value="pages" className="mt-4 space-y-3">
               <p className="text-xs text-muted-foreground">{overview.pagesNote}</p>
-              {overview.pages.length === 0 ? (
-                <p className="py-8 text-center text-sm text-muted-foreground">
-                  No audit activity to summarize yet.
-                </p>
-              ) : (
-                <div className="overflow-x-auto rounded-lg border border-border/60">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Last location</TableHead>
-                        <TableHead className="w-24">Count</TableHead>
-                        <TableHead className="w-40">Timestamp</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {overview.pages.map((row) => (
-                        <TableRow key={row.location}>
-                          <TableCell className="font-mono text-xs">
-                            {row.location}
-                          </TableCell>
-                          <TableCell className="tabular-nums">{row.count}</TableCell>
-                          <TableCell className="whitespace-nowrap text-xs tabular-nums">
-                            {relativeTime(row.lastSeenAt)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
+              <DataTable
+                chrome="plain"
+                data={overview.pages}
+                columns={pageColumns}
+                getRowId={(row) => row.location}
+                stickyHeader
+                empty={overview.pages.length === 0}
+                emptyMessage="No audit activity to summarize yet."
+              />
             </TabsContent>
 
             <TabsContent value="top-ps" className="mt-4 space-y-3">
@@ -203,34 +229,15 @@ export function SiteTrafficPanel({ overview }: SiteTrafficPanelProps) {
                   {overview.topPsTotalSales}
                 </span>
               </p>
-              {overview.topPs.length === 0 ? (
-                <p className="py-8 text-center text-sm text-muted-foreground">
-                  No sales transactions this month yet.
-                </p>
-              ) : (
-                <div className="overflow-x-auto rounded-lg border border-border/60">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Branch</TableHead>
-                        <TableHead>User</TableHead>
-                        <TableHead className="w-24">Count</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {overview.topPs.map((row) => (
-                        <TableRow key={row.userId}>
-                          <TableCell>{row.branchName}</TableCell>
-                          <TableCell>{row.userName}</TableCell>
-                          <TableCell className="tabular-nums font-medium">
-                            {row.count}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
+              <DataTable
+                chrome="plain"
+                data={overview.topPs}
+                columns={topPsColumns}
+                getRowId={(row) => row.userId}
+                stickyHeader
+                empty={overview.topPs.length === 0}
+                emptyMessage="No sales transactions this month yet."
+              />
             </TabsContent>
           </Tabs>
         </CardContent>

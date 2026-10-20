@@ -1,5 +1,6 @@
 "use client";
 
+import { createColumnHelper } from "@tanstack/react-table";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
@@ -8,7 +9,6 @@ import type {
   WarehouseFilterOption,
   WarehouseLocationFilterOption,
 } from "@/features/warehouse-inventory/services/warehouse-inventory.service";
-import { TableIndexCell, TableIndexHead } from "@/components/data-table";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   parseTablePageSize,
@@ -19,14 +19,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { GlobalDataTable, GlobalTableHead } from "@/lib/data-table";
+  DataTable,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import type { PaginatedResult } from "@/lib/shared/pagination";
-import { cn } from "@/utils/cn";
 
 interface WarehouseStockTableProps {
   result: PaginatedResult<WarehouseInventoryListItem>;
@@ -57,6 +54,8 @@ function buildHref(
   const query = params.toString();
   return query ? `/inventory/warehouse-stock?${query}` : "/inventory/warehouse-stock";
 }
+
+const stockColumn = createColumnHelper<DataTableFeatures, WarehouseInventoryListItem>();
 
 function formatUpdatedAt(iso: string): string {
   const d = new Date(iso);
@@ -137,11 +136,84 @@ export function WarehouseStockTable({
     ? "No warehouse serials match your filters."
     : "No warehouse stock yet. Serials appear after a warehouse feed, demo seed, or Official Sales warehouse demo serials are loaded.";
 
+  const indexOffset = (result.page - 1) * result.limit;
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<WarehouseInventoryListItem>[] = [
+      stockColumn.display({
+        id: "index",
+        header: "#",
+        cell: ({ row }) => indexOffset + row.index + 1,
+        meta: { className: "text-center tabular-nums text-muted-foreground" },
+      }),
+      stockColumn.accessor((row) => row.serialNumber.serialNo, {
+        id: "serial",
+        header: "Serial No.",
+        meta: { className: "font-mono" },
+      }),
+      stockColumn.accessor((row) => row.serialNumber.model.sku, {
+        id: "sku",
+        header: "SKU",
+        meta: { className: "font-mono" },
+      }),
+      stockColumn.display({
+        id: "model",
+        header: "Model",
+        cell: ({ row }) => (
+          <div className="flex flex-col">
+            <span>{row.original.serialNumber.model.name}</span>
+            <span className="text-xs text-muted-foreground">
+              {row.original.serialNumber.model.brand.name}
+            </span>
+          </div>
+        ),
+      }),
+      stockColumn.display({
+        id: "warehouse",
+        header: "Warehouse",
+        cell: ({ row }) => (
+          <div className="flex flex-col">
+            <span className="font-mono text-sm">{row.original.warehouse.code}</span>
+            <span className="text-xs text-muted-foreground">{row.original.warehouse.name}</span>
+          </div>
+        ),
+      }),
+      stockColumn.display({
+        id: "location",
+        header: "Location",
+        cell: ({ row }) => (
+          <div className="flex flex-col">
+            <span className="font-mono text-sm">{row.original.location.code}</span>
+            <span className="text-xs text-muted-foreground">{row.original.location.name}</span>
+          </div>
+        ),
+      }),
+      stockColumn.display({
+        id: "status",
+        header: "Status",
+        cell: ({ row }) =>
+          row.original.systemStatus ? (
+            <Badge variant="secondary">{row.original.systemStatus}</Badge>
+          ) : (
+            "—"
+          ),
+      }),
+      stockColumn.display({
+        id: "updated",
+        header: "Updated",
+        cell: ({ row }) => formatUpdatedAt(row.original.updatedAt),
+        meta: { className: "text-muted-foreground" },
+      }),
+    ];
+    return cols;
+  }, [indexOffset]);
+
   return (
-    <GlobalDataTable
+    <DataTable
+      data={rows}
+      columns={columns}
+      getRowId={(row) => row.id}
+      manualPagination
       stickyHeader
-      empty={rows.length === 0}
-      emptyMessage={emptyMessage}
       banner={
         <div className="space-y-4 border-b px-4 py-4">
           <TableSearchBar
@@ -204,71 +276,8 @@ export function WarehouseStockTable({
         buildHref: (page) => buildHref(page, pageSize, activeFilters),
       }}
       pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
-    >
-      <TableHeader>
-        <TableRow className="bg-muted/30 hover:bg-muted/30">
-          <TableIndexHead />
-          <GlobalTableHead>Serial No.</GlobalTableHead>
-          <GlobalTableHead>SKU</GlobalTableHead>
-          <GlobalTableHead>Model</GlobalTableHead>
-          <GlobalTableHead>Warehouse</GlobalTableHead>
-          <GlobalTableHead>Location</GlobalTableHead>
-          <GlobalTableHead>Status</GlobalTableHead>
-          <GlobalTableHead>Updated</GlobalTableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map((row, index) => (
-          <TableRow
-            key={row.id}
-            className={cn(index % 2 === 1 && "bg-table-stripe")}
-          >
-            <TableIndexCell
-              index={(result.page - 1) * result.limit + index + 1}
-            />
-            <TableCell className="font-mono text-sm">
-              {row.serialNumber.serialNo}
-            </TableCell>
-            <TableCell className="font-mono text-sm">
-              {row.serialNumber.model.sku}
-            </TableCell>
-            <TableCell>
-              <div className="flex flex-col">
-                <span>{row.serialNumber.model.name}</span>
-                <span className="text-xs text-muted-foreground">
-                  {row.serialNumber.model.brand.name}
-                </span>
-              </div>
-            </TableCell>
-            <TableCell>
-              <div className="flex flex-col">
-                <span className="font-mono text-sm">{row.warehouse.code}</span>
-                <span className="text-xs text-muted-foreground">
-                  {row.warehouse.name}
-                </span>
-              </div>
-            </TableCell>
-            <TableCell>
-              <div className="flex flex-col">
-                <span className="font-mono text-sm">{row.location.code}</span>
-                <span className="text-xs text-muted-foreground">
-                  {row.location.name}
-                </span>
-              </div>
-            </TableCell>
-            <TableCell>
-              {row.systemStatus ? (
-                <Badge variant="secondary">{row.systemStatus}</Badge>
-              ) : (
-                "—"
-              )}
-            </TableCell>
-            <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
-              {formatUpdatedAt(row.updatedAt)}
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </GlobalDataTable>
+      empty={rows.length === 0}
+      emptyMessage={emptyMessage}
+    />
   );
 }

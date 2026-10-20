@@ -1,7 +1,8 @@
-"use client";
+﻿"use client";
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition, type ReactNode } from "react";
+import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
 
 import { Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -13,25 +14,16 @@ import type { PermissionRow } from "@/features/permissions/types/permission.type
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DeleteConfirmDialog } from "@/components/data-table/delete-confirm-dialog";
+import { uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import {
-  DataTableEmpty,
-  DataTableScroll,
-  DataTableShell,
-} from "@/components/data-table/data-table-shell";
-import { useTableSelection } from "@/components/data-table/use-table-selection";
-import { TableSearchToolbar, uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
-import { GlobalTableHead, useClientTableSort } from "@/lib/data-table";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  DataTable,
+  useClientTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { matchesTableSearch } from "@/utils/match-table-search";
-import { cn } from "@/utils/cn";
+
+const permissionColumn = createColumnHelper<DataTableFeatures, PermissionRow>();
 
 interface PermissionsTableProps {
   permissions: PermissionRow[];
@@ -89,7 +81,10 @@ export function PermissionsTable({
     [permissions],
   );
 
-  const selection = useTableSelection(filteredPermissions.map((permission) => permission.id));
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const selectedCount = filteredPermissions.filter(
+    (permission) => rowSelection[permission.id],
+  ).length;
 
   function handleDeleteConfirm() {
     if (!deletingPermission) {
@@ -109,166 +104,159 @@ export function PermissionsTable({
     });
   }
 
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<PermissionRow>[] = [
+      permissionColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => row.index + 1,
+        meta: { className: "text-center tabular-nums text-muted-foreground" },
+      }),
+      permissionColumn.display({
+        id: "name",
+        header: "Name",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-medium">{row.original.name}</span>
+            {row.original.isProtected ? (
+              <Badge variant="secondary" className="text-[10px]">
+                Protected
+              </Badge>
+            ) : null}
+          </div>
+        ),
+      }),
+      permissionColumn.display({
+        id: "module",
+        header: "Module",
+        enableSorting: true,
+        cell: ({ row }) =>
+          row.original.isLinked ? (
+            <div>
+              <p className="font-medium">{row.original.moduleName}</p>
+              <p className="text-xs text-muted-foreground">
+                {row.original.moduleRoute ?? "Module not routed yet"}
+              </p>
+            </div>
+          ) : (
+            <Badge variant="outline" className="text-[10px]">
+              Unlinked
+            </Badge>
+          ),
+      }),
+      permissionColumn.display({
+        id: "slug",
+        header: "Slug",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <code className="text-xs text-muted-foreground">{row.original.slug}</code>
+        ),
+      }),
+      permissionColumn.display({
+        id: "description",
+        header: "Description",
+        enableSorting: false,
+        cell: ({ row }) => row.original.description ?? "—",
+        meta: { className: "max-w-xs truncate text-muted-foreground" },
+      }),
+      permissionColumn.display({
+        id: "roles",
+        header: "Roles",
+        enableSorting: true,
+        cell: ({ row }) => row.original.roleCount,
+        meta: { className: "text-center tabular-nums" },
+      }),
+    ];
+    if (canManageCatalog) {
+      cols.push(
+        permissionColumn.display({
+          id: "actions",
+          header: "Actions",
+          enableSorting: false,
+          cell: ({ row }) => {
+            const canDelete = !row.original.isProtected && row.original.roleCount === 0;
+            return (
+              <div className="flex justify-end gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-8"
+                  title="Edit permission"
+                  onClick={() => setEditingPermission(row.original)}
+                >
+                  <Pencil className="size-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 text-destructive hover:text-destructive"
+                  disabled={!canDelete}
+                  title={
+                    row.original.isProtected
+                      ? "Protected permissions cannot be deleted"
+                      : row.original.roleCount > 0
+                        ? "Remove from all roles before deleting"
+                        : "Delete permission"
+                  }
+                  onClick={() => setDeletingPermission(row.original)}
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              </div>
+            );
+          },
+          meta: { align: "end" },
+        }),
+      );
+    }
+    return cols;
+  }, [canManageCatalog]);
+
   return (
     <>
-      <DataTableShell>
-        <TableSearchToolbar
-          value={query}
-          onChange={setQuery}
-          placeholder="Search by name, slug, or description…"
-          suggestions={suggestions}
-        >
-          {canManageCatalog && selection.selectedCount > 0 ? (
-            <Badge variant="secondary">{selection.selectedCount} selected</Badge>
-          ) : null}
-          {addPermissionAction}
-        </TableSearchToolbar>
-        {filteredPermissions.length === 0 ? (
-          <DataTableEmpty
-            message={
-              permissions.length === 0
-                ? "No permissions defined yet."
-                : "No permissions match your search."
-            }
-          />
-        ) : (
-          <DataTableScroll>
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/30 hover:bg-muted/30">
-                  {canManageCatalog ? (
-                    <TableHead className="w-10">
-                      <Checkbox
-                        checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
-                        onCheckedChange={(checked) => selection.toggleAll(checked === true)}
-                        aria-label="Select all permissions"
-                      />
-                    </TableHead>
-                  ) : null}
-                  <TableHead className="w-12 text-center text-muted-foreground">
-                    #
-                  </TableHead>
-                  <GlobalTableHead {...sort.sortProps("name")}>Name</GlobalTableHead>
-                  <GlobalTableHead {...sort.sortProps("module")}>Module</GlobalTableHead>
-                  <GlobalTableHead {...sort.sortProps("slug")}>Slug</GlobalTableHead>
-                  <TableHead>Description</TableHead>
-                  <GlobalTableHead className="text-center" {...sort.sortProps("roles")}>
-                    Roles
-                  </GlobalTableHead>
-                  {canManageCatalog ? (
-                    <TableHead className="text-right">Actions</TableHead>
-                  ) : null}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sort.sorted.map((permission, index) => {
-                  const canDelete =
-                    !permission.isProtected && permission.roleCount === 0;
-
-                  return (
-                    <TableRow
-                      key={permission.id}
-                      data-state={
-                        canManageCatalog && selection.isRowSelected(permission.id)
-                          ? "selected"
-                          : undefined
-                      }
-                      className={cn(index % 2 === 1 && "bg-table-stripe")}
-                    >
-                      {canManageCatalog ? (
-                        <TableCell>
-                          <Checkbox
-                            checked={selection.isRowSelected(permission.id)}
-                            onCheckedChange={(checked) => selection.toggleRow(permission.id, checked === true)}
-                            aria-label={`Select permission ${permission.name}`}
-                          />
-                        </TableCell>
-                      ) : null}
-                      <TableCell className="text-center tabular-nums text-muted-foreground">
-                        {index + 1}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-medium">{permission.name}</span>
-                          {permission.isProtected ? (
-                            <Badge variant="secondary" className="text-[10px]">
-                              Protected
-                            </Badge>
-                          ) : null}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {permission.isLinked ? (
-                          <div>
-                            <p className="font-medium">{permission.moduleName}</p>
-                            {permission.moduleRoute ? (
-                              <p className="text-xs text-muted-foreground">
-                                {permission.moduleRoute}
-                              </p>
-                            ) : (
-                              <p className="text-xs text-muted-foreground">
-                                Module not routed yet
-                              </p>
-                            )}
-                          </div>
-                        ) : (
-                          <Badge variant="outline" className="text-[10px]">
-                            Unlinked
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <code className="text-xs text-muted-foreground">
-                          {permission.slug}
-                        </code>
-                      </TableCell>
-                      <TableCell className="max-w-xs truncate text-muted-foreground">
-                        {permission.description ?? "—"}
-                      </TableCell>
-                      <TableCell className="text-center tabular-nums">
-                        {permission.roleCount}
-                      </TableCell>
-                      {canManageCatalog ? (
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="size-8"
-                              title="Edit permission"
-                              onClick={() => setEditingPermission(permission)}
-                            >
-                              <Pencil className="size-4" />
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="size-8 text-destructive hover:text-destructive"
-                              disabled={!canDelete}
-                              title={
-                                permission.isProtected
-                                  ? "Protected permissions cannot be deleted"
-                                  : permission.roleCount > 0
-                                    ? "Remove from all roles before deleting"
-                                    : "Delete permission"
-                              }
-                              onClick={() => setDeletingPermission(permission)}
-                            >
-                              <Trash2 className="size-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      ) : null}
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </DataTableScroll>
-        )}
-      </DataTableShell>
+      <DataTable
+        data={sort.sorted}
+        columns={columns}
+        getRowId={(row) => row.id}
+        manualSorting
+        manualPagination
+        enableSorting
+        sorting={{
+          sortKey: sort.sortKey,
+          sortDir: sort.sortDir,
+          onSort: sort.toggleSort,
+        }}
+        enableRowSelection={canManageCatalog}
+        rowSelection={rowSelection}
+        onRowSelectionChange={setRowSelection}
+        selectAllLabel="Select all permissions"
+        getSelectionLabel={(row) => `Select permission ${row.name}`}
+        stickyHeader
+        search={{
+          value: query,
+          onChange: setQuery,
+          placeholder: "Search by name, slug, or description…",
+          suggestions,
+        }}
+        toolbarActions={
+          <>
+            {canManageCatalog && selectedCount > 0 ? (
+              <Badge variant="secondary">{selectedCount} selected</Badge>
+            ) : null}
+            {addPermissionAction}
+          </>
+        }
+        empty={sort.sorted.length === 0}
+        emptyMessage={
+          permissions.length === 0
+            ? "No permissions defined yet."
+            : "No permissions match your search."
+        }
+      />
 
       {canManageCatalog && editingPermission ? (
         <EditPermissionDialog

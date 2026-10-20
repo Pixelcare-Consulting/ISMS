@@ -2,14 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { createColumnHelper } from "@tanstack/react-table";
 import { toast } from "sonner";
 
 import { NewRunDialog } from "@/app/(app)/planning/_components/new-run-dialog";
 import { RunDocumentDialog } from "@/app/(app)/planning/_components/run-document-dialog";
 import {
   DeleteConfirmDialog,
-  TableIndexCell,
-  TableIndexHead,
   TableRowActions,
   TableRowCheckbox,
   TableSelectAllCheckbox,
@@ -34,15 +33,14 @@ import type {
   DemandPlanningWizardDealer,
   DemandPlanningWizardPeriod,
 } from "@/features/demand-planning/types/run.types";
-import { GlobalDataTable } from "@/lib/data-table";
-import { KpiCard } from "@/lib/kpi-cards";
 import {
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  DataTable,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
+import { KpiCard } from "@/lib/kpi-cards";
+
+const runColumn = createColumnHelper<DataTableFeatures, DemandPlanningClientRunListItem>();
 
 type DeleteTarget =
   | { mode: "single"; item: DemandPlanningClientRunListItem }
@@ -226,6 +224,148 @@ export function DemandPlanningRunList({
           }? This removes each draft run and its grid data. Released runs stay protected.`
         : "Delete this supply planning run?";
 
+  const indexOffset = (page - 1) * limit;
+
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<DemandPlanningClientRunListItem>[] = [];
+    if (canManage) {
+      cols.push(
+        runColumn.display({
+          id: "select",
+          header: () => (
+            <TableSelectAllCheckbox
+              isAllSelected={selection.isAllSelected}
+              isPartiallySelected={selection.isPartiallySelected}
+              onToggleAll={selection.toggleAll}
+              aria-label="Select all deletable runs"
+            />
+          ),
+          enableSorting: false,
+          cell: ({ row }) => {
+            const deletable = isDemandPlanningRunDeletable(row.original.status);
+            return (
+              <TableRowCheckbox
+                checked={selection.isRowSelected(row.original.id)}
+                disabled={!deletable}
+                onCheckedChange={(checked) => {
+                  if (!deletable) return;
+                  selection.toggleRow(row.original.id, checked);
+                }}
+                aria-label={
+                  deletable
+                    ? `Select ${row.original.documentNumber}`
+                    : `Released run ${row.original.documentNumber} cannot be selected`
+                }
+              />
+            );
+          },
+        }),
+      );
+    }
+    cols.push(
+      runColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => indexOffset + row.index + 1,
+        meta: { className: "tabular-nums text-muted-foreground" },
+      }),
+      runColumn.display({
+        id: "document",
+        header: "Document",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <div>
+            <button
+              type="button"
+              className="cursor-pointer text-left font-medium hover:underline"
+              onClick={() => openDocument(row.original.id)}
+            >
+              {row.original.documentNumber}
+            </button>
+            {row.original.originalDocumentNumber ? (
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                Original {row.original.originalDocumentNumber}
+              </span>
+            ) : null}
+            {row.original.name ? (
+              <span className="mt-0.5 block text-xs text-muted-foreground">{row.original.name}</span>
+            ) : null}
+            {row.original.version > 1 ? (
+              <Badge variant="outline" className="mt-1">
+                v{row.original.version}
+              </Badge>
+            ) : null}
+          </div>
+        ),
+      }),
+      runColumn.accessor("periodLabel", { header: "Period", enableSorting: false }),
+      runColumn.display({
+        id: "status",
+        header: "Status",
+        enableSorting: false,
+        cell: ({ row }) => <DemandPlanningRunStatusBadge status={row.original.status} />,
+      }),
+      runColumn.display({
+        id: "branches",
+        header: "Branches",
+        enableSorting: false,
+        cell: ({ row }) => `${row.original.plannedBranchCount}/${row.original.branchCount} planned`,
+      }),
+      runColumn.display({
+        id: "drop1",
+        header: "Drop 1",
+        enableSorting: false,
+        cell: ({ row }) => row.original.drop1Qty,
+        meta: { align: "end", className: "tabular-nums" },
+      }),
+      runColumn.display({
+        id: "drop1Peso",
+        header: "Drop 1 ₱",
+        enableSorting: false,
+        cell: ({ row }) => formatDemandPeso(row.original.drop1Peso),
+        meta: { align: "end", className: "tabular-nums" },
+      }),
+      runColumn.display({
+        id: "created",
+        header: "Created",
+        enableSorting: false,
+        cell: ({ row }) =>
+          new Date(row.original.createdAt).toLocaleString("en-PH", { dateStyle: "medium" }),
+        meta: { className: "text-muted-foreground" },
+      }),
+      runColumn.display({
+        id: "createdBy",
+        header: "Created by",
+        enableSorting: false,
+        cell: ({ row }) => row.original.createdByName ?? "—",
+        meta: { className: "text-muted-foreground" },
+      }),
+    );
+    if (canManage) {
+      cols.push(
+        runColumn.display({
+          id: "actions",
+          header: "Actions",
+          enableSorting: false,
+          cell: ({ row }) =>
+            isDemandPlanningRunDeletable(row.original.status) ? (
+              <TableRowActions
+                asCell={false}
+                onDelete={() => setDeleteTarget({ mode: "single", item: row.original })}
+                deleteDisabled={pending}
+                deleteTitle={`Delete ${row.original.documentNumber}`}
+              />
+            ) : (
+              "—"
+            ),
+          meta: { align: "end", className: "text-muted-foreground" },
+        }),
+      );
+    }
+    return cols;
+  }, [canManage, indexOffset, pending, selection]);
+
   return (
     <div className="space-y-4">
       <div className="responsive-card-grid">
@@ -235,7 +375,12 @@ export function DemandPlanningRunList({
         <KpiCard label="Drop 1 ₱ (this page)" value={formatDemandPeso(drop1Peso)} />
       </div>
 
-      <GlobalDataTable
+      <DataTable
+        data={items}
+        columns={columns}
+        getRowId={(row) => row.id}
+        manualPagination
+        stickyHeader
         empty={items.length === 0}
         emptyMessage="No supply planning runs yet. Start a new run after the SFE forecast is in."
         toolbarLeading={
@@ -301,108 +446,7 @@ export function DemandPlanningRunList({
           itemLabel: "run",
           buildHref: (nextPage) => hrefFor(nextPage),
         }}
-      >
-        <TableHeader>
-          <TableRow>
-            {canManage ? (
-              <TableSelectAllCheckbox
-                isAllSelected={selection.isAllSelected}
-                isPartiallySelected={selection.isPartiallySelected}
-                onToggleAll={selection.toggleAll}
-                aria-label="Select all deletable runs"
-              />
-            ) : null}
-            <TableIndexHead />
-            <TableHead>Document</TableHead>
-            <TableHead>Period</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Branches</TableHead>
-            <TableHead className="text-right">Drop 1</TableHead>
-            <TableHead className="text-right">Drop 1 ₱</TableHead>
-            <TableHead>Created</TableHead>
-            <TableHead>Created by</TableHead>
-            {canManage ? <TableHead className="w-16 text-right">Actions</TableHead> : null}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {items.map((item, rowIndex) => {
-            const deletable = isDemandPlanningRunDeletable(item.status);
-            return (
-              <TableRow
-                key={item.id}
-                data-state={selection.isRowSelected(item.id) ? "selected" : undefined}
-              >
-                {canManage ? (
-                  <TableRowCheckbox
-                    checked={selection.isRowSelected(item.id)}
-                    disabled={!deletable}
-                    onCheckedChange={(checked) => {
-                      if (!deletable) return;
-                      selection.toggleRow(item.id, checked);
-                    }}
-                    aria-label={
-                      deletable
-                        ? `Select ${item.documentNumber}`
-                        : `Released run ${item.documentNumber} cannot be selected`
-                    }
-                  />
-                ) : null}
-                <TableIndexCell index={(page - 1) * limit + rowIndex + 1} />
-                <TableCell>
-                  <button
-                    type="button"
-                    className="cursor-pointer text-left font-medium hover:underline"
-                    onClick={() => openDocument(item.id)}
-                  >
-                    {item.documentNumber}
-                  </button>
-                  {item.originalDocumentNumber ? (
-                    <span className="mt-0.5 block text-xs text-muted-foreground">
-                      Original {item.originalDocumentNumber}
-                    </span>
-                  ) : null}
-                  {item.name ? (
-                    <span className="mt-0.5 block text-xs text-muted-foreground">{item.name}</span>
-                  ) : null}
-                  {item.version > 1 ? (
-                    <Badge variant="outline" className="mt-1">
-                      v{item.version}
-                    </Badge>
-                  ) : null}
-                </TableCell>
-                <TableCell>{item.periodLabel}</TableCell>
-                <TableCell>
-                  <DemandPlanningRunStatusBadge status={item.status} />
-                </TableCell>
-                <TableCell>
-                  {item.plannedBranchCount}/{item.branchCount} planned
-                </TableCell>
-                <TableCell className="text-right tabular-nums">{item.drop1Qty}</TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {formatDemandPeso(item.drop1Peso)}
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {new Date(item.createdAt).toLocaleString("en-PH", { dateStyle: "medium" })}
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {item.createdByName ?? "—"}
-                </TableCell>
-                {canManage ? (
-                  deletable ? (
-                    <TableRowActions
-                      onDelete={() => setDeleteTarget({ mode: "single", item })}
-                      deleteDisabled={pending}
-                      deleteTitle={`Delete ${item.documentNumber}`}
-                    />
-                  ) : (
-                    <TableCell className="text-right text-muted-foreground">—</TableCell>
-                  )
-                ) : null}
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </GlobalDataTable>
+      />
 
       <DeleteConfirmDialog
         open={deleteTarget !== null}
