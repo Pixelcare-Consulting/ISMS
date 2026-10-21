@@ -11,6 +11,9 @@ jest.mock("@/lib/database/client", () => {
     mockTx: tx,
     prisma: {
       branchOrder: { findFirst: jest.fn() },
+      branchDelivery: { findFirst: jest.fn() },
+      deliveryTransfer: { findFirst: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
+      deliveryReturnRequest: { findFirst: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
       $transaction: jest.fn(async (fn: (t: typeof tx) => unknown) => fn(tx)),
     },
   };
@@ -33,6 +36,12 @@ jest.mock("@/features/logistics/services/logistics.service", () => ({
 jest.mock("@/features/reason-status/services/reason-status.service", () => ({
   reasonStatusService: { requireCodeId: jest.fn().mockResolvedValue("sc1") },
 }));
+jest.mock("@/features/logistics/services/delivery-return-completion", () => ({
+  completeDeliveryReturn: jest.fn(),
+}));
+jest.mock("@/features/sap/services/sap-service-layer-client", () => ({
+  sapServiceLayerClient: { request: jest.fn() },
+}));
 jest.mock("@/features/sap/services/sap-documents", () => ({
   ...jest.requireActual("@/features/sap/services/sap-documents"),
   postSapDocument: jest.fn(),
@@ -46,6 +55,8 @@ import { orderRepository } from "@/features/orders/repositories/order.repository
 import { logisticsService } from "@/features/logistics/services/logistics.service";
 import { sapIntegrationRepository } from "@/features/sap/repositories/sap-integration.repository";
 import { postSapDocument } from "@/features/sap/services/sap-documents";
+import { completeDeliveryReturn } from "@/features/logistics/services/delivery-return-completion";
+import { sapServiceLayerClient } from "@/features/sap/services/sap-service-layer-client";
 import { sapServiceLayerService } from "@/features/sap/services/sap-service-layer.service";
 import type { SapIntegrationJob } from "@prisma/client";
 
@@ -168,6 +179,43 @@ describe("serviceLayerSapOutbound.createApprovedOrderDocument", () => {
     expect(body.DocDueDate).toBe("2026-11-05");
   });
 
+  it("keeps a stored SO type when the dealer's mode of payment changed after approval", async () => {
+    mockPrisma.branchOrder.findFirst.mockResolvedValue(order({ sapDocType: "SO" }));
+    // Dealer switched to consignment, then lost its type entirely: neither re-routes the order.
+    for (const kind of ["CONSIGNMENT", null] as const) {
+      post.mockClear();
+      routingCtx.mockResolvedValue(ctx(kind));
+      post.mockResolvedValue({ docEntry: 22, docNum: 900, docDate: "2026-10-21", displayNo: "900", lineNums: [0, 1] });
+      await expect(
+        serviceLayerSapOutbound.createApprovedOrderDocument({ tenantId: "t1", job }),
+      ).resolves.toBe("SO-900");
+      const [, docKind, , body] = post.mock.calls[0];
+      expect(docKind).toBe("SO");
+      expect(body.CardCode).toBe("C100");
+    }
+  });
+
+  it("keeps a stored ITR type without reading the mode of payment", async () => {
+    mockPrisma.branchOrder.findFirst.mockResolvedValue(order({ sapDocType: "ITR" }));
+    routingCtx.mockResolvedValue(ctx(null));
+    post.mockResolvedValue({ docEntry: 11, docNum: 501, docDate: "2026-10-21", displayNo: "501", lineNums: [0, 1] });
+    await expect(serviceLayerSapOutbound.createApprovedOrderDocument({ tenantId: "t1", job })).resolves.toBe(
+      "ITR-501",
+    );
+    expect(post.mock.calls[0][3]).toMatchObject({ FromWarehouse: "WH1", ToWarehouse: "BR1" });
+  });
+
+  it("refuses a stored SO when the dealer has no SAP customer code", async () => {
+    mockPrisma.branchOrder.findFirst.mockResolvedValue(order({ sapDocType: "SO" }));
+    const noCard = ctx("OUTRIGHT");
+    noCard.branch.dealer.sapCode = null as unknown as string;
+    routingCtx.mockResolvedValue(noCard);
+    await expect(
+      serviceLayerSapOutbound.createApprovedOrderDocument({ tenantId: "t1", job }),
+    ).rejects.toThrow("Dealer Dealer has no SAP customer code.");
+    expect(post).not.toHaveBeenCalled();
+  });
+
   it("job fails with routing message when dealer kind is missing", async () => {
     mockPrisma.branchOrder.findFirst.mockResolvedValue(order());
     routingCtx.mockResolvedValue(ctx(null));
@@ -217,5 +265,441 @@ describe("service layer pull-out", () => {
     const ref = await serviceLayerSapOutbound.createPulloutItr({ tenantId: "t1", job: pullout });
     expect(ref).toMatch(/^SAP-/);
     expect(sapIntegrationRepository.markCompleted).toHaveBeenCalledWith("j9", ref);
+  });
+});
+
+describe("serviceLayerSapOutbound.createDispatchDocument", () => {
+  const prismaDelivery = (dbClient.prisma as unknown as { branchDelivery: { findFirst: jest.Mock } })
+    .branchDelivery;
+  const refOut = { docEntry: 90, docNum: 700, docDate: "2026-10-21", displayNo: "700", lineNums: [0] };
+
+  function delivery(over: Record<string, unknown> = {}, orderOver: Record<string, unknown> = {}) {
+    return {
+      id: "del1",
+      branchId: "b1",
+      sourceWarehouseId: "w1",
+      sourceWarehouse: { code: "WH1" },
+      order: {
+        orderNumber: "ORD-1",
+        branchId: "b1",
+        sapDocType: "ITR",
+        sapDocEntry: 11,
+        branch: { sapCode: "BR1", dealer: { sapCode: "C100" } },
+        details: [
+          { id: "d1", modelId: "mA", quantity: 2, approvedQty: 2, sapLineNum: 0, model: { skuCode: "SKU-A" } },
+          { id: "d2", modelId: "mB", quantity: 1, approvedQty: 1, sapLineNum: 1, model: { skuCode: "SKU-B" } },
+        ],
+        ...orderOver,
+      },
+      ...over,
+    };
+  }
+  function stubSerials(rows: { id: string; serialNo: string; modelId: string; skuCode: string }[]) {
+    (dbClient.prisma as unknown as { serialNumber: { findMany: jest.Mock } }).serialNumber.findMany.mockResolvedValue(
+      rows.map((r) => ({ id: r.id, serialNo: r.serialNo, modelId: r.modelId, model: { skuCode: r.skuCode } })),
+    );
+  }
+
+  beforeEach(() => {
+    const p = dbClient.prisma as unknown as Record<string, unknown>;
+    if (!p.serialNumber) p.serialNumber = { findMany: jest.fn() };
+    post.mockResolvedValue(refOut);
+  });
+
+  it("posts an IT for an ITR order with serials per line", async () => {
+    prismaDelivery.findFirst.mockResolvedValue(delivery());
+    stubSerials([
+      { id: "s1", serialNo: "SN1", modelId: "mA", skuCode: "SKU-A" },
+      { id: "s2", serialNo: "SN2", modelId: "mA", skuCode: "SKU-A" },
+      { id: "s3", serialNo: "SN3", modelId: "mB", skuCode: "SKU-B" },
+    ]);
+    const ref = await serviceLayerSapOutbound.createDispatchDocument({
+      tenantId: "t1",
+      deliveryId: "del1",
+      serialNumberIds: ["s1", "s2", "s3"],
+    });
+    expect(ref).toBe(refOut);
+    const [, kind, ismsRef, body] = post.mock.calls[0];
+    expect(kind).toBe("IT");
+    expect(ismsRef).toBe("ORD-1");
+    const b = body as { FromWarehouse: string; ToWarehouse: string; StockTransferLines: Record<string, unknown>[] };
+    expect(b.FromWarehouse).toBe("WH1");
+    expect(b.ToWarehouse).toBe("BR1");
+    expect(b.StockTransferLines).toHaveLength(2);
+    expect(b.StockTransferLines[0]).toMatchObject({
+      ItemCode: "SKU-A",
+      Quantity: 2,
+      BaseType: "InventoryTransferRequest",
+      BaseEntry: 11,
+      BaseLine: 0,
+    });
+    expect(b.StockTransferLines[1]).toMatchObject({ ItemCode: "SKU-B", BaseLine: 1 });
+  });
+
+  it("posts a DR for an SO order", async () => {
+    prismaDelivery.findFirst.mockResolvedValue(
+      delivery({}, {
+        sapDocType: "SO",
+        sapDocEntry: 22,
+        details: [{ id: "d1", modelId: "mA", quantity: 1, approvedQty: 1, sapLineNum: 3, model: { skuCode: "SKU-A" } }],
+      }),
+    );
+    stubSerials([{ id: "s1", serialNo: "SN1", modelId: "mA", skuCode: "SKU-A" }]);
+    await serviceLayerSapOutbound.createDispatchDocument({
+      tenantId: "t1",
+      deliveryId: "del1",
+      serialNumberIds: ["s1"],
+    });
+    const [, kind, , body] = post.mock.calls[0];
+    expect(kind).toBe("DR");
+    const b = body as { CardCode: string; DocumentLines: Record<string, unknown>[] };
+    expect(b.CardCode).toBe("C100");
+    expect(b.DocumentLines[0]).toMatchObject({ WarehouseCode: "WH1", BaseEntry: 22, BaseLine: 3 });
+  });
+
+  it("fills two details of the same model in detail order", async () => {
+    prismaDelivery.findFirst.mockResolvedValue(
+      delivery({}, {
+        details: [
+          { id: "d1", modelId: "mA", quantity: 1, approvedQty: 1, sapLineNum: 0, model: { skuCode: "SKU-A" } },
+          { id: "d2", modelId: "mA", quantity: 2, approvedQty: 2, sapLineNum: 1, model: { skuCode: "SKU-A" } },
+        ],
+      }),
+    );
+    stubSerials(
+      ["1", "2", "3"].map((n) => ({ id: `s${n}`, serialNo: `SN${n}`, modelId: "mA", skuCode: "SKU-A" })),
+    );
+    await serviceLayerSapOutbound.createDispatchDocument({
+      tenantId: "t1",
+      deliveryId: "del1",
+      serialNumberIds: ["s1", "s2", "s3"],
+    });
+    const lines = (post.mock.calls[0][3] as { StockTransferLines: { BaseLine: number; Quantity: number }[] })
+      .StockTransferLines;
+    expect(lines.map((l) => [l.BaseLine, l.Quantity])).toEqual([
+      [0, 1],
+      [1, 2],
+    ]);
+  });
+
+  it("refuses a legacy order without a SAP document", async () => {
+    prismaDelivery.findFirst.mockResolvedValue(delivery({}, { sapDocEntry: null }));
+    stubSerials([]);
+    await expect(
+      serviceLayerSapOutbound.createDispatchDocument({ tenantId: "t1", deliveryId: "del1", serialNumberIds: ["s1"] }),
+    ).rejects.toThrow("This order was approved before SAP posting was enabled. Re-approve or post it in SAP.");
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("falls back to routing for the source warehouse when the delivery has none", async () => {
+    prismaDelivery.findFirst.mockResolvedValue(delivery({ sourceWarehouseId: null, sourceWarehouse: null }));
+    routingCtx.mockResolvedValue(ctx("CONSIGNMENT"));
+    stubSerials([
+      { id: "s1", serialNo: "SN1", modelId: "mA", skuCode: "SKU-A" },
+      { id: "s2", serialNo: "SN2", modelId: "mA", skuCode: "SKU-A" },
+      { id: "s3", serialNo: "SN3", modelId: "mB", skuCode: "SKU-B" },
+    ]);
+    await serviceLayerSapOutbound.createDispatchDocument({
+      tenantId: "t1",
+      deliveryId: "del1",
+      serialNumberIds: ["s1", "s2", "s3"],
+    });
+    expect((post.mock.calls[0][3] as { FromWarehouse: string }).FromWarehouse).toBe("WH1");
+  });
+});
+
+describe("serviceLayerSapOutbound.createDeliveryTransferDocument", () => {
+  const transferJob = { id: "j9", referenceId: "tr1" } as SapIntegrationJob;
+  const transferPrisma = dbClient.prisma as unknown as {
+    deliveryTransfer: { findFirst: jest.Mock; update: jest.Mock; updateMany: jest.Mock };
+  };
+
+  function transfer(over: Record<string, unknown> = {}) {
+    return {
+      transferNo: "UTR-1",
+      status: "IN_TRANSIT",
+      sapDocEntry: null,
+      sapDocNo: null,
+      releaseBranch: { sapCode: "BR1" },
+      releaseWarehouse: null,
+      receiveBranch: null,
+      receiveWarehouse: { code: "MAIN" },
+      lines: [
+        { serialNumber: { serialNo: "SN2" }, model: { skuCode: "SKU-B" } },
+        { serialNumber: { serialNo: "SN1" }, model: { skuCode: "SKU-A" } },
+        { serialNumber: { serialNo: "SN3" }, model: { skuCode: "SKU-A" } },
+      ],
+      ...over,
+    };
+  }
+
+  it("posts an IT from the release code to the receive code and saves the SAP number", async () => {
+    transferPrisma.deliveryTransfer.findFirst.mockResolvedValue(transfer());
+    post.mockResolvedValue({ docEntry: 31, docNum: 700, docDate: "2026-10-21", displayNo: "700", lineNums: [] });
+
+    const ref = await serviceLayerSapOutbound.createDeliveryTransferDocument({
+      tenantId: "t1",
+      userId: "u1",
+      job: transferJob,
+    });
+
+    expect(ref).toBe("IT-700");
+    const [, kind, ismsRef, body] = post.mock.calls[0];
+    expect(kind).toBe("IT");
+    expect(ismsRef).toBe("UTR-1");
+    expect(body).toMatchObject({ U_ISMS_PO_No: "UTR-1", FromWarehouse: "BR1", ToWarehouse: "MAIN" });
+    const lines = (body as { StockTransferLines: Record<string, unknown>[] }).StockTransferLines;
+    expect(lines.map((l) => [l.ItemCode, l.Quantity])).toEqual([
+      ["SKU-A", 2],
+      ["SKU-B", 1],
+    ]);
+    expect(lines[0]).not.toHaveProperty("BaseEntry");
+    expect(transferPrisma.deliveryTransfer.update).toHaveBeenCalledWith({
+      where: { id: "tr1" },
+      data: { sapDocEntry: 31, sapDocNo: "700", sapDocDate: new Date("2026-10-21"), sapError: null },
+    });
+    expect(sapIntegrationRepository.markCompleted).toHaveBeenCalledWith("j9", "IT-700");
+  });
+
+  it("uses the warehouse code on release and the branch code on receive", async () => {
+    transferPrisma.deliveryTransfer.findFirst.mockResolvedValue(
+      transfer({
+        releaseBranch: null,
+        releaseWarehouse: { code: "WH2" },
+        receiveBranch: { sapCode: "BR9" },
+        receiveWarehouse: null,
+      }),
+    );
+    post.mockResolvedValue({ docEntry: 1, docNum: 1, docDate: "2026-10-21", displayNo: "1", lineNums: [] });
+    await serviceLayerSapOutbound.createDeliveryTransferDocument({ tenantId: "t1", job: transferJob });
+    expect(post.mock.calls[0][3]).toMatchObject({ FromWarehouse: "WH2", ToWarehouse: "BR9" });
+  });
+
+  it("saves sapError on the transfer and rethrows when SAP refuses", async () => {
+    transferPrisma.deliveryTransfer.findFirst.mockResolvedValue(transfer());
+    post.mockRejectedValue(new Error("Serial SN1 not in BR1"));
+
+    await expect(
+      serviceLayerSapOutbound.createDeliveryTransferDocument({ tenantId: "t1", job: transferJob }),
+    ).rejects.toThrow("Serial SN1 not in BR1");
+    expect(transferPrisma.deliveryTransfer.updateMany).toHaveBeenCalledWith({
+      where: { id: "tr1", tenantId: "t1", status: "IN_TRANSIT" },
+      data: { sapError: "Serial SN1 not in BR1" },
+    });
+    expect(transferPrisma.deliveryTransfer.update).not.toHaveBeenCalled();
+    expect(sapIntegrationRepository.markCompleted).not.toHaveBeenCalled();
+  });
+});
+
+describe("serviceLayerSapOutbound.createDeliveryTransferDocument guards", () => {
+  const transferJob = { id: "j9", referenceId: "tr1" } as SapIntegrationJob;
+  const transferPrisma = dbClient.prisma as unknown as {
+    deliveryTransfer: { findFirst: jest.Mock; update: jest.Mock; updateMany: jest.Mock };
+  };
+  const base = {
+    transferNo: "UTR-1",
+    releaseBranch: { sapCode: "BR1" },
+    releaseWarehouse: null,
+    receiveBranch: null,
+    receiveWarehouse: { code: "MAIN" },
+    lines: [{ serialNumber: { serialNo: "SN1" }, model: { skuCode: "SKU-A" } }],
+  };
+
+  it("refuses a transfer that is not in transit (cancelled), without posting", async () => {
+    transferPrisma.deliveryTransfer.findFirst.mockResolvedValue({
+      ...base,
+      status: "CANCELLED",
+      sapDocEntry: null,
+      sapDocNo: null,
+    });
+    await expect(
+      serviceLayerSapOutbound.createDeliveryTransferDocument({ tenantId: "t1", job: transferJob }),
+    ).rejects.toThrow("Only a unit transfer in transit can be posted to SAP");
+    expect(post).not.toHaveBeenCalled();
+    // The cancelled transfer is not marked as failed.
+    expect(transferPrisma.deliveryTransfer.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "tr1", tenantId: "t1", status: "IN_TRANSIT" } }),
+    );
+  });
+
+  it("marks the job done without re-posting when SAP already has the IT", async () => {
+    transferPrisma.deliveryTransfer.findFirst.mockResolvedValue({
+      ...base,
+      status: "IN_TRANSIT",
+      sapDocEntry: 31,
+      sapDocNo: "700",
+    });
+    await expect(
+      serviceLayerSapOutbound.createDeliveryTransferDocument({ tenantId: "t1", job: transferJob }),
+    ).resolves.toBe("IT-700");
+    expect(post).not.toHaveBeenCalled();
+    expect(sapIntegrationRepository.markCompleted).toHaveBeenCalledWith("j9", "IT-700");
+  });
+});
+
+describe("serviceLayerSapOutbound.createDeliveryReturnDocument", () => {
+  const returnJob = { id: "j7", referenceId: "r1" } as SapIntegrationJob;
+  const returnPrisma = dbClient.prisma as unknown as {
+    deliveryReturnRequest: { findFirst: jest.Mock; update: jest.Mock; updateMany: jest.Mock };
+  };
+  const slRequest = sapServiceLayerClient.request as jest.Mock;
+  const complete = completeDeliveryReturn as jest.Mock;
+
+  function returnRequest(sapDocType: "ITR" | "SO", over: Record<string, unknown> = {}) {
+    return {
+      requestNo: "RTN-1",
+      status: "APPROVED",
+      sapDocNo: null,
+      lines: [
+        { serialNumber: { serialNo: "SN1", model: { skuCode: "SKU-A" } } },
+        { serialNumber: { serialNo: "SN2", model: { skuCode: "SKU-B" } } },
+        { serialNumber: { serialNo: "SN3", model: { skuCode: "SKU-A" } } },
+      ],
+      delivery: {
+        sapDocEntry: 44,
+        drNo: "DR-44",
+        sourceWarehouse: { code: "MAIN" },
+        branch: { sapCode: "BR1", dealer: { sapCode: "C001" } },
+        order: { sapDocType },
+      },
+      ...over,
+    };
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    getCreds.mockResolvedValue({ id: "c1" });
+    post.mockResolvedValue({ docEntry: 81, docNum: 900, docDate: "2026-10-21", displayNo: "900", lineNums: [] });
+  });
+
+  it("posts an IT from the branch back to the source warehouse for a consignment delivery", async () => {
+    returnPrisma.deliveryReturnRequest.findFirst.mockResolvedValue(returnRequest("ITR"));
+
+    const ref = await serviceLayerSapOutbound.createDeliveryReturnDocument({ tenantId: "t1", userId: "u2", job: returnJob });
+
+    expect(ref).toBe("IT-900");
+    const [, kind, ismsRef, body] = post.mock.calls[0];
+    expect(kind).toBe("IT");
+    expect(ismsRef).toBe("RTN-1");
+    expect(body).toMatchObject({ U_ISMS_PO_No: "RTN-1", FromWarehouse: "BR1", ToWarehouse: "MAIN" });
+    const lines = (body as { StockTransferLines: Record<string, unknown>[] }).StockTransferLines;
+    expect(lines.map((l) => [l.ItemCode, l.Quantity])).toEqual([
+      ["SKU-A", 2],
+      ["SKU-B", 1],
+    ]);
+    expect(lines[0]).not.toHaveProperty("BaseEntry");
+    expect(slRequest).not.toHaveBeenCalled();
+    expect(returnPrisma.deliveryReturnRequest.update).toHaveBeenCalledWith({
+      where: { id: "r1" },
+      data: { sapDocEntry: 81, sapDocNo: "900", sapDocDate: new Date("2026-10-21"), sapError: null },
+    });
+    expect(complete).toHaveBeenCalledWith({ tenantId: "t1", userId: "u2", returnId: "r1", kind: "IT", sapDocNo: "900" });
+    expect(sapIntegrationRepository.markCompleted).toHaveBeenCalledWith("j7", "IT-900");
+    // The local move runs only after SAP has the document and the reference is saved.
+    expect(returnPrisma.deliveryReturnRequest.update.mock.invocationCallOrder[0]).toBeLessThan(
+      complete.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("posts a Return based on the DR, mapping each serial to its DR line, for an outright delivery", async () => {
+    returnPrisma.deliveryReturnRequest.findFirst.mockResolvedValue(returnRequest("SO"));
+    slRequest.mockResolvedValue({
+      statusCode: 200,
+      rawBody: "",
+      data: {
+        DocEntry: 44,
+        DocumentLines: [
+          { LineNum: 0, ItemCode: "SKU-A", SerialNumbers: [{ InternalSerialNumber: "SN1" }, { InternalSerialNumber: "SN3" }] },
+          { LineNum: 1, ItemCode: "SKU-B", SerialNumbers: [{ InternalSerialNumber: "SN2" }] },
+        ],
+      },
+    });
+
+    const ref = await serviceLayerSapOutbound.createDeliveryReturnDocument({ tenantId: "t1", job: returnJob });
+
+    expect(ref).toBe("RETURN-900");
+    expect(slRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ method: "GET", path: "/DeliveryNotes(44)?$select=DocEntry,DocumentLines" }),
+    );
+    const [, kind, , body] = post.mock.calls[0];
+    expect(kind).toBe("RETURN");
+    expect(body).toMatchObject({ U_ISMS_PO_No: "RTN-1", CardCode: "C001" });
+    const lines = (body as { DocumentLines: Record<string, unknown>[] }).DocumentLines;
+    expect(lines).toEqual([
+      expect.objectContaining({ ItemCode: "SKU-A", WarehouseCode: "MAIN", Quantity: 2, BaseType: 15, BaseEntry: 44, BaseLine: 0 }),
+      expect.objectContaining({ ItemCode: "SKU-B", WarehouseCode: "MAIN", Quantity: 1, BaseType: 15, BaseEntry: 44, BaseLine: 1 }),
+    ]);
+    expect(complete).toHaveBeenCalledWith(expect.objectContaining({ kind: "RETURN", sapDocNo: "900" }));
+  });
+
+  it("refuses a serial that is not on the DR in SAP and saves the error", async () => {
+    returnPrisma.deliveryReturnRequest.findFirst.mockResolvedValue(returnRequest("SO"));
+    slRequest.mockResolvedValue({
+      statusCode: 200,
+      rawBody: "",
+      data: { DocumentLines: [{ LineNum: 0, ItemCode: "SKU-A", SerialNumbers: [{ InternalSerialNumber: "SN1" }] }] },
+    });
+
+    await expect(
+      serviceLayerSapOutbound.createDeliveryReturnDocument({ tenantId: "t1", job: returnJob }),
+    ).rejects.toThrow("Serial SN2 is not on DR# DR-44 in SAP");
+    expect(post).not.toHaveBeenCalled();
+    expect(returnPrisma.deliveryReturnRequest.updateMany).toHaveBeenCalledWith({
+      where: { id: "r1", tenantId: "t1", status: "APPROVED" },
+      data: { sapError: "Serial SN2 is not on DR# DR-44 in SAP" },
+    });
+  });
+
+  it("saves sapError on the request and rethrows when SAP refuses, without moving units", async () => {
+    returnPrisma.deliveryReturnRequest.findFirst.mockResolvedValue(returnRequest("ITR"));
+    post.mockRejectedValue(new Error("Serial SN1 not in BR1"));
+
+    await expect(
+      serviceLayerSapOutbound.createDeliveryReturnDocument({ tenantId: "t1", job: returnJob }),
+    ).rejects.toThrow("Serial SN1 not in BR1");
+    expect(returnPrisma.deliveryReturnRequest.updateMany).toHaveBeenCalledWith({
+      where: { id: "r1", tenantId: "t1", status: "APPROVED" },
+      data: { sapError: "Serial SN1 not in BR1" },
+    });
+    expect(returnPrisma.deliveryReturnRequest.update).not.toHaveBeenCalled();
+    expect(complete).not.toHaveBeenCalled();
+    expect(sapIntegrationRepository.markCompleted).not.toHaveBeenCalled();
+  });
+
+  it("says SAP posted when only the local move failed, and only touches an APPROVED request", async () => {
+    returnPrisma.deliveryReturnRequest.findFirst.mockResolvedValue(returnRequest("ITR"));
+    complete.mockRejectedValueOnce(new Error("Unit SN3 is on transfer UTR-9"));
+
+    await expect(
+      serviceLayerSapOutbound.createDeliveryReturnDocument({ tenantId: "t1", job: returnJob }),
+    ).rejects.toThrow("SAP posted IT 900; moving units failed: Unit SN3 is on transfer UTR-9");
+    expect(returnPrisma.deliveryReturnRequest.updateMany).toHaveBeenCalledWith({
+      where: { id: "r1", tenantId: "t1", status: "APPROVED" },
+      data: { sapError: "SAP posted IT 900; moving units failed: Unit SN3 is on transfer UTR-9" },
+    });
+    expect(sapIntegrationRepository.markCompleted).not.toHaveBeenCalled();
+  });
+
+  it("refuses a cancelled or undecided return without posting", async () => {
+    for (const status of ["CANCELLED", "PENDING_APPROVAL"]) {
+      returnPrisma.deliveryReturnRequest.findFirst.mockResolvedValue(returnRequest("ITR", { status }));
+      await expect(
+        serviceLayerSapOutbound.createDeliveryReturnDocument({ tenantId: "t1", job: returnJob }),
+      ).rejects.toThrow("Only an approved return can be posted to SAP");
+    }
+    expect(post).not.toHaveBeenCalled();
+    expect(complete).not.toHaveBeenCalled();
+    expect(sapIntegrationRepository.markCompleted).not.toHaveBeenCalled();
+  });
+
+  it("marks the job done without posting or writing sapError for a completed request", async () => {
+    returnPrisma.deliveryReturnRequest.findFirst.mockResolvedValue(
+      returnRequest("SO", { status: "COMPLETED", sapDocNo: "900" }),
+    );
+    const ref = await serviceLayerSapOutbound.createDeliveryReturnDocument({ tenantId: "t1", job: returnJob });
+    expect(ref).toBe("RETURN-900");
+    expect(post).not.toHaveBeenCalled();
+    expect(returnPrisma.deliveryReturnRequest.updateMany).not.toHaveBeenCalled();
+    expect(sapIntegrationRepository.markCompleted).toHaveBeenCalledWith("j7", "RETURN-900");
   });
 });

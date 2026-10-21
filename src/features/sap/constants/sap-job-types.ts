@@ -34,6 +34,8 @@ export const SAP_REFERENCE_TYPES = {
   BranchOrder: "BranchOrder",
   BranchDelivery: "BranchDelivery",
   BranchPullout: "BranchPullout",
+  DeliveryTransfer: "DeliveryTransfer",
+  DeliveryReturnRequest: "DeliveryReturnRequest",
   StockVariance: "StockVariance",
   StockCountSession: "StockCountSession",
 } as const;

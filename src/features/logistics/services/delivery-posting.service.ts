@@ -1,3 +1,4 @@
+import type { SapOrderDocType } from "@prisma/client";
 import { Prisma } from "@/lib/database/generated/prisma/client";
 
 import {
@@ -11,26 +12,40 @@ import {
   assertExclusiveClaim,
   planAccept,
   planDispatch,
+  planDeliverySettle,
   planDispatchBranchPlacement,
   planReject,
+  receiptLineState,
+  RETURN_WAITING_ERROR,
   selectDispatchCandidates,
   type BranchUnitStatus,
   type DeliveryPostingView,
+  type DeliveryReceiptLineState,
   type WarehouseHold,
 } from "@/features/logistics/services/delivery-posting.planner";
+import { resolveSapOutboundPort } from "@/features/sap/adapters/resolve-sap-outbound";
 import { authorizeDeliveryScope } from "@/features/logistics/services/delivery-scope";
-import type { PostingActor } from "@/features/logistics/services/posting-support";
-import { sapService } from "@/features/sap/services/sap.service";
+import {
+  assertNotOnOpenTransfer,
+  findOpenTransferLines,
+} from "@/features/logistics/services/delivery-transfer-open-lines";
+import {
+  hasOpenReturn,
+  lockDeliveryRow,
+  txWorkflowCodeId,
+} from "@/features/logistics/services/delivery-settle";
+import type { PostingActor, PostingDb } from "@/features/logistics/services/posting-support";
 
 /**
  * ISMS warehouse and branch movements for a delivery.
  *
- * Process II ends when Supply Planning approves: the approved_order job is the
- * stand-in for SAP ITR (OWTQ) + SO (ORDR) and only stores a document reference.
- * Local BranchDelivery is Process III.A entry. These posts run later, in one
- * transaction each: dispatch (warehouse → DIT), accept (DIT → STK), and
- * reject-after-dispatch (unaccepted DIT back to the warehouse location on the
- * line). Return-to-warehouse also queues Inventory Transfer (OWTR) for SAP.
+ * Process II ends when Supply Planning approves: the approved_order job posts
+ * the live SAP ITR (OWTQ, consignment) or SO (ORDR, outright) and opens the
+ * local BranchDelivery (Process III.A entry). Dispatch posts the SAP IT or DR
+ * copied from that document first, then moves warehouse → DIT; accept moves
+ * DIT → STK per unit, and units not accepted go on a unit transfer.
+ * Reject only closes an undispatched delivery; in-transit units go back through
+ * a return request (delivery-return.service), which posts SAP first.
  */
 
 async function workflowCodeId(
@@ -57,7 +72,14 @@ function asBranchStatus(code: string | null | undefined): BranchUnitStatus | nul
   return "OTHER";
 }
 
-async function loadDelivery(tenantId: string, deliveryId: string): Promise<DeliveryPostingView | null> {
+export type LoadedDelivery = DeliveryPostingView & {
+  sapDocEntry: number | null;
+  drNo: string | null;
+  /** SAP document type stored on the order at approval; null on orders approved before SAP posting. */
+  orderSapDocType: SapOrderDocType | null;
+};
+
+export async function loadDelivery(tenantId: string, deliveryId: string): Promise<LoadedDelivery | null> {
   const delivery = await prisma.branchDelivery.findFirst({
     where: { id: deliveryId, tenantId },
     include: {
@@ -65,6 +87,7 @@ async function loadDelivery(tenantId: string, deliveryId: string): Promise<Deliv
       lines: { select: { serialNumberId: true, warehouseLocationFromId: true } },
       order: {
         select: {
+          sapDocType: true,
           details: { select: { modelId: true, quantity: true, approvedQty: true } },
         },
       },
@@ -107,6 +130,9 @@ async function loadDelivery(tenantId: string, deliveryId: string): Promise<Deliv
     id: delivery.id,
     branchId: delivery.branchId,
     sourceWarehouseId: delivery.sourceWarehouseId,
+    sapDocEntry: delivery.sapDocEntry,
+    drNo: delivery.drNo,
+    orderSapDocType: delivery.order?.sapDocType ?? null,
     status: known,
     lines: delivery.lines.map((line) => ({
       serialNumberId: line.serialNumberId,
@@ -115,6 +141,37 @@ async function loadDelivery(tenantId: string, deliveryId: string): Promise<Deliv
     })),
     requirements,
   };
+}
+
+const SAP_DISPATCH_POSTED_ACTION = "delivery.sap_dispatch_posted";
+
+/** A retry must dispatch the serials already on the SAP document. No audit row means posted before this guard. */
+async function assertSameSerialsAsSapPost(
+  tenantId: string,
+  deliveryId: string,
+  drNo: string | null,
+  requestedIds: string[],
+) {
+  const posted = await prisma.auditLog.findFirst({
+    where: { tenantId, entityType: "BranchDelivery", entityId: deliveryId, action: SAP_DISPATCH_POSTED_ACTION },
+    orderBy: { createdAt: "desc" },
+    select: { metadata: true },
+  });
+  const metadata = posted?.metadata as { serialNumberIds?: unknown } | null | undefined;
+  const postedIds = Array.isArray(metadata?.serialNumberIds)
+    ? (metadata.serialNumberIds as string[]).slice().sort()
+    : null;
+  if (!postedIds) return;
+  if (postedIds.length === requestedIds.length && postedIds.every((id, i) => id === requestedIds[i])) return;
+
+  const rows = await prisma.serialNumber.findMany({
+    where: { tenantId, id: { in: postedIds } },
+    select: { serialNo: true },
+    orderBy: { serialNo: "asc" },
+  });
+  throw new Error(
+    `SAP already has DR# ${drNo ?? ""} for this delivery with different serials. Dispatch the same serials: ${rows.map((r) => r.serialNo).join(", ")}.`,
+  );
 }
 
 async function loadHolds(tenantId: string, serialNumberIds: string[]): Promise<WarehouseHold[]> {
@@ -151,6 +208,61 @@ export interface DeliveryReceiptLine {
   modelName: string;
   /** Still DIT at the delivery branch, so it can be accepted or returned. */
   inTransit: boolean;
+  /** Held by a pending or approved unit transfer: not acceptable here. */
+  openTransfer: { id: string; transferNo: string } | null;
+  /** Group in the receive dialog; TRANSFERRED units left on one of this delivery's unit transfers. */
+  state: DeliveryReceiptLineState;
+}
+
+/**
+ * Re-derives the delivery status after units left it by another route (unit
+ * transfer receive, return). Runs inside the caller's transaction. Returns the
+ * new status, or null when it did not change.
+ */
+export async function finalizeDeliveryIfSettled(
+  tx: PostingDb,
+  tenantId: string,
+  deliveryId: string,
+): Promise<"accepted" | "partial" | null> {
+  // Serialises concurrent settles (two transfer receives, or a receive and an accept).
+  await lockDeliveryRow(tx, tenantId, deliveryId);
+  const delivery = await tx.branchDelivery.findFirst({
+    where: { id: deliveryId, tenantId },
+    select: {
+      branchId: true,
+      acceptedAt: true,
+      statusCodeId: true,
+      statusCode: { select: { code: true } },
+      lines: { select: { serialNumberId: true } },
+    },
+  });
+  if (!delivery) return null;
+  const current = delivery.statusCode.code;
+  if (current !== "pending" && current !== "partial") return null;
+
+  const stillInTransit = delivery.lines.length
+    ? await tx.branchInventory.count({
+        where: {
+          tenantId,
+          branchId: delivery.branchId,
+          serialNumberId: { in: delivery.lines.map((line) => line.serialNumberId) },
+          statusCode: { code: "DIT" },
+        },
+      })
+    : 0;
+  const next = planDeliverySettle({ totalLines: delivery.lines.length, stillInTransit });
+  if (!next || next === current) return null;
+
+  const nextCodeId = await txWorkflowCodeId(tx, tenantId, next);
+  const claimed = await tx.branchDelivery.updateMany({
+    where: { id: deliveryId, tenantId, statusCodeId: delivery.statusCodeId },
+    data: {
+      statusCodeId: nextCodeId,
+      ...(next === "accepted" && !delivery.acceptedAt ? { acceptedAt: new Date() } : {}),
+    },
+  });
+  assertExclusiveClaim(claimed.count, 1, "This delivery was updated by someone else");
+  return next;
 }
 
 export const deliveryPostingService = {
@@ -181,16 +293,44 @@ export const deliveryPostingService = {
     if (!header) throw new Error("Delivery not found");
 
     const statusBySerial = new Map(preview.lines.map((line) => [line.serialNumberId, line.branchStatus]));
+    const serialIds = header.lines.map((line) => line.serialNumberId);
+    const [openTransfers, receivedOnTransfer] = await Promise.all([
+      findOpenTransferLines(prisma, actor.tenantId, serialIds),
+      serialIds.length
+        ? prisma.deliveryTransferLine.findMany({
+            where: {
+              serialNumberId: { in: serialIds },
+              status: "RECEIVED",
+              transfer: { tenantId: actor.tenantId, deliveryId },
+            },
+            select: { serialNumberId: true },
+          })
+        : Promise.resolve([]),
+    ]);
+    const transferredIds = new Set(receivedOnTransfer.map((row) => row.serialNumberId));
+    const transferBySerial = new Map(
+      openTransfers.map((row) => [row.serialNumberId, { id: row.transferId, transferNo: row.transferNo }]),
+    );
     return {
       deliveryNo: header.deliveryNo,
       status: preview.status,
-      lines: header.lines.map((line) => ({
-        serialNumberId: line.serialNumberId,
-        serialNo: line.serialNumber.serialNo,
-        skuCode: line.serialNumber.model.skuCode,
-        modelName: line.serialNumber.model.name,
-        inTransit: statusBySerial.get(line.serialNumberId) === "DIT",
-      })),
+      lines: header.lines.map((line) => {
+        const branchStatus = statusBySerial.get(line.serialNumberId) ?? null;
+        const openTransfer = transferBySerial.get(line.serialNumberId) ?? null;
+        return {
+          serialNumberId: line.serialNumberId,
+          serialNo: line.serialNumber.serialNo,
+          skuCode: line.serialNumber.model.skuCode,
+          modelName: line.serialNumber.model.name,
+          inTransit: branchStatus === "DIT",
+          openTransfer,
+          state: receiptLineState({
+            branchStatus,
+            onOpenTransfer: openTransfer !== null,
+            receivedOnTransfer: transferredIds.has(line.serialNumberId),
+          }),
+        };
+      }),
     };
   },
 
@@ -262,9 +402,10 @@ export const deliveryPostingService = {
   async dispatch(input: {
     tenantId: string;
     userId: string;
+    permissions?: string[];
     deliveryId: string;
     serialNumberIds: string[];
-  }): Promise<{ movedCount: number }> {
+  }): Promise<{ movedCount: number; drNo: string | null }> {
     const preview = await loadDelivery(input.tenantId, input.deliveryId);
     if (!preview) throw new Error("Delivery not found");
     const holds = await loadHolds(input.tenantId, input.serialNumberIds);
@@ -277,6 +418,41 @@ export const deliveryPostingService = {
     });
     if (branch?.primaryWarehouseId && plan.warehouseId !== branch.primaryWarehouseId) {
       throw new Error("One or more serials are missing, already allocated, or not in that warehouse");
+    }
+
+    await authorizeDeliveryScope(input, preview);
+
+    // SAP first: stock only moves once SAP has the IT or DR. The reference is saved
+    // straight away so a retry after a failed local move does not post a second one.
+    let drNo = preview.drNo;
+    const requestedIds = [...plan.moves.map((move) => move.serialNumberId)].sort();
+    if (preview.sapDocEntry == null) {
+      const ref = await resolveSapOutboundPort().createDispatchDocument({
+        tenantId: input.tenantId,
+        deliveryId: input.deliveryId,
+        serialNumberIds: requestedIds,
+      });
+      await prisma.$transaction(async (tx) => {
+        await tx.branchDelivery.update({
+          where: { id: input.deliveryId },
+          // SAP can omit DocDate: an empty string would store an Invalid Date.
+          data: { sapDocEntry: ref.docEntry, drNo: ref.displayNo, drDate: ref.docDate ? new Date(ref.docDate) : null },
+        });
+        // Remembers which serials SAP transferred, so a retry cannot move different ones.
+        await tx.auditLog.create({
+          data: {
+            tenantId: input.tenantId,
+            userId: input.userId,
+            action: SAP_DISPATCH_POSTED_ACTION,
+            entityType: "BranchDelivery",
+            entityId: input.deliveryId,
+            metadata: { sapDocEntry: ref.docEntry, drNo: ref.displayNo, serialNumberIds: requestedIds },
+          },
+        });
+      });
+      drNo = ref.displayNo;
+    } else {
+      await assertSameSerialsAsSapPost(input.tenantId, input.deliveryId, drNo, requestedIds);
     }
 
     const [pendingCodeId, ditCodeId] = await Promise.all([
@@ -428,7 +604,7 @@ export const deliveryPostingService = {
       throw claimError(error);
     }
 
-    return { movedCount: plan.moves.length };
+    return { movedCount: plan.moves.length, drNo };
   },
 
   async accept(input: {
@@ -441,7 +617,14 @@ export const deliveryPostingService = {
     const preview = await loadDelivery(input.tenantId, input.deliveryId);
     if (!preview) throw new Error("Delivery not found");
     await authorizeDeliveryScope(input, preview);
-    const plan = planAccept(preview, input.serialNumberIds ?? null);
+    // Units on an open unit transfer are settled by that transfer, not here.
+    const requestedIds =
+      input.serialNumberIds ??
+      preview.lines.filter((line) => line.branchStatus === "DIT").map((line) => line.serialNumberId);
+    await assertNotOnOpenTransfer(prisma, input.tenantId, requestedIds);
+    const plan = planAccept(preview, input.serialNumberIds ?? null, {
+      openReturn: await hasOpenReturn(prisma, input.tenantId, input.deliveryId),
+    });
     if (!plan.ok) throw new Error(plan.error);
 
     if (plan.idempotent && plan.moveSerialIds.length === 0 && preview.status === plan.nextStatus) {
@@ -459,10 +642,18 @@ export const deliveryPostingService = {
       ),
     );
 
+    let finalStatus: "accepted" | "partial" = plan.nextStatus;
     try {
     await prisma.$transaction(async (tx) => {
+      // Lock order everywhere is serials, then the delivery row. The row lock is the
+      // one a return request takes, so accept and a new request cannot interleave.
+      if (plan.moveSerialIds.length > 0) await lockSerialNumbers(tx, plan.moveSerialIds);
+      await lockDeliveryRow(tx, input.tenantId, input.deliveryId);
+      if (await hasOpenReturn(tx, input.tenantId, input.deliveryId)) {
+        throw new Error(RETURN_WAITING_ERROR);
+      }
       if (plan.moveSerialIds.length > 0) {
-        await lockSerialNumbers(tx, plan.moveSerialIds);
+        await assertNotOnOpenTransfer(tx, input.tenantId, plan.moveSerialIds);
         const moved = await tx.branchInventory.updateMany({
           where: {
             tenantId: input.tenantId,
@@ -491,6 +682,8 @@ export const deliveryPostingService = {
         },
       });
       assertExclusiveClaim(claimed.count, 1, "Delivery could not be accepted");
+      // Units that left on a unit transfer no longer hold the delivery open.
+      finalStatus = (await finalizeDeliveryIfSettled(tx, input.tenantId, input.deliveryId)) ?? plan.nextStatus;
 
       if (plan.moveSerialIds.length > 0) {
         const header = await tx.branchDelivery.findFirst({
@@ -518,7 +711,7 @@ export const deliveryPostingService = {
           entityId: input.deliveryId,
           metadata: {
             movedCount: plan.moveSerialIds.length,
-            status: plan.nextStatus,
+            status: finalStatus,
             idempotent: plan.idempotent,
           },
         },
@@ -531,10 +724,11 @@ export const deliveryPostingService = {
     return {
       movedCount: plan.moveSerialIds.length,
       idempotent: plan.idempotent,
-      status: plan.nextStatus,
+      status: finalStatus,
     };
   },
 
+  /** Closes a delivery that was never dispatched. Dispatched units go back through a return request. */
   async reject(input: {
     tenantId: string;
     userId: string;
@@ -551,118 +745,34 @@ export const deliveryPostingService = {
       return { returnedCount: 0, idempotent: true };
     }
 
-    const rejectedCodeId = await workflowCodeId(input.tenantId, "rejected");
-    const ditCodeId = await inventoryCodeId(input.tenantId, "DIT");
-    const currentCode =
-      preview.status === "pending" || preview.status === "partial" || preview.status === "approved"
-        ? preview.status
-        : "requested";
-    const currentCodeId = await reasonStatusService.requireCodeId(
-      input.tenantId,
-      "delivery_workflow",
-      currentCode,
-    );
-
-    let deliveryNo: string | undefined;
+    const [rejectedCodeId, approvedCodeId] = await Promise.all([
+      workflowCodeId(input.tenantId, "rejected"),
+      workflowCodeId(input.tenantId, "approved"),
+    ]);
 
     try {
-    await prisma.$transaction(async (tx) => {
-      const claimed = await tx.branchDelivery.updateMany({
-        where: {
-          id: input.deliveryId,
-          tenantId: input.tenantId,
-          statusCodeId: currentCodeId,
-        },
-        data: { statusCodeId: rejectedCodeId },
-      });
-      assertExclusiveClaim(claimed.count, 1, "Delivery could not be rejected");
-
-      if (plan.returns.length > 0) {
-        const returnIds = plan.returns.map((row) => row.serialNumberId);
-        await lockSerialNumbers(tx, returnIds);
-        const occupied = await loadCurrentPlacements(tx, returnIds);
-        assertExclusivePlacement({
-          placements: occupied,
-          replacingIds: occupied
-            .filter(
-              (row) =>
-                row.table === "branch" &&
-                row.branchId === preview.branchId &&
-                row.statusCode === "DIT",
-            )
-            .map((row) => row.id),
+      await prisma.$transaction(async (tx) => {
+        const claimed = await tx.branchDelivery.updateMany({
+          where: { id: input.deliveryId, tenantId: input.tenantId, statusCodeId: approvedCodeId },
+          data: { statusCodeId: rejectedCodeId },
         });
-        const removed = await tx.branchInventory.deleteMany({
-          where: {
+        assertExclusiveClaim(claimed.count, 1, "Delivery could not be rejected");
+
+        await tx.auditLog.create({
+          data: {
             tenantId: input.tenantId,
-            branchId: preview.branchId,
-            statusCodeId: ditCodeId,
-            serialNumberId: { in: plan.returns.map((row) => row.serialNumberId) },
+            userId: input.userId,
+            action: "delivery.rejected",
+            entityType: "BranchDelivery",
+            entityId: input.deliveryId,
+            metadata: { returnedCount: 0, ...(input.notes ? { notes: input.notes } : {}) },
           },
         });
-        assertExclusiveClaim(
-          removed.count,
-          plan.returns.length,
-          "In-transit serials could not be returned to the warehouse",
-        );
-
-        await tx.warehouseInventory.createMany({
-          data: plan.returns.map((row) => ({
-            tenantId: input.tenantId,
-            serialNumberId: row.serialNumberId,
-            warehouseLocationId: row.warehouseLocationId,
-            systemStatus: "Returned from delivery",
-            systemUpdatedAt: new Date(),
-          })),
-        });
-
-        const header = await tx.branchDelivery.findFirst({
-          where: { id: input.deliveryId, tenantId: input.tenantId },
-          select: { deliveryNo: true },
-        });
-        deliveryNo = header?.deliveryNo;
-        await tx.serialNumberHistory.createMany({
-          data: plan.returns.map((row) => ({
-            tenantId: input.tenantId,
-            serialNumberId: row.serialNumberId,
-            txnType: "delivery" as const,
-            details: `Returned to warehouse from ${header?.deliveryNo ?? input.deliveryId}`,
-            status: "Warehouse",
-            createdById: input.userId,
-          })),
-        });
-      }
-
-      await tx.auditLog.create({
-        data: {
-          tenantId: input.tenantId,
-          userId: input.userId,
-          action: "delivery.rejected",
-          entityType: "BranchDelivery",
-          entityId: input.deliveryId,
-          metadata: {
-            returnedCount: plan.returns.length,
-            ...(input.notes ? { notes: input.notes } : {}),
-          },
-        },
       });
-    });
     } catch (error) {
       throw claimError(error);
     }
 
-    // Queue SAP Inventory Transfer (OWTR) for return-to-warehouse (mock until live).
-    // Does not change local STK/DIT outcome above.
-    if (plan.returns.length > 0) {
-      await sapService.emitPartialDeliveryReturn(input.tenantId, {
-        deliveryId: input.deliveryId,
-        deliveryNo,
-        branchId: preview.branchId,
-        returnedSerialIds: plan.returns.map((row) => row.serialNumberId),
-        priorStatus: preview.status,
-      });
-    }
-
-    return { returnedCount: plan.returns.length, idempotent: false };
+    return { returnedCount: 0, idempotent: false };
   },
 };

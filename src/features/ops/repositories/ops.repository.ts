@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/database/client";
+import { latestReturnInclude } from "@/features/logistics/repositories/logistics.repository";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 
 export const opsRepository = {
@@ -11,6 +12,7 @@ export const opsRepository = {
       include: {
         branch: { select: { name: true, sapCode: true } },
         statusCode: { select: { id: true, code: true, name: true } },
+        ...latestReturnInclude,
       },
       orderBy: { createdAt: "desc" },
     });

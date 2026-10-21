@@ -8,11 +8,27 @@ import {
   LOGISTICS_CREATE,
   LOGISTICS_DELIVERY_DISPATCH,
   LOGISTICS_DELIVERY_RECEIVE,
+  LOGISTICS_DELIVERY_RETURN_APPROVE,
+  LOGISTICS_DELIVERY_RETURN_REQUEST,
+  LOGISTICS_DELIVERY_TRANSFER_APPROVE,
+  LOGISTICS_DELIVERY_TRANSFER_CREATE,
+  LOGISTICS_DELIVERY_TRANSFER_RECEIVE,
   LOGISTICS_MANAGE,
   LOGISTICS_PAGE_PERMISSIONS,
 } from "@/features/logistics/constants/logistics-permissions";
 import { logisticsRepository } from "@/features/logistics/repositories/logistics.repository";
 import { deliveryPostingService } from "@/features/logistics/services/delivery-posting.service";
+import {
+  deliveryReturnCancelNoteSchema,
+  deliveryReturnDecisionSchema,
+  deliveryReturnReasonSchema,
+  deliveryReturnService,
+  type DeliveryReturnDetail,
+} from "@/features/logistics/services/delivery-return.service";
+import {
+  deliveryTransferService,
+  type DeliveryTransferDraft,
+} from "@/features/logistics/services/delivery-transfer.service";
 import { pulloutPostingService } from "@/features/logistics/services/pullout-posting.service";
 import { transferPostingService } from "@/features/logistics/services/transfer-posting.service";
 import type { PostingActor } from "@/features/logistics/services/posting-support";
@@ -114,6 +130,19 @@ const serialIdsSchema = z.object({
   serialNumberIds: z.array(z.string().min(1)).min(1),
 });
 
+const placeSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("BRANCH"), id: z.string().min(1) }),
+  z.object({ kind: z.literal("WAREHOUSE"), id: z.string().min(1), locationId: z.string().min(1).nullish() }),
+]);
+const deliveryTransferSchema = z.object({
+  deliveryId: z.string().min(1),
+  release: placeSchema,
+  receive: placeSchema,
+  lines: z
+    .array(z.object({ serialNumberId: z.string().min(1), remarks: z.string().max(500).nullish() }))
+    .min(1),
+});
+
 function nextNo(prefix: string) {
   return `${prefix}-${Date.now().toString(36).toUpperCase()}`;
 }
@@ -121,6 +150,7 @@ function nextNo(prefix: string) {
 function revalidateLogisticsPaths() {
   revalidatePath("/logistics");
   revalidatePath("/logistics/deliveries");
+  revalidatePath("/logistics/delivery-transfers");
   revalidatePath("/logistics/transfers");
   revalidatePath("/logistics/pickups");
 }
@@ -266,13 +296,14 @@ export async function dispatchDeliveryAction(id: string, input: unknown) {
     const result = await deliveryPostingService.dispatch({
       tenantId: session.user.tenantId,
       userId: session.user.id,
+      permissions: session.user.permissions,
       deliveryId: id,
       serialNumberIds: parsed.data.serialNumberIds,
     });
     revalidateLogisticsPaths();
     revalidatePath("/inventory");
     revalidatePath("/operations");
-    return { success: true as const, movedCount: result.movedCount };
+    return { success: true as const, movedCount: result.movedCount, drNo: result.drNo };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to dispatch delivery" };
   }
@@ -324,8 +355,9 @@ export async function acceptDeliveryAction(id: string, input?: unknown) {
   }
 }
 
+/** Reject only closes an undispatched delivery, so it belongs to whoever may dispatch it. */
 export async function rejectDeliveryAction(id: string, notes?: string) {
-  const session = await requireAnyPermission([...DELIVERY_RECEIVE_PERMISSIONS]);
+  const session = await requireAnyPermission([...DISPATCH_PERMISSIONS]);
   try {
     const result = await deliveryPostingService.reject({
       tenantId: session.user.tenantId,
@@ -615,3 +647,218 @@ export async function listPulloutReasonCodesAction() {
   return reasonStatusService.listActiveCodes(session.user.tenantId, "pullout_reason");
 }
 
+
+const DELIVERY_TRANSFER_PERMISSIONS = [
+  LOGISTICS_DELIVERY_TRANSFER_CREATE,
+  LOGISTICS_DELIVERY_TRANSFER_APPROVE,
+  LOGISTICS_DELIVERY_TRANSFER_RECEIVE,
+] as const;
+const DELIVERY_TRANSFER_VIEW_PERMISSIONS = [
+  ...LOGISTICS_PAGE_PERMISSIONS,
+  ...DELIVERY_TRANSFER_PERMISSIONS,
+] as const;
+
+function revalidateDeliveryTransfer(id: string) {
+  revalidateLogisticsPaths();
+  revalidatePath(`/logistics/delivery-transfers/${id}`);
+  revalidatePath("/operations");
+  revalidatePath("/inventory");
+}
+
+export async function listDeliveryTransfersAction(input?: { page?: number; limit?: number }) {
+  const session = await requireAnyPermission([...DELIVERY_TRANSFER_VIEW_PERMISSIONS]);
+  return deliveryTransferService.list(session.user.tenantId, {
+    page: input?.page,
+    limit: parseTablePageSize(input?.limit),
+  });
+}
+
+export async function getDeliveryTransferDetailAction(id: string) {
+  const session = await requireAnyPermission([...DELIVERY_TRANSFER_VIEW_PERMISSIONS]);
+  try {
+    const detail = await deliveryTransferService.getDetail(postingActor(session), id);
+    return { success: true as const, detail };
+  } catch (error) {
+    return actionError(error, "Unit transfer not found");
+  }
+}
+
+/** Places and defaults for the create dialog. */
+export async function prepareDeliveryTransferAction(
+  deliveryId: string,
+  serialNumberIds: string[],
+): Promise<{ success: true; draft: DeliveryTransferDraft } | { error: string }> {
+  const session = await requireAnyPermission([LOGISTICS_DELIVERY_TRANSFER_CREATE]);
+  const parsed = z.array(z.string().min(1)).min(1).safeParse(serialNumberIds);
+  if (!parsed.success) return { error: "Select the units to transfer" };
+  try {
+    const draft = await deliveryTransferService.prepare(postingActor(session), deliveryId, parsed.data);
+    return { success: true as const, draft };
+  } catch (error) {
+    return actionError(error, "Failed to load branches and warehouses");
+  }
+}
+
+export async function createDeliveryTransferAction(input: unknown) {
+  const session = await requireAnyPermission([LOGISTICS_DELIVERY_TRANSFER_CREATE]);
+  const parsed = deliveryTransferSchema.safeParse(input);
+  if (!parsed.success) return { error: "Choose branch release, branch receive, and the units to transfer" };
+  try {
+    const row = await deliveryTransferService.create(postingActor(session), parsed.data);
+    revalidateDeliveryTransfer(row.id);
+    return { success: true as const, id: row.id, transferNo: row.transferNo };
+  } catch (error) {
+    return actionError(error, "Failed to create the unit transfer");
+  }
+}
+
+export async function updateDeliveryTransferLineRemarksAction(lineId: string, remarks: string) {
+  const session = await requireAnyPermission([
+    LOGISTICS_DELIVERY_TRANSFER_CREATE,
+    LOGISTICS_DELIVERY_TRANSFER_APPROVE,
+  ]);
+  const parsed = z.string().max(500).safeParse(remarks);
+  if (!parsed.success) return { error: "Remarks can be up to 500 characters" };
+  try {
+    const result = await deliveryTransferService.updateLineRemarks(postingActor(session), lineId, parsed.data);
+    revalidatePath(`/logistics/delivery-transfers/${result.transferId}`);
+    return { success: true as const };
+  } catch (error) {
+    return actionError(error, "Failed to save remarks");
+  }
+}
+
+export async function decideDeliveryTransferLineAction(lineId: string, action: unknown) {
+  const session = await requireAnyPermission([LOGISTICS_DELIVERY_TRANSFER_APPROVE]);
+  const parsed = z.enum(["APPROVE", "REMOVE"]).safeParse(action);
+  if (!parsed.success) return { error: "Invalid action" };
+  try {
+    const result = await deliveryTransferService.decideLine(postingActor(session), lineId, parsed.data);
+    revalidateDeliveryTransfer(result.transferId);
+    return { success: true as const };
+  } catch (error) {
+    return actionError(error, "Failed to update the transfer line");
+  }
+}
+
+export async function releaseDeliveryTransferAction(id: string) {
+  const session = await requireAnyPermission([LOGISTICS_DELIVERY_TRANSFER_APPROVE]);
+  try {
+    const result = await deliveryTransferService.release(postingActor(session), id);
+    revalidateDeliveryTransfer(id);
+    return { success: true as const, ...result };
+  } catch (error) {
+    return actionError(error, "Failed to release the transfer");
+  }
+}
+
+export async function retryDeliveryTransferSapAction(id: string) {
+  const session = await requireAnyPermission([LOGISTICS_DELIVERY_TRANSFER_APPROVE]);
+  try {
+    const result = await deliveryTransferService.retrySap(postingActor(session), id);
+    revalidateDeliveryTransfer(id);
+    return { success: true as const, ...result };
+  } catch (error) {
+    return actionError(error, "Failed to retry the SAP posting");
+  }
+}
+
+export async function cancelDeliveryTransferAction(id: string) {
+  const session = await requireAnyPermission([LOGISTICS_DELIVERY_TRANSFER_APPROVE]);
+  try {
+    await deliveryTransferService.cancelInTransit(postingActor(session), id);
+    revalidateDeliveryTransfer(id);
+    return { success: true as const };
+  } catch (error) {
+    return actionError(error, "Failed to cancel the transfer");
+  }
+}
+
+export async function receiveDeliveryTransferLineAction(lineId: string) {
+  const session = await requireAnyPermission([LOGISTICS_DELIVERY_TRANSFER_RECEIVE]);
+  try {
+    const result = await deliveryTransferService.receiveLine(postingActor(session), lineId);
+    revalidateDeliveryTransfer(result.transferId);
+    return { success: true as const, status: result.status };
+  } catch (error) {
+    return actionError(error, "Failed to receive the unit");
+  }
+}
+
+const DELIVERY_RETURN_PERMISSIONS = [
+  LOGISTICS_DELIVERY_RETURN_REQUEST,
+  LOGISTICS_DELIVERY_RETURN_APPROVE,
+] as const;
+
+function revalidateDeliveryReturn() {
+  revalidateLogisticsPaths();
+  revalidatePath("/operations");
+  revalidatePath("/inventory");
+}
+
+export async function requestDeliveryReturnAction(deliveryId: string, reason: unknown) {
+  const session = await requireAnyPermission([LOGISTICS_DELIVERY_RETURN_REQUEST]);
+  const parsed = deliveryReturnReasonSchema.safeParse(reason);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Enter the reason for the return" };
+  try {
+    const row = await deliveryReturnService.request(postingActor(session), { deliveryId, reason: parsed.data });
+    revalidateDeliveryReturn();
+    return { success: true as const, id: row.id, requestNo: row.requestNo };
+  } catch (error) {
+    return actionError(error, "Failed to request the return");
+  }
+}
+
+export async function getDeliveryReturnAction(
+  deliveryId: string,
+): Promise<{ success: true; detail: DeliveryReturnDetail | null } | { error: string }> {
+  const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS, ...DELIVERY_RETURN_PERMISSIONS]);
+  try {
+    const detail = await deliveryReturnService.getLatestForDelivery(postingActor(session), deliveryId);
+    return { success: true as const, detail };
+  } catch (error) {
+    return actionError(error, "Failed to load the return request");
+  }
+}
+
+export async function decideDeliveryReturnAction(returnId: string, input: unknown) {
+  const session = await requireAnyPermission([LOGISTICS_DELIVERY_RETURN_APPROVE]);
+  const parsed = deliveryReturnDecisionSchema.safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  try {
+    const outcome = await deliveryReturnService.decide(
+      postingActor(session),
+      returnId,
+      parsed.data.action,
+      parsed.data.note,
+    );
+    revalidateDeliveryReturn();
+    return { success: true as const, ...outcome };
+  } catch (error) {
+    return actionError(error, "Failed to decide the return request");
+  }
+}
+
+export async function cancelDeliveryReturnAction(returnId: string, note: unknown) {
+  const session = await requireAnyPermission([LOGISTICS_DELIVERY_RETURN_APPROVE]);
+  const parsed = deliveryReturnCancelNoteSchema.safeParse(note);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Enter the reason for cancelling the return" };
+  try {
+    const outcome = await deliveryReturnService.cancelApproved(postingActor(session), returnId, parsed.data);
+    revalidateDeliveryReturn();
+    return { success: true as const, ...outcome };
+  } catch (error) {
+    return actionError(error, "Failed to cancel the return");
+  }
+}
+
+export async function retryDeliveryReturnSapAction(returnId: string) {
+  const session = await requireAnyPermission([...DELIVERY_RETURN_PERMISSIONS]);
+  try {
+    const outcome = await deliveryReturnService.retrySap(postingActor(session), returnId);
+    revalidateDeliveryReturn();
+    return { success: true as const, ...outcome };
+  } catch (error) {
+    return actionError(error, "Failed to retry the SAP posting");
+  }
+}

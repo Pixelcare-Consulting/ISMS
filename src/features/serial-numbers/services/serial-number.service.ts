@@ -122,6 +122,7 @@ export interface SerialTraceability {
   };
   deliveryReceipt: {
     deliveryNo: string | null;
+    internalDeliveryNo: string | null;
     deliveryDate: Date | null;
     agingDays: number | null;
   };
@@ -670,7 +671,7 @@ export const serialNumberService = {
     const branch = currentInv?.branch ?? null;
 
     const [deliveries, planogram, whsNames, relatedUnitsPreview] = await Promise.all([
-      inventoryRepository.findLatestAcceptedDeliveries(tenantId, [row.id]),
+      inventoryRepository.findLatestDeliveryReceipts(tenantId, [row.id]),
       branch
         ? prisma.branchPlanogram.findFirst({
             where: {
@@ -767,6 +768,7 @@ export const serialNumberService = {
       },
       deliveryReceipt: {
         deliveryNo: delivery?.deliveryNo ?? null,
+        internalDeliveryNo: delivery?.internalDeliveryNo ?? null,
         deliveryDate: delivery?.deliveryDate ?? null,
         agingDays,
       },

@@ -285,5 +285,10 @@ describe("order approval integrity", () => {
       }),
     );
     expect(emitApprovedOrder).toHaveBeenCalledTimes(1);
+    // Only this order's job runs inline, never the tenant's whole backlog.
+    expect(sapService.processPendingJobs).toHaveBeenCalledWith("tenant-1", "user-1", 1, {
+      referenceType: "BranchOrder",
+      referenceId: "order-1",
+    });
   });
 });

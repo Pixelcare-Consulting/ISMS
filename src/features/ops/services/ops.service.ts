@@ -1,4 +1,5 @@
 import { deliveryPostingService } from "@/features/logistics/services/delivery-posting.service";
+import { deliveryReturnService } from "@/features/logistics/services/delivery-return.service";
 import { pulloutPostingService } from "@/features/logistics/services/pullout-posting.service";
 import type { PostingActor } from "@/features/logistics/services/posting-support";
 import { transferPostingService } from "@/features/logistics/services/transfer-posting.service";
@@ -37,18 +38,24 @@ export const opsService = {
     });
   },
 
-  async rejectDelivery(input: {
-    tenantId: string;
-    actorUserId: string;
-    permissions: string[] | undefined;
-    deliveryId: string;
-  }) {
-    return deliveryPostingService.reject({
-      tenantId: input.tenantId,
-      userId: input.actorUserId,
-      permissions: input.permissions,
-      deliveryId: input.deliveryId,
-    });
+  requestDeliveryReturn(actor: PostingActor, input: { deliveryId: string; reason: string }) {
+    return deliveryReturnService.request(actor, input);
+  },
+
+  getDeliveryReturn(actor: PostingActor, deliveryId: string) {
+    return deliveryReturnService.getLatestForDelivery(actor, deliveryId);
+  },
+
+  decideDeliveryReturn(actor: PostingActor, returnId: string, action: "APPROVE" | "REJECT", note?: string | null) {
+    return deliveryReturnService.decide(actor, returnId, action, note);
+  },
+
+  cancelDeliveryReturn(actor: PostingActor, returnId: string, note: string) {
+    return deliveryReturnService.cancelApproved(actor, returnId, note);
+  },
+
+  retryDeliveryReturnSap(actor: PostingActor, returnId: string) {
+    return deliveryReturnService.retrySap(actor, returnId);
   },
 
   createTransfer(

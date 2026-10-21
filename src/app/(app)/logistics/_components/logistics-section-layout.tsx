@@ -22,6 +22,9 @@ function resolveLogisticsTutorial(pathname: string): PageTutorialContent {
 }
 
 function resolveLogisticsDescription(pathname: string): string {
+  if (pathname.startsWith("/logistics/delivery-transfers")) {
+    return "Transfers of delivered units the branch did not accept.";
+  }
   if (pathname.startsWith("/logistics/transfers")) {
     return "Inter-branch transfers of serialized stock.";
   }
@@ -32,6 +35,9 @@ function resolveLogisticsDescription(pathname: string): string {
 }
 
 function resolveLogisticsGuideIcon(pathname: string): LucideIcon {
+  if (pathname.startsWith("/logistics/delivery-transfers")) {
+    return ArrowLeftRight;
+  }
   if (pathname.startsWith("/logistics/transfers")) {
     return ArrowLeftRight;
   }

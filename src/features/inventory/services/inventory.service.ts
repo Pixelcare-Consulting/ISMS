@@ -396,7 +396,7 @@ export const inventoryService = {
       }
     >
   > {
-    const deliveries = await inventoryRepository.findLatestAcceptedDeliveries(
+    const deliveries = await inventoryRepository.findLatestDeliveryReceipts(
       tenantId,
       result.items.map((item) => item.serialNumberId),
     );

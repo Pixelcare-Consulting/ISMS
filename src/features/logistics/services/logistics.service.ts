@@ -14,11 +14,10 @@ export const logisticsService = {
   /**
    * Signed Process II → III.A entry: Manual → Pending SP (TL may optionally
    * edit); Special TL→SP; Auto TL→SP. SP approval queues the approved_order
-   * job (stand-in for SAP ITR/OWTQ + SO/ORDR per mapping PDF). That job stores
-   * a document reference and opens this delivery header as Approved — local
-   * III.A entry before live Inventory Transfer (OWTR) / Delivery Note (ODLN).
-   * It does not move stock, and it does not label the SAP document Consignment
-   * or Outright. Logistics dispatches warehouse serials later.
+   * job, which posts the live SAP ITR (OWTQ, consignment) or SO (ORDR,
+   * outright) and then opens this delivery header as Approved with its source
+   * warehouse. It does not move stock: Logistics dispatches warehouse serials
+   * later, posting the Inventory Transfer (OWTR) or Delivery Note (ODLN).
    */
   async createDeliveryFromApprovedOrder(
     tenantId: string,

@@ -31,6 +31,7 @@ import type {
   OrderListSort,
   OrderListSortDir,
 } from "@/features/orders/repositories/order.repository";
+import { SAP_REFERENCE_TYPES } from "@/features/sap/constants/sap-job-types";
 import { sapService } from "@/features/sap/services/sap.service";
 import { branchQuotaService } from "@/features/branch-quotas/services/branch-quota.service";
 import { planogramRepository } from "@/features/planogram/repositories/planogram.repository";
@@ -884,7 +885,11 @@ export const orderService = {
               quantity: d.quantity,
             })),
           });
-          await sapService.processPendingJobs(tenantId, userId);
+          // Only this order's job: a backlog of other jobs must not delay or block it.
+          await sapService.processPendingJobs(tenantId, userId, 1, {
+            referenceType: SAP_REFERENCE_TYPES.BranchOrder,
+            referenceId: orderId,
+          });
         } catch (e) {
           await auditService.log({
             tenantId,

@@ -8,8 +8,16 @@ import { aorService } from "@/features/aors/services/aor.service";
 import { branchService } from "@/features/branches/services/branch.service";
 import {
   LOGISTICS_CREATE,
+  LOGISTICS_DELIVERY_RETURN_APPROVE,
+  LOGISTICS_DELIVERY_RETURN_REQUEST,
   LOGISTICS_MANAGE,
 } from "@/features/logistics/constants/logistics-permissions";
+import {
+  deliveryReturnCancelNoteSchema,
+  deliveryReturnDecisionSchema,
+  deliveryReturnReasonSchema,
+  type DeliveryReturnDetail,
+} from "@/features/logistics/services/delivery-return.service";
 import { hasPermission, requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
 
 const OPS_CREATE_PERMISSIONS = [LOGISTICS_CREATE, LOGISTICS_MANAGE, "orders.create"] as const;
@@ -111,20 +119,80 @@ export async function acceptDeliveryAction(deliveryId: string, input?: unknown) 
   }
 }
 
-export async function rejectDeliveryAction(deliveryId: string) {
+function opsActor(session: { user: { id: string; tenantId: string; permissions?: string[] } }) {
+  return { tenantId: session.user.tenantId, userId: session.user.id, permissions: session.user.permissions };
+}
+
+function revalidateDeliveryReturn() {
+  revalidatePath("/operations");
+  revalidatePath("/logistics/deliveries");
+  revalidatePath("/inventory");
+}
+
+export async function requestDeliveryReturnAction(deliveryId: string, reason: unknown) {
+  const session = await requireAnyPermission([LOGISTICS_DELIVERY_RETURN_REQUEST]);
+  const parsed = deliveryReturnReasonSchema.safeParse(reason);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Enter the reason for the return" };
+  try {
+    const row = await opsService.requestDeliveryReturn(opsActor(session), { deliveryId, reason: parsed.data });
+    revalidateDeliveryReturn();
+    return { success: true as const, id: row.id, requestNo: row.requestNo };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to request the return" };
+  }
+}
+
+export async function getDeliveryReturnAction(
+  deliveryId: string,
+): Promise<{ success: true; detail: DeliveryReturnDetail | null } | { error: string }> {
   const session = await requirePermission("inventory.view");
   try {
-    await opsService.rejectDelivery({
-      tenantId: session.user.tenantId,
-      actorUserId: session.user.id,
-      permissions: session.user.permissions,
-      deliveryId,
-    });
-    revalidatePath("/operations");
-    revalidatePath("/logistics/deliveries");
-    return { success: true };
+    const detail = await opsService.getDeliveryReturn(opsActor(session), deliveryId);
+    return { success: true as const, detail };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "Failed to reject delivery" };
+    return { error: e instanceof Error ? e.message : "Failed to load the return request" };
+  }
+}
+
+export async function decideDeliveryReturnAction(returnId: string, input: unknown) {
+  const session = await requireAnyPermission([LOGISTICS_DELIVERY_RETURN_APPROVE]);
+  const parsed = deliveryReturnDecisionSchema.safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  try {
+    const outcome = await opsService.decideDeliveryReturn(
+      opsActor(session),
+      returnId,
+      parsed.data.action,
+      parsed.data.note,
+    );
+    revalidateDeliveryReturn();
+    return { success: true as const, ...outcome };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to decide the return request" };
+  }
+}
+
+export async function cancelDeliveryReturnAction(returnId: string, note: unknown) {
+  const session = await requireAnyPermission([LOGISTICS_DELIVERY_RETURN_APPROVE]);
+  const parsed = deliveryReturnCancelNoteSchema.safeParse(note);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Enter the reason for cancelling the return" };
+  try {
+    const outcome = await opsService.cancelDeliveryReturn(opsActor(session), returnId, parsed.data);
+    revalidateDeliveryReturn();
+    return { success: true as const, ...outcome };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to cancel the return" };
+  }
+}
+
+export async function retryDeliveryReturnSapAction(returnId: string) {
+  const session = await requireAnyPermission([LOGISTICS_DELIVERY_RETURN_REQUEST, LOGISTICS_DELIVERY_RETURN_APPROVE]);
+  try {
+    const outcome = await opsService.retryDeliveryReturnSap(opsActor(session), returnId);
+    revalidateDeliveryReturn();
+    return { success: true as const, ...outcome };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to retry the SAP posting" };
   }
 }
 

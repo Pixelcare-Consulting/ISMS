@@ -300,6 +300,19 @@ export const appNavigation: NavEntry[] = [
         countBadgeKey: "logisticsTransfers",
       },
       {
+        href: "/logistics/delivery-transfers",
+        label: "Unit transfers",
+        icon: ArrowLeftRight,
+        anyPermissions: [
+          "logistics.view",
+          "logistics.create",
+          "logistics.manage",
+          "logistics.delivery_transfer.create",
+          "logistics.delivery_transfer.approve",
+          "logistics.delivery_transfer.receive",
+        ],
+      },
+      {
         href: "/logistics/pickups",
         label: "Pull-outs",
         icon: ArrowUpToLine,

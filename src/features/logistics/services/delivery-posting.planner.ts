@@ -97,8 +97,10 @@ export interface AcceptPlan {
 export interface RejectPlan {
   ok: true;
   idempotent: boolean;
-  returns: { serialNumberId: string; warehouseLocationId: string }[];
 }
+
+/** Accept is blocked while a return request (pending approval or awaiting SAP) holds the delivery. */
+export const RETURN_WAITING_ERROR = "A return request for this delivery is waiting for approval";
 
 function unique(ids: string[]): string[] | null {
   const seen = new Set<string>();
@@ -294,7 +296,11 @@ export function planDispatchBranchPlacement(
 export function planAccept(
   delivery: DeliveryPostingView,
   requestedSerialIds: string[] | null,
+  options: { openReturn?: boolean } = {},
 ): AcceptPlan | PlanFailure {
+  if (options.openReturn && (delivery.status === "pending" || delivery.status === "partial")) {
+    return { ok: false, error: RETURN_WAITING_ERROR };
+  }
   if (delivery.lines.length === 0) {
     return { ok: false, error: "Delivery has no serials to accept" };
   }
@@ -361,37 +367,39 @@ export function planAccept(
   };
 }
 
+/**
+ * Reject closes a delivery that was never dispatched. Units already in transit
+ * go back only through a return request, which needs approval and an SAP document.
+ */
 export function planReject(delivery: DeliveryPostingView): RejectPlan | PlanFailure {
   if (delivery.status === "rejected") {
-    return { ok: true, idempotent: true, returns: [] };
+    return { ok: true, idempotent: true };
   }
   if (delivery.status === "accepted") {
     return { ok: false, error: "An accepted delivery cannot be rejected" };
   }
-
-  const inTransit = delivery.lines.filter((line) => line.branchStatus === "DIT");
-  if (delivery.status !== "pending" && delivery.status !== "partial") {
-    return { ok: true, idempotent: false, returns: [] };
+  if (delivery.status === "pending" || delivery.status === "partial") {
+    return { ok: false, error: "Request a return for a dispatched delivery." };
   }
-  if (inTransit.length === 0) {
-    return { ok: true, idempotent: false, returns: [] };
+  if (delivery.status !== "approved") {
+    return { ok: false, error: "Only an approved delivery that has not been dispatched can be rejected" };
   }
+  return { ok: true, idempotent: false };
+}
 
-  const returns: RejectPlan["returns"] = [];
-  for (const line of inTransit) {
-    if (!line.warehouseLocationFromId) {
-      return {
-        ok: false,
-        error: "A dispatched serial has no warehouse location to return to",
-      };
-    }
-    returns.push({
-      serialNumberId: line.serialNumberId,
-      warehouseLocationId: line.warehouseLocationFromId,
-    });
-  }
-
-  return { ok: true, idempotent: false, returns };
+/**
+ * Delivery status once units leave it by another route (a unit transfer or a
+ * return). No line still in transit at the branch means accepted; at least one
+ * gone means partial; otherwise the status stays.
+ */
+export function planDeliverySettle(input: {
+  totalLines: number;
+  stillInTransit: number;
+}): "accepted" | "partial" | null {
+  if (input.totalLines === 0) return null;
+  if (input.stillInTransit === 0) return "accepted";
+  if (input.stillInTransit < input.totalLines) return "partial";
+  return null;
 }
 
 /** A claim that did not take every requested row must abort the whole post. */
@@ -399,4 +407,22 @@ export function assertExclusiveClaim(actual: number, expected: number, message: 
   if (actual !== expected) {
     throw new Error(message);
   }
+}
+
+/** Where a dispatched unit stands, as the receive dialog groups it. */
+export type DeliveryReceiptLineState = "IN_TRANSIT" | "ON_TRANSFER" | "RECEIVED" | "TRANSFERRED";
+
+/**
+ * DIT units are in transit (or held by an open unit transfer). A unit that is no
+ * longer at the delivery branch and was received on one of this delivery's unit
+ * transfers left by transfer; anything else reached the branch.
+ */
+export function receiptLineState(input: {
+  branchStatus: string | null;
+  onOpenTransfer: boolean;
+  receivedOnTransfer: boolean;
+}): DeliveryReceiptLineState {
+  if (input.branchStatus === "DIT") return input.onOpenTransfer ? "ON_TRANSFER" : "IN_TRANSIT";
+  if (input.branchStatus === null && input.receivedOnTransfer) return "TRANSFERRED";
+  return "RECEIVED";
 }

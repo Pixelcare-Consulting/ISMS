@@ -346,7 +346,10 @@ function DetailHeader({ serial }: { serial: SerialTraceability }) {
           value={
             serial.deliveryReceipt.deliveryNo ? (
               <Link
-                href={`/logistics/deliveries?q=${encodeURIComponent(serial.deliveryReceipt.deliveryNo)}`}
+                href={`/logistics/deliveries?q=${encodeURIComponent(
+                  serial.deliveryReceipt.internalDeliveryNo ??
+                    serial.deliveryReceipt.deliveryNo,
+                )}`}
                 className="font-medium underline-offset-4 hover:underline"
               >
                 {serial.deliveryReceipt.deliveryNo}

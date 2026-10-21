@@ -5,6 +5,7 @@ import {
   sapIntegrationRepository,
   type SapJobListSort,
   type SapJobListSortDir,
+  type SapJobTarget,
 } from "@/features/sap/repositories/sap-integration.repository";
 import { sapServiceLayerClient } from "@/features/sap/services/sap-service-layer-client";
 import { sapServiceLayerService } from "@/features/sap/services/sap-service-layer.service";
@@ -291,34 +292,27 @@ export const sapService = {
     });
   },
 
-  /**
-   * Partial / rejected delivery return-to-warehouse → Inventory Transfer (OWTR).
-   * Queue only; local STK/DIT behavior is unchanged in delivery-posting.
-   */
-  async emitPartialDeliveryReturn(
-    tenantId: string,
-    input: {
-      deliveryId: string;
-      deliveryNo?: string;
-      branchId: string;
-      returnedSerialIds: string[];
-      priorStatus: string;
-    },
-  ) {
+  /** Released unit transfer on a consignment delivery → Inventory Transfer (OWTR). */
+  async emitDeliveryTransfer(tenantId: string, transfer: { id: string; transferNo: string }) {
     return enqueueJob({
       tenantId,
-      jobType: "delivery_partial_return",
-      idempotencyKey: `delivery_partial_return:${input.deliveryId}:${input.returnedSerialIds.length}`,
-      referenceType: SAP_REFERENCE_TYPES.BranchDelivery,
-      referenceId: input.deliveryId,
-      payload: {
-        deliveryId: input.deliveryId,
-        deliveryNo: input.deliveryNo ?? null,
-        branchId: input.branchId,
-        returnedSerialIds: input.returnedSerialIds,
-        priorStatus: input.priorStatus,
-        sapDocument: "Inventory Transfer (OWTR)",
-      },
+      jobType: "delivery_transfer",
+      idempotencyKey: `delivery_transfer:${transfer.id}`,
+      referenceType: SAP_REFERENCE_TYPES.DeliveryTransfer,
+      referenceId: transfer.id,
+      payload: transfer,
+    });
+  },
+
+  /** Approved delivery return → IT back to the source warehouse (consignment) or Return on the DR (outright). */
+  async emitDeliveryReturn(tenantId: string, request: { id: string; requestNo: string }) {
+    return enqueueJob({
+      tenantId,
+      jobType: "delivery_return",
+      idempotencyKey: `delivery_return:${request.id}`,
+      referenceType: SAP_REFERENCE_TYPES.DeliveryReturnRequest,
+      referenceId: request.id,
+      payload: request,
     });
   },
 
@@ -424,9 +418,12 @@ export const sapService = {
     };
   },
 
-  /** Process pending/failed jobs with retry handling via SapOutboundPort. */
-  async processPendingJobs(tenantId: string, userId?: string, limit = 10) {
-    const jobs = await sapIntegrationRepository.claimPendingJobsSafe(tenantId, limit);
+  /**
+   * Process pending/failed jobs with retry handling via SapOutboundPort.
+   * `target` runs only that record's job (inline posting after a user action).
+   */
+  async processPendingJobs(tenantId: string, userId?: string, limit = 10, target?: SapJobTarget) {
+    const jobs = await sapIntegrationRepository.claimPendingJobsSafe(tenantId, limit, target);
     const results: { jobId: string; status: string; sapDocRef?: string; error?: string }[] = [];
     const outbound = resolveSapOutboundPort();
 
