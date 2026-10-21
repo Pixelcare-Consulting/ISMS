@@ -127,7 +127,7 @@ export function WizardStepSources({
       />
       <SourceRow
         label="Ending inventory"
-        rule="Stock units on hand (STK)"
+        rule="Branch Stock — STK"
         pill="ISMS"
         tone="isms"
         counts={onHandCounts}

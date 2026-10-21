@@ -15,8 +15,22 @@ import {
   markSerialSoldFromStockSource,
   restoreSerialToStockSource,
 } from "@/features/inventory/services/inventory-serial-moves";
+import {
+  assertExclusivePlacement,
+  loadCurrentPlacements,
+  lockSerialNumbers,
+} from "@/features/inventory/services/serial-placement";
+import {
+  assertSaleSerialLinkRecord,
+  claimToFollowSaleLine,
+} from "@/features/sales/services/sale-serial-link";
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
+import {
+  querySaleableSerials,
+  resolveSaleableSerialPage,
+  type SaleableSerialItem,
+} from "@/features/sales/lib/saleable-serial-query";
 import { salesRepository } from "@/features/sales/repositories/sales.repository";
 import { salesKpiService } from "@/features/sales/services/sales-kpi.service";
 import type {
@@ -69,6 +83,11 @@ import {
 } from "@/features/sales/utils/sale-proof";
 import { hasPermission, requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/database/client";
+import type { Prisma } from "@/lib/database/generated/prisma/client";
+import {
+  toPaginatedResult,
+  type PaginatedResult,
+} from "@/lib/shared/pagination";
 import { getObjectStorage } from "@/lib/storage";
 
 export type {
@@ -893,11 +912,20 @@ export async function resolveModelPriceForSalesAction(input: {
   );
 }
 
+export type ListSaleableSerialsInput = {
+  branchId: string;
+  /** Required for a non-empty page. Missing model returns an empty page. */
+  modelId?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+};
+
 export async function listSaleableSerialsAction(
-  branchId: string,
-  modelId?: string,
-) {
+  input: ListSaleableSerialsInput,
+): Promise<PaginatedResult<SaleableSerialItem>> {
   const session = await requirePermission("sales.create");
+  const branchId = input.branchId.trim();
   await assertStockLocationReadable(
     session.user.tenantId,
     session.user.id,
@@ -905,43 +933,27 @@ export async function listSaleableSerialsAction(
     session.user.permissions,
   );
 
+  const modelId = input.modelId?.trim() ?? "";
+  if (!modelId) {
+    const page = resolveSaleableSerialPage(input);
+    return toPaginatedResult<SaleableSerialItem>([], 0, page.page, page.limit);
+  }
+
   const stkCodeId = await reasonStatusService.requireCodeId(
     session.user.tenantId,
     "inventory_system",
     "STK",
   );
 
-  const rows = await prisma.branchInventory.findMany({
-    where: {
-      tenantId: session.user.tenantId,
-      branchId,
-      statusCodeId: stkCodeId,
-      defectReports: sellableStkDefectReportsFilter,
-      ...(modelId
-        ? { serialNumber: { modelId } }
-        : {}),
-    },
-    include: {
-      serialNumber: {
-        select: {
-          id: true,
-          serialNo: true,
-          modelId: true,
-          model: { select: { skuCode: true, name: true } },
-        },
-      },
-    },
-    orderBy: { serialNumber: { serialNo: "asc" } },
-    take: 500,
+  return querySaleableSerials(prisma, {
+    tenantId: session.user.tenantId,
+    stockBranchId: branchId,
+    modelId,
+    search: input.search,
+    page: input.page,
+    limit: input.limit,
+    stkCodeId,
   });
-
-  return rows.map((r) => ({
-    id: r.serialNumber.id,
-    serialNo: r.serialNumber.serialNo,
-    modelId: r.serialNumber.modelId,
-    skuCode: r.serialNumber.model.skuCode,
-    modelName: r.serialNumber.model.name,
-  }));
 }
 
 export async function uploadSaleProofAction(formData: FormData) {
@@ -1084,10 +1096,13 @@ export async function createSaleAction(input: unknown) {
     try {
       await assertSerialsSellableForSale(
         session.user.tenantId,
-        realSerialIds.map((serialNumberId) => ({
-          serialNumberId,
-          stockBranchId,
-        })),
+        details
+          .filter((detail) => !isToFollowSerial(detail.serialNumberId))
+          .map((detail) => ({
+            serialNumberId: detail.serialNumberId,
+            stockBranchId,
+            expectedModelId: detail.modelId,
+          })),
         stkCodeId,
       );
     } catch (e) {
@@ -1168,6 +1183,24 @@ export async function createSaleAction(input: unknown) {
       if (!saleType) throw new Error("Sale type not found");
       if (!delivery) throw new Error("Customer delivery method not found");
 
+      const realDetails = details.filter((detail) => !isToFollowSerial(detail.serialNumberId));
+      if (realDetails.length > 0) {
+        await lockSerialNumbers(
+          tx,
+          realDetails.map((detail) => detail.serialNumberId),
+        );
+        for (const detail of realDetails) {
+          await assertSaleSerialLinkRecord(tx, {
+            tenantId: session.user.tenantId,
+            saleBranchId: parsed.data.branchId,
+            stockBranchId,
+            detailModelId: detail.modelId,
+            detailBrandId: detail.brandId,
+            serialNumberId: detail.serialNumberId,
+          });
+        }
+      }
+
       // Pickup sales never produce a delivery receipt — drop anything the
       // client sent rather than trusting the form to have hidden the fields.
       const keepsDeliveryReceipt = capturesDeliveryReceipt(delivery.name);
@@ -1218,6 +1251,7 @@ export async function createSaleAction(input: unknown) {
             stkCodeId,
             targetStatusCodeId,
             updatedById: session.user.id,
+            expectedModelId: detail.modelId,
           });
 
           await tx.branchSalesTransactionDetail.create({
@@ -1666,10 +1700,14 @@ export async function requestReturnAction(
   return { success: true as const, returnRequestId: created.id };
 }
 
-type RestoreInventoryTx = {
-  branchInventory: typeof prisma.branchInventory;
-  serialNumberHistory: typeof prisma.serialNumberHistory;
-};
+type RestoreInventoryTx = Pick<
+  Prisma.TransactionClient,
+  | "branchInventory"
+  | "serialNumberHistory"
+  | "$queryRaw"
+  | "warehouseInventory"
+  | "serviceCenterInventory"
+>;
 
 /**
  * Restore original sold serials to STK/DEF at the **branch sold** (`sale.branchId`).
@@ -1715,13 +1753,16 @@ async function restoreOriginalSerialsAtBranchSold(
     });
 
     if (restored == null) {
-      const existing = await tx.branchInventory.findFirst({
-        where: {
-          tenantId: input.tenantId,
-          serialNumberId,
-        },
-        select: { id: true },
+      const occupied = await loadCurrentPlacements(tx, [serialNumberId]);
+      const branchRows = occupied.filter((row) => row.table === "branch");
+      if (occupied.some((row) => row.table !== "branch") || branchRows.length > 1) {
+        assertExclusivePlacement({ placements: occupied, replacingIds: [] });
+      }
+      assertExclusivePlacement({
+        placements: occupied,
+        replacingIds: branchRows.map((row) => row.id),
       });
+      const existing = branchRows[0];
       if (existing) {
         await tx.branchInventory.update({
           where: { id: existing.id },
@@ -2217,6 +2258,7 @@ async function completeReplacementCore(input: {
       serialNumberId: replacementInv.serialNumberId,
       stockBranchId: soldBranchId,
       stkCodeId,
+      expectedModelId: input.modelId,
     });
   } catch (e) {
     return {
@@ -2293,6 +2335,20 @@ async function completeReplacementCore(input: {
 
   try {
     await prisma.$transaction(async (tx) => {
+      await lockSerialNumbers(tx, [
+        ...originalSerialIds,
+        replacementInv.serialNumberId,
+      ]);
+      await assertSaleSerialLinkRecord(tx, {
+        tenantId,
+        saleBranchId: soldBranchId,
+        stockBranchId: soldBranchId,
+        detailModelId: input.modelId,
+        detailBrandId:
+          replacementInv.serialNumber.model.brandId ?? targetDetail?.brandId ?? null,
+        serialNumberId: replacementInv.serialNumberId,
+      });
+
       // 1) Restore original SN(s) → STK/DEF at branch sold + history.
       await restoreOriginalSerialsAtBranchSold(tx, {
         tenantId,
@@ -2411,6 +2467,7 @@ async function completeReplacementCore(input: {
         stkCodeId,
         targetStatusCodeId: sldCodeId,
         updatedById: userId,
+        expectedModelId: input.modelId,
       });
 
       await tx.serialNumberHistory.create({
@@ -2838,6 +2895,8 @@ export async function updateSaleSerialAction(input: unknown) {
         orderBy: { createdAt: "asc" },
         select: {
           id: true,
+          modelId: true,
+          brandId: true,
           serialNumberId: true,
           deliveryNo: true,
           deliveryDate: true,
@@ -2933,14 +2992,6 @@ export async function updateSaleSerialAction(input: unknown) {
     "inventory_system",
     "RSV",
   );
-  const fwCodeRow = nextIsToFollow
-    ? await reasonStatusRepository.findCodeId(
-        session.user.tenantId,
-        "inventory_system",
-        "FW",
-      )
-    : null;
-  const fwCodeId = fwCodeRow?.id ?? null;
 
   if (nextSerialId) {
     try {
@@ -2949,6 +3000,7 @@ export async function updateSaleSerialAction(input: unknown) {
         serialNumberId: nextSerialId,
         stockBranchId,
         stkCodeId,
+        expectedModelId: targetDetail.modelId ?? undefined,
       });
     } catch (e) {
       return {
@@ -2960,6 +3012,21 @@ export async function updateSaleSerialAction(input: unknown) {
   try {
     await prisma.$transaction(async (tx) => {
       let soldStatusCodeId = sldCodeId;
+
+      if (nextSerialId) {
+        if (!targetDetail.modelId) {
+          throw new Error("Choose a model before assigning a serial.");
+        }
+        await lockSerialNumbers(tx, [nextSerialId]);
+        await assertSaleSerialLinkRecord(tx, {
+          tenantId: session.user.tenantId,
+          saleBranchId: soldBranchId,
+          stockBranchId,
+          detailModelId: targetDetail.modelId,
+          detailBrandId: targetDetail.brandId,
+          serialNumberId: nextSerialId,
+        });
+      }
 
       // Put the previous unit back to STK at stock source (sold branch first, then legacy).
       if (oldSerialId) {
@@ -2977,28 +3044,29 @@ export async function updateSaleSerialAction(input: unknown) {
         }
       }
 
-      // Assign a real serial: STK at stock source → SLD/RSV at sold branch.
-      if (nextSerialId) {
-        await markSerialSoldFromStockSource(tx, {
-          tenantId: session.user.tenantId,
-          serialNumberId: nextSerialId,
-          stockBranchId,
-          soldBranchId,
-          stkCodeId,
-          targetStatusCodeId: soldStatusCodeId,
-          updatedById: session.user.id,
-        });
+      if (!nextSerialId) {
+        throw new Error("Choose a serial for this to-follow line.");
       }
 
-      await tx.branchSalesTransactionDetail.update({
-        where: { id: targetDetail.id },
-        data: {
-          serialNumberId: nextSerialId,
-          // Freeze line STATUS with the sale — do not mirror inventory after ATR complete.
-          statusCodeId: nextSerialId ? soldStatusCodeId : fwCodeId,
-          deliveryNo,
-          deliveryDate,
-        },
+      await claimToFollowSaleLine(tx, {
+        detailId: targetDetail.id,
+        saleId: sale.id,
+        serialNumberId: nextSerialId,
+        statusCodeId: soldStatusCodeId,
+        deliveryNo,
+        deliveryDate,
+      });
+
+      // Inventory consume commits only after this line was claimed.
+      await markSerialSoldFromStockSource(tx, {
+        tenantId: session.user.tenantId,
+        serialNumberId: nextSerialId,
+        stockBranchId,
+        soldBranchId,
+        stkCodeId,
+        targetStatusCodeId: soldStatusCodeId,
+        updatedById: session.user.id,
+        expectedModelId: targetDetail.modelId ?? undefined,
       });
     });
   } catch (e) {

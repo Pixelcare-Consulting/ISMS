@@ -1,3 +1,4 @@
+import { lockSerialNumbers } from "@/features/inventory/services/serial-placement";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { sapService } from "@/features/sap/services/sap.service";
 import type { AllocatableSerial } from "@/features/logistics/services/posting-planner-types";
@@ -19,7 +20,7 @@ import {
   authorizePosting,
   claimHeader,
   claimInventory,
-  lockInventoryRows,
+  lockSerialsThenInventoryRows,
   openDocumentIdsBySerial,
   postingError,
   type PostingActor,
@@ -412,7 +413,7 @@ export const pulloutPostingService = {
     try {
       return await prisma.$transaction(async (tx) => {
         const serialIds = plan.lines.map((line) => line.serialNumberId);
-        await lockInventoryRows(tx, actor.tenantId, input.branchId, serialIds);
+        await lockSerialsThenInventoryRows(tx, actor.tenantId, input.branchId, serialIds);
         await assertMovable(actor.tenantId, serialIds);
         const stillOpen = await openDocumentIdsBySerial(actor.tenantId, serialIds);
         if ([...stillOpen.values()].some((ids) => ids.length > 0)) {
@@ -499,6 +500,10 @@ export const pulloutPostingService = {
         const plan = planPulloutApprove(fresh);
         if (!plan.ok) throw new Error(plan.error);
         if (plan.idempotent) return;
+        await lockSerialNumbers(
+          tx,
+          plan.moves.map((move) => move.serialNumberId),
+        );
         await claimInventory(tx, {
           tenantId: actor.tenantId,
           branchId: fresh.branchId,
@@ -563,6 +568,10 @@ export const pulloutPostingService = {
         const plan = planPulloutReject(fresh);
         if (!plan.ok) throw new Error(plan.error);
         if (plan.idempotent) return;
+        await lockSerialNumbers(
+          tx,
+          plan.restores.map((row) => row.serialNumberId),
+        );
         for (const prior of ["STK", "DEF"] as const) {
           const ids = plan.restores.filter((row) => row.restoreCode === prior).map((row) => row.serialNumberId);
           await claimInventory(tx, {
@@ -672,7 +681,7 @@ export const pulloutPostingService = {
           ...freshPlan.restores.map((row) => row.serialNumberId),
           ...freshPlan.holds.map((hold) => hold.serialNumberId),
         ];
-        await lockInventoryRows(tx, actor.tenantId, fresh.branchId, touchedIds);
+        await lockSerialsThenInventoryRows(tx, actor.tenantId, fresh.branchId, touchedIds);
         await assertMovable(actor.tenantId, touchedIds);
         const holdIds = freshPlan.holds.map((hold) => hold.serialNumberId);
         const stillOpen = await openDocumentIdsBySerial(actor.tenantId, holdIds, {
@@ -793,6 +802,10 @@ export const pulloutPostingService = {
             throw new Error("Warehouse receipt is not available yet. Units stay in transit.");
           }
           if (plan.idempotent) return;
+          await lockSerialNumbers(
+            tx,
+            plan.moves.map((move) => move.serialNumberId),
+          );
           await assertMovable(
             actor.tenantId,
             plan.moves.map((move) => move.serialNumberId),

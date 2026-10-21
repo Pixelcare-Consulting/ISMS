@@ -1,5 +1,10 @@
 import { auditService } from "@/features/audit/services/audit.service";
 import {
+  assertExclusivePlacement,
+  loadCurrentPlacements,
+  lockSerialNumbers,
+} from "@/features/inventory/services/serial-placement";
+import {
   markSerialSoldFromStockSource,
   restoreSerialToStockSource,
 } from "@/features/inventory/services/inventory-serial-moves";
@@ -228,10 +233,11 @@ async function resolveSoldBranch(
 }
 
 async function setInventoryOfficialSold(
-  tx: Pick<typeof prisma, "branchInventory">,
+  tx: Pick<typeof prisma, "branchInventory" | "$queryRaw">,
   input: {
     tenantId: string;
     inventoryId: string;
+    serialNumberId: string;
     expectedStatusCodeId?: string;
     soldBranchId: string;
     currentBranchId: string;
@@ -239,6 +245,7 @@ async function setInventoryOfficialSold(
     updatedById: string;
   },
 ) {
+  await lockSerialNumbers(tx, [input.serialNumberId]);
   const updated = await tx.branchInventory.updateMany({
     where: {
       id: input.inventoryId,
@@ -570,6 +577,14 @@ async function processWhseAdd(
     whse.warehouseLocation.warehouse.name || whse.warehouseLocation.name;
 
   await prisma.$transaction(async (tx) => {
+    await lockSerialNumbers(tx, [whse.serialNumberId]);
+    const occupied = await loadCurrentPlacements(tx, [whse.serialNumberId]);
+    const branchPlacement = occupied.find((row) => row.table === "branch");
+    assertExclusivePlacement({
+      placements: occupied,
+      replacingIds: [whse.id, ...(branchPlacement ? [branchPlacement.id] : [])],
+    });
+
     await auditService.log({
       tenantId,
       userId,
@@ -606,17 +621,9 @@ async function processWhseAdd(
       ...commercial,
     });
 
-    const existingInv = await tx.branchInventory.findFirst({
-      where: {
-        tenantId,
-        serialNumberId: whse.serialNumberId,
-      },
-      select: { id: true, branchId: true },
-    });
-
-    if (existingInv) {
+    if (branchPlacement) {
       await tx.branchInventory.update({
-        where: { id: existingInv.id },
+        where: { id: branchPlacement.id },
         data: {
           branchId: soldBranch.id,
           statusCodeId: codes.ofsCodeId,
@@ -784,6 +791,7 @@ async function processAdd(
           await setInventoryOfficialSold(tx, {
             tenantId,
             inventoryId: inventory.id,
+            serialNumberId: inventory.serialNumberId,
             expectedStatusCodeId: inventory.statusCodeId,
             soldBranchId: soldBranch.id,
             currentBranchId: inventory.branchId,
@@ -828,6 +836,7 @@ async function processAdd(
       await setInventoryOfficialSold(tx, {
         tenantId,
         inventoryId: inventory.id,
+        serialNumberId: inventory.serialNumberId,
         expectedStatusCodeId: inventory.statusCodeId,
         soldBranchId: soldBranch.id,
         currentBranchId: inventory.branchId,

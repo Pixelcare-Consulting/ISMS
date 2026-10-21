@@ -1667,7 +1667,8 @@ model BranchInventory {
   stockCountLines StockCountLine[]
   defectReports   BranchDefectReport[]
 
-  @@unique([branchId, serialNumberId])
+  @@unique([serialNumberId])
+  @@index([branchId, serialNumberId])
   @@index([tenantId, branchId, statusCodeId])
   @@map("branch_inventories")
 }
@@ -2966,7 +2967,8 @@ model WarehouseInventory {
   serialNumber      SerialNumber      @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
   warehouseLocation WarehouseLocation @relation(fields: [warehouseLocationId], references: [id], onDelete: Cascade)
 
-  @@unique([warehouseLocationId, serialNumberId])
+  @@unique([serialNumberId])
+  @@index([warehouseLocationId, serialNumberId])
   @@index([tenantId])
   @@map("warehouse_inventories")
 }
@@ -3041,7 +3043,8 @@ model ServiceCenterInventory {
   serialNumber          SerialNumber          @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
   statusCode            ReasonStatusCode?     @relation(fields: [statusCodeId], references: [id], onDelete: SetNull)
 
-  @@unique([serviceCenterLocationId, serialNumberId])
+  @@unique([serialNumberId])
+  @@index([serviceCenterLocationId, serialNumberId])
   @@index([tenantId, serviceCenterId])
   @@map("service_center_inventories")
 }

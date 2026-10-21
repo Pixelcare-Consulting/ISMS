@@ -708,6 +708,10 @@ export function NewSalesTransactionForm({
         <AddTransactionDetailDialog
           key={editingGroupKey ?? "new-detail"}
           stockBranchId={alternateBranchId}
+          stockSourceName={
+            stockSources.find((source) => source.id === alternateBranchId)
+              ?.name ?? ""
+          }
           brands={brands}
           promoTypes={promoTypes}
           usedSerialIds={usedSerialIds}

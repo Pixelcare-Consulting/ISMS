@@ -9,7 +9,7 @@
 #   workflow_dispatch         —        —                        staging ← chosen tag
 #                                                                 (redeploy / rollback)
 #
-# * checks = lint · typecheck · unit tests (Jest) · prisma · e2e (Playwright
+# * checks = lint · typecheck · unit tests (Jest) · prisma · inventory integration · e2e (Playwright
 #   against the freshly built image running in the sandbox Compose stack — the
 #   laptop/CI stack, which is never deployed anywhere).
 #
@@ -118,6 +118,39 @@ jobs:
           --to-schema prisma/schema.prisma
           --exit-code
 
+  inventory-integrity:
+    name: Inventory placement integration
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/isms_ci
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/isms_ci
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: isms_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d isms_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec prisma generate
+      - name: Apply migrations
+        run: pnpm exec prisma migrate deploy
+      - name: Inventory placement integration tests
+        run: pnpm test:integration
+
   unit:
     name: Unit tests (Jest)
     if: github.event_name != 'workflow_dispatch'
@@ -158,7 +191,7 @@ jobs:
   image:
     name: Build image${{ github.event_name == 'push' && ' & publish to GHCR' || '' }}
     if: github.event_name != 'workflow_dispatch'
-    needs: [quality, prisma, unit]
+    needs: [quality, prisma, unit, inventory-integrity]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -392,7 +425,7 @@ jobs:
   ci-success:
     name: CI success
     if: always() && github.event_name != 'workflow_dispatch'
-    needs: [quality, prisma, unit, actionlint, image, e2e]
+    needs: [quality, prisma, unit, inventory-integrity, actionlint, image, e2e]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:

@@ -66,6 +66,78 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.77.0",
+    date: "2026-10-20",
+    releasedAt: "2026-10-20T18:40:00+08:00",
+    title: "One place for each unit",
+    highlights: [
+      "A unit can be in stock in one place.",
+      "A sale serial must match the model on the sale.",
+      "Stocking in a serial that is already at that location does not add another unit.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "A unit can be in stock in one place. Stocking it in at a different place, or while it is already at a branch or service center, is refused.",
+      },
+      {
+        type: "fix",
+        description:
+          "A sale serial must match the model on the sale. When the model has a brand, the sale brand must match too. Only one person can assign a serial to a to-follow line.",
+      },
+      {
+        type: "fix",
+        description:
+          "Repeating stock-in for a serial already at that location does not add another unit.",
+      },
+    ],
+  },
+  {
+    version: "0.76.5",
+    date: "2026-10-20",
+    releasedAt: "2026-10-20T17:50:00+08:00",
+    title: "Sale serial search",
+    highlights: [
+      "When you record a sale, you can search serials for the model you chose at the stock source you selected, including units that used to be missing from the list.",
+      "Branch stock reads Branch Stock — STK, and units on the way in read Incoming to Branch — DIT.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Branch stock reads Branch Stock — STK, and units on the way in read Incoming to Branch — DIT.",
+      },
+      {
+        type: "fix",
+        description:
+          "When you record a sale, you can search serials for the model you chose at the stock source you selected, including units that used to be missing from the list.",
+      },
+    ],
+  },
+  {
+    version: "0.76.4",
+    date: "2026-10-20",
+    releasedAt: "2026-10-20T15:20:00+08:00",
+    title: "Order sheets",
+    highlights: [
+      "Suggested orders uses the same compact table as order details, with the model name under the code.",
+      "Opening order details no longer leaves the notes box highlighted.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Suggested orders uses the same compact table as order details. The model name sits under the code, quantities line up, and a total sits under the list.",
+      },
+      {
+        type: "fix",
+        description:
+          "Opening order details no longer leaves the notes box highlighted.",
+      },
+    ],
+  },
+  {
     version: "0.76.3.1",
     date: "2026-10-19",
     releasedAt: "2026-10-19T17:30:00+08:00",

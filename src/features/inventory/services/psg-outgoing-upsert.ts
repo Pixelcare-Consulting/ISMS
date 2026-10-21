@@ -1,9 +1,23 @@
 import type { PrismaClient } from "@/lib/database/generated/prisma/client";
 import type { PsgOutgoingRow } from "@/features/inventory/services/psg-outgoing-workbook";
+import {
+  assertExclusivePlacement,
+  loadCurrentPlacements,
+  lockSerialNumbers,
+  lockSerialRegistrations,
+} from "@/features/inventory/services/serial-placement";
 
 type SeedPrisma = Pick<
   PrismaClient,
-  "warehouse" | "branch" | "productModel" | "serialNumber" | "branchInventory"
+  | "warehouse"
+  | "branch"
+  | "productModel"
+  | "serialNumber"
+  | "branchInventory"
+  | "warehouseInventory"
+  | "serviceCenterInventory"
+  | "$transaction"
+  | "$queryRaw"
 >;
 
 export interface UpsertPsgOutgoingResult {
@@ -14,6 +28,7 @@ export interface UpsertPsgOutgoingResult {
   skippedMissingBranch: number;
   skippedMissingModel: number;
   skippedEmptyTarget: number;
+  skippedOccupied: number;
 }
 
 const CHUNK = 40;
@@ -96,6 +111,7 @@ export async function upsertPsgOutgoing(
   let skippedMissingBranch = 0;
   let skippedMissingModel = 0;
   let skippedEmptyTarget = 0;
+  let skippedOccupied = 0;
   const warnedBranches = new Set<string>();
   const warnedModels = new Set<string>();
 
@@ -135,43 +151,77 @@ export async function upsertPsgOutgoing(
         continue;
       }
 
-      const sn = await prisma.serialNumber.upsert({
-        where: { tenantId_serialNo: { tenantId, serialNo: row.serialNo } },
-        create: {
-          tenantId,
-          modelId,
-          serialNo: row.serialNo,
-          recordStatus: "active",
-        },
-        update: {
-          modelId,
-          recordStatus: "active",
-        },
-        select: { id: true },
-      });
-      serialsUpserted += 1;
-
       const stockedAt = row.date ?? undefined;
-
-      await prisma.branchInventory.upsert({
-        where: {
-          branchId_serialNumberId: {
-            branchId,
-            serialNumberId: sn.id,
+      const placed = await prisma.$transaction(async (tx) => {
+        await lockSerialRegistrations(tx, [{ tenantId, serialNo: row.serialNo }]);
+        const existing = await tx.serialNumber.findFirst({
+          where: { tenantId, serialNo: row.serialNo },
+          select: { id: true },
+        });
+        if (existing) {
+          await lockSerialNumbers(tx, [existing.id]);
+          const occupiedNow = await loadCurrentPlacements(tx, [existing.id]);
+          if (occupiedNow.some((placement) => placement.table !== "branch")) {
+            return false;
+          }
+        }
+        const sn = await tx.serialNumber.upsert({
+          where: { tenantId_serialNo: { tenantId, serialNo: row.serialNo } },
+          create: {
+            tenantId,
+            modelId,
+            serialNo: row.serialNo,
+            recordStatus: "active",
           },
-        },
-        create: {
-          tenantId,
-          branchId,
-          serialNumberId: sn.id,
-          statusCodeId: stkStatusCodeId,
-          ...(stockedAt ? { createdAt: stockedAt, updatedAt: stockedAt } : {}),
-        },
-        update: {
-          statusCodeId: stkStatusCodeId,
-          ...(stockedAt ? { updatedAt: stockedAt } : {}),
-        },
+          update: {
+            modelId,
+            recordStatus: "active",
+          },
+          select: { id: true },
+        });
+        await lockSerialNumbers(tx, [sn.id]);
+        const occupied = await loadCurrentPlacements(tx, [sn.id]);
+        if (occupied.some((placement) => placement.table !== "branch")) {
+          return false;
+        }
+        const branchRows = occupied.filter((placement) => placement.table === "branch");
+        assertExclusivePlacement({
+          placements: occupied,
+          replacingIds: branchRows.map((placement) => placement.id),
+        });
+        const primary = branchRows[0];
+        if (!primary) {
+          await tx.branchInventory.create({
+            data: {
+              tenantId,
+              branchId,
+              serialNumberId: sn.id,
+              statusCodeId: stkStatusCodeId,
+              ...(stockedAt ? { createdAt: stockedAt, updatedAt: stockedAt } : {}),
+            },
+          });
+        } else {
+          await tx.branchInventory.update({
+            where: { id: primary.id },
+            data: {
+              branchId,
+              statusCodeId: stkStatusCodeId,
+              ...(stockedAt ? { updatedAt: stockedAt } : {}),
+            },
+          });
+          if (branchRows.length > 1) {
+            await tx.branchInventory.deleteMany({
+              where: { id: { in: branchRows.slice(1).map((placement) => placement.id) } },
+            });
+          }
+        }
+        return true;
       });
+      if (!placed) {
+        skippedOccupied += 1;
+        continue;
+      }
+      serialsUpserted += 1;
       inventoriesUpserted += 1;
     }
   }
@@ -191,5 +241,6 @@ export async function upsertPsgOutgoing(
     skippedMissingBranch,
     skippedMissingModel,
     skippedEmptyTarget,
+    skippedOccupied,
   };
 }

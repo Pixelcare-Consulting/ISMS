@@ -1,5 +1,12 @@
 import type { PrismaClient } from "@prisma/client";
 
+import {
+  assertExclusivePlacement,
+  loadCurrentPlacements,
+  lockSerialNumbers,
+  lockSerialRegistrations,
+} from "@/features/inventory/services/serial-placement";
+
 /** Demo warehouse-only serials for Official Sales WHSE_ADD UAT. */
 export const DEMO_WHSE_SERIALS = [
   { serialNo: "SN-WHSE-001", skuCode: "32STV104" },
@@ -66,31 +73,35 @@ export async function seedWarehouseInventoryDemo(
       const modelId = resolvedModelIds.get(item.skuCode);
       if (!modelId) continue;
 
+      await lockSerialRegistrations(tx, [{ tenantId, serialNo: item.serialNo }]);
       const sn = await tx.serialNumber.upsert({
         where: { tenantId_serialNo: { tenantId, serialNo: item.serialNo } },
         create: { tenantId, modelId, serialNo: item.serialNo },
         update: { modelId },
       });
-
-      await tx.warehouseInventory.upsert({
-        where: {
-          warehouseLocationId_serialNumberId: {
-            warehouseLocationId: location.id,
+      await lockSerialNumbers(tx, [sn.id]);
+      const occupied = await loadCurrentPlacements(tx, [sn.id]);
+      const sameLocation = occupied.find(
+        (row) => row.table === "warehouse" && row.warehouseLocationId === location.id,
+      );
+      if (sameLocation) {
+        assertExclusivePlacement({ placements: occupied, replacingIds: [sameLocation.id] });
+        await tx.warehouseInventory.update({
+          where: { id: sameLocation.id },
+          data: { systemStatus: "STK", systemUpdatedAt: new Date() },
+        });
+      } else {
+        assertExclusivePlacement({ placements: occupied, replacingIds: [] });
+        await tx.warehouseInventory.create({
+          data: {
+            tenantId,
             serialNumberId: sn.id,
+            warehouseLocationId: location.id,
+            systemStatus: "STK",
+            systemUpdatedAt: new Date(),
           },
-        },
-        create: {
-          tenantId,
-          serialNumberId: sn.id,
-          warehouseLocationId: location.id,
-          systemStatus: "STK",
-          systemUpdatedAt: new Date(),
-        },
-        update: {
-          systemStatus: "STK",
-          systemUpdatedAt: new Date(),
-        },
-      });
+        });
+      }
 
       seeded.push(item.serialNo);
     }

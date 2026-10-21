@@ -64,7 +64,7 @@ const NAMED_STATUS_CODES = new Set(["STK", "DEF", "DIT"]);
 const WORKSHEET_COLUMN_HELP = {
   model: "SKU or model code and name on this order.",
   onHand:
-    "Units currently in stock at the branch. This is stock only, not units on the way.",
+    "Branch stock in STK status. This includes STK units still pending defect inspection. Units on the way are not included.",
   suggestShelf:
     "Shelf gap. Shelf maximum minus units on hand. The shelf maximum is shown under the suggestion. This is not the planning forecast.",
   suggestPlan:
@@ -387,7 +387,7 @@ function worksheetColumns(input: WorksheetColumnInput): DataTableColumn<Projecte
     {
       id: "inventory",
       header: () => (
-        <WorksheetHeader label="On hand" help={WORKSHEET_COLUMN_HELP.onHand} alignEnd />
+        <WorksheetHeader label="Branch Stock — STK" help={WORKSHEET_COLUMN_HELP.onHand} alignEnd />
       ),
       meta: fitColumn(width(1), "end"),
       cell: OnHandColumnCell,
@@ -720,11 +720,11 @@ function OnHandCell({ inventory }: { inventory: OrderWorksheetInventory }) {
 
 function stockHoverTitle(inventory: OrderWorksheetInventory): string {
   return [
-    `On hand ${formatQty(inventory.onHandQty)}`,
+    `Branch Stock — STK ${formatQty(inventory.onHandQty)}`,
     `Available to sell ${formatQty(inventory.availableToSellQty)}`,
     `Defective ${formatQty(inventory.defectiveQty)}`,
     `Awaiting pull-out ${formatQty(inventory.awaitingPulloutQty)}`,
-    `In transit, coming in ${formatQty(inventory.transitIncomingQty)}`,
+    `Incoming to Branch — DIT ${formatQty(inventory.transitIncomingQty)}`,
     `In transit, going out ${formatQty(inventory.transitOutgoingQty)}`,
     `In transit, not classified ${formatQty(inventory.transitUnclassifiedQty)}`,
   ].join(", ");
@@ -773,11 +773,11 @@ function LineDetails({
           <DetailList
             title="Stock"
             rows={[
-              { label: "On hand", value: formatQty(inventory.onHandQty) },
+              { label: "Branch Stock — STK", value: formatQty(inventory.onHandQty) },
               { label: "Available to sell", value: formatQty(inventory.availableToSellQty) },
               { label: "Defective", value: formatQty(inventory.defectiveQty) },
               { label: "Awaiting pull-out", value: formatQty(inventory.awaitingPulloutQty) },
-              { label: "In transit, coming in", value: formatQty(inventory.transitIncomingQty) },
+              { label: "Incoming to Branch — DIT", value: formatQty(inventory.transitIncomingQty) },
               { label: "In transit, going out", value: formatQty(inventory.transitOutgoingQty) },
               {
                 label: "In transit, not classified",

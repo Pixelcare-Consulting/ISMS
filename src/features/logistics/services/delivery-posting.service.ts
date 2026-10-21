@@ -1,5 +1,10 @@
 import { Prisma } from "@/lib/database/generated/prisma/client";
 
+import {
+  assertExclusivePlacement,
+  loadCurrentPlacements,
+  lockSerialNumbers,
+} from "@/features/inventory/services/serial-placement";
 import { prisma } from "@/lib/database/client";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import {
@@ -241,6 +246,7 @@ export const deliveryPostingService = {
       );
 
       const moveIds = plan.moves.map((move) => move.serialNumberId);
+      await lockSerialNumbers(tx, moveIds);
       const [serialRows, shelfRows] = await Promise.all([
         tx.serialNumber.findMany({
           where: { tenantId: input.tenantId, id: { in: moveIds } },
@@ -273,6 +279,19 @@ export const deliveryPostingService = {
       if (!placement.ok) {
         throw new Error(placement.error);
       }
+
+      const occupied = await loadCurrentPlacements(tx, moveIds);
+      const replacingIds = occupied
+        .filter((row) => {
+          if (row.table === "warehouse" && row.warehouseId === plan.warehouseId) return true;
+          return (
+            row.table === "branch" &&
+            row.branchId === preview.branchId &&
+            placement.updates.includes(row.serialNumberId)
+          );
+        })
+        .map((row) => row.id);
+      assertExclusivePlacement({ placements: occupied, replacingIds });
 
       const removed = await tx.warehouseInventory.deleteMany({
         where: {
@@ -389,6 +408,7 @@ export const deliveryPostingService = {
     try {
     await prisma.$transaction(async (tx) => {
       if (plan.moveSerialIds.length > 0) {
+        await lockSerialNumbers(tx, plan.moveSerialIds);
         const moved = await tx.branchInventory.updateMany({
           where: {
             tenantId: input.tenantId,
@@ -502,6 +522,20 @@ export const deliveryPostingService = {
       assertExclusiveClaim(claimed.count, 1, "Delivery could not be rejected");
 
       if (plan.returns.length > 0) {
+        const returnIds = plan.returns.map((row) => row.serialNumberId);
+        await lockSerialNumbers(tx, returnIds);
+        const occupied = await loadCurrentPlacements(tx, returnIds);
+        assertExclusivePlacement({
+          placements: occupied,
+          replacingIds: occupied
+            .filter(
+              (row) =>
+                row.table === "branch" &&
+                row.branchId === preview.branchId &&
+                row.statusCode === "DIT",
+            )
+            .map((row) => row.id),
+        });
         const removed = await tx.branchInventory.deleteMany({
           where: {
             tenantId: input.tenantId,

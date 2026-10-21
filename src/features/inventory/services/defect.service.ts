@@ -1,4 +1,5 @@
 import { auditService } from "@/features/audit/services/audit.service";
+import { lockSerialNumbers } from "@/features/inventory/services/serial-placement";
 import { aorService } from "@/features/aors/services/aor.service";
 import { defectRepository } from "@/features/inventory/repositories/defect.repository";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
@@ -158,6 +159,7 @@ export const defectService = {
     const decidedAt = new Date();
 
     await prisma.$transaction(async (tx) => {
+      await lockSerialNumbers(tx, [report.serialNumberId]);
       await tx.branchInventory.update({
         where: { id: report.branchInventoryId, tenantId: input.tenantId },
         data: { statusCodeId: defCodeId, updatedById: input.actorUserId },

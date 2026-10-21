@@ -1,15 +1,10 @@
 import { auditService } from "@/features/audit/services/audit.service";
-import {
-  LOCAL_FIXTURE_SYSTEM_STATUS,
-  sapStockPlacementRepository,
-} from "@/features/inventory/repositories/sap-stock-placement.repository";
-import {
-  isIsolatedSapTestCompany,
-  newWarehouseSerialIds,
-} from "@/features/inventory/services/warehouse-receive.rules";
+import { LOCAL_FIXTURE_SYSTEM_STATUS } from "@/features/inventory/repositories/sap-stock-placement.repository";
+import { isIsolatedSapTestCompany } from "@/features/inventory/services/warehouse-receive.rules";
+import { commitWarehousePlacement } from "@/features/inventory/services/warehouse-placement-commit";
 import { prisma } from "@/lib/database/client";
 
-export { isIsolatedSapTestCompany, newWarehouseSerialIds };
+export { isIsolatedSapTestCompany };
 
 /**
  * Explicit warehouse receive for a labeled local fixture (or a live isolated
@@ -76,82 +71,17 @@ export async function receiveLocalSapFixture(
     );
   }
 
-  const model = await prisma.productModel.findFirst({
-    where: { id: input.modelId, tenantId: input.tenantId, deletedAt: null },
-    select: { id: true, skuCode: true },
+  const placed = await commitWarehousePlacement({
+    tenantId: input.tenantId,
+    userId: input.userId,
+    warehouseId: warehouse.id,
+    locationId: location.id,
+    modelId: input.modelId,
+    serialNos,
+    systemStatus: LOCAL_FIXTURE_SYSTEM_STATUS,
+    historyStatus: "Warehouse",
+    historyDetails: ({ warehouseCode }) => `Received into ${warehouseCode} from a local fixture`,
   });
-  if (!model) throw new Error("Model not found for warehouse receive");
-
-  const existingSerials = await prisma.serialNumber.findMany({
-    where: { tenantId: input.tenantId, serialNo: { in: serialNos } },
-    select: { id: true, serialNo: true, modelId: true, deletedAt: true },
-  });
-  const byNo = new Map(existingSerials.map((row) => [row.serialNo, row]));
-
-  for (const serialNo of serialNos) {
-    const row = byNo.get(serialNo);
-    if (row && row.modelId !== model.id) {
-      throw new Error(`${serialNo} already belongs to a different model`);
-    }
-    if (row?.deletedAt) {
-      throw new Error(`${serialNo} is retired and cannot be received`);
-    }
-  }
-
-  const missing = serialNos.filter((serialNo) => !byNo.has(serialNo));
-  if (missing.length > 0) {
-    await prisma.serialNumber.createMany({
-      data: missing.map((serialNo) => ({
-        tenantId: input.tenantId,
-        serialNo,
-        modelId: model.id,
-        createdById: input.userId,
-      })),
-      skipDuplicates: true,
-    });
-  }
-
-  const serials = await prisma.serialNumber.findMany({
-    where: { tenantId: input.tenantId, serialNo: { in: serialNos }, deletedAt: null },
-    select: { id: true, serialNo: true },
-  });
-  if (serials.length !== serialNos.length) {
-    throw new Error("Warehouse receive could not register every serial");
-  }
-
-  const alreadyThere = await prisma.warehouseInventory.findMany({
-    where: { tenantId: input.tenantId, serialNumberId: { in: serials.map((row) => row.id) } },
-    select: { serialNumberId: true },
-  });
-  const freshIds = newWarehouseSerialIds(
-    alreadyThere.map((row) => row.serialNumberId),
-    serials.map((row) => row.id),
-  );
-
-  const seenAt = new Date();
-  const created = await sapStockPlacementRepository.createWarehouseUnits(
-    input.tenantId,
-    location.id,
-    freshIds,
-    seenAt,
-    LOCAL_FIXTURE_SYSTEM_STATUS,
-  );
-  const skipped = serialNos.length - created;
-
-  if (created > 0) {
-    await prisma.serialNumberHistory.createMany({
-      data: serials
-        .filter((row) => freshIds.includes(row.id))
-        .map((row) => ({
-          tenantId: input.tenantId,
-          serialNumberId: row.id,
-          txnType: "grpo" as const,
-          details: `Received into ${warehouse.code} from a local fixture`,
-          status: "Warehouse",
-          createdById: input.userId,
-        })),
-    });
-  }
 
   await auditService.log({
     tenantId: input.tenantId,
@@ -162,22 +92,22 @@ export async function receiveLocalSapFixture(
     metadata: {
       source: LOCAL_SAP_FIXTURE_SOURCE,
       warehouseCode: warehouse.code,
-      skuCode: model.skuCode,
-      created,
-      skipped,
-      serialNos,
+      skuCode: placed.skuCode,
+      created: placed.created,
+      skipped: placed.skipped,
+      serialNos: placed.serialNos,
       liveSapUnverified: true,
     },
   });
 
   return {
     source: LOCAL_SAP_FIXTURE_SOURCE,
-    created,
-    skipped,
+    created: placed.created,
+    skipped: placed.skipped,
     liveSapUnverified: true,
     message:
-      created === 0
-        ? "Those serials are already in the warehouse. Nothing new was added."
-        : `Received ${created} ${created === 1 ? "serial" : "serials"} into the warehouse from a local fixture. Live SAP was not used.`,
+      placed.created === 0
+        ? "Those serials are already in this location. Nothing new was added."
+        : `Received ${placed.created} ${placed.created === 1 ? "serial" : "serials"} into the warehouse from a local fixture. Live SAP was not used.`,
   };
 }

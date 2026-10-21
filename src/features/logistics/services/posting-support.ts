@@ -1,5 +1,6 @@
 import { Prisma } from "@/lib/database/generated/prisma/client";
 
+import { lockSerialNumbers } from "@/features/inventory/services/serial-placement";
 import { assertExclusiveClaim } from "@/features/logistics/services/delivery-posting.planner";
 import {
   branchScopeError,
@@ -87,6 +88,20 @@ export async function assertMovable(tenantId: string, serialNumberIds: string[])
   }
 }
 
+/**
+ * Lock serial masters first, in id order, then the branch inventory rows.
+ * Two batches cannot deadlock by taking those locks in opposite orders.
+ */
+export async function lockSerialsThenInventoryRows(
+  tx: PostingDb,
+  tenantId: string,
+  branchId: string,
+  serialNumberIds: string[],
+): Promise<void> {
+  await lockSerialNumbers(tx, serialNumberIds);
+  await lockInventoryRows(tx, tenantId, branchId, serialNumberIds);
+}
+
 /** Row lock so a second request waits, then sees the first request's lines. */
 export async function lockInventoryRows(
   tx: PostingDb,
@@ -101,6 +116,7 @@ export async function lockInventoryRows(
     WHERE tenant_id = ${tenantId}
       AND branch_id = ${branchId}
       AND serial_number_id IN (${Prisma.join(serialNumberIds)})
+    ORDER BY serial_number_id
     FOR UPDATE
   `;
 }

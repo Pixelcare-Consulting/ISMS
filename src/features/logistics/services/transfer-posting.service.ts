@@ -1,3 +1,4 @@
+import { lockSerialNumbers } from "@/features/inventory/services/serial-placement";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import type { AllocatableSerial } from "@/features/logistics/services/posting-planner-types";
 import {
@@ -7,7 +8,7 @@ import {
   authorizePosting,
   claimHeader,
   claimInventory,
-  lockInventoryRows,
+  lockSerialsThenInventoryRows,
   openDocumentIdsBySerial,
   postingError,
   type PostingActor,
@@ -432,7 +433,7 @@ export const transferPostingService = {
     try {
       return await prisma.$transaction(async (tx) => {
         const serialIds = plan.holds.map((hold) => hold.serialNumberId);
-        await lockInventoryRows(tx, actor.tenantId, input.fromBranchId, serialIds);
+        await lockSerialsThenInventoryRows(tx, actor.tenantId, input.fromBranchId, serialIds);
         await assertMovable(actor.tenantId, serialIds);
         const stillOpen = await openDocumentIdsBySerial(actor.tenantId, serialIds);
         if ([...stillOpen.values()].some((ids) => ids.length > 0)) {
@@ -520,6 +521,10 @@ export const transferPostingService = {
         if (!plan.ok) throw new Error(plan.error);
         if (plan.idempotent) return;
 
+        await lockSerialNumbers(
+          tx,
+          plan.holds.map((hold) => hold.serialNumberId),
+        );
         for (const prior of ["STK", "DEF"] as const) {
           const ids = plan.holds.filter((hold) => hold.priorCode === prior).map((hold) => hold.serialNumberId);
           await claimInventory(tx, {
@@ -595,6 +600,10 @@ export const transferPostingService = {
         if (!plan.ok) throw new Error(plan.error);
         if (plan.idempotent) return;
 
+        await lockSerialNumbers(
+          tx,
+          plan.restores.map((row) => row.serialNumberId),
+        );
         for (const prior of ["STK", "DEF"] as const) {
           const ids = plan.restores.filter((row) => row.restoreCode === prior).map((row) => row.serialNumberId);
           await claimInventory(tx, {
@@ -669,6 +678,10 @@ export const transferPostingService = {
         const plan = planTransferRelease(fresh);
         if (!plan.ok) throw new Error(plan.error);
         if (plan.idempotent) return;
+        await lockSerialNumbers(
+          tx,
+          plan.moves.map((move) => move.serialNumberId),
+        );
         await assertMovable(
           actor.tenantId,
           plan.moves.map((move) => move.serialNumberId),
@@ -757,6 +770,10 @@ export const transferPostingService = {
           return { movedCount: 0, status: plan.nextStatus, idempotent: true };
         }
 
+        await lockSerialNumbers(
+          tx,
+          plan.moves.map((move) => move.serialNumberId),
+        );
         await assertMovable(
           actor.tenantId,
           plan.moves.map((move) => move.serialNumberId),
