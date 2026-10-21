@@ -264,6 +264,23 @@ export async function dispatchDeliveryAction(id: string, input: unknown) {
   }
 }
 
+export async function listDeliveryReceiptLinesAction(id: string) {
+  const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
+  try {
+    const result = await deliveryPostingService.listReceiptLines(
+      {
+        tenantId: session.user.tenantId,
+        userId: session.user.id,
+        permissions: session.user.permissions,
+      },
+      id,
+    );
+    return { success: true as const, ...result };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to load delivery serials" };
+  }
+}
+
 export async function acceptDeliveryAction(id: string, input?: unknown) {
   const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
   const parsed = input
@@ -275,6 +292,7 @@ export async function acceptDeliveryAction(id: string, input?: unknown) {
     const result = await deliveryPostingService.accept({
       tenantId: session.user.tenantId,
       userId: session.user.id,
+      permissions: session.user.permissions,
       deliveryId: id,
       serialNumberIds: parsed.data.serialNumberIds,
     });
@@ -298,6 +316,7 @@ export async function rejectDeliveryAction(id: string, notes?: string) {
     const result = await deliveryPostingService.reject({
       tenantId: session.user.tenantId,
       userId: session.user.id,
+      permissions: session.user.permissions,
       deliveryId: id,
       notes,
     });

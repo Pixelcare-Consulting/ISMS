@@ -18,6 +18,7 @@ import {
   type DeliveryPostingView,
   type WarehouseHold,
 } from "@/features/logistics/services/delivery-posting.planner";
+import { authorizeBranchScope, type PostingActor } from "@/features/logistics/services/posting-support";
 import { sapService } from "@/features/sap/services/sap.service";
 
 /**
@@ -141,7 +142,56 @@ export interface DispatchCandidate {
   locationCode: string;
 }
 
+export interface DeliveryReceiptLine {
+  serialNumberId: string;
+  serialNo: string;
+  skuCode: string;
+  modelName: string;
+  /** Still DIT at the delivery branch, so it can be accepted or returned. */
+  inTransit: boolean;
+}
+
 export const deliveryPostingService = {
+  /** Serials on a dispatched delivery, split by whether the branch has received them. */
+  async listReceiptLines(
+    actor: PostingActor,
+    deliveryId: string,
+  ): Promise<{ deliveryNo: string; status: DeliveryPostingView["status"]; lines: DeliveryReceiptLine[] }> {
+    const preview = await loadDelivery(actor.tenantId, deliveryId);
+    if (!preview) throw new Error("Delivery not found");
+    await authorizeBranchScope(actor, preview.branchId);
+
+    const header = await prisma.branchDelivery.findFirst({
+      where: { id: deliveryId, tenantId: actor.tenantId },
+      select: {
+        deliveryNo: true,
+        lines: {
+          select: {
+            serialNumberId: true,
+            serialNumber: {
+              select: { serialNo: true, model: { select: { skuCode: true, name: true } } },
+            },
+          },
+          orderBy: { serialNumber: { serialNo: "asc" } },
+        },
+      },
+    });
+    if (!header) throw new Error("Delivery not found");
+
+    const statusBySerial = new Map(preview.lines.map((line) => [line.serialNumberId, line.branchStatus]));
+    return {
+      deliveryNo: header.deliveryNo,
+      status: preview.status,
+      lines: header.lines.map((line) => ({
+        serialNumberId: line.serialNumberId,
+        serialNo: line.serialNumber.serialNo,
+        skuCode: line.serialNumber.model.skuCode,
+        modelName: line.serialNumber.model.name,
+        inTransit: statusBySerial.get(line.serialNumberId) === "DIT",
+      })),
+    };
+  },
+
   async listDispatchCandidates(tenantId: string, deliveryId: string): Promise<{
     requiredQty: number;
     serials: DispatchCandidate[];
@@ -382,11 +432,13 @@ export const deliveryPostingService = {
   async accept(input: {
     tenantId: string;
     userId: string;
+    permissions: string[] | undefined;
     deliveryId: string;
     serialNumberIds?: string[];
   }): Promise<{ movedCount: number; idempotent: boolean; status: "accepted" | "partial" }> {
     const preview = await loadDelivery(input.tenantId, input.deliveryId);
     if (!preview) throw new Error("Delivery not found");
+    await authorizeBranchScope(input, preview.branchId);
     const plan = planAccept(preview, input.serialNumberIds ?? null);
     if (!plan.ok) throw new Error(plan.error);
 
@@ -484,11 +536,13 @@ export const deliveryPostingService = {
   async reject(input: {
     tenantId: string;
     userId: string;
+    permissions: string[] | undefined;
     deliveryId: string;
     notes?: string;
   }): Promise<{ returnedCount: number; idempotent: boolean }> {
     const preview = await loadDelivery(input.tenantId, input.deliveryId);
     if (!preview) throw new Error("Delivery not found");
+    await authorizeBranchScope(input, preview.branchId);
     const plan = planReject(preview);
     if (!plan.ok) throw new Error(plan.error);
     if (plan.idempotent) {

@@ -17,26 +17,36 @@ export const opsService = {
     return opsRepository.listPullouts(tenantId, branchIds);
   },
 
+  listDeliveryReceiptLines(actor: PostingActor, deliveryId: string) {
+    return deliveryPostingService.listReceiptLines(actor, deliveryId);
+  },
+
   async acceptDelivery(input: {
     tenantId: string;
     actorUserId: string;
+    permissions: string[] | undefined;
     deliveryId: string;
+    serialNumberIds?: string[];
   }) {
     return deliveryPostingService.accept({
       tenantId: input.tenantId,
       userId: input.actorUserId,
+      permissions: input.permissions,
       deliveryId: input.deliveryId,
+      serialNumberIds: input.serialNumberIds,
     });
   },
 
   async rejectDelivery(input: {
     tenantId: string;
     actorUserId: string;
+    permissions: string[] | undefined;
     deliveryId: string;
   }) {
     return deliveryPostingService.reject({
       tenantId: input.tenantId,
       userId: input.actorUserId,
+      permissions: input.permissions,
       deliveryId: input.deliveryId,
     });
   },

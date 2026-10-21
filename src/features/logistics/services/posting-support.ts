@@ -43,6 +43,11 @@ export async function authorizePosting(
   const denied = postingPermissionError(actor.permissions, action);
   if (denied) throw new Error(denied);
   if (!branchId) return;
+  await authorizeBranchScope(actor, branchId);
+}
+
+/** Throws when the branch is outside the actor's area of responsibility. */
+export async function authorizeBranchScope(actor: PostingActor, branchId: string): Promise<void> {
   const scope = isBranchScopeUnrestricted(actor.permissions)
     ? null
     : await getUserBranchIds(actor.tenantId, actor.userId);

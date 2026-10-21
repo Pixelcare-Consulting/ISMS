@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import {
   acceptDeliveryAction,
   dispatchDeliveryAction,
+  listDeliveryReceiptLinesAction,
   listDispatchCandidatesAction,
   rejectDeliveryAction,
 } from "@/features/logistics/actions/logistics.actions";
@@ -44,6 +45,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DeliveryReceiveDialog,
+  type ReceiveTarget,
+} from "@/app/(app)/logistics/_components/delivery-receive-dialog";
 import {
   buildLogisticsPageHref,
   LOGISTICS_DELIVERIES_PATH,
@@ -85,12 +90,11 @@ const deliveryColumn = createColumnHelper<DataTableFeatures, DeliveryRow>();
 type DeliverySortField = "deliveryNo" | "orderNumber" | "branch" | "status";
 type DeliverySortDir = "asc" | "desc";
 
-type PendingConfirm = {
+type PendingReject = {
   id: string;
   deliveryNo: string;
   branchName: string;
   orderNumber?: string;
-  action: "accept" | "reject";
   statusCode: string;
 };
 
@@ -111,7 +115,8 @@ export function DeliveriesPanel({
   const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
-  const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
+  const [pendingConfirm, setPendingConfirm] = useState<PendingReject | null>(null);
+  const [receiveTarget, setReceiveTarget] = useState<ReceiveTarget | null>(null);
   const [dispatchTarget, setDispatchTarget] = useState<DeliveryRow | null>(null);
   const [dispatchSerials, setDispatchSerials] = useState<DispatchCandidate[]>([]);
   const [dispatchRequired, setDispatchRequired] = useState(0);
@@ -166,31 +171,18 @@ export function DeliveriesPanel({
 
   function confirmPendingAction() {
     if (!pendingConfirm) return;
-    const { action, id } = pendingConfirm;
+    const { id } = pendingConfirm;
     startTransition(async () => {
-      if (action === "accept") {
-        const result = await acceptDeliveryAction(id);
-        if (result.error) {
-          toast.error(result.error);
-          return;
-        }
-        toast.success(
-          result.status === "partial"
-            ? `Accepted ${result.movedCount} serial${result.movedCount === 1 ? "" : "s"}. The rest stay in transit.`
-            : `Accepted ${result.movedCount} serial${result.movedCount === 1 ? "" : "s"} into branch stock.`,
-        );
-      } else {
-        const result = await rejectDeliveryAction(id);
-        if (result.error) {
-          toast.error(result.error);
-          return;
-        }
-        toast.success(
-          result.returnedCount
-            ? `Delivery rejected. ${result.returnedCount} serial${result.returnedCount === 1 ? "" : "s"} returned to the warehouse.`
-            : "Delivery rejected. Warehouse quantity is unchanged.",
-        );
+      const result = await rejectDeliveryAction(id);
+      if (result.error) {
+        toast.error(result.error);
+        return;
       }
+      toast.success(
+        result.returnedCount
+          ? `Delivery rejected. ${result.returnedCount} serial${result.returnedCount === 1 ? "" : "s"} returned to the warehouse.`
+          : "Delivery rejected. Warehouse quantity is unchanged.",
+      );
       setPendingConfirm(null);
       router.refresh();
     });
@@ -294,7 +286,6 @@ export function DeliveriesPanel({
                       deliveryNo: delivery.deliveryNo,
                       branchName: delivery.branch.name,
                       orderNumber: delivery.order?.orderNumber,
-                      action: "reject",
                       statusCode: delivery.statusCode.code,
                     })
                   }
@@ -310,17 +301,14 @@ export function DeliveriesPanel({
                   disabled={pending}
                   className="bg-emerald-600 text-white hover:bg-emerald-700"
                   onClick={() =>
-                    setPendingConfirm({
+                    setReceiveTarget({
                       id: delivery.id,
                       deliveryNo: delivery.deliveryNo,
                       branchName: delivery.branch.name,
-                      orderNumber: delivery.order?.orderNumber,
-                      action: "accept",
-                      statusCode: delivery.statusCode.code,
                     })
                   }
                 >
-                  {delivery.statusCode.code === "partial" ? "Accept remaining" : "Accept"}
+                  {delivery.statusCode.code === "partial" ? "Receive remaining" : "Receive"}
                 </Button>
               ) : null}
             </div>
@@ -386,38 +374,18 @@ export function DeliveriesPanel({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              {pendingConfirm?.action === "reject" ? "Reject delivery?" : "Accept delivery?"}
-            </AlertDialogTitle>
+            <AlertDialogTitle>Reject delivery?</AlertDialogTitle>
             <AlertDialogDescription>
               {pendingConfirm ? (
-                pendingConfirm.action === "reject" ? (
-                  <>
-                    Reject{" "}
-                    <span className="font-medium text-foreground">
-                      {pendingConfirm.deliveryNo}
-                    </span>
-                    {pendingConfirm.orderNumber ? (
-                      <> (order {pendingConfirm.orderNumber})</>
-                    ) : null}{" "}
-                    at {pendingConfirm.branchName}.{" "}
-                    {pendingConfirm.statusCode === "approved"
-                      ? "Nothing has been dispatched, so warehouse quantity stays the same."
-                      : "Serials still in transit go back to the warehouse. Units already accepted stay at the branch."}
-                  </>
-                ) : (
-                  <>
-                    Accept{" "}
-                    <span className="font-medium text-foreground">
-                      {pendingConfirm.deliveryNo}
-                    </span>
-                    {pendingConfirm.orderNumber ? (
-                      <> (order {pendingConfirm.orderNumber})</>
-                    ) : null}{" "}
-                    at {pendingConfirm.branchName}. In-transit serials move into branch stock.
-                    Nothing is accepted when the delivery has no serials.
-                  </>
-                )
+                <>
+                  Reject{" "}
+                  <span className="font-medium text-foreground">{pendingConfirm.deliveryNo}</span>
+                  {pendingConfirm.orderNumber ? <> (order {pendingConfirm.orderNumber})</> : null} at{" "}
+                  {pendingConfirm.branchName}.{" "}
+                  {pendingConfirm.statusCode === "approved"
+                    ? "Nothing has been dispatched, so warehouse quantity stays the same."
+                    : "Serials still in transit go back to the warehouse. Units already accepted stay at the branch."}
+                </>
               ) : null}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -425,21 +393,24 @@ export function DeliveriesPanel({
             <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               disabled={pending}
-              className={
-                pendingConfirm?.action === "reject"
-                  ? undefined
-                  : "bg-emerald-600 text-white hover:bg-emerald-700"
-              }
               onClick={(event) => {
                 event.preventDefault();
                 confirmPendingAction();
               }}
             >
-              {pendingConfirm?.action === "reject" ? "Reject" : "Accept"}
+              Reject
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <DeliveryReceiveDialog
+        target={receiveTarget}
+        onClose={() => setReceiveTarget(null)}
+        onReceived={() => router.refresh()}
+        loadLines={listDeliveryReceiptLinesAction}
+        accept={acceptDeliveryAction}
+      />
 
       <Dialog
         open={dispatchTarget !== null}

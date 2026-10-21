@@ -5,12 +5,17 @@ import { useMemo, useState, useTransition } from "react";
 import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
 import { toast } from "sonner";
 
+import {
+  DeliveryReceiveDialog,
+  type ReceiveTarget,
+} from "@/app/(app)/logistics/_components/delivery-receive-dialog";
 import { PulloutRequestDialog } from "@/app/(app)/logistics/_components/pullout-request-dialog";
 import { TransferRequestDialog } from "@/app/(app)/logistics/_components/transfer-request-dialog";
 import {
   acceptDeliveryAction,
   createPulloutAction,
   createTransferAction,
+  listDeliveryReceiptLinesAction,
   rejectDeliveryAction,
 } from "@/features/ops/actions/ops.actions";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
@@ -63,20 +68,23 @@ const deliveryColumn = createColumnHelper<DataTableFeatures, DeliveryRow>();
 const transferColumn = createColumnHelper<DataTableFeatures, TransferRow>();
 const pulloutColumn = createColumnHelper<DataTableFeatures, PulloutRow>();
 
-interface PendingDeliveryAction {
+interface PendingDeliveryReject {
   id: string;
   deliveryNo: string;
   branchName: string;
-  action: "accept" | "reject";
 }
+
+/** Dispatched deliveries the branch can still receive or reject. */
+const RECEIVABLE_DELIVERY_CODES = new Set(["pending", "partial"]);
 
 export function OpsPanel({ deliveries, transfers, pullouts }: OpsPanelProps) {
   const router = useRouter();
   const [transferOpen, setTransferOpen] = useState(false);
   const [pulloutOpen, setPulloutOpen] = useState(false);
-  const [pendingDelivery, setPendingDelivery] = useState<PendingDeliveryAction | null>(
+  const [pendingDelivery, setPendingDelivery] = useState<PendingDeliveryReject | null>(
     null,
   );
+  const [receiveTarget, setReceiveTarget] = useState<ReceiveTarget | null>(null);
   const [pending, startTransition] = useTransition();
   const [deliverySelection, setDeliverySelection] = useState<RowSelectionState>({});
   const [transferSelection, setTransferSelection] = useState<RowSelectionState>({});
@@ -99,23 +107,14 @@ export function OpsPanel({ deliveries, transfers, pullouts }: OpsPanelProps) {
 
   function confirmDeliveryAction() {
     if (!pendingDelivery) return;
-    const { action, id } = pendingDelivery;
+    const { id } = pendingDelivery;
     startTransition(async () => {
-      const result =
-        action === "accept"
-          ? await acceptDeliveryAction(id)
-          : await rejectDeliveryAction(id);
+      const result = await rejectDeliveryAction(id);
       if (result.error) {
         toast.error(result.error);
         return;
       }
-      toast.success(
-        action === "accept"
-          ? "movedCount" in result && result.movedCount
-            ? "Delivery accepted — DIT moved to stock"
-            : "Delivery accepted"
-          : "Delivery rejected",
-      );
+      toast.success("Delivery rejected");
       setPendingDelivery(null);
       router.refresh();
     });
@@ -179,7 +178,7 @@ export function OpsPanel({ deliveries, transfers, pullouts }: OpsPanelProps) {
         header: "Action",
         enableSorting: false,
         cell: ({ row }) =>
-          row.original.statusCode.code === "pending" ? (
+          RECEIVABLE_DELIVERY_CODES.has(row.original.statusCode.code) ? (
             <div className="flex justify-end gap-2">
               <Button
                 size="sm"
@@ -190,7 +189,6 @@ export function OpsPanel({ deliveries, transfers, pullouts }: OpsPanelProps) {
                     id: row.original.id,
                     deliveryNo: row.original.deliveryNo,
                     branchName: row.original.branch.name,
-                    action: "reject",
                   })
                 }
               >
@@ -201,15 +199,14 @@ export function OpsPanel({ deliveries, transfers, pullouts }: OpsPanelProps) {
                 disabled={pending}
                 className="bg-emerald-600 text-white hover:bg-emerald-700"
                 onClick={() =>
-                  setPendingDelivery({
+                  setReceiveTarget({
                     id: row.original.id,
                     deliveryNo: row.original.deliveryNo,
                     branchName: row.original.branch.name,
-                    action: "accept",
                   })
                 }
               >
-                Accept
+                {row.original.statusCode.code === "partial" ? "Receive remaining" : "Receive"}
               </Button>
             </div>
           ) : null,
@@ -368,6 +365,14 @@ export function OpsPanel({ deliveries, transfers, pullouts }: OpsPanelProps) {
         onCreated={() => router.refresh()}
       />
 
+      <DeliveryReceiveDialog
+        target={receiveTarget}
+        onClose={() => setReceiveTarget(null)}
+        onReceived={() => router.refresh()}
+        loadLines={listDeliveryReceiptLinesAction}
+        accept={acceptDeliveryAction}
+      />
+
       <AlertDialog
         open={pendingDelivery !== null}
         onOpenChange={(open) => {
@@ -376,44 +381,24 @@ export function OpsPanel({ deliveries, transfers, pullouts }: OpsPanelProps) {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              {pendingDelivery?.action === "reject" ? "Reject delivery?" : "Accept delivery?"}
-            </AlertDialogTitle>
+            <AlertDialogTitle>Reject delivery?</AlertDialogTitle>
             <AlertDialogDescription>
-              {pendingDelivery?.action === "reject" ? (
-                <>
-                  Reject{" "}
-                  <span className="font-medium text-foreground">
-                    {pendingDelivery.deliveryNo}
-                  </span>{" "}
-                  at {pendingDelivery.branchName}. DIT inventory is unchanged.
-                </>
-              ) : (
-                <>
-                  Confirm acceptance of{" "}
-                  <span className="font-medium text-foreground">
-                    {pendingDelivery?.deliveryNo}
-                  </span>{" "}
-                  at {pendingDelivery?.branchName}. DIT inventory will move to Stock.
-                </>
-              )}
+              Reject{" "}
+              <span className="font-medium text-foreground">{pendingDelivery?.deliveryNo}</span> at{" "}
+              {pendingDelivery?.branchName}. Serials still in transit go back to the warehouse.
+              Units already accepted stay at the branch.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               disabled={pending}
-              className={
-                pendingDelivery?.action === "reject"
-                  ? undefined
-                  : "bg-emerald-600 text-white hover:bg-emerald-700"
-              }
               onClick={(event) => {
                 event.preventDefault();
                 confirmDeliveryAction();
               }}
             >
-              {pendingDelivery?.action === "reject" ? "Reject" : "Accept"}
+              Reject
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

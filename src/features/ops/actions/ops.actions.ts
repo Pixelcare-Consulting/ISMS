@@ -31,6 +31,10 @@ const pulloutSchema = z.object({
   notes: z.string().optional(),
 });
 
+const serialIdsSchema = z.object({
+  serialNumberIds: z.array(z.string().min(1)).min(1).optional(),
+});
+
 async function resolveBranchIds(session: {
   user: { id: string; tenantId: string; permissions?: string[] };
 }) {
@@ -69,18 +73,39 @@ export async function listOpsBranchOptionsAction() {
   return branches;
 }
 
-export async function acceptDeliveryAction(deliveryId: string) {
+export async function listDeliveryReceiptLinesAction(deliveryId: string) {
   const session = await requirePermission("inventory.view");
+  try {
+    const result = await opsService.listDeliveryReceiptLines(
+      {
+        tenantId: session.user.tenantId,
+        userId: session.user.id,
+        permissions: session.user.permissions,
+      },
+      deliveryId,
+    );
+    return { success: true as const, ...result };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to load delivery serials" };
+  }
+}
+
+export async function acceptDeliveryAction(deliveryId: string, input?: unknown) {
+  const session = await requirePermission("inventory.view");
+  const parsed = input ? serialIdsSchema.safeParse(input) : { success: true as const, data: {} };
+  if (!parsed.success) return { error: "Invalid input" };
   try {
     const delivery = await opsService.acceptDelivery({
       tenantId: session.user.tenantId,
       actorUserId: session.user.id,
+      permissions: session.user.permissions,
       deliveryId,
+      serialNumberIds: parsed.data.serialNumberIds,
     });
     revalidatePath("/operations");
     revalidatePath("/inventory");
     revalidatePath("/logistics/deliveries");
-    return { success: true as const, movedCount: delivery.movedCount };
+    return { success: true as const, movedCount: delivery.movedCount, status: delivery.status };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to accept delivery" };
   }
@@ -92,6 +117,7 @@ export async function rejectDeliveryAction(deliveryId: string) {
     await opsService.rejectDelivery({
       tenantId: session.user.tenantId,
       actorUserId: session.user.id,
+      permissions: session.user.permissions,
       deliveryId,
     });
     revalidatePath("/operations");
