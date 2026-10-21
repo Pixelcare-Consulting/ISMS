@@ -576,6 +576,8 @@ export async function listOrderHistoryAction(input?: {
       createdByName: order.createdBy.name?.trim() || order.createdBy.email,
       reviewSnapshot: order.reviewSnapshot,
       reviewSnapshotAt: order.reviewSnapshotAt?.toISOString() ?? null,
+      sapDocType: order.sapDocType,
+      sapDocNum: order.sapDocNum,
       orderQty,
       totalAmt,
       appQty,

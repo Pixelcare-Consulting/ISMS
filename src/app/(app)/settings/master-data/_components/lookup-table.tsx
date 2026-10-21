@@ -39,6 +39,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import {
+  MODE_OF_PAYMENT_KIND_LABELS,
+  MODE_OF_PAYMENT_KIND_NOT_SET,
+  MODE_OF_PAYMENT_KINDS,
+  type ModeOfPaymentKindValue,
+} from "@/features/lookups/constants/mode-of-payment-kind";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
 const lookupColumn = createColumnHelper<DataTableFeatures, LookupRowData>();
@@ -51,6 +57,7 @@ export interface LookupRowData {
   code?: string | null;
   class?: string | null;
   quantity?: number | null;
+  kind?: ModeOfPaymentKindValue | null;
   brandId?: string | null;
   regionId?: string | null;
   sizeId?: string | null;
@@ -125,6 +132,7 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
   const [formParentId, setFormParentId] = useState("");
   const [formClass, setFormClass] = useState("");
   const [formQuantity, setFormQuantity] = useState("1");
+  const [formKind, setFormKind] = useState<ModeOfPaymentKindValue | "">("");
   const [pending, startTransition] = useTransition();
 
   const parentNamesById = useMemo(
@@ -172,6 +180,7 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
     code: (row) => row.code,
     class: (row) => row.class,
     quantity: (row) => row.quantity,
+    kind: (row) => row.kind,
     parent: (row) => parentNameOf(row),
     status: (row) => row.recordStatus,
   });
@@ -195,6 +204,7 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
     setFormParentId("");
     setFormClass("");
     setFormQuantity("1");
+    setFormKind("");
     setOpen(true);
   }
 
@@ -205,6 +215,7 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
     setFormParentId(config.parent ? row[config.parent.field] ?? "" : "");
     setFormClass(row.class ?? "");
     setFormQuantity(String(row.quantity ?? 1));
+    setFormKind(row.kind ?? "");
     setOpen(true);
   }
 
@@ -218,6 +229,7 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
       ...(config.quantityField
         ? { quantity: Number(formQuantity) || 1 }
         : {}),
+      ...(config.kindField ? { kind: formKind || undefined } : {}),
     };
     startTransition(async () => {
       const result = editing
@@ -304,6 +316,19 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
           enableSorting: true,
           cell: ({ row }) => row.original.quantity ?? 1,
           meta: { className: "tabular-nums" },
+        }),
+      );
+    }
+    if (config.kindField) {
+      cols.push(
+        lookupColumn.display({
+          id: "kind",
+          header: "Type",
+          enableSorting: true,
+          cell: ({ row }) =>
+            row.original.kind
+              ? MODE_OF_PAYMENT_KIND_LABELS[row.original.kind]
+              : MODE_OF_PAYMENT_KIND_NOT_SET,
         }),
       );
     }
@@ -452,6 +477,22 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
                   required
                 />
               </div>
+            ) : null}
+            {config.kindField ? (
+              <SearchableSelect
+                label="Type"
+                id={`${entity}-kind`}
+                options={MODE_OF_PAYMENT_KINDS.map((kind) => ({
+                  id: kind,
+                  label: MODE_OF_PAYMENT_KIND_LABELS[kind],
+                }))}
+                value={formKind}
+                onChange={(value) => setFormKind(value as ModeOfPaymentKindValue | "")}
+                allowClear
+                placeholder={MODE_OF_PAYMENT_KIND_NOT_SET}
+                searchPlaceholder="Search type…"
+                disabled={pending}
+              />
             ) : null}
             {config.parent ? (
               <SearchableSelect

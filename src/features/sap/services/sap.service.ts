@@ -254,6 +254,7 @@ export const sapService = {
       orderNumber: string;
       branchId: string;
       branchSapCode: string;
+      docType: string | null;
       processedAt: Date | null;
       lines: { skuCode: string; approvedQty: number | null; quantity: number }[];
     },
@@ -268,6 +269,7 @@ export const sapService = {
         orderNumber: order.orderNumber,
         branchId: order.branchId,
         branchSapCode: order.branchSapCode,
+        docType: order.docType,
         processedAt: order.processedAt?.toISOString() ?? null,
         lines: order.lines,
       },
@@ -434,7 +436,7 @@ export const sapService = {
         let sapDocRef: string;
         switch (updated.jobType) {
           case "approved_order":
-            sapDocRef = await outbound.createApprovedOrderItrAndSo({
+            sapDocRef = await outbound.createApprovedOrderDocument({
               tenantId,
               userId,
               job: updated,
@@ -449,6 +451,20 @@ export const sapService = {
             break;
           case "delivery_partial_return":
             sapDocRef = await outbound.createPartialDeliveryInventoryTransfer({
+              tenantId,
+              userId,
+              job: updated,
+            });
+            break;
+          case "delivery_return":
+            sapDocRef = await outbound.createDeliveryReturnDocument({
+              tenantId,
+              userId,
+              job: updated,
+            });
+            break;
+          case "delivery_transfer":
+            sapDocRef = await outbound.createDeliveryTransferDocument({
               tenantId,
               userId,
               job: updated,

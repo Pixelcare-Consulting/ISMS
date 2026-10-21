@@ -26,6 +26,7 @@ export interface PostedLine {
 export interface DeliveryPostingView {
   id: string;
   branchId: string;
+  sourceWarehouseId: string | null;
   status: DeliveryWorkflowCode;
   lines: PostedLine[];
   /** Approved quantity per model on the order. Empty when nothing was approved. */

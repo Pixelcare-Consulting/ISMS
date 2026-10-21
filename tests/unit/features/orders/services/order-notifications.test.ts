@@ -17,6 +17,7 @@ jest.mock("@/features/orders/repositories/order.repository", () => ({
     addRejection: jest.fn(),
     updateStatus: jest.fn(),
     finalizeApproved: jest.fn(),
+    findSapRoutingContext: jest.fn(),
     forceCancelFromPending: jest.fn(),
   },
 }));
@@ -134,6 +135,19 @@ beforeEach(() => {
   (orderRepository.addRejection as jest.Mock).mockResolvedValue({});
   (orderRepository.updateStatus as jest.Mock).mockResolvedValue({});
   (orderRepository.finalizeApproved as jest.Mock).mockResolvedValue(undefined);
+  (orderRepository.findSapRoutingContext as jest.Mock).mockResolvedValue({
+    branch: {
+      name: "North Branch",
+      sapCode: "WH-N",
+      primaryWarehouse: { id: "w1", code: "WP" },
+      dealer: {
+        name: "Dealer X",
+        sapCode: "C001",
+        modeOfPayment: { name: "Consignment", kind: "CONSIGNMENT" },
+      },
+    },
+    mainWarehouse: { id: "w-main", code: "WM" },
+  });
   (sapService.emitApprovedOrder as jest.Mock).mockResolvedValue(undefined);
   (sapService.processPendingJobs as jest.Mock).mockResolvedValue(undefined);
 });

@@ -1,5 +1,7 @@
 import type { SapIntegrationJob } from "@prisma/client";
 
+import type { SapDocRef } from "@/features/sap/services/sap-documents";
+
 /**
  * Swappable outbound contract for SAP B1 document create.
  *
@@ -12,11 +14,10 @@ import type { SapIntegrationJob } from "@prisma/client";
  */
 export interface SapOutboundPort {
   /**
-   * Process II ordering after SP approve → ITR (OWTQ) + SO (ORDR).
-   * Opens local BranchDelivery as Process III.A entry (Delivery Note / Inventory
-   * Transfer numbers land in sapDocRef when live).
+   * Process II ordering after final approval → ITR (OWTQ, consignment) or
+   * SO (ORDR, outright). Opens the BranchDelivery header (Process III.A entry).
    */
-  createApprovedOrderItrAndSo(input: {
+  createApprovedOrderDocument(input: {
     tenantId: string;
     userId?: string;
     job: SapIntegrationJob;
@@ -34,6 +35,23 @@ export interface SapOutboundPort {
    * Local STK/DIT movement stays in delivery-posting; this only queues the SAP doc.
    */
   createPartialDeliveryInventoryTransfer(input: {
+    tenantId: string;
+    userId?: string;
+    job: SapIntegrationJob;
+  }): Promise<string>;
+
+  /** Dispatch → Delivery Note (DR) for an outright order, or Inventory Transfer for a consignment one. */
+  createDispatchDocument(input: { tenantId: string; deliveryId: string }): Promise<SapDocRef>;
+
+  /** Rejected / partial delivery return job (`delivery_return`). */
+  createDeliveryReturnDocument(input: {
+    tenantId: string;
+    userId?: string;
+    job: SapIntegrationJob;
+  }): Promise<string>;
+
+  /** Unit transfer between branches job (`delivery_transfer`, Inventory Transfer OWTR). */
+  createDeliveryTransferDocument(input: {
     tenantId: string;
     userId?: string;
     job: SapIntegrationJob;

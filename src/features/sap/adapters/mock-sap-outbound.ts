@@ -1,5 +1,7 @@
 import { auditService } from "@/features/audit/services/audit.service";
 import { logisticsService } from "@/features/logistics/services/logistics.service";
+import { orderRepository } from "@/features/orders/repositories/order.repository";
+import { resolveOrderSapRouting } from "@/features/orders/services/order-sap-routing";
 import type { SapOutboundPort } from "@/features/sap/ports/sap-outbound.port";
 import { SAP_REFERENCE_TYPES } from "@/features/sap/constants/sap-job-types";
 import { sapIntegrationRepository } from "@/features/sap/repositories/sap-integration.repository";
@@ -56,7 +58,7 @@ async function completeStub(
  * Behavior matches the pre-port processApprovedOrder / stub processors.
  */
 export const mockSapOutbound: SapOutboundPort = {
-  async createApprovedOrderItrAndSo({ tenantId, userId, job }) {
+  async createApprovedOrderDocument({ tenantId, userId, job }) {
     const orderId = job.referenceId;
     if (!orderId) throw new Error("Missing order reference");
 
@@ -87,12 +89,25 @@ export const mockSapOutbound: SapOutboundPort = {
     });
 
     if (!delivery && userId) {
-      delivery = await logisticsService.createDeliveryFromApprovedOrder(tenantId, userId, {
-        id: order.id,
-        branchId: order.branchId,
-        branchName: order.branch.name,
-        orderNumber: order.orderNumber,
-      });
+      const ctx = await orderRepository.findSapRoutingContext(tenantId, order.branchId);
+      const routing = ctx.branch
+        ? resolveOrderSapRouting({
+            branch: ctx.branch,
+            mainWarehouse: ctx.mainWarehouse,
+            dealer: ctx.branch.dealer,
+          })
+        : null;
+      delivery = await logisticsService.createDeliveryFromApprovedOrder(
+        tenantId,
+        userId,
+        {
+          id: order.id,
+          branchId: order.branchId,
+          branchName: order.branch.name,
+          orderNumber: order.orderNumber,
+        },
+        { sourceWarehouseId: routing?.ok ? routing.sourceWarehouseId : null },
+      );
     }
 
     if (delivery) {
@@ -128,6 +143,25 @@ export const mockSapOutbound: SapOutboundPort = {
   },
 
   async createPartialDeliveryInventoryTransfer({ tenantId, userId, job }) {
+    return completeStub(tenantId, userId, job, SAP_REFERENCE_TYPES.BranchDelivery);
+  },
+
+  async createDispatchDocument({ deliveryId }) {
+    const tail = deliveryId.slice(-8).toUpperCase();
+    return {
+      docEntry: 1,
+      docNum: 1,
+      docDate: new Date().toISOString().slice(0, 10),
+      displayNo: `MOCK-DR-${tail}`,
+      lineNums: [],
+    };
+  },
+
+  async createDeliveryReturnDocument({ tenantId, userId, job }) {
+    return completeStub(tenantId, userId, job, SAP_REFERENCE_TYPES.BranchDelivery);
+  },
+
+  async createDeliveryTransferDocument({ tenantId, userId, job }) {
     return completeStub(tenantId, userId, job, SAP_REFERENCE_TYPES.BranchDelivery);
   },
 };

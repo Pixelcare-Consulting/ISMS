@@ -14,6 +14,7 @@ function delivery(overrides: Partial<DeliveryPostingView> = {}): DeliveryPosting
   return {
     id: "del-1",
     branchId: "br-1",
+    sourceWarehouseId: "wh-1",
     status: "approved",
     lines: [],
     requirements: [{ modelId: "model-1", quantity: 4 }],

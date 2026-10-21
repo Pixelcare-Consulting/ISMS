@@ -9,7 +9,7 @@ import type {
  * ITR (OWTQ), SO (ORDR), Inventory Transfer (OWTR), Delivery Note (ODLN).
  */
 export const SAP_JOB_TYPE_LABELS: Record<SapIntegrationJobType, string> = {
-  approved_order: "Approved order → ITR (OWTQ) / SO (ORDR)",
+  approved_order: "Approved order → ITR or SO",
   pullout_itr: "Pull-out → Inventory Transfer Request (ITR / OWTQ)",
   sales_summary: "Sales summary export",
   inventory_sync_inbound: "Inventory sync from SAP",
@@ -18,6 +18,8 @@ export const SAP_JOB_TYPE_LABELS: Record<SapIntegrationJobType, string> = {
   delivery_sync_inbound: "Delivery sync from SAP (ODLN / OWTR)",
   delivery_partial_return:
     "Partial delivery return → Inventory Transfer (OWTR)",
+  delivery_return: "Delivery return → IT or Return",
+  delivery_transfer: "Unit transfer → Inventory Transfer (OWTR)",
 };
 
 export const SAP_JOB_STATUS_LABELS: Record<SapIntegrationJobStatus, string> = {

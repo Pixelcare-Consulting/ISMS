@@ -265,7 +265,7 @@ export function DeliveriesPanel({
           const delivery = row.original;
           return (
             <div className="flex justify-end gap-2">
-              {delivery.statusCode.code === "approved" && capabilities.canManage ? (
+              {delivery.statusCode.code === "approved" && capabilities.canDispatch ? (
                 <Button size="sm" disabled={pending} onClick={() => openDispatch(delivery)}>
                   Dispatch
                 </Button>
@@ -317,7 +317,7 @@ export function DeliveriesPanel({
       }),
     ];
     return cols;
-  }, [capabilities.canAcceptDelivery, capabilities.canManage, indexOffset, pending]);
+  }, [capabilities.canAcceptDelivery, capabilities.canDispatch, capabilities.canManage, indexOffset, pending]);
 
   return (
     <>

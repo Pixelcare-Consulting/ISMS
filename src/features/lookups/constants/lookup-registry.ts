@@ -32,6 +32,8 @@ export interface LookupEntityConfig {
   classField?: boolean;
   /** PackageType units / package quantity. */
   quantityField?: boolean;
+  /** ModeOfPayment-only: Consignment or Outright, decides ITR or SO on order approval. */
+  kindField?: boolean;
   /** Child entity rendered inline on this entity's page. */
   child?: LookupEntityKey;
 }
@@ -218,6 +220,7 @@ export const LOOKUP_ENTITIES: Record<LookupEntityKey, LookupEntityConfig> = {
     group: "Sales",
     auditEntity: "ModeOfPayment",
     auditKey: "mode_of_payment",
+    kindField: true,
   },
   promoType: {
     key: "promoType",

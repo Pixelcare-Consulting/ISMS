@@ -18,7 +18,8 @@ import {
   type DeliveryPostingView,
   type WarehouseHold,
 } from "@/features/logistics/services/delivery-posting.planner";
-import { authorizeBranchScope, type PostingActor } from "@/features/logistics/services/posting-support";
+import { authorizeDeliveryScope } from "@/features/logistics/services/delivery-scope";
+import type { PostingActor } from "@/features/logistics/services/posting-support";
 import { sapService } from "@/features/sap/services/sap.service";
 
 /**
@@ -105,6 +106,7 @@ async function loadDelivery(tenantId: string, deliveryId: string): Promise<Deliv
   return {
     id: delivery.id,
     branchId: delivery.branchId,
+    sourceWarehouseId: delivery.sourceWarehouseId,
     status: known,
     lines: delivery.lines.map((line) => ({
       serialNumberId: line.serialNumberId,
@@ -159,7 +161,7 @@ export const deliveryPostingService = {
   ): Promise<{ deliveryNo: string; status: DeliveryPostingView["status"]; lines: DeliveryReceiptLine[] }> {
     const preview = await loadDelivery(actor.tenantId, deliveryId);
     if (!preview) throw new Error("Delivery not found");
-    await authorizeBranchScope(actor, preview.branchId);
+    await authorizeDeliveryScope(actor, preview);
 
     const header = await prisma.branchDelivery.findFirst({
       where: { id: deliveryId, tenantId: actor.tenantId },
@@ -438,7 +440,7 @@ export const deliveryPostingService = {
   }): Promise<{ movedCount: number; idempotent: boolean; status: "accepted" | "partial" }> {
     const preview = await loadDelivery(input.tenantId, input.deliveryId);
     if (!preview) throw new Error("Delivery not found");
-    await authorizeBranchScope(input, preview.branchId);
+    await authorizeDeliveryScope(input, preview);
     const plan = planAccept(preview, input.serialNumberIds ?? null);
     if (!plan.ok) throw new Error(plan.error);
 
@@ -542,7 +544,7 @@ export const deliveryPostingService = {
   }): Promise<{ returnedCount: number; idempotent: boolean }> {
     const preview = await loadDelivery(input.tenantId, input.deliveryId);
     if (!preview) throw new Error("Delivery not found");
-    await authorizeBranchScope(input, preview.branchId);
+    await authorizeDeliveryScope(input, preview);
     const plan = planReject(preview);
     if (!plan.ok) throw new Error(plan.error);
     if (plan.idempotent) {

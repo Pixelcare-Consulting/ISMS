@@ -27,6 +27,7 @@ export const DEMO_USERS = [
   { email: "sp@demo.local", name: "Sales Planner", roleSlug: "sp" },
   { email: "spa@demo.local", name: "Supply Planning Associate", roleSlug: "spa" },
   { email: "logistics@demo.local", name: "Logistics", roleSlug: "logistics" },
+  { email: "warehouse@demo.local", name: "Warehouse Operator", roleSlug: "warehouse_operator" },
   { email: "ae@demo.local", name: "Area Executive", roleSlug: "ae" },
   { email: "accounting@demo.local", name: "Accounting", roleSlug: "accounting" },
 ] as const;
@@ -99,6 +100,13 @@ export const PERMISSIONS = [
   { slug: "logistics.view", name: "View logistics" },
   { slug: "logistics.create", name: "Create logistics transactions" },
   { slug: "logistics.manage", name: "Manage logistics" },
+  { slug: "logistics.delivery.dispatch", name: "Dispatch deliveries (post IT/DR to SAP)" },
+  { slug: "logistics.delivery.receive", name: "Accept delivered units" },
+  { slug: "logistics.delivery_return.request", name: "Request full delivery return" },
+  { slug: "logistics.delivery_return.approve", name: "Approve delivery return" },
+  { slug: "logistics.delivery_transfer.create", name: "Create transfer for units not accepted" },
+  { slug: "logistics.delivery_transfer.approve", name: "Approve transfer lines for units not accepted" },
+  { slug: "logistics.delivery_transfer.receive", name: "Receive transferred units" },
   { slug: "sap.view", name: "View SAP integration" },
   { slug: "sap.manage", name: "Manage SAP integration" },
   { slug: "sales.view", name: "View sales and ATR" },
@@ -180,6 +188,17 @@ const ORDERS_CREATE_ALL = [
   "orders.auto_replenish.create",
 ] as const;
 
+/** Delivery dispatch / receive / return / transfer steps. Approvers are set in Settings → Roles. */
+const DELIVERY_FLOW_PERMISSIONS = [
+  "logistics.delivery.dispatch",
+  "logistics.delivery.receive",
+  "logistics.delivery_return.request",
+  "logistics.delivery_return.approve",
+  "logistics.delivery_transfer.create",
+  "logistics.delivery_transfer.approve",
+  "logistics.delivery_transfer.receive",
+] as const;
+
 /** Legacy + per-type approve (TL / SP / logistics / admin pattern). */
 const ORDERS_APPROVE_ALL = [
   "orders.approve",
@@ -233,6 +252,7 @@ export const ROLES = [
       "logistics.view",
       "logistics.create",
       "logistics.manage",
+      ...DELIVERY_FLOW_PERMISSIONS,
       "sap.manage",
       "sales.view",
       "sales.create",
@@ -366,6 +386,8 @@ export const ROLES = [
       "dashboard.manage",
       "ai.assist",
       "inventory.view",
+      "logistics.view",
+      "logistics.delivery_return.approve",
       ...ORDERS_VIEW_ALL,
       ...ORDERS_APPROVE_ALL,
       "sales.view",
@@ -474,6 +496,23 @@ export const ROLES = [
     ],
   },
   {
+    slug: "warehouse_operator",
+    name: "Warehouse Operator",
+    description: "Dispatches, receives and returns delivery units",
+    permissions: [
+      "dashboard.manage",
+      "inventory.view",
+      "warehouses.view",
+      "logistics.view",
+      "logistics.delivery.dispatch",
+      "logistics.delivery.receive",
+      "logistics.delivery_return.request",
+      "logistics.delivery_transfer.create",
+      "logistics.delivery_transfer.approve",
+      "logistics.delivery_transfer.receive",
+    ],
+  },
+  {
     slug: "logistics",
     name: "Logistics",
     description: "Delivery, transfer, pull-out processing",
@@ -486,6 +525,8 @@ export const ROLES = [
       "logistics.view",
       "logistics.create",
       "logistics.manage",
+      "logistics.delivery.dispatch",
+      "logistics.delivery.receive",
       "sap.view",
       "sap.manage",
       "sales.view",

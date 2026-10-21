@@ -25,6 +25,7 @@ import {
   orderRepository,
 } from "@/features/orders/repositories/order.repository";
 import { suggestionApplyService } from "@/features/orders/services/suggestion-apply.service";
+import { resolveOrderSapRouting } from "@/features/orders/services/order-sap-routing";
 import { validateOrderLines } from "@/features/orders/services/order-line-validation";
 import type {
   OrderListSort,
@@ -817,6 +818,19 @@ export const orderService = {
         : { dueDate: null as Date | null, rescheduled: false, rescheduledFrom: undefined as string | undefined };
 
     if (isFinal) {
+      // Decide ITR or SO and block before anything is written, so the order stays at its step.
+      const routingContext = await orderRepository.findSapRoutingContext(
+        tenantId,
+        order.branchId,
+      );
+      if (!routingContext.branch) throw new Error("Branch not found");
+      const routing = resolveOrderSapRouting({
+        branch: routingContext.branch,
+        mainWarehouse: routingContext.mainWarehouse,
+        dealer: routingContext.branch.dealer,
+      });
+      if (!routing.ok) throw new Error(routing.error);
+
       const lines = order.details.map((line) => {
         const adjustment = adjustmentById.get(line.id);
         return {
@@ -847,6 +861,7 @@ export const orderService = {
         spaRemarks: comment,
         deliveryDueDate: deliveryResolution.dueDate ?? undefined,
         brandId,
+        sapDocType: routing.docType,
         reviewSnapshot: input?.reviewSnapshot,
         lines,
       });
@@ -861,6 +876,7 @@ export const orderService = {
             orderNumber: refreshed.orderNumber,
             branchId: refreshed.branchId,
             branchSapCode: refreshed.branch.sapCode,
+            docType: refreshed.sapDocType,
             processedAt: refreshed.processedAt,
             lines: refreshed.details.map((d) => ({
               skuCode: d.model.skuCode,

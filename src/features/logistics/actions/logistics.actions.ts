@@ -6,6 +6,8 @@ import { z } from "zod";
 import { auditService } from "@/features/audit/services/audit.service";
 import {
   LOGISTICS_CREATE,
+  LOGISTICS_DELIVERY_DISPATCH,
+  LOGISTICS_DELIVERY_RECEIVE,
   LOGISTICS_MANAGE,
   LOGISTICS_PAGE_PERMISSIONS,
 } from "@/features/logistics/constants/logistics-permissions";
@@ -24,6 +26,18 @@ import { reasonStatusService } from "@/features/reason-status/services/reason-st
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/database/client";
+
+const DISPATCH_PERMISSIONS = [
+  LOGISTICS_DELIVERY_DISPATCH,
+  LOGISTICS_MANAGE,
+] as const;
+
+const DELIVERY_RECEIVE_PERMISSIONS = [
+  LOGISTICS_CREATE,
+  LOGISTICS_MANAGE,
+  "orders.create",
+  LOGISTICS_DELIVERY_RECEIVE,
+] as const;
 
 const LOGISTICS_WRITE_ALIASES = [
   LOGISTICS_CREATE,
@@ -234,7 +248,7 @@ export async function createDeliveryAction(input: unknown) {
 }
 
 export async function listDispatchCandidatesAction(id: string) {
-  const session = await requirePermission(LOGISTICS_MANAGE);
+  const session = await requireAnyPermission([...DISPATCH_PERMISSIONS]);
   try {
     const result = await deliveryPostingService.listDispatchCandidates(session.user.tenantId, id);
     return { success: true as const, ...result };
@@ -244,7 +258,7 @@ export async function listDispatchCandidatesAction(id: string) {
 }
 
 export async function dispatchDeliveryAction(id: string, input: unknown) {
-  const session = await requirePermission(LOGISTICS_MANAGE);
+  const session = await requireAnyPermission([...DISPATCH_PERMISSIONS]);
   const parsed = serialIdsSchema.safeParse(input);
   if (!parsed.success) return { error: "Select the serials to dispatch" };
 
@@ -265,7 +279,7 @@ export async function dispatchDeliveryAction(id: string, input: unknown) {
 }
 
 export async function listDeliveryReceiptLinesAction(id: string) {
-  const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
+  const session = await requireAnyPermission([...DELIVERY_RECEIVE_PERMISSIONS]);
   try {
     const result = await deliveryPostingService.listReceiptLines(
       {
@@ -282,7 +296,7 @@ export async function listDeliveryReceiptLinesAction(id: string) {
 }
 
 export async function acceptDeliveryAction(id: string, input?: unknown) {
-  const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
+  const session = await requireAnyPermission([...DELIVERY_RECEIVE_PERMISSIONS]);
   const parsed = input
     ? z.object({ serialNumberIds: z.array(z.string().min(1)).optional() }).safeParse(input)
     : { success: true as const, data: {} };
@@ -311,7 +325,7 @@ export async function acceptDeliveryAction(id: string, input?: unknown) {
 }
 
 export async function rejectDeliveryAction(id: string, notes?: string) {
-  const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
+  const session = await requireAnyPermission([...DELIVERY_RECEIVE_PERMISSIONS]);
   try {
     const result = await deliveryPostingService.reject({
       tenantId: session.user.tenantId,

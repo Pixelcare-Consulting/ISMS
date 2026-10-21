@@ -237,6 +237,22 @@ export const aorRepository = {
     });
   },
 
+  /** One query over all of a user's AOR rows (any target type). */
+  async listScopeForUser(
+    tenantId: string,
+    userId: string,
+  ): Promise<{ branchIds: string[]; warehouseIds: string[]; hasRows: boolean }> {
+    const rows = await prisma.aor.findMany({
+      where: { tenantId, userId },
+      select: { branchId: true, warehouseId: true },
+    });
+    return {
+      branchIds: rows.map((r) => r.branchId).filter((id): id is string => id !== null),
+      warehouseIds: rows.map((r) => r.warehouseId).filter((id): id is string => id !== null),
+      hasRows: rows.length > 0,
+    };
+  },
+
   listWarehouseIdsForUser(tenantId: string, userId: string) {
     return prisma.aor.findMany({
       where: { tenantId, userId, warehouseId: { not: null } },
