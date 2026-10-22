@@ -42,15 +42,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  DeliveryDispatchDialog,
+  type DispatchTarget,
+} from "@/app/(app)/logistics/_components/delivery-dispatch-dialog";
 import {
   DeliveryReceiveDialog,
   type ReceiveTarget,
@@ -123,13 +118,6 @@ type PendingReject = {
   orderNumber?: string;
 };
 
-interface DispatchCandidate {
-  id: string;
-  serialNo: string;
-  warehouseCode: string;
-  locationCode: string;
-}
-
 export function DeliveriesPanel({
   deliveries,
   capabilities,
@@ -144,10 +132,7 @@ export function DeliveriesPanel({
   const [receiveTarget, setReceiveTarget] = useState<ReceiveTarget | null>(null);
   const [returnRequestTarget, setReturnRequestTarget] = useState<ReturnTarget | null>(null);
   const [returnReviewTarget, setReturnReviewTarget] = useState<ReturnTarget | null>(null);
-  const [dispatchTarget, setDispatchTarget] = useState<DeliveryRow | null>(null);
-  const [dispatchSerials, setDispatchSerials] = useState<DispatchCandidate[]>([]);
-  const [dispatchRequired, setDispatchRequired] = useState(0);
-  const [dispatchSelected, setDispatchSelected] = useState<string[]>([]);
+  const [dispatchTarget, setDispatchTarget] = useState<DispatchTarget | null>(null);
   const pageSize = parseTablePageSize(deliveries.limit);
   const sort = (searchParams.get("sort") ?? initialSort) || "";
   const sortDir = (
@@ -220,20 +205,20 @@ export function DeliveriesPanel({
         toast.error(result.error);
         return;
       }
-      const chosen = result.serials.slice(0, result.requiredQty).map((serial) => serial.id);
-      setDispatchTarget(row);
-      setDispatchSerials(result.serials);
-      setDispatchRequired(result.requiredQty);
-      setDispatchSelected(chosen);
+      setDispatchTarget({
+        id: row.id,
+        deliveryNo: row.deliveryNo,
+        branchName: row.branch.name,
+        models: result.models,
+        serials: result.serials,
+      });
     });
   }
 
-  function confirmDispatch() {
+  function confirmDispatch(serialNumberIds: string[]) {
     if (!dispatchTarget) return;
     startTransition(async () => {
-      const result = await dispatchDeliveryAction(dispatchTarget.id, {
-        serialNumberIds: dispatchSelected,
-      });
+      const result = await dispatchDeliveryAction(dispatchTarget.id, { serialNumberIds });
       if (result.error) {
         toast.error(result.error);
         return;
@@ -506,62 +491,12 @@ export function DeliveriesPanel({
         canTransfer={capabilities.canCreateDeliveryTransfer}
       />
 
-      <Dialog
-        open={dispatchTarget !== null}
-        onOpenChange={(open) => {
-          if (!open && !pending) setDispatchTarget(null);
-        }}
-      >
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Dispatch {dispatchTarget?.deliveryNo}</DialogTitle>
-            <DialogDescription>
-              Choose {dispatchRequired} warehouse serial{dispatchRequired === 1 ? "" : "s"} for{" "}
-              {dispatchTarget?.branch.name}. Dispatch moves them into transit. Warehouse quantity
-              drops by the same number.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="max-h-80 space-y-2 overflow-y-auto">
-            {dispatchSerials.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No warehouse serials are available for this order.</p>
-            ) : (
-              dispatchSerials.map((serial) => {
-                const checked = dispatchSelected.includes(serial.id);
-                return (
-                  <label key={serial.id} className="flex items-center gap-3 rounded-md border px-3 py-2 text-sm">
-                    <Checkbox
-                      checked={checked}
-                      onCheckedChange={(value) => {
-                        setDispatchSelected((current) =>
-                          value === true
-                            ? [...current, serial.id]
-                            : current.filter((id) => id !== serial.id),
-                        );
-                      }}
-                      aria-label={`Allocate ${serial.serialNo}`}
-                    />
-                    <span className="font-mono">{serial.serialNo}</span>
-                    <span className="text-muted-foreground">
-                      {serial.warehouseCode} / {serial.locationCode}
-                    </span>
-                  </label>
-                );
-              })
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" disabled={pending} onClick={() => setDispatchTarget(null)}>
-              Cancel
-            </Button>
-            <Button
-              disabled={pending || dispatchSelected.length !== dispatchRequired || dispatchRequired === 0}
-              onClick={confirmDispatch}
-            >
-              Dispatch {dispatchSelected.length}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DeliveryDispatchDialog
+        target={dispatchTarget}
+        pending={pending}
+        onClose={() => setDispatchTarget(null)}
+        onConfirm={confirmDispatch}
+      />
     </>
   );
 }

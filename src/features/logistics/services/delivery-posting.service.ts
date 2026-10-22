@@ -201,6 +201,14 @@ export interface DispatchCandidate {
   locationCode: string;
 }
 
+/** One ordered model on a delivery and how many serials dispatch must pick for it. */
+export interface DispatchModelRequirement {
+  modelId: string;
+  skuCode: string;
+  modelName: string;
+  requiredQty: number;
+}
+
 export interface DeliveryReceiptLine {
   serialNumberId: string;
   serialNo: string;
@@ -336,6 +344,7 @@ export const deliveryPostingService = {
 
   async listDispatchCandidates(tenantId: string, deliveryId: string): Promise<{
     requiredQty: number;
+    models: DispatchModelRequirement[];
     serials: DispatchCandidate[];
   }> {
     const delivery = await loadDelivery(tenantId, deliveryId);
@@ -346,8 +355,25 @@ export const deliveryPostingService = {
     const modelIds = delivery.requirements.map((row) => row.modelId);
     const requiredQty = delivery.requirements.reduce((sum, row) => sum + row.quantity, 0);
     if (modelIds.length === 0) {
-      return { requiredQty: 0, serials: [] };
+      return { requiredQty: 0, models: [], serials: [] };
     }
+
+    // An order can carry the same model on more than one line; dispatch picks per model.
+    const requiredByModel = new Map<string, number>();
+    for (const row of delivery.requirements) {
+      requiredByModel.set(row.modelId, (requiredByModel.get(row.modelId) ?? 0) + row.quantity);
+    }
+    const modelRows = await prisma.productModel.findMany({
+      where: { tenantId, id: { in: [...requiredByModel.keys()] } },
+      select: { id: true, skuCode: true, name: true },
+      orderBy: { skuCode: "asc" },
+    });
+    const models: DispatchModelRequirement[] = modelRows.map((model) => ({
+      modelId: model.id,
+      skuCode: model.skuCode,
+      modelName: model.name,
+      requiredQty: requiredByModel.get(model.id) ?? 0,
+    }));
 
     const branch = await prisma.branch.findFirst({
       where: { id: delivery.branchId, tenantId },
@@ -389,6 +415,7 @@ export const deliveryPostingService = {
 
     return {
       requiredQty,
+      models,
       serials: serials.map((row) => ({
         id: row.id,
         serialNo: row.serialNo,
