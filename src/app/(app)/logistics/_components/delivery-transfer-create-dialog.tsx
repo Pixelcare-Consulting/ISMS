@@ -21,7 +21,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { SearchableSelect, type SearchableOption } from "@/components/ui/searchable-select";
 
 export interface TransferRequest {
@@ -49,7 +48,7 @@ export function DeliveryTransferCreateDialog({ request, onClose }: DeliveryTrans
         if (!open) onClose();
       }}
     >
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-3xl">
         {request ? <CreateBody key={request.units.map((u) => u.serialNumberId).join(",")} request={request} onClose={onClose} /> : null}
       </DialogContent>
     </Dialog>
@@ -59,7 +58,9 @@ export function DeliveryTransferCreateDialog({ request, onClose }: DeliveryTrans
 type LoadState =
   | { kind: "loading" }
   | { kind: "error"; message: string }
-  | { kind: "ready"; draft: DeliveryTransferDraft };
+  | { kind: "ready"; draft: DeliveryTransferDraft; createdByName: string };
+
+const dateFormat = new Intl.DateTimeFormat("en-PH", { dateStyle: "medium" });
 
 /** Option ids carry the kind so one picker can list branches and warehouses. */
 function placeKey(place: TransferPlace | null): string {
@@ -79,6 +80,8 @@ function CreateBody({ request, onClose }: { request: TransferRequest; onClose: (
   const [receiveKey, setReceiveKey] = useState("");
   const [locationId, setLocationId] = useState("");
   const [remarks, setRemarks] = useState<Record<string, string>>({});
+  // Units on this draft. Delete drops one before saving; at least one must stay.
+  const [units, setUnits] = useState(request.units);
   const [pending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -93,7 +96,7 @@ function CreateBody({ request, onClose }: { request: TransferRequest; onClose: (
         return;
       }
       const { defaults } = result.draft;
-      setState({ kind: "ready", draft: result.draft });
+      setState({ kind: "ready", draft: result.draft, createdByName: result.createdByName });
       setReceiveKey(placeKey(defaults.receive));
       setLocationId(defaults.receive?.kind === "WAREHOUSE" ? defaults.receive.warehouseLocationId : "");
     });
@@ -162,7 +165,7 @@ function CreateBody({ request, onClose }: { request: TransferRequest; onClose: (
           receive.kind === "WAREHOUSE"
             ? { kind: "WAREHOUSE", id: receive.id, locationId }
             : { kind: "BRANCH", id: receive.id },
-        lines: request.units.map((unit) => ({
+        lines: units.map((unit) => ({
           serialNumberId: unit.serialNumberId,
           remarks: remarks[unit.serialNumberId]?.trim() || null,
         })),
@@ -180,9 +183,10 @@ function CreateBody({ request, onClose }: { request: TransferRequest; onClose: (
   return (
     <>
       <DialogHeader>
-        <DialogTitle>Transfer units from {request.deliveryNo}</DialogTitle>
+        <DialogTitle>Branch transfer</DialogTitle>
         <DialogDescription>
-          These units stay in transit until the transfer is approved, released, and received.
+          Units from delivery {request.deliveryNo} that were not accepted. They stay in transit until
+          the transfer is approved, released and received.
         </DialogDescription>
       </DialogHeader>
 
@@ -195,71 +199,116 @@ function CreateBody({ request, onClose }: { request: TransferRequest; onClose: (
           {state.message}
         </p>
       ) : (
-        <div className="max-h-[60vh] space-y-4 overflow-y-auto">
-          <dl className="space-y-1 text-sm">
-            <dt className="font-medium">Branch release</dt>
-            <dd>
-              {draft?.releaseName}
-              <span className="block text-xs text-muted-foreground">
-                The branch the delivery went to. The units are in transit there.
-              </span>
-            </dd>
-          </dl>
-          <SearchableSelect
-            id="unit-transfer-receive"
-            label="Branch receive"
-            options={placeOptions}
-            value={receiveKey}
-            onChange={changeReceive}
-            placeholder="Select branch or warehouse…"
-            searchPlaceholder="Search branches and warehouses…"
-            disabled={pending}
-          />
-          {receive?.kind === "WAREHOUSE" ? (
-            <SearchableSelect
-              id="unit-transfer-location"
-              label="Warehouse location"
-              options={locationOptions}
-              value={locationId}
-              onChange={setLocationId}
-              placeholder="Select location…"
-              searchPlaceholder="Search locations…"
-              emptyMessage="This warehouse has no locations."
-              disabled={pending}
-            />
-          ) : null}
+        <div className="max-h-[65vh] space-y-5 overflow-y-auto pr-1">
+          <section aria-label="Transfer header" className="rounded-lg border bg-card p-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <dl className="space-y-3">
+                <HeaderField label="Transfer No.">
+                  <span className="text-muted-foreground">Assigned when saved</span>
+                </HeaderField>
+                <HeaderField label="Created by">{state.createdByName}</HeaderField>
+                <HeaderField label="Created date">{dateFormat.format(new Date())}</HeaderField>
+              </dl>
+              <dl className="space-y-3">
+                <HeaderField label="Branch release">
+                  {state.draft.releaseName}
+                  <span className="block text-xs font-normal text-muted-foreground">
+                    Where the delivery went. Fixed.
+                  </span>
+                </HeaderField>
+                <div className="space-y-2">
+                  <SearchableSelect
+                    id="unit-transfer-receive"
+                    label="Branch receive"
+                    options={placeOptions}
+                    value={receiveKey}
+                    onChange={changeReceive}
+                    placeholder="Select branch or warehouse…"
+                    searchPlaceholder="Search branches and warehouses…"
+                    disabled={pending}
+                  />
+                  {receive?.kind === "WAREHOUSE" ? (
+                    <SearchableSelect
+                      id="unit-transfer-location"
+                      label="Warehouse location"
+                      options={locationOptions}
+                      value={locationId}
+                      onChange={setLocationId}
+                      placeholder="Select location…"
+                      searchPlaceholder="Search locations…"
+                      emptyMessage="This warehouse has no locations."
+                      disabled={pending}
+                    />
+                  ) : null}
+                </div>
+                <HeaderField label="Transfer status">
+                  <span className="text-muted-foreground">New. Pending approval once saved.</span>
+                </HeaderField>
+              </dl>
+            </div>
+          </section>
 
           <section className="space-y-2">
-            <h3 className="text-sm font-medium">Units ({request.units.length})</h3>
-            <ul className="space-y-2">
-              {request.units.map((unit) => {
-                const inputId = `unit-transfer-remarks-${unit.serialNumberId}`;
-                return (
-                  <li key={unit.serialNumberId} className="space-y-2 rounded-md border px-3 py-2">
-                    <p className="text-sm">
-                      <span className="font-mono">{unit.serialNo}</span>
-                      <span className="text-muted-foreground"> · {unit.skuCode}</span>
-                    </p>
-                    <div className="space-y-1">
-                      <Label htmlFor={inputId} className="text-xs text-muted-foreground">
-                        Remarks
-                      </Label>
-                      <Input
-                        id={inputId}
-                        value={remarks[unit.serialNumberId] ?? ""}
-                        maxLength={500}
-                        placeholder="For example: screen cracked in transit"
-                        disabled={pending}
-                        className="max-sm:h-11"
-                        onChange={(event) =>
-                          setRemarks((current) => ({ ...current, [unit.serialNumberId]: event.target.value }))
-                        }
-                      />
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
+            <h3 className="text-sm font-semibold">Transfer details</h3>
+            <div className="overflow-x-auto rounded-md border">
+              <table className="w-full min-w-[36rem] text-sm">
+                <thead className="bg-muted/40 text-left">
+                  <tr>
+                    <th scope="col" className="px-3 py-2 font-medium">Model</th>
+                    <th scope="col" className="px-3 py-2 font-medium">Serial number</th>
+                    <th scope="col" className="px-3 py-2 font-medium">Remarks</th>
+                    <th scope="col" className="px-3 py-2 font-medium">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {units.map((unit) => (
+                    <tr key={unit.serialNumberId} className="border-t align-middle">
+                      <td className="px-3 py-2">
+                        <span className="font-medium">{unit.skuCode}</span>
+                        <span className="block text-xs text-muted-foreground">{unit.modelName}</span>
+                      </td>
+                      <td className="px-3 py-2 font-mono">{unit.serialNo}</td>
+                      <td className="px-3 py-2">
+                        <Input
+                          aria-label={`Remarks for ${unit.serialNo}`}
+                          value={remarks[unit.serialNumberId] ?? ""}
+                          maxLength={500}
+                          placeholder="For example: screen cracked"
+                          disabled={pending}
+                          className="h-9 max-sm:h-11"
+                          onChange={(event) =>
+                            setRemarks((current) => ({
+                              ...current,
+                              [unit.serialNumberId]: event.target.value,
+                            }))
+                          }
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="max-sm:h-11 hover:border-destructive hover:text-destructive"
+                          disabled={pending || units.length === 1}
+                          title={units.length === 1 ? "A transfer needs at least one unit." : undefined}
+                          onClick={() =>
+                            setUnits((current) =>
+                              current.filter((row) => row.serialNumberId !== unit.serialNumberId),
+                            )
+                          }
+                        >
+                          Delete
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Approve and accept are done per line on the transfer after it is saved.
+            </p>
           </section>
           {missing ? <p className="text-xs text-muted-foreground">{missing}</p> : null}
         </div>
@@ -269,10 +318,23 @@ function CreateBody({ request, onClose }: { request: TransferRequest; onClose: (
         <Button variant="outline" className="max-sm:h-11" disabled={pending} onClick={onClose}>
           Cancel
         </Button>
-        <Button className="max-sm:h-11" disabled={pending || state.kind !== "ready" || missing !== null} onClick={submit}>
-          {pending ? "Creating…" : "Create transfer"}
+        <Button
+          className="max-sm:h-11"
+          disabled={pending || state.kind !== "ready" || missing !== null}
+          onClick={submit}
+        >
+          {pending ? "Saving…" : "Save transfer"}
         </Button>
       </DialogFooter>
     </>
+  );
+}
+
+function HeaderField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <dt className="text-sm text-muted-foreground">{label}</dt>
+      <dd className="mt-0.5 font-medium">{children}</dd>
+    </div>
   );
 }

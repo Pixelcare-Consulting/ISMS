@@ -687,13 +687,15 @@ export async function getDeliveryTransferDetailAction(id: string) {
 export async function prepareDeliveryTransferAction(
   deliveryId: string,
   serialNumberIds: string[],
-): Promise<{ success: true; draft: DeliveryTransferDraft } | { error: string }> {
+): Promise<
+  { success: true; draft: DeliveryTransferDraft; createdByName: string } | { error: string }
+> {
   const session = await requireAnyPermission([LOGISTICS_DELIVERY_TRANSFER_CREATE]);
   const parsed = z.array(z.string().min(1)).min(1).safeParse(serialNumberIds);
   if (!parsed.success) return { error: "Select the units to transfer" };
   try {
     const draft = await deliveryTransferService.prepare(postingActor(session), deliveryId, parsed.data);
-    return { success: true as const, draft };
+    return { success: true as const, draft, createdByName: session.user.name || session.user.email || "You" };
   } catch (error) {
     return actionError(error, "Failed to load branches and warehouses");
   }
