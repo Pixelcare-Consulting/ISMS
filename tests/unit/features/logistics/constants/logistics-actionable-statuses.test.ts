@@ -11,9 +11,15 @@ function caps(
   return {
     canCreate: false,
     canManage: false,
+    canDispatch: false,
     canApproveTl: false,
     canRejectTransfer: false,
     canAcceptDelivery: false,
+    canRequestDeliveryReturn: false,
+    canApproveDeliveryReturn: false,
+    canCreateDeliveryTransfer: false,
+    canApproveDeliveryTransfer: false,
+    canReceiveDeliveryTransfer: false,
     canExecuteTransfer: false,
     canReceiveTransfer: false,
     canSchedulePullout: false,
@@ -25,7 +31,7 @@ function caps(
 
 describe("logistics actionable status codes", () => {
   it("counts dispatch for managers and accept for receivers", () => {
-    expect(getDeliveryActionableStatusCodes(caps({ canManage: true }))).toEqual(
+    expect(getDeliveryActionableStatusCodes(caps({ canDispatch: true }))).toEqual(
       ["approved"],
     );
     expect(
@@ -33,7 +39,7 @@ describe("logistics actionable status codes", () => {
     ).toEqual(["pending", "partial"]);
     expect(
       getDeliveryActionableStatusCodes(
-        caps({ canManage: true, canAcceptDelivery: true }),
+        caps({ canDispatch: true, canAcceptDelivery: true }),
       ),
     ).toEqual(["approved", "pending", "partial"]);
   });

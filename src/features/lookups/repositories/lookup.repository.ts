@@ -1,5 +1,6 @@
 import type { LookupRecordStatus } from "@prisma/client";
 
+import type { ModeOfPaymentKindValue } from "@/features/lookups/constants/mode-of-payment-kind";
 import { prisma } from "@/lib/database/client";
 import {
   LOOKUP_ENTITIES,
@@ -14,6 +15,7 @@ export interface LookupRecord {
   recordStatus: LookupRecordStatus;
   code?: string | null;
   class?: string | null;
+  kind?: ModeOfPaymentKindValue | null;
   brandId?: string | null;
   regionId?: string | null;
   sizeId?: string | null;

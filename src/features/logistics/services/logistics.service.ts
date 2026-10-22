@@ -4,6 +4,8 @@ import { auditService } from "@/features/audit/services/audit.service";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { prisma } from "@/lib/database/client";
 
+type DbClient = Pick<typeof prisma, "branchDelivery">;
+
 function nextDeliveryNo() {
   return `DLV-${Date.now().toString(36).toUpperCase()}`;
 }
@@ -12,44 +14,46 @@ export const logisticsService = {
   /**
    * Signed Process II → III.A entry: Manual → Pending SP (TL may optionally
    * edit); Special TL→SP; Auto TL→SP. SP approval queues the approved_order
-   * job (stand-in for SAP ITR/OWTQ + SO/ORDR per mapping PDF). That job stores
-   * a document reference and opens this delivery header as Approved — local
-   * III.A entry before live Inventory Transfer (OWTR) / Delivery Note (ODLN).
-   * It does not move stock, and it does not label the SAP document Consignment
-   * or Outright. Logistics dispatches warehouse serials later.
+   * job, which posts the live SAP ITR (OWTQ, consignment) or SO (ORDR,
+   * outright) and then opens this delivery header as Approved with its source
+   * warehouse. It does not move stock: Logistics dispatches warehouse serials
+   * later, posting the Inventory Transfer (OWTR) or Delivery Note (ODLN).
    */
   async createDeliveryFromApprovedOrder(
     tenantId: string,
     userId: string,
     order: { id: string; branchId: string; branchName: string; orderNumber: string },
+    options: { sourceWarehouseId?: string | null; tx?: DbClient; statusCodeId?: string } = {},
   ) {
-    const existing = await prisma.branchDelivery.findFirst({
+    const db = options.tx ?? prisma;
+    const existing = await db.branchDelivery.findFirst({
       where: { tenantId, orderId: order.id },
     });
     if (existing) return existing;
 
-    const statusCodeId = await reasonStatusService.requireCodeId(
-      tenantId,
-      "delivery_workflow",
-      "approved",
-    );
+    // Callers inside a transaction pass the id so no other connection is used mid-tx.
+    const statusCodeId =
+      options.statusCodeId ??
+      (await reasonStatusService.requireCodeId(tenantId, "delivery_workflow", "approved"));
 
     let row;
     try {
-      row = await prisma.branchDelivery.create({
+      row = await db.branchDelivery.create({
         data: {
           tenantId,
           branchId: order.branchId,
           orderId: order.id,
           deliveryNo: nextDeliveryNo(),
           statusCodeId,
+          sourceWarehouseId: options.sourceWarehouseId ?? null,
         },
         include: { branch: { select: { name: true } } },
       });
     } catch (e) {
       // Unique (tenantId, orderId) violation → a concurrent run already created
       // the delivery. Return the existing one instead of failing.
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      // Inside a caller's transaction a failed statement aborts it, so only recover standalone.
+      if (!options.tx && e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
         const created = await prisma.branchDelivery.findFirst({
           where: { tenantId, orderId: order.id },
         });
@@ -57,6 +61,9 @@ export const logisticsService = {
       }
       throw e;
     }
+
+    // With a caller transaction the caller logs this audit after commit.
+    if (options.tx) return row;
 
     await auditService.log({
       tenantId,

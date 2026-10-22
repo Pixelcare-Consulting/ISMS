@@ -260,6 +260,8 @@ export function OrderHistoryTable({
           createdByName={detailsRow.createdByName}
           reviewSnapshot={detailsRow.reviewSnapshot}
           reviewSnapshotAt={detailsRow.reviewSnapshotAt}
+          sapDocType={detailsRow.sapDocType}
+          sapDocNum={detailsRow.sapDocNum}
           lines={detailsRow.lines.map((line) => ({
             detailId: line.detailId,
             modelId: line.modelId,

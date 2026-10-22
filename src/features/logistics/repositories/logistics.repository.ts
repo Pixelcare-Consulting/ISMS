@@ -5,10 +5,20 @@ import {
 } from "@/lib/shared/pagination";
 import type { Prisma } from "@prisma/client";
 
+/** Latest return request of each delivery, for the Return column. */
+export const latestReturnInclude = {
+  returnRequests: {
+    orderBy: { requestedAt: "desc" },
+    take: 1,
+    select: { id: true, requestNo: true, status: true, sapError: true },
+  },
+} satisfies Prisma.BranchDeliveryInclude;
+
 const deliveryListInclude = {
   branch: { select: { name: true, sapCode: true } },
   order: { select: { id: true, orderNumber: true } },
   statusCode: { select: { id: true, code: true, name: true, color: true } },
+  ...latestReturnInclude,
 } satisfies Prisma.BranchDeliveryInclude;
 
 const transferListInclude = {

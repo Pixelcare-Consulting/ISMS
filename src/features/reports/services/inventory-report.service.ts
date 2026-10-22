@@ -50,12 +50,12 @@ async function findLatestDeliveriesChunked(
   if (serialNumberIds.length === 0) return [];
 
   const results: Awaited<
-    ReturnType<typeof inventoryRepository.findLatestAcceptedDeliveries>
+    ReturnType<typeof inventoryRepository.findLatestDeliveryReceipts>
   > = [];
 
   for (let i = 0; i < serialNumberIds.length; i += DELIVERY_LOOKUP_CHUNK) {
     const chunk = serialNumberIds.slice(i, i + DELIVERY_LOOKUP_CHUNK);
-    const part = await inventoryRepository.findLatestAcceptedDeliveries(
+    const part = await inventoryRepository.findLatestDeliveryReceipts(
       tenantId,
       chunk,
     );

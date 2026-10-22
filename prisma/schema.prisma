@@ -123,6 +123,39 @@ enum SapIntegrationJobType {
   inventory_posting
   delivery_sync_inbound
   delivery_partial_return
+  delivery_return
+  delivery_transfer
+}
+
+enum ModeOfPaymentKind {
+  CONSIGNMENT
+  OUTRIGHT
+}
+
+enum SapOrderDocType {
+  ITR
+  SO
+}
+
+enum DeliveryReturnStatus {
+  PENDING_APPROVAL
+  APPROVED
+  COMPLETED
+  CANCELLED
+}
+
+enum DeliveryTransferStatus {
+  PENDING_APPROVAL
+  IN_TRANSIT
+  COMPLETED
+  CANCELLED
+}
+
+enum DeliveryTransferLineStatus {
+  PENDING
+  APPROVED
+  REMOVED
+  RECEIVED
 }
 
 enum ReturnRequestStatus {
@@ -245,6 +278,8 @@ model Tenant {
   branchAllowedModels         BranchAllowedModel[]
   branchOrders                BranchOrder[]
   branchDeliveries            BranchDelivery[]
+  deliveryReturnRequests      DeliveryReturnRequest[]
+  deliveryTransfers           DeliveryTransfer[]
   branchTransfers             BranchTransfer[]
   branchPullouts              BranchPullout[]
   branchSales                 BranchSalesTransaction[]
@@ -323,6 +358,10 @@ model User {
   aors                               Aor[]
   aorsCreated                        Aor[]                         @relation("AorCreatedBy")
   branchOrdersCreated                BranchOrder[]                 @relation("BranchOrderCreatedBy")
+  deliveryReturnsRequested           DeliveryReturnRequest[]       @relation("DeliveryReturnRequestedBy")
+  deliveryReturnsDecided             DeliveryReturnRequest[]       @relation("DeliveryReturnDecidedBy")
+  deliveryTransfersCreated           DeliveryTransfer[]            @relation("DeliveryTransferCreatedBy")
+  deliveryTransferLinesDecided       DeliveryTransferLine[]        @relation("DeliveryTransferLineDecidedBy")
   branchOrdersApproved               BranchOrder[]                 @relation("BranchOrderApprovedBy")
   branchOrderApprovals               BranchOrderApprovalLevel[]    @relation("BranchOrderApprovalLevelApprovedBy")
   branchInventoriesUpdated           BranchInventory[]             @relation("BranchInventoryUpdatedBy")
@@ -687,6 +726,7 @@ model ProductModel {
   branchMilSettings                  BranchMilSetting[]
   branchAllowedModels                BranchAllowedModel[]
   branchOrderDetails                 BranchOrderDetail[]
+  deliveryTransferLines              DeliveryTransferLine[]
   orderSuggestionAllocations         OrderSuggestionAllocation[]
   branchAllocations                  BranchAllocation[]
   skuForecastTargets                 SkuForecastTarget[]
@@ -925,6 +965,8 @@ model ModeOfPayment {
   id           String             @id @default(cuid())
   tenantId     String             @map("tenant_id")
   name         String
+  /// Drives which SAP document an order creates (consignment vs outright). Null until classified.
+  kind         ModeOfPaymentKind? @map("kind")
   recordStatus LookupRecordStatus @default(active) @map("record_status")
   createdAt    DateTime           @default(now()) @map("created_at")
   updatedAt    DateTime           @updatedAt @map("updated_at")
@@ -1286,6 +1328,8 @@ model Branch {
   branchOrders              BranchOrder[]
   orderSuggestionAllocations OrderSuggestionAllocation[]
   branchDeliveries          BranchDelivery[]
+  deliveryTransfersReleased DeliveryTransfer[] @relation("DeliveryTransferReleaseBranch")
+  deliveryTransfersReceived DeliveryTransfer[] @relation("DeliveryTransferReceiveBranch")
   transfersFrom             BranchTransfer[]          @relation("TransferFromBranch")
   transfersTo               BranchTransfer[]          @relation("TransferToBranch")
   branchPullouts            BranchPullout[]
@@ -1393,6 +1437,9 @@ model Warehouse {
   primaryBranches     Branch[]            @relation("BranchPrimaryWarehouse")
   aors                Aor[]
   pulloutsDestination BranchPullout[]
+  sourceDeliveries    BranchDelivery[]
+  deliveryTransfersReleased DeliveryTransfer[] @relation("DeliveryTransferReleaseWarehouse")
+  deliveryTransfersReceived DeliveryTransfer[] @relation("DeliveryTransferReceiveWarehouse")
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -1413,6 +1460,8 @@ model WarehouseLocation {
   branchPullouts       BranchPullout[]
   deliveryLinesFrom    BranchDeliveryLine[]  @relation("DeliveryLineWarehouseFrom")
   branchReturnRequests BranchReturnRequest[]
+  deliveryReturnLines  DeliveryReturnLine[]
+  deliveryTransfersReceived DeliveryTransfer[]
 
   @@unique([warehouseId, code])
   @@map("warehouse_locations")
@@ -1636,6 +1685,8 @@ model SerialNumber {
   branchBackloads              BranchBackload[]
   warehouseInventories         WarehouseInventory[]
   deliveryLines                BranchDeliveryLine[]
+  deliveryReturnLines          DeliveryReturnLine[]
+  deliveryTransferLines        DeliveryTransferLine[]
   history                      SerialNumberHistory[]
   serviceCenterInventories     ServiceCenterInventory[]
   serviceCenterSales           ServiceCenterSalesTransaction[]
@@ -2047,6 +2098,9 @@ model BranchOrder {
   deliveryDueDate  DateTime?         @map("delivery_due_date")
   processedAt     DateTime?         @map("processed_at")
   sapDocRef       String?           @map("sap_doc_ref")
+  sapDocType      SapOrderDocType?  @map("sap_doc_type")
+  sapDocEntry     Int?              @map("sap_doc_entry")
+  sapDocNum       Int?              @map("sap_doc_num")
   createdById     String            @map("created_by_id")
   approvedById    String?           @map("approved_by_id")
   createdAt       DateTime          @default(now()) @map("created_at")
@@ -2078,6 +2132,7 @@ model BranchOrderDetail {
   remarks     String?
   spRemarks   String?  @map("sp_remarks")
   amount      Decimal? @db.Decimal(12, 2)
+  sapLineNum  Int?     @map("sap_line_num")
 
   order BranchOrder  @relation(fields: [orderId], references: [id], onDelete: Cascade)
   model ProductModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
@@ -2150,20 +2205,28 @@ model BranchDelivery {
   statusCodeId String    @map("status_code_id")
   acceptedAt   DateTime? @map("accepted_at")
   sapDocRef    String?   @map("sap_doc_ref")
+  sourceWarehouseId String? @map("source_warehouse_id")
+  sapDocEntry  Int?      @map("sap_doc_entry")
+  drNo         String?   @map("dr_no")
+  drDate       DateTime? @db.Date @map("dr_date")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
 
   tenant     Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branch     Branch               @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  sourceWarehouse Warehouse?      @relation(fields: [sourceWarehouseId], references: [id], onDelete: SetNull)
   order      BranchOrder?         @relation(fields: [orderId], references: [id], onDelete: SetNull)
   statusCode ReasonStatusCode     @relation(fields: [statusCodeId], references: [id])
   lines      BranchDeliveryLine[]
   backloads  BranchBackload[]
+  returnRequests DeliveryReturnRequest[]
+  transfers  DeliveryTransfer[]
 
   @@unique([tenantId, deliveryNo])
   @@unique([tenantId, orderId])
   @@index([tenantId, sapDocRef])
   @@index([tenantId, branchId, statusCodeId])
+  @@index([tenantId, sourceWarehouseId])
   @@map("branch_deliveries")
 }
 
@@ -3023,6 +3086,107 @@ model BranchDeliveryLine {
 
   @@unique([deliveryId, serialNumberId])
   @@map("branch_delivery_lines")
+}
+
+/// Request to return delivered units to a warehouse. One open request per delivery (partial unique index in SQL).
+model DeliveryReturnRequest {
+  id           String               @id @default(cuid())
+  tenantId     String               @map("tenant_id")
+  deliveryId   String               @map("delivery_id")
+  requestNo    String               @map("request_no")
+  status       DeliveryReturnStatus @default(PENDING_APPROVAL)
+  reason       String
+  requestedById String              @map("requested_by_id")
+  requestedAt  DateTime             @default(now()) @map("requested_at")
+  decidedById  String?              @map("decided_by_id")
+  decidedAt    DateTime?            @map("decided_at")
+  decisionNote String?              @map("decision_note")
+  sapDocEntry  Int?                 @map("sap_doc_entry")
+  sapDocNo     String?              @map("sap_doc_no")
+  sapDocDate   DateTime?            @db.Date @map("sap_doc_date")
+  sapError     String?              @map("sap_error")
+  createdAt    DateTime             @default(now()) @map("created_at")
+  updatedAt    DateTime             @updatedAt @map("updated_at")
+
+  tenant      Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  delivery    BranchDelivery       @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  requestedBy User                 @relation("DeliveryReturnRequestedBy", fields: [requestedById], references: [id])
+  decidedBy   User?                @relation("DeliveryReturnDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+  lines       DeliveryReturnLine[]
+
+  @@unique([tenantId, requestNo])
+  @@index([tenantId, deliveryId])
+  @@map("delivery_return_requests")
+}
+
+model DeliveryReturnLine {
+  id                    String @id @default(cuid())
+  returnId              String @map("return_id")
+  serialNumberId        String @map("serial_number_id")
+  warehouseLocationToId String @map("warehouse_location_to_id")
+
+  returnRequest       DeliveryReturnRequest @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  serialNumber        SerialNumber          @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
+  warehouseLocationTo WarehouseLocation     @relation(fields: [warehouseLocationToId], references: [id], onDelete: Restrict)
+
+  @@unique([returnId, serialNumberId])
+  @@index([serialNumberId])
+  @@map("delivery_return_lines")
+}
+
+/// Stock transfer of delivered units between places. Exactly one of branch or warehouse per side (CHECK in SQL).
+model DeliveryTransfer {
+  id                         String                 @id @default(cuid())
+  tenantId                   String                 @map("tenant_id")
+  deliveryId                 String                 @map("delivery_id")
+  transferNo                 String                 @map("transfer_no")
+  status                     DeliveryTransferStatus @default(PENDING_APPROVAL)
+  releaseBranchId            String?                @map("release_branch_id")
+  releaseWarehouseId         String?                @map("release_warehouse_id")
+  receiveBranchId            String?                @map("receive_branch_id")
+  receiveWarehouseId         String?                @map("receive_warehouse_id")
+  receiveWarehouseLocationId String?                @map("receive_warehouse_location_id")
+  createdById                String                 @map("created_by_id")
+  sapDocEntry                Int?                   @map("sap_doc_entry")
+  sapDocNo                   String?                @map("sap_doc_no")
+  sapDocDate                 DateTime?              @db.Date @map("sap_doc_date")
+  sapError                   String?                @map("sap_error")
+  createdAt                  DateTime               @default(now()) @map("created_at")
+  updatedAt                  DateTime               @updatedAt @map("updated_at")
+
+  tenant                   Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  delivery                 BranchDelivery         @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  releaseBranch            Branch?                @relation("DeliveryTransferReleaseBranch", fields: [releaseBranchId], references: [id], onDelete: Restrict)
+  releaseWarehouse         Warehouse?             @relation("DeliveryTransferReleaseWarehouse", fields: [releaseWarehouseId], references: [id], onDelete: Restrict)
+  receiveBranch            Branch?                @relation("DeliveryTransferReceiveBranch", fields: [receiveBranchId], references: [id], onDelete: Restrict)
+  receiveWarehouse         Warehouse?             @relation("DeliveryTransferReceiveWarehouse", fields: [receiveWarehouseId], references: [id], onDelete: Restrict)
+  receiveWarehouseLocation WarehouseLocation?     @relation(fields: [receiveWarehouseLocationId], references: [id], onDelete: SetNull)
+  createdBy                User                   @relation("DeliveryTransferCreatedBy", fields: [createdById], references: [id])
+  lines                    DeliveryTransferLine[]
+
+  @@unique([tenantId, transferNo])
+  @@index([tenantId, deliveryId])
+  @@map("delivery_transfers")
+}
+
+model DeliveryTransferLine {
+  id             String                     @id @default(cuid())
+  transferId     String                     @map("transfer_id")
+  serialNumberId String                     @map("serial_number_id")
+  modelId        String                     @map("model_id")
+  remarks        String?
+  status         DeliveryTransferLineStatus @default(PENDING)
+  decidedById    String?                    @map("decided_by_id")
+  decidedAt      DateTime?                  @map("decided_at")
+
+  transfer     DeliveryTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  serialNumber SerialNumber     @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
+  model        ProductModel     @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  decidedBy    User?            @relation("DeliveryTransferLineDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  @@unique([transferId, serialNumberId])
+  @@index([serialNumberId])
+  @@map("delivery_transfer_lines")
 }
 
 // --- Excel Schema gap: Service Center ops mirror ---
