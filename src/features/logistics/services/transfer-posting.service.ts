@@ -1,5 +1,6 @@
 import { lockSerialNumbers } from "@/features/inventory/services/serial-placement";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
+import { nextTransferNo } from "@/features/logistics/lib/transfer-number";
 import type { AllocatableSerial } from "@/features/logistics/services/posting-planner-types";
 import {
   asHoldCode,
@@ -25,6 +26,7 @@ import {
 } from "@/features/logistics/services/transfer-posting.planner";
 import { STOCK_COUNT_FREEZE_SESSION_STATUSES } from "@/features/stock-audit/constants/stock-count-workflow";
 import { prisma } from "@/lib/database/client";
+import { Prisma } from "@/lib/database/generated/prisma/client";
 
 const CLAIM_LOST = "One or more serials changed before this transfer could be saved";
 
@@ -41,6 +43,8 @@ export interface TransferDetail {
   id: string;
   transferNo: string;
   notes: string | null;
+  createdAt: string;
+  createdBy: string | null;
   status: { code: string; name: string; color: string | null };
   fromBranch: { id: string; name: string };
   toBranch: { id: string; name: string };
@@ -57,6 +61,14 @@ export interface TransferDetail {
     branchName: string | null;
   }[];
   history: { id: string; action: string; at: string; userName: string | null }[];
+}
+
+function creatorName(user: { name: string; email: string } | null): string | null {
+  if (!user) return null;
+  const name = user.name.trim();
+  if (name) return name;
+  const email = user.email.trim();
+  return email || null;
 }
 
 function asTransferStatus(code: string): TransferStatus | null {
@@ -77,8 +89,23 @@ function asTransferStatus(code: string): TransferStatus | null {
   }
 }
 
-function nextNo() {
-  return `XFR-${Date.now().toString(36).toUpperCase()}`;
+function isTransferNoConflict(error: unknown): boolean {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") {
+    return false;
+  }
+  const target = error.meta?.target;
+  const parts = Array.isArray(target)
+    ? target.map((part) => String(part))
+    : typeof target === "string"
+      ? [target]
+      : [];
+  return parts.join(" ").toLowerCase().replace(/_/g, "").includes("transferno");
+}
+
+function freshTransferNo(previous?: string): string {
+  const generated = nextTransferNo();
+  if (!previous || generated !== previous) return generated;
+  return `XFR-${(Date.now() + 1).toString(36).toUpperCase()}`;
 }
 
 async function inventoryIds(tenantId: string) {
@@ -333,6 +360,8 @@ export const transferPostingService = {
         id: true,
         transferNo: true,
         notes: true,
+        createdAt: true,
+        createdBy: { select: { name: true, email: true } },
         fromBranch: { select: { id: true, name: true } },
         toBranch: { select: { id: true, name: true } },
         statusCode: { select: { code: true, name: true, color: true } },
@@ -377,6 +406,8 @@ export const transferPostingService = {
       id: transfer.id,
       transferNo: transfer.transferNo,
       notes: transfer.notes,
+      createdAt: transfer.createdAt.toISOString(),
+      createdBy: creatorName(transfer.createdBy),
       status: transfer.statusCode,
       fromBranch: transfer.fromBranch,
       toBranch: transfer.toBranch,
@@ -413,6 +444,7 @@ export const transferPostingService = {
       quantity: number;
       serialNumberIds: string[];
       notes?: string;
+      transferNo?: string;
     },
   ) {
     await authorizePosting(actor, "transfer.create", input.toBranchId);
@@ -429,9 +461,10 @@ export const transferPostingService = {
     const codes = await inventoryIds(actor.tenantId);
     const statusCodeId = await workflowId(actor.tenantId, "pending_tl");
     const notes = input.notes?.trim() || null;
+    const requestedNo = input.transferNo?.trim() || "";
 
-    try {
-      return await prisma.$transaction(async (tx) => {
+    const save = (transferNo: string) =>
+      prisma.$transaction(async (tx) => {
         const serialIds = plan.holds.map((hold) => hold.serialNumberId);
         await lockSerialsThenInventoryRows(tx, actor.tenantId, input.fromBranchId, serialIds);
         await assertMovable(actor.tenantId, serialIds);
@@ -452,7 +485,6 @@ export const transferPostingService = {
           });
         }
 
-        const transferNo = nextNo();
         const row = await tx.branchTransfer.create({
           data: {
             tenantId: actor.tenantId,
@@ -494,8 +526,17 @@ export const transferPostingService = {
         });
         return row;
       });
+
+    const transferNo = requestedNo || freshTransferNo();
+    try {
+      return await save(transferNo);
     } catch (error) {
-      throw postingError(error, "Failed to create transfer");
+      if (!isTransferNoConflict(error)) throw postingError(error, "Failed to create transfer");
+      try {
+        return await save(freshTransferNo(transferNo));
+      } catch (retryError) {
+        throw postingError(retryError, "Failed to create transfer");
+      }
     }
   },
 

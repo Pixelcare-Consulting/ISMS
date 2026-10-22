@@ -50,6 +50,7 @@ export const opsService = {
       quantity: number;
       serialNumberIds: string[];
       notes?: string;
+      transferNo?: string;
     },
   ) {
     return transferPostingService.create(actor, input);

@@ -9,7 +9,7 @@ import { PageHeader } from "@/app/(app)/_components/page-header";
 import { OpsPanel } from "@/app/(app)/operations/_components/ops-panel";
 
 export default async function OperationsPage() {
-  await requirePermission("inventory.view");
+  const session = await requirePermission("inventory.view");
   const [deliveries, transfers, pullouts] = await Promise.all([
     listDeliveriesAction(),
     listTransfersAction(),
@@ -27,6 +27,7 @@ export default async function OperationsPage() {
         deliveries={deliveries}
         transfers={transfers}
         pullouts={pullouts}
+        currentUserName={session.user.name?.trim() || session.user.email || ""}
       />
     </div>
   );

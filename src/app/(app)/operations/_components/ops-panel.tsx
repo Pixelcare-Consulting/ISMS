@@ -40,6 +40,7 @@ interface StatusCodeRef {
 }
 
 interface OpsPanelProps {
+  currentUserName?: string;
   deliveries: {
     id: string;
     deliveryNo: string;
@@ -70,7 +71,12 @@ interface PendingDeliveryAction {
   action: "accept" | "reject";
 }
 
-export function OpsPanel({ deliveries, transfers, pullouts }: OpsPanelProps) {
+export function OpsPanel({
+  deliveries,
+  transfers,
+  pullouts,
+  currentUserName = "",
+}: OpsPanelProps) {
   const router = useRouter();
   const [transferOpen, setTransferOpen] = useState(false);
   const [pulloutOpen, setPulloutOpen] = useState(false);
@@ -128,6 +134,7 @@ export function OpsPanel({ deliveries, transfers, pullouts }: OpsPanelProps) {
     quantity: number;
     serialNumberIds: string[];
     notes?: string;
+    transferNo?: string;
   }) {
     return createTransferAction(input);
   }
@@ -360,6 +367,7 @@ export function OpsPanel({ deliveries, transfers, pullouts }: OpsPanelProps) {
         onOpenChange={setTransferOpen}
         onSubmit={submitTransfer}
         onCreated={() => router.refresh()}
+        currentUserName={currentUserName}
       />
       <PulloutRequestDialog
         open={pulloutOpen}

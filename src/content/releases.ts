@@ -66,6 +66,51 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.77.1",
+    date: "2026-10-22",
+    releasedAt: "2026-10-22T16:10:00+08:00",
+    title: "Transfer form",
+    highlights: [
+      "The transfer form shows the transfer, who created it, both branches, and each serial.",
+      "Accept stays on each serial that is still on the way.",
+      "Approving or releasing a transfer is one action for the whole request, shown at the bottom of the form.",
+      "The transfer form matches the other screens in the app.",
+      "A new transfer shows its number, and the form has a header and actions along the bottom like the other screens.",
+      "Each serial on a transfer shows its number and the actions you can take, and you can add or remove several serials from a new request at once.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Opening a transfer or starting a new one uses the same form. It shows the transfer number, who created it, the releasing and receiving branches, the date, the status, and each serial.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Accept confirms one serial. Delete before approval cancels the request and frees the reserved units.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Approving or releasing a transfer is one action for the whole request, shown at the bottom of the form.",
+      },
+      {
+        type: "improvement",
+        description: "The transfer form matches the other screens in the app.",
+      },
+      {
+        type: "improvement",
+        description:
+          "A new transfer shows its number, and the form has a header and actions along the bottom like the other screens.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Each serial on a transfer shows its number and the actions you can take, and you can add or remove several serials from a new request at once.",
+      },
+    ],
+  },
+  {
     version: "0.77.0",
     date: "2026-10-20",
     releasedAt: "2026-10-20T18:40:00+08:00",

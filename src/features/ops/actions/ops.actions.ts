@@ -21,6 +21,12 @@ const transferSchema = z.object({
   quantity: z.number().int().positive(),
   serialNumberIds: z.array(z.string().min(1)).min(1),
   notes: z.string().optional(),
+  transferNo: z
+    .string()
+    .trim()
+    .max(64)
+    .optional()
+    .transform((value) => value || undefined),
 });
 
 const pulloutSchema = z.object({
