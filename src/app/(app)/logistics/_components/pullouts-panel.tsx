@@ -3,15 +3,10 @@
 import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
-import { toast } from "sonner";
+import { useMemo, useState } from "react";
 
 import { PulloutRequestDialog } from "@/app/(app)/logistics/_components/pullout-request-dialog";
-import {
-  approvePulloutTlAction,
-  createPulloutAction,
-  rejectPulloutAction,
-} from "@/features/logistics/actions/logistics.actions";
+import { createPulloutAction } from "@/features/logistics/actions/logistics.actions";
 import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import {
@@ -79,7 +74,6 @@ export function PulloutsPanel({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
-  const [pending, startTransition] = useTransition();
   const [createOpen, setCreateOpen] = useState(false);
   const pageSize = parseTablePageSize(pullouts.limit);
   const sort = (searchParams.get("sort") ?? initialSort) || "";
@@ -132,21 +126,6 @@ export function PulloutsPanel({
 
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const selectedCount = filtered.filter((row) => rowSelection[row.id]).length;
-
-  function runAction(
-    action: () => Promise<{ error: string } | { success: true }>,
-    message: string,
-  ) {
-    startTransition(async () => {
-      const result = await action();
-      if ("error" in result) {
-        toast.error(result.error);
-        return;
-      }
-      toast.success(message);
-      router.refresh();
-    });
-  }
 
   const indexOffset = (pullouts.page - 1) * pullouts.limit;
   const columns = useMemo(() => {
@@ -212,43 +191,17 @@ export function PulloutsPanel({
         id: "actions",
         header: "Actions",
         enableSorting: false,
-        cell: ({ row }) => {
-          const pullout = row.original;
-          return (
-            <div className="flex flex-wrap gap-2">
-              {pullout.statusCode.code === "pending_tl" && capabilities.canApproveTl ? (
-                <Button
-                  size="sm"
-                  disabled={pending}
-                  onClick={() =>
-                    runAction(() => approvePulloutTlAction(pullout.id), "Pull-out approved")
-                  }
-                >
-                  Approve
-                </Button>
-              ) : null}
-              {pullout.statusCode.code === "pending_tl" && capabilities.canRejectTransfer ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={pending}
-                  onClick={() =>
-                    runAction(() => rejectPulloutAction(pullout.id), "Pull-out rejected")
-                  }
-                >
-                  Reject
-                </Button>
-              ) : null}
-              <Button size="sm" variant="outline" asChild>
-                <Link href={`/logistics/pickups/${pullout.id}`}>Open</Link>
-              </Button>
-            </div>
-          );
-        },
+        cell: ({ row }) => (
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" asChild>
+              <Link href={`/logistics/pickups/${row.original.id}`}>Open</Link>
+            </Button>
+          </div>
+        ),
       }),
     ];
     return cols;
-  }, [capabilities.canApproveTl, capabilities.canRejectTransfer, indexOffset, pending]);
+  }, [indexOffset]);
 
   return (
     <>
@@ -282,7 +235,6 @@ export function PulloutsPanel({
           <Button
             size="sm"
             className="w-full sm:w-auto"
-            disabled={pending}
             onClick={() => setCreateOpen(true)}
           >
             New pull-out

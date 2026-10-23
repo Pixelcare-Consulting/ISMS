@@ -1,12 +1,18 @@
 "use client";
 
 import { createColumnHelper } from "@tanstack/react-table";
-import Link from "next/link";
+import { Truck } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { DeliveryTracker } from "@/app/(app)/logistics/_components/delivery-tracker";
+import {
+  LogisticsDocumentHeader,
+  LogisticsInfoCard,
+  LogisticsProgressCard,
+  LogisticsTableHeading,
+} from "@/app/(app)/logistics/_components/logistics-detail-ui";
 import {
   DeliveryDispatchDialog,
   type DispatchTarget,
@@ -139,6 +145,9 @@ function OrderLinesTable({ lines }: { lines: OrderLine[] }) {
         suggestions,
       }}
       pageSize={{ value: pageSize, onChange: setPageSize }}
+      toolbarLeading={
+        <LogisticsTableHeading title="Approved lines" count={lines.length} itemLabel="line" />
+      }
       pagination={{
         total,
         page,
@@ -210,6 +219,7 @@ function SerialsTable({ lines }: { lines: SerialLine[] }) {
         suggestions,
       }}
       pageSize={{ value: pageSize, onChange: setPageSize }}
+      toolbarLeading={<LogisticsTableHeading title="Units" count={lines.length} itemLabel="unit" />}
       pagination={{
         total,
         page,
@@ -301,19 +311,22 @@ export function DeliveryDetailView({
 
   return (
     <div className="space-y-6">
-      <div>
-        <Link href="/logistics/deliveries" className="text-sm text-muted-foreground hover:underline">
-          Back to deliveries
-        </Link>
-        <div className="mt-1 flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0 space-y-2">
-            <h2 className="text-xl font-semibold">{detail.deliveryNo}</h2>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">Status</span>
-              <StatusCodeBadge code={detail.status.code} name={detail.status.name} color={detail.status.color} />
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
+      <LogisticsDocumentHeader
+        backHref="/logistics/deliveries"
+        backLabel="Back to deliveries"
+        context="Delivery"
+        title={detail.deliveryNo}
+        statusCode={detail.status.code}
+        statusColor={detail.status.color}
+        badges={
+          <StatusCodeBadge
+            code={detail.status.code}
+            name={detail.status.name}
+            color={detail.status.color}
+          />
+        }
+        actions={
+          <>
             {code === "approved" && capabilities.canDispatch ? (
               <Button size="sm" disabled={pending} onClick={openDispatch}>
                 Dispatch
@@ -366,40 +379,36 @@ export function DeliveryDetailView({
                 {code === "partial" ? "Receive remaining" : "Receive"}
               </Button>
             ) : null}
-          </div>
-        </div>
-      </div>
+          </>
+        }
+      />
 
-      <div className="rounded-xl border bg-card p-4 shadow-sm">
+      <LogisticsProgressCard>
         <DeliveryTracker status={detail.status} history={detail.history} />
-      </div>
+      </LogisticsProgressCard>
 
-      <section className="space-y-2 rounded-xl border bg-card p-4 shadow-sm">
-        <h3 className="font-medium">Delivery</h3>
-        <dl className="grid gap-3 sm:grid-cols-2">
+      <LogisticsInfoCard title="Delivery" icon={Truck} tone="sky">
+        <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
           <div className="min-w-0">
-            <dt className="text-sm text-muted-foreground">Order</dt>
-            <dd className="text-sm">{detail.order?.orderNumber ?? "—"}</dd>
+            <dt className="text-xs text-muted-foreground">Order</dt>
+            <dd className="mt-1 text-sm font-medium">{detail.order?.orderNumber ?? "—"}</dd>
           </div>
           <div className="min-w-0">
-            <dt className="text-sm text-muted-foreground">Branch</dt>
-            <dd className="text-sm">{detail.branch.name}</dd>
+            <dt className="text-xs text-muted-foreground">Branch</dt>
+            <dd className="mt-1 text-sm font-medium">{detail.branch.name}</dd>
           </div>
           <div className="min-w-0">
-            <dt className="text-sm text-muted-foreground">DR number</dt>
-            <dd className="text-sm">{detail.drNo ?? "—"}</dd>
+            <dt className="text-xs text-muted-foreground">DR number</dt>
+            <dd className="mt-1 text-sm font-medium">{detail.drNo ?? "—"}</dd>
           </div>
           <div className="min-w-0">
-            <dt className="text-sm text-muted-foreground">DR date</dt>
-            <dd className="text-sm">{formatInventoryDrDate(detail.drDate)}</dd>
+            <dt className="text-xs text-muted-foreground">DR date</dt>
+            <dd className="mt-1 text-sm font-medium">{formatInventoryDrDate(detail.drDate)}</dd>
           </div>
         </dl>
-      </section>
+      </LogisticsInfoCard>
 
-      <section className="space-y-2">
-        <h3 className="font-medium">{hasSerials ? "Units" : "Approved lines"}</h3>
-        {hasSerials ? <SerialsTable lines={detail.serials} /> : <OrderLinesTable lines={detail.orderLines} />}
-      </section>
+      {hasSerials ? <SerialsTable lines={detail.serials} /> : <OrderLinesTable lines={detail.orderLines} />}
 
       <AlertDialog
         open={rejectOpen}

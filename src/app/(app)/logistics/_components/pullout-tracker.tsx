@@ -12,10 +12,10 @@ import {
  */
 
 const TRACKER_STEPS = [
-  { code: "pending_tl", fallback: "Reserve pull-out" },
-  { code: "for_pullout", fallback: "For pull-out" },
-  { code: "pending_logistics", fallback: "Pending logistics" },
-  { code: "in_transit", fallback: "In transit" },
+  { code: "pending_tl", label: "Waiting for approval" },
+  { code: "for_pullout", label: "Prepare units" },
+  { code: "pending_logistics", label: "Ready to send" },
+  { code: "in_transit", label: "In transit" },
 ] as const;
 
 type TrackerStepCode = (typeof TRACKER_STEPS)[number]["code"];
@@ -82,13 +82,34 @@ function trackerMode(code: string): TrackerMode {
   }
 }
 
-function earliestAction(history: { action: string; at: string }[], action: string): string | null {
-  let earliest: string | null = null;
+function historyAction(code: TrackerStepCode): string {
+  switch (code) {
+    case "pending_tl":
+      return "pullout.created";
+    case "for_pullout":
+      return "pullout.approved";
+    case "pending_logistics":
+      return "pullout.list_saved";
+    case "in_transit":
+      return "pullout.finalized";
+    default: {
+      const unreachable: never = code;
+      return unreachable;
+    }
+  }
+}
+
+function earliestRow<T extends { action: string; at: string }>(history: T[], action: string): T | null {
+  let earliest: T | null = null;
   for (const row of history) {
     if (row.action !== action) continue;
-    if (!earliest || row.at < earliest) earliest = row.at;
+    if (!earliest || row.at < earliest.at) earliest = row;
   }
   return earliest;
+}
+
+function earliestAction(history: { action: string; at: string }[], action: string): string | null {
+  return earliestRow(history, action)?.at ?? null;
 }
 
 function occurredAt(
@@ -96,20 +117,27 @@ function occurredAt(
   createdAt: string,
   history: { action: string; at: string }[],
 ): string | null {
+  const at = earliestAction(history, historyAction(code));
   switch (code) {
     case "pending_tl":
-      return earliestAction(history, "pullout.created") ?? (createdAt.trim() || null);
+      return at ?? (createdAt.trim() || null);
     case "for_pullout":
-      return earliestAction(history, "pullout.approved");
     case "pending_logistics":
-      return earliestAction(history, "pullout.list_saved");
     case "in_transit":
-      return earliestAction(history, "pullout.finalized");
+      return at;
     default: {
       const unreachable: never = code;
       return unreachable;
     }
   }
+}
+
+function actorForStep(
+  code: TrackerStepCode,
+  history: { action: string; at: string; userName?: string | null }[],
+): string | null {
+  const name = earliestRow(history, historyAction(code))?.userName?.trim() ?? "";
+  return name.length > 0 ? name : null;
 }
 
 function prefixCount(times: (string | null)[]): number {
@@ -121,12 +149,28 @@ function prefixCount(times: (string | null)[]): number {
   return count;
 }
 
-function stepLabel(
-  code: TrackerStepCode,
-  fallback: string,
-  status: { code: string; name: string },
-): string {
-  return status.code === code && status.name.trim() ? status.name.trim() : fallback;
+export interface PulloutFinishedStep {
+  code: TrackerStepCode;
+  title: string;
+  at: string | null;
+  actor: string | null;
+}
+
+/** Steps the tracker already marks completed, with the same times and the user on that history row. */
+export function finishedPulloutSteps(
+  statusCode: string,
+  createdAt: string,
+  history: { action: string; at: string; userName?: string | null }[],
+): PulloutFinishedStep[] {
+  const mode = trackerMode(statusCode);
+  const times = TRACKER_STEPS.map((step) => occurredAt(step.code, createdAt, history));
+  const count = mode.kind === "active" ? mode.index : prefixCount(times);
+  return TRACKER_STEPS.slice(0, count).map((step, index) => ({
+    code: step.code,
+    title: step.label,
+    at: times[index] ?? null,
+    actor: actorForStep(step.code, history),
+  }));
 }
 
 function buildTracker(
@@ -138,13 +182,12 @@ function buildTracker(
   const times = TRACKER_STEPS.map((step) => occurredAt(step.code, createdAt, history));
   const provenCount = prefixCount(times);
   const nodes: ProgressNode[] = TRACKER_STEPS.map((step, index) => {
-    const label = stepLabel(step.code, step.fallback, status);
     if (mode.kind === "active") {
       const state: ProgressStepState =
         index < mode.index ? "completed" : index === mode.index ? "current" : "upcoming";
       return {
         key: step.code,
-        label,
+        label: step.label,
         state,
         at: state === "upcoming" ? null : times[index] ?? null,
         color: null,
@@ -153,7 +196,7 @@ function buildTracker(
     const completed = index < provenCount;
     return {
       key: step.code,
-      label,
+      label: step.label,
       state: completed ? "completed" : "upcoming",
       at: completed ? times[index] ?? null : null,
       color: null,

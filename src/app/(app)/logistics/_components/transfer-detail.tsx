@@ -1,26 +1,38 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useRef, useState } from "react";
 
 import {
-  TransferDocumentActionButtons,
-  TransferForm,
-  type TransferDocumentActions,
-  type TransferFormHandle,
-} from "@/app/(app)/logistics/_components/transfer-form";
-import { TransferTracker } from "@/app/(app)/logistics/_components/transfer-tracker";
+  LogisticsDocumentHeader,
+  LogisticsDoneLine,
+  LogisticsProgressCard,
+} from "@/app/(app)/logistics/_components/logistics-detail-ui";
+import { TransferForm } from "@/app/(app)/logistics/_components/transfer-form";
+import {
+  TransferTracker,
+  transferFinishedSteps,
+  type TransferFinishedStep,
+} from "@/app/(app)/logistics/_components/transfer-tracker";
 import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
 import type { TransferDetail } from "@/features/logistics/services/transfer-posting.service";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 
-const EMPTY_DOCUMENT_ACTIONS: TransferDocumentActions = {
-  canApprove: false,
-  canReject: false,
-  canRelease: false,
-  pending: false,
-};
+const DONE_TIME = new Intl.DateTimeFormat("en-PH", {
+  year: "numeric",
+  month: "short",
+  day: "2-digit",
+  hour: "numeric",
+  minute: "2-digit",
+  timeZone: "Asia/Manila",
+});
+
+function doneLineDetail(step: TransferFinishedStep): string | undefined {
+  if (!step.at) return undefined;
+  const date = new Date(step.at);
+  const when = Number.isNaN(date.getTime()) ? step.at : DONE_TIME.format(date);
+  if (!step.actor) return when;
+  return `${step.actor} · ${when}`;
+}
 
 export function TransferDetailView({
   detail,
@@ -32,58 +44,41 @@ export function TransferDetailView({
   branchScope: string[] | null;
 }) {
   const router = useRouter();
-  const formRef = useRef<TransferFormHandle>(null);
-  const [documentActions, setDocumentActions] = useState<TransferDocumentActions>(EMPTY_DOCUMENT_ACTIONS);
-
-  const handleDocumentActions = useCallback((next: TransferDocumentActions) => {
-    setDocumentActions((current) =>
-      current.canApprove === next.canApprove &&
-      current.canReject === next.canReject &&
-      current.canRelease === next.canRelease &&
-      current.pending === next.pending
-        ? current
-        : next,
-    );
-  }, []);
+  const finished = transferFinishedSteps(detail.status, detail.history);
 
   return (
     <div className="space-y-6">
-      <div>
-        <Link href="/logistics/transfers" className="text-sm text-muted-foreground hover:underline">
-          Back to transfers
-        </Link>
-        <div className="mt-1 flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0 space-y-2">
-            <h2 className="text-xl font-semibold">{detail.transferNo}</h2>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">Status</span>
-              <StatusCodeBadge
-                code={detail.status.code}
-                name={detail.status.name}
-                color={detail.status.color}
-              />
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <TransferDocumentActionButtons
-              actions={documentActions}
-              onAction={(action) => formRef.current?.openDocumentAction(action)}
-            />
-          </div>
-        </div>
-      </div>
-      <div className="rounded-xl border bg-card p-4 shadow-sm">
+      <LogisticsDocumentHeader
+        backHref="/logistics/transfers"
+        backLabel="Back to transfers"
+        context="Branch transfer"
+        title={detail.transferNo}
+        statusCode={detail.status.code}
+        statusColor={detail.status.color}
+        badges={
+          <StatusCodeBadge
+            code={detail.status.code}
+            name={detail.status.name}
+            color={detail.status.color}
+          />
+        }
+      />
+      <LogisticsProgressCard>
         <TransferTracker status={detail.status} history={detail.history} />
-      </div>
+      </LogisticsProgressCard>
+      {finished.length > 0 ? (
+        <div className="space-y-2">
+          {finished.map((step) => (
+            <LogisticsDoneLine key={step.key} title={step.title} detail={doneLineDetail(step)} />
+          ))}
+        </div>
+      ) : null}
       <TransferForm
-        ref={formRef}
         mode="view"
         layout="page"
         detail={detail}
         capabilities={capabilities}
         branchScope={branchScope}
-        actionsPlacement="external"
-        onDocumentActionsChange={handleDocumentActions}
         onUpdated={() => router.refresh()}
       />
     </div>

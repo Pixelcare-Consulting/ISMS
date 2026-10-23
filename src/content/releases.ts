@@ -73,6 +73,15 @@ export const RELEASES: ReleaseNote[] = [
     highlights: [
       "Opening a delivery shows its progress above the order, the DR, and the units.",
       "Opening a delivery, transfer, or pull-out no longer repeats the module guide. The guide stays on the list.",
+      "Delivery, transfer, and pull-out details now share a cleaner layout with easier-to-read progress, unit lists, and history.",
+      "Delivery, transfer, and pull-out details use color so progress and each section are easier to scan.",
+      "Opening an order from Order History uses the same sections, with a plain header.",
+      "Progress steps move as an order, delivery, transfer, or pull-out moves forward.",
+      "On a pull-out, remarks sit with the requestor, next to the logistics details.",
+      "Repeated history events, such as Units received, show once.",
+      "The pull-out receipt note sits under the progress steps as a warning, not as a popup, and an in-transit document no longer uses a blue header.",
+      "Approve and Reject stay on the pull-out page. The list only opens it.",
+      "Opening a pull-out or transfer shows the current step, with the action for that step. Earlier steps stay as a short line.",
     ],
     changes: [
       {
@@ -84,6 +93,51 @@ export const RELEASES: ReleaseNote[] = [
         type: "improvement",
         description:
           "Opening a delivery, transfer, or pull-out no longer repeats the module guide. The guide stays on the list.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Delivery, transfer, and pull-out details now share a cleaner layout with easier-to-read progress, unit lists, and history.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Delivery, transfer, and pull-out details use color so progress and each section are easier to scan.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Opening an order from Order History uses the same sections, with a plain header.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Progress steps move as an order, delivery, transfer, or pull-out moves forward.",
+      },
+      {
+        type: "improvement",
+        description:
+          "On a pull-out, remarks sit with the requestor, next to the logistics details.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Repeated history events, such as Units received, show once.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The pull-out receipt note sits under the progress steps as a warning, not as a popup, and an in-transit document no longer uses a blue header.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Approve and Reject stay on the pull-out page. The list only opens it.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Opening a pull-out or transfer shows the current step, with the action for that step. Earlier steps stay as a short line.",
       },
     ],
   },
@@ -190,7 +244,7 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "improvement",
         description:
-          "The warehouse-receipt note appears as a notification when you open a pull-out.",
+          "The pull-out receipt note sits under the progress steps as a warning, not as a popup.",
       },
       {
         type: "improvement",

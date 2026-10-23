@@ -13,10 +13,10 @@ import {
  */
 
 const TRACKER_STEPS = [
-  { code: "pending_tl", fallback: "Pending TL" },
-  { code: "for_transfer", fallback: "For transfer" },
-  { code: "in_transit", fallback: "In transit" },
-  { code: "accepted", fallback: "Accepted" },
+  { code: "pending_tl", label: "Waiting for approval" },
+  { code: "for_transfer", label: "Ready to release" },
+  { code: "in_transit", label: "In transit" },
+  { code: "accepted", label: "Accepted" },
 ] as const;
 
 type TrackerStepCode = (typeof TRACKER_STEPS)[number]["code"];
@@ -128,19 +128,6 @@ function prefixCount(times: (string | null)[]): number {
   return count;
 }
 
-function stepLabel(
-  code: string,
-  fallback: string,
-  index: number,
-  status: { code: string; name: string },
-  mode: TrackerMode,
-): string {
-  const current = mode.kind === "active" && mode.index === index;
-  const name = status.name.trim();
-  if (name && (current || status.code === code)) return name;
-  return fallback;
-}
-
 function stoppedLabel(status: { code: string; name: string }): string {
   const name = status.name.trim();
   if (name) return name;
@@ -155,7 +142,7 @@ function buildTracker(
   const times = TRACKER_STEPS.map((step) => occurredAt(step.code, status.code, history));
   const provenCount = prefixCount(times);
   const nodes: ProgressNode[] = TRACKER_STEPS.map((step, index) => {
-    const label = stepLabel(step.code, step.fallback, index, status, mode);
+    const label = step.label;
     if (mode.kind === "active") {
       const state: ProgressStepState =
         index < mode.index ? "completed" : index === mode.index ? "current" : "upcoming";
@@ -189,6 +176,74 @@ function buildTracker(
   }
 
   return nodes;
+}
+
+type TrackerHistoryRow = { action: string; at: string; userName?: string | null };
+
+export interface TransferFinishedStep {
+  key: string;
+  title: string;
+  at: string | null;
+  actor: string | null;
+}
+
+function asTrackerStepCode(code: string): TrackerStepCode | null {
+  switch (code) {
+    case "pending_tl":
+    case "for_transfer":
+    case "in_transit":
+    case "accepted":
+      return code;
+    default:
+      return null;
+  }
+}
+
+function historyPick(code: TrackerStepCode): { action: string; pick: "earliest" | "latest" } {
+  switch (code) {
+    case "pending_tl":
+      return { action: "transfer.created", pick: "earliest" };
+    case "for_transfer":
+      return { action: "transfer.approved", pick: "earliest" };
+    case "in_transit":
+      return { action: "transfer.released", pick: "earliest" };
+    case "accepted":
+      return { action: "transfer.received", pick: "latest" };
+    default: {
+      const unreachable: never = code;
+      return unreachable;
+    }
+  }
+}
+
+function stepActor(code: string, at: string | null, history: TrackerHistoryRow[]): string | null {
+  if (!at) return null;
+  const step = asTrackerStepCode(code);
+  if (!step) return null;
+  const { action, pick } = historyPick(step);
+  let match: TrackerHistoryRow | null = null;
+  for (const row of history) {
+    if (row.action !== action) continue;
+    if (!match || (pick === "earliest" ? row.at < match.at : row.at > match.at)) match = row;
+  }
+  if (!match || match.at !== at) return null;
+  const name = match.userName?.trim();
+  return name ? name : null;
+}
+
+/** Finished jobs only. Same completion rules as the tracker rail. */
+export function transferFinishedSteps(
+  status: { code: string; name: string; color: string | null },
+  history: TrackerHistoryRow[],
+): TransferFinishedStep[] {
+  return buildTracker(status, history)
+    .filter((node) => node.state === "completed")
+    .map((node) => ({
+      key: node.key,
+      title: node.label,
+      at: node.at,
+      actor: stepActor(node.key, node.at, history),
+    }));
 }
 
 export function TransferTracker({

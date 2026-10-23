@@ -1,5 +1,8 @@
-import { Check } from "lucide-react";
-
+import {
+  ProgressCompletedMark,
+  ProgressCurrentMark,
+  ProgressLink,
+} from "@/app/(app)/logistics/_components/progress-tracker";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import {
   formatOrderHistoryWhen,
@@ -25,8 +28,8 @@ function stateText(state: OrderTrackerState): string {
       return unreachable;
     }
   }
-}
-
+} 
+  
 function TerminalMark() {
   return (
     <span className="relative z-10 flex size-6 shrink-0 items-center justify-center rounded-full border border-destructive bg-card text-destructive">
@@ -37,22 +40,14 @@ function TerminalMark() {
   );
 }
 
-function StepMark({ state }: { state: OrderTrackerState }) {
+function StepMark({ state, delayMs }: { state: OrderTrackerState; delayMs: number }) {
   const base =
     "relative z-10 flex size-6 shrink-0 items-center justify-center rounded-full border bg-card";
   switch (state) {
     case "completed":
-      return (
-        <span className={cn(base, "border-foreground bg-foreground text-background")}>
-          <Check className="size-3.5" aria-hidden />
-        </span>
-      );
+      return <ProgressCompletedMark delayMs={delayMs} />;
     case "current":
-      return (
-        <span className={cn(base, "border-foreground")}>
-          <span className="size-2 rounded-full bg-foreground" />
-        </span>
-      );
+      return <ProgressCurrentMark />;
     case "upcoming":
       return <span className={cn(base, "border-border")} />;
     case "cancelled":
@@ -72,6 +67,8 @@ export function OrderHistoryTracker({ items }: { items: OrderTrackerNode[] }) {
       {items.map((item, index) => {
         const last = index === items.length - 1;
         const when = item.state === "upcoming" ? null : formatOrderHistoryWhen(item.at);
+        const previous = index > 0 ? items[index - 1] : null;
+        const delayMs = index * 80;
         return (
           <li
             key={item.key}
@@ -79,17 +76,19 @@ export function OrderHistoryTracker({ items }: { items: OrderTrackerNode[] }) {
             aria-current={item.state === "current" ? "step" : undefined}
           >
             {index > 0 ? (
-              <span
-                className="absolute top-3 right-1/2 hidden h-px w-full bg-border sm:block"
-                aria-hidden
+              <ProgressLink
+                direction="horizontal"
+                filled={previous?.state === "completed"}
+                delayMs={(index - 1) * 80}
               />
             ) : null}
             <div className="relative z-10 flex w-6 shrink-0 justify-center sm:w-auto">
-              <StepMark state={item.state} />
+              <StepMark state={item.state} delayMs={delayMs} />
               {last ? null : (
-                <span
-                  className="absolute top-6 bottom-0 left-1/2 w-px -translate-x-1/2 bg-border sm:hidden"
-                  aria-hidden
+                <ProgressLink
+                  direction="vertical"
+                  filled={item.state === "completed"}
+                  delayMs={delayMs}
                 />
               )}
             </div>

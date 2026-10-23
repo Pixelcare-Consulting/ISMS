@@ -5,6 +5,11 @@ import { Plus, Trash2 } from "lucide-react";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import {
+  LogisticsHistoryCard,
+  LogisticsStepWorkspace,
+  LogisticsTableHeading,
+} from "@/app/(app)/logistics/_components/logistics-detail-ui";
 import { useClientTablePagination, uniqueSearchSuggestions } from "@/components/data-table";
 
 import {
@@ -325,6 +330,9 @@ function TransferLinesTable({
         suggestions,
       }}
       pageSize={{ value: pageSize, onChange: setPageSize }}
+      toolbarLeading={
+        <LogisticsTableHeading title="Transfer details" count={lines.length} itemLabel="serial" />
+      }
       pagination={{
         total,
         page,
@@ -385,6 +393,272 @@ function ModelSummary({ skuCode, name }: { skuCode: string; name: string }) {
       <p className="truncate">{skuCode}</p>
       {name ? <p className="truncate text-xs text-muted-foreground">{name}</p> : null}
     </div>
+  );
+}
+
+type TransferWorkspaceKind =
+  | "waiting"
+  | "release"
+  | "transit"
+  | "accepted"
+  | "stopped"
+  | "recorded";
+
+type TransferViewStatus =
+  | "requested"
+  | "approved"
+  | "draft"
+  | "pending_tl"
+  | "for_transfer"
+  | "in_transit"
+  | "accepted"
+  | "rejected"
+  | "completed"
+  | "cancelled";
+
+function asTransferViewStatus(code: string): TransferViewStatus | null {
+  switch (code) {
+    case "requested":
+    case "approved":
+    case "draft":
+    case "pending_tl":
+    case "for_transfer":
+    case "in_transit":
+    case "accepted":
+    case "rejected":
+    case "completed":
+    case "cancelled":
+      return code;
+    default:
+      return null;
+  }
+}
+
+function transferWorkspaceKind(code: string): TransferWorkspaceKind {
+  const known = asTransferViewStatus(code);
+  if (!known) return "recorded";
+  switch (known) {
+    case "pending_tl":
+    case "requested":
+      return "waiting";
+    case "for_transfer":
+    case "approved":
+      return "release";
+    case "in_transit":
+      return "transit";
+    case "accepted":
+      return "accepted";
+    case "rejected":
+    case "cancelled":
+      return "stopped";
+    case "draft":
+    case "completed":
+      return "recorded";
+    default: {
+      const unreachable: never = known;
+      return unreachable;
+    }
+  }
+}
+
+function workspaceTitle(kind: TransferWorkspaceKind, statusCode: string): string {
+  switch (kind) {
+    case "waiting":
+      return "Waiting for approval";
+    case "release":
+      return "Ready to release";
+    case "transit":
+      return "In transit";
+    case "accepted":
+      return "Accepted";
+    case "stopped":
+      return statusCode === "cancelled" ? "Cancelled" : "Rejected";
+    case "recorded":
+      return "Transfer";
+    default: {
+      const unreachable: never = kind;
+      return unreachable;
+    }
+  }
+}
+
+function workspaceDescription(kind: TransferWorkspaceKind): string {
+  switch (kind) {
+    case "waiting":
+      return "Review the releasing branch, receiving branch, model, and serials.";
+    case "release":
+      return "These units are approved and ready to leave the releasing branch.";
+    case "transit":
+      return "Accept each serial that has arrived.";
+    case "accepted":
+      return "These units were accepted at the receiving branch.";
+    case "stopped":
+      return "This transfer is closed. The branches, model, and serials stay here for reference.";
+    case "recorded":
+      return "Releasing branch, receiving branch, model, and serials.";
+    default: {
+      const unreachable: never = kind;
+      return unreachable;
+    }
+  }
+}
+
+function showsBranches(kind: TransferWorkspaceKind): boolean {
+  switch (kind) {
+    case "waiting":
+    case "release":
+    case "accepted":
+    case "stopped":
+    case "recorded":
+      return true;
+    case "transit":
+      return false;
+    default: {
+      const unreachable: never = kind;
+      return unreachable;
+    }
+  }
+}
+
+function showsModel(kind: TransferWorkspaceKind): boolean {
+  switch (kind) {
+    case "waiting":
+    case "release":
+    case "stopped":
+    case "recorded":
+      return true;
+    case "transit":
+    case "accepted":
+      return false;
+    default: {
+      const unreachable: never = kind;
+      return unreachable;
+    }
+  }
+}
+
+function showsOnTheWay(kind: TransferWorkspaceKind): boolean {
+  switch (kind) {
+    case "transit":
+      return true;
+    case "waiting":
+    case "release":
+    case "accepted":
+    case "stopped":
+    case "recorded":
+      return false;
+    default: {
+      const unreachable: never = kind;
+      return unreachable;
+    }
+  }
+}
+
+function showsDocumentActions(kind: TransferWorkspaceKind): boolean {
+  switch (kind) {
+    case "waiting":
+    case "release":
+      return true;
+    case "transit":
+    case "accepted":
+    case "stopped":
+    case "recorded":
+      return false;
+    default: {
+      const unreachable: never = kind;
+      return unreachable;
+    }
+  }
+}
+
+function serialsStillOnTheWay(detail: TransferDetail): number {
+  return detail.lines.filter(
+    (line) => line.inventoryCode === "DIT" && line.branchId === detail.fromBranch.id,
+  ).length;
+}
+
+function onTheWayLine(count: number): string {
+  if (count === 1) return "1 serial is still on the way.";
+  return `${count} serials are still on the way.`;
+}
+
+function TransferFactList({
+  detail,
+  includeModel,
+}: {
+  detail: TransferDetail;
+  includeModel: boolean;
+}) {
+  return (
+    <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
+      <div className="min-w-0">
+        <dt className="text-xs text-muted-foreground">Releasing branch</dt>
+        <dd className="mt-1 text-sm font-medium">{detail.fromBranch.name}</dd>
+      </div>
+      <div className="min-w-0">
+        <dt className="text-xs text-muted-foreground">Receiving branch</dt>
+        <dd className="mt-1 text-sm font-medium">{detail.toBranch.name}</dd>
+      </div>
+      {includeModel ? (
+        <div className="min-w-0 sm:col-span-2">
+          <dt className="text-xs text-muted-foreground">Model</dt>
+          <dd className="mt-1 text-sm font-medium">{modelLabel(detail.model)}</dd>
+        </div>
+      ) : null}
+    </dl>
+  );
+}
+
+function TransferPageWorkspace({
+  detail,
+  documentActions,
+  canReceive,
+  pending,
+  onAction,
+  onAccept,
+}: {
+  detail: TransferDetail;
+  documentActions: TransferDocumentActions;
+  canReceive: boolean;
+  pending: boolean;
+  onAction: (action: TransferDocumentAction) => void;
+  onAccept: (line: TransferLineRow) => void;
+}) {
+  const kind = transferWorkspaceKind(detail.status.code);
+  const remarks = detail.notes?.trim() ?? "";
+  const footer =
+    showsDocumentActions(kind) && hasTransferDocumentAction(documentActions) ? (
+      <TransferDocumentActionButtons actions={documentActions} onAction={onAction} />
+    ) : undefined;
+
+  return (
+    <LogisticsStepWorkspace
+      title={workspaceTitle(kind, detail.status.code)}
+      description={workspaceDescription(kind)}
+      actions={footer}
+    >
+      <div className="space-y-4">
+        {showsBranches(kind) ? (
+          <TransferFactList detail={detail} includeModel={showsModel(kind)} />
+        ) : null}
+        {showsOnTheWay(kind) ? (
+          <p className="text-sm">{onTheWayLine(serialsStillOnTheWay(detail))}</p>
+        ) : null}
+        <TransferLinesTable
+          lines={detail.lines}
+          fromBranchId={detail.fromBranch.id}
+          canReceive={showsOnTheWay(kind) && canReceive}
+          pending={pending}
+          onAccept={onAccept}
+        />
+        {remarks ? (
+          <div className="min-w-0">
+            <p className="text-xs text-muted-foreground">Remarks</p>
+            <p className="mt-1 text-sm whitespace-pre-wrap">{detail.notes}</p>
+          </div>
+        ) : null}
+      </div>
+    </LogisticsStepWorkspace>
   );
 }
 
@@ -683,88 +957,76 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
   const route =
     detail ? `${detail.fromBranch.name} → ${detail.toBranch.name}` : "";
   const pageLayout = layout === "page" && mode === "view";
-  const cardClass = "space-y-2 rounded-xl border bg-card p-4 shadow-sm";
-
-  return (
-    <form
-      id={mode === "create" ? TRANSFER_CREATE_FORM_ID : undefined}
-      className={pageLayout ? "space-y-6" : "space-y-4"}
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (mode === "create") submit();
-      }}
-    >
-      <section className={pageLayout ? cardClass : undefined}>
-      {pageLayout ? <h3 className="font-medium">Branches</h3> : null}
-      <dl className="grid gap-3 sm:grid-cols-2">
-        {pageLayout ? null : (
+  const branchFields = (
+    <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
+      {pageLayout ? null : (
         <div className="min-w-0">
-          <dt className="text-sm text-muted-foreground">Transfer No.</dt>
-          <dd className="text-sm">{transferNo || "—"}</dd>
+          <dt className="text-xs text-muted-foreground">Transfer No.</dt>
+          <dd className="mt-1 text-sm font-medium">{transferNo || "—"}</dd>
         </div>
-        )}
+      )}
+      <div className="min-w-0">
+        <dt className="text-xs text-muted-foreground">
+          {mode === "create" ? (
+            <label htmlFor="transfer-from-branch">Branch Release</label>
+          ) : (
+            "Branch Release"
+          )}
+        </dt>
+        <dd className="mt-1 text-sm font-medium">
+          {mode === "create" ? (
+            <SearchableSelect
+              id="transfer-from-branch"
+              options={branches.map((branch) => ({ id: branch.id, label: branch.name }))}
+              value={fromBranchId}
+              onChange={(next) => resetDraft(next)}
+              placeholder="Select branch…"
+              searchPlaceholder="Search branches…"
+              disabled={pending}
+              popoverClassName={POPOVER_CLASS}
+            />
+          ) : (
+            (detail?.fromBranch.name ?? "—")
+          )}
+        </dd>
+      </div>
+      <div className="min-w-0">
+        <dt className="text-xs text-muted-foreground">Created By</dt>
+        <dd className="mt-1 text-sm font-medium">{createdBy}</dd>
+      </div>
+      <div className="min-w-0">
+        <dt className="text-xs text-muted-foreground">
+          {mode === "create" ? (
+            <label htmlFor="transfer-to-branch">Branch Receive</label>
+          ) : (
+            "Branch Receive"
+          )}
+        </dt>
+        <dd className="mt-1 text-sm font-medium">
+          {mode === "create" ? (
+            <SearchableSelect
+              id="transfer-to-branch"
+              options={branches.map((branch) => ({ id: branch.id, label: branch.name }))}
+              value={toBranchId}
+              onChange={setToBranchId}
+              placeholder="Select branch…"
+              searchPlaceholder="Search branches…"
+              disabled={pending}
+              popoverClassName={POPOVER_CLASS}
+            />
+          ) : (
+            (detail?.toBranch.name ?? "—")
+          )}
+        </dd>
+      </div>
+      <div className="min-w-0">
+        <dt className="text-xs text-muted-foreground">Created Date</dt>
+        <dd className="mt-1 text-sm font-medium">{createdDate || "—"}</dd>
+      </div>
+      {pageLayout ? null : (
         <div className="min-w-0">
-          <dt className="text-sm text-muted-foreground">
-            {mode === "create" ? (
-              <label htmlFor="transfer-from-branch">Branch Release</label>
-            ) : (
-              "Branch Release"
-            )}
-          </dt>
-          <dd className="text-sm">
-            {mode === "create" ? (
-              <SearchableSelect
-                id="transfer-from-branch"
-                options={branches.map((branch) => ({ id: branch.id, label: branch.name }))}
-                value={fromBranchId}
-                onChange={(next) => resetDraft(next)}
-                placeholder="Select branch…"
-                searchPlaceholder="Search branches…"
-                disabled={pending}
-                popoverClassName={POPOVER_CLASS}
-              />
-            ) : (
-              (detail?.fromBranch.name ?? "—")
-            )}
-          </dd>
-        </div>
-        <div className="min-w-0">
-          <dt className="text-sm text-muted-foreground">Created By</dt>
-          <dd className="text-sm">{createdBy}</dd>
-        </div>
-        <div className="min-w-0">
-          <dt className="text-sm text-muted-foreground">
-            {mode === "create" ? (
-              <label htmlFor="transfer-to-branch">Branch Receive</label>
-            ) : (
-              "Branch Receive"
-            )}
-          </dt>
-          <dd className="text-sm">
-            {mode === "create" ? (
-              <SearchableSelect
-                id="transfer-to-branch"
-                options={branches.map((branch) => ({ id: branch.id, label: branch.name }))}
-                value={toBranchId}
-                onChange={setToBranchId}
-                placeholder="Select branch…"
-                searchPlaceholder="Search branches…"
-                disabled={pending}
-                popoverClassName={POPOVER_CLASS}
-              />
-            ) : (
-              (detail?.toBranch.name ?? "—")
-            )}
-          </dd>
-        </div>
-        <div className="min-w-0">
-          <dt className="text-sm text-muted-foreground">Created Date</dt>
-          <dd className="text-sm">{createdDate || "—"}</dd>
-        </div>
-        {pageLayout ? null : (
-        <div className="min-w-0">
-          <dt className="text-sm text-muted-foreground">Transfer Status</dt>
-          <dd className="text-sm">
+          <dt className="text-xs text-muted-foreground">Transfer Status</dt>
+          <dd className="mt-1 text-sm font-medium">
             {mode === "view" && detail ? (
               <StatusCodeBadge
                 code={detail.status.code}
@@ -776,12 +1038,40 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
             )}
           </dd>
         </div>
-        )}
-      </dl>
-      </section>
+      )}
+    </dl>
+  );
+
+  return (
+    <form
+      id={mode === "create" ? TRANSFER_CREATE_FORM_ID : undefined}
+      className={pageLayout ? "space-y-6" : "space-y-4"}
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (mode === "create") submit();
+      }}
+    >
+      {pageLayout && detail ? (
+        <TransferPageWorkspace
+          detail={detail}
+          documentActions={documentActions}
+          canReceive={canReceive}
+          pending={pending}
+          onAction={openDocumentAction}
+          onAccept={(line) =>
+            setPendingConfirm({
+              type: "receive",
+              serialNumberId: line.serialNumberId,
+              serialNo: line.serialNo,
+            })
+          }
+        />
+      ) : (
+        <>
+        <section>{branchFields}</section>
 
       <section className="space-y-2">
-        <h3 className="font-medium">Transfer details</h3>
+        {mode === "create" ? <h3 className="font-medium">Transfer details</h3> : null}
         {mode === "view" ? (
           <TransferLinesTable
             lines={detail?.lines ?? []}
@@ -998,35 +1288,36 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
         )}
       </section>
 
-      {pageLayout ? (
-        <section className={cardClass}>
-          <h3 className="font-medium">Remarks</h3>
-          <p id="transfer-remarks" className="text-sm whitespace-pre-wrap">
-            {detail?.notes?.trim() ? (
-              detail.notes
-            ) : (
-              <span className="text-muted-foreground">—</span>
-            )}
-          </p>
-        </section>
-      ) : null}
-
       {mode === "view" && detail ? (
-        <section className={pageLayout ? cardClass : "space-y-2"}>
-          <h3 className="font-medium">History</h3>
-          {detail.history.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No history yet.</p>
-          ) : (
-            <ul className="space-y-1 text-sm">
-              {detail.history.map((row) => (
-                <li key={row.id}>
-                  {historyLabel(row.action)}
-                  {row.userName ? ` · ${row.userName}` : ""} · {new Date(row.at).toLocaleString()}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+          <section className="space-y-2">
+            <h3 className="font-medium">History</h3>
+            {detail.history.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No history yet.</p>
+            ) : (
+              <ul className="space-y-1 text-sm">
+                {detail.history.map((row) => (
+                  <li key={row.id}>
+                    {historyLabel(row.action)}
+                    {row.userName ? ` · ${row.userName}` : ""} ·{" "}
+                    {new Date(row.at).toLocaleString()}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+      ) : null}
+        </>
+      )}
+
+      {pageLayout && detail ? (
+        <LogisticsHistoryCard
+          items={detail.history.map((row) => ({
+            id: row.id,
+            label: historyLabel(row.action),
+            actor: row.userName,
+            at: row.at,
+          }))}
+        />
       ) : null}
 
       <AlertDialog

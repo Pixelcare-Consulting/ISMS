@@ -50,27 +50,91 @@ function stateText(state: ProgressStepState): string {
   }
 }
 
-function StepMark({ state }: { state: ProgressStepState }) {
-  const base =
-    "relative z-10 flex size-6 shrink-0 items-center justify-center rounded-full border bg-card";
+const MARK_BASE =
+  "relative z-10 flex size-6 shrink-0 items-center justify-center rounded-full border bg-card";
+
+type ProgressLinkDirection = "horizontal" | "vertical";
+
+function linkPlacement(direction: ProgressLinkDirection): string {
+  switch (direction) {
+    case "horizontal":
+      return "absolute top-3 right-1/2 hidden h-px w-full sm:block";
+    case "vertical":
+      return "absolute top-6 bottom-0 left-1/2 w-px -translate-x-1/2 sm:hidden";
+    default: {
+      const unreachable: never = direction;
+      return unreachable;
+    }
+  }
+}
+
+function fillMotionClass(direction: ProgressLinkDirection): string {
+  switch (direction) {
+    case "horizontal":
+      return "origin-left animate-progress-fill-x motion-reduce:animate-none";
+    case "vertical":
+      return "origin-top animate-progress-fill-y motion-reduce:animate-none";
+    default: {
+      const unreachable: never = direction;
+      return unreachable;
+    }
+  }
+}
+
+/** Connector shared by every tracker. Fills from the completed side. */
+export function ProgressLink({
+  direction,
+  filled,
+  delayMs = 0,
+}: {
+  direction: ProgressLinkDirection;
+  filled: boolean;
+  delayMs?: number;
+}) {
+  return (
+    <span className={cn(linkPlacement(direction), "overflow-hidden")} aria-hidden>
+      <span className="absolute inset-0 bg-border" />
+      {filled ? (
+        <span
+          className={cn("absolute inset-0 bg-emerald-500", fillMotionClass(direction))}
+          style={{ animationDelay: `${delayMs}ms` }}
+        />
+      ) : null}
+    </span>
+  );
+}
+
+export function ProgressCompletedMark({ delayMs = 0 }: { delayMs?: number }) {
+  return (
+    <span className={cn(MARK_BASE, "border-emerald-600 bg-emerald-600 text-white")}>
+      <Check
+        className="size-3.5 origin-center animate-progress-check motion-reduce:animate-none"
+        style={{ animationDelay: `${delayMs}ms` }}
+        aria-hidden
+      />
+    </span>
+  );
+}
+
+export function ProgressCurrentMark() {
+  return (
+    <span className={cn(MARK_BASE, "border-2 border-primary ring-4 ring-primary/20")}>
+      <span className="size-2.5 animate-progress-dot rounded-full bg-primary motion-reduce:animate-none" />
+    </span>
+  );
+}
+
+function StepMark({ state, delayMs }: { state: ProgressStepState; delayMs: number }) {
   switch (state) {
     case "completed":
-      return (
-        <span className={cn(base, "border-foreground bg-foreground text-background")}>
-          <Check className="size-3.5" aria-hidden />
-        </span>
-      );
+      return <ProgressCompletedMark delayMs={delayMs} />;
     case "current":
-      return (
-        <span className={cn(base, "border-foreground")}>
-          <span className="size-2 rounded-full bg-foreground" />
-        </span>
-      );
+      return <ProgressCurrentMark />;
     case "upcoming":
-      return <span className={cn(base, "border-border")} />;
+      return <span className={cn(MARK_BASE, "border-border bg-muted/40")} />;
     case "cancelled":
       return (
-        <span className={cn(base, "border-destructive text-destructive")}>
+        <span className={cn(MARK_BASE, "border-rose-300 bg-rose-50 text-rose-600")}>
           <span className="text-sm leading-none" aria-hidden>
             ×
           </span>
@@ -96,24 +160,28 @@ export function ProgressTracker({
       {items.map((item, index) => {
         const last = index === items.length - 1;
         const when = item.state === "upcoming" ? null : formatWhen(item.at);
+        const previous = index > 0 ? items[index - 1] : null;
+        const delayMs = index * 80;
         return (
           <li
             key={item.key}
-            className="relative flex flex-1 gap-3 sm:flex-col sm:items-center sm:gap-2 sm:text-center"
+            className="relative flex flex-1 gap-3 sm:flex-col sm:items-center sm:gap-2.5 sm:text-center"
             aria-current={item.state === "current" ? "step" : undefined}
           >
             {index > 0 ? (
-              <span
-                className="absolute top-3 right-1/2 hidden h-px w-full bg-border sm:block"
-                aria-hidden
+              <ProgressLink
+                direction="horizontal"
+                filled={previous?.state === "completed"}
+                delayMs={(index - 1) * 80}
               />
             ) : null}
             <div className="relative z-10 flex w-6 shrink-0 justify-center sm:w-auto">
-              <StepMark state={item.state} />
+              <StepMark state={item.state} delayMs={delayMs} />
               {last ? null : (
-                <span
-                  className="absolute top-6 bottom-0 left-1/2 w-px -translate-x-1/2 bg-border sm:hidden"
-                  aria-hidden
+                <ProgressLink
+                  direction="vertical"
+                  filled={item.state === "completed"}
+                  delayMs={delayMs}
                 />
               )}
             </div>

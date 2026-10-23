@@ -1,20 +1,21 @@
-import Link from "next/link";
 import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
 import type { ReactNode } from "react";
 
-import { OrderHistoryTracker } from "@/app/(app)/orders/_components/order-history-tracker";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  LogisticsDocumentHeader,
+  LogisticsProgressCard,
+} from "@/app/(app)/logistics/_components/logistics-detail-ui";
+import { OrderHistoryLinesTable } from "@/app/(app)/orders/_components/order-history-lines-table";
+import {
+  OrderHistoryApprovals,
+  OrderHistoryFactsCard,
+  type OrderApprovalTimelineItem,
+} from "@/app/(app)/orders/_components/order-history-sections";
+import { OrderHistoryTracker } from "@/app/(app)/orders/_components/order-history-tracker";
 import { formatOrderSapDocument } from "@/features/orders/constants/order-sap-doc-type";
 import { BRANCH_ORDER_STATUS_LABELS, BRANCH_ORDER_TYPE_LABELS } from "@/features/orders/constants/order-status";
 import { ORDER_TYPE_ROUTE } from "@/features/orders/constants/order-permissions";
-import { getOrderApprovalChain } from "@/features/orders/constants/order-workflow";
+import { getOrderApprovalChain, type OrderApprovalStep } from "@/features/orders/constants/order-workflow";
 import {
   buildOrderHistoryTracker,
   formatOrderHistoryWhen,
@@ -27,8 +28,8 @@ import { cn } from "@/utils/cn";
 function Field({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
   return (
     <div className={cn("min-w-0", className)}>
-      <dt className="text-sm text-muted-foreground">{label}</dt>
-      <dd className="text-sm break-words">{children}</dd>
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="mt-1 text-sm font-medium break-words">{children}</dd>
     </div>
   );
 }
@@ -59,6 +60,79 @@ function decisionWhen(level: OrderHistoryApproval): string | null {
   return formatOrderHistoryWhen(level.rejectedAt ?? level.approvedAt);
 }
 
+function firstWaitingIndex(status: BranchOrderStatus, chain: readonly OrderApprovalStep[]): number {
+  switch (status) {
+    case "draft":
+    case "pending_ps":
+      return 0;
+    case "pending_tl":
+    case "pending_sp": {
+      const index = chain.findIndex((step) => step.status === status);
+      return index === -1 ? chain.length : index;
+    }
+    case "pending_logistics":
+    case "approved":
+    case "rejected":
+    case "cancelled":
+      return chain.length;
+    default: {
+      const unreachable: never = status;
+      return unreachable;
+    }
+  }
+}
+
+function approvalItems(order: OrderHistoryDetail): OrderApprovalTimelineItem[] {
+  const chain = getOrderApprovalChain(order.orderType);
+  const waitingFrom = firstWaitingIndex(order.status, chain);
+  const rows: OrderApprovalTimelineItem[] = [];
+  const seen = new Set<number>();
+
+  chain.forEach((step, index) => {
+    const level = order.approvalLevels.find((item) => item.level === step.level);
+    const decided = Boolean(level && (level.approvedAt || level.rejectedAt));
+    if (decided && level) {
+      rows.push(recordedItem(order, level, BRANCH_ORDER_STATUS_LABELS[step.status]));
+      seen.add(step.level);
+      return;
+    }
+    if (index >= waitingFrom) {
+      rows.push({
+        id: `pending-${step.level}`,
+        title: BRANCH_ORDER_STATUS_LABELS[step.status],
+        pending: true,
+        subtitle: null,
+        note: null,
+      });
+    }
+  });
+
+  for (const level of order.approvalLevels) {
+    if (seen.has(level.level)) continue;
+    if (!level.approvedAt && !level.rejectedAt) continue;
+    rows.push(recordedItem(order, level, chainStatusLabel(order.orderType, level.level)));
+  }
+
+  return rows;
+}
+
+function recordedItem(
+  order: OrderHistoryDetail,
+  level: OrderHistoryApproval,
+  stepLabel: string | null,
+): OrderApprovalTimelineItem {
+  const subtitle = [stepLabel, recordedOutcome(level, order.status), decisionWhen(level)]
+    .filter(Boolean)
+    .join(" · ");
+  return {
+    id: `${level.level}-${level.roleSlug}`,
+    title: personLabel(level),
+    pending: false,
+    subtitle: subtitle || null,
+    note: level.comment?.trim() || null,
+  };
+}
+
 export function OrderHistoryDetailView({ order }: { order: OrderHistoryDetail }) {
   const tracker = buildOrderHistoryTracker({
     orderType: order.orderType,
@@ -67,36 +141,28 @@ export function OrderHistoryDetailView({ order }: { order: OrderHistoryDetail })
     processedAt: order.processedAt,
     approvalLevels: order.approvalLevels,
   });
-  const decisions = order.approvalLevels.filter(
-    (level) => level.approvedAt || level.rejectedAt,
-  );
   const backHref = `${ORDER_TYPE_ROUTE[order.orderType]}?tab=history`;
 
   return (
     <div className="space-y-6">
-      <div>
-        <Link href={backHref} className="text-sm text-muted-foreground hover:underline">
-          Back to order history
-        </Link>
-        <div className="mt-1 min-w-0 space-y-2">
-          <h2 className="text-xl font-semibold">{order.orderNumber}</h2>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Status</span>
-            <StatusCodeBadge
-              code={order.status}
-              name={BRANCH_ORDER_STATUS_LABELS[order.status]}
-            />
-          </div>
-        </div>
-      </div>
+      <LogisticsDocumentHeader
+        plain
+        backHref={backHref}
+        backLabel="Back to order history"
+        context={BRANCH_ORDER_TYPE_LABELS[order.orderType]}
+        title={order.orderNumber}
+        statusCode={order.status}
+        badges={
+          <StatusCodeBadge code={order.status} name={BRANCH_ORDER_STATUS_LABELS[order.status]} />
+        }
+      />
 
-      <div className="rounded-xl border bg-card p-4 shadow-sm">
+      <LogisticsProgressCard>
         <OrderHistoryTracker items={tracker} />
-      </div>
+      </LogisticsProgressCard>
 
-      <section className="space-y-2 rounded-xl border bg-card p-4 shadow-sm">
-        <h3 className="font-medium">Order</h3>
-        <dl className="grid gap-3 sm:grid-cols-2">
+      <OrderHistoryFactsCard>
+        <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
           <Field label="Branch">{order.branchName}</Field>
           <Field label="Type">{BRANCH_ORDER_TYPE_LABELS[order.orderType]}</Field>
           <Field label="Created by">{textOrDash(order.createdByName)}</Field>
@@ -111,78 +177,14 @@ export function OrderHistoryDetailView({ order }: { order: OrderHistoryDetail })
           <Field label="Approved qty">{order.appQty}</Field>
           <Field label="Approved amount">{formatPeso(order.appAmt)}</Field>
           <Field label="Notes" className="sm:col-span-2">
-            <span className="whitespace-pre-wrap">{textOrDash(order.notes)}</span>
+            <span className="font-normal whitespace-pre-wrap">{textOrDash(order.notes)}</span>
           </Field>
         </dl>
-      </section>
+      </OrderHistoryFactsCard>
 
-      <section className="space-y-2 rounded-xl border bg-card p-4 shadow-sm">
-        <h3 className="font-medium">Lines</h3>
-        {order.lines.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No lines.</p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>SKU</TableHead>
-                <TableHead>Model</TableHead>
-                <TableHead className="text-right">Order qty</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
-                <TableHead className="text-right">Approved qty</TableHead>
-                <TableHead className="text-right">Approved amount</TableHead>
-                <TableHead>Note</TableHead>
-                <TableHead>SP note</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {order.lines.map((line) => (
-                <TableRow key={line.detailId}>
-                  <TableCell className="font-mono">{line.skuCode}</TableCell>
-                  <TableCell>{textOrDash(line.name)}</TableCell>
-                  <TableCell className="text-right tabular-nums">{line.quantity}</TableCell>
-                  <TableCell className="text-right font-mono">{formatPeso(line.amount)}</TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {line.approvedQty == null ? "—" : line.approvedQty}
-                  </TableCell>
-                  <TableCell className="text-right font-mono">
-                    {line.approvedAmount == null ? "—" : formatPeso(line.approvedAmount)}
-                  </TableCell>
-                  <TableCell className="whitespace-pre-wrap">{textOrDash(line.remarks)}</TableCell>
-                  <TableCell className="whitespace-pre-wrap">{textOrDash(line.spRemarks)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </section>
+      <OrderHistoryLinesTable lines={order.lines} />
 
-      <section className="space-y-2 rounded-xl border bg-card p-4 shadow-sm">
-        <h3 className="font-medium">Approvals</h3>
-        {decisions.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No approval has been recorded.</p>
-        ) : (
-          <ul className="space-y-3">
-            {decisions.map((level) => {
-              const outcome = recordedOutcome(level, order.status);
-              const stepLabel = chainStatusLabel(order.orderType, level.level);
-              const when = decisionWhen(level);
-              return (
-                <li key={`${level.level}-${level.roleSlug}`}>
-                  <p className="text-sm">{personLabel(level)}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {[stepLabel, outcome, when].filter(Boolean).join(" · ")}
-                  </p>
-                  {level.comment?.trim() ? (
-                    <p className="mt-1 text-sm whitespace-pre-wrap text-muted-foreground">
-                      {level.comment.trim()}
-                    </p>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+      <OrderHistoryApprovals items={approvalItems(order)} />
     </div>
   );
 }
