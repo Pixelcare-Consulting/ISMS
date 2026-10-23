@@ -174,9 +174,80 @@ async function assertSameSerialsAsSapPost(
   );
 }
 
+interface SapHeldSerial {
+  id: string;
+  serialNo: string;
+  modelId: string;
+  warehouseId: string;
+  warehouseCode: string;
+  /** Branch whose unlocated STK unit this is (the sync's stock-in); null when unplaced. */
+  heldBy: string | null;
+  source: "SAP" | "SAP_BRANCH";
+}
+
+/**
+ * Serials the SAP sync linked to an ISMS warehouse (`sap_whs_code`) that ISMS has not
+ * shelved there. Either ISMS holds them nowhere, or the sync's stock-in made them branch
+ * STK with no location. Anything else (shelved, in transit, sold, defective, at a
+ * service centre) is not SAP-held warehouse stock and is left out.
+ */
+async function findSapHeldSerials(
+  tenantId: string,
+  filter: { serialNumberIds?: string[]; modelIds?: string[]; warehouseIds?: string[] },
+): Promise<SapHeldSerial[]> {
+  const warehouses = await prisma.warehouse.findMany({
+    where: {
+      tenantId,
+      deletedAt: null,
+      ...(filter.warehouseIds ? { id: { in: filter.warehouseIds } } : {}),
+    },
+    select: { id: true, code: true },
+  });
+  if (warehouses.length === 0) return [];
+  const warehouseByCode = new Map(warehouses.map((warehouse) => [warehouse.code, warehouse]));
+
+  const rows = await prisma.serialNumber.findMany({
+    where: {
+      tenantId,
+      deletedAt: null,
+      sapWhsCode: { in: [...warehouseByCode.keys()] },
+      ...(filter.serialNumberIds ? { id: { in: filter.serialNumberIds } } : {}),
+      ...(filter.modelIds ? { modelId: { in: filter.modelIds } } : {}),
+      warehouseInventories: { none: {} },
+      serviceCenterInventories: { none: {} },
+      // Vacuously true with no branch row: at most one exists (unique per serial).
+      branchInventories: { every: { warehouseLocationId: null, statusCode: { code: "STK" } } },
+    },
+    select: {
+      id: true,
+      serialNo: true,
+      modelId: true,
+      sapWhsCode: true,
+      branchInventories: { select: { branch: { select: { name: true } } } },
+    },
+  });
+
+  return rows.flatMap((row) => {
+    const warehouse = row.sapWhsCode ? warehouseByCode.get(row.sapWhsCode) : undefined;
+    if (!warehouse) return [];
+    const branchRow = row.branchInventories[0];
+    return [
+      {
+        id: row.id,
+        serialNo: row.serialNo,
+        modelId: row.modelId,
+        warehouseId: warehouse.id,
+        warehouseCode: warehouse.code,
+        heldBy: branchRow?.branch.name ?? null,
+        source: branchRow ? ("SAP_BRANCH" as const) : ("SAP" as const),
+      },
+    ];
+  });
+}
+
 async function loadHolds(tenantId: string, serialNumberIds: string[]): Promise<WarehouseHold[]> {
   if (serialNumberIds.length === 0) return [];
-  const [rows, tagged] = await Promise.all([
+  const [rows, tagged, sapHeld] = await Promise.all([
     prisma.warehouseInventory.findMany({
       where: { tenantId, serialNumberId: { in: serialNumberIds } },
       select: {
@@ -195,6 +266,7 @@ async function loadHolds(tenantId: string, serialNumberIds: string[]): Promise<W
         serialNumber: { select: { modelId: true } },
       },
     }),
+    findSapHeldSerials(tenantId, { serialNumberIds }),
   ]);
   return [
     ...rows.map((row) => ({
@@ -217,6 +289,13 @@ async function loadHolds(tenantId: string, serialNumberIds: string[]): Promise<W
           ]
         : [],
     ),
+    ...sapHeld.map((row) => ({
+      serialNumberId: row.id,
+      modelId: row.modelId,
+      warehouseId: row.warehouseId,
+      warehouseLocationId: null,
+      source: row.source,
+    })),
   ];
 }
 
@@ -237,9 +316,12 @@ export interface DispatchCandidate {
   serialNo: string;
   modelId: string;
   warehouseCode: string;
+  /** Empty for serials only SAP places in the warehouse: ISMS has no shelf for them. */
   locationCode: string;
   /** Branch holding a stocked-in branch unit; null for warehouse stock. */
   heldBy: string | null;
+  /** ISMS: shelved by Stock in or warehouse receiving. SAP: linked by the serial sync. */
+  source: "ISMS" | "SAP";
 }
 
 /** One ordered model on a delivery and how many serials dispatch must pick for it. */
@@ -541,7 +623,7 @@ export const deliveryPostingService = {
     const locationSelect = {
       select: { code: true, warehouse: { select: { id: true, code: true } } },
     } as const;
-    const [rows, tagged] = await Promise.all([
+    const [rows, tagged, sapHeld] = await Promise.all([
       prisma.warehouseInventory.findMany({
         where: {
           tenantId,
@@ -571,28 +653,44 @@ export const deliveryPostingService = {
           warehouseLocation: locationSelect,
         },
       }),
+      findSapHeldSerials(tenantId, {
+        modelIds,
+        ...(primaryWarehouseId ? { warehouseIds: [primaryWarehouseId] } : {}),
+      }),
     ]);
 
-    const merged = [
+    const shelved = [
       ...rows.map((row) => ({ ...row, heldBy: null as string | null })),
       ...tagged.flatMap((row) =>
         row.warehouseLocation
           ? [{ ...row, warehouseLocation: row.warehouseLocation, heldBy: row.branch.name }]
           : [],
       ),
-    ].sort((a, b) => a.serialNumber.serialNo.localeCompare(b.serialNumber.serialNo));
+    ].map((row) => ({
+      id: row.serialNumberId,
+      serialNo: row.serialNumber.serialNo,
+      modelId: row.serialNumber.modelId,
+      deleted: false,
+      warehouseId: row.warehouseLocation.warehouse.id,
+      warehouseCode: row.warehouseLocation.warehouse.code,
+      locationCode: row.warehouseLocation.code,
+      heldBy: row.heldBy,
+      source: "ISMS" as const,
+    }));
+    const sapOnly = sapHeld.map((row) => ({
+      id: row.id,
+      serialNo: row.serialNo,
+      modelId: row.modelId,
+      deleted: false,
+      warehouseId: row.warehouseId,
+      warehouseCode: row.warehouseCode,
+      locationCode: "",
+      heldBy: row.heldBy,
+      source: "SAP" as const,
+    }));
 
     const serials = selectDispatchCandidates(
-      merged.map((row) => ({
-        id: row.serialNumberId,
-        serialNo: row.serialNumber.serialNo,
-        modelId: row.serialNumber.modelId,
-        deleted: false,
-        warehouseId: row.warehouseLocation.warehouse.id,
-        warehouseCode: row.warehouseLocation.warehouse.code,
-        locationCode: row.warehouseLocation.code,
-        heldBy: row.heldBy,
-      })),
+      [...shelved, ...sapOnly].sort((a, b) => a.serialNo.localeCompare(b.serialNo)),
       modelIds,
       primaryWarehouseId,
     );
@@ -607,6 +705,7 @@ export const deliveryPostingService = {
         warehouseCode: row.warehouseCode,
         locationCode: row.locationCode,
         heldBy: row.heldBy,
+        source: row.source,
       })),
     };
   },
@@ -672,11 +771,17 @@ export const deliveryPostingService = {
       inventoryCodeId(input.tenantId, "DIT"),
       inventoryCodeId(input.tenantId, "STK"),
     ]);
-    // Stocked-in branch units are relocated; warehouse rows are removed as before.
-    const relocateIds = plan.moves
-      .filter((move) => holds.find((hold) => hold.serialNumberId === move.serialNumberId)?.source === "BRANCH")
-      .map((move) => move.serialNumberId);
-    const relocating = new Set(relocateIds);
+    // Branch units (shelved, or SAP-stocked without a shelf) are relocated. Warehouse rows
+    // are removed. Serials only SAP places get a new branch unit, like warehouse rows do.
+    const sourceById = new Map(holds.map((hold) => [hold.serialNumberId, hold.source]));
+    const idsFrom = (source: WarehouseHold["source"]) =>
+      plan.moves
+        .map((move) => move.serialNumberId)
+        .filter((serialNumberId) => sourceById.get(serialNumberId) === source);
+    const relocateIds = idsFrom("BRANCH");
+    const sapRelocateIds = idsFrom("SAP_BRANCH");
+    const warehouseRowIds = new Set(idsFrom("WAREHOUSE"));
+    const relocating = new Set([...relocateIds, ...sapRelocateIds]);
     const warehouseMoveIds = plan.moves
       .map((move) => move.serialNumberId)
       .filter((serialNumberId) => !relocating.has(serialNumberId));
@@ -732,7 +837,13 @@ export const deliveryPostingService = {
       const occupied = await loadCurrentPlacements(tx, moveIds);
       const replacingIds = occupied
         .filter((row) => {
-          if (row.table === "warehouse" && row.warehouseId === plan.warehouseId) return true;
+          if (
+            row.table === "warehouse" &&
+            row.warehouseId === plan.warehouseId &&
+            warehouseRowIds.has(row.serialNumberId)
+          ) {
+            return true;
+          }
           if (row.table === "branch" && relocating.has(row.serialNumberId)) return true;
           return (
             row.table === "branch" &&
@@ -743,17 +854,17 @@ export const deliveryPostingService = {
         .map((row) => row.id);
       assertExclusivePlacement({ placements: occupied, replacingIds });
 
-      if (warehouseMoveIds.length > 0) {
+      if (warehouseRowIds.size > 0) {
         const removed = await tx.warehouseInventory.deleteMany({
           where: {
             tenantId: input.tenantId,
-            serialNumberId: { in: warehouseMoveIds },
+            serialNumberId: { in: [...warehouseRowIds] },
             warehouseLocation: { warehouseId: plan.warehouseId },
           },
         });
         assertExclusiveClaim(
           removed.count,
-          warehouseMoveIds.length,
+          warehouseRowIds.size,
           "One or more serials are missing, already allocated, or not in that warehouse",
         );
       }
@@ -778,6 +889,28 @@ export const deliveryPostingService = {
           relocated.count,
           relocateIds.length,
           "One or more serials were sold, moved or taken off their location. Reload and pick again.",
+        );
+      }
+
+      if (sapRelocateIds.length > 0) {
+        // Still unshelved stock, re-read under the lock.
+        const relocated = await tx.branchInventory.updateMany({
+          where: {
+            tenantId: input.tenantId,
+            serialNumberId: { in: sapRelocateIds },
+            statusCodeId: stkCodeId,
+            warehouseLocationId: null,
+          },
+          data: {
+            branchId: preview.branchId,
+            statusCodeId: ditCodeId,
+            updatedById: input.userId,
+          },
+        });
+        assertExclusiveClaim(
+          relocated.count,
+          sapRelocateIds.length,
+          "One or more serials were sold, moved or stocked in elsewhere. Reload and pick again.",
         );
       }
 

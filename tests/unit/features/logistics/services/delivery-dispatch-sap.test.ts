@@ -16,6 +16,7 @@ jest.mock("@/lib/database/client", () => {
       serialNumber: { findMany: jest.fn() },
       branchInventory: { findMany: jest.fn() },
       warehouseInventory: { findMany: jest.fn() },
+      warehouse: { findMany: jest.fn() },
       branch: { findFirst: jest.fn() },
       $transaction: jest.fn(async (fn: (t: typeof tx) => unknown) => fn(tx)),
     },
@@ -90,6 +91,9 @@ beforeEach(() => {
     })),
   );
   mockPrisma.branch.findFirst.mockResolvedValue({ primaryWarehouseId: "w1", name: "Branch" });
+  // No SAP-held serials unless a test sets them up.
+  mockPrisma.warehouse.findMany.mockResolvedValue([]);
+  mockPrisma.serialNumber.findMany.mockResolvedValue([]);
   mockTx.branchDelivery.update.mockResolvedValue({});
   mockPrisma.auditLog.findFirst.mockResolvedValue(null);
   mockTx.branchDelivery.updateMany.mockResolvedValue({ count: 1 });
@@ -103,6 +107,49 @@ beforeEach(() => {
 });
 
 describe("deliveryPostingService.dispatch SAP posting", () => {
+  it("dispatches serials the SAP sync placed in the warehouse without an ISMS shelf", async () => {
+    mockPrisma.warehouseInventory.findMany.mockResolvedValue([]);
+    mockPrisma.warehouse.findMany.mockResolvedValue([{ id: "w1", code: "WH1" }]);
+    mockPrisma.serialNumber.findMany.mockResolvedValue([
+      // Unplaced in ISMS: dispatch creates its branch unit.
+      { id: "s1", serialNo: "SN1", modelId: "m1", sapWhsCode: "WH1", branchInventories: [] },
+      // Branch STK from the sync's stock-in, no shelf: dispatch relocates it.
+      {
+        id: "s2",
+        serialNo: "SN2",
+        modelId: "m1",
+        sapWhsCode: "WH1",
+        branchInventories: [{ branch: { name: "Other branch" } }],
+      },
+    ]);
+    mockTx.branchInventory.updateMany.mockResolvedValue({ count: 1 });
+
+    const result = await deliveryPostingService.dispatch(input);
+
+    expect(mockTx.warehouseInventory.deleteMany).not.toHaveBeenCalled();
+    expect(mockTx.branchInventory.updateMany).toHaveBeenCalledWith({
+      where: {
+        tenantId: "t1",
+        serialNumberId: { in: ["s2"] },
+        statusCodeId: "code1",
+        warehouseLocationId: null,
+      },
+      data: { branchId: "b1", statusCodeId: "code1", updatedById: "u1" },
+    });
+    expect(mockTx.branchInventory.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({ branchId: "b1", serialNumberId: "s1", statusCodeId: "code1" }),
+      ],
+    });
+    expect(mockTx.branchDeliveryLine.createMany).toHaveBeenCalledWith({
+      data: [
+        { deliveryId: "del1", serialNumberId: "s1", warehouseLocationFromId: null },
+        { deliveryId: "del1", serialNumberId: "s2", warehouseLocationFromId: null },
+      ],
+    });
+    expect(result.movedCount).toBe(2);
+  });
+
   it("posts the SAP document, stores DR number and date, then moves stock", async () => {
     const result = await deliveryPostingService.dispatch(input);
 

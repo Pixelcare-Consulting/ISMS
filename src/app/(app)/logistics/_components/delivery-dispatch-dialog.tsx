@@ -108,26 +108,11 @@ function DispatchBody({
     ? groups.filter((group) => group.visible.length > 0).map((group) => group.model.modelId)
     : openModels;
 
-  function toggle(modelId: string, serialId: string, checked: boolean) {
-    const next = checked ? [...selected, serialId] : selected.filter((id) => id !== serialId);
-    setSelected(next);
-    if (!checked || needle) return;
-
-    const group = groups.find((entry) => entry.model.modelId === modelId);
-    if (!group || group.picked + 1 < group.model.requiredQty) return;
-    // This pick completed the model: fold it and open the next one still short.
-    const nextShort = groups.find(
-      (entry) =>
-        entry.model.modelId !== modelId &&
-        entry.serials.filter((serial) => next.includes(serial.id)).length <
-          entry.model.requiredQty,
+  // A completed model stays open: folding it hid the picks people wanted to check or swap.
+  function toggle(serialId: string, checked: boolean) {
+    setSelected((current) =>
+      checked ? [...current, serialId] : current.filter((id) => id !== serialId),
     );
-    setOpenModels((current) => {
-      const without = current.filter((id) => id !== modelId);
-      return nextShort && !without.includes(nextShort.model.modelId)
-        ? [...without, nextShort.model.modelId]
-        : without;
-    });
   }
 
   return (
@@ -220,9 +205,15 @@ function DispatchBody({
                           >
                             <div className="mb-2 flex items-center justify-between gap-2">
                               <div className="flex items-center gap-2">
-                                <span className="rounded-md bg-primary/10 px-2 py-0.5 font-mono text-xs font-semibold text-primary">
-                                  {location.locationCode}
-                                </span>
+                                {location.locationCode ? (
+                                  <span className="rounded-md bg-primary/10 px-2 py-0.5 font-mono text-xs font-semibold text-primary">
+                                    {location.locationCode}
+                                  </span>
+                                ) : (
+                                  <span className="rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-foreground">
+                                    From SAP · no shelf location
+                                  </span>
+                                )}
                                 <span className="text-xs text-muted-foreground">
                                   {location.warehouseCode}
                                 </span>
@@ -252,9 +243,7 @@ function DispatchBody({
                                       <Checkbox
                                         checked={checked}
                                         disabled={locked || pending}
-                                        onCheckedChange={(value) =>
-                                          toggle(model.modelId, serial.id, value === true)
-                                        }
+                                        onCheckedChange={(value) => toggle(serial.id, value === true)}
                                         aria-label={`Dispatch ${serial.serialNo} from ${location.label}`}
                                       />
                                       <span className="min-w-0">
@@ -302,14 +291,19 @@ interface LocationGroup {
   serials: DispatchCandidate[];
 }
 
-/** Serials under their shelf location, locations in code order, so pickers walk aisle by aisle. */
+/**
+ * Serials under their shelf location, locations in code order, so pickers walk aisle by
+ * aisle. Serials the SAP sync placed in the warehouse without an ISMS shelf form one group.
+ */
 function groupByLocation(serials: DispatchCandidate[]): LocationGroup[] {
   const groups = new Map<string, LocationGroup>();
   for (const serial of serials) {
     const key = `${serial.warehouseCode}/${serial.locationCode}`;
     const group = groups.get(key) ?? {
       key,
-      label: `${serial.warehouseCode} / ${serial.locationCode}`,
+      label: serial.locationCode
+        ? `${serial.warehouseCode} / ${serial.locationCode}`
+        : `${serial.warehouseCode} (from SAP, no shelf location)`,
       warehouseCode: serial.warehouseCode,
       locationCode: serial.locationCode,
       serials: [],
@@ -317,7 +311,9 @@ function groupByLocation(serials: DispatchCandidate[]): LocationGroup[] {
     group.serials.push(serial);
     groups.set(key, group);
   }
-  return [...groups.values()].sort((a, b) =>
-    a.locationCode.localeCompare(b.locationCode, undefined, { numeric: true }),
-  );
+  // Shelves first in code order; serials only SAP places (no shelf) come last.
+  return [...groups.values()].sort((a, b) => {
+    if (!a.locationCode !== !b.locationCode) return a.locationCode ? -1 : 1;
+    return a.locationCode.localeCompare(b.locationCode, undefined, { numeric: true });
+  });
 }
