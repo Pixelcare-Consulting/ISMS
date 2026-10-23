@@ -1,3 +1,9 @@
+import {
+  SETUP_HOME,
+  isSetupPathAllowed,
+  isTenantSetupAdmin,
+} from "@/features/roles/constants/setup-access";
+
 /** Only same-origin app paths — never protocol-relative or off-site URLs. */
 export function safeInternalPath(
   callbackUrl: string | null | undefined,
@@ -9,13 +15,21 @@ export function safeInternalPath(
   return callbackUrl;
 }
 
+/** Path only, so a query or hash does not hide an allowed setup screen. */
+function callbackPathname(callback: string): string {
+  const path = callback.split(/[?#]/, 1)[0] ?? callback;
+  return path.length > 1 && path.endsWith("/") ? path.slice(0, -1) : path;
+}
+
 /**
  * Where to send the user after email/password sign-in.
  * Platform operators always land in the provider console unless the callback
- * is already under `/provider`.
+ * is already under `/provider`. A tenant super admin lands on Setup, and a
+ * callback is kept only when that account may open it.
  */
 export function resolvePostLoginDestination(input: {
   isPlatformOperator: boolean;
+  roleSlugs?: string[];
   callbackUrl?: string | null;
 }): string {
   const safeCallback = safeInternalPath(input.callbackUrl);
@@ -25,6 +39,18 @@ export function resolvePostLoginDestination(input: {
       return safeCallback;
     }
     return "/provider";
+  }
+
+  if (
+    isTenantSetupAdmin({
+      roleSlugs: input.roleSlugs,
+      isPlatformOperator: input.isPlatformOperator,
+    })
+  ) {
+    if (safeCallback && isSetupPathAllowed(callbackPathname(safeCallback))) {
+      return safeCallback;
+    }
+    return SETUP_HOME;
   }
 
   return safeCallback ?? "/dashboard";

@@ -290,6 +290,7 @@ describe("order step notifications", () => {
 
     await orderService.adminBulkCancelOrDiscard("tenant-1", "admin-1", ["order-1"], {
       roleSlugs: ["super_admin"],
+      permissions: ["orders.view"],
     });
 
     expect(createNotification).toHaveBeenCalledWith({

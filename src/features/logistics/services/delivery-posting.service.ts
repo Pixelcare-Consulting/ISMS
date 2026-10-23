@@ -1,4 +1,4 @@
-import type { SapOrderDocType } from "@prisma/client";
+import type { DeliveryReturnStatus, SapOrderDocType } from "@prisma/client";
 import { Prisma } from "@/lib/database/generated/prisma/client";
 
 import {
@@ -273,7 +273,123 @@ export async function finalizeDeliveryIfSettled(
   return next;
 }
 
+export interface DeliveryDetail {
+  id: string;
+  deliveryNo: string;
+  drNo: string | null;
+  drDate: string | null;
+  status: { code: string; name: string; color: string | null };
+  branch: { name: string };
+  order: { orderNumber: string } | null;
+  /** Approved order lines. Shown when the delivery has no serials yet. */
+  orderLines: { id: string; skuCode: string; modelName: string; quantity: number }[];
+  serials: { serialNumberId: string; serialNo: string; skuCode: string; modelName: string }[];
+  latestReturn: {
+    id: string;
+    requestNo: string;
+    status: DeliveryReturnStatus;
+    sapError: string | null;
+  } | null;
+  history: { id: string; action: string; at: string; userName: string | null }[];
+}
+
 export const deliveryPostingService = {
+  /** Header, approved lines or serials, and audit history for the delivery page. */
+  async getDetail(actor: PostingActor, deliveryId: string): Promise<DeliveryDetail> {
+    const delivery = await prisma.branchDelivery.findFirst({
+      where: { id: deliveryId, tenantId: actor.tenantId },
+      select: {
+        id: true,
+        deliveryNo: true,
+        drNo: true,
+        drDate: true,
+        branchId: true,
+        sourceWarehouseId: true,
+        branch: { select: { name: true } },
+        statusCode: { select: { code: true, name: true, color: true } },
+        order: {
+          select: {
+            orderNumber: true,
+            details: {
+              select: {
+                id: true,
+                quantity: true,
+                approvedQty: true,
+                model: { select: { skuCode: true, name: true } },
+              },
+              orderBy: { model: { skuCode: "asc" } },
+            },
+          },
+        },
+        lines: {
+          select: {
+            serialNumberId: true,
+            serialNumber: {
+              select: {
+                serialNo: true,
+                model: { select: { skuCode: true, name: true } },
+              },
+            },
+          },
+          orderBy: { serialNumber: { serialNo: "asc" } },
+        },
+        returnRequests: {
+          orderBy: { requestedAt: "desc" },
+          take: 1,
+          select: { id: true, requestNo: true, status: true, sapError: true },
+        },
+      },
+    });
+    if (!delivery) throw new Error("Delivery not found");
+    await authorizeDeliveryScope(actor, {
+      branchId: delivery.branchId,
+      sourceWarehouseId: delivery.sourceWarehouseId,
+    });
+
+    const history = await prisma.auditLog.findMany({
+      where: { tenantId: actor.tenantId, entityType: "BranchDelivery", entityId: delivery.id },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, action: true, createdAt: true, user: { select: { name: true } } },
+    });
+
+    const orderLines = (delivery.order?.details ?? []).flatMap((detail) => {
+      const quantity = detail.approvedQty ?? detail.quantity;
+      if (quantity <= 0) return [];
+      return [
+        {
+          id: detail.id,
+          skuCode: detail.model.skuCode,
+          modelName: detail.model.name,
+          quantity,
+        },
+      ];
+    });
+
+    return {
+      id: delivery.id,
+      deliveryNo: delivery.deliveryNo,
+      drNo: delivery.drNo,
+      drDate: delivery.drDate ? delivery.drDate.toISOString() : null,
+      status: delivery.statusCode,
+      branch: { name: delivery.branch.name },
+      order: delivery.order ? { orderNumber: delivery.order.orderNumber } : null,
+      orderLines,
+      serials: delivery.lines.map((line) => ({
+        serialNumberId: line.serialNumberId,
+        serialNo: line.serialNumber.serialNo,
+        skuCode: line.serialNumber.model.skuCode,
+        modelName: line.serialNumber.model.name,
+      })),
+      latestReturn: delivery.returnRequests[0] ?? null,
+      history: history.map((row) => ({
+        id: row.id,
+        action: row.action,
+        at: row.createdAt.toISOString(),
+        userName: row.user?.name || null,
+      })),
+    };
+  },
+
   /** Serials on a dispatched delivery, split by whether the branch has received them. */
   async listReceiptLines(
     actor: PostingActor,

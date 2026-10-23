@@ -45,7 +45,6 @@ export const MASTER_DATA_TAB_GROUPS: SectionTabGroupDefinition[] = [
         href: "/settings/master-data/models",
         label: "Models",
         description: "SKUs for branch planograms and orders (active / hold / retired).",
-        badge: "new",
       },
       {
         href: "/settings/master-data/price-lists",
@@ -56,13 +55,11 @@ export const MASTER_DATA_TAB_GROUPS: SectionTabGroupDefinition[] = [
         href: "/settings/master-data/series",
         label: "Series",
         description: "Product series linked to models (from planogram / model imports).",
-        badge: "new",
       },
       {
         href: "/settings/master-data/categories",
         label: "Categories",
         description: "Standalone product categories (not linked to models yet).",
-        badge: "new",
       },
       {
         href: "/settings/master-data/package-types",
@@ -188,16 +185,19 @@ export const MASTER_DATA_TAB_GROUPS: SectionTabGroupDefinition[] = [
         href: "/settings/master-data/pullout-classifications",
         label: "Pull-out classifications",
         description: "Pull-out classification lookup for pull-out requests.",
+        badge: "new",
       },
       {
         href: "/settings/master-data/unit-packing-conditions",
         label: "Unit packing conditions",
         description: "Unit packing condition lookup for pull-out requests.",
+        badge: "new",
       },
       {
         href: "/settings/master-data/accessory-completeness",
         label: "Accessory completeness",
         description: "Accessory completeness lookup for pull-out requests.",
+        badge: "new",
       },
     ],
   },

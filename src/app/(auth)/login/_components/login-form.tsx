@@ -37,6 +37,7 @@ const inputClassName = cn(
 type PostLoginUser = {
   name?: string | null;
   isPlatformOperator?: boolean;
+  roleSlugs?: string[];
 };
 
 /**
@@ -117,6 +118,7 @@ export function LoginForm() {
       navigateAfterLogin(
         resolvePostLoginDestination({
           isPlatformOperator: Boolean(user?.isPlatformOperator),
+          roleSlugs: user?.roleSlugs,
           callbackUrl,
         }),
       );

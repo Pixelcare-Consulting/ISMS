@@ -39,6 +39,36 @@ describe("resolvePostLoginDestination", () => {
       "/dashboard",
     );
   });
+
+  it("sends a tenant super admin to setup", () => {
+    expect(
+      resolvePostLoginDestination({
+        isPlatformOperator: false,
+        roleSlugs: ["super_admin"],
+        callbackUrl: null,
+      }),
+    ).toBe("/setup");
+  });
+
+  it("ignores an operations callback for a tenant super admin", () => {
+    expect(
+      resolvePostLoginDestination({
+        isPlatformOperator: false,
+        roleSlugs: ["super_admin"],
+        callbackUrl: "/orders/manual",
+      }),
+    ).toBe("/setup");
+  });
+
+  it("keeps a safe setup callback for a tenant super admin", () => {
+    expect(
+      resolvePostLoginDestination({
+        isPlatformOperator: false,
+        roleSlugs: ["super_admin"],
+        callbackUrl: "/settings/master-data",
+      }),
+    ).toBe("/settings/master-data");
+  });
 });
 
 describe("waitForValue", () => {

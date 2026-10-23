@@ -8,6 +8,7 @@ import type {
   UpdateProviderCustomerBrandingInput,
   UpdateProviderCustomerUserInput,
 } from "@/features/provider/schemas/provider.schema";
+import { SETUP_PERMISSION_SLUGS } from "@/features/roles/constants/setup-access";
 import { bootstrapCustomerTenant } from "@/features/tenants/services/bootstrap-customer-tenant";
 import { tenantService } from "@/features/tenants/services/tenant.service";
 import { roleRepository } from "@/features/users/repositories/role.repository";
@@ -70,12 +71,11 @@ async function ensureCustomerSuperAdminRole(tenantId: string) {
     isSystem: true,
   });
 
-  const permissions = await roleRepository.listPermissions();
-  await Promise.all(
-    permissions.map((permission) =>
-      roleRepository.grantPermission(role.id, permission.id),
-    ),
-  );
+  for (const slug of SETUP_PERMISSION_SLUGS) {
+    const permission = await roleRepository.findPermissionBySlug(slug);
+    if (!permission) continue;
+    await roleRepository.grantPermission(role.id, permission.id);
+  }
 }
 
 export const providerService = {

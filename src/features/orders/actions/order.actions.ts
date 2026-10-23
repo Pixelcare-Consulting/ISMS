@@ -22,6 +22,7 @@ import {
   canAccessOrderType,
   hasAnyOrderPermission,
   hasOrderPermission,
+  hasOrdersForceCancelPermission,
   ORDER_TYPE_ROUTE,
   orderPermissionCandidates,
   orderTypeAccessPermissions,
@@ -411,6 +412,9 @@ export async function adminBulkCancelOrdersAction(orderIds: string[]) {
   if (!isSuperAdminOrderOverride(roleSlugs)) {
     return { error: "Only Super Admin can cancel selected orders in bulk." };
   }
+  if (!hasOrdersForceCancelPermission(session.user.permissions)) {
+    return { error: "An orders permission is required to cancel selected orders." };
+  }
 
   const uniqueIds = [...new Set(orderIds.filter(Boolean))];
   if (uniqueIds.length === 0) {
@@ -422,7 +426,7 @@ export async function adminBulkCancelOrdersAction(orderIds: string[]) {
       session.user.tenantId,
       session.user.id,
       uniqueIds,
-      { roleSlugs },
+      { roleSlugs, permissions: session.user.permissions },
     );
     revalidateOrderPaths();
     return { success: true as const, ...result };

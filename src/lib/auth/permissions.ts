@@ -2,9 +2,25 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 
 import { PROVIDER_ONLY_ROLE_SLUGS } from "@/features/roles/constants/role.constants";
+import { SETUP_HOME, isTenantSetupAdmin } from "@/features/roles/constants/setup-access";
 import { auth, signOutServer } from "@/lib/auth";
 import { prisma } from "@/lib/database/client";
 import { toAppSession, type AppSession } from "@/lib/auth/session";
+
+const DASHBOARD_FORBIDDEN = "/dashboard?error=forbidden";
+
+/** Setup accounts have no dashboard, so a denied page returns them to Setup. */
+function forbiddenDestination(session: AppSession): string {
+  if (
+    isTenantSetupAdmin({
+      roleSlugs: session.user.roleSlugs,
+      isPlatformOperator: session.user.isPlatformOperator,
+    })
+  ) {
+    return SETUP_HOME;
+  }
+  return DASHBOARD_FORBIDDEN;
+}
 
 /**
  * DB check: provider-only role on a platform (`isPlatform`) home tenant.
@@ -97,7 +113,7 @@ export async function requirePermission(permission: string): Promise<AppSession>
   const session = await requireAuth();
   const permissions = session.user.permissions ?? [];
   if (!permissions.includes(permission)) {
-    redirect("/dashboard?error=forbidden");
+    redirect(forbiddenDestination(session));
   }
   return session;
 }
@@ -106,7 +122,7 @@ export async function requireAnyPermission(required: string[]): Promise<AppSessi
   const session = await requireAuth();
   const permissions = session.user.permissions ?? [];
   if (!required.some((permission) => permissions.includes(permission))) {
-    redirect("/dashboard?error=forbidden");
+    redirect(forbiddenDestination(session));
   }
   return session;
 }
@@ -116,7 +132,7 @@ export async function requirePlatformOperator(): Promise<AppSession> {
   const isPlatformOperator = await resolveSessionPlatformOperator(session.user);
 
   if (!isPlatformOperator) {
-    redirect("/dashboard?error=forbidden");
+    redirect(forbiddenDestination(session));
   }
 
   return session;
@@ -159,7 +175,7 @@ export function canViewPolicy(
 export async function requirePolicyAccess(): Promise<AppSession> {
   const session = await requireAuth();
   if (!canAccessPolicies(session.user.permissions)) {
-    redirect("/dashboard?error=forbidden");
+    redirect(forbiddenDestination(session));
   }
   return session;
 }
@@ -176,7 +192,7 @@ export async function requireCompanyManage(): Promise<AppSession> {
   const isPlatformOperator = await resolveSessionPlatformOperator(session.user);
 
   if (!canManageCompanySettings(session.user.permissions, isPlatformOperator)) {
-    redirect("/dashboard?error=forbidden");
+    redirect(forbiddenDestination(session));
   }
 
   return session;
@@ -196,7 +212,7 @@ export function canManagePlanogram(permissions: string[] | undefined) {
 export async function requirePlanogramView(): Promise<AppSession> {
   const session = await requireAuth();
   if (!canViewPlanogram(session.user.permissions)) {
-    redirect("/dashboard?error=forbidden");
+    redirect(forbiddenDestination(session));
   }
   return session;
 }

@@ -168,6 +168,13 @@ function revalidateLogisticsPaths() {
   revalidatePath("/logistics/pickups");
 }
 
+function revalidateDelivery(id: string) {
+  revalidateLogisticsPaths();
+  revalidatePath(`/logistics/deliveries/${id}`);
+  revalidatePath("/operations");
+  revalidatePath("/inventory");
+}
+
 function postingActor(session: {
   user: { tenantId: string; id: string; permissions?: string[] };
 }): PostingActor {
@@ -252,6 +259,16 @@ export async function listDeliveriesAction(input?: {
   );
 }
 
+export async function getDeliveryDetailAction(id: string) {
+  const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
+  try {
+    const detail = await deliveryPostingService.getDetail(postingActor(session), id);
+    return { success: true as const, detail };
+  } catch (error) {
+    return actionError(error, "Delivery not found");
+  }
+}
+
 export async function createDeliveryAction(input: unknown) {
   const session = await requireAnyPermission([LOGISTICS_CREATE, LOGISTICS_MANAGE]);
   const parsed = deliverySchema.safeParse(input);
@@ -313,9 +330,7 @@ export async function dispatchDeliveryAction(id: string, input: unknown) {
       deliveryId: id,
       serialNumberIds: parsed.data.serialNumberIds,
     });
-    revalidateLogisticsPaths();
-    revalidatePath("/inventory");
-    revalidatePath("/operations");
+    revalidateDelivery(id);
     return { success: true as const, movedCount: result.movedCount, drNo: result.drNo };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to dispatch delivery" };
@@ -354,9 +369,7 @@ export async function acceptDeliveryAction(id: string, input?: unknown) {
       deliveryId: id,
       serialNumberIds: parsed.data.serialNumberIds,
     });
-    revalidateLogisticsPaths();
-    revalidatePath("/inventory");
-    revalidatePath("/operations");
+    revalidateDelivery(id);
     return {
       success: true as const,
       movedCount: result.movedCount,
@@ -379,9 +392,7 @@ export async function rejectDeliveryAction(id: string, notes?: string) {
       deliveryId: id,
       notes,
     });
-    revalidateLogisticsPaths();
-    revalidatePath("/inventory");
-    revalidatePath("/operations");
+    revalidateDelivery(id);
     return { success: true as const, returnedCount: result.returnedCount };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to reject delivery" };
@@ -854,7 +865,7 @@ export async function requestDeliveryReturnAction(deliveryId: string, reason: un
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Enter the reason for the return" };
   try {
     const row = await deliveryReturnService.request(postingActor(session), { deliveryId, reason: parsed.data });
-    revalidateDeliveryReturn();
+    revalidateDelivery(deliveryId);
     return { success: true as const, id: row.id, requestNo: row.requestNo };
   } catch (error) {
     return actionError(error, "Failed to request the return");

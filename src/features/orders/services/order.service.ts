@@ -1,6 +1,7 @@
 import type { BranchOrderStatus, BranchOrderType, Prisma } from "@prisma/client";
 
 import { auditService } from "@/features/audit/services/audit.service";
+import { hasOrdersForceCancelPermission } from "@/features/orders/constants/order-permissions";
 import {
   BRANCH_ORDER_STATUS_LABELS,
   BRANCH_ORDER_TYPE_LABELS,
@@ -639,10 +640,13 @@ export const orderService = {
     tenantId: string,
     userId: string,
     orderIds: string[],
-    opts: { roleSlugs: string[] },
+    opts: { roleSlugs: string[]; permissions: string[] | undefined },
   ) {
     if (!isSuperAdminOrderOverride(opts.roleSlugs)) {
       throw new Error("Only Super Admin can bulk cancel or discard orders.");
+    }
+    if (!hasOrdersForceCancelPermission(opts.permissions)) {
+      throw new Error("An orders permission is required to cancel or discard orders.");
     }
 
     const uniqueIds = [...new Set(orderIds.filter(Boolean))];

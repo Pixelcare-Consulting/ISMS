@@ -66,6 +66,56 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.79.1",
+    date: "2026-10-23",
+    releasedAt: "2026-10-23T15:45:00+08:00",
+    title: "Delivery progress",
+    highlights: [
+      "Opening a delivery shows its progress above the order, the DR, and the units.",
+      "Opening a delivery, transfer, or pull-out no longer repeats the module guide. The guide stays on the list.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Opening a delivery shows its progress above the order, the DR, and the units.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Opening a delivery, transfer, or pull-out no longer repeats the module guide. The guide stays on the list.",
+      },
+    ],
+  },
+  {
+    version: "0.79.0",
+    date: "2026-10-23",
+    releasedAt: "2026-10-23T14:30:00+08:00",
+    title: "Setup account",
+    highlights: [
+      "The setup account opens a Setup home instead of daily operations.",
+      "That account keeps company, people, places, product lists, and the rules orders and pull-outs need.",
+      "That account can set up custom dashboards and see who is using the site.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "The setup account opens a Setup home and can maintain company details, people, branches, warehouses, dealers, and the product and lookup lists.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Orders, deliveries, stock, sales, returns, and reports stay with the teams that run them.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The setup account can set up custom dashboards and see who is using the site.",
+      },
+    ],
+  },
+  {
     version: "0.78.0",
     date: "2026-10-23",
     releasedAt: "2026-10-23T12:50:00+08:00",

@@ -1,6 +1,7 @@
 "use client";
 
 import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -245,6 +246,14 @@ export function DeliveriesPanel({
         id: "deliveryNo",
         header: "No.",
         enableSorting: true,
+        cell: ({ row }) => (
+          <Link
+            href={`/logistics/deliveries/${row.original.id}`}
+            className="font-medium hover:underline"
+          >
+            {row.original.deliveryNo}
+          </Link>
+        ),
       }),
       deliveryColumn.accessor((row) => row.drNo ?? "", {
         id: "drNo",
