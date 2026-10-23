@@ -976,6 +976,7 @@ model ModeOfPayment {
 
   tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   dealers        Dealer[]
+  branchOrders   BranchOrder[]
   warehouses     Warehouse[]
   serviceCenters ServiceCenter[]
 
@@ -1507,6 +1508,7 @@ model WarehouseLocation {
 
   warehouse            Warehouse             @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
   inventories          WarehouseInventory[]
+  branchInventories    BranchInventory[]
   aors                 Aor[]
   branchPullouts       BranchPullout[]
   deliveryLinesFrom    BranchDeliveryLine[]  @relation("DeliveryLineWarehouseFrom")
@@ -1758,11 +1760,15 @@ model BranchInventory {
   serialNumberId String   @map("serial_number_id")
   statusCodeId   String   @map("status_code_id")
   updatedById    String?  @map("updated_by_id")
+  /// Shelf location in the branch's primary warehouse, set by warehouse Stock in.
+  /// A label only: the unit stays branch stock. Null until stocked into a location.
+  warehouseLocationId String? @map("warehouse_location_id")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
   tenant          Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branch          Branch               @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  warehouseLocation WarehouseLocation? @relation(fields: [warehouseLocationId], references: [id], onDelete: SetNull)
   serialNumber    SerialNumber         @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
   statusCode      ReasonStatusCode     @relation(fields: [statusCodeId], references: [id])
   updatedBy       User?                @relation("BranchInventoryUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
@@ -1772,6 +1778,7 @@ model BranchInventory {
   @@unique([serialNumberId])
   @@index([branchId, serialNumberId])
   @@index([tenantId, branchId, statusCodeId])
+  @@index([warehouseLocationId])
   @@map("branch_inventories")
 }
 
@@ -2152,6 +2159,8 @@ model BranchOrder {
   sapDocType      SapOrderDocType?  @map("sap_doc_type")
   sapDocEntry     Int?              @map("sap_doc_entry")
   sapDocNum       Int?              @map("sap_doc_num")
+  /// Per-order override of the dealer's mode of payment. Null follows the dealer.
+  modeOfPaymentId String?           @map("mode_of_payment_id")
   createdById     String            @map("created_by_id")
   approvedById    String?           @map("approved_by_id")
   createdAt       DateTime          @default(now()) @map("created_at")
@@ -2161,6 +2170,7 @@ model BranchOrder {
   branch                   Branch                     @relation(fields: [branchId], references: [id], onDelete: Cascade)
   brand                    Brand?                     @relation(fields: [brandId], references: [id], onDelete: SetNull)
   packageType              PackageType?               @relation(fields: [packageTypeId], references: [id], onDelete: SetNull)
+  modeOfPayment            ModeOfPayment?             @relation(fields: [modeOfPaymentId], references: [id], onDelete: SetNull)
   createdBy                User                       @relation("BranchOrderCreatedBy", fields: [createdById], references: [id])
   approvedBy               User?                      @relation("BranchOrderApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
   details                  BranchOrderDetail[]

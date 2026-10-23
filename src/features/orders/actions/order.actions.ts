@@ -182,6 +182,7 @@ export async function listActiveDealersForOrderAction(orderType?: BranchOrderTyp
     return dealers.map((d) => ({
       id: d.id,
       name: d.sapCode ? `${d.name} (${d.sapCode})` : d.name,
+      modeOfPaymentId: d.modeOfPaymentId,
     }));
   }
 
@@ -197,7 +198,16 @@ export async function listActiveDealersForOrderAction(orderType?: BranchOrderTyp
     .map((d) => ({
       id: d.id,
       name: d.sapCode ? `${d.name} (${d.sapCode})` : d.name,
+      modeOfPaymentId: d.modeOfPaymentId,
     }));
+}
+
+/** Modes of payment an order can use: master data entries that have a type. */
+export async function listModesOfPaymentForOrderAction(orderType?: BranchOrderType) {
+  const session = orderType
+    ? await requireOrderTypePermission(orderType, "create")
+    : await requireAnyPermission(anyOrderTypePermissions("create"));
+  return orderRepository.listModesOfPaymentForOrder(session.user.tenantId);
 }
 
 export async function listBranchesForOrderAction(
@@ -314,6 +324,7 @@ export async function createOrderAction(input: {
   orderType: "auto_replenish" | "manual" | "special";
   notes?: string;
   brandId?: string | null;
+  modeOfPaymentId?: string | null;
   details: { modelId: string; quantity: number; remarks?: string | null }[];
 }) {
   const session = await requireOrderTypePermission(input.orderType, "create");

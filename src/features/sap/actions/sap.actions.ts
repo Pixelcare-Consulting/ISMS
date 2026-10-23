@@ -102,6 +102,17 @@ export async function processSapQueueAction() {
   return { success: true as const, results };
 }
 
+export async function retrySapJobAction(jobId: string) {
+  const session = await requirePermission(SAP_MANAGE);
+  try {
+    const result = await sapService.retryJob(session.user.tenantId, session.user.id, jobId);
+    revalidatePath("/settings/sap-integration");
+    return { success: true as const, result };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to retry the SAP job" };
+  }
+}
+
 export async function syncInventoryFromSapAction(input?: { warehouseCode?: string }) {
   const session = await requirePermission(SAP_MANAGE);
   await sapService.syncInventoryFromSap(session.user.tenantId, {

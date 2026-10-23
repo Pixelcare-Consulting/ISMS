@@ -356,9 +356,14 @@ export const serviceLayerSapOutbound: SapOutboundPort = {
     });
     if (!order) throw new Error("Order not found");
 
-    const ctx = await orderRepository.findSapRoutingContext(tenantId, order.branchId);
+    const ctx = await orderRepository.findSapRoutingContext(tenantId, order.branchId, order.id);
     if (!ctx.branch) throw new Error("Branch not found");
-    const routingInput = { branch: ctx.branch, mainWarehouse: ctx.mainWarehouse, dealer: ctx.branch.dealer };
+    const routingInput = {
+      branch: ctx.branch,
+      mainWarehouse: ctx.mainWarehouse,
+      dealer: ctx.branch.dealer,
+      orderModeOfPayment: ctx.orderModeOfPayment,
+    };
     // The type stored at approval wins: a later mode-of-payment change must not
     // block or re-route the order. Orders approved before routing existed have
     // no stored type, so they take the resolved one.
@@ -527,12 +532,13 @@ export const serviceLayerSapOutbound: SapOutboundPort = {
 
     let sourceWhsCode = delivery.sourceWarehouse?.code ?? null;
     if (!sourceWhsCode) {
-      const ctx = await orderRepository.findSapRoutingContext(tenantId, delivery.branchId);
+      const ctx = await orderRepository.findSapRoutingContext(tenantId, delivery.branchId, order.id);
       if (!ctx.branch) throw new Error("Branch not found");
       const routing = resolveOrderSapRouting({
         branch: ctx.branch,
         mainWarehouse: ctx.mainWarehouse,
         dealer: ctx.branch.dealer,
+        orderModeOfPayment: ctx.orderModeOfPayment,
       });
       if (!routing.ok) throw new Error(routing.error);
       sourceWhsCode = routing.sourceWhsCode;

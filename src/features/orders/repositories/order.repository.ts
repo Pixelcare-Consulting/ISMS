@@ -11,7 +11,16 @@ import type { BranchOrderStatus, BranchOrderType, Prisma, SapOrderDocType } from
 export const ORDER_CHANGED_MESSAGE = "This order changed. Refresh and review again.";
 
 const orderListInclude = {
-  branch: { select: { id: true, name: true, sapCode: true, deliverySchedule: true } },
+  branch: {
+    select: {
+      id: true,
+      name: true,
+      sapCode: true,
+      deliverySchedule: true,
+      dealer: { select: { modeOfPayment: { select: { name: true } } } },
+    },
+  },
+  modeOfPayment: { select: { name: true } },
   createdBy: { select: { id: true, name: true, email: true } },
   details: {
     include: {
@@ -188,8 +197,36 @@ export const orderRepository = {
   },
 
   /** Branch, dealer mode of payment and main warehouse needed to pick ITR or SO. */
-  async findSapRoutingContext(tenantId: string, branchId: string) {
-    const [branch, mainWarehouse] = await Promise.all([
+  /** Active modes of payment that have a type, as named in master data. */
+  listModesOfPaymentForOrder(tenantId: string) {
+    return prisma.modeOfPayment.findMany({
+      where: { tenantId, recordStatus: "active", kind: { not: null } },
+      select: { id: true, name: true, kind: true },
+      orderBy: { name: "asc" },
+    });
+  },
+
+  /**
+   * The chosen mode of payment (active, with a type) and the branch dealer's own,
+   * so an order stores an override only when it differs from the dealer's.
+   */
+  async findModeOfPaymentChoice(tenantId: string, branchId: string, modeOfPaymentId: string) {
+    const [modeOfPayment, branch] = await Promise.all([
+      prisma.modeOfPayment.findFirst({
+        where: { id: modeOfPaymentId, tenantId, recordStatus: "active" },
+        select: { id: true, name: true, kind: true },
+      }),
+      prisma.branch.findFirst({
+        where: { id: branchId, tenantId },
+        select: { dealer: { select: { modeOfPaymentId: true } } },
+      }),
+    ]);
+    return { modeOfPayment, dealerModeOfPaymentId: branch?.dealer?.modeOfPaymentId ?? null };
+  },
+
+  /** Pass `orderId` to include that order's own mode of payment (its override of the dealer's). */
+  async findSapRoutingContext(tenantId: string, branchId: string, orderId?: string) {
+    const [branch, mainWarehouse, order] = await Promise.all([
       prisma.branch.findFirst({
         where: { id: branchId, tenantId },
         select: {
@@ -210,8 +247,14 @@ export const orderRepository = {
         select: { id: true, code: true },
         orderBy: { createdAt: "asc" },
       }),
+      orderId
+        ? prisma.branchOrder.findFirst({
+            where: { id: orderId, tenantId },
+            select: { modeOfPayment: { select: { name: true, kind: true } } },
+          })
+        : Promise.resolve(null),
     ]);
-    return { branch, mainWarehouse };
+    return { branch, mainWarehouse, orderModeOfPayment: order?.modeOfPayment ?? null };
   },
 
   async create(
@@ -222,6 +265,8 @@ export const orderRepository = {
       createdById: string;
       notes?: string;
       brandId?: string | null;
+      /** Override of the dealer's mode of payment; null follows the dealer. */
+      modeOfPaymentId?: string | null;
       details: {
         modelId: string;
         quantity: number;
@@ -245,6 +290,7 @@ export const orderRepository = {
         createdById: data.createdById,
         notes: data.notes,
         brandId: data.brandId ?? null,
+        modeOfPaymentId: data.modeOfPaymentId ?? null,
         details: {
           create: data.details.map((line) => ({
             modelId: line.modelId,

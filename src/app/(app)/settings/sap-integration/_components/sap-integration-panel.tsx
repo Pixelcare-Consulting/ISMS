@@ -22,23 +22,14 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
-const sapColumn = createColumnHelper<DataTableFeatures, SapJobRow>();
-import type { SapIntegrationJobStatus, SapIntegrationJobType } from "@prisma/client";
+import {
+  SapJobDetailsDialog,
+  type SapJobDetail,
+} from "@/app/(app)/settings/sap-integration/_components/sap-job-details-dialog";
 
-interface SapJobRow {
-  id: string;
-  jobType: SapIntegrationJobType;
-  status: SapIntegrationJobStatus;
-  idempotencyKey: string;
-  referenceType: string | null;
-  referenceId: string | null;
-  sapDocRef: string | null;
-  attemptCount: number;
-  maxAttempts: number;
-  lastError: string | null;
-  createdAt: Date;
-  processedAt: Date | null;
-}
+type SapJobRow = SapJobDetail;
+
+const sapColumn = createColumnHelper<DataTableFeatures, SapJobRow>();
 
 interface PaginatedList<T> {
   items: T[];
@@ -81,6 +72,7 @@ export function SapIntegrationPanel({
   const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const [viewing, setViewing] = useState<SapJobRow | null>(null);
   const selectedCount = jobs.items.filter((job) => rowSelection[job.id]).length;
   const sort = (searchParams.get("sort") ?? initialSort) || "";
   const sortDir = (
@@ -163,10 +155,28 @@ export function SapIntegrationPanel({
         id: "error",
         header: "Error",
         enableSorting: false,
-        cell: ({ row }) => row.original.lastError ?? "—",
+        cell: ({ row }) => (
+          <span title={row.original.lastError ?? undefined}>{row.original.lastError ?? "—"}</span>
+        ),
         meta: {
           className: "max-w-[200px] truncate text-xs text-destructive",
         },
+      }),
+      sapColumn.display({
+        id: "actions",
+        header: "Actions",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <Button
+            size="sm"
+            variant="outline"
+            className="max-sm:h-11"
+            onClick={() => setViewing(row.original)}
+          >
+            View
+          </Button>
+        ),
+        meta: { align: "end" },
       }),
     ];
     return cols;
@@ -218,6 +228,8 @@ export function SapIntegrationPanel({
         empty={jobs.items.length === 0}
         emptyMessage="No integration jobs yet. Approve an order to enqueue an approved_order job."
       />
+
+      <SapJobDetailsDialog job={viewing} onClose={() => setViewing(null)} />
     </div>
   );
 }

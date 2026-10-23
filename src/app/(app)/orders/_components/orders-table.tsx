@@ -46,6 +46,7 @@ import {
 import { DeleteConfirmDialog } from "@/components/data-table/delete-confirm-dialog";
 import { LoadingModal } from "@/components/ui/loading-modal";
 import {
+  formatOrderModeOfPayment,
   formatOrderSapDocument,
   type OrderSapDocType,
 } from "@/features/orders/constants/order-sap-doc-type";
@@ -66,7 +67,12 @@ interface OrderRow {
   sapDocType?: OrderSapDocType | null;
   sapDocNum?: number | null;
   deliveryDueDate?: string | Date | null;
-  branch: { name: string; deliverySchedule?: unknown };
+  modeOfPayment?: { name: string } | null;
+  branch: {
+    name: string;
+    deliverySchedule?: unknown;
+    dealer?: { modeOfPayment: { name: string } | null } | null;
+  };
   createdBy: { name: string | null; email: string };
   details: {
     id: string;
@@ -525,6 +531,10 @@ export function OrdersTable({
           reviewSnapshotAt={detailsOrder.reviewSnapshotAt}
           sapDocType={detailsOrder.sapDocType}
           sapDocNum={detailsOrder.sapDocNum}
+          modeOfPaymentLabel={formatOrderModeOfPayment({
+            orderModeOfPayment: detailsOrder.modeOfPayment?.name ?? null,
+            dealerModeOfPayment: detailsOrder.branch.dealer?.modeOfPayment?.name ?? null,
+          })}
           lines={detailsOrder.details.map((d) => ({
             detailId: d.id,
             modelId: d.model.id,
