@@ -454,7 +454,8 @@ export function OrdersTable({
           sortDir,
           onSort: (columnId) => toggleSort(columnId as OrderSortField),
         }}
-        enableRowSelection
+        // Selection only feeds Super Admin bulk cancel; other roles have nothing to do with it.
+        enableRowSelection={canSuperAdminBulkCancel}
         rowSelection={rowSelection}
         onRowSelectionChange={setRowSelection}
         selectAllLabel="Select all orders"
