@@ -1,5 +1,6 @@
 import type { BranchOrderStatus, BranchOrderType, Prisma } from "@prisma/client";
 
+import { aorRepository } from "@/features/aors/repositories/aor.repository";
 import { auditService } from "@/features/audit/services/audit.service";
 import { hasOrdersForceCancelPermission } from "@/features/orders/constants/order-permissions";
 import {
@@ -39,6 +40,7 @@ import { planogramRepository } from "@/features/planogram/repositories/planogram
 import { masterDataRepository } from "@/features/master-data/repositories/master-data.repository";
 import { resolveActiveOrderPrice } from "@/features/master-data/utils/resolve-active-order-price";
 import { getUserBranchIds } from "@/lib/aor/scope";
+import { resolvePagination, toPaginatedResult } from "@/lib/shared/pagination";
 import { resolveDeliveryDueDate } from "@/features/orders/utils/delivery-schedule";
 import { assertOrderingAllowed } from "@/features/orders/utils/order-window";
 import { branchRepository } from "@/features/branches/repositories/branch.repository";
@@ -113,6 +115,21 @@ function indexApprovalLines(
   }
 
   return byId;
+}
+
+/**
+ * A Team Leader's AOR branches, narrowed to the viewer's scope (null = unrestricted).
+ * Unlike `getUserBranchIds`, a TL with no AOR yields no branches, never "all".
+ */
+async function teamLeaderBranchScope(
+  tenantId: string,
+  teamLeaderId: string,
+  viewerBranchIds: string[] | null,
+): Promise<string[]> {
+  const tlBranchIds = await aorRepository.listExistingBranchIds(tenantId, teamLeaderId);
+  if (viewerBranchIds === null) return [...new Set(tlBranchIds)];
+  const inScope = new Set(viewerBranchIds);
+  return [...new Set(tlBranchIds.filter((id) => inScope.has(id)))];
 }
 
 const ORDER_STATUS_ORDER = Object.keys(
@@ -230,11 +247,28 @@ export const orderService = {
       limit?: number;
       orderType?: BranchOrderType;
       statuses?: BranchOrderStatus[];
+      /** Only orders from branches in this Team Leader's AOR. */
+      teamLeaderId?: string;
     },
     sort?: { field?: OrderListSort; dir?: OrderListSortDir },
   ) {
-    const branchIds = hasFullAccess ? null : await getUserBranchIds(tenantId, userId);
+    const viewerBranchIds = hasFullAccess ? null : await getUserBranchIds(tenantId, userId);
+    const branchIds = pagination?.teamLeaderId
+      ? await teamLeaderBranchScope(tenantId, pagination.teamLeaderId, viewerBranchIds)
+      : viewerBranchIds;
+    // The repository reads an empty list as unrestricted, so "no branches" stops here.
+    if (branchIds !== null && branchIds.length === 0) {
+      const { limit, page } = resolvePagination(pagination);
+      return toPaginatedResult([], 0, page, limit);
+    }
     return orderRepository.listForTenant(tenantId, branchIds, pagination, sort);
+  },
+
+  /** Team Leaders the viewer can filter the order list by. */
+  async listTeamLeaderOptions(tenantId: string, userId: string, hasFullAccess: boolean) {
+    const viewerBranchIds = hasFullAccess ? null : await getUserBranchIds(tenantId, userId);
+    const users = await orderRepository.listTeamLeaderOptions(tenantId, viewerBranchIds);
+    return users.map((user) => ({ id: user.id, name: user.name.trim() || user.email }));
   },
 
   async getKpis(

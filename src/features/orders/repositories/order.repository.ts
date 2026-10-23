@@ -3,6 +3,7 @@ import { resolvePagination, toPaginatedResult } from "@/lib/shared/pagination";
 import {
   getInitialOrderStatus,
   getOrderApprovalChain,
+  TEAM_LEADER_ROLE_SLUG,
 } from "@/features/orders/constants/order-workflow";
 import { nextSalesOrderNumber } from "@/features/orders/utils/next-sales-order-number";
 import type { BranchOrderStatus, BranchOrderType, Prisma, SapOrderDocType } from "@prisma/client";
@@ -97,6 +98,23 @@ function orderPrismaOrderBy(
 }
 
 export const orderRepository = {
+  /**
+   * Team Leaders with at least one AOR branch, for the order list filter. With a branch
+   * scope, only TLs covering at least one of those branches.
+   */
+  listTeamLeaderOptions(tenantId: string, branchIds: string[] | null) {
+    return prisma.user.findMany({
+      where: {
+        tenantId,
+        deletedAt: null,
+        userRoles: { some: { role: { slug: TEAM_LEADER_ROLE_SLUG, deletedAt: null } } },
+        aors: { some: { tenantId, branchId: branchIds ? { in: branchIds } : { not: null } } },
+      },
+      select: { id: true, name: true, email: true },
+      orderBy: [{ name: "asc" }, { email: "asc" }],
+    });
+  },
+
   async listForTenant(
     tenantId: string,
     branchIds: string[] | null,

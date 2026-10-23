@@ -5,6 +5,7 @@ import {
   getOrdersKpisAction,
   listOrderHistoryAction,
   listOrdersAction,
+  listOrderTeamLeadersAction,
 } from "@/features/orders/actions/order.actions";
 import {
   hasOrderPermission,
@@ -37,6 +38,8 @@ interface OrdersTypePageProps {
     limit?: string;
     sort?: string;
     dir?: string;
+    /** Team Leader user id filter on the Orders tab. */
+    tl?: string;
   }>;
 }
 
@@ -74,7 +77,8 @@ export async function OrdersTypePage({
   const typeLabel = BRANCH_ORDER_TYPE_LABELS[orderType];
   const basePath = ORDER_TYPE_ROUTE[orderType];
 
-  const [kpis, ordersResult, historyResult] = await Promise.all([
+  const teamLeaderId = params.tl?.trim() || undefined;
+  const [kpis, ordersResult, historyResult, teamLeaders] = await Promise.all([
     getOrdersKpisAction(orderType),
     activeTab === "orders"
       ? listOrdersAction({
@@ -83,6 +87,7 @@ export async function OrdersTypePage({
           orderType,
           sort: params.sort,
           sortDir: params.dir,
+          teamLeaderId,
         })
       : Promise.resolve(null),
     activeTab === "history"
@@ -94,6 +99,7 @@ export async function OrdersTypePage({
           sortDir: params.dir,
         })
       : Promise.resolve(null),
+    activeTab === "orders" ? listOrderTeamLeadersAction(orderType) : Promise.resolve([]),
   ]);
 
   return (
@@ -133,6 +139,7 @@ export async function OrdersTypePage({
                   basePath={basePath}
                   initialSort={params.sort ?? ""}
                   initialSortDir={params.dir ?? "desc"}
+                  teamLeaders={teamLeaders}
                 />
               </div>
             ) : null

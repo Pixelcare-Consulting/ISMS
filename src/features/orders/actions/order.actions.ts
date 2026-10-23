@@ -121,6 +121,8 @@ export async function listOrdersAction(input?: {
   orderType?: BranchOrderType;
   sort?: string;
   sortDir?: string;
+  /** Team Leader user id: only orders from that TL's AOR branches. */
+  teamLeaderId?: string;
 }) {
   const session = input?.orderType
     ? await requireOrderTypePageAccess(input.orderType)
@@ -135,13 +137,31 @@ export async function listOrdersAction(input?: {
     session.user.tenantId,
     session.user.id,
     hasFullOrderAccess(session.user.permissions),
-    { page: input?.page, limit, orderType: input?.orderType, statuses: queueStatuses },
+    {
+      page: input?.page,
+      limit,
+      orderType: input?.orderType,
+      statuses: queueStatuses,
+      teamLeaderId: input?.teamLeaderId?.trim() || undefined,
+    },
     { field: parseOrderSort(input?.sort), dir: parseOrderSortDir(input?.sortDir) },
   );
   return {
     ...result,
     items: result.items.map((order) => toClientOrderListItem(order)),
   };
+}
+
+/** Team Leaders for the order list filter, limited to the viewer's branch scope. */
+export async function listOrderTeamLeadersAction(orderType?: BranchOrderType) {
+  const session = orderType
+    ? await requireOrderTypePageAccess(orderType)
+    : await requireAnyPermission(anyOrderTypePermissions("view"));
+  return orderService.listTeamLeaderOptions(
+    session.user.tenantId,
+    session.user.id,
+    hasFullOrderAccess(session.user.permissions),
+  );
 }
 
 export async function getOrdersKpisAction(orderType?: BranchOrderType) {

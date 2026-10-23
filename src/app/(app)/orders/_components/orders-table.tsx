@@ -50,6 +50,7 @@ import {
   formatOrderSapDocument,
   type OrderSapDocType,
 } from "@/features/orders/constants/order-sap-doc-type";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
 interface OrderRow {
@@ -112,6 +113,8 @@ interface OrdersTableProps {
   /** Base path for pagination links (defaults to `/orders`). */
   basePath?: string;
   initialSort?: string;
+  /** Team Leaders offered in the TL filter; hidden when empty. */
+  teamLeaders?: { id: string; name: string }[];
   initialSortDir?: string;
 }
 
@@ -144,12 +147,14 @@ function buildOrdersHref(
   limit: number,
   sort?: string,
   sortDir?: string,
+  teamLeaderId?: string | null,
 ): string {
   const params = new URLSearchParams();
   if (page > 1) params.set("page", String(page));
   if (limit !== DEFAULT_TABLE_PAGE_SIZE) params.set("limit", String(limit));
   if (sort) params.set("sort", sort);
   if (sort && sortDir) params.set("dir", sortDir);
+  if (teamLeaderId) params.set("tl", teamLeaderId);
   const query = params.toString();
   return query ? `${basePath}?${query}` : basePath;
 }
@@ -161,8 +166,9 @@ function buildOrdersHrefWithTab(
   sort?: string,
   sortDir?: string,
   tab?: string | null,
+  teamLeaderId?: string | null,
 ): string {
-  const href = buildOrdersHref(basePath, page, limit, sort, sortDir);
+  const href = buildOrdersHref(basePath, page, limit, sort, sortDir, teamLeaderId);
   if (!tab || tab === "orders") return href;
   const join = href.includes("?") ? "&" : "?";
   return `${href}${join}tab=${tab}`;
@@ -176,6 +182,7 @@ export function OrdersTable({
   basePath = "/orders",
   initialSort = "",
   initialSortDir = "desc",
+  teamLeaders = [],
 }: OrdersTableProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -193,6 +200,11 @@ export function OrdersTable({
   const createWorkspace = useOrdersCreateWorkspace();
   const pageSize = parseTablePageSize(result.limit);
   const pageTab = searchParams.get("tab");
+  const teamLeaderId = searchParams.get("tl") ?? "";
+  const teamLeaderOptions = useMemo(
+    () => teamLeaders.map((leader) => ({ id: leader.id, label: leader.name })),
+    [teamLeaders],
+  );
   const sort = (searchParams.get("sort") ?? initialSort) || "";
   const sortDir = (
     (searchParams.get("dir") ?? initialSortDir) === "asc" ? "asc" : "desc"
@@ -200,14 +212,37 @@ export function OrdersTable({
 
   function handlePageSizeChange(limit: TablePageSize) {
     router.push(
-      buildOrdersHrefWithTab(basePath, 1, limit, sort, sort ? sortDir : undefined, pageTab),
+      buildOrdersHrefWithTab(
+        basePath,
+        1,
+        limit,
+        sort,
+        sort ? sortDir : undefined,
+        pageTab,
+        teamLeaderId,
+      ),
+    );
+  }
+
+  /** Server-side: a TL covers more branches than one page holds, so search cannot do it. */
+  function handleTeamLeaderChange(nextTeamLeaderId: string) {
+    router.push(
+      buildOrdersHrefWithTab(
+        basePath,
+        1,
+        pageSize,
+        sort,
+        sort ? sortDir : undefined,
+        pageTab,
+        nextTeamLeaderId,
+      ),
     );
   }
 
   function toggleSort(field: OrderSortField) {
     const next = nextTableSort(field, sort, sortDir);
     router.push(
-      buildOrdersHrefWithTab(basePath, 1, pageSize, next.sort, next.dir, pageTab),
+      buildOrdersHrefWithTab(basePath, 1, pageSize, next.sort, next.dir, pageTab, teamLeaderId),
     );
   }
 
@@ -468,6 +503,21 @@ export function OrdersTable({
           suggestions,
         }}
         pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
+        toolbarLeading={
+          teamLeaderOptions.length > 0 || teamLeaderId ? (
+            <SearchableSelect
+              id="orders-team-leader-filter"
+              options={teamLeaderOptions}
+              value={teamLeaderId}
+              onChange={handleTeamLeaderChange}
+              placeholder="All team leaders"
+              searchPlaceholder="Search team leaders…"
+              emptyMessage="No team leader matches."
+              allowClear
+              className="w-full sm:w-56"
+            />
+          ) : null
+        }
         toolbarActions={
           <>
             {selectedCount > 0 ? (
@@ -510,11 +560,16 @@ export function OrdersTable({
               sort,
               sort ? sortDir : undefined,
               pageTab,
+              teamLeaderId,
             ),
         }}
         empty={filtered.length === 0}
         emptyMessage={
-          query.trim() ? "No orders match your search." : "No orders."
+          query.trim()
+            ? "No orders match your search."
+            : teamLeaderId
+              ? "No orders from this team leader's branches."
+              : "No orders."
         }
       />
       {detailsOrder ? (
