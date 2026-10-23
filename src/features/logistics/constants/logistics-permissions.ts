@@ -14,12 +14,20 @@ import { hasPermission } from "@/lib/auth/permissions";
 export const LOGISTICS_VIEW = "logistics.view";
 export const LOGISTICS_CREATE = "logistics.create";
 export const LOGISTICS_MANAGE = "logistics.manage";
+export const LOGISTICS_DELIVERY_DISPATCH = "logistics.delivery.dispatch";
+export const LOGISTICS_DELIVERY_RECEIVE = "logistics.delivery.receive";
+export const LOGISTICS_DELIVERY_RETURN_REQUEST = "logistics.delivery_return.request";
+export const LOGISTICS_DELIVERY_RETURN_APPROVE = "logistics.delivery_return.approve";
+export const LOGISTICS_DELIVERY_TRANSFER_CREATE = "logistics.delivery_transfer.create";
+export const LOGISTICS_DELIVERY_TRANSFER_APPROVE = "logistics.delivery_transfer.approve";
+export const LOGISTICS_DELIVERY_TRANSFER_RECEIVE = "logistics.delivery_transfer.receive";
 
 /** Any of these grants Logistics nav + list access. */
 export const LOGISTICS_ACCESS_PERMISSIONS = [
   LOGISTICS_VIEW,
   LOGISTICS_CREATE,
   LOGISTICS_MANAGE,
+  LOGISTICS_DELIVERY_RECEIVE,
 ] as const;
 
 /**
@@ -46,7 +54,18 @@ export const LOGISTICS_ACTION_CAPABILITIES = {
   canManage: LOGISTICS_MANAGE,
   canApproveTl: ["orders.approve", LOGISTICS_MANAGE],
   canRejectTransfer: ["orders.approve", LOGISTICS_MANAGE],
-  canAcceptDelivery: [LOGISTICS_CREATE, LOGISTICS_MANAGE, "orders.create"],
+  canDispatch: [LOGISTICS_DELIVERY_DISPATCH, LOGISTICS_MANAGE],
+  canAcceptDelivery: [
+    LOGISTICS_CREATE,
+    LOGISTICS_MANAGE,
+    "orders.create",
+    LOGISTICS_DELIVERY_RECEIVE,
+  ],
+  canRequestDeliveryReturn: [LOGISTICS_DELIVERY_RETURN_REQUEST],
+  canApproveDeliveryReturn: [LOGISTICS_DELIVERY_RETURN_APPROVE],
+  canCreateDeliveryTransfer: [LOGISTICS_DELIVERY_TRANSFER_CREATE],
+  canApproveDeliveryTransfer: [LOGISTICS_DELIVERY_TRANSFER_APPROVE],
+  canReceiveDeliveryTransfer: [LOGISTICS_DELIVERY_TRANSFER_RECEIVE],
   canExecuteTransfer: LOGISTICS_MANAGE,
   canReceiveTransfer: [LOGISTICS_CREATE, LOGISTICS_MANAGE, "orders.create"],
   canSchedulePullout: LOGISTICS_MANAGE,

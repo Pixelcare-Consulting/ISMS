@@ -25,11 +25,13 @@ import {
   orderRepository,
 } from "@/features/orders/repositories/order.repository";
 import { suggestionApplyService } from "@/features/orders/services/suggestion-apply.service";
+import { resolveOrderSapRouting } from "@/features/orders/services/order-sap-routing";
 import { validateOrderLines } from "@/features/orders/services/order-line-validation";
 import type {
   OrderListSort,
   OrderListSortDir,
 } from "@/features/orders/repositories/order.repository";
+import { SAP_REFERENCE_TYPES } from "@/features/sap/constants/sap-job-types";
 import { sapService } from "@/features/sap/services/sap.service";
 import { branchQuotaService } from "@/features/branch-quotas/services/branch-quota.service";
 import { planogramRepository } from "@/features/planogram/repositories/planogram.repository";
@@ -817,6 +819,19 @@ export const orderService = {
         : { dueDate: null as Date | null, rescheduled: false, rescheduledFrom: undefined as string | undefined };
 
     if (isFinal) {
+      // Decide ITR or SO and block before anything is written, so the order stays at its step.
+      const routingContext = await orderRepository.findSapRoutingContext(
+        tenantId,
+        order.branchId,
+      );
+      if (!routingContext.branch) throw new Error("Branch not found");
+      const routing = resolveOrderSapRouting({
+        branch: routingContext.branch,
+        mainWarehouse: routingContext.mainWarehouse,
+        dealer: routingContext.branch.dealer,
+      });
+      if (!routing.ok) throw new Error(routing.error);
+
       const lines = order.details.map((line) => {
         const adjustment = adjustmentById.get(line.id);
         return {
@@ -847,6 +862,7 @@ export const orderService = {
         spaRemarks: comment,
         deliveryDueDate: deliveryResolution.dueDate ?? undefined,
         brandId,
+        sapDocType: routing.docType,
         reviewSnapshot: input?.reviewSnapshot,
         lines,
       });
@@ -861,6 +877,7 @@ export const orderService = {
             orderNumber: refreshed.orderNumber,
             branchId: refreshed.branchId,
             branchSapCode: refreshed.branch.sapCode,
+            docType: refreshed.sapDocType,
             processedAt: refreshed.processedAt,
             lines: refreshed.details.map((d) => ({
               skuCode: d.model.skuCode,
@@ -868,7 +885,11 @@ export const orderService = {
               quantity: d.quantity,
             })),
           });
-          await sapService.processPendingJobs(tenantId, userId);
+          // Only this order's job: a backlog of other jobs must not delay or block it.
+          await sapService.processPendingJobs(tenantId, userId, 1, {
+            referenceType: SAP_REFERENCE_TYPES.BranchOrder,
+            referenceId: orderId,
+          });
         } catch (e) {
           await auditService.log({
             tenantId,

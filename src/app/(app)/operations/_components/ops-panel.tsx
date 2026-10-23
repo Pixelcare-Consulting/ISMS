@@ -1,30 +1,38 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState } from "react";
 import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
-import { toast } from "sonner";
 
+import {
+  DeliveryReceiveDialog,
+  type ReceiveTarget,
+} from "@/app/(app)/logistics/_components/delivery-receive-dialog";
 import { PulloutRequestDialog } from "@/app/(app)/logistics/_components/pullout-request-dialog";
 import { TransferRequestDialog } from "@/app/(app)/logistics/_components/transfer-request-dialog";
+import {
+  DeliveryReturnCell,
+  DeliveryReturnRequestDialog,
+  DeliveryReturnReviewDialog,
+  type LatestDeliveryReturn,
+  type ReturnTarget,
+  type ReviewReturnActions,
+} from "@/app/(app)/logistics/_components/delivery-return-dialogs";
+import { isReturnOpen, needsSapRetry } from "@/features/logistics/constants/delivery-workflow-labels";
 import {
   acceptDeliveryAction,
   createPulloutAction,
   createTransferAction,
-  rejectDeliveryAction,
+  cancelDeliveryReturnAction,
+  decideDeliveryReturnAction,
+  getDeliveryReturnAction,
+  listDeliveryReceiptLinesAction,
+  requestDeliveryReturnAction,
+  retryDeliveryReturnSapAction,
 } from "@/features/ops/actions/ops.actions";
+import { formatInventoryDrDate } from "@/app/(app)/inventory/_components/inventory-list-format";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { Button } from "@/components/ui/button";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import {
   DataTable,
   useClientTableSort,
@@ -40,11 +48,16 @@ interface StatusCodeRef {
 }
 
 interface OpsPanelProps {
+  currentUserName?: string;
   deliveries: {
     id: string;
     deliveryNo: string;
+    drNo: string | null;
+    drDate: Date | string | null;
     statusCode: StatusCodeRef;
     branch: { name: string };
+    /** Latest return request, newest first (at most one). */
+    returnRequests: LatestDeliveryReturn[];
   }[];
   transfers: {
     id: string;
@@ -53,7 +66,18 @@ interface OpsPanelProps {
     toBranch: { name: string };
   }[];
   pullouts: { id: string; statusCode: StatusCodeRef; branch: { name: string } }[];
+  /** Shows Transfer actions in the receive dialog. */
+  canCreateDeliveryTransfer?: boolean;
+  canRequestDeliveryReturn?: boolean;
+  canApproveDeliveryReturn?: boolean;
 }
+
+const REVIEW_ACTIONS: ReviewReturnActions = {
+  load: getDeliveryReturnAction,
+  decide: decideDeliveryReturnAction,
+  retry: retryDeliveryReturnSapAction,
+  cancel: cancelDeliveryReturnAction,
+};
 
 type DeliveryRow = OpsPanelProps["deliveries"][number];
 type TransferRow = OpsPanelProps["transfers"][number];
@@ -63,21 +87,24 @@ const deliveryColumn = createColumnHelper<DataTableFeatures, DeliveryRow>();
 const transferColumn = createColumnHelper<DataTableFeatures, TransferRow>();
 const pulloutColumn = createColumnHelper<DataTableFeatures, PulloutRow>();
 
-interface PendingDeliveryAction {
-  id: string;
-  deliveryNo: string;
-  branchName: string;
-  action: "accept" | "reject";
-}
+/** Dispatched deliveries the branch can still receive or return. */
+const RECEIVABLE_DELIVERY_CODES = new Set(["pending", "partial"]);
 
-export function OpsPanel({ deliveries, transfers, pullouts }: OpsPanelProps) {
+export function OpsPanel({
+  deliveries,
+  transfers,
+  pullouts,
+  currentUserName = "",
+  canCreateDeliveryTransfer = false,
+  canRequestDeliveryReturn = false,
+  canApproveDeliveryReturn = false,
+}: OpsPanelProps) {
   const router = useRouter();
   const [transferOpen, setTransferOpen] = useState(false);
   const [pulloutOpen, setPulloutOpen] = useState(false);
-  const [pendingDelivery, setPendingDelivery] = useState<PendingDeliveryAction | null>(
-    null,
-  );
-  const [pending, startTransition] = useTransition();
+  const [returnRequestTarget, setReturnRequestTarget] = useState<ReturnTarget | null>(null);
+  const [returnReviewTarget, setReturnReviewTarget] = useState<ReturnTarget | null>(null);
+  const [receiveTarget, setReceiveTarget] = useState<ReceiveTarget | null>(null);
   const [deliverySelection, setDeliverySelection] = useState<RowSelectionState>({});
   const [transferSelection, setTransferSelection] = useState<RowSelectionState>({});
   const [pulloutSelection, setPulloutSelection] = useState<RowSelectionState>({});
@@ -97,30 +124,6 @@ export function OpsPanel({ deliveries, transfers, pullouts }: OpsPanelProps) {
     status: (p) => p.statusCode.name,
   });
 
-  function confirmDeliveryAction() {
-    if (!pendingDelivery) return;
-    const { action, id } = pendingDelivery;
-    startTransition(async () => {
-      const result =
-        action === "accept"
-          ? await acceptDeliveryAction(id)
-          : await rejectDeliveryAction(id);
-      if (result.error) {
-        toast.error(result.error);
-        return;
-      }
-      toast.success(
-        action === "accept"
-          ? "movedCount" in result && result.movedCount
-            ? "Delivery accepted — DIT moved to stock"
-            : "Delivery accepted"
-          : "Delivery rejected",
-      );
-      setPendingDelivery(null);
-      router.refresh();
-    });
-  }
-
   function submitTransfer(input: {
     fromBranchId: string;
     toBranchId: string;
@@ -128,6 +131,7 @@ export function OpsPanel({ deliveries, transfers, pullouts }: OpsPanelProps) {
     quantity: number;
     serialNumberIds: string[];
     notes?: string;
+    transferNo?: string;
   }) {
     return createTransferAction(input);
   }
@@ -136,7 +140,12 @@ export function OpsPanel({ deliveries, transfers, pullouts }: OpsPanelProps) {
     branchId: string;
     warehouseId: string;
     reasonStatusCodeId: string;
-    serialNumberIds: string[];
+    lines: {
+      serialNumberId: string;
+      pulloutClassificationIds: string[];
+      unitPackingConditionIds: string[];
+      accessoryCompletenessIds: string[];
+    }[];
   }) {
     return createPulloutAction(input);
   }
@@ -163,6 +172,18 @@ export function OpsPanel({ deliveries, transfers, pullouts }: OpsPanelProps) {
         cell: ({ row }) => row.original.deliveryNo,
       }),
       deliveryColumn.display({
+        id: "drNo",
+        header: "DR#",
+        enableSorting: false,
+        cell: ({ row }) => row.original.drNo ?? "—",
+      }),
+      deliveryColumn.display({
+        id: "drDate",
+        header: "DR date",
+        enableSorting: false,
+        cell: ({ row }) => formatInventoryDrDate(row.original.drDate),
+      }),
+      deliveryColumn.display({
         id: "status",
         header: "Status",
         enableSorting: true,
@@ -175,49 +196,56 @@ export function OpsPanel({ deliveries, transfers, pullouts }: OpsPanelProps) {
         ),
       }),
       deliveryColumn.display({
+        id: "return",
+        header: "Return",
+        enableSorting: false,
+        cell: ({ row }) => <DeliveryReturnCell latest={row.original.returnRequests[0]} />,
+      }),
+      deliveryColumn.display({
         id: "actions",
         header: "Action",
         enableSorting: false,
-        cell: ({ row }) =>
-          row.original.statusCode.code === "pending" ? (
-            <div className="flex justify-end gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={pending}
-                onClick={() =>
-                  setPendingDelivery({
-                    id: row.original.id,
-                    deliveryNo: row.original.deliveryNo,
-                    branchName: row.original.branch.name,
-                    action: "reject",
-                  })
-                }
-              >
-                Reject
-              </Button>
-              <Button
-                size="sm"
-                disabled={pending}
-                className="bg-emerald-600 text-white hover:bg-emerald-700"
-                onClick={() =>
-                  setPendingDelivery({
-                    id: row.original.id,
-                    deliveryNo: row.original.deliveryNo,
-                    branchName: row.original.branch.name,
-                    action: "accept",
-                  })
-                }
-              >
-                Accept
-              </Button>
+        cell: ({ row }) => {
+          const delivery = row.original;
+          const receivable = RECEIVABLE_DELIVERY_CODES.has(delivery.statusCode.code);
+          const latestReturn = delivery.returnRequests[0];
+          const returnOpen = isReturnOpen(latestReturn);
+          const target = { id: delivery.id, deliveryNo: delivery.deliveryNo, branchName: delivery.branch.name };
+          return (
+            <div className="flex flex-wrap justify-end gap-2">
+              {receivable && !returnOpen && canRequestDeliveryReturn ? (
+                <Button size="sm" variant="outline" onClick={() => setReturnRequestTarget(target)}>
+                  Request return
+                </Button>
+              ) : null}
+              {latestReturn?.status === "PENDING_APPROVAL" && canApproveDeliveryReturn ? (
+                <Button size="sm" onClick={() => setReturnReviewTarget(target)}>
+                  Review return
+                </Button>
+              ) : null}
+              {needsSapRetry(latestReturn) && (canApproveDeliveryReturn || canRequestDeliveryReturn) ? (
+                <Button size="sm" variant="outline" onClick={() => setReturnReviewTarget(target)}>
+                  Retry SAP posting
+                </Button>
+              ) : null}
+              {receivable && !returnOpen ? (
+                <Button
+                  size="sm"
+
+                  className="bg-emerald-600 text-white hover:bg-emerald-700"
+                  onClick={() => setReceiveTarget(target)}
+                >
+                  {delivery.statusCode.code === "partial" ? "Receive remaining" : "Receive"}
+                </Button>
+              ) : null}
             </div>
-          ) : null,
+          );
+        },
         meta: { align: "end" },
       }),
     ];
     return cols;
-  }, [pending]);
+  }, [canApproveDeliveryReturn, canRequestDeliveryReturn]);
 
   const transferColumns = useMemo(() => {
     const cols: DataTableColumn<TransferRow>[] = [
@@ -360,64 +388,40 @@ export function OpsPanel({ deliveries, transfers, pullouts }: OpsPanelProps) {
         onOpenChange={setTransferOpen}
         onSubmit={submitTransfer}
         onCreated={() => router.refresh()}
+        currentUserName={currentUserName}
       />
       <PulloutRequestDialog
         open={pulloutOpen}
         onOpenChange={setPulloutOpen}
         onSubmit={submitPullout}
         onCreated={() => router.refresh()}
+        currentUserName={currentUserName}
       />
 
-      <AlertDialog
-        open={pendingDelivery !== null}
-        onOpenChange={(open) => {
-          if (!open && !pending) setPendingDelivery(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {pendingDelivery?.action === "reject" ? "Reject delivery?" : "Accept delivery?"}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {pendingDelivery?.action === "reject" ? (
-                <>
-                  Reject{" "}
-                  <span className="font-medium text-foreground">
-                    {pendingDelivery.deliveryNo}
-                  </span>{" "}
-                  at {pendingDelivery.branchName}. DIT inventory is unchanged.
-                </>
-              ) : (
-                <>
-                  Confirm acceptance of{" "}
-                  <span className="font-medium text-foreground">
-                    {pendingDelivery?.deliveryNo}
-                  </span>{" "}
-                  at {pendingDelivery?.branchName}. DIT inventory will move to Stock.
-                </>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={pending}
-              className={
-                pendingDelivery?.action === "reject"
-                  ? undefined
-                  : "bg-emerald-600 text-white hover:bg-emerald-700"
-              }
-              onClick={(event) => {
-                event.preventDefault();
-                confirmDeliveryAction();
-              }}
-            >
-              {pendingDelivery?.action === "reject" ? "Reject" : "Accept"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeliveryReceiveDialog
+        target={receiveTarget}
+        onClose={() => setReceiveTarget(null)}
+        onReceived={() => router.refresh()}
+        loadLines={listDeliveryReceiptLinesAction}
+        accept={acceptDeliveryAction}
+        canTransfer={canCreateDeliveryTransfer}
+      />
+
+      <DeliveryReturnRequestDialog
+        target={returnRequestTarget}
+        onClose={() => setReturnRequestTarget(null)}
+        onDone={() => router.refresh()}
+        submit={requestDeliveryReturnAction}
+      />
+
+      <DeliveryReturnReviewDialog
+        target={returnReviewTarget}
+        canApprove={canApproveDeliveryReturn}
+        canRetry={canApproveDeliveryReturn || canRequestDeliveryReturn}
+        actions={REVIEW_ACTIONS}
+        onClose={() => setReturnReviewTarget(null)}
+        onDone={() => router.refresh()}
+      />
     </div>
   );
 }

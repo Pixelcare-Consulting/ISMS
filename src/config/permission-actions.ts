@@ -17,6 +17,8 @@ export const PERMISSION_ACTION_ORDER = [
   "internal",
   "branch.view",
   "service.view",
+  "custom.view",
+  "custom.manage",
   "create",
   "update",
   "delete",
@@ -64,6 +66,16 @@ export const PERMISSION_ACTIONS: Record<
     value: "service.view",
     label: "Service",
     description: "View the Service Returns tab",
+  },
+  "custom.view": {
+    value: "custom.view",
+    label: "Custom dashboards",
+    description: "Open custom dashboards shared with the tenant",
+  },
+  "custom.manage": {
+    value: "custom.manage",
+    label: "Build custom dashboards",
+    description: "Create, edit, share and delete own custom dashboards",
   },
   create: {
     value: "create",

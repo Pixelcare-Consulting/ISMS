@@ -66,6 +66,212 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.78.0",
+    date: "2026-10-23",
+    releasedAt: "2026-10-23T12:50:00+08:00",
+    title: "Pull-out checklist",
+    highlights: [
+      "You can keep pull-out classification, unit packing condition, and accessory completeness under Settings → Master data.",
+      "On each selected unit you can choose more than one classification, packing condition, and accessory completeness.",
+      "The lists can be searched and show 10 at a time.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "You can keep pull-out classification, unit packing condition, and accessory completeness under Settings → Master data. On each selected unit you can choose more than one classification, packing condition, and accessory completeness. The lists can be searched and show 10 at a time.",
+      },
+    ],
+  },
+  {
+    version: "0.77.2",
+    date: "2026-10-23",
+    releasedAt: "2026-10-23T10:40:00+08:00",
+    title: "Pull-out details",
+    highlights: [
+      "A pull-out shows its stock or defective condition separately from its progress.",
+      "The steps are reserve, approval, the logistics list, and in transit.",
+      "A transfer shows the same progress steps as a pull-out.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "A pull-out shows its stock or defective condition separately from its progress.",
+      },
+      {
+        type: "improvement",
+        description: "The steps are reserve, approval, the logistics list, and in transit.",
+      },
+      {
+        type: "improvement",
+        description:
+          "While a transfer is waiting for approval, the form offers Approve and Reject for the whole request.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Starting a pull-out uses the same form as opening one, with each unit marked stock or defective.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Pull-outs and transfers open on the same kind of page. You choose the pull-out reason, and Approve and Reject look the same in the list and on the page.",
+      },
+      {
+        type: "improvement",
+        description:
+          "A new transfer warns you when the releasing branch has no units free to send.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Transfers and unit transfers now share one page, with Unit transfers as a tab. The separate sidebar item is gone.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The transfer summary shows only the steps you use: waiting for approval, ready to send, in transit, accepted, and rejected.",
+      },
+      {
+        type: "improvement",
+        description: "A transfer shows the same progress steps as a pull-out.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The warehouse-receipt note appears as a notification when you open a pull-out.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Transfer and pull-out line lists can be searched and paged like the other tables.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Opening an order from Order History shows the order on its own page, with its approval steps above the details.",
+      },
+    ],
+  },
+  {
+    version: "0.77.1",
+    date: "2026-10-22",
+    releasedAt: "2026-10-22T16:10:00+08:00",
+    title: "Transfer form",
+    highlights: [
+      "The transfer form shows the transfer, who created it, both branches, and each serial.",
+      "Accept stays on each serial that is still on the way.",
+      "Approving or releasing a transfer is one action for the whole request, shown at the bottom of the form.",
+      "The transfer form matches the other screens in the app.",
+      "A new transfer shows its number, and the form has a header and actions along the bottom like the other screens.",
+      "Each serial on a transfer shows its number and the actions you can take, and you can add or remove several serials from a new request at once.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Opening a transfer or starting a new one uses the same form. It shows the transfer number, who created it, the releasing and receiving branches, the date, the status, and each serial.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Accept confirms one serial. Delete before approval cancels the request and frees the reserved units.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Approving or releasing a transfer is one action for the whole request, shown at the bottom of the form.",
+      },
+      {
+        type: "improvement",
+        description: "The transfer form matches the other screens in the app.",
+      },
+      {
+        type: "improvement",
+        description:
+          "A new transfer shows its number, and the form has a header and actions along the bottom like the other screens.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Each serial on a transfer shows its number and the actions you can take, and you can add or remove several serials from a new request at once.",
+      },
+    ],
+  },
+  {
+    version: "0.77.0",
+    date: "2026-10-20",
+    releasedAt: "2026-10-20T18:40:00+08:00",
+    title: "One place for each unit",
+    highlights: [
+      "A unit can be in stock in one place.",
+      "A sale serial must match the model on the sale.",
+      "Stocking in a serial that is already at that location does not add another unit.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "A unit can be in stock in one place. Stocking it in at a different place, or while it is already at a branch or service center, is refused.",
+      },
+      {
+        type: "fix",
+        description:
+          "A sale serial must match the model on the sale. When the model has a brand, the sale brand must match too. Only one person can assign a serial to a to-follow line.",
+      },
+      {
+        type: "fix",
+        description:
+          "Repeating stock-in for a serial already at that location does not add another unit.",
+      },
+    ],
+  },
+  {
+    version: "0.76.5",
+    date: "2026-10-20",
+    releasedAt: "2026-10-20T17:50:00+08:00",
+    title: "Sale serial search",
+    highlights: [
+      "When you record a sale, you can search serials for the model you chose at the stock source you selected, including units that used to be missing from the list.",
+      "Branch stock reads Branch Stock — STK, and units on the way in read Incoming to Branch — DIT.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Branch stock reads Branch Stock — STK, and units on the way in read Incoming to Branch — DIT.",
+      },
+      {
+        type: "fix",
+        description:
+          "When you record a sale, you can search serials for the model you chose at the stock source you selected, including units that used to be missing from the list.",
+      },
+    ],
+  },
+  {
+    version: "0.76.4",
+    date: "2026-10-20",
+    releasedAt: "2026-10-20T15:20:00+08:00",
+    title: "Order sheets",
+    highlights: [
+      "Suggested orders uses the same compact table as order details, with the model name under the code.",
+      "Opening order details no longer leaves the notes box highlighted.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Suggested orders uses the same compact table as order details. The model name sits under the code, quantities line up, and a total sits under the list.",
+      },
+      {
+        type: "fix",
+        description:
+          "Opening order details no longer leaves the notes box highlighted.",
+      },
+    ],
+  },
+  {
     version: "0.76.3.1",
     date: "2026-10-19",
     releasedAt: "2026-10-19T17:30:00+08:00",

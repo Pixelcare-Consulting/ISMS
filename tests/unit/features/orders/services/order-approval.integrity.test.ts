@@ -14,6 +14,7 @@ jest.mock("@/features/orders/repositories/order.repository", () => ({
     addApproval: jest.fn(),
     updateStatus: jest.fn(),
     finalizeApproved: jest.fn(),
+    findSapRoutingContext: jest.fn(),
   },
 }));
 
@@ -73,6 +74,21 @@ const findById = orderRepository.findById as jest.Mock;
 const addApproval = orderRepository.addApproval as jest.Mock;
 const updateStatus = orderRepository.updateStatus as jest.Mock;
 const finalizeApproved = orderRepository.finalizeApproved as jest.Mock;
+const findSapRoutingContext = orderRepository.findSapRoutingContext as jest.Mock;
+
+const ROUTING_CONTEXT = {
+  branch: {
+    name: "North Branch",
+    sapCode: "WH-N",
+    primaryWarehouse: { id: "w1", code: "WP" },
+    dealer: {
+      name: "Dealer X",
+      sapCode: "C001",
+      modeOfPayment: { name: "Consignment", kind: "CONSIGNMENT" },
+    },
+  },
+  mainWarehouse: { id: "w-main", code: "WM" },
+};
 const emitApprovedOrder = sapService.emitApprovedOrder as jest.Mock;
 
 const LOADED_AT = new Date("2026-10-19T02:00:00.000Z");
@@ -107,6 +123,7 @@ beforeEach(() => {
   (auditService.log as jest.Mock).mockResolvedValue(undefined);
   (sendWorkflowEmail as jest.Mock).mockResolvedValue(undefined);
   emitApprovedOrder.mockResolvedValue(undefined);
+  findSapRoutingContext.mockResolvedValue(ROUTING_CONTEXT);
   (sapService.processPendingJobs as jest.Mock).mockResolvedValue(undefined);
   addApproval.mockResolvedValue({});
   updateStatus.mockResolvedValue({});
@@ -195,6 +212,33 @@ describe("order approval integrity", () => {
     expect(emitApprovedOrder).not.toHaveBeenCalled();
   });
 
+  it("blocks final approval with the routing message and writes nothing", async () => {
+    findById.mockResolvedValue(reviewOrder());
+    findSapRoutingContext.mockResolvedValue({
+      ...ROUTING_CONTEXT,
+      branch: { ...ROUTING_CONTEXT.branch, dealer: null },
+    });
+
+    await expect(
+      orderService.approve("tenant-1", "user-1", "order-1", ["sp"], {
+        expectedUpdatedAt: LOADED_AT.toISOString(),
+      }),
+    ).rejects.toThrow("North Branch has no dealer. Set the dealer before final approval.");
+    expect(finalizeApproved).not.toHaveBeenCalled();
+  });
+
+  it("stores the routed SAP document type on final approval", async () => {
+    findById.mockResolvedValue(reviewOrder());
+    await orderService.approve("tenant-1", "user-1", "order-1", ["sp"], {
+      expectedUpdatedAt: LOADED_AT.toISOString(),
+    });
+    expect(finalizeApproved).toHaveBeenCalledWith(
+      "tenant-1",
+      "order-1",
+      expect.objectContaining({ sapDocType: "ITR" }),
+    );
+  });
+
   it("writes SP remarks in the final transaction and emits SAP only after it", async () => {
     const order = reviewOrder();
     const calls: string[] = [];
@@ -241,5 +285,10 @@ describe("order approval integrity", () => {
       }),
     );
     expect(emitApprovedOrder).toHaveBeenCalledTimes(1);
+    // Only this order's job runs inline, never the tenant's whole backlog.
+    expect(sapService.processPendingJobs).toHaveBeenCalledWith("tenant-1", "user-1", 1, {
+      referenceType: "BranchOrder",
+      referenceId: "order-1",
+    });
   });
 });

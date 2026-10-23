@@ -65,6 +65,10 @@ function buildWriteData(
     data.quantity = input.quantity ?? 1;
   }
 
+  if (config.kindField) {
+    data.kind = input.kind ?? null;
+  }
+
   return data;
 }
 
@@ -158,7 +162,11 @@ export const lookupService = {
         action: `${config.auditKey}.updated`,
         entityType: config.auditEntity,
         entityId: row.id,
-        metadata: { name: row.name, previousName: existing.name },
+        metadata: {
+          name: row.name,
+          previousName: existing.name,
+          ...(config.kindField ? { kind: (data.kind as string | null) ?? null, previousKind: existing.kind ?? null } : {}),
+        },
       });
       return row;
     } catch (error) {

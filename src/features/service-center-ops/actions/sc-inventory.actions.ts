@@ -10,6 +10,7 @@ import {
   SC_INVENTORY_VIEW,
 } from "@/features/service-center-ops/constants/sc-permissions";
 import { scOpsRepository } from "@/features/service-center-ops/repositories/sc-ops.repository";
+import { placeServiceCenterUnit } from "@/features/service-center-ops/services/service-center-placement";
 import {
   assertScInScope,
   resolveScIdsForUser,
@@ -138,29 +139,22 @@ export async function manualScStockInAction(input: unknown) {
     "STK",
   );
 
-  const row = await prisma.serviceCenterInventory.upsert({
-    where: {
-      serviceCenterLocationId_serialNumberId: {
-        serviceCenterLocationId: parsed.data.serviceCenterLocationId,
-        serialNumberId: parsed.data.serialNumberId,
-      },
-    },
-    update: { statusCodeId: stkCodeId, serviceCenterId: parsed.data.serviceCenterId },
-    create: {
+  const rowId = await prisma.$transaction((tx) =>
+    placeServiceCenterUnit(tx, {
       tenantId: session.user.tenantId,
       serviceCenterId: parsed.data.serviceCenterId,
       serviceCenterLocationId: parsed.data.serviceCenterLocationId,
       serialNumberId: parsed.data.serialNumberId,
       statusCodeId: stkCodeId,
-    },
-  });
+    }),
+  );
 
   await auditService.log({
     tenantId: session.user.tenantId,
     userId: session.user.id,
     action: "sc_inventory.stock_in",
     entityType: "ServiceCenterInventory",
-    entityId: row.id,
+    entityId: rowId,
     metadata: {
       serialNo: serial.serialNo,
       serviceCenterId: parsed.data.serviceCenterId,
@@ -168,7 +162,7 @@ export async function manualScStockInAction(input: unknown) {
   });
 
   revalidateScInventory();
-  return { success: true as const, id: row.id };
+  return { success: true as const, id: rowId };
 }
 
 export async function searchSerialsForScStockInAction(query: string) {

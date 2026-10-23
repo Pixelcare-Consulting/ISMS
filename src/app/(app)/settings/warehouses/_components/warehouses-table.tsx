@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useState, useTransition } from "react";
 import { createColumnHelper } from "@tanstack/react-table";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -69,8 +69,6 @@ export function WarehousesTable({
     location: LocationRow;
   } | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [locCode, setLocCode] = useState("");
-  const [locName, setLocName] = useState("");
 
   const filtered = useMemo(
     () =>
@@ -109,13 +107,10 @@ export function WarehousesTable({
     resetKey: `${query}:${sort.sortKey}:${sort.sortDir}`,
   });
 
-  function addLocation(warehouseId: string) {
+  const addLocation = useCallback(
+    (warehouseId: string, code: string, name: string, onAdded: () => void) => {
     startTransition(async () => {
-      const result = await addWarehouseLocationAction({
-        warehouseId,
-        code: locCode,
-        name: locName,
-      });
+      const result = await addWarehouseLocationAction({ warehouseId, code, name });
       if (result.error) {
         toast.error(String(result.error));
         return;
@@ -133,11 +128,12 @@ export function WarehousesTable({
           ),
         );
       }
-      setLocCode("");
-      setLocName("");
+      onAdded();
       router.refresh();
     });
-  }
+    },
+    [router],
+  );
 
   function removeLocation() {
     if (!deletingLocation) return;
@@ -217,11 +213,7 @@ export function WarehousesTable({
                   warehouseId={row.original.id}
                   warehouseName={row.original.name}
                   locations={row.original.locations}
-                  locCode={locCode}
-                  locName={locName}
                   pending={pending}
-                  onLocCodeChange={setLocCode}
-                  onLocNameChange={setLocName}
                   onAdd={addLocation}
                   onRemove={(warehouseId, location) =>
                     setDeletingLocation({ warehouseId, location })
@@ -238,7 +230,7 @@ export function WarehousesTable({
         header: "Links",
         enableSorting: true,
         cell: ({ row }) =>
-          `${row.original._count.aors} AOR Â· ${row.original._count.pulloutsDestination} pull-outs`,
+          `${row.original._count.aors} AOR · ${row.original._count.pulloutsDestination} pull-outs`,
         meta: { className: "text-sm text-muted-foreground" },
       }),
       warehouseColumn.display({
@@ -259,7 +251,7 @@ export function WarehousesTable({
       }),
     ];
     return cols;
-  }, [expandedId, indexOffset, locCode, locName, pending]);
+  }, [addLocation, expandedId, indexOffset, pending]);
 
   return (
     <>

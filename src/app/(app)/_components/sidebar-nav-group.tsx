@@ -111,7 +111,12 @@ function SidebarNavSubItem({
   countBadges?: NavCountBadges;
 }) {
   const ItemIcon = item.icon;
-  const active = isNavItemActive(pathname, item.href, item.exact);
+  const active = isNavItemActive(
+    pathname,
+    item.href,
+    item.exact,
+    item.activePathPrefixes,
+  );
   const count = resolveNavCountBadge(item.countBadgeKey, countBadges);
 
   return (

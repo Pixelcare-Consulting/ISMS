@@ -329,7 +329,7 @@ function AnalyticsMetricRow({
         value={formatPeso(metrics.inventoryAmount)}
         hint="On-hand stock at selling price"
       />
-      <AnalyticsStat label="On hand" value={metrics.stkCount.toLocaleString()} />
+      <AnalyticsStat label="Branch Stock — STK" value={metrics.stkCount.toLocaleString()} />
       <AnalyticsStat label="In transit" value={metrics.ditCount.toLocaleString()} />
     </div>
   );

@@ -276,7 +276,7 @@ export function SuggestedOrdersDialog({
                       <TableHead>Description</TableHead>
                       <TableHead>Source</TableHead>
                       {orderType === "auto_replenish" ? <TableHead>Period</TableHead> : null}
-                      <TableHead>{orderType === "auto_replenish" ? "On hand" : "STK"}</TableHead>
+                      <TableHead>{orderType === "auto_replenish" ? "Branch Stock — STK" : "STK"}</TableHead>
                       <TableHead>{orderType === "auto_replenish" ? "Drop 1" : "Outstanding"}</TableHead>
                       <TableHead>Suggested</TableHead>
                       <TableHead className="w-28">Qty to add</TableHead>
@@ -409,7 +409,7 @@ function SuggestionCard({
         <Fact label="Source" value={row.sourceLabel} />
         {orderType === "auto_replenish" ? <Fact label="Period" value={row.periodLabel ?? "—"} /> : null}
         <Fact
-          label={orderType === "auto_replenish" ? "On hand" : "STK"}
+          label={orderType === "auto_replenish" ? "Branch Stock — STK" : "STK"}
           value={String(orderType === "auto_replenish" ? (row.onHandQty ?? "—") : (row.stkQty ?? "—"))}
         />
         <Fact

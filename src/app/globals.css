@@ -348,3 +348,17 @@ body:has(.app-shell) #nprogress .peg {
     }
   }
 }
+
+/*
+ * Stimulsoft renders its own viewer/designer UI. Tailwind's preflight turns its
+ * icon <img>/<svg> into full-width blocks (e.g. the dictionary tree loses its
+ * expand toggles), so hand those elements back to the browser defaults.
+ */
+@layer base {
+  .stimulsoft-host :where(img, svg, video, canvas) {
+    display: revert;
+    max-width: revert;
+    height: revert;
+    vertical-align: revert;
+  }
+}

@@ -45,6 +45,10 @@ import {
 } from "@/lib/data-table";
 import { DeleteConfirmDialog } from "@/components/data-table/delete-confirm-dialog";
 import { LoadingModal } from "@/components/ui/loading-modal";
+import {
+  formatOrderSapDocument,
+  type OrderSapDocType,
+} from "@/features/orders/constants/order-sap-doc-type";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
 interface OrderRow {
@@ -59,6 +63,8 @@ interface OrderRow {
   updatedAt?: string | Date | null;
   reviewSnapshot?: unknown;
   reviewSnapshotAt?: string | Date | null;
+  sapDocType?: OrderSapDocType | null;
+  sapDocNum?: number | null;
   deliveryDueDate?: string | Date | null;
   branch: { name: string; deliverySchedule?: unknown };
   createdBy: { name: string | null; email: string };
@@ -325,6 +331,16 @@ export function OrdersTable({
         ),
       }),
       orderColumn.display({
+        id: "sapDocument",
+        header: "SAP document",
+        enableSorting: false,
+        cell: ({ row }) =>
+          formatOrderSapDocument({
+            sapDocType: row.original.sapDocType ?? null,
+            sapDocNum: row.original.sapDocNum ?? null,
+          }),
+      }),
+      orderColumn.display({
         id: "lines",
         header: "Lines",
         enableSorting: false,
@@ -507,6 +523,8 @@ export function OrdersTable({
           createdByName={detailsOrder.createdBy.name ?? detailsOrder.createdBy.email}
           reviewSnapshot={detailsOrder.reviewSnapshot}
           reviewSnapshotAt={detailsOrder.reviewSnapshotAt}
+          sapDocType={detailsOrder.sapDocType}
+          sapDocNum={detailsOrder.sapDocNum}
           lines={detailsOrder.details.map((d) => ({
             detailId: d.id,
             modelId: d.model.id,

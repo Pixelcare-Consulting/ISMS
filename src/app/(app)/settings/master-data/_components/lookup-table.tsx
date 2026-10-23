@@ -39,6 +39,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import {
+  MODE_OF_PAYMENT_KIND_LABELS,
+  MODE_OF_PAYMENT_KIND_NOT_SET,
+  MODE_OF_PAYMENT_KINDS,
+  type ModeOfPaymentKindValue,
+} from "@/features/lookups/constants/mode-of-payment-kind";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
 const lookupColumn = createColumnHelper<DataTableFeatures, LookupRowData>();
@@ -51,6 +57,7 @@ export interface LookupRowData {
   code?: string | null;
   class?: string | null;
   quantity?: number | null;
+  kind?: ModeOfPaymentKindValue | null;
   brandId?: string | null;
   regionId?: string | null;
   sizeId?: string | null;
@@ -73,9 +80,17 @@ interface LookupTableProps {
   rows: LookupRowData[];
   parentOptions?: LookupOption[];
   childRows?: LookupRowData[];
+  /** Keep the list at 10 rows and hide the rows-per-page menu. */
+  fixedPageSize?: boolean;
 }
 
-export function LookupTable({ entity, rows, parentOptions, childRows }: LookupTableProps) {
+export function LookupTable({
+  entity,
+  rows,
+  parentOptions,
+  childRows,
+  fixedPageSize,
+}: LookupTableProps) {
   const config = LOOKUP_ENTITIES[entity];
   const childConfig = config.child ? LOOKUP_ENTITIES[config.child] : null;
   const childParentOptions = useMemo(
@@ -89,18 +104,32 @@ export function LookupTable({ entity, rows, parentOptions, childRows }: LookupTa
   if (childConfig && childRows) {
     return (
       <div className="space-y-6">
-        <LookupSection entity={entity} rows={rows} parentOptions={parentOptions} title={config.label} />
+        <LookupSection
+          entity={entity}
+          rows={rows}
+          parentOptions={parentOptions}
+          title={config.label}
+          fixedPageSize={fixedPageSize}
+        />
         <LookupSection
           entity={childConfig.key}
           rows={childRows}
           parentOptions={childParentOptions}
           title={childConfig.label}
+          fixedPageSize={fixedPageSize}
         />
       </div>
     );
   }
 
-  return <LookupSection entity={entity} rows={rows} parentOptions={parentOptions} />;
+  return (
+    <LookupSection
+      entity={entity}
+      rows={rows}
+      parentOptions={parentOptions}
+      fixedPageSize={fixedPageSize}
+    />
+  );
 }
 
 interface LookupSectionProps {
@@ -108,13 +137,20 @@ interface LookupSectionProps {
   rows: LookupRowData[];
   parentOptions?: LookupOption[];
   title?: string;
+  fixedPageSize?: boolean;
 }
 
 function sentenceCase(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProps) {
+function LookupSection({
+  entity,
+  rows,
+  parentOptions,
+  title,
+  fixedPageSize = false,
+}: LookupSectionProps) {
   const config = LOOKUP_ENTITIES[entity];
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -125,6 +161,7 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
   const [formParentId, setFormParentId] = useState("");
   const [formClass, setFormClass] = useState("");
   const [formQuantity, setFormQuantity] = useState("1");
+  const [formKind, setFormKind] = useState<ModeOfPaymentKindValue | "">("");
   const [pending, startTransition] = useTransition();
 
   const parentNamesById = useMemo(
@@ -172,6 +209,7 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
     code: (row) => row.code,
     class: (row) => row.class,
     quantity: (row) => row.quantity,
+    kind: (row) => row.kind,
     parent: (row) => parentNameOf(row),
     status: (row) => row.recordStatus,
   });
@@ -186,6 +224,7 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
     indexOffset,
   } = useClientTablePagination(sort.sorted, {
     resetKey: `${query}:${sort.sortKey}:${sort.sortDir}`,
+    ...(fixedPageSize ? { pageSize: 10 } : {}),
   });
 
   function openCreate() {
@@ -195,6 +234,7 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
     setFormParentId("");
     setFormClass("");
     setFormQuantity("1");
+    setFormKind("");
     setOpen(true);
   }
 
@@ -205,6 +245,7 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
     setFormParentId(config.parent ? row[config.parent.field] ?? "" : "");
     setFormClass(row.class ?? "");
     setFormQuantity(String(row.quantity ?? 1));
+    setFormKind(row.kind ?? "");
     setOpen(true);
   }
 
@@ -218,6 +259,7 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
       ...(config.quantityField
         ? { quantity: Number(formQuantity) || 1 }
         : {}),
+      ...(config.kindField ? { kind: formKind || undefined } : {}),
     };
     startTransition(async () => {
       const result = editing
@@ -307,6 +349,19 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
         }),
       );
     }
+    if (config.kindField) {
+      cols.push(
+        lookupColumn.display({
+          id: "kind",
+          header: "Type",
+          enableSorting: true,
+          cell: ({ row }) =>
+            row.original.kind
+              ? MODE_OF_PAYMENT_KIND_LABELS[row.original.kind]
+              : MODE_OF_PAYMENT_KIND_NOT_SET,
+        }),
+      );
+    }
     if (config.parent) {
       cols.push(
         lookupColumn.display({
@@ -384,7 +439,9 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
             ? `No ${config.label.toLowerCase()} yet.`
             : "No results match your search."
         }
-        pageSize={{ value: pageSize, onChange: setPageSize }}
+        pageSize={
+          fixedPageSize ? undefined : { value: pageSize, onChange: setPageSize }
+        }
         pagination={{
           total,
           page,
@@ -452,6 +509,22 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
                   required
                 />
               </div>
+            ) : null}
+            {config.kindField ? (
+              <SearchableSelect
+                label="Type"
+                id={`${entity}-kind`}
+                options={MODE_OF_PAYMENT_KINDS.map((kind) => ({
+                  id: kind,
+                  label: MODE_OF_PAYMENT_KIND_LABELS[kind],
+                }))}
+                value={formKind}
+                onChange={(value) => setFormKind(value as ModeOfPaymentKindValue | "")}
+                allowClear
+                placeholder={MODE_OF_PAYMENT_KIND_NOT_SET}
+                searchPlaceholder="Search type…"
+                disabled={pending}
+              />
             ) : null}
             {config.parent ? (
               <SearchableSelect

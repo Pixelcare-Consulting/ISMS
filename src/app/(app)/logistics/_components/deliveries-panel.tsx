@@ -7,11 +7,18 @@ import { toast } from "sonner";
 
 import {
   acceptDeliveryAction,
+  cancelDeliveryReturnAction,
+  decideDeliveryReturnAction,
   dispatchDeliveryAction,
+  getDeliveryReturnAction,
+  listDeliveryReceiptLinesAction,
   listDispatchCandidatesAction,
   rejectDeliveryAction,
+  requestDeliveryReturnAction,
+  retryDeliveryReturnSapAction,
 } from "@/features/logistics/actions/logistics.actions";
 import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
+import { formatInventoryDrDate } from "@/app/(app)/inventory/_components/inventory-list-format";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import {
   parseTablePageSize,
@@ -35,15 +42,23 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  DeliveryDispatchDialog,
+  type DispatchTarget,
+} from "@/app/(app)/logistics/_components/delivery-dispatch-dialog";
+import {
+  DeliveryReceiveDialog,
+  type ReceiveTarget,
+} from "@/app/(app)/logistics/_components/delivery-receive-dialog";
+import {
+  DeliveryReturnCell,
+  DeliveryReturnRequestDialog,
+  DeliveryReturnReviewDialog,
+  type LatestDeliveryReturn,
+  type ReturnTarget,
+  type ReviewReturnActions,
+} from "@/app/(app)/logistics/_components/delivery-return-dialogs";
+import { isReturnOpen, needsSapRetry } from "@/features/logistics/constants/delivery-workflow-labels";
 import {
   buildLogisticsPageHref,
   LOGISTICS_DELIVERIES_PATH,
@@ -68,10 +83,21 @@ interface PaginatedList<T> {
 interface DeliveryRow {
   id: string;
   deliveryNo: string;
+  drNo: string | null;
+  drDate: Date | string | null;
   statusCode: StatusCodeRef;
   branch: { name: string };
   order: { orderNumber: string } | null;
+  /** Latest return request, newest first (at most one). */
+  returnRequests: LatestDeliveryReturn[];
 }
+
+const REVIEW_ACTIONS: ReviewReturnActions = {
+  load: getDeliveryReturnAction,
+  decide: decideDeliveryReturnAction,
+  retry: retryDeliveryReturnSapAction,
+  cancel: cancelDeliveryReturnAction,
+};
 
 interface DeliveriesPanelProps {
   deliveries: PaginatedList<DeliveryRow>;
@@ -85,21 +111,12 @@ const deliveryColumn = createColumnHelper<DataTableFeatures, DeliveryRow>();
 type DeliverySortField = "deliveryNo" | "orderNumber" | "branch" | "status";
 type DeliverySortDir = "asc" | "desc";
 
-type PendingConfirm = {
+type PendingReject = {
   id: string;
   deliveryNo: string;
   branchName: string;
   orderNumber?: string;
-  action: "accept" | "reject";
-  statusCode: string;
 };
-
-interface DispatchCandidate {
-  id: string;
-  serialNo: string;
-  warehouseCode: string;
-  locationCode: string;
-}
 
 export function DeliveriesPanel({
   deliveries,
@@ -111,11 +128,11 @@ export function DeliveriesPanel({
   const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
-  const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
-  const [dispatchTarget, setDispatchTarget] = useState<DeliveryRow | null>(null);
-  const [dispatchSerials, setDispatchSerials] = useState<DispatchCandidate[]>([]);
-  const [dispatchRequired, setDispatchRequired] = useState(0);
-  const [dispatchSelected, setDispatchSelected] = useState<string[]>([]);
+  const [pendingConfirm, setPendingConfirm] = useState<PendingReject | null>(null);
+  const [receiveTarget, setReceiveTarget] = useState<ReceiveTarget | null>(null);
+  const [returnRequestTarget, setReturnRequestTarget] = useState<ReturnTarget | null>(null);
+  const [returnReviewTarget, setReturnReviewTarget] = useState<ReturnTarget | null>(null);
+  const [dispatchTarget, setDispatchTarget] = useState<DispatchTarget | null>(null);
   const pageSize = parseTablePageSize(deliveries.limit);
   const sort = (searchParams.get("sort") ?? initialSort) || "";
   const sortDir = (
@@ -140,6 +157,7 @@ export function DeliveriesPanel({
       deliveries.items.filter((d) =>
         matchesTableSearch(query, [
           d.deliveryNo,
+          d.drNo,
           d.branch.name,
           d.order?.orderNumber,
           d.statusCode.name,
@@ -153,6 +171,7 @@ export function DeliveriesPanel({
     () =>
       uniqueSearchSuggestions(
         deliveries.items.map((d) => d.deliveryNo),
+        deliveries.items.map((d) => d.drNo),
         deliveries.items.map((d) => d.branch.name),
         deliveries.items.map((d) => d.order?.orderNumber),
         deliveries.items.map((d) => d.statusCode.name),
@@ -166,31 +185,14 @@ export function DeliveriesPanel({
 
   function confirmPendingAction() {
     if (!pendingConfirm) return;
-    const { action, id } = pendingConfirm;
+    const { id } = pendingConfirm;
     startTransition(async () => {
-      if (action === "accept") {
-        const result = await acceptDeliveryAction(id);
-        if (result.error) {
-          toast.error(result.error);
-          return;
-        }
-        toast.success(
-          result.status === "partial"
-            ? `Accepted ${result.movedCount} serial${result.movedCount === 1 ? "" : "s"}. The rest stay in transit.`
-            : `Accepted ${result.movedCount} serial${result.movedCount === 1 ? "" : "s"} into branch stock.`,
-        );
-      } else {
-        const result = await rejectDeliveryAction(id);
-        if (result.error) {
-          toast.error(result.error);
-          return;
-        }
-        toast.success(
-          result.returnedCount
-            ? `Delivery rejected. ${result.returnedCount} serial${result.returnedCount === 1 ? "" : "s"} returned to the warehouse.`
-            : "Delivery rejected. Warehouse quantity is unchanged.",
-        );
+      const result = await rejectDeliveryAction(id);
+      if (result.error) {
+        toast.error(result.error);
+        return;
       }
+      toast.success("Delivery rejected. Warehouse quantity is unchanged.");
       setPendingConfirm(null);
       router.refresh();
     });
@@ -203,25 +205,27 @@ export function DeliveriesPanel({
         toast.error(result.error);
         return;
       }
-      const chosen = result.serials.slice(0, result.requiredQty).map((serial) => serial.id);
-      setDispatchTarget(row);
-      setDispatchSerials(result.serials);
-      setDispatchRequired(result.requiredQty);
-      setDispatchSelected(chosen);
+      setDispatchTarget({
+        id: row.id,
+        deliveryNo: row.deliveryNo,
+        branchName: row.branch.name,
+        models: result.models,
+        serials: result.serials,
+      });
     });
   }
 
-  function confirmDispatch() {
+  function confirmDispatch(serialNumberIds: string[]) {
     if (!dispatchTarget) return;
     startTransition(async () => {
-      const result = await dispatchDeliveryAction(dispatchTarget.id, {
-        serialNumberIds: dispatchSelected,
-      });
+      const result = await dispatchDeliveryAction(dispatchTarget.id, { serialNumberIds });
       if (result.error) {
         toast.error(result.error);
         return;
       }
-      toast.success(`Dispatched ${result.movedCount} serial${result.movedCount === 1 ? "" : "s"}. Delivery is pending acceptance.`);
+      toast.success(
+        `Dispatched ${result.movedCount} serial${result.movedCount === 1 ? "" : "s"}.${result.drNo ? ` DR# ${result.drNo}.` : ""}`,
+      );
       setDispatchTarget(null);
       router.refresh();
     });
@@ -241,6 +245,18 @@ export function DeliveriesPanel({
         id: "deliveryNo",
         header: "No.",
         enableSorting: true,
+      }),
+      deliveryColumn.accessor((row) => row.drNo ?? "", {
+        id: "drNo",
+        header: "DR#",
+        enableSorting: false,
+        cell: ({ row }) => row.original.drNo ?? "—",
+      }),
+      deliveryColumn.accessor((row) => row.drDate ?? "", {
+        id: "drDate",
+        header: "DR date",
+        enableSorting: false,
+        cell: ({ row }) => formatInventoryDrDate(row.original.drDate),
       }),
       deliveryColumn.accessor((row) => row.order?.orderNumber ?? "", {
         id: "orderNumber",
@@ -266,24 +282,34 @@ export function DeliveriesPanel({
         ),
       }),
       deliveryColumn.display({
+        id: "return",
+        header: "Return",
+        enableSorting: false,
+        cell: ({ row }) => <DeliveryReturnCell latest={row.original.returnRequests[0]} />,
+      }),
+      deliveryColumn.display({
         id: "actions",
         header: "Actions",
         enableSorting: false,
         cell: ({ row }) => {
           const delivery = row.original;
+          const code = delivery.statusCode.code;
+          const dispatched = code === "pending" || code === "partial";
+          const latestReturn = delivery.returnRequests[0];
+          const returnOpen = isReturnOpen(latestReturn);
+          const returnTarget = {
+            id: delivery.id,
+            deliveryNo: delivery.deliveryNo,
+            branchName: delivery.branch.name,
+          };
           return (
             <div className="flex justify-end gap-2">
-              {delivery.statusCode.code === "approved" && capabilities.canManage ? (
+              {delivery.statusCode.code === "approved" && capabilities.canDispatch ? (
                 <Button size="sm" disabled={pending} onClick={() => openDispatch(delivery)}>
                   Dispatch
                 </Button>
               ) : null}
-              {(delivery.statusCode.code === "approved" ||
-                delivery.statusCode.code === "pending" ||
-                delivery.statusCode.code === "partial") &&
-              (delivery.statusCode.code === "approved"
-                ? capabilities.canManage
-                : capabilities.canAcceptDelivery) ? (
+              {code === "approved" && capabilities.canDispatch ? (
                 <Button
                   size="sm"
                   variant="outline"
@@ -294,33 +320,52 @@ export function DeliveriesPanel({
                       deliveryNo: delivery.deliveryNo,
                       branchName: delivery.branch.name,
                       orderNumber: delivery.order?.orderNumber,
-                      action: "reject",
-                      statusCode: delivery.statusCode.code,
                     })
                   }
                 >
                   Reject
                 </Button>
               ) : null}
-              {(delivery.statusCode.code === "pending" ||
-                delivery.statusCode.code === "partial") &&
-              capabilities.canAcceptDelivery ? (
+              {dispatched && !returnOpen && capabilities.canRequestDeliveryReturn ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={pending}
+                  onClick={() => setReturnRequestTarget(returnTarget)}
+                >
+                  Request return
+                </Button>
+              ) : null}
+              {latestReturn?.status === "PENDING_APPROVAL" && capabilities.canApproveDeliveryReturn ? (
+                <Button size="sm" disabled={pending} onClick={() => setReturnReviewTarget(returnTarget)}>
+                  Review return
+                </Button>
+              ) : null}
+              {needsSapRetry(latestReturn) &&
+              (capabilities.canApproveDeliveryReturn || capabilities.canRequestDeliveryReturn) ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={pending}
+                  onClick={() => setReturnReviewTarget(returnTarget)}
+                >
+                  Retry SAP posting
+                </Button>
+              ) : null}
+              {dispatched && !returnOpen && capabilities.canAcceptDelivery ? (
                 <Button
                   size="sm"
                   disabled={pending}
                   className="bg-emerald-600 text-white hover:bg-emerald-700"
                   onClick={() =>
-                    setPendingConfirm({
+                    setReceiveTarget({
                       id: delivery.id,
                       deliveryNo: delivery.deliveryNo,
                       branchName: delivery.branch.name,
-                      orderNumber: delivery.order?.orderNumber,
-                      action: "accept",
-                      statusCode: delivery.statusCode.code,
                     })
                   }
                 >
-                  {delivery.statusCode.code === "partial" ? "Accept remaining" : "Accept"}
+                  {delivery.statusCode.code === "partial" ? "Receive remaining" : "Receive"}
                 </Button>
               ) : null}
             </div>
@@ -329,7 +374,14 @@ export function DeliveriesPanel({
       }),
     ];
     return cols;
-  }, [capabilities.canAcceptDelivery, capabilities.canManage, indexOffset, pending]);
+  }, [
+    capabilities.canAcceptDelivery,
+    capabilities.canApproveDeliveryReturn,
+    capabilities.canDispatch,
+    capabilities.canRequestDeliveryReturn,
+    indexOffset,
+    pending,
+  ]);
 
   return (
     <>
@@ -386,38 +438,16 @@ export function DeliveriesPanel({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              {pendingConfirm?.action === "reject" ? "Reject delivery?" : "Accept delivery?"}
-            </AlertDialogTitle>
+            <AlertDialogTitle>Reject delivery?</AlertDialogTitle>
             <AlertDialogDescription>
               {pendingConfirm ? (
-                pendingConfirm.action === "reject" ? (
-                  <>
-                    Reject{" "}
-                    <span className="font-medium text-foreground">
-                      {pendingConfirm.deliveryNo}
-                    </span>
-                    {pendingConfirm.orderNumber ? (
-                      <> (order {pendingConfirm.orderNumber})</>
-                    ) : null}{" "}
-                    at {pendingConfirm.branchName}.{" "}
-                    {pendingConfirm.statusCode === "approved"
-                      ? "Nothing has been dispatched, so warehouse quantity stays the same."
-                      : "Serials still in transit go back to the warehouse. Units already accepted stay at the branch."}
-                  </>
-                ) : (
-                  <>
-                    Accept{" "}
-                    <span className="font-medium text-foreground">
-                      {pendingConfirm.deliveryNo}
-                    </span>
-                    {pendingConfirm.orderNumber ? (
-                      <> (order {pendingConfirm.orderNumber})</>
-                    ) : null}{" "}
-                    at {pendingConfirm.branchName}. In-transit serials move into branch stock.
-                    Nothing is accepted when the delivery has no serials.
-                  </>
-                )
+                <>
+                  Reject{" "}
+                  <span className="font-medium text-foreground">{pendingConfirm.deliveryNo}</span>
+                  {pendingConfirm.orderNumber ? <> (order {pendingConfirm.orderNumber})</> : null} at{" "}
+                  {pendingConfirm.branchName}. Nothing has been dispatched, so warehouse quantity stays the
+                  same.
+                </>
               ) : null}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -425,78 +455,48 @@ export function DeliveriesPanel({
             <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               disabled={pending}
-              className={
-                pendingConfirm?.action === "reject"
-                  ? undefined
-                  : "bg-emerald-600 text-white hover:bg-emerald-700"
-              }
               onClick={(event) => {
                 event.preventDefault();
                 confirmPendingAction();
               }}
             >
-              {pendingConfirm?.action === "reject" ? "Reject" : "Accept"}
+              Reject
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      <Dialog
-        open={dispatchTarget !== null}
-        onOpenChange={(open) => {
-          if (!open && !pending) setDispatchTarget(null);
-        }}
-      >
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Dispatch {dispatchTarget?.deliveryNo}</DialogTitle>
-            <DialogDescription>
-              Choose {dispatchRequired} warehouse serial{dispatchRequired === 1 ? "" : "s"} for{" "}
-              {dispatchTarget?.branch.name}. Dispatch moves them into transit. Warehouse quantity
-              drops by the same number.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="max-h-80 space-y-2 overflow-y-auto">
-            {dispatchSerials.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No warehouse serials are available for this order.</p>
-            ) : (
-              dispatchSerials.map((serial) => {
-                const checked = dispatchSelected.includes(serial.id);
-                return (
-                  <label key={serial.id} className="flex items-center gap-3 rounded-md border px-3 py-2 text-sm">
-                    <Checkbox
-                      checked={checked}
-                      onCheckedChange={(value) => {
-                        setDispatchSelected((current) =>
-                          value === true
-                            ? [...current, serial.id]
-                            : current.filter((id) => id !== serial.id),
-                        );
-                      }}
-                      aria-label={`Allocate ${serial.serialNo}`}
-                    />
-                    <span className="font-mono">{serial.serialNo}</span>
-                    <span className="text-muted-foreground">
-                      {serial.warehouseCode} / {serial.locationCode}
-                    </span>
-                  </label>
-                );
-              })
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" disabled={pending} onClick={() => setDispatchTarget(null)}>
-              Cancel
-            </Button>
-            <Button
-              disabled={pending || dispatchSelected.length !== dispatchRequired || dispatchRequired === 0}
-              onClick={confirmDispatch}
-            >
-              Dispatch {dispatchSelected.length}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DeliveryReturnRequestDialog
+        target={returnRequestTarget}
+        onClose={() => setReturnRequestTarget(null)}
+        onDone={() => router.refresh()}
+        submit={requestDeliveryReturnAction}
+      />
+
+      <DeliveryReturnReviewDialog
+        target={returnReviewTarget}
+        canApprove={capabilities.canApproveDeliveryReturn}
+        canRetry={capabilities.canApproveDeliveryReturn || capabilities.canRequestDeliveryReturn}
+        actions={REVIEW_ACTIONS}
+        onClose={() => setReturnReviewTarget(null)}
+        onDone={() => router.refresh()}
+      />
+
+      <DeliveryReceiveDialog
+        target={receiveTarget}
+        onClose={() => setReceiveTarget(null)}
+        onReceived={() => router.refresh()}
+        loadLines={listDeliveryReceiptLinesAction}
+        accept={acceptDeliveryAction}
+        canTransfer={capabilities.canCreateDeliveryTransfer}
+      />
+
+      <DeliveryDispatchDialog
+        target={dispatchTarget}
+        pending={pending}
+        onClose={() => setDispatchTarget(null)}
+        onConfirm={confirmDispatch}
+      />
     </>
   );
 }

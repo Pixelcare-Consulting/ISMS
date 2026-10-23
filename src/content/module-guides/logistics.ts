@@ -33,9 +33,24 @@ export const PULLOUTS_MODULE_GUIDE: ModuleGuideContent = {
   storageKey: "module-guide.logistics.pullouts",
 };
 
+export const UNIT_TRANSFERS_MODULE_GUIDE: ModuleGuideContent = {
+  title: "Unit transfers",
+  description:
+    "Units a branch did not accept from a delivery, for example broken in transit. Approve or delete each line, release, then accept each unit where it arrives.",
+  tips: [
+    { label: "Create a unit transfer from the delivery receive dialog" },
+    { label: "Consignment deliveries post an SAP Inventory Transfer on release" },
+    { label: "If that SAP posting fails, use Retry SAP posting on the transfer" },
+  ],
+  storageKey: "module-guide.logistics.unit-transfers",
+};
+
 export function resolveLogisticsModuleGuide(
   pathname: string,
 ): ModuleGuideContent {
+  if (pathname.startsWith("/logistics/delivery-transfers")) {
+    return UNIT_TRANSFERS_MODULE_GUIDE;
+  }
   if (pathname.startsWith("/logistics/transfers")) {
     return TRANSFERS_MODULE_GUIDE;
   }

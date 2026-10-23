@@ -1,6 +1,11 @@
 import type { StockCountSessionStatus } from "@prisma/client";
 
 import { auditService } from "@/features/audit/services/audit.service";
+import {
+  assertExclusivePlacement,
+  loadCurrentPlacements,
+  lockSerialNumbers,
+} from "@/features/inventory/services/serial-placement";
 import { aorService } from "@/features/aors/services/aor.service";
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
 import { sapService } from "@/features/sap/services/sap.service";
@@ -583,6 +588,7 @@ export const stockAuditService = {
         const line = variance.line;
         if (!line) continue;
 
+        await lockSerialNumbers(tx, [line.serialNumberId]);
         if (variance.varianceType === VARIANCE_TYPES.missing) {
           await tx.branchInventory.deleteMany({
             where: {
@@ -593,21 +599,20 @@ export const stockAuditService = {
             },
           });
         } else if (variance.varianceType === VARIANCE_TYPES.surplus) {
-          const existing = await tx.branchInventory.findFirst({
-            where: {
-              tenantId,
-              branchId: session.branchId,
-              serialNumberId: line.serialNumberId,
-            },
-          });
+          const occupied = await loadCurrentPlacements(tx, [line.serialNumberId]);
+          const existing = occupied.find(
+            (row) => row.table === "branch" && row.branchId === session.branchId,
+          );
           if (existing) {
-            if (existing.statusCodeId !== stkCode.id) {
+            assertExclusivePlacement({ placements: occupied, replacingIds: [existing.id] });
+            if (existing.statusCode !== "STK") {
               await tx.branchInventory.update({
                 where: { id: existing.id },
                 data: { statusCodeId: stkCode.id, updatedById: userId },
               });
             }
           } else {
+            assertExclusivePlacement({ placements: occupied, replacingIds: [] });
             await tx.branchInventory.create({
               data: {
                 tenantId,
@@ -751,6 +756,8 @@ export const stockAuditService = {
       from?: Date;
       to?: Date;
       page?: number;
+      /** Page size; the Stimulsoft dataset asks for one large page. */
+      limit?: number;
       sort?: string;
       sortDir?: "asc" | "desc";
     },
@@ -764,7 +771,7 @@ export const stockAuditService = {
       return stockAuditRepository.listClosedSessions(
         tenantId,
         { branchIds: [] },
-        { page: filters?.page },
+        { page: filters?.page, limit: filters?.limit },
         sort,
       );
     }
@@ -777,7 +784,7 @@ export const stockAuditService = {
         from: filters?.from,
         to: filters?.to,
       },
-      { page: filters?.page },
+      { page: filters?.page, limit: filters?.limit },
       sort,
     );
   },

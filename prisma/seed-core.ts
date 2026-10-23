@@ -191,6 +191,37 @@ export async function seedCore(prisma: PrismaClient): Promise<CoreSeedResult> {
     }),
   );
 
+  // Warehouse operator is scoped to the tenant's main warehouse (find first, create only when missing)
+  const warehouseOperator = usersByEmail["warehouse@demo.local"];
+  const mainWarehouse = warehouseOperator
+    ? await prisma.warehouse.findFirst({
+        where: { tenantId: demoTenant.id, isMain: true, deletedAt: null },
+        select: { id: true },
+        orderBy: { createdAt: "asc" },
+      })
+    : null;
+  if (warehouseOperator && mainWarehouse) {
+    const existingAor = await prisma.aor.findFirst({
+      where: {
+        tenantId: demoTenant.id,
+        userId: warehouseOperator.id,
+        warehouseId: mainWarehouse.id,
+      },
+      select: { id: true },
+    });
+    if (!existingAor) {
+      await prisma.aor.create({
+        data: {
+          tenantId: demoTenant.id,
+          userId: warehouseOperator.id,
+          warehouseId: mainWarehouse.id,
+          name: "Main warehouse",
+          status: "active",
+        },
+      });
+    }
+  }
+
   const providerUser = await prisma.user.upsert({
     where: {
       tenantId_email: {

@@ -5,7 +5,7 @@ import {
   getOrderApprovalChain,
 } from "@/features/orders/constants/order-workflow";
 import { nextSalesOrderNumber } from "@/features/orders/utils/next-sales-order-number";
-import type { BranchOrderStatus, BranchOrderType, Prisma } from "@prisma/client";
+import type { BranchOrderStatus, BranchOrderType, Prisma, SapOrderDocType } from "@prisma/client";
 
 /** Shown when approval is attempted against a row that changed after it was opened. */
 export const ORDER_CHANGED_MESSAGE = "This order changed. Refresh and review again.";
@@ -167,6 +167,51 @@ export const orderRepository = {
         },
       },
     });
+  },
+
+  /** History page load: same branch scope as the order list, priced like history rows. */
+  findScopedById(
+    tenantId: string,
+    id: string,
+    branchIds: string[] | null,
+    orderType: BranchOrderType,
+  ) {
+    return prisma.branchOrder.findFirst({
+      where: {
+        id,
+        tenantId,
+        orderType,
+        ...(branchIds === null ? {} : { branchId: { in: branchIds } }),
+      },
+      include: orderListInclude,
+    });
+  },
+
+  /** Branch, dealer mode of payment and main warehouse needed to pick ITR or SO. */
+  async findSapRoutingContext(tenantId: string, branchId: string) {
+    const [branch, mainWarehouse] = await Promise.all([
+      prisma.branch.findFirst({
+        where: { id: branchId, tenantId },
+        select: {
+          name: true,
+          sapCode: true,
+          primaryWarehouse: { select: { id: true, code: true } },
+          dealer: {
+            select: {
+              name: true,
+              sapCode: true,
+              modeOfPayment: { select: { name: true, kind: true } },
+            },
+          },
+        },
+      }),
+      prisma.warehouse.findFirst({
+        where: { tenantId, isMain: true, deletedAt: null },
+        select: { id: true, code: true },
+        orderBy: { createdAt: "asc" },
+      }),
+    ]);
+    return { branch, mainWarehouse };
   },
 
   async create(
@@ -472,6 +517,7 @@ export const orderRepository = {
       spaRemarks?: string;
       deliveryDueDate?: Date;
       brandId?: string | null;
+      sapDocType?: SapOrderDocType;
       reviewSnapshot?: Prisma.InputJsonValue | null;
       lines: {
         detailId: string;
@@ -513,6 +559,7 @@ export const orderRepository = {
         data: {
           approvedById: data.approvedById,
           brandId: data.brandId ?? null,
+          ...(data.sapDocType ? { sapDocType: data.sapDocType } : {}),
         },
       });
 

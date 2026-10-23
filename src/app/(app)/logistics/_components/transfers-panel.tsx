@@ -3,15 +3,10 @@
 import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
-import { toast } from "sonner";
+import { useMemo, useState } from "react";
 
 import { TransferRequestDialog } from "@/app/(app)/logistics/_components/transfer-request-dialog";
-import {
-  approveTransferAction,
-  createTransferAction,
-  rejectTransferAction,
-} from "@/features/logistics/actions/logistics.actions";
+import { createTransferAction } from "@/features/logistics/actions/logistics.actions";
 import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import {
@@ -26,16 +21,6 @@ import {
   type DataTableFeatures,
 } from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import {
   buildLogisticsPageHref,
   LOGISTICS_TRANSFERS_PATH,
@@ -69,6 +54,8 @@ interface TransferRow {
 interface TransfersPanelProps {
   transfers: PaginatedList<TransferRow>;
   capabilities: LogisticsActionCapabilities;
+  branchScope: string[] | null;
+  currentUserName: string;
   initialSort?: string;
   initialSortDir?: string;
 }
@@ -78,25 +65,18 @@ const transferColumn = createColumnHelper<DataTableFeatures, TransferRow>();
 type TransferSortField = "transferNo" | "fromBranch" | "toBranch" | "status";
 type TransferSortDir = "asc" | "desc";
 
-type PendingConfirm = {
-  id: string;
-  transferNo: string;
-  route: string;
-  action: "approve" | "reject";
-};
-
 export function TransfersPanel({
   transfers,
   capabilities,
+  branchScope,
+  currentUserName,
   initialSort = "",
   initialSortDir = "desc",
 }: TransfersPanelProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
-  const [pending, startTransition] = useTransition();
   const [createOpen, setCreateOpen] = useState(false);
-  const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
   const pageSize = parseTablePageSize(transfers.limit);
   const sort = (searchParams.get("sort") ?? initialSort) || "";
   const sortDir = (
@@ -145,29 +125,6 @@ export function TransfersPanel({
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const selectedCount = filtered.filter((row) => rowSelection[row.id]).length;
 
-  function confirmPendingAction() {
-    if (!pendingConfirm) return;
-    startTransition(async () => {
-      const result =
-        pendingConfirm.action === "approve"
-          ? await approveTransferAction(pendingConfirm.id)
-          : await rejectTransferAction(pendingConfirm.id);
-      if ("error" in result) {
-        toast.error(result.error);
-        return;
-      }
-      toast.success(pendingConfirm.action === "approve" ? "Transfer approved" : "Transfer rejected");
-      setPendingConfirm(null);
-      router.refresh();
-    });
-  }
-
-  const confirmTitle = pendingConfirm?.action === "reject" ? "Reject transfer?" : "Approve transfer?";
-  const confirmDescription =
-    pendingConfirm?.action === "reject"
-      ? "Rejected requests release only the units reserved on this transfer."
-      : "Team Lead approval keeps the units reserved and sends the request to the releasing branch. Stock at the receiving branch does not increase.";
-
   const indexOffset = (transfers.page - 1) * transfers.limit;
   const columns = useMemo(() => {
     const cols: DataTableColumn<TransferRow>[] = [
@@ -214,56 +171,15 @@ export function TransfersPanel({
         id: "actions",
         header: "Actions",
         enableSorting: false,
-        cell: ({ row }) => {
-          const transfer = row.original;
-          const route = `${transfer.fromBranch.name} → ${transfer.toBranch.name}`;
-          const awaitingTl = ["requested", "pending_tl"].includes(transfer.statusCode.code);
-          return (
-            <div className="flex flex-wrap gap-2">
-              {awaitingTl && capabilities.canApproveTl ? (
-                <Button
-                  size="sm"
-                  disabled={pending}
-                  className="bg-amber-600 text-white hover:bg-amber-700"
-                  onClick={() =>
-                    setPendingConfirm({
-                      id: transfer.id,
-                      transferNo: transfer.transferNo,
-                      route,
-                      action: "approve",
-                    })
-                  }
-                >
-                  TL approve
-                </Button>
-              ) : null}
-              {awaitingTl && capabilities.canRejectTransfer ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={pending}
-                  onClick={() =>
-                    setPendingConfirm({
-                      id: transfer.id,
-                      transferNo: transfer.transferNo,
-                      route,
-                      action: "reject",
-                    })
-                  }
-                >
-                  Reject
-                </Button>
-              ) : null}
-              <Button size="sm" variant="outline" asChild>
-                <Link href={`/logistics/transfers/${transfer.id}`}>Open</Link>
-              </Button>
-            </div>
-          );
-        },
+        cell: ({ row }) => (
+          <Button size="sm" variant="outline" asChild>
+            <Link href={`/logistics/transfers/${row.original.id}`}>Open</Link>
+          </Button>
+        ),
       }),
     ];
     return cols;
-  }, [capabilities.canApproveTl, capabilities.canRejectTransfer, indexOffset, pending]);
+  }, [indexOffset]);
 
   return (
     <>
@@ -297,7 +213,6 @@ export function TransfersPanel({
             <Button
               size="sm"
               className="w-full sm:w-auto"
-              disabled={pending}
               onClick={() => setCreateOpen(true)}
             >
               New transfer request
@@ -324,48 +239,15 @@ export function TransfersPanel({
         emptyMessage={query.trim() ? "No results match your search." : "No transfers."}
       />
 
-      <AlertDialog
-        open={pendingConfirm !== null}
-        onOpenChange={(open) => {
-          if (!open && !pending) setPendingConfirm(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{confirmTitle}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {pendingConfirm ? (
-                <>
-                  Transfer{" "}
-                  <span className="font-medium text-foreground">
-                    {pendingConfirm.transferNo}
-                  </span>{" "}
-                  ({pendingConfirm.route}). {confirmDescription}
-                </>
-              ) : (
-                "Confirm this transfer action."
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={pending}
-              onClick={(event) => {
-                event.preventDefault();
-                confirmPendingAction();
-              }}
-            >
-              Confirm
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
       <TransferRequestDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
         onSubmit={createTransferAction}
         onCreated={() => router.refresh()}
+        onUpdated={() => router.refresh()}
+        currentUserName={currentUserName}
+        capabilities={capabilities}
+        branchScope={branchScope}
       />
     </>
   );

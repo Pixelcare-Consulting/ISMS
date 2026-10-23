@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { auditService } from "@/features/audit/services/audit.service";
+import { lockSerialNumbers } from "@/features/inventory/services/serial-placement";
+import { placeServiceCenterUnit } from "@/features/service-center-ops/services/service-center-placement";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import {
   SC_ORDERS_APPROVE,
@@ -196,6 +198,7 @@ export async function createScSaleAction(input: unknown) {
 
   try {
     const sale = await prisma.$transaction(async (tx) => {
+      await lockSerialNumbers(tx, [parsed.data.serialNumberId]);
       const moved = await tx.serviceCenterInventory.updateMany({
         where: {
           tenantId: session.user.tenantId,
@@ -446,24 +449,12 @@ export async function completeScReturnRestoreAction(returnRequestId: string) {
   );
 
   await prisma.$transaction(async (tx) => {
-    await tx.serviceCenterInventory.upsert({
-      where: {
-        serviceCenterLocationId_serialNumberId: {
-          serviceCenterLocationId: row.sale.serviceCenterLocationId!,
-          serialNumberId: row.sale.serialNumberId!,
-        },
-      },
-      update: {
-        statusCodeId: stkCodeId,
-        serviceCenterId: row.sale.serviceCenterId,
-      },
-      create: {
-        tenantId: session.user.tenantId,
-        serviceCenterId: row.sale.serviceCenterId,
-        serviceCenterLocationId: row.sale.serviceCenterLocationId!,
-        serialNumberId: row.sale.serialNumberId!,
-        statusCodeId: stkCodeId,
-      },
+    await placeServiceCenterUnit(tx, {
+      tenantId: session.user.tenantId,
+      serviceCenterId: row.sale.serviceCenterId,
+      serviceCenterLocationId: row.sale.serviceCenterLocationId!,
+      serialNumberId: row.sale.serialNumberId!,
+      statusCodeId: stkCodeId,
     });
     await tx.serviceCenterReturnRequest.update({
       where: { id: returnRequestId },

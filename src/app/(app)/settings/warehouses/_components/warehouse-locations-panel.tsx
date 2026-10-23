@@ -20,12 +20,9 @@ interface WarehouseLocationsPanelProps {
   warehouseId: string;
   warehouseName: string;
   locations: LocationRow[];
-  locCode: string;
-  locName: string;
   pending: boolean;
-  onLocCodeChange: (value: string) => void;
-  onLocNameChange: (value: string) => void;
-  onAdd: (warehouseId: string) => void;
+  /** Calls `onAdded` only when the location was saved, so the inputs keep their text on error. */
+  onAdd: (warehouseId: string, code: string, name: string, onAdded: () => void) => void;
   onRemove: (warehouseId: string, location: LocationRow) => void;
 }
 
@@ -33,15 +30,15 @@ export function WarehouseLocationsPanel({
   warehouseId,
   warehouseName,
   locations,
-  locCode,
-  locName,
   pending,
-  onLocCodeChange,
-  onLocNameChange,
   onAdd,
   onRemove,
 }: WarehouseLocationsPanelProps) {
   const [stocking, setStocking] = useState<LocationRow | null>(null);
+  // Held here, not in the table: table columns that depend on typed text are rebuilt per
+  // keystroke, which remounts this panel and drops input focus after every character.
+  const [locCode, setLocCode] = useState("");
+  const [locName, setLocName] = useState("");
   const count = locations.length;
   const canAdd = Boolean(locCode.trim() && locName.trim()) && !pending;
 
@@ -122,7 +119,7 @@ export function WarehouseLocationsPanel({
               id={`loc-code-${warehouseId}`}
               placeholder="e.g. A1"
               value={locCode}
-              onChange={(e) => onLocCodeChange(e.target.value)}
+              onChange={(e) => setLocCode(e.target.value)}
               className="h-8"
               disabled={pending}
             />
@@ -135,7 +132,7 @@ export function WarehouseLocationsPanel({
               id={`loc-name-${warehouseId}`}
               placeholder="e.g. Aisle 1"
               value={locName}
-              onChange={(e) => onLocNameChange(e.target.value)}
+              onChange={(e) => setLocName(e.target.value)}
               className="h-8"
               disabled={pending}
             />
@@ -145,7 +142,12 @@ export function WarehouseLocationsPanel({
             size="sm"
             className="h-8 shrink-0"
             disabled={!canAdd}
-            onClick={() => onAdd(warehouseId)}
+            onClick={() =>
+              onAdd(warehouseId, locCode, locName, () => {
+                setLocCode("");
+                setLocName("");
+              })
+            }
           >
             <Plus className="size-3.5" />
             Add location

@@ -2,6 +2,7 @@ import { DEFAULT_TABLE_PAGE_SIZE } from "@/components/data-table/table-page-size
 
 export const LOGISTICS_DELIVERIES_PATH = "/logistics/deliveries";
 export const LOGISTICS_TRANSFERS_PATH = "/logistics/transfers";
+export const LOGISTICS_DELIVERY_TRANSFERS_PATH = "/logistics/delivery-transfers";
 export const LOGISTICS_PICKUPS_PATH = "/logistics/pickups";
 
 export function buildLogisticsPageHref(

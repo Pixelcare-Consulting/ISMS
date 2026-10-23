@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import { SaleSerialField } from "@/app/(app)/sales/_components/sale-serial-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,22 +15,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { SearchableSelect } from "@/components/ui/searchable-select";
-import {
-  listSaleableSerialsAction,
-  updateSaleSerialAction,
-} from "@/features/sales/actions/sales.actions";
+import { updateSaleSerialAction } from "@/features/sales/actions/sales.actions";
 import {
   isToFollowSerial,
   TO_FOLLOW_SERIAL_ID,
-  TO_FOLLOW_SERIAL_LABEL,
 } from "@/features/sales/constants/to-follow-serial";
-
-type SerialOption = {
-  id: string;
-  serialNo: string;
-  skuCode: string;
-};
 
 export function EditSaleSerialDialog({
   saleId,
@@ -59,43 +49,13 @@ export function EditSaleSerialDialog({
   onClose: () => void;
 }) {
   const [pending, startTransition] = useTransition();
-  const [loading, setLoading] = useState(true);
-  const [serials, setSerials] = useState<SerialOption[]>([]);
+  // The line is already TO-FOLLOW. Keep that choice; do not replace it when
+  // the lookup is loading, empty, or failed.
   const [serialNumberId, setSerialNumberId] = useState(
     currentSerialId ?? TO_FOLLOW_SERIAL_ID,
   );
   const [deliveryNo, setDeliveryNo] = useState(currentDeliveryNo ?? "");
   const [deliveryDate, setDeliveryDate] = useState(currentDeliveryDate ?? "");
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        // Prefer same-model STK only; if model is unknown, do not list other models.
-        const rows = modelId
-          ? await listSaleableSerialsAction(branchId, modelId)
-          : [];
-        if (cancelled) return;
-        setSerials(rows);
-      } catch {
-        if (cancelled) return;
-        toast.error("Failed to load serials");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [branchId, modelId]);
-
-  const options = [
-    { id: TO_FOLLOW_SERIAL_ID, label: TO_FOLLOW_SERIAL_LABEL },
-    ...serials.map((s) => ({
-      id: s.id,
-      label: `${s.serialNo} · ${s.skuCode}`,
-    })),
-  ];
 
   function save() {
     if (!serialNumberId) {
@@ -144,16 +104,14 @@ export function EditSaleSerialDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <SearchableSelect
-          label="Serial number *"
-          options={options}
+        <SaleSerialField
+          stockBranchId={branchId}
+          modelId={modelId ?? ""}
           value={serialNumberId}
-          onChange={setSerialNumberId}
-          placeholder={loading ? "Loading serials…" : "Select serial…"}
-          searchPlaceholder="Search serials…"
-          emptyMessage="No sellable serials for this product model at this branch."
-          disabled={loading || pending}
+          onChange={(serial) => setSerialNumberId(serial.id)}
+          disabled={pending}
           popoverClassName="z-70"
+          id="edit-sale-serial"
         />
 
         {showDelivery ? (
@@ -191,7 +149,7 @@ export function EditSaleSerialDialog({
           >
             Cancel
           </Button>
-          <Button type="button" disabled={pending || loading} onClick={save}>
+          <Button type="button" disabled={pending} onClick={save}>
             {showDelivery ? "Save line" : "Save serial"}
           </Button>
         </DialogFooter>

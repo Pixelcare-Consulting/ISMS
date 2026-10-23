@@ -19,6 +19,10 @@ import {
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { OrderStatusBadge } from "@/features/orders/components/order-status-badge";
+import {
+  formatOrderSapDocument,
+  type OrderSapDocType,
+} from "@/features/orders/constants/order-sap-doc-type";
 import { BRANCH_ORDER_TYPE_LABELS } from "@/features/orders/constants/order-status";
 import {
   canEditOrderLines,
@@ -61,6 +65,8 @@ interface OrderDetailsDialogProps {
   createdByName?: string | null;
   reviewSnapshot?: unknown;
   reviewSnapshotAt?: string | Date | null;
+  sapDocType?: OrderSapDocType | null;
+  sapDocNum?: number | null;
   lines: OrderDetailsLine[];
   approvalLevels?: OrderDetailsApproval[];
   roleSlugs?: string[];
@@ -94,6 +100,8 @@ export function OrderDetailsDialog({
   createdByName,
   reviewSnapshot,
   reviewSnapshotAt,
+  sapDocType = null,
+  sapDocNum = null,
   lines,
   approvalLevels = [],
   roleSlugs = [],
@@ -180,6 +188,10 @@ export function OrderDetailsDialog({
                 <dt className="whitespace-nowrap text-muted-foreground">Status</dt>
                 <dd className="min-w-0">
                   <OrderStatusBadge status={status} />
+                </dd>
+                <dt className="whitespace-nowrap text-muted-foreground">SAP document</dt>
+                <dd className="min-w-0 break-words">
+                  {formatOrderSapDocument({ sapDocType, sapDocNum })}
                 </dd>
                 <dt className="whitespace-nowrap text-muted-foreground">Created by</dt>
                 <dd className="min-w-0 break-words">{createdByName?.trim() || "—"}</dd>

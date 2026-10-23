@@ -1,4 +1,8 @@
-import { prisma } from "@/lib/database/client";
+import type { Prisma } from "@/lib/database/generated/prisma/client";
+
+type WarehousePlacementWriter = {
+  warehouseInventory: Prisma.TransactionClient["warehouseInventory"];
+};
 
 /**
  * Warehouse placement writer.
@@ -8,7 +12,8 @@ import { prisma } from "@/lib/database/client";
  * company, or the labeled local fixture). Approving an order, syncing warehouses
  * from SAP, and creating a model, warehouse, or location do not call this.
  *
- * `skipDuplicates` keeps a second placement from inserting the same unit twice.
+ * Callers lock the serial and refuse any other current placement first.
+ * A short insert count is a failure, not a silent skip.
  */
 
 /** Status shown on warehouse stock after a person stocks a serial into a location. */
@@ -28,10 +33,11 @@ function chunk<T>(items: T[], size: number): T[][] {
 
 export const sapStockPlacementRepository = {
   /**
-   * Insert warehouse units. Duplicates of `(location, serial)` are skipped and
-   * are not counted as created.
+   * Insert warehouse units that the caller has already proved are unoccupied.
+   * A duplicate is an error so a mixed batch can roll back.
    */
   async createWarehouseUnits(
+    tx: WarehousePlacementWriter,
     tenantId: string,
     warehouseLocationId: string,
     serialNumberIds: string[],
@@ -40,7 +46,7 @@ export const sapStockPlacementRepository = {
   ): Promise<number> {
     let created = 0;
     for (const batch of chunk(serialNumberIds, WRITE_CHUNK)) {
-      const result = await prisma.warehouseInventory.createMany({
+      const result = await tx.warehouseInventory.createMany({
         data: batch.map((serialNumberId) => ({
           tenantId,
           serialNumberId,
@@ -48,8 +54,10 @@ export const sapStockPlacementRepository = {
           systemStatus,
           systemUpdatedAt: seenAt,
         })),
-        skipDuplicates: true,
       });
+      if (result.count !== batch.length) {
+        throw new Error("Warehouse stock-in did not place every serial.");
+      }
       created += result.count;
     }
     return created;

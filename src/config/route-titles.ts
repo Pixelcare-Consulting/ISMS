@@ -64,6 +64,7 @@ const ROUTE_TITLES: Record<string, string> = {
 
 /** Master-data slug → display title when no exact map entry exists. */
 const MASTER_DATA_TITLES: Record<string, string> = {
+  "accessory-completeness": "Accessory completeness",
   areas: "Areas",
   brands: "Brands",
   "branch-areas": "Branch areas",
@@ -85,10 +86,12 @@ const MASTER_DATA_TITLES: Record<string, string> = {
   "problem-descriptions": "Problem descriptions",
   "promo-types": "Promo types",
   provinces: "Provinces",
+  "pullout-classifications": "Pull-out classifications",
   regions: "Regions",
   resolutions: "Resolutions",
   "sale-types": "Sale types",
   sizes: "Sizes",
+  "unit-packing-conditions": "Unit packing conditions",
 };
 
 /**

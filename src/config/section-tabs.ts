@@ -184,6 +184,21 @@ export const MASTER_DATA_TAB_GROUPS: SectionTabGroupDefinition[] = [
         label: "Branch statuses",
         description: "Branch status lookup for branch operations.",
       },
+      {
+        href: "/settings/master-data/pullout-classifications",
+        label: "Pull-out classifications",
+        description: "Pull-out classification lookup for pull-out requests.",
+      },
+      {
+        href: "/settings/master-data/unit-packing-conditions",
+        label: "Unit packing conditions",
+        description: "Unit packing condition lookup for pull-out requests.",
+      },
+      {
+        href: "/settings/master-data/accessory-completeness",
+        label: "Accessory completeness",
+        description: "Accessory completeness lookup for pull-out requests.",
+      },
     ],
   },
 ];

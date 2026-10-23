@@ -14,6 +14,7 @@ function delivery(overrides: Partial<DeliveryPostingView> = {}): DeliveryPosting
   return {
     id: "del-1",
     branchId: "br-1",
+    sourceWarehouseId: "wh-1",
     status: "approved",
     lines: [],
     requirements: [{ modelId: "model-1", quantity: 4 }],
@@ -181,6 +182,14 @@ describe("planAccept", () => {
     expect(plan.moveSerialIds).toEqual(["s1", "s2"]);
   });
 
+  it("accept refused while return pending", () => {
+    const plan = planAccept(delivery({ status: "pending", lines }), null, { openReturn: true });
+    expect(plan).toEqual({
+      ok: false,
+      error: "A return request for this delivery is waiting for approval",
+    });
+  });
+
   it("does not move serials again when the accept is retried", () => {
     const plan = planAccept(
       delivery({
@@ -200,27 +209,31 @@ describe("planAccept", () => {
 describe("planReject", () => {
   it("closes an approved delivery without returning stock", () => {
     const plan = planReject(delivery({ status: "approved" }));
-    expect(plan).toEqual({ ok: true, idempotent: false, returns: [] });
+    expect(plan).toEqual({ ok: true, idempotent: false });
   });
 
-  it("returns unaccepted serials to the warehouse they left", () => {
-    const plan = planReject(
-      delivery({
-        status: "pending",
-        lines: [
-          { serialNumberId: "s1", warehouseLocationFromId: "loc-1", branchStatus: "DIT" },
-          { serialNumberId: "s2", warehouseLocationFromId: "loc-1", branchStatus: "STK" },
-        ],
-      }),
-    );
-    expect(plan.ok).toBe(true);
-    if (!plan.ok) return;
-    expect(plan.returns).toEqual([{ serialNumberId: "s1", warehouseLocationId: "loc-1" }]);
+  it("refuses a dispatched delivery: it needs a return request", () => {
+    for (const status of ["pending", "partial"] as const) {
+      const plan = planReject(
+        delivery({
+          status,
+          lines: [{ serialNumberId: "s1", warehouseLocationFromId: "loc-1", branchStatus: "DIT" }],
+        }),
+      );
+      expect(plan).toEqual({ ok: false, error: "Request a return for a dispatched delivery." });
+    }
+  });
+
+  it("refuses a requested delivery explicitly", () => {
+    expect(planReject(delivery({ status: "requested" }))).toEqual({
+      ok: false,
+      error: "Only an approved delivery that has not been dispatched can be rejected",
+    });
   });
 
   it("is a no-op when the delivery is already rejected", () => {
     const plan = planReject(delivery({ status: "rejected" }));
-    expect(plan).toEqual({ ok: true, idempotent: true, returns: [] });
+    expect(plan).toEqual({ ok: true, idempotent: true });
   });
 });
 
