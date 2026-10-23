@@ -165,6 +165,12 @@ function DispatchBody({
                       <span className="block font-mono text-sm font-semibold">{model.skuCode}</span>
                       <span className="block truncate text-xs font-normal text-muted-foreground">
                         {model.modelName} · {serials.length} available
+                        {model.unshelvedQty > 0 ? (
+                          <span className="text-amber-700 dark:text-amber-400">
+                            {" "}
+                            · {model.unshelvedQty} without location
+                          </span>
+                        ) : null}
                       </span>
                     </span>
                     <span
@@ -186,6 +192,17 @@ function DispatchBody({
                       dispatching.
                     </p>
                   ) : null}
+                  {model.unshelvedQty > 0 ? (
+                    <p
+                      className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-200"
+                      role="status"
+                    >
+                      {model.unshelvedQty} more {model.unshelvedQty === 1 ? "serial is" : "serials are"} in
+                      this warehouse per SAP but {model.unshelvedQty === 1 ? "has" : "have"} no location. Stock{" "}
+                      {model.unshelvedQty === 1 ? "it" : "them"} in to a location (Settings, Warehouses) to
+                      dispatch {model.unshelvedQty === 1 ? "it" : "them"}.
+                    </p>
+                  ) : null}
                   {visible.length === 0 ? (
                     <p className="text-sm text-muted-foreground">
                       {needle ? "No serial or location matches your search." : "No serials available."}
@@ -205,15 +222,9 @@ function DispatchBody({
                           >
                             <div className="mb-2 flex items-center justify-between gap-2">
                               <div className="flex items-center gap-2">
-                                {location.locationCode ? (
-                                  <span className="rounded-md bg-primary/10 px-2 py-0.5 font-mono text-xs font-semibold text-primary">
-                                    {location.locationCode}
-                                  </span>
-                                ) : (
-                                  <span className="rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-foreground">
-                                    From SAP · no shelf location
-                                  </span>
-                                )}
+                                <span className="rounded-md bg-primary/10 px-2 py-0.5 font-mono text-xs font-semibold text-primary">
+                                  {location.locationCode}
+                                </span>
                                 <span className="text-xs text-muted-foreground">
                                   {location.warehouseCode}
                                 </span>
@@ -291,19 +302,14 @@ interface LocationGroup {
   serials: DispatchCandidate[];
 }
 
-/**
- * Serials under their shelf location, locations in code order, so pickers walk aisle by
- * aisle. Serials the SAP sync placed in the warehouse without an ISMS shelf form one group.
- */
+/** Serials under their shelf location, locations in code order, so pickers walk aisle by aisle. */
 function groupByLocation(serials: DispatchCandidate[]): LocationGroup[] {
   const groups = new Map<string, LocationGroup>();
   for (const serial of serials) {
     const key = `${serial.warehouseCode}/${serial.locationCode}`;
     const group = groups.get(key) ?? {
       key,
-      label: serial.locationCode
-        ? `${serial.warehouseCode} / ${serial.locationCode}`
-        : `${serial.warehouseCode} (from SAP, no shelf location)`,
+      label: `${serial.warehouseCode} / ${serial.locationCode}`,
       warehouseCode: serial.warehouseCode,
       locationCode: serial.locationCode,
       serials: [],
@@ -311,9 +317,7 @@ function groupByLocation(serials: DispatchCandidate[]): LocationGroup[] {
     group.serials.push(serial);
     groups.set(key, group);
   }
-  // Shelves first in code order; serials only SAP places (no shelf) come last.
-  return [...groups.values()].sort((a, b) => {
-    if (!a.locationCode !== !b.locationCode) return a.locationCode ? -1 : 1;
-    return a.locationCode.localeCompare(b.locationCode, undefined, { numeric: true });
-  });
+  return [...groups.values()].sort((a, b) =>
+    a.locationCode.localeCompare(b.locationCode, undefined, { numeric: true }),
+  );
 }

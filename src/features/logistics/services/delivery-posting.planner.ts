@@ -33,24 +33,16 @@ export interface DeliveryPostingView {
   requirements: { modelId: string; quantity: number }[];
 }
 
-/**
- * Where a dispatchable serial is held:
- * - WAREHOUSE: a warehouse stock row; dispatch removes it
- * - BRANCH: branch stock stocked into a location of this warehouse; dispatch relocates it
- * - SAP: the serial sync linked it to this warehouse and ISMS holds it nowhere; dispatch
- *   creates its branch unit
- * - SAP_BRANCH: as SAP, but the sync's own stock-in made it branch STK with no location;
- *   dispatch relocates that branch row
- */
-export type WarehouseHoldSource = "WAREHOUSE" | "BRANCH" | "SAP" | "SAP_BRANCH";
-
 export interface WarehouseHold {
   serialNumberId: string;
   modelId: string;
   warehouseId: string;
-  /** Null for SAP-held serials: ISMS has no shelf location for them. */
-  warehouseLocationId: string | null;
-  source: WarehouseHoldSource;
+  warehouseLocationId: string;
+  /**
+   * WAREHOUSE: a warehouse stock row. BRANCH: branch stock stocked into a
+   * location of this warehouse; dispatch relocates that branch row.
+   */
+  source: "WAREHOUSE" | "BRANCH";
 }
 
 /**
@@ -94,7 +86,7 @@ export type PlanFailure = { ok: false; error: string };
 export interface DispatchPlan {
   ok: true;
   warehouseId: string;
-  moves: { serialNumberId: string; warehouseLocationId: string | null }[];
+  moves: { serialNumberId: string; warehouseLocationId: string }[];
 }
 
 export interface AcceptPlan {
