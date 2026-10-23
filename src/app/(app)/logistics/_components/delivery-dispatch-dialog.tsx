@@ -58,7 +58,7 @@ export function DeliveryDispatchDialog({
         if (!open && !pending) onClose();
       }}
     >
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-2xl">
         {target ? (
           // Keyed so each delivery starts with an empty selection.
           <DispatchBody
@@ -93,7 +93,11 @@ function DispatchBody({
     const serials = target.serials.filter((serial) => serial.modelId === model.modelId);
     const picked = serials.filter((serial) => selected.includes(serial.id)).length;
     const visible = needle
-      ? serials.filter((serial) => serial.serialNo.toLowerCase().includes(needle))
+      ? serials.filter(
+          (serial) =>
+            serial.serialNo.toLowerCase().includes(needle) ||
+            serial.locationCode.toLowerCase().includes(needle),
+        )
       : serials;
     return { model, serials, visible, picked };
   });
@@ -144,79 +148,132 @@ function DispatchBody({
         <Input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search or scan a serial number"
-          aria-label="Search serial numbers"
+          placeholder="Search or scan a serial, or type a location"
+          aria-label="Search serial numbers or locations"
           className="h-11 pl-9"
         />
       </div>
 
-      <div className="max-h-[50vh] overflow-y-auto rounded-md border">
-        <Accordion type="multiple" value={accordionValue} onValueChange={setOpenModels}>
+      <div className="max-h-[55vh] overflow-y-auto pr-1">
+        <Accordion
+          type="multiple"
+          value={accordionValue}
+          onValueChange={setOpenModels}
+          className="space-y-3"
+        >
           {groups.map(({ model, serials, visible, picked }) => {
             const full = picked >= model.requiredQty;
             const done = picked === model.requiredQty;
             const short = serials.length < model.requiredQty;
             return (
-              <AccordionItem key={model.modelId} value={model.modelId}>
-                <AccordionTrigger className="min-h-11 items-center px-3 py-2 hover:bg-muted/60 hover:no-underline">
-                  <span className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-x-3 gap-y-1">
+              <AccordionItem
+                key={model.modelId}
+                value={model.modelId}
+                className={`overflow-hidden rounded-lg border last:border-b ${
+                  done ? "border-emerald-300 dark:border-emerald-800" : ""
+                }`}
+              >
+                {/* Level 1: the model and what dispatch still needs from it. */}
+                <AccordionTrigger className="min-h-14 items-center rounded-none bg-muted/50 px-4 py-3 hover:bg-muted hover:no-underline">
+                  <span className="flex min-w-0 flex-1 items-center justify-between gap-3">
                     <span className="min-w-0">
-                      <span className="font-mono font-medium">{model.skuCode}</span>
-                      <span className="ml-2 text-xs font-normal text-muted-foreground">
-                        {serials.length} in warehouse
+                      <span className="block font-mono text-sm font-semibold">{model.skuCode}</span>
+                      <span className="block truncate text-xs font-normal text-muted-foreground">
+                        {model.modelName} · {serials.length} available
                       </span>
                     </span>
                     <span
-                      className={`rounded-full px-2 py-0.5 text-xs tabular-nums ${
+                      className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium tabular-nums ${
                         done
                           ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
-                          : "bg-muted text-muted-foreground"
+                          : "bg-background text-foreground ring-1 ring-border"
                       }`}
                     >
-                      {picked} / {model.requiredQty} picked
+                      {done ? "Done · " : ""}
+                      {picked} of {model.requiredQty} picked
                     </span>
                   </span>
                 </AccordionTrigger>
-                <AccordionContent className="space-y-2 px-3">
+                <AccordionContent className="px-4 pt-3">
                   {short ? (
-                    <p className="text-xs text-destructive" role="alert">
-                      Only {serials.length} in the warehouse. Stock in more before dispatching.
+                    <p className="mb-3 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive" role="alert">
+                      Only {serials.length} available, {model.requiredQty} needed. Stock in more before
+                      dispatching.
                     </p>
                   ) : null}
                   {visible.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">
-                      {needle ? "No serial matches your search." : "No serials in the warehouse."}
+                    <p className="text-sm text-muted-foreground">
+                      {needle ? "No serial or location matches your search." : "No serials available."}
                     </p>
                   ) : (
-                    <ul className="space-y-2">
-                      {visible.map((serial) => {
-                        const checked = selected.includes(serial.id);
-                        // Once a model has its count, the rest lock so nobody over-picks.
-                        const locked = !checked && full;
+                    <div className="divide-y">
+                      {groupByLocation(visible).map((location) => {
+                        const pickedHere = location.serials.filter((serial) =>
+                          selected.includes(serial.id),
+                        ).length;
                         return (
-                          <li key={serial.id}>
-                            <label
-                              className={`flex min-h-11 items-center gap-3 rounded-md border px-3 py-2 text-sm ${
-                                locked ? "bg-muted/40 text-muted-foreground" : ""
-                              }`}
-                            >
-                              <Checkbox
-                                checked={checked}
-                                disabled={locked || pending}
-                                onCheckedChange={(value) =>
-                                  toggle(model.modelId, serial.id, value === true)
-                                }
-                                aria-label={`Dispatch ${serial.serialNo}`}
-                              />
-                              <span className="font-mono">{serial.serialNo}</span>
-                              <span className="text-muted-foreground">
-                                {serial.warehouseCode} / {serial.locationCode}
+                          // Level 2: the shelf location.
+                          <section
+                            key={location.key}
+                            aria-label={`Location ${location.label}`}
+                            className="py-3 first:pt-0 last:pb-0"
+                          >
+                            <div className="mb-2 flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <span className="rounded-md bg-primary/10 px-2 py-0.5 font-mono text-xs font-semibold text-primary">
+                                  {location.locationCode}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  {location.warehouseCode}
+                                </span>
+                              </div>
+                              <span className="text-xs tabular-nums text-muted-foreground">
+                                {pickedHere > 0 ? `${pickedHere} picked of ` : ""}
+                                {location.serials.length} here
                               </span>
-                            </label>
-                          </li>
+                            </div>
+                            {/* Level 3: the serials on that shelf. */}
+                            <ul className="grid gap-2 sm:grid-cols-2">
+                              {location.serials.map((serial) => {
+                                const checked = selected.includes(serial.id);
+                                // Once a model has its count, the rest lock so nobody over-picks.
+                                const locked = !checked && full;
+                                return (
+                                  <li key={serial.id}>
+                                    <label
+                                      className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-md border px-3 py-2 text-sm transition-colors ${
+                                        checked
+                                          ? "border-primary bg-primary/5"
+                                          : locked
+                                            ? "cursor-not-allowed bg-muted/40 text-muted-foreground"
+                                            : "hover:border-foreground/30 hover:bg-muted/40"
+                                      }`}
+                                    >
+                                      <Checkbox
+                                        checked={checked}
+                                        disabled={locked || pending}
+                                        onCheckedChange={(value) =>
+                                          toggle(model.modelId, serial.id, value === true)
+                                        }
+                                        aria-label={`Dispatch ${serial.serialNo} from ${location.label}`}
+                                      />
+                                      <span className="min-w-0">
+                                        <span className="block font-mono text-sm">{serial.serialNo}</span>
+                                        {serial.heldBy ? (
+                                          <span className="block truncate text-xs text-muted-foreground">
+                                            {serial.heldBy}
+                                          </span>
+                                        ) : null}
+                                      </span>
+                                    </label>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          </section>
                         );
                       })}
-                    </ul>
+                    </div>
                   )}
                 </AccordionContent>
               </AccordionItem>
@@ -234,5 +291,33 @@ function DispatchBody({
         </Button>
       </DialogFooter>
     </>
+  );
+}
+
+interface LocationGroup {
+  key: string;
+  label: string;
+  warehouseCode: string;
+  locationCode: string;
+  serials: DispatchCandidate[];
+}
+
+/** Serials under their shelf location, locations in code order, so pickers walk aisle by aisle. */
+function groupByLocation(serials: DispatchCandidate[]): LocationGroup[] {
+  const groups = new Map<string, LocationGroup>();
+  for (const serial of serials) {
+    const key = `${serial.warehouseCode}/${serial.locationCode}`;
+    const group = groups.get(key) ?? {
+      key,
+      label: `${serial.warehouseCode} / ${serial.locationCode}`,
+      warehouseCode: serial.warehouseCode,
+      locationCode: serial.locationCode,
+      serials: [],
+    };
+    group.serials.push(serial);
+    groups.set(key, group);
+  }
+  return [...groups.values()].sort((a, b) =>
+    a.locationCode.localeCompare(b.locationCode, undefined, { numeric: true }),
   );
 }

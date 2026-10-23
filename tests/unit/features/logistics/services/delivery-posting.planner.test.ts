@@ -28,6 +28,7 @@ function hold(serialNumberId: string, warehouseId = "wh-1"): WarehouseHold {
     modelId: "model-1",
     warehouseId,
     warehouseLocationId: `loc-${warehouseId}`,
+    source: "WAREHOUSE",
   };
 }
 

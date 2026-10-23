@@ -24,9 +24,12 @@ import {
   type DataTableFeatures,
 } from "@/lib/data-table";
 import type { PaginatedResult } from "@/lib/shared/pagination";
+import { EditLocationDialog } from "@/app/(app)/inventory/warehouse-stock/_components/edit-location-dialog";
 
 interface WarehouseStockTableProps {
   result: PaginatedResult<WarehouseInventoryListItem>;
+  /** warehouses.manage: may move a serial to another location in its warehouse. */
+  canEditLocation: boolean;
   warehouses: WarehouseFilterOption[];
   locations: WarehouseLocationFilterOption[];
   currentWarehouseId?: string;
@@ -65,6 +68,7 @@ function formatUpdatedAt(iso: string): string {
 
 export function WarehouseStockTable({
   result,
+  canEditLocation,
   warehouses,
   locations,
   currentWarehouseId,
@@ -75,6 +79,7 @@ export function WarehouseStockTable({
   const [warehouseId, setWarehouseId] = useState(currentWarehouseId ?? "");
   const [locationId, setLocationId] = useState(currentLocationId ?? "");
   const [search, setSearch] = useState(currentSearch ?? "");
+  const [editing, setEditing] = useState<WarehouseInventoryListItem | null>(null);
   const pageSize = parseTablePageSize(result.limit);
   const rows = result.items;
 
@@ -134,7 +139,7 @@ export function WarehouseStockTable({
 
   const emptyMessage = hasActiveFilters
     ? "No warehouse serials match your filters."
-    : "No warehouse stock yet. Serials appear after a warehouse feed, demo seed, or Official Sales warehouse demo serials are loaded.";
+    : "No serials have a location yet. Use Stock in on a location in Settings, Warehouses.";
 
   const indexOffset = (result.page - 1) * result.limit;
   const columns = useMemo(() => {
@@ -188,6 +193,21 @@ export function WarehouseStockTable({
         ),
       }),
       stockColumn.display({
+        id: "heldBy",
+        header: "Held by",
+        cell: ({ row }) =>
+          row.original.branch ? (
+            <div className="flex flex-col">
+              <span>{row.original.branch.name}</span>
+              <span className="font-mono text-xs text-muted-foreground">
+                {row.original.branch.sapCode ?? "Branch stock"}
+              </span>
+            </div>
+          ) : (
+            <span className="text-muted-foreground">Warehouse</span>
+          ),
+      }),
+      stockColumn.display({
         id: "status",
         header: "Status",
         cell: ({ row }) =>
@@ -204,10 +224,30 @@ export function WarehouseStockTable({
         meta: { className: "text-muted-foreground" },
       }),
     ];
+    if (canEditLocation) {
+      cols.push(
+        stockColumn.display({
+          id: "actions",
+          header: "Actions",
+          cell: ({ row }) => (
+            <Button
+              size="sm"
+              variant="outline"
+              className="max-sm:h-11"
+              onClick={() => setEditing(row.original)}
+            >
+              Edit location
+            </Button>
+          ),
+          meta: { align: "end" },
+        }),
+      );
+    }
     return cols;
-  }, [indexOffset]);
+  }, [canEditLocation, indexOffset]);
 
   return (
+    <>
     <DataTable
       data={rows}
       columns={columns}
@@ -279,5 +319,7 @@ export function WarehouseStockTable({
       empty={rows.length === 0}
       emptyMessage={emptyMessage}
     />
+    <EditLocationDialog row={editing} onClose={() => setEditing(null)} />
+    </>
   );
 }

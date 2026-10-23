@@ -120,6 +120,37 @@ describe("resolveOrderSapRouting", () => {
   });
 });
 
+describe("resolveOrderSapRouting with an order mode of payment", () => {
+  it("uses the order's override over the dealer's: consignment dealer, outright order gives SO", () => {
+    const result = resolveOrderSapRouting(
+      input({ orderModeOfPayment: { name: "Outright Cash", kind: "OUTRIGHT" } }),
+    );
+    expect(result).toMatchObject({ ok: true, docType: "SO", cardCode: "C001" });
+  });
+
+  it("an override still needs the dealer's SAP customer code for SO", () => {
+    const base = input({ orderModeOfPayment: { name: "Outright Cash", kind: "OUTRIGHT" } });
+    const result = resolveOrderSapRouting({ ...base, dealer: { ...base.dealer!, sapCode: null } });
+    expect(result).toEqual({ ok: false, error: "Dealer Dealer X has no SAP customer code." });
+  });
+
+  it("blocks an override that has no type", () => {
+    const result = resolveOrderSapRouting(input({ orderModeOfPayment: { name: "COD", kind: null } }));
+    expect(result).toEqual({
+      ok: false,
+      error:
+        "Mode of payment COD has no type. Set it to Consignment or Outright in Settings → Master data → Modes of payment.",
+    });
+  });
+
+  it("follows the dealer when the order has no override", () => {
+    expect(resolveOrderSapRouting(input({ orderModeOfPayment: null }))).toMatchObject({
+      ok: true,
+      docType: "ITR",
+    });
+  });
+});
+
 describe("docTypeForOrder", () => {
   it("returns the stored value regardless of the dealer's current kind", () => {
     expect(docTypeForOrder({ sapDocType: "SO" })).toBe("SO");

@@ -8,6 +8,13 @@ import {
 
 export type WarehouseInventoryListRow = {
   id: string;
+  /**
+   * WAREHOUSE: warehouse stock (returns, transfers back). BRANCH: branch stock
+   * stocked into a location of this warehouse; it stays at its branch.
+   */
+  source: "WAREHOUSE" | "BRANCH";
+  /** Set for BRANCH rows: the branch that holds the unit. */
+  branch: { name: string; sapCode: string | null } | null;
   systemStatus: string | null;
   updatedAt: Date;
   serialNumber: {
@@ -57,6 +64,46 @@ const listInclude = {
       warehouse: { select: { id: true, code: true, name: true } },
     },
   },
+} as const;
+
+function searchWhere(q: string | undefined) {
+  const term = q?.trim();
+  if (!term) return {};
+  return {
+    OR: [
+      { serialNumber: { serialNo: { contains: term, mode: "insensitive" as const } } },
+      { serialNumber: { model: { skuCode: { contains: term, mode: "insensitive" as const } } } },
+    ],
+  };
+}
+
+function scopeWarehouseIds(warehouseIds: string[], filters?: WarehouseInventoryListFilters) {
+  return filters?.warehouseId
+    ? warehouseIds.filter((id) => id === filters.warehouseId)
+    : warehouseIds;
+}
+
+function buildBranchWhere(
+  tenantId: string,
+  warehouseIds: string[],
+  filters?: WarehouseInventoryListFilters,
+): Prisma.BranchInventoryWhereInput | null {
+  const scoped = scopeWarehouseIds(warehouseIds, filters);
+  if (scoped.length === 0) return null;
+  return {
+    tenantId,
+    warehouseLocation: {
+      warehouseId: { in: scoped },
+      ...(filters?.locationId ? { id: filters.locationId } : {}),
+    },
+    ...searchWhere(filters?.q),
+  };
+}
+
+const branchListInclude = {
+  ...listInclude,
+  branch: { select: { name: true, sapCode: true } },
+  statusCode: { select: { name: true } },
 } as const;
 
 function buildWhere(
@@ -113,23 +160,67 @@ export const warehouseInventoryRepository = {
       return toPaginatedResult<WarehouseInventoryListRow>([], 0, page, limit);
     }
 
-    const [items, total] = await Promise.all([
-      prisma.warehouseInventory.findMany({
-        where,
-        include: listInclude,
-        orderBy: { updatedAt: "desc" },
-        skip,
-        take: limit,
-      }),
+    const branchWhere = buildBranchWhere(tenantId, warehouseIds, filters);
+
+    // Two sources, one list: warehouse rows first, then located branch stock.
+    // The page window is cut across both so each query only reads its share.
+    const [warehouseTotal, branchTotal] = await Promise.all([
       prisma.warehouseInventory.count({ where }),
+      branchWhere ? prisma.branchInventory.count({ where: branchWhere }) : Promise.resolve(0),
+    ]);
+    const warehouseTake = Math.max(0, Math.min(limit, warehouseTotal - skip));
+    const branchSkip = Math.max(0, skip - warehouseTotal);
+    const branchTake = limit - warehouseTake;
+
+    const [warehouseRows, branchRows] = await Promise.all([
+      warehouseTake > 0
+        ? prisma.warehouseInventory.findMany({
+            where,
+            include: listInclude,
+            orderBy: { updatedAt: "desc" },
+            skip,
+            take: warehouseTake,
+          })
+        : Promise.resolve([]),
+      branchWhere && branchTake > 0
+        ? prisma.branchInventory.findMany({
+            where: branchWhere,
+            include: branchListInclude,
+            orderBy: { updatedAt: "desc" },
+            skip: branchSkip,
+            take: branchTake,
+          })
+        : Promise.resolve([]),
     ]);
 
-    return toPaginatedResult(
-      items as WarehouseInventoryListRow[],
-      total,
-      page,
-      limit,
-    );
+    const items: WarehouseInventoryListRow[] = [
+      ...warehouseRows.map((row) => ({
+        id: row.id,
+        source: "WAREHOUSE" as const,
+        branch: null,
+        systemStatus: row.systemStatus,
+        updatedAt: row.updatedAt,
+        serialNumber: row.serialNumber,
+        warehouseLocation: row.warehouseLocation,
+      })),
+      ...branchRows.flatMap((row) =>
+        row.warehouseLocation
+          ? [
+              {
+                id: row.id,
+                source: "BRANCH" as const,
+                branch: row.branch,
+                systemStatus: row.statusCode.name,
+                updatedAt: row.updatedAt,
+                serialNumber: row.serialNumber,
+                warehouseLocation: row.warehouseLocation,
+              },
+            ]
+          : [],
+      ),
+    ];
+
+    return toPaginatedResult(items, warehouseTotal + branchTotal, page, limit);
   },
 
   listFilterWarehouses(tenantId: string, warehouseIds: string[]) {

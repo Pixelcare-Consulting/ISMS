@@ -322,6 +322,8 @@ export const orderService = {
       orderType: BranchOrderType;
       notes?: string;
       brandId?: string | null;
+      /** Mode of payment picked for this order; kept only when it differs from the dealer's. */
+      modeOfPaymentId?: string | null;
       details: {
         modelId: string;
         quantity: number;
@@ -389,10 +391,30 @@ export const orderService = {
       })),
     );
 
+    let modeOfPaymentOverride: string | null = null;
+    if (data.modeOfPaymentId) {
+      const choice = await orderRepository.findModeOfPaymentChoice(
+        tenantId,
+        data.branchId,
+        data.modeOfPaymentId,
+      );
+      if (!choice.modeOfPayment) throw new Error("That mode of payment is not available.");
+      if (!choice.modeOfPayment.kind) {
+        throw new Error(
+          `Mode of payment ${choice.modeOfPayment.name} has no type. Set it to Consignment or Outright in Settings → Master data → Modes of payment.`,
+        );
+      }
+      // Same as the dealer's: store nothing, so the order keeps following the dealer.
+      if (choice.modeOfPayment.id !== choice.dealerModeOfPaymentId) {
+        modeOfPaymentOverride = choice.modeOfPayment.id;
+      }
+    }
+
     const order = await orderRepository.create(tenantId, {
       branchId: data.branchId,
       orderType: data.orderType,
       brandId: data.brandId,
+      modeOfPaymentId: modeOfPaymentOverride,
       notes,
       details,
       createdById: userId,
@@ -823,12 +845,14 @@ export const orderService = {
       const routingContext = await orderRepository.findSapRoutingContext(
         tenantId,
         order.branchId,
+        order.id,
       );
       if (!routingContext.branch) throw new Error("Branch not found");
       const routing = resolveOrderSapRouting({
         branch: routingContext.branch,
         mainWarehouse: routingContext.mainWarehouse,
         dealer: routingContext.branch.dealer,
+        orderModeOfPayment: routingContext.orderModeOfPayment,
       });
       if (!routing.ok) throw new Error(routing.error);
 

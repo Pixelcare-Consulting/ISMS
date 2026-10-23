@@ -47,6 +47,10 @@ const STUCK_PROCESSING_MS = 10 * 60 * 1000;
 type JobDb = Pick<typeof prisma, "sapIntegrationJob">;
 
 export const sapIntegrationRepository = {
+  findById(tenantId: string, id: string) {
+    return prisma.sapIntegrationJob.findFirst({ where: { id, tenantId } });
+  },
+
   findByIdempotencyKey(tenantId: string, idempotencyKey: string) {
     return prisma.sapIntegrationJob.findUnique({
       where: { tenantId_idempotencyKey: { tenantId, idempotencyKey } },
