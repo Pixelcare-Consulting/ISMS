@@ -1,10 +1,10 @@
 "use client";
 
 import { createColumnHelper } from "@tanstack/react-table";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 
-import { OrderDetailsDialog } from "@/app/(app)/orders/_components/order-details-dialog";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   parseTablePageSize,
@@ -40,8 +40,6 @@ interface OrderHistoryTableProps {
     totalPages: number;
   };
   basePath: string;
-  viewerRoleSlugs?: string[];
-  hasCreatePermission?: boolean;
   initialSort?: string;
   initialSortDir?: string;
 }
@@ -75,15 +73,12 @@ function formatHistoryDate(value: string): string {
 export function OrderHistoryTable({
   result,
   basePath,
-  viewerRoleSlugs = [],
-  hasCreatePermission = false,
   initialSort = "createdAt",
   initialSortDir = "desc",
 }: OrderHistoryTableProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
-  const [detailsRow, setDetailsRow] = useState<OrderHistoryRow | null>(null);
   const pageSize = parseTablePageSize(result.limit);
   const sort = (searchParams.get("sort") ?? initialSort) || "createdAt";
   const sortDir = (
@@ -204,83 +199,47 @@ export function OrderHistoryTable({
         header: "",
         enableSorting: false,
         cell: ({ row }) => (
-          <Button type="button" size="sm" variant="outline" onClick={() => setDetailsRow(row.original)}>
-            View
+          <Button size="sm" variant="outline" asChild>
+            <Link href={`${basePath}/${row.original.id}`}>View</Link>
           </Button>
         ),
         meta: { align: "end" },
       }),
     ];
     return cols;
-  }, []);
+  }, [basePath]);
 
   return (
-    <>
-      <DataTable
-        data={filtered}
-        columns={columns}
-        getRowId={(row) => row.id}
-        manualSorting
-        manualPagination
-        enableSorting
-        sorting={{
-          sortKey: sort,
-          sortDir,
-          onSort: (columnId) => toggleSort(columnId as HistorySortField),
-        }}
-        stickyHeader
-        search={{
-          value: query,
-          onChange: setQuery,
-          placeholder: "Search history…",
-          suggestions,
-        }}
-        pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
-        pagination={{
-          total: result.total,
-          page: result.page,
-          totalPages: result.totalPages,
-          itemLabel: "order",
-          buildHref: (page) =>
-            buildHistoryHref(basePath, page, pageSize, sort, sort ? sortDir : undefined),
-        }}
-        empty={filtered.length === 0}
-        emptyMessage={query.trim() ? "No results match your search." : "No order history."}
-      />
-      {detailsRow ? (
-        <OrderDetailsDialog
-          orderId={detailsRow.id}
-          orderNumber={detailsRow.orderNumber}
-          orderType={detailsRow.orderType}
-          branchId={detailsRow.branchId}
-          branchName={detailsRow.branchName}
-          status={detailsRow.status as BranchOrderStatus}
-          notes={detailsRow.notes}
-          deliveryDueDate={detailsRow.deliveryDueDate}
-          createdByName={detailsRow.createdByName}
-          reviewSnapshot={detailsRow.reviewSnapshot}
-          reviewSnapshotAt={detailsRow.reviewSnapshotAt}
-          sapDocType={detailsRow.sapDocType}
-          sapDocNum={detailsRow.sapDocNum}
-          lines={detailsRow.lines.map((line) => ({
-            detailId: line.detailId,
-            modelId: line.modelId,
-            skuCode: line.skuCode,
-            name: line.name,
-            quantity: line.quantity,
-            approvedQty: line.approvedQty,
-            remarks: line.remarks,
-            spRemarks: line.spRemarks,
-          }))}
-          approvalLevels={detailsRow.approvalLevels}
-          roleSlugs={viewerRoleSlugs}
-          hasCreatePermission={hasCreatePermission}
-          open
-          onOpenChange={(open) => {
-            if (!open) setDetailsRow(null);
-          }}
-        />
-      ) : null}
-    </>
+    <DataTable
+      data={filtered}
+      columns={columns}
+      getRowId={(row) => row.id}
+      manualSorting
+      manualPagination
+      enableSorting
+      sorting={{
+        sortKey: sort,
+        sortDir,
+        onSort: (columnId) => toggleSort(columnId as HistorySortField),
+      }}
+      stickyHeader
+      search={{
+        value: query,
+        onChange: setQuery,
+        placeholder: "Search history…",
+        suggestions,
+      }}
+      pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
+      pagination={{
+        total: result.total,
+        page: result.page,
+        totalPages: result.totalPages,
+        itemLabel: "order",
+        buildHref: (page) =>
+          buildHistoryHref(basePath, page, pageSize, sort, sort ? sortDir : undefined),
+      }}
+      empty={filtered.length === 0}
+      emptyMessage={query.trim() ? "No results match your search." : "No order history."}
+    />
   );
 }

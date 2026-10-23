@@ -1,6 +1,9 @@
 import { deliveryPostingService } from "@/features/logistics/services/delivery-posting.service";
 import { deliveryReturnService } from "@/features/logistics/services/delivery-return.service";
-import { pulloutPostingService } from "@/features/logistics/services/pullout-posting.service";
+import {
+  pulloutPostingService,
+  type PulloutCreateInput,
+} from "@/features/logistics/services/pullout-posting.service";
 import type { PostingActor } from "@/features/logistics/services/posting-support";
 import { transferPostingService } from "@/features/logistics/services/transfer-posting.service";
 import { opsRepository } from "@/features/ops/repositories/ops.repository";
@@ -73,16 +76,7 @@ export const opsService = {
     return transferPostingService.create(actor, input);
   },
 
-  createPullout(
-    actor: PostingActor,
-    input: {
-      branchId: string;
-      warehouseId: string;
-      reasonStatusCodeId: string;
-      serialNumberIds: string[];
-      notes?: string;
-    },
-  ) {
+  createPullout(actor: PostingActor, input: PulloutCreateInput) {
     return pulloutPostingService.create(actor, input);
   },
 

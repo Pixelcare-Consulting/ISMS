@@ -1,4 +1,4 @@
-import type { BranchOrderType, SkuStatus } from "@prisma/client";
+import type { BranchOrderStatus, BranchOrderType, SkuStatus } from "@prisma/client";
 import type { OrderSapDocType } from "@/features/orders/constants/order-sap-doc-type";
 
 /** Off-planogram shelf gap. Em dash, matching the worksheet contract. */
@@ -236,4 +236,16 @@ export interface OrderHistoryRow {
   lastUpdatedBy: string;
   lines: OrderHistoryLine[];
   approvalLevels: OrderHistoryApproval[];
+}
+
+export interface OrderHistoryDetailLine extends OrderHistoryLine {
+  amount: number;
+  approvedAmount: number | null;
+}
+
+/** One order opened from Order History, including the approval clock. */
+export interface OrderHistoryDetail extends Omit<OrderHistoryRow, "lines" | "status"> {
+  status: BranchOrderStatus;
+  processedAt: string | null;
+  lines: OrderHistoryDetailLine[];
 }

@@ -118,11 +118,18 @@ const transferSchema = z.object({
     .optional()
     .transform((value) => value || undefined),
 });
+const checklistIdList = z.array(z.string().min(1)).min(1);
+const pulloutLineSchema = z.object({
+  serialNumberId: z.string().min(1),
+  pulloutClassificationIds: checklistIdList,
+  unitPackingConditionIds: checklistIdList,
+  accessoryCompletenessIds: checklistIdList,
+});
 const pulloutSchema = z.object({
   branchId: z.string().min(1),
   warehouseId: z.string().min(1),
   reasonStatusCodeId: z.string().min(1),
-  serialNumberIds: z.array(z.string().min(1)).min(1),
+  lines: z.array(pulloutLineSchema).min(1),
   notes: z.string().optional(),
 });
 const pulloutListSchema = z.object({
@@ -544,10 +551,47 @@ export async function listPulloutSerialsAction(branchId: string) {
   }
 }
 
+export interface PulloutChecklistOptions {
+  classifications: { id: string; name: string }[];
+  unitPackingConditions: { id: string; name: string }[];
+  accessoryCompleteness: { id: string; name: string }[];
+}
+
+const EMPTY_CHECKLIST_OPTIONS: PulloutChecklistOptions = {
+  classifications: [],
+  unitPackingConditions: [],
+  accessoryCompleteness: [],
+};
+
+/** Active pull-out checklist names for people who can create a pull-out. */
+export async function listPulloutChecklistOptionsAction(): Promise<
+  PulloutChecklistOptions & { error?: string }
+> {
+  const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
+  const where = { tenantId: session.user.tenantId, recordStatus: "active" as const };
+  const orderBy = { name: "asc" as const };
+  const select = { id: true, name: true };
+  try {
+    const [classifications, unitPackingConditions, accessoryCompleteness] = await Promise.all([
+      prisma.pulloutClassification.findMany({ where, orderBy, select }),
+      prisma.unitPackingCondition.findMany({ where, orderBy, select }),
+      prisma.accessoryCompleteness.findMany({ where, orderBy, select }),
+    ]);
+    return { classifications, unitPackingConditions, accessoryCompleteness };
+  } catch (error) {
+    return { ...EMPTY_CHECKLIST_OPTIONS, ...actionError(error, "Failed to load pull-out checklist options") };
+  }
+}
+
 export async function createPulloutAction(input: unknown) {
   const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
   const parsed = pulloutSchema.safeParse(input);
-  if (!parsed.success) return { error: "Choose a branch, warehouse, reason, and serials" };
+  if (!parsed.success) {
+    return {
+      error:
+        "Choose a branch, warehouse, reason, and classification, packing, and accessories for each serial",
+    };
+  }
   try {
     const row = await pulloutPostingService.create(postingActor(session), parsed.data);
     revalidatePullout(row.id);

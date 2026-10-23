@@ -59,6 +59,7 @@ interface PulloutRow {
 interface PulloutsPanelProps {
   pullouts: PaginatedList<PulloutRow>;
   capabilities: LogisticsActionCapabilities;
+  currentUserName?: string;
   initialSort?: string;
   initialSortDir?: string;
 }
@@ -71,6 +72,7 @@ type PulloutSortDir = "asc" | "desc";
 export function PulloutsPanel({
   pullouts,
   capabilities,
+  currentUserName = "",
   initialSort = "",
   initialSortDir = "desc",
 }: PulloutsPanelProps) {
@@ -218,12 +220,11 @@ export function PulloutsPanel({
                 <Button
                   size="sm"
                   disabled={pending}
-                  className="bg-amber-600 text-white hover:bg-amber-700"
                   onClick={() =>
                     runAction(() => approvePulloutTlAction(pullout.id), "Pull-out approved")
                   }
                 >
-                  TL approve
+                  Approve
                 </Button>
               ) : null}
               {pullout.statusCode.code === "pending_tl" && capabilities.canRejectTransfer ? (
@@ -312,6 +313,7 @@ export function PulloutsPanel({
       onOpenChange={setCreateOpen}
       onSubmit={createPulloutAction}
       onCreated={() => router.refresh()}
+      currentUserName={currentUserName}
     />
     </>
   );

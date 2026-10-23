@@ -142,8 +142,6 @@ export async function OrdersTypePage({
               <OrderHistoryTable
                 result={historyResult}
                 basePath={basePath}
-                viewerRoleSlugs={viewerRoleSlugs}
-                hasCreatePermission={canEdit}
                 initialSort={params.sort ?? "createdAt"}
                 initialSortDir={params.dir ?? "desc"}
               />

@@ -260,6 +260,9 @@ model Tenant {
   documentTypes               DocumentType[]
   returnTypes                 ReturnType[]
   branchStatusTypes           BranchStatusType[]
+  pulloutClassifications      PulloutClassification[]
+  unitPackingConditions       UnitPackingCondition[]
+  accessoryCompletenesses     AccessoryCompleteness[]
   dealers                     Dealer[]
   serviceCenters              ServiceCenter[]
   priceLists                  PriceList[]
@@ -1150,6 +1153,54 @@ model BranchStatusType {
   @@unique([tenantId, name])
   @@index([tenantId])
   @@map("branch_status_types")
+}
+
+model PulloutClassification {
+  id           String             @id @default(cuid())
+  tenantId     String             @map("tenant_id")
+  name         String
+  recordStatus LookupRecordStatus @default(active) @map("record_status")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+
+  tenant              Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lineClassifications BranchPulloutLineClassification[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("pullout_classifications")
+}
+
+model UnitPackingCondition {
+  id           String             @id @default(cuid())
+  tenantId     String             @map("tenant_id")
+  name         String
+  recordStatus LookupRecordStatus @default(active) @map("record_status")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+
+  tenant                Tenant                              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  linePackingConditions BranchPulloutLinePackingCondition[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("unit_packing_conditions")
+}
+
+model AccessoryCompleteness {
+  id           String             @id @default(cuid())
+  tenantId     String             @map("tenant_id")
+  name         String
+  recordStatus LookupRecordStatus @default(active) @map("record_status")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+
+  tenant                     Tenant                                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lineAccessoryCompletenesses BranchPulloutLineAccessoryCompleteness[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("accessory_completeness")
 }
 
 // --- BRS organization ---
@@ -2311,19 +2362,64 @@ model BranchPullout {
 }
 
 model BranchPulloutLine {
-  id                String  @id @default(cuid())
-  pulloutId         String  @map("pullout_id")
-  serialNumberId    String  @map("serial_number_id")
+  id                      String  @id @default(cuid())
+  pulloutId               String  @map("pullout_id")
+  serialNumberId          String  @map("serial_number_id")
   /// Inventory code before this pull-out held the unit. Null on rows created before the hold.
-  priorStatusCodeId String? @map("prior_status_code_id")
+  priorStatusCodeId       String? @map("prior_status_code_id")
 
-  pullout         BranchPullout     @relation(fields: [pulloutId], references: [id], onDelete: Cascade)
-  serialNumber    SerialNumber      @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
-  priorStatusCode ReasonStatusCode? @relation("PulloutLinePriorStatus", fields: [priorStatusCodeId], references: [id], onDelete: SetNull)
+  pullout                 BranchPullout                           @relation(fields: [pulloutId], references: [id], onDelete: Cascade)
+  serialNumber            SerialNumber                            @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
+  priorStatusCode         ReasonStatusCode?                       @relation("PulloutLinePriorStatus", fields: [priorStatusCodeId], references: [id], onDelete: SetNull)
+  classifications         BranchPulloutLineClassification[]
+  packingConditions       BranchPulloutLinePackingCondition[]
+  accessoryCompletenesses BranchPulloutLineAccessoryCompleteness[]
 
   @@unique([pulloutId, serialNumberId])
   @@index([priorStatusCodeId])
   @@map("branch_pullout_lines")
+}
+
+/// One classification on a pull-out line. Removing the line or the lookup deletes this row, not the pull-out.
+model BranchPulloutLineClassification {
+  id                      String @id @default(cuid())
+  pulloutLineId           String @map("pullout_line_id")
+  pulloutClassificationId String @map("pullout_classification_id")
+
+  pulloutLine           BranchPulloutLine     @relation(fields: [pulloutLineId], references: [id], onDelete: Cascade)
+  pulloutClassification PulloutClassification @relation(fields: [pulloutClassificationId], references: [id], onDelete: Cascade)
+
+  @@unique([pulloutLineId, pulloutClassificationId])
+  @@index([pulloutClassificationId])
+  @@map("branch_pullout_line_classifications")
+}
+
+/// One packing condition on a pull-out line. Removing the line or the lookup deletes this row, not the pull-out.
+model BranchPulloutLinePackingCondition {
+  id                     String @id @default(cuid())
+  pulloutLineId          String @map("pullout_line_id")
+  unitPackingConditionId String @map("unit_packing_condition_id")
+
+  pulloutLine          BranchPulloutLine    @relation(fields: [pulloutLineId], references: [id], onDelete: Cascade)
+  unitPackingCondition UnitPackingCondition @relation(fields: [unitPackingConditionId], references: [id], onDelete: Cascade)
+
+  @@unique([pulloutLineId, unitPackingConditionId])
+  @@index([unitPackingConditionId])
+  @@map("branch_pullout_line_packing_conditions")
+}
+
+/// One accessory-completeness value on a pull-out line. Removing the line or the lookup deletes this row, not the pull-out.
+model BranchPulloutLineAccessoryCompleteness {
+  id                      String @id @default(cuid())
+  pulloutLineId           String @map("pullout_line_id")
+  accessoryCompletenessId String @map("accessory_completeness_id")
+
+  pulloutLine           BranchPulloutLine     @relation(fields: [pulloutLineId], references: [id], onDelete: Cascade)
+  accessoryCompleteness AccessoryCompleteness @relation(fields: [accessoryCompletenessId], references: [id], onDelete: Cascade)
+
+  @@unique([pulloutLineId, accessoryCompletenessId])
+  @@index([accessoryCompletenessId])
+  @@map("branch_pullout_line_accessory_completeness")
 }
 
 model BranchSalesTransaction {

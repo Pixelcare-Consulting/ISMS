@@ -140,7 +140,12 @@ export function OpsPanel({
     branchId: string;
     warehouseId: string;
     reasonStatusCodeId: string;
-    serialNumberIds: string[];
+    lines: {
+      serialNumberId: string;
+      pulloutClassificationIds: string[];
+      unitPackingConditionIds: string[];
+      accessoryCompletenessIds: string[];
+    }[];
   }) {
     return createPulloutAction(input);
   }
@@ -390,6 +395,7 @@ export function OpsPanel({
         onOpenChange={setPulloutOpen}
         onSubmit={submitPullout}
         onCreated={() => router.refresh()}
+        currentUserName={currentUserName}
       />
 
       <DeliveryReceiveDialog

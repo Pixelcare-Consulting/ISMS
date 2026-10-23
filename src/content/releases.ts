@@ -66,6 +66,95 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.78.0",
+    date: "2026-10-23",
+    releasedAt: "2026-10-23T12:50:00+08:00",
+    title: "Pull-out checklist",
+    highlights: [
+      "You can keep pull-out classification, unit packing condition, and accessory completeness under Settings → Master data.",
+      "On each selected unit you can choose more than one classification, packing condition, and accessory completeness.",
+      "The lists can be searched and show 10 at a time.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "You can keep pull-out classification, unit packing condition, and accessory completeness under Settings → Master data. On each selected unit you can choose more than one classification, packing condition, and accessory completeness. The lists can be searched and show 10 at a time.",
+      },
+    ],
+  },
+  {
+    version: "0.77.2",
+    date: "2026-10-23",
+    releasedAt: "2026-10-23T10:40:00+08:00",
+    title: "Pull-out details",
+    highlights: [
+      "A pull-out shows its stock or defective condition separately from its progress.",
+      "The steps are reserve, approval, the logistics list, and in transit.",
+      "A transfer shows the same progress steps as a pull-out.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "A pull-out shows its stock or defective condition separately from its progress.",
+      },
+      {
+        type: "improvement",
+        description: "The steps are reserve, approval, the logistics list, and in transit.",
+      },
+      {
+        type: "improvement",
+        description:
+          "While a transfer is waiting for approval, the form offers Approve and Reject for the whole request.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Starting a pull-out uses the same form as opening one, with each unit marked stock or defective.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Pull-outs and transfers open on the same kind of page. You choose the pull-out reason, and Approve and Reject look the same in the list and on the page.",
+      },
+      {
+        type: "improvement",
+        description:
+          "A new transfer warns you when the releasing branch has no units free to send.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Transfers and unit transfers now share one page, with Unit transfers as a tab. The separate sidebar item is gone.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The transfer summary shows only the steps you use: waiting for approval, ready to send, in transit, accepted, and rejected.",
+      },
+      {
+        type: "improvement",
+        description: "A transfer shows the same progress steps as a pull-out.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The warehouse-receipt note appears as a notification when you open a pull-out.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Transfer and pull-out line lists can be searched and paged like the other tables.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Opening an order from Order History shows the order on its own page, with its approval steps above the details.",
+      },
+    ],
+  },
+  {
     version: "0.77.1",
     date: "2026-10-22",
     releasedAt: "2026-10-22T16:10:00+08:00",

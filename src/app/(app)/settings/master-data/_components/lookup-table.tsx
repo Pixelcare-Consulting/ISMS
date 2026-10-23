@@ -80,9 +80,17 @@ interface LookupTableProps {
   rows: LookupRowData[];
   parentOptions?: LookupOption[];
   childRows?: LookupRowData[];
+  /** Keep the list at 10 rows and hide the rows-per-page menu. */
+  fixedPageSize?: boolean;
 }
 
-export function LookupTable({ entity, rows, parentOptions, childRows }: LookupTableProps) {
+export function LookupTable({
+  entity,
+  rows,
+  parentOptions,
+  childRows,
+  fixedPageSize,
+}: LookupTableProps) {
   const config = LOOKUP_ENTITIES[entity];
   const childConfig = config.child ? LOOKUP_ENTITIES[config.child] : null;
   const childParentOptions = useMemo(
@@ -96,18 +104,32 @@ export function LookupTable({ entity, rows, parentOptions, childRows }: LookupTa
   if (childConfig && childRows) {
     return (
       <div className="space-y-6">
-        <LookupSection entity={entity} rows={rows} parentOptions={parentOptions} title={config.label} />
+        <LookupSection
+          entity={entity}
+          rows={rows}
+          parentOptions={parentOptions}
+          title={config.label}
+          fixedPageSize={fixedPageSize}
+        />
         <LookupSection
           entity={childConfig.key}
           rows={childRows}
           parentOptions={childParentOptions}
           title={childConfig.label}
+          fixedPageSize={fixedPageSize}
         />
       </div>
     );
   }
 
-  return <LookupSection entity={entity} rows={rows} parentOptions={parentOptions} />;
+  return (
+    <LookupSection
+      entity={entity}
+      rows={rows}
+      parentOptions={parentOptions}
+      fixedPageSize={fixedPageSize}
+    />
+  );
 }
 
 interface LookupSectionProps {
@@ -115,13 +137,20 @@ interface LookupSectionProps {
   rows: LookupRowData[];
   parentOptions?: LookupOption[];
   title?: string;
+  fixedPageSize?: boolean;
 }
 
 function sentenceCase(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProps) {
+function LookupSection({
+  entity,
+  rows,
+  parentOptions,
+  title,
+  fixedPageSize = false,
+}: LookupSectionProps) {
   const config = LOOKUP_ENTITIES[entity];
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -195,6 +224,7 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
     indexOffset,
   } = useClientTablePagination(sort.sorted, {
     resetKey: `${query}:${sort.sortKey}:${sort.sortDir}`,
+    ...(fixedPageSize ? { pageSize: 10 } : {}),
   });
 
   function openCreate() {
@@ -409,7 +439,9 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
             ? `No ${config.label.toLowerCase()} yet.`
             : "No results match your search."
         }
-        pageSize={{ value: pageSize, onChange: setPageSize }}
+        pageSize={
+          fixedPageSize ? undefined : { value: pageSize, onChange: setPageSize }
+        }
         pagination={{
           total,
           page,

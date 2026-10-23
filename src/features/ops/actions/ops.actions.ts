@@ -37,11 +37,18 @@ const transferSchema = z.object({
     .transform((value) => value || undefined),
 });
 
+const checklistIdList = z.array(z.string().min(1)).min(1);
+const pulloutLineSchema = z.object({
+  serialNumberId: z.string().min(1),
+  pulloutClassificationIds: checklistIdList,
+  unitPackingConditionIds: checklistIdList,
+  accessoryCompletenessIds: checklistIdList,
+});
 const pulloutSchema = z.object({
   branchId: z.string().min(1),
   warehouseId: z.string().min(1),
   reasonStatusCodeId: z.string().min(1),
-  serialNumberIds: z.array(z.string().min(1)).min(1),
+  lines: z.array(pulloutLineSchema).min(1),
   notes: z.string().optional(),
 });
 
@@ -227,7 +234,12 @@ export async function createTransferAction(input: unknown) {
 export async function createPulloutAction(input: unknown) {
   const session = await requireAnyPermission([...OPS_CREATE_PERMISSIONS]);
   const parsed = pulloutSchema.safeParse(input);
-  if (!parsed.success) return { error: "Choose a branch, warehouse, reason, and serials" };
+  if (!parsed.success) {
+    return {
+      error:
+        "Choose a branch, warehouse, reason, and classification, packing, and accessories for each serial",
+    };
+  }
   try {
     const row = await opsService.createPullout(
       {

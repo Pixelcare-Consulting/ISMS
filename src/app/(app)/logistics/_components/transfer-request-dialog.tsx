@@ -137,7 +137,7 @@ export function TransferRequestDialog({
               : "Choose the releasing branch, the receiving branch, and the serials to send."}
           </DialogDescription>
         </DialogHeader>
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+        <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-4 sm:px-6">
           {viewing && !detailReady && !failed ? (
             <p className="text-sm text-muted-foreground">Loading transfer…</p>
           ) : null}

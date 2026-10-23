@@ -63,7 +63,10 @@ export type LookupEntityKey =
   | "problemDescription"
   | "documentType"
   | "returnType"
-  | "branchStatusType";
+  | "branchStatusType"
+  | "pulloutClassification"
+  | "unitPackingCondition"
+  | "accessoryCompleteness";
 
 export const LOOKUP_ENTITIES: Record<LookupEntityKey, LookupEntityConfig> = {
   series: {
@@ -327,6 +330,33 @@ export const LOOKUP_ENTITIES: Record<LookupEntityKey, LookupEntityConfig> = {
     group: "Operations",
     auditEntity: "BranchStatusType",
     auditKey: "branch_status_type",
+  },
+  pulloutClassification: {
+    key: "pulloutClassification",
+    label: "Pull-out classifications",
+    singular: "pull-out classification",
+    slug: "pullout-classifications",
+    group: "Operations",
+    auditEntity: "PulloutClassification",
+    auditKey: "pullout_classification",
+  },
+  unitPackingCondition: {
+    key: "unitPackingCondition",
+    label: "Unit packing conditions",
+    singular: "unit packing condition",
+    slug: "unit-packing-conditions",
+    group: "Operations",
+    auditEntity: "UnitPackingCondition",
+    auditKey: "unit_packing_condition",
+  },
+  accessoryCompleteness: {
+    key: "accessoryCompleteness",
+    label: "Accessory completeness",
+    singular: "accessory completeness",
+    slug: "accessory-completeness",
+    group: "Operations",
+    auditEntity: "AccessoryCompleteness",
+    auditKey: "accessory_completeness",
   },
 };
 

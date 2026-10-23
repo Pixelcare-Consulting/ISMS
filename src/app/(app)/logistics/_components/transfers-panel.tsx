@@ -1,8 +1,9 @@
 "use client";
 
 import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { TransferRequestDialog } from "@/app/(app)/logistics/_components/transfer-request-dialog";
 import { createTransferAction } from "@/features/logistics/actions/logistics.actions";
@@ -75,10 +76,7 @@ export function TransfersPanel({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
-  const [editor, setEditor] = useState<{ open: boolean; transferId: string | null }>({
-    open: false,
-    transferId: null,
-  });
+  const [createOpen, setCreateOpen] = useState(false);
   const pageSize = parseTablePageSize(transfers.limit);
   const sort = (searchParams.get("sort") ?? initialSort) || "";
   const sortDir = (
@@ -127,10 +125,6 @@ export function TransfersPanel({
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const selectedCount = filtered.filter((row) => rowSelection[row.id]).length;
 
-  const openTransfer = useCallback((id: string) => {
-    setEditor({ open: true, transferId: id });
-  }, []);
-
   const indexOffset = (transfers.page - 1) * transfers.limit;
   const columns = useMemo(() => {
     const cols: DataTableColumn<TransferRow>[] = [
@@ -146,13 +140,12 @@ export function TransfersPanel({
         header: "No.",
         enableSorting: true,
         cell: ({ row }) => (
-          <button
-            type="button"
+          <Link
+            href={`/logistics/transfers/${row.original.id}`}
             className="font-medium hover:underline"
-            onClick={() => openTransfer(row.original.id)}
           >
             {row.original.transferNo}
-          </button>
+          </Link>
         ),
       }),
       transferColumn.display({
@@ -179,14 +172,14 @@ export function TransfersPanel({
         header: "Actions",
         enableSorting: false,
         cell: ({ row }) => (
-          <Button size="sm" variant="outline" onClick={() => openTransfer(row.original.id)}>
-            Open
+          <Button size="sm" variant="outline" asChild>
+            <Link href={`/logistics/transfers/${row.original.id}`}>Open</Link>
           </Button>
         ),
       }),
     ];
     return cols;
-  }, [indexOffset, openTransfer]);
+  }, [indexOffset]);
 
   return (
     <>
@@ -220,7 +213,7 @@ export function TransfersPanel({
             <Button
               size="sm"
               className="w-full sm:w-auto"
-              onClick={() => setEditor({ open: true, transferId: null })}
+              onClick={() => setCreateOpen(true)}
             >
               New transfer request
             </Button>
@@ -247,11 +240,8 @@ export function TransfersPanel({
       />
 
       <TransferRequestDialog
-        open={editor.open}
-        transferId={editor.transferId}
-        onOpenChange={(open) => {
-          if (!open) setEditor({ open: false, transferId: null });
-        }}
+        open={createOpen}
+        onOpenChange={setCreateOpen}
         onSubmit={createTransferAction}
         onCreated={() => router.refresh()}
         onUpdated={() => router.refresh()}

@@ -1,8 +1,11 @@
 "use client";
 
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useState, useTransition } from "react";
-import { Plus } from "lucide-react";
+import { createColumnHelper } from "@tanstack/react-table";
+import { Plus, Trash2 } from "lucide-react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
+
+import { useClientTablePagination, uniqueSearchSuggestions } from "@/components/data-table";
 
 import {
   approveTransferAction,
@@ -17,6 +20,12 @@ import type { LogisticsActionCapabilities } from "@/features/logistics/constants
 import { nextTransferNo } from "@/features/logistics/lib/transfer-number";
 import type { TransferDetail } from "@/features/logistics/services/transfer-posting.service";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
+import {
+  DataTable,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
+import { matchesTableSearch } from "@/utils/match-table-search";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -76,6 +85,8 @@ interface TransferFormProps {
   onCreateStateChange?: (state: TransferCreateState) => void;
   actionsPlacement?: "inline" | "external";
   onDocumentActionsChange?: (state: TransferDocumentActions) => void;
+  /** Page detail hides the number and status, and puts each section on a card. */
+  layout?: "form" | "page";
 }
 
 interface DraftRow {
@@ -214,6 +225,119 @@ function modelLabel(model: { skuCode: string; name: string } | null | undefined)
   return `${model.skuCode} — ${model.name}`;
 }
 
+type TransferLineRow = TransferDetail["lines"][number];
+
+const transferLineColumn = createColumnHelper<DataTableFeatures, TransferLineRow>();
+
+function TransferLinesTable({
+  lines,
+  fromBranchId,
+  canReceive,
+  pending,
+  onAccept,
+}: {
+  lines: TransferLineRow[];
+  fromBranchId: string | null;
+  canReceive: boolean;
+  pending: boolean;
+  onAccept: (line: TransferLineRow) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const filtered = useMemo(
+    () =>
+      lines.filter((line) =>
+        matchesTableSearch(query, [line.skuCode, line.modelName, line.serialNo]),
+      ),
+    [lines, query],
+  );
+  const suggestions = useMemo(
+    () =>
+      uniqueSearchSuggestions(
+        lines.map((line) => line.serialNo),
+        lines.map((line) => line.skuCode),
+        lines.map((line) => line.modelName),
+      ),
+    [lines],
+  );
+  const { page, setPage, pageSize, setPageSize, total, totalPages, pageItems, indexOffset } =
+    useClientTablePagination(filtered, { resetKey: query });
+
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<TransferLineRow>[] = [
+      transferLineColumn.display({
+        id: "index",
+        header: "#",
+        cell: ({ row }) => indexOffset + row.index + 1,
+        meta: { className: "tabular-nums text-muted-foreground" },
+      }),
+      transferLineColumn.display({
+        id: "model",
+        header: "Model",
+        cell: ({ row }) => (
+          <ModelSummary skuCode={row.original.skuCode} name={row.original.modelName} />
+        ),
+      }),
+      transferLineColumn.display({
+        id: "serial",
+        header: "Serial number",
+        cell: ({ row }) => row.original.serialNo,
+        meta: { className: "font-mono" },
+      }),
+    ];
+    if (canReceive) {
+      cols.push(
+        transferLineColumn.display({
+          id: "action",
+          header: "Action",
+          cell: ({ row }) => {
+            const line = row.original;
+            const inTransit = line.inventoryCode === "DIT" && line.branchId === fromBranchId;
+            if (!inTransit) return null;
+            return (
+              <Button
+                type="button"
+                size="sm"
+                disabled={pending}
+                className="bg-emerald-600 text-white hover:bg-emerald-700"
+                onClick={() => onAccept(line)}
+              >
+                Accept
+              </Button>
+            );
+          },
+        }),
+      );
+    }
+    return cols;
+  }, [canReceive, fromBranchId, indexOffset, onAccept, pending]);
+
+  return (
+    <DataTable
+      data={pageItems}
+      columns={columns}
+      getRowId={(row) => row.serialNumberId}
+      manualPagination
+      stickyHeader
+      search={{
+        value: query,
+        onChange: setQuery,
+        placeholder: "Search serials…",
+        suggestions,
+      }}
+      pageSize={{ value: pageSize, onChange: setPageSize }}
+      pagination={{
+        total,
+        page,
+        totalPages,
+        itemLabel: "serial",
+        onPageChange: setPage,
+      }}
+      empty={pageItems.length === 0}
+      emptyMessage={lines.length === 0 ? "No serials on this transfer." : "No matching serials."}
+    />
+  );
+}
+
 export function hasTransferDocumentAction(actions: TransferDocumentActions): boolean {
   return actions.canApprove || actions.canReject || actions.canRelease;
 }
@@ -230,6 +354,11 @@ export function TransferDocumentActionButtons({
   if (!actions.canApprove && !showRelease && !showReject) return null;
   return (
     <>
+      {actions.canApprove ? (
+        <Button type="button" disabled={actions.pending} onClick={() => onAction("approve")}>
+          Approve
+        </Button>
+      ) : null}
       {showReject ? (
         <Button
           type="button"
@@ -237,12 +366,7 @@ export function TransferDocumentActionButtons({
           disabled={actions.pending}
           onClick={() => onAction("reject")}
         >
-          Del
-        </Button>
-      ) : null}
-      {actions.canApprove ? (
-        <Button type="button" disabled={actions.pending} onClick={() => onAction("approve")}>
-          Approve
+          Reject
         </Button>
       ) : null}
       {showRelease ? (
@@ -257,7 +381,7 @@ export function TransferDocumentActionButtons({
 function ModelSummary({ skuCode, name }: { skuCode: string; name: string }) {
   const title = name ? `${skuCode} — ${name}` : skuCode;
   return (
-    <div className="w-56 max-w-full min-w-0" title={title}>
+    <div className="min-w-0 max-w-full" title={title}>
       <p className="truncate">{skuCode}</p>
       {name ? <p className="truncate text-xs text-muted-foreground">{name}</p> : null}
     </div>
@@ -278,6 +402,7 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
       onCreateStateChange,
       actionsPlacement = "inline",
       onDocumentActionsChange,
+      layout = "form",
     },
     ref,
   ) {
@@ -395,12 +520,6 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
     canRelease,
     pending,
   };
-  const viewRows =
-    mode === "view"
-      ? detail && detail.lines.length > 0
-        ? detail.lines
-        : [null]
-      : [];
   const selectedCount = rows.filter((row) => selectedKeys.has(row.key)).length;
   const allRowsSelected = rows.length > 0 && selectedCount === rows.length;
   const selectedIds = rows.map((row) => row.serialNumberId).filter(Boolean);
@@ -563,21 +682,27 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
     mode === "view" && detail?.createdAt ? formatTransferDate(detail.createdAt) : createdOn;
   const route =
     detail ? `${detail.fromBranch.name} → ${detail.toBranch.name}` : "";
+  const pageLayout = layout === "page" && mode === "view";
+  const cardClass = "space-y-2 rounded-xl border bg-card p-4 shadow-sm";
 
   return (
     <form
       id={mode === "create" ? TRANSFER_CREATE_FORM_ID : undefined}
-      className="space-y-4"
+      className={pageLayout ? "space-y-6" : "space-y-4"}
       onSubmit={(event) => {
         event.preventDefault();
         if (mode === "create") submit();
       }}
     >
+      <section className={pageLayout ? cardClass : undefined}>
+      {pageLayout ? <h3 className="font-medium">Branches</h3> : null}
       <dl className="grid gap-3 sm:grid-cols-2">
+        {pageLayout ? null : (
         <div className="min-w-0">
           <dt className="text-sm text-muted-foreground">Transfer No.</dt>
           <dd className="text-sm">{transferNo || "—"}</dd>
         </div>
+        )}
         <div className="min-w-0">
           <dt className="text-sm text-muted-foreground">
             {mode === "create" ? (
@@ -636,6 +761,7 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
           <dt className="text-sm text-muted-foreground">Created Date</dt>
           <dd className="text-sm">{createdDate || "—"}</dd>
         </div>
+        {pageLayout ? null : (
         <div className="min-w-0">
           <dt className="text-sm text-muted-foreground">Transfer Status</dt>
           <dd className="text-sm">
@@ -650,78 +776,89 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
             )}
           </dd>
         </div>
+        )}
       </dl>
+      </section>
 
       <section className="space-y-2">
         <h3 className="font-medium">Transfer details</h3>
-        <div className="overflow-x-auto rounded-md border">
-          <table className="w-full min-w-[48rem] text-sm">
+        {mode === "view" ? (
+          <TransferLinesTable
+            lines={detail?.lines ?? []}
+            fromBranchId={detail?.fromBranch.id ?? null}
+            canReceive={canReceive}
+            pending={pending}
+            onAccept={(line) =>
+              setPendingConfirm({
+                type: "receive",
+                serialNumberId: line.serialNumberId,
+                serialNo: line.serialNo,
+              })
+            }
+          />
+        ) : (
+        <div className="min-w-0 overflow-hidden rounded-md border">
+          <table className="w-full table-fixed text-sm">
             <thead className="bg-muted/40 text-left">
               <tr>
                 <th
-                  className="w-12 px-3 py-2 align-middle font-medium text-muted-foreground"
+                  className="w-10 px-2 py-2 align-middle font-medium text-muted-foreground"
                   scope="col"
                 >
                   #
                 </th>
-                {mode === "create" ? (
-                  <th className="w-10 px-3 py-2 align-middle" scope="col">
-                    <Checkbox
-                      checked={allRowsSelected || (selectedCount > 0 ? "indeterminate" : false)}
-                      onCheckedChange={(checked) => toggleAll(checked === true)}
-                      disabled={pending}
-                      aria-label="Select all serials"
-                    />
-                  </th>
-                ) : null}
-                <th className="w-[34%] px-3 py-2 align-middle font-medium text-muted-foreground" scope="col">
+                <th className="w-10 px-2 py-2 align-middle" scope="col">
+                  <Checkbox
+                    checked={allRowsSelected || (selectedCount > 0 ? "indeterminate" : false)}
+                    onCheckedChange={(checked) => toggleAll(checked === true)}
+                    disabled={pending}
+                    aria-label="Select all serials"
+                  />
+                </th>
+                <th className="px-2 py-2 align-middle font-medium text-muted-foreground" scope="col">
                   Model
                 </th>
-                <th
-                  className="w-[50%] min-w-[18rem] px-3 py-2 align-middle font-medium text-muted-foreground"
-                  scope="col"
-                >
+                <th className="px-2 py-2 align-middle font-medium text-muted-foreground" scope="col">
                   Serial number
                 </th>
-                {mode === "create" || canReceive ? (
-                  <th className="px-3 py-2 align-middle font-medium text-muted-foreground" scope="col">
-                    {mode === "create" ? (
-                      <div className="flex items-center gap-1.5">
-                        <span>Action</span>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="size-8 p-0"
-                          disabled={pending || !canAddRow}
-                          onClick={addRow}
-                          aria-label="Add serial"
-                          title="Add serial"
-                        >
-                          <Plus />
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          disabled={pending || selectedCount === 0}
-                          onClick={removeSelected}
-                          aria-label="Delete selected serials"
-                          title="Delete selected serials"
-                        >
-                          Del
-                        </Button>
-                      </div>
-                    ) : (
-                      "Action"
-                    )}
-                  </th>
-                ) : null}
+                <th
+                  className="w-40 px-2 py-2 align-middle font-medium text-muted-foreground"
+                  scope="col"
+                >
+                  <div className="flex items-center gap-1 whitespace-nowrap">
+                    <span>Action</span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="size-8 shrink-0 p-0"
+                      disabled={pending || !canAddRow}
+                      onClick={addRow}
+                      aria-label="Add serial"
+                      title="Add serial"
+                    >
+                      <Plus />
+                    </Button>
+                    {allRowsSelected ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-8 shrink-0 text-destructive hover:text-destructive"
+                        disabled={pending}
+                        onClick={removeSelected}
+                        aria-label="Delete selected serials"
+                        title="Delete selected serials"
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    ) : null}
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody>
-            {mode === "create"
-              ? rows.map((row, index) => {
+            {rows.map((row, index) => {
                   const taken = new Set(
                     rows
                       .filter((other) => other.key !== row.key && other.serialNumberId)
@@ -740,10 +877,10 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
                     }));
                   return (
                     <tr key={row.key} className="border-t">
-                      <td className="px-3 py-2 align-middle tabular-nums text-muted-foreground">
+                      <td className="px-2 py-2 align-middle tabular-nums text-muted-foreground">
                         {index + 1}
                       </td>
-                      <td className="px-3 py-2 align-middle">
+                      <td className="px-2 py-2 align-middle">
                         <Checkbox
                           checked={selectedKeys.has(row.key)}
                           onCheckedChange={(checked) => toggleRow(row.key, checked === true)}
@@ -751,7 +888,7 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
                           aria-label={`Select serial ${index + 1}`}
                         />
                       </td>
-                      <td className="px-3 py-2 align-middle">
+                      <td className="min-w-0 overflow-hidden px-2 py-2 align-middle">
                         <SearchableSelect
                           options={models.map((model) => ({
                             id: model.id,
@@ -766,7 +903,7 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
                           popoverClassName={POPOVER_CLASS}
                         />
                       </td>
-                      <td className="min-w-[18rem] px-3 py-2 align-middle">
+                      <td className="min-w-0 overflow-hidden px-2 py-2 align-middle">
                         <SearchableSelect
                           options={serialOptions}
                           value={row.serialNumberId}
@@ -784,76 +921,27 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
                           popoverClassName={SERIAL_POPOVER_CLASS}
                         />
                       </td>
-                      <td className="px-3 py-2 align-middle">
+                      <td className="px-2 py-2 align-middle">
                         <Button
                           type="button"
-                          size="sm"
-                          variant="outline"
+                          variant="ghost"
+                          size="icon"
+                          className="size-8 text-destructive hover:text-destructive"
                           disabled={pending}
                           onClick={() => removeRow(row.key)}
                           aria-label={`Remove serial row ${index + 1}`}
+                          title="Delete"
                         >
-                          Del
+                          <Trash2 className="size-4" />
                         </Button>
                       </td>
-                    </tr>
-                  );
-                })
-              : viewRows.map((line, index) => {
-                  const inTransit = Boolean(
-                    line &&
-                      detail &&
-                      line.inventoryCode === "DIT" &&
-                      line.branchId === detail.fromBranch.id,
-                  );
-                  return (
-                    <tr key={line?.serialNumberId ?? "empty"} className="border-t">
-                      <td className="px-3 py-2 align-middle tabular-nums text-muted-foreground">
-                        {line ? index + 1 : "—"}
-                      </td>
-                      <td className="px-3 py-2 align-middle">
-                        {line ? (
-                          <ModelSummary skuCode={line.skuCode} name={line.modelName} />
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </td>
-                      <td
-                        className={
-                          line
-                            ? "min-w-[18rem] whitespace-nowrap px-3 py-2 align-middle font-mono"
-                            : "min-w-[18rem] px-3 py-2 align-middle text-muted-foreground"
-                        }
-                      >
-                        {line?.serialNo ?? "—"}
-                      </td>
-                      {canReceive ? (
-                        <td className="px-3 py-2 align-middle">
-                          {inTransit && line ? (
-                            <Button
-                              type="button"
-                              size="sm"
-                              disabled={pending}
-                              className="bg-emerald-600 text-white hover:bg-emerald-700"
-                              onClick={() =>
-                                setPendingConfirm({
-                                  type: "receive",
-                                  serialNumberId: line.serialNumberId,
-                                  serialNo: line.serialNo,
-                                })
-                              }
-                            >
-                              Accept
-                            </Button>
-                          ) : null}
-                        </td>
-                      ) : null}
                     </tr>
                   );
                 })}
             </tbody>
           </table>
         </div>
+        )}
 
         {mode === "view" && actionsPlacement === "inline" && hasTransferDocumentAction(documentActions) ? (
           <div className="flex justify-end gap-2">
@@ -867,15 +955,22 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
           </p>
         ) : null}
         {mode === "create" && fromBranchId && !modelsLoading && models.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
+          <p
+            role="status"
+            className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950"
+          >
             No stock or defective serials are free at this branch.
           </p>
         ) : null}
         {mode === "create" && lockedModelId && !serialsLoading && serials.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
+          <p
+            role="status"
+            className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950"
+          >
             No stock or defective serials are free for this model.
           </p>
         ) : null}
+        {pageLayout ? null : (
         <div className="space-y-1.5">
           <label htmlFor="transfer-remarks" className="text-sm text-muted-foreground">
             Remarks
@@ -900,10 +995,24 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
             </p>
           )}
         </div>
+        )}
       </section>
 
+      {pageLayout ? (
+        <section className={cardClass}>
+          <h3 className="font-medium">Remarks</h3>
+          <p id="transfer-remarks" className="text-sm whitespace-pre-wrap">
+            {detail?.notes?.trim() ? (
+              detail.notes
+            ) : (
+              <span className="text-muted-foreground">—</span>
+            )}
+          </p>
+        </section>
+      ) : null}
+
       {mode === "view" && detail ? (
-        <section className="space-y-2">
+        <section className={pageLayout ? cardClass : "space-y-2"}>
           <h3 className="font-medium">History</h3>
           {detail.history.length === 0 ? (
             <p className="text-sm text-muted-foreground">No history yet.</p>

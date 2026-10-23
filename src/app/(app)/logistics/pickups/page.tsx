@@ -26,6 +26,7 @@ export default async function PickupsPage({ searchParams }: PickupsPageProps) {
     listPulloutsAction({ page, limit, sort: params.sort, sortDir: params.dir }),
     getPulloutKpisAction(),
   ]);
+  const currentUserName = session.user.name?.trim() || session.user.email || "";
 
   return (
     <div className="space-y-4">
@@ -36,6 +37,7 @@ export default async function PickupsPage({ searchParams }: PickupsPageProps) {
       <PulloutsPanel
         pullouts={pullouts}
         capabilities={capabilities}
+        currentUserName={currentUserName}
         initialSort={params.sort ?? ""}
         initialSortDir={params.dir ?? "desc"}
       />

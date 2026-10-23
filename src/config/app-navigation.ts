@@ -42,6 +42,8 @@ export interface NavLinkItem {
   permission?: string;
   /** Show link when user has any of these permissions */
   anyPermissions?: string[];
+  /** Extra path prefixes that keep this item active after a route moves under it. */
+  activePathPrefixes?: readonly string[];
   platformOperatorOnly?: boolean;
   /** Compact sidebar badge (e.g. recently added menus) */
   badge?: "new";
@@ -296,13 +298,6 @@ export const appNavigation: NavEntry[] = [
         href: "/logistics/transfers",
         label: "Transfers",
         icon: ArrowLeftRight,
-        anyPermissions: ["logistics.view", "logistics.create", "logistics.manage"],
-        countBadgeKey: "logisticsTransfers",
-      },
-      {
-        href: "/logistics/delivery-transfers",
-        label: "Unit transfers",
-        icon: ArrowLeftRight,
         anyPermissions: [
           "logistics.view",
           "logistics.create",
@@ -311,6 +306,8 @@ export const appNavigation: NavEntry[] = [
           "logistics.delivery_transfer.approve",
           "logistics.delivery_transfer.receive",
         ],
+        countBadgeKey: "logisticsTransfers",
+        activePathPrefixes: ["/logistics/delivery-transfers"],
       },
       {
         href: "/logistics/pickups",
@@ -783,7 +780,15 @@ export function isNavItemActive(
   pathname: string,
   href: string,
   exact?: boolean,
+  activePathPrefixes?: readonly string[],
 ): boolean {
+  if (
+    activePathPrefixes?.some(
+      (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+    )
+  ) {
+    return true;
+  }
   if (exact) return pathname === href;
   return pathname === href || pathname.startsWith(`${href}/`);
 }
@@ -795,6 +800,6 @@ export function isNavGroupActive(
   return items.some((child) =>
     isNavSubGroup(child)
       ? isNavGroupActive(pathname, child.items)
-      : isNavItemActive(pathname, child.href, child.exact),
+      : isNavItemActive(pathname, child.href, child.exact, child.activePathPrefixes),
   );
 }

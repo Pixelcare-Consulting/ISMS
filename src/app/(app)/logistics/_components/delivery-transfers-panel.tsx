@@ -6,10 +6,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { DeliveryTransferStatusBadge } from "@/app/(app)/logistics/_components/delivery-transfer-status-badge";
-import {
-  buildLogisticsPageHref,
-  LOGISTICS_DELIVERY_TRANSFERS_PATH,
-} from "@/app/(app)/logistics/_components/logistics-paths";
+import { transfersListHref } from "@/features/logistics/constants/transfers-page-tabs";
 import { DELIVERY_TRANSFER_STATUS_LABELS } from "@/features/logistics/constants/delivery-workflow-labels";
 import type { DeliveryTransferListRow } from "@/features/logistics/services/delivery-transfer.service";
 import { parseTablePageSize, type TablePageSize } from "@/components/data-table/table-page-size";
@@ -115,12 +112,12 @@ export function DeliveryTransfersPanel({ transfers }: { transfers: PaginatedList
         page: transfers.page,
         totalPages: transfers.totalPages,
         itemLabel: "unit transfer",
-        buildHref: (page) => buildLogisticsPageHref(LOGISTICS_DELIVERY_TRANSFERS_PATH, page, pageSize),
+        buildHref: (page) => transfersListHref("unit", page, pageSize),
       }}
       pageSize={{
         value: pageSize,
         onChange: (limit: TablePageSize) =>
-          router.push(buildLogisticsPageHref(LOGISTICS_DELIVERY_TRANSFERS_PATH, 1, limit)),
+          router.push(transfersListHref("unit", 1, limit)),
       }}
       empty={filtered.length === 0}
       emptyMessage={

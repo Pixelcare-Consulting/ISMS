@@ -71,6 +71,9 @@ const delegates: Record<LookupEntityKey | "brand", LookupDelegate> = {
   documentType: prisma.documentType as unknown as LookupDelegate,
   returnType: prisma.returnType as unknown as LookupDelegate,
   branchStatusType: prisma.branchStatusType as unknown as LookupDelegate,
+  pulloutClassification: prisma.pulloutClassification as unknown as LookupDelegate,
+  unitPackingCondition: prisma.unitPackingCondition as unknown as LookupDelegate,
+  accessoryCompleteness: prisma.accessoryCompleteness as unknown as LookupDelegate,
 };
 
 export const lookupRepository = {

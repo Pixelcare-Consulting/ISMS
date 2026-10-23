@@ -169,6 +169,24 @@ export const orderRepository = {
     });
   },
 
+  /** History page load: same branch scope as the order list, priced like history rows. */
+  findScopedById(
+    tenantId: string,
+    id: string,
+    branchIds: string[] | null,
+    orderType: BranchOrderType,
+  ) {
+    return prisma.branchOrder.findFirst({
+      where: {
+        id,
+        tenantId,
+        orderType,
+        ...(branchIds === null ? {} : { branchId: { in: branchIds } }),
+      },
+      include: orderListInclude,
+    });
+  },
+
   /** Branch, dealer mode of payment and main warehouse needed to pick ITR or SO. */
   async findSapRoutingContext(tenantId: string, branchId: string) {
     const [branch, mainWarehouse] = await Promise.all([
