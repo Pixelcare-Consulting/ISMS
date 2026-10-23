@@ -24,6 +24,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { LoadingModal } from "@/components/ui/loading-modal";
 
 export interface DispatchTarget {
   id: string;
@@ -31,6 +32,25 @@ export interface DispatchTarget {
   branchName: string;
   models: DispatchModelRequirement[];
   serials: DispatchCandidate[];
+}
+
+const DISPATCH_FEED = [
+  { atSecond: 0, label: "Checking the picked serials", hint: "Making sure each one is still available." },
+  { atSecond: 1, label: "Posting the IT / DR to SAP", hint: "This can take a few seconds." },
+  { atSecond: 3, label: "Moving units into transit", hint: "Taking them off their locations." },
+  { atSecond: 4, label: "Refreshing deliveries" },
+];
+
+/** Shown while a confirmed dispatch posts to SAP and moves the units. */
+export function DispatchingModal({ open, deliveryNo }: { open: boolean; deliveryNo?: string }) {
+  return (
+    <LoadingModal
+      open={open}
+      title={deliveryNo ? `Dispatching ${deliveryNo}` : "Dispatching"}
+      description="Posting to SAP and moving the units. Please keep this page open."
+      feedItems={DISPATCH_FEED}
+    />
+  );
 }
 
 interface DeliveryDispatchDialogProps {

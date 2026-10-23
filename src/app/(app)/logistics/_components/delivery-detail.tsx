@@ -1,6 +1,7 @@
 "use client";
 
 import { createColumnHelper } from "@tanstack/react-table";
+import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
@@ -9,6 +10,7 @@ import { toast } from "sonner";
 import { DeliveryTracker } from "@/app/(app)/logistics/_components/delivery-tracker";
 import {
   DeliveryDispatchDialog,
+  DispatchingModal,
   type DispatchTarget,
 } from "@/app/(app)/logistics/_components/delivery-dispatch-dialog";
 import {
@@ -237,6 +239,9 @@ export function DeliveryDetailView({
   const [returnRequestTarget, setReturnRequestTarget] = useState<ReturnTarget | null>(null);
   const [returnReviewTarget, setReturnReviewTarget] = useState<ReturnTarget | null>(null);
   const [dispatchTarget, setDispatchTarget] = useState<DispatchTarget | null>(null);
+  // Own flags: the shared `pending` also covers reject and return actions.
+  const [openingDispatch, setOpeningDispatch] = useState(false);
+  const [dispatching, setDispatching] = useState(false);
 
   const code = detail.status.code;
   const dispatched = code === "pending" || code === "partial";
@@ -254,35 +259,45 @@ export function DeliveryDetailView({
   }
 
   function openDispatch() {
+    setOpeningDispatch(true);
     startTransition(async () => {
-      const result = await listDispatchCandidatesAction(detail.id);
-      if (!("success" in result)) {
-        toast.error(result.error);
-        return;
+      try {
+        const result = await listDispatchCandidatesAction(detail.id);
+        if (!("success" in result)) {
+          toast.error(result.error);
+          return;
+        }
+        setDispatchTarget({
+          id: detail.id,
+          deliveryNo: detail.deliveryNo,
+          branchName: detail.branch.name,
+          models: result.models,
+          serials: result.serials,
+        });
+      } finally {
+        setOpeningDispatch(false);
       }
-      setDispatchTarget({
-        id: detail.id,
-        deliveryNo: detail.deliveryNo,
-        branchName: detail.branch.name,
-        models: result.models,
-        serials: result.serials,
-      });
     });
   }
 
   function confirmDispatch(serialNumberIds: string[]) {
     if (!dispatchTarget) return;
+    setDispatching(true);
     startTransition(async () => {
-      const result = await dispatchDeliveryAction(dispatchTarget.id, { serialNumberIds });
-      if (result.error) {
-        toast.error(result.error);
-        return;
+      try {
+        const result = await dispatchDeliveryAction(dispatchTarget.id, { serialNumberIds });
+        if (result.error) {
+          toast.error(result.error);
+          return;
+        }
+        toast.success(
+          `Dispatched ${result.movedCount} serial${result.movedCount === 1 ? "" : "s"}.${result.drNo ? ` DR# ${result.drNo}.` : ""}`,
+        );
+        setDispatchTarget(null);
+        refresh();
+      } finally {
+        setDispatching(false);
       }
-      toast.success(
-        `Dispatched ${result.movedCount} serial${result.movedCount === 1 ? "" : "s"}.${result.drNo ? ` DR# ${result.drNo}.` : ""}`,
-      );
-      setDispatchTarget(null);
-      refresh();
     });
   }
 
@@ -315,7 +330,8 @@ export function DeliveryDetailView({
           </div>
           <div className="flex flex-wrap gap-2">
             {code === "approved" && capabilities.canDispatch ? (
-              <Button size="sm" disabled={pending} onClick={openDispatch}>
+              <Button size="sm" disabled={pending} aria-busy={openingDispatch} onClick={openDispatch}>
+                {openingDispatch ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
                 Dispatch
               </Button>
             ) : null}
@@ -462,6 +478,7 @@ export function DeliveryDetailView({
         onClose={() => setDispatchTarget(null)}
         onConfirm={confirmDispatch}
       />
+      <DispatchingModal open={dispatching} deliveryNo={dispatchTarget?.deliveryNo} />
     </div>
   );
 }
