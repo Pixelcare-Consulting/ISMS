@@ -232,6 +232,39 @@ function taggedStockWhere(tenantId: string) {
   };
 }
 
+/**
+ * Per model: serials the SAP sync places in the warehouse (`sap_whs_code`) that have no
+ * ISMS shelf location and that ISMS holds nowhere else. Dispatch only takes shelved
+ * stock, so these are counted to prompt a Stock in, never offered for picking.
+ */
+async function countUnshelvedByModel(
+  tenantId: string,
+  modelIds: string[],
+  warehouseId: string | null,
+): Promise<Map<string, number>> {
+  const warehouses = await prisma.warehouse.findMany({
+    where: { tenantId, deletedAt: null, ...(warehouseId ? { id: warehouseId } : {}) },
+    select: { code: true },
+  });
+  if (warehouses.length === 0 || modelIds.length === 0) return new Map();
+
+  const groups = await prisma.serialNumber.groupBy({
+    by: ["modelId"],
+    where: {
+      tenantId,
+      deletedAt: null,
+      modelId: { in: modelIds },
+      sapWhsCode: { in: warehouses.map((warehouse) => warehouse.code) },
+      warehouseInventories: { none: {} },
+      serviceCenterInventories: { none: {} },
+      // No branch row, or the sync's own stock-in: branch STK with no location.
+      branchInventories: { every: { warehouseLocationId: null, statusCode: { code: "STK" } } },
+    },
+    _count: { _all: true },
+  });
+  return new Map(groups.map((group) => [group.modelId, group._count._all]));
+}
+
 export interface DispatchCandidate {
   id: string;
   serialNo: string;
@@ -248,6 +281,8 @@ export interface DispatchModelRequirement {
   skuCode: string;
   modelName: string;
   requiredQty: number;
+  /** In the warehouse per SAP but not on an ISMS shelf yet, so not pickable. */
+  unshelvedQty: number;
 }
 
 export interface DeliveryReceiptLine {
@@ -525,19 +560,24 @@ export const deliveryPostingService = {
       select: { id: true, skuCode: true, name: true },
       orderBy: { skuCode: "asc" },
     });
-    const models: DispatchModelRequirement[] = modelRows.map((model) => ({
-      modelId: model.id,
-      skuCode: model.skuCode,
-      modelName: model.name,
-      requiredQty: requiredByModel.get(model.id) ?? 0,
-    }));
-
     const branch = await prisma.branch.findFirst({
       where: { id: delivery.branchId, tenantId },
       select: { primaryWarehouseId: true },
     });
 
     const primaryWarehouseId = branch?.primaryWarehouseId ?? null;
+    const unshelvedByModel = await countUnshelvedByModel(
+      tenantId,
+      [...requiredByModel.keys()],
+      primaryWarehouseId,
+    );
+    const models: DispatchModelRequirement[] = modelRows.map((model) => ({
+      modelId: model.id,
+      skuCode: model.skuCode,
+      modelName: model.name,
+      requiredQty: requiredByModel.get(model.id) ?? 0,
+      unshelvedQty: unshelvedByModel.get(model.id) ?? 0,
+    }));
     const locationSelect = {
       select: { code: true, warehouse: { select: { id: true, code: true } } },
     } as const;

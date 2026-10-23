@@ -44,15 +44,15 @@ export async function loadMasterWarehouseAllowList(tenantId: string): Promise<Se
 }
 
 /**
- * Keep on-hand rows whose warehouse code is in Branch/Warehouse master.
- * Unknown codes are treated as not on hand.
+ * Split on-hand rows by whether their warehouse code is in Branch/Warehouse master.
+ * `unknown` keeps the code so the sync can name the warehouses to sync first.
  */
 export function partitionOnHandByMaster(
   onHand: OnHandWarehouseSerial[],
   allowList: ReadonlySet<string>,
-): { known: OnHandWarehouseSerial[]; unknownSerialNos: string[] } {
+): { known: OnHandWarehouseSerial[]; unknown: OnHandWarehouseSerial[] } {
   const known: OnHandWarehouseSerial[] = [];
-  const unknownSerialNos: string[] = [];
+  const unknown: OnHandWarehouseSerial[] = [];
   const seen = new Set<string>();
   for (const row of onHand) {
     const serialNo = row.serialNo.trim();
@@ -62,10 +62,10 @@ export function partitionOnHandByMaster(
     if (warehouseCode && allowList.has(warehouseCode)) {
       known.push({ serialNo, warehouseCode });
     } else {
-      unknownSerialNos.push(serialNo);
+      unknown.push({ serialNo, warehouseCode });
     }
   }
-  return { known, unknownSerialNos };
+  return { known, unknown };
 }
 
 /**

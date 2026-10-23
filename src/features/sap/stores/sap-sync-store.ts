@@ -31,6 +31,8 @@ export interface SapSyncProgress {
   processed: number;
   /** SAP's row count for the entity, or null when it could not be measured. */
   total: number | null;
+  /** Rows skipped so far in this run; their reasons open in the report once it ends. */
+  skipped?: number;
   summary?: string;
   errorMessage?: string;
 }

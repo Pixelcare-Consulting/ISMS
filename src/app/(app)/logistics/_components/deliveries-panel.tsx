@@ -1,6 +1,7 @@
 "use client";
 
-import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
+import { createColumnHelper } from "@tanstack/react-table";
+import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
@@ -43,9 +44,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { LoadingModal } from "@/components/ui/loading-modal";
 import {
   DeliveryDispatchDialog,
+  DispatchingModal,
   type DispatchTarget,
 } from "@/app/(app)/logistics/_components/delivery-dispatch-dialog";
 import {
@@ -111,13 +112,6 @@ interface DeliveriesPanelProps {
 const deliveryColumn = createColumnHelper<DataTableFeatures, DeliveryRow>();
 
 /** Same feed pattern as order approval; the SAP post is the slow step. */
-const DISPATCH_FEED = [
-  { atSecond: 0, label: "Checking the picked serials", hint: "Making sure each one is still available." },
-  { atSecond: 1, label: "Posting the IT / DR to SAP", hint: "This can take a few seconds." },
-  { atSecond: 3, label: "Moving units into transit", hint: "Taking them off their locations." },
-  { atSecond: 4, label: "Refreshing deliveries" },
-] as const;
-
 type DeliverySortField = "deliveryNo" | "orderNumber" | "branch" | "status";
 type DeliverySortDir = "asc" | "desc";
 
@@ -145,6 +139,8 @@ export function DeliveriesPanel({
   const [dispatchTarget, setDispatchTarget] = useState<DispatchTarget | null>(null);
   // Own flag: the shared `pending` also covers reject and return actions.
   const [dispatching, setDispatching] = useState(false);
+  /** Row whose Dispatch button is loading its serials. */
+  const [openingDispatchId, setOpeningDispatchId] = useState<string | null>(null);
   const pageSize = parseTablePageSize(deliveries.limit);
   const sort = (searchParams.get("sort") ?? initialSort) || "";
   const sortDir = (
@@ -192,8 +188,6 @@ export function DeliveriesPanel({
     [deliveries.items],
   );
 
-  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
-  const selectedCount = filtered.filter((row) => rowSelection[row.id]).length;
 
   function confirmPendingAction() {
     if (!pendingConfirm) return;
@@ -211,19 +205,24 @@ export function DeliveriesPanel({
   }
 
   function openDispatch(row: DeliveryRow) {
+    setOpeningDispatchId(row.id);
     startTransition(async () => {
-      const result = await listDispatchCandidatesAction(row.id);
-      if (!("success" in result)) {
-        toast.error(result.error);
-        return;
+      try {
+        const result = await listDispatchCandidatesAction(row.id);
+        if (!("success" in result)) {
+          toast.error(result.error);
+          return;
+        }
+        setDispatchTarget({
+          id: row.id,
+          deliveryNo: row.deliveryNo,
+          branchName: row.branch.name,
+          models: result.models,
+          serials: result.serials,
+        });
+      } finally {
+        setOpeningDispatchId(null);
       }
-      setDispatchTarget({
-        id: row.id,
-        deliveryNo: row.deliveryNo,
-        branchName: row.branch.name,
-        models: result.models,
-        serials: result.serials,
-      });
     });
   }
 
@@ -330,7 +329,15 @@ export function DeliveriesPanel({
           return (
             <div className="flex justify-end gap-2">
               {delivery.statusCode.code === "approved" && capabilities.canDispatch ? (
-                <Button size="sm" disabled={pending} onClick={() => openDispatch(delivery)}>
+                <Button
+                  size="sm"
+                  disabled={pending}
+                  aria-busy={openingDispatchId === delivery.id}
+                  onClick={() => openDispatch(delivery)}
+                >
+                  {openingDispatchId === delivery.id ? (
+                    <Loader2 className="size-4 animate-spin" aria-hidden />
+                  ) : null}
                   Dispatch
                 </Button>
               ) : null}
@@ -405,6 +412,7 @@ export function DeliveriesPanel({
     capabilities.canDispatch,
     capabilities.canRequestDeliveryReturn,
     indexOffset,
+    openingDispatchId,
     pending,
   ]);
 
@@ -422,20 +430,8 @@ export function DeliveriesPanel({
           sortDir,
           onSort: (columnId) => toggleSort(columnId as DeliverySortField),
         }}
-        enableRowSelection
-        rowSelection={rowSelection}
-        onRowSelectionChange={setRowSelection}
-        selectAllLabel="Select all deliveries"
-        getSelectionLabel={(row) => `Select delivery ${row.deliveryNo}`}
         stickyHeader
         search={{ value: query, onChange: setQuery, placeholder: "Search deliveries…", suggestions }}
-        toolbarActions={
-          selectedCount > 0 ? (
-            <Button variant="secondary" onClick={() => setRowSelection({})}>
-              {selectedCount} selected
-            </Button>
-          ) : null
-        }
         pagination={{
           total: deliveries.total,
           page: deliveries.page,
@@ -522,12 +518,7 @@ export function DeliveriesPanel({
         onClose={() => setDispatchTarget(null)}
         onConfirm={confirmDispatch}
       />
-      <LoadingModal
-        open={dispatching}
-        title={dispatchTarget ? `Dispatching ${dispatchTarget.deliveryNo}` : "Dispatching"}
-        description="Posting to SAP and moving the units. Please keep this page open."
-        feedItems={[...DISPATCH_FEED]}
-      />
+      <DispatchingModal open={dispatching} deliveryNo={dispatchTarget?.deliveryNo} />
     </>
   );
 }

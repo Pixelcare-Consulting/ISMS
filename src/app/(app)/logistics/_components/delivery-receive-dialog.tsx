@@ -10,6 +10,7 @@ import {
 } from "@/app/(app)/logistics/_components/delivery-transfer-create-dialog";
 import type { DeliveryReceiptLine } from "@/features/logistics/services/delivery-posting.service";
 import { Button } from "@/components/ui/button";
+import { LoadingModal } from "@/components/ui/loading-modal";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
@@ -102,6 +103,8 @@ function ReceiveBody({
   const [transferRequest, setTransferRequest] = useState<TransferRequest | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [pending, startTransition] = useTransition();
+  /** How many units the accept in flight covers; null when none is running. */
+  const [acceptingCount, setAcceptingCount] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -138,8 +141,14 @@ function ReceiveBody({
 
   /** A per-unit accept keeps the dialog open on the refreshed list. */
   function submitAccept(serialNumberIds: string[], keepOpen = false) {
+    setAcceptingCount(serialNumberIds.length);
     startTransition(async () => {
-      const result = await accept(target.id, { serialNumberIds });
+      let result: AcceptResult;
+      try {
+        result = await accept(target.id, { serialNumberIds });
+      } finally {
+        setAcceptingCount(null);
+      }
       if ("error" in result) {
         toast.error(result.error);
         return;
@@ -161,6 +170,11 @@ function ReceiveBody({
 
   return (
     <>
+      <LoadingModal
+        open={acceptingCount !== null}
+        title={`Accepting ${acceptingCount ?? 0} serial${acceptingCount === 1 ? "" : "s"}`}
+        description={`Moving them into ${target.branchName} stock. Please keep this page open.`}
+      />
       <DialogHeader>
         <DialogTitle>Receive {target.deliveryNo}</DialogTitle>
         <DialogDescription>

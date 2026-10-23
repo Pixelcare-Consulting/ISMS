@@ -1,8 +1,6 @@
-import { serialNumberRepository } from "@/features/serial-numbers/repositories/serial-number.repository";
 import {
-  loadMasterWarehouseAllowList,
   partitionOnHandByMaster,
-  replicateOnHandSerialsToStk,
+  type OnHandWarehouseSerial,
 } from "@/features/serial-numbers/services/serial-stock-replicate";
 import {
   ensureSapOnHandQuery,
@@ -10,40 +8,14 @@ import {
   type SapSerialLocation,
 } from "@/features/sap/services/sap-onhand-stock";
 import { sapServiceLayerService } from "@/features/sap/services/sap-service-layer.service";
-import type { SapServiceLayerCredentials } from "@/features/sap/types/sap-service-layer";
 import { logger } from "@/lib/shared/logger";
 
-/** One serial just written by a sync page. `docEntry` is OSRN.AbsEntry. */
+/** One serial just parsed from a sync page. `docEntry` is OSRN.AbsEntry. */
 export interface SerialOnHandRow {
   serialNo: string;
   modelId: string;
   itemCode: string;
   docEntry: number;
-}
-
-interface ReadySession {
-  creds: SapServiceLayerCredentials;
-}
-
-interface BlockedSession {
-  error: string;
-}
-
-/**
- * One run's on-hand read. A failure is remembered so later pages of the same run
- * do not keep calling a SAP query that is already unavailable.
- */
-const sessions = new Map<string, ReadySession | BlockedSession>();
-
-/** Drop any note from a previous run before a new sync slice starts. */
-export function beginSerialOnHandRun(tenantId: string): void {
-  sessions.delete(tenantId);
-}
-
-/** Why this run stopped updating on-hand flags, if it did. */
-export function serialOnHandBlockReason(tenantId: string): string | null {
-  const session = sessions.get(tenantId);
-  return session && "error" in session ? session.error : null;
 }
 
 /**
@@ -136,72 +108,64 @@ export function serialsOnHandFromLocations(
   return { onHand, notOnHand };
 }
 
-async function sessionFor(tenantId: string): Promise<ReadySession | BlockedSession> {
-  const existing = sessions.get(tenantId);
-  if (existing) return existing;
-
-  try {
-    const creds = await sapServiceLayerService.getCredentials(tenantId);
-    if (!creds) throw new Error("SAP is not connected");
-    await ensureSapOnHandQuery(creds);
-    const ready: ReadySession = { creds };
-    sessions.set(tenantId, ready);
-    return ready;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const blocked: BlockedSession = { error: message };
-    sessions.set(tenantId, blocked);
-    logger.error({ err: error, tenantId }, "SAP on-hand counts were not updated");
-    return blocked;
-  }
-}
-
-function block(tenantId: string, error: unknown): void {
-  const message = error instanceof Error ? error.message : String(error);
-  sessions.set(tenantId, { error: message });
-  logger.error({ err: error, tenantId }, "SAP on-hand counts were not updated");
-}
-
 /**
- * After a sync page is written, mark its serials on hand or clear the flag.
- * Never throws: the registry sync finishes either way.
+ * Where SAP holds each serial on a sync page. Throws when the location read is
+ * unavailable: the sync only takes serials whose warehouse ISMS has, so it cannot
+ * write a page whose warehouses it does not know.
  */
-export async function stampSerialPageOnHand(
+export async function readSerialPageLocations(
   tenantId: string,
   records: SerialOnHandRow[],
-): Promise<void> {
+): Promise<{ onHand: OnHandWarehouseSerial[]; notOnHand: string[] }> {
   const page = records.filter((row) => Number.isInteger(row.docEntry) && row.docEntry > 0);
-  if (page.length === 0) {
-    if (records.length > 0) {
-      logger.warn(
-        { tenantId, records: records.length },
-        "Serial page had no SAP serial id, so on-hand was not stamped",
-      );
-    }
-    return;
+  if (page.length < records.length) {
+    throw new Error(
+      `${records.length - page.length} SAP serial rows had no serial id, so their warehouse ` +
+        "could not be read. Nothing on this page was saved.",
+    );
   }
-  if (serialOnHandBlockReason(tenantId)) return;
-
   const ranges = onHandDocRanges(page.map((row) => row.docEntry));
-  if (ranges.length === 0) return;
+  if (ranges.length === 0) return { onHand: [], notOnHand: [] };
 
-  const session = await sessionFor(tenantId);
-  if ("error" in session) return;
+  const creds = await sapServiceLayerService.getCredentials(tenantId);
+  if (!creds) throw new Error("SAP is not connected");
 
   try {
+    await ensureSapOnHandQuery(creds);
+    // Sequential on purpose: SAP serialises requests on one session anyway.
     const locations: SapSerialLocation[] = [];
     for (const range of ranges) {
-      const found = await fetchSapSerialLocations(session.creds, range.lo, range.hi);
-      locations.push(...found);
+      locations.push(...(await fetchSapSerialLocations(creds, range.lo, range.hi)));
     }
-    const { onHand, notOnHand } = serialsOnHandFromLocations(page, locations);
-    const allowList = await loadMasterWarehouseAllowList(tenantId);
-    const { known, unknownSerialNos } = partitionOnHandByMaster(onHand, allowList);
-    const cleared = [...notOnHand, ...unknownSerialNos];
-    const modelIds = [...new Set(page.map((row) => row.modelId))];
-    await serialNumberRepository.setSapOnHandFlags(tenantId, modelIds, known, cleared);
-    await replicateOnHandSerialsToStk(tenantId, known);
+    return serialsOnHandFromLocations(page, locations);
   } catch (error) {
-    block(tenantId, error);
+    logger.error({ err: error, tenantId }, "SAP serial warehouses could not be read");
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Serial warehouses could not be read from SAP: ${message}`);
   }
+}
+
+/** Skip reason for serials SAP holds in a warehouse ISMS does not have yet. */
+export const SERIAL_WAREHOUSE_MISSING_REASON =
+  "SAP warehouse is not in ISMS yet. Sync Warehouses (Settings → Warehouses, or " +
+  "Branches for a branch's own warehouse) first, then run this sync again";
+
+/**
+ * Split a page by where SAP holds each serial:
+ * - `writable`: not on hand anywhere, or on hand in a warehouse ISMS has
+ * - `known`: the on-hand rows among those, which link the serial to its warehouse
+ * - `missing`: on hand in a warehouse ISMS lacks; neither created nor updated
+ */
+export function gateSerialPageByWarehouse<T extends { serialNo: string }>(
+  records: T[],
+  onHand: OnHandWarehouseSerial[],
+  allowList: ReadonlySet<string>,
+): { writable: T[]; known: OnHandWarehouseSerial[]; missing: OnHandWarehouseSerial[] } {
+  const { known, unknown } = partitionOnHandByMaster(onHand, allowList);
+  const blocked = new Set(unknown.map((row) => row.serialNo));
+  return {
+    writable: records.filter((record) => !blocked.has(record.serialNo)),
+    known,
+    missing: unknown,
+  };
 }

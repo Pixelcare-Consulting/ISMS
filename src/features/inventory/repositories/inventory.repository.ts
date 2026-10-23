@@ -527,4 +527,5 @@ export type {
   InventoryGroupListFilters,
   InventoryGroupModelRow,
   InventoryGroupStatusCodeRef,
+  InventoryGroupWarehouseRow,
 } from "@/features/inventory/repositories/inventory-group.repository";

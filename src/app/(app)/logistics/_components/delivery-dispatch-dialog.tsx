@@ -24,6 +24,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { LoadingModal } from "@/components/ui/loading-modal";
 
 export interface DispatchTarget {
   id: string;
@@ -31,6 +32,25 @@ export interface DispatchTarget {
   branchName: string;
   models: DispatchModelRequirement[];
   serials: DispatchCandidate[];
+}
+
+const DISPATCH_FEED = [
+  { atSecond: 0, label: "Checking the picked serials", hint: "Making sure each one is still available." },
+  { atSecond: 1, label: "Posting the IT / DR to SAP", hint: "This can take a few seconds." },
+  { atSecond: 3, label: "Moving units into transit", hint: "Taking them off their locations." },
+  { atSecond: 4, label: "Refreshing deliveries" },
+];
+
+/** Shown while a confirmed dispatch posts to SAP and moves the units. */
+export function DispatchingModal({ open, deliveryNo }: { open: boolean; deliveryNo?: string }) {
+  return (
+    <LoadingModal
+      open={open}
+      title={deliveryNo ? `Dispatching ${deliveryNo}` : "Dispatching"}
+      description="Posting to SAP and moving the units. Please keep this page open."
+      feedItems={DISPATCH_FEED}
+    />
+  );
 }
 
 interface DeliveryDispatchDialogProps {
@@ -108,26 +128,11 @@ function DispatchBody({
     ? groups.filter((group) => group.visible.length > 0).map((group) => group.model.modelId)
     : openModels;
 
-  function toggle(modelId: string, serialId: string, checked: boolean) {
-    const next = checked ? [...selected, serialId] : selected.filter((id) => id !== serialId);
-    setSelected(next);
-    if (!checked || needle) return;
-
-    const group = groups.find((entry) => entry.model.modelId === modelId);
-    if (!group || group.picked + 1 < group.model.requiredQty) return;
-    // This pick completed the model: fold it and open the next one still short.
-    const nextShort = groups.find(
-      (entry) =>
-        entry.model.modelId !== modelId &&
-        entry.serials.filter((serial) => next.includes(serial.id)).length <
-          entry.model.requiredQty,
+  // A completed model stays open: folding it hid the picks people wanted to check or swap.
+  function toggle(serialId: string, checked: boolean) {
+    setSelected((current) =>
+      checked ? [...current, serialId] : current.filter((id) => id !== serialId),
     );
-    setOpenModels((current) => {
-      const without = current.filter((id) => id !== modelId);
-      return nextShort && !without.includes(nextShort.model.modelId)
-        ? [...without, nextShort.model.modelId]
-        : without;
-    });
   }
 
   return (
@@ -180,6 +185,12 @@ function DispatchBody({
                       <span className="block font-mono text-sm font-semibold">{model.skuCode}</span>
                       <span className="block truncate text-xs font-normal text-muted-foreground">
                         {model.modelName} · {serials.length} available
+                        {model.unshelvedQty > 0 ? (
+                          <span className="text-amber-700 dark:text-amber-400">
+                            {" "}
+                            · {model.unshelvedQty} without location
+                          </span>
+                        ) : null}
                       </span>
                     </span>
                     <span
@@ -199,6 +210,17 @@ function DispatchBody({
                     <p className="mb-3 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive" role="alert">
                       Only {serials.length} available, {model.requiredQty} needed. Stock in more before
                       dispatching.
+                    </p>
+                  ) : null}
+                  {model.unshelvedQty > 0 ? (
+                    <p
+                      className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-200"
+                      role="status"
+                    >
+                      {model.unshelvedQty} more {model.unshelvedQty === 1 ? "serial is" : "serials are"} in
+                      this warehouse per SAP but {model.unshelvedQty === 1 ? "has" : "have"} no location. Stock{" "}
+                      {model.unshelvedQty === 1 ? "it" : "them"} in to a location (Settings, Warehouses) to
+                      dispatch {model.unshelvedQty === 1 ? "it" : "them"}.
                     </p>
                   ) : null}
                   {visible.length === 0 ? (
@@ -252,9 +274,7 @@ function DispatchBody({
                                       <Checkbox
                                         checked={checked}
                                         disabled={locked || pending}
-                                        onCheckedChange={(value) =>
-                                          toggle(model.modelId, serial.id, value === true)
-                                        }
+                                        onCheckedChange={(value) => toggle(serial.id, value === true)}
                                         aria-label={`Dispatch ${serial.serialNo} from ${location.label}`}
                                       />
                                       <span className="min-w-0">

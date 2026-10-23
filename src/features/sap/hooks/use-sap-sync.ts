@@ -103,6 +103,57 @@ function summarize(result: SapSyncResult): string {
   return result.notes?.length ? [summary, ...result.notes].join(". ") : summary;
 }
 
+/** Distinct examples kept per skip reason when slices are merged (matches the engine). */
+const MAX_SKIP_EXAMPLES = 20;
+
+/**
+ * Fold one slice into the run so far. A large entity runs as many slices, and the report
+ * should cover all of them rather than whichever slice happened to come last.
+ *
+ * Notes are dropped: they are per-slice sentences with per-slice counts, and the merged
+ * skip table already names each reason and its codes.
+ */
+export function mergeSliceResults(run: SapSyncResult | null, slice: SapSyncResult): SapSyncResult {
+  if (!run) return { ...slice, notes: undefined };
+
+  const skipped = new Map(
+    run.skipped.map((skip) => [skip.reason, { ...skip, examples: [...skip.examples] }]),
+  );
+  for (const skip of slice.skipped) {
+    const entry = skipped.get(skip.reason);
+    if (!entry) {
+      skipped.set(skip.reason, { ...skip, examples: [...skip.examples] });
+      continue;
+    }
+    entry.count += skip.count;
+    for (const example of skip.examples) {
+      if (entry.examples.length >= MAX_SKIP_EXAMPLES) break;
+      if (!entry.examples.includes(example)) entry.examples.push(example);
+    }
+  }
+
+  return {
+    fetched: run.fetched + slice.fetched,
+    created: run.created + slice.created,
+    updated: run.updated + slice.updated,
+    unchanged: run.unchanged + slice.unchanged,
+    removed: run.removed + slice.removed,
+    skipped: [...skipped.values()],
+    caughtUp: slice.caughtUp,
+    passRows: slice.passRows,
+    totalAtSource: slice.totalAtSource,
+  };
+}
+
+/**
+ * Open the skip report once the progress modal has closed. Opened while the modal is
+ * still up, it would sit behind it, unreadable, for the rest of the run.
+ */
+function showReport(key: string, noun: SapSyncNoun, run: SapSyncResult | null) {
+  if (!run || run.skipped.length === 0) return;
+  useSapSyncStore.getState().setReport(key, { noun, result: run });
+}
+
 /** The reason behind the most rows, to lead with when nothing could be applied. */
 function dominantSkipReason(result: SapSyncResult): string | null {
   const worst = [...result.skipped].sort((a, b) => b.count - a.count)[0];
@@ -123,6 +174,7 @@ function runningProgress(
   noun: SapSyncNoun,
   processed: number,
   total: number | null,
+  skipped = 0,
 ): SapSyncProgress {
   return {
     noun,
@@ -131,6 +183,7 @@ function runningProgress(
     description: "Please wait while we sync records from SAP.",
     processed,
     total,
+    skipped,
     summary: progressDetail(processed, total),
   };
 }
@@ -194,11 +247,13 @@ export function runSapSync(
   void (async () => {
     let lastProcessed = 0;
     let lastTotal: number | null = null;
+    let run: SapSyncResult | null = null;
 
     try {
       while (true) {
         if (useSapSyncStore.getState().stopRequested[key]) {
           useSapSyncStore.getState().setProgress(key, null);
+          showReport(key, noun, run);
           showResultToast("info", key, `Stopped syncing ${noun.many}`, {
             description:
               lastProcessed > 0
@@ -224,10 +279,12 @@ export function runSapSync(
           reportError(key, noun, response.error);
           await delay(MODAL_SETTLE_MS);
           useSapSyncStore.getState().setProgress(key, null);
+          showReport(key, noun, run);
           break;
         }
 
-        const result = response.result;
+        run = mergeSliceResults(run, response.result);
+        const result = run;
         lastProcessed = result.passRows;
         lastTotal = result.totalAtSource;
 
@@ -236,11 +293,10 @@ export function runSapSync(
 
         useSapSyncStore
           .getState()
-          .setProgress(key, runningProgress(noun, lastProcessed, lastTotal));
-
-        useSapSyncStore
-          .getState()
-          .setReport(key, result.skipped.length > 0 ? { noun, result } : null);
+          .setProgress(
+            key,
+            runningProgress(noun, lastProcessed, lastTotal, skippedCount(result)),
+          );
 
         onFinished?.();
 
@@ -283,6 +339,7 @@ export function runSapSync(
 
         await delay(MODAL_SETTLE_MS);
         useSapSyncStore.getState().setProgress(key, null);
+        showReport(key, noun, result);
         break;
       }
     } catch (e) {
@@ -300,6 +357,7 @@ export function runSapSync(
       reportError(key, noun, message);
       await delay(MODAL_SETTLE_MS);
       useSapSyncStore.getState().setProgress(key, null);
+      showReport(key, noun, run);
     } finally {
       useSapSyncStore.getState().finish(key);
       useSapSyncStore.getState().clearStop(key);

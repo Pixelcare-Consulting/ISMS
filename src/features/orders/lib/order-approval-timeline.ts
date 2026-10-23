@@ -31,6 +31,11 @@ const ROLE_LABELS: Record<string, string> = {
   logistics: "Logistics",
 };
 
+/** Display name of an approval level's role ("tl" → "Team Leader"). */
+export function approvalRoleLabel(roleSlug: string): string {
+  return ROLE_LABELS[roleSlug] ?? roleSlug;
+}
+
 function roleLabel(roleSlug: string): string {
   return ROLE_LABELS[roleSlug] ?? roleSlug;
 }
