@@ -1,6 +1,6 @@
 "use client";
 
-import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
+import { createColumnHelper } from "@tanstack/react-table";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
@@ -130,8 +130,6 @@ export function PulloutsPanel({
     [pullouts.items],
   );
 
-  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
-  const selectedCount = filtered.filter((row) => rowSelection[row.id]).length;
 
   function runAction(
     action: () => Promise<{ error: string } | { success: true }>,
@@ -264,20 +262,10 @@ export function PulloutsPanel({
         sortDir,
         onSort: (columnId) => toggleSort(columnId as PulloutSortField),
       }}
-      enableRowSelection
-      rowSelection={rowSelection}
-      onRowSelectionChange={setRowSelection}
-      selectAllLabel="Select all pull-outs"
-      getSelectionLabel={(row) => `Select pull-out ${row.pulloutNo}`}
       stickyHeader
       search={{ value: query, onChange: setQuery, placeholder: "Search pull-outs…", suggestions }}
       toolbarActions={
         <>
-          {selectedCount > 0 ? (
-            <Button variant="secondary" onClick={() => setRowSelection({})}>
-              {selectedCount} selected
-            </Button>
-          ) : null}
         {capabilities.canCreate ? (
           <Button
             size="sm"

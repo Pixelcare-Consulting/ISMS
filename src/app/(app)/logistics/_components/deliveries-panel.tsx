@@ -1,6 +1,6 @@
 "use client";
 
-import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
+import { createColumnHelper } from "@tanstack/react-table";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
@@ -192,8 +192,6 @@ export function DeliveriesPanel({
     [deliveries.items],
   );
 
-  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
-  const selectedCount = filtered.filter((row) => rowSelection[row.id]).length;
 
   function confirmPendingAction() {
     if (!pendingConfirm) return;
@@ -422,20 +420,8 @@ export function DeliveriesPanel({
           sortDir,
           onSort: (columnId) => toggleSort(columnId as DeliverySortField),
         }}
-        enableRowSelection
-        rowSelection={rowSelection}
-        onRowSelectionChange={setRowSelection}
-        selectAllLabel="Select all deliveries"
-        getSelectionLabel={(row) => `Select delivery ${row.deliveryNo}`}
         stickyHeader
         search={{ value: query, onChange: setQuery, placeholder: "Search deliveries…", suggestions }}
-        toolbarActions={
-          selectedCount > 0 ? (
-            <Button variant="secondary" onClick={() => setRowSelection({})}>
-              {selectedCount} selected
-            </Button>
-          ) : null
-        }
         pagination={{
           total: deliveries.total,
           page: deliveries.page,
