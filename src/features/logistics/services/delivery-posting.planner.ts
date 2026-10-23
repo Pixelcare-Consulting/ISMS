@@ -38,6 +38,11 @@ export interface WarehouseHold {
   modelId: string;
   warehouseId: string;
   warehouseLocationId: string;
+  /**
+   * WAREHOUSE: a warehouse stock row. BRANCH: branch stock stocked into a
+   * location of this warehouse; dispatch relocates that branch row.
+   */
+  source: "WAREHOUSE" | "BRANCH";
 }
 
 /**

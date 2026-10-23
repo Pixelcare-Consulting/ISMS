@@ -1456,6 +1456,7 @@ model WarehouseLocation {
 
   warehouse            Warehouse             @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
   inventories          WarehouseInventory[]
+  branchInventories    BranchInventory[]
   aors                 Aor[]
   branchPullouts       BranchPullout[]
   deliveryLinesFrom    BranchDeliveryLine[]  @relation("DeliveryLineWarehouseFrom")
@@ -1707,11 +1708,15 @@ model BranchInventory {
   serialNumberId String   @map("serial_number_id")
   statusCodeId   String   @map("status_code_id")
   updatedById    String?  @map("updated_by_id")
+  /// Shelf location in the branch's primary warehouse, set by warehouse Stock in.
+  /// A label only: the unit stays branch stock. Null until stocked into a location.
+  warehouseLocationId String? @map("warehouse_location_id")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
   tenant          Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branch          Branch               @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  warehouseLocation WarehouseLocation? @relation(fields: [warehouseLocationId], references: [id], onDelete: SetNull)
   serialNumber    SerialNumber         @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
   statusCode      ReasonStatusCode     @relation(fields: [statusCodeId], references: [id])
   updatedBy       User?                @relation("BranchInventoryUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
@@ -1721,6 +1726,7 @@ model BranchInventory {
   @@unique([serialNumberId])
   @@index([branchId, serialNumberId])
   @@index([tenantId, branchId, statusCodeId])
+  @@index([warehouseLocationId])
   @@map("branch_inventories")
 }
 

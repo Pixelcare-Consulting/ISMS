@@ -1,5 +1,12 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
+
+import {
+  moveTaggedSerial,
+  moveWarehouseUnit,
+} from "@/features/inventory/services/branch-stock-location.service";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import {
   warehouseInventoryService,
@@ -9,6 +16,7 @@ import {
 import {
   hasPermission,
   requireAnyPermission,
+  requirePermission,
 } from "@/lib/auth/permissions";
 import type { PaginatedResult } from "@/lib/shared/pagination";
 
@@ -20,6 +28,8 @@ const WAREHOUSE_STOCK_PERMISSIONS = [
 /** DTO row for the Warehouse stock list (ISO dates). */
 export type WarehouseInventoryListItem = {
   id: string;
+  source: "WAREHOUSE" | "BRANCH";
+  branch: { name: string; sapCode: string | null } | null;
   systemStatus: string | null;
   updatedAt: string;
   serialNumber: {
@@ -70,6 +80,8 @@ export async function listWarehouseInventoryAction(input?: {
     items: result.items.map(
       (row): WarehouseInventoryListItem => ({
         id: row.id,
+        source: row.source,
+        branch: row.branch,
         systemStatus: row.systemStatus,
         updatedAt: row.updatedAt.toISOString(),
         serialNumber: {
@@ -106,4 +118,32 @@ export async function listWarehouseFilterOptionsAction(input?: {
     unrestricted,
     input?.warehouseId,
   );
+}
+
+const editLocationSchema = z.object({
+  source: z.enum(["WAREHOUSE", "BRANCH"]),
+  id: z.string().min(1),
+  locationId: z.string().min(1),
+});
+
+/** Move a located serial to another location of the same warehouse. */
+export async function editWarehouseStockLocationAction(input: unknown) {
+  const session = await requirePermission("warehouses.manage");
+  const parsed = editLocationSchema.safeParse(input);
+  if (!parsed.success) return { error: "Choose the new location." };
+  const base = {
+    tenantId: session.user.tenantId,
+    userId: session.user.id,
+    locationId: parsed.data.locationId,
+  };
+  try {
+    const result =
+      parsed.data.source === "BRANCH"
+        ? await moveTaggedSerial({ ...base, branchInventoryId: parsed.data.id })
+        : await moveWarehouseUnit({ ...base, warehouseInventoryId: parsed.data.id });
+    revalidatePath("/inventory/warehouse-stock");
+    return { success: true as const, ...result };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Could not change the location." };
+  }
 }

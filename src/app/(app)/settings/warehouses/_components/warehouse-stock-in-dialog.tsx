@@ -18,6 +18,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Textarea } from "@/components/ui/textarea";
 import {
   listModelsForWarehouseStockInAction,
+  listSerialsForWarehouseStockInAction,
   stockInWarehouseLocationAction,
 } from "@/features/warehouses/actions/warehouse.actions";
 
@@ -25,6 +26,7 @@ interface StockInModel {
   id: string;
   skuCode: string;
   name: string;
+  untaggedCount: number;
 }
 
 interface WarehouseStockInDialogProps {
@@ -50,11 +52,12 @@ export function WarehouseStockInDialog({
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [modelId, setModelId] = useState("");
   const [serials, setSerials] = useState("");
+  const [loadingSerials, setLoadingSerials] = useState(false);
 
   useEffect(() => {
     if (!open || models) return;
     let cancelled = false;
-    void listModelsForWarehouseStockInAction()
+    void listModelsForWarehouseStockInAction(warehouseId)
       .then((result) => {
         if (cancelled) return;
         setModels(result.models);
@@ -66,7 +69,18 @@ export function WarehouseStockInDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, models]);
+  }, [open, models, warehouseId]);
+
+  function selectModel(nextModelId: string) {
+    setModelId(nextModelId);
+    setSerials("");
+    if (!nextModelId) return;
+    setLoadingSerials(true);
+    void listSerialsForWarehouseStockInAction(warehouseId, nextModelId)
+      .then((result) => setSerials(result.serialNos.join("\n")))
+      .catch(() => toast.error("Could not load the serials for this model."))
+      .finally(() => setLoadingSerials(false));
+  }
 
   function submit() {
     startTransition(async () => {
@@ -83,6 +97,8 @@ export function WarehouseStockInDialog({
       toast.success(result.message);
       setModelId("");
       setSerials("");
+      // Counts changed; reload the model list next time the dialog opens.
+      setModels(null);
       onOpenChange(false);
       router.refresh();
     });
@@ -96,8 +112,8 @@ export function WarehouseStockInDialog({
         <DialogHeader>
           <DialogTitle>Stock in to {locationCode}</DialogTitle>
           <DialogDescription>
-            Choose the model and enter serial numbers for {locationName}. New
-            serials are created and placed in this location.
+            Put branch stock on a shelf in {locationName}. Models and serials come from the
+            branches that use this warehouse, and only serials without a location are listed.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4">
@@ -106,13 +122,16 @@ export function WarehouseStockInDialog({
             options={(models ?? []).map((model) => ({
               id: model.id,
               label: model.skuCode,
-              description: model.name,
+              description: `${model.name} · ${model.untaggedCount} without a location`,
             }))}
             value={modelId}
-            onChange={setModelId}
+            onChange={selectModel}
             placeholder={models ? "Select model…" : "Loading models…"}
             searchPlaceholder="Search models…"
-            emptyMessage={modelsError ?? "No models available."}
+            emptyMessage={
+              modelsError ??
+              "No unlocated stock. Branches using this warehouse as primary have nothing left to place."
+            }
             disabled={pending || !models}
             popoverClassName="z-70"
           />
@@ -125,12 +144,14 @@ export function WarehouseStockInDialog({
               id={`stock-in-serials-${locationId}`}
               value={serials}
               onChange={(event) => setSerials(event.target.value)}
-              placeholder="One serial per line"
-              disabled={pending}
+              placeholder={loadingSerials ? "Loading serials…" : "One serial per line"}
+              disabled={pending || loadingSerials}
               className="min-h-[7rem] font-mono text-sm"
             />
             <p className="text-xs text-muted-foreground">
-              Separate serials with a new line or a comma.
+              {modelId && !loadingSerials
+                ? `${serials.split("\n").filter((line) => line.trim()).length} serial(s) listed. Remove any you are not placing here.`
+                : "Separate serials with a new line or a comma."}
             </p>
           </div>
         </div>

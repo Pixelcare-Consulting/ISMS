@@ -211,6 +211,7 @@ function DispatchBody({
                               <span className="font-mono">{serial.serialNo}</span>
                               <span className="text-muted-foreground">
                                 {serial.warehouseCode} / {serial.locationCode}
+                                {serial.heldBy ? ` · ${serial.heldBy}` : ""}
                               </span>
                             </label>
                           </li>
