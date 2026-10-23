@@ -57,7 +57,7 @@ describe("partitionOnHandByMaster", () => {
       ),
     ).toEqual({
       known: [{ serialNo: "SN1", warehouseCode: "ABL001" }],
-      unknownSerialNos: ["SN2"],
+      unknown: [{ serialNo: "SN2", warehouseCode: "" }],
     });
   });
 });

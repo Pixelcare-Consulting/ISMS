@@ -10,6 +10,7 @@ import {
   inventoryService,
   type InventoryGroupBranchInModelSummary,
   type InventoryGroupListOptions,
+  type InventoryGroupWarehouseSummary,
   type InventoryListOptions,
 } from "@/features/inventory/services/inventory.service";
 import type { InventoryGroupAggregates } from "@/features/inventory/utils/stock-units-group-aggregates";
@@ -68,10 +69,17 @@ export type InventoryGroupModelItemDto = {
 
 export type InventoryGroupBranchInModelItemDto = InventoryGroupBranchInModelSummary;
 
-const STOCK_UNITS_GROUP_BY = new Set<StockUnitsGroupBy>(["by-branch", "by-model"]);
+export type InventoryGroupWarehouseItemDto = InventoryGroupWarehouseSummary;
+
+const STOCK_UNITS_GROUP_BY = new Set<StockUnitsGroupBy>([
+  "by-branch",
+  "by-warehouse",
+  "by-model",
+]);
 const STOCK_UNITS_GROUP_CHILD_LEVELS = new Set<StockUnitsGroupChildLevel>([
   "models",
   "branches",
+  "warehouses",
   "serials",
 ]);
 
@@ -257,6 +265,7 @@ export async function listInventoryGroupChildrenAction(input: {
   PaginatedResult<
     | InventoryGroupModelItemDto
     | InventoryGroupBranchInModelItemDto
+    | InventoryGroupWarehouseItemDto
     | InventoryListItem
   >
 > {
@@ -300,7 +309,9 @@ export async function listInventoryGroupChildrenAction(input: {
   }
 
   return result as PaginatedResult<
-    InventoryGroupModelItemDto | InventoryGroupBranchInModelItemDto
+    | InventoryGroupModelItemDto
+    | InventoryGroupBranchInModelItemDto
+    | InventoryGroupWarehouseItemDto
   >;
 }
 

@@ -3191,6 +3191,7 @@ model BranchDeliveryLine {
   warehouseLocationFrom WarehouseLocation? @relation("DeliveryLineWarehouseFrom", fields: [warehouseLocationFromId], references: [id], onDelete: SetNull)
 
   @@unique([deliveryId, serialNumberId])
+  @@index([serialNumberId])
   @@map("branch_delivery_lines")
 }
 

@@ -35,7 +35,12 @@ jest.mock("@/features/sap/services/sap-sync-engine", () => ({
         applyPage: (
           id: string,
           records: unknown[],
-        ) => Promise<{ created: number; updated: number; unchanged: number; failures: [] }>;
+        ) => Promise<{
+          created: number;
+          updated: number;
+          unchanged: number;
+          failures: { reason: string; example?: string | null }[];
+        }>;
       },
     ) => {
       const context = await entity.prepare(tenantId);
@@ -46,14 +51,26 @@ jest.mock("@/features/sap/services/sap-sync-engine", () => ({
       }
       const applied = records.length
         ? await entity.applyPage(tenantId, records)
-        : { created: 0, updated: 0, unchanged: 0, failures: [] as [] };
+        : { created: 0, updated: 0, unchanged: 0, failures: [] };
+      // Same grouping as the engine's skip tally: one entry per reason, distinct examples.
+      const byReason = new Map<string, { count: number; examples: Set<string> }>();
+      for (const failure of applied.failures) {
+        const entry = byReason.get(failure.reason) ?? { count: 0, examples: new Set<string>() };
+        entry.count += 1;
+        if (failure.example) entry.examples.add(failure.example);
+        byReason.set(failure.reason, entry);
+      }
       return {
         fetched: mockSapRows.length,
         created: applied.created,
         updated: applied.updated,
         unchanged: applied.unchanged,
         removed: 0,
-        skipped: [],
+        skipped: [...byReason].map(([reason, entry]) => ({
+          reason,
+          count: entry.count,
+          examples: [...entry.examples],
+        })),
         caughtUp: true,
         passRows: mockSapRows.length,
         totalAtSource: null,
@@ -146,15 +163,60 @@ it("marks the page on hand and clears serials on that page that are not", async 
   expect(result.notes).toBeUndefined();
 });
 
-it("still finishes the registry sync when on-hand counts cannot be updated", async () => {
+it("fails the page when SAP serial warehouses cannot be read", async () => {
   useRows([{ DocEntry: 11, SerialNumber: "SN1", ItemCode: "LIVE" }]);
   ensureQuery.mockRejectedValue(new Error("could not create the SAP saved query"));
 
+  await expect(serialNumberSapSyncService.syncFromSap("t1", "u1")).rejects.toThrow(
+    /Serial warehouses could not be read from SAP/,
+  );
+  expect(applyPage).not.toHaveBeenCalled();
+  expect(setFlags).not.toHaveBeenCalled();
+});
+
+it("holds back new and existing serials whose SAP warehouse is not in ISMS", async () => {
+  useRows([
+    { DocEntry: 11, SerialNumber: "SN-OK", ItemCode: "LIVE" },
+    { DocEntry: 12, SerialNumber: "SN-NEW-WH", ItemCode: "LIVE" },
+    { DocEntry: 13, SerialNumber: "SN-SOLD", ItemCode: "LIVE" },
+    { DocEntry: 14, SerialNumber: "SN-NEW-WH-2", ItemCode: "LIVE" },
+  ]);
+  fetchLocations.mockResolvedValue([
+    { serialNo: "SN-OK", itemCode: "LIVE", warehouseCode: "B1" },
+    { serialNo: "SN-NEW-WH", itemCode: "LIVE", warehouseCode: "WH9" },
+    { serialNo: "SN-NEW-WH-2", itemCode: "LIVE", warehouseCode: "WH9" },
+  ]);
+
   const result = await serialNumberSapSyncService.syncFromSap("t1", "u1");
 
-  expect(result.created).toBe(1);
-  expect(result.notes?.[0]).toMatch(/On-hand counts were not updated/);
+  // Neither created nor updated: the repository never sees them.
+  expect(applyPage).toHaveBeenCalledWith("t1", [
+    { serialNo: "SN-OK", modelId: "m-live", docEntry: 11 },
+    { serialNo: "SN-SOLD", modelId: "m-live", docEntry: 13 },
+  ]);
+  expect(setFlags).toHaveBeenCalledWith(
+    "t1",
+    ["m-live"],
+    [{ serialNo: "SN-OK", warehouseCode: "B1" }],
+    ["SN-SOLD"],
+  );
+  expect(replicate).toHaveBeenCalledWith("t1", [{ serialNo: "SN-OK", warehouseCode: "B1" }]);
+  expect(result.skipped).toEqual([
+    expect.objectContaining({ count: 2, examples: ["WH9"] }),
+  ]);
+  expect(result.notes?.[0]).toMatch(/2 serial numbers are in SAP warehouses that are not in ISMS \(WH9\)/);
+});
+
+it("writes nothing when every serial on the page is in a missing warehouse", async () => {
+  useRows([{ DocEntry: 11, SerialNumber: "SN1", ItemCode: "LIVE" }]);
+  fetchLocations.mockResolvedValue([{ serialNo: "SN1", itemCode: "LIVE", warehouseCode: "WH9" }]);
+
+  const result = await serialNumberSapSyncService.syncFromSap("t1", "u1");
+
+  expect(applyPage).not.toHaveBeenCalled();
   expect(setFlags).not.toHaveBeenCalled();
+  expect(replicate).not.toHaveBeenCalled();
+  expect(result.created).toBe(0);
 });
 
 it("reads on-hand in separate windows when serial ids on a page are far apart", async () => {

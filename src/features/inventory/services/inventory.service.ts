@@ -4,6 +4,7 @@ import { branchRepository } from "@/features/branches/repositories/branch.reposi
 import type {
   StockUnitsGroupBy,
   StockUnitsGroupChildLevel,
+  StockUnitsWarehouseRole,
 } from "@/features/inventory/constants/stock-units-group";
 import {
   inventoryRepository,
@@ -11,6 +12,7 @@ import {
   type InventoryGroupListFilters,
   type InventoryGroupModelRow,
   type InventoryGroupStatusCodeRef,
+  type InventoryGroupWarehouseRow,
   type InventoryListFilters,
   type InventoryListRow,
   type InventoryListSort,
@@ -91,6 +93,16 @@ export type InventoryGroupModelSummary = {
 
 export type InventoryGroupBranchInModelSummary = {
   branch: { id: string; name: string; sapCode: string };
+  counts: InventoryGroupAggregates;
+};
+
+export type InventoryGroupWarehouseSummary = {
+  /** Stable per branch: `${role}:${stockBranch.id}`. */
+  key: string;
+  role: StockUnitsWarehouseRole;
+  /** Whose branch stock this warehouse holds; models and serials below are this branch's. */
+  stockBranch: { id: string; name: string; sapCode: string };
+  warehouse: { code: string; name: string } | null;
   counts: InventoryGroupAggregates;
 };
 
@@ -179,6 +191,29 @@ function modelRowToSummary(
   };
 }
 
+function warehouseRowToSummary(
+  row: InventoryGroupWarehouseRow,
+  codes: InventoryStatusCodeRow[],
+): InventoryGroupWarehouseSummary {
+  const {
+    role,
+    stockBranchId,
+    stockBranchName,
+    stockBranchSapCode,
+    warehouseCode,
+    warehouseName,
+    ...counts
+  } = row;
+  return {
+    key: `${role}:${stockBranchId}`,
+    role,
+    stockBranch: { id: stockBranchId, name: stockBranchName, sapCode: stockBranchSapCode },
+    warehouse:
+      warehouseCode !== null ? { code: warehouseCode, name: warehouseName ?? warehouseCode } : null,
+    counts: toGroupAggregates(counts, codes),
+  };
+}
+
 function toStatusCodeRefs(codes: InventoryStatusCodeRow[]): InventoryGroupStatusCodeRef[] {
   return codes.map((code) => ({ id: code.id, code: code.code }));
 }
@@ -209,8 +244,10 @@ export const inventoryService = {
     ]);
     const groupFilters = toGroupListFilters(filters);
     const statusCodeRefs = toStatusCodeRefs(statusCodes);
+    // By warehouse lists the same branches as By branch; the warehouses sit below them.
+    const byBranch = groupBy === "by-branch" || groupBy === "by-warehouse";
     const result =
-      groupBy === "by-branch"
+      byBranch
         ? await inventoryRepository.listBranchGroups(
             tenantId,
             branchIds,
@@ -229,7 +266,7 @@ export const inventoryService = {
     return {
       ...result,
       items:
-        groupBy === "by-branch"
+        byBranch
           ? (result.items as InventoryGroupBranchRow[]).map((row) =>
               branchRowToSummary(row, statusCodes),
             )
@@ -255,6 +292,7 @@ export const inventoryService = {
     PaginatedResult<
       | InventoryGroupModelSummary
       | InventoryGroupBranchInModelSummary
+      | InventoryGroupWarehouseSummary
       | InventoryListEnrichedItem
     >
   > {
@@ -292,7 +330,32 @@ export const inventoryService = {
       return this.enrichWithPendingDefectFlags(tenantId, withAging);
     }
 
-    if (input.groupBy === "by-branch" && input.level === "models") {
+    if (input.groupBy === "by-warehouse" && input.level === "warehouses") {
+      const { limit, page } = resolvePagination(input.pagination);
+      if (!input.branchId) {
+        return { items: [], total: 0, page, limit, totalPages: 1 };
+      }
+      const rows = await inventoryRepository.listWarehousesInBranchGroup(
+        tenantId,
+        branchIds,
+        input.branchId,
+        groupFilters,
+        statusCodeRefs,
+      );
+      return {
+        items: rows.map((row) => warehouseRowToSummary(row, statusCodes)),
+        total: rows.length,
+        page: 1,
+        limit: Math.max(limit, rows.length),
+        totalPages: 1,
+      };
+    }
+
+    // Under a warehouse, `branchId` is that warehouse's stock branch (see listWarehousesInBranchGroup).
+    if (
+      (input.groupBy === "by-branch" || input.groupBy === "by-warehouse") &&
+      input.level === "models"
+    ) {
       if (!input.branchId) {
         const { limit, page } = resolvePagination(input.pagination);
         return { items: [], total: 0, page, limit, totalPages: 1 };
