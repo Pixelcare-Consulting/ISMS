@@ -24,12 +24,14 @@ import {
   checkOrderWindowAction,
   createOrderAction,
   listActiveDealersForOrderAction,
+  listModesOfPaymentForOrderAction,
   listBranchesForOrderAction,
 } from "@/features/orders/actions/order.actions";
 import {
   getOrderWorksheetAction,
   listSpecialOrderModelsAction,
 } from "@/features/orders/actions/order-worksheet.actions";
+import { MODE_OF_PAYMENT_KIND_LABELS } from "@/features/lookups/constants/mode-of-payment-kind";
 import { buildOrderCreateDetails } from "@/features/orders/lib/order-create-details";
 import {
   EMPTY_WORKSHEET_DRAFT,
@@ -90,7 +92,14 @@ export function WorksheetCreateOrderDialog({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const orderType = fixedOrderType;
-  const [dealers, setDealers] = useState<{ id: string; name: string }[]>([]);
+  const [dealers, setDealers] = useState<
+    { id: string; name: string; modeOfPaymentId: string | null }[]
+  >([]);
+  const [modesOfPayment, setModesOfPayment] = useState<
+    { id: string; name: string; kind: "CONSIGNMENT" | "OUTRIGHT" | null }[]
+  >([]);
+  // Empty means "use the dealer's"; set when the user picks another one for this order.
+  const [modeOfPaymentChoice, setModeOfPaymentChoice] = useState("");
   const [branches, setBranches] = useState<
     { id: string; name: string; dealerId: string | null }[]
   >([]);
@@ -121,15 +130,29 @@ export function WorksheetCreateOrderDialog({
     [projectedLines, removedIds],
   );
 
+  // The dealer's mode of payment is the default; picking another one overrides it for this order.
+  const dealerModeOfPaymentId = dealers.find((dealer) => dealer.id === dealerId)?.modeOfPaymentId ?? null;
+  const dealerModeOfPayment = modesOfPayment.find((mode) => mode.id === dealerModeOfPaymentId) ?? null;
+  const selectedModeOfPaymentId = modeOfPaymentChoice || dealerModeOfPayment?.id || "";
+  const isModeOfPaymentOverride =
+    Boolean(selectedModeOfPaymentId) && selectedModeOfPaymentId !== dealerModeOfPayment?.id;
+  const modeOfPaymentHint = isModeOfPaymentOverride
+    ? `Override for this order only. The dealer's default is ${dealerModeOfPayment?.name ?? "not set"}.`
+    : dealerModeOfPayment
+      ? "The dealer's default. Change it to use another mode of payment for this order only."
+      : "This dealer has no mode of payment with a type. Pick one for this order.";
+
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const [dealerRows, branchRows] = await Promise.all([
+      const [dealerRows, branchRows, modeRows] = await Promise.all([
         listActiveDealersForOrderAction(orderType),
         listBranchesForOrderAction(prefill?.dealerId || undefined, orderType),
+        listModesOfPaymentForOrderAction(orderType),
       ]);
       if (cancelled) return;
       setDealers(dealerRows);
+      setModesOfPayment(modeRows);
       setBranches(branchRows);
       if (prefill?.branchId && !prefill.dealerId) {
         const match = branchRows.find((branch) => branch.id === prefill.branchId);
@@ -322,6 +345,7 @@ export function WorksheetCreateOrderDialog({
       const result = await createOrderAction({
         branchId,
         orderType,
+        modeOfPaymentId: selectedModeOfPaymentId || null,
         notes: notes.trim() || undefined,
         details: createDetails,
       });
@@ -393,6 +417,7 @@ export function WorksheetCreateOrderDialog({
                     value={dealerId}
                     onChange={(next) => {
                       setDealerId(next);
+                      setModeOfPaymentChoice("");
                       setBranchId("");
                       resetBranchWorksheet();
                       setSpecialOpen(false);
@@ -417,6 +442,25 @@ export function WorksheetCreateOrderDialog({
                     disabled={!dealerId}
                     emptyMessage="No active branches for this dealer."
                   />
+                  <SearchableSelect
+                    label="Mode of payment"
+                    className="w-full"
+                    popoverClassName="z-[100]"
+                    options={modesOfPayment.map((mode) => ({
+                      id: mode.id,
+                      label: mode.name,
+                      description: mode.kind ? MODE_OF_PAYMENT_KIND_LABELS[mode.kind] : undefined,
+                    }))}
+                    value={selectedModeOfPaymentId}
+                    onChange={setModeOfPaymentChoice}
+                    placeholder={dealerId ? "Select mode of payment…" : "Select a dealer first…"}
+                    searchPlaceholder="Search modes of payment…"
+                    disabled={!dealerId}
+                    emptyMessage="No mode of payment has a type yet. Set one in Settings, Master data."
+                  />
+                  {dealerId ? (
+                    <p className="-mt-2 text-xs text-muted-foreground">{modeOfPaymentHint}</p>
+                  ) : null}
                   <div className="space-y-1.5">
                     <Label htmlFor={`${orderType}-special-instruction`}>Note for this order</Label>
                     <Textarea

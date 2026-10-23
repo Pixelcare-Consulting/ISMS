@@ -67,6 +67,8 @@ interface OrderDetailsDialogProps {
   reviewSnapshotAt?: string | Date | null;
   sapDocType?: OrderSapDocType | null;
   sapDocNum?: number | null;
+  /** Shown as given; build it with formatOrderModeOfPayment. */
+  modeOfPaymentLabel?: string | null;
   lines: OrderDetailsLine[];
   approvalLevels?: OrderDetailsApproval[];
   roleSlugs?: string[];
@@ -101,6 +103,7 @@ export function OrderDetailsDialog({
   reviewSnapshot,
   reviewSnapshotAt,
   sapDocType = null,
+  modeOfPaymentLabel = null,
   sapDocNum = null,
   lines,
   approvalLevels = [],
@@ -189,6 +192,12 @@ export function OrderDetailsDialog({
                 <dd className="min-w-0">
                   <OrderStatusBadge status={status} />
                 </dd>
+                {modeOfPaymentLabel ? (
+                  <>
+                    <dt className="whitespace-nowrap text-muted-foreground">Mode of payment</dt>
+                    <dd className="min-w-0 break-words">{modeOfPaymentLabel}</dd>
+                  </>
+                ) : null}
                 <dt className="whitespace-nowrap text-muted-foreground">SAP document</dt>
                 <dd className="min-w-0 break-words">
                   {formatOrderSapDocument({ sapDocType, sapDocNum })}

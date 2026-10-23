@@ -91,12 +91,13 @@ export const mockSapOutbound: SapOutboundPort = {
     });
 
     if (!delivery && userId) {
-      const ctx = await orderRepository.findSapRoutingContext(tenantId, order.branchId);
+      const ctx = await orderRepository.findSapRoutingContext(tenantId, order.branchId, order.id);
       const routing = ctx.branch
         ? resolveOrderSapRouting({
             branch: ctx.branch,
             mainWarehouse: ctx.mainWarehouse,
             dealer: ctx.branch.dealer,
+            orderModeOfPayment: ctx.orderModeOfPayment,
           })
         : null;
       delivery = await logisticsService.createDeliveryFromApprovedOrder(

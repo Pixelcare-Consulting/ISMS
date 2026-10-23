@@ -6,6 +6,18 @@ export const SAP_ORDER_DOC_TYPE_LABELS: Record<OrderSapDocType, string> = {
   SO: "SO (Outright)",
 };
 
+/**
+ * The mode of payment an order uses: its own override, else the dealer's.
+ * "Consignment (order override)", "Outright", or "—" when neither is set.
+ */
+export function formatOrderModeOfPayment(input: {
+  orderModeOfPayment: string | null;
+  dealerModeOfPayment: string | null;
+}): string {
+  if (input.orderModeOfPayment) return `${input.orderModeOfPayment} (order override)`;
+  return input.dealerModeOfPayment ?? "—";
+}
+
 /** "ITR (Consignment) · 1234", or "—" when the order has no document type yet. */
 export function formatOrderSapDocument(order: {
   sapDocType: OrderSapDocType | null;
