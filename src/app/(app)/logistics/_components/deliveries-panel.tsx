@@ -42,6 +42,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { LoadingModal } from "@/components/ui/loading-modal";
 import {
   DeliveryDispatchDialog,
   type DispatchTarget,
@@ -108,6 +109,14 @@ interface DeliveriesPanelProps {
 
 const deliveryColumn = createColumnHelper<DataTableFeatures, DeliveryRow>();
 
+/** Same feed pattern as order approval; the SAP post is the slow step. */
+const DISPATCH_FEED = [
+  { atSecond: 0, label: "Checking the picked serials", hint: "Making sure each one is still available." },
+  { atSecond: 1, label: "Posting the IT / DR to SAP", hint: "This can take a few seconds." },
+  { atSecond: 3, label: "Moving units into transit", hint: "Taking them off their locations." },
+  { atSecond: 4, label: "Refreshing deliveries" },
+] as const;
+
 type DeliverySortField = "deliveryNo" | "orderNumber" | "branch" | "status";
 type DeliverySortDir = "asc" | "desc";
 
@@ -133,6 +142,8 @@ export function DeliveriesPanel({
   const [returnRequestTarget, setReturnRequestTarget] = useState<ReturnTarget | null>(null);
   const [returnReviewTarget, setReturnReviewTarget] = useState<ReturnTarget | null>(null);
   const [dispatchTarget, setDispatchTarget] = useState<DispatchTarget | null>(null);
+  // Own flag: the shared `pending` also covers reject and return actions.
+  const [dispatching, setDispatching] = useState(false);
   const pageSize = parseTablePageSize(deliveries.limit);
   const sort = (searchParams.get("sort") ?? initialSort) || "";
   const sortDir = (
@@ -217,17 +228,22 @@ export function DeliveriesPanel({
 
   function confirmDispatch(serialNumberIds: string[]) {
     if (!dispatchTarget) return;
+    setDispatching(true);
     startTransition(async () => {
-      const result = await dispatchDeliveryAction(dispatchTarget.id, { serialNumberIds });
-      if (result.error) {
-        toast.error(result.error);
-        return;
+      try {
+        const result = await dispatchDeliveryAction(dispatchTarget.id, { serialNumberIds });
+        if (result.error) {
+          toast.error(result.error);
+          return;
+        }
+        toast.success(
+          `Dispatched ${result.movedCount} serial${result.movedCount === 1 ? "" : "s"}.${result.drNo ? ` DR# ${result.drNo}.` : ""}`,
+        );
+        setDispatchTarget(null);
+        router.refresh();
+      } finally {
+        setDispatching(false);
       }
-      toast.success(
-        `Dispatched ${result.movedCount} serial${result.movedCount === 1 ? "" : "s"}.${result.drNo ? ` DR# ${result.drNo}.` : ""}`,
-      );
-      setDispatchTarget(null);
-      router.refresh();
     });
   }
 
@@ -496,6 +512,12 @@ export function DeliveriesPanel({
         pending={pending}
         onClose={() => setDispatchTarget(null)}
         onConfirm={confirmDispatch}
+      />
+      <LoadingModal
+        open={dispatching}
+        title={dispatchTarget ? `Dispatching ${dispatchTarget.deliveryNo}` : "Dispatching"}
+        description="Posting to SAP and moving the units. Please keep this page open."
+        feedItems={[...DISPATCH_FEED]}
       />
     </>
   );
