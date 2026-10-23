@@ -93,7 +93,11 @@ function DispatchBody({
     const serials = target.serials.filter((serial) => serial.modelId === model.modelId);
     const picked = serials.filter((serial) => selected.includes(serial.id)).length;
     const visible = needle
-      ? serials.filter((serial) => serial.serialNo.toLowerCase().includes(needle))
+      ? serials.filter(
+          (serial) =>
+            serial.serialNo.toLowerCase().includes(needle) ||
+            serial.locationCode.toLowerCase().includes(needle),
+        )
       : serials;
     return { model, serials, visible, picked };
   });
@@ -144,8 +148,8 @@ function DispatchBody({
         <Input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search or scan a serial number"
-          aria-label="Search serial numbers"
+          placeholder="Search or scan a serial, or type a location"
+          aria-label="Search serial numbers or locations"
           className="h-11 pl-9"
         />
       </div>
@@ -188,36 +192,58 @@ function DispatchBody({
                       {needle ? "No serial matches your search." : "No serials in the warehouse."}
                     </p>
                   ) : (
-                    <ul className="space-y-2">
-                      {visible.map((serial) => {
-                        const checked = selected.includes(serial.id);
-                        // Once a model has its count, the rest lock so nobody over-picks.
-                        const locked = !checked && full;
+                    <div className="space-y-3">
+                      {groupByLocation(visible).map((location) => {
+                        const pickedHere = location.serials.filter((serial) =>
+                          selected.includes(serial.id),
+                        ).length;
                         return (
-                          <li key={serial.id}>
-                            <label
-                              className={`flex min-h-11 items-center gap-3 rounded-md border px-3 py-2 text-sm ${
-                                locked ? "bg-muted/40 text-muted-foreground" : ""
-                              }`}
-                            >
-                              <Checkbox
-                                checked={checked}
-                                disabled={locked || pending}
-                                onCheckedChange={(value) =>
-                                  toggle(model.modelId, serial.id, value === true)
-                                }
-                                aria-label={`Dispatch ${serial.serialNo}`}
-                              />
-                              <span className="font-mono">{serial.serialNo}</span>
-                              <span className="text-muted-foreground">
-                                {serial.warehouseCode} / {serial.locationCode}
-                                {serial.heldBy ? ` · ${serial.heldBy}` : ""}
+                          <section key={location.key} aria-label={`Location ${location.label}`}>
+                            <h4 className="sticky top-0 z-10 flex items-center justify-between gap-2 bg-background py-1 text-xs font-medium text-muted-foreground">
+                              <span>
+                                <span className="font-mono text-foreground">{location.locationCode}</span>
+                                <span> · {location.warehouseCode}</span>
                               </span>
-                            </label>
-                          </li>
+                              <span className="tabular-nums">
+                                {pickedHere > 0 ? `${pickedHere} picked · ` : ""}
+                                {location.serials.length} here
+                              </span>
+                            </h4>
+                            <ul className="space-y-2">
+                              {location.serials.map((serial) => {
+                                const checked = selected.includes(serial.id);
+                                // Once a model has its count, the rest lock so nobody over-picks.
+                                const locked = !checked && full;
+                                return (
+                                  <li key={serial.id}>
+                                    <label
+                                      className={`flex min-h-11 items-center gap-3 rounded-md border px-3 py-2 text-sm ${
+                                        locked ? "bg-muted/40 text-muted-foreground" : ""
+                                      }`}
+                                    >
+                                      <Checkbox
+                                        checked={checked}
+                                        disabled={locked || pending}
+                                        onCheckedChange={(value) =>
+                                          toggle(model.modelId, serial.id, value === true)
+                                        }
+                                        aria-label={`Dispatch ${serial.serialNo} from ${location.label}`}
+                                      />
+                                      <span className="font-mono">{serial.serialNo}</span>
+                                      {serial.heldBy ? (
+                                        <span className="truncate text-xs text-muted-foreground">
+                                          {serial.heldBy}
+                                        </span>
+                                      ) : null}
+                                    </label>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          </section>
                         );
                       })}
-                    </ul>
+                    </div>
                   )}
                 </AccordionContent>
               </AccordionItem>
@@ -235,5 +261,33 @@ function DispatchBody({
         </Button>
       </DialogFooter>
     </>
+  );
+}
+
+interface LocationGroup {
+  key: string;
+  label: string;
+  warehouseCode: string;
+  locationCode: string;
+  serials: DispatchCandidate[];
+}
+
+/** Serials under their shelf location, locations in code order, so pickers walk aisle by aisle. */
+function groupByLocation(serials: DispatchCandidate[]): LocationGroup[] {
+  const groups = new Map<string, LocationGroup>();
+  for (const serial of serials) {
+    const key = `${serial.warehouseCode}/${serial.locationCode}`;
+    const group = groups.get(key) ?? {
+      key,
+      label: `${serial.warehouseCode} / ${serial.locationCode}`,
+      warehouseCode: serial.warehouseCode,
+      locationCode: serial.locationCode,
+      serials: [],
+    };
+    group.serials.push(serial);
+    groups.set(key, group);
+  }
+  return [...groups.values()].sort((a, b) =>
+    a.locationCode.localeCompare(b.locationCode, undefined, { numeric: true }),
   );
 }
