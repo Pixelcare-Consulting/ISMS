@@ -804,7 +804,6 @@ export function PulloutDetailView({
   useEffect(() => {
     if (!addOpen || !canEditList) return;
     let cancelled = false;
-    setExtrasState("loading");
     void listPulloutSerialsAction(detail.branch.id).then((result) => {
       if (cancelled) return;
       if ("serials" in result) {
@@ -828,6 +827,17 @@ export function PulloutDetailView({
       cancelled = true;
     };
   }, [addOpen, canEditList, detail.branch.id, extrasAttempt]);
+
+  // "loading" is set by the handlers that start a fetch, not inside the effect.
+  function toggleAddPanel() {
+    if (!addOpen) setExtrasState("loading");
+    setAddOpen(!addOpen);
+  }
+
+  function retryExtras() {
+    setExtrasState("loading");
+    setExtrasAttempt((attempt) => attempt + 1);
+  }
 
   function run(
     action: () => Promise<{ error: string } | { success: true; sapJob?: { message: string } }>,
@@ -925,7 +935,7 @@ export function PulloutDetailView({
                   variant="outline"
                   disabled={pending}
                   aria-expanded={addOpen}
-                  onClick={() => setAddOpen((open) => !open)}
+                  onClick={toggleAddPanel}
                 >
                   {addOpen ? "Hide serials" : "Add serials"}
                 </Button>
@@ -939,7 +949,7 @@ export function PulloutDetailView({
               pending={pending}
               selected={selected}
               onToggle={toggleSerial}
-              onRetry={() => setExtrasAttempt((attempt) => attempt + 1)}
+              onRetry={retryExtras}
             />
           ) : null}
         </div>

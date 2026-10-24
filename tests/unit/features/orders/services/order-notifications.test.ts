@@ -65,6 +65,14 @@ jest.mock("@/lib/aor/scope", () => ({
   getUserBranchIds: jest.fn(),
 }));
 
+jest.mock("@/features/aors/repositories/aor.repository", () => ({
+  aorRepository: { listExistingBranchIds: jest.fn() },
+}));
+jest.mock("@/lib/auth/permissions", () => ({
+  hasPermission: (permissions: string[] | undefined, slug: string) =>
+    Boolean(permissions?.includes(slug)),
+}));
+
 import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
 
 import { auditService } from "@/features/audit/services/audit.service";

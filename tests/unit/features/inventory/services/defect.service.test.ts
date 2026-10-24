@@ -164,6 +164,7 @@ describe("defectService.approveDefect", () => {
     (reasonStatusService.requireCodeId as jest.Mock).mockResolvedValue("def-code-id");
     transaction.mockImplementation(async (fn: (tx: unknown) => Promise<void>) => {
       const tx = {
+        $queryRaw: jest.fn().mockResolvedValue([]),
         branchInventory: { update: jest.fn().mockResolvedValue(undefined) },
         branchDefectReport: { update: jest.fn().mockResolvedValue(undefined) },
       };
