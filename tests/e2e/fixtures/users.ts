@@ -12,8 +12,11 @@ const password = process.env.E2E_USER_PASSWORD ?? "DemoPass123";
 export const E2E_USERS = {
   /** Session stored by auth.setup.ts and reused by every authenticated spec. */
   admin: { email: process.env.E2E_USER_EMAIL ?? "admin@demo.local", password },
-  /** Tenant-level super admin (lands on /dashboard). */
-  superAdmin: { email: "superadmin@demo.local", password },
+  /**
+   * Has policies.view and is not a setup admin. A tenant super admin is held to
+   * /setup, so it cannot test a callbackUrl.
+   */
+  deptHead: { email: "depthead@demo.local", password },
   ismsManager: { email: "isms@demo.local", password },
   auditor: { email: "auditor@demo.local", password },
 } as const;
