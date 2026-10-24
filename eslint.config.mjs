@@ -21,6 +21,11 @@ const eslintConfig = defineConfig([
     files: ["tests/e2e/**/*.ts", "playwright.config.ts"],
     rules: { "react-hooks/rules-of-hooks": "off" },
   },
+  {
+    // CommonJS preloads (e.g. tsx --require) must use require().
+    files: ["**/*.cjs"],
+    rules: { "@typescript-eslint/no-require-imports": "off" },
+  },
 ]);
 
 export default eslintConfig;

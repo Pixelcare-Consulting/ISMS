@@ -12,6 +12,8 @@ jest.mock("@/lib/auth/permissions", () => ({
 jest.mock("@/lib/database/client", () => ({
   prisma: {
     alternateWarehouse: { findFirst: jest.fn() },
+    branch: { findFirst: jest.fn() },
+    serialNumber: { findFirst: jest.fn() },
     branchInventory: {
       findFirst: jest.fn(),
       findMany: jest.fn(),
@@ -27,6 +29,7 @@ jest.mock("@/lib/database/client", () => ({
     branchSalesTransactionDetail: {
       create: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn(),
     },
     brand: { findMany: jest.fn() },
     customerDeliveryMethod: { findFirst: jest.fn() },
@@ -35,6 +38,7 @@ jest.mock("@/lib/database/client", () => ({
     promoType: { findMany: jest.fn() },
     saleType: { findFirst: jest.fn() },
     stockCountLine: { findFirst: jest.fn() },
+    $queryRaw: jest.fn(),
     $transaction: jest.fn(),
   },
 }));
@@ -152,6 +156,7 @@ function toFollowSale() {
       {
         id: "detail-1",
         modelId: "model-1",
+        brandId: "brand-1",
         serialNumberId: null,
         deliveryNo: null,
         deliveryDate: null,
@@ -176,6 +181,9 @@ beforeEach(() => {
   (prisma.branchSalesTransactionDetail.create as jest.Mock).mockResolvedValue({
     id: "detail-1",
   });
+  (prisma.branchSalesTransactionDetail.updateMany as jest.Mock).mockResolvedValue({
+    count: 1,
+  });
   (prisma.branchSalesTransactionDetail.update as jest.Mock).mockResolvedValue({
     id: "detail-1",
   });
@@ -189,6 +197,15 @@ beforeEach(() => {
   });
   (prisma.alternateWarehouse.findFirst as jest.Mock).mockResolvedValue(null);
   (prisma.stockCountLine.findFirst as jest.Mock).mockResolvedValue(null);
+  // Serial-link guard: serial and both branches belong to the session tenant.
+  (prisma.branch.findFirst as jest.Mock).mockResolvedValue({ tenantId: "tenant-1" });
+  (prisma.serialNumber.findFirst as jest.Mock).mockResolvedValue({
+    serialNo: "SN-1",
+    tenantId: "tenant-1",
+    modelId: "model-1",
+    deletedAt: null,
+    model: { tenantId: "tenant-1", brandId: "brand-1" },
+  });
   inventoryFindFirst.mockResolvedValue(null);
   inventoryUpdateMany.mockResolvedValue({ count: 1 });
   inventoryCount.mockResolvedValue(0);
@@ -462,9 +479,10 @@ describe("updateSaleSerialAction", () => {
         where: expect.objectContaining({ statusCodeId: "STK-id" }),
       }),
     );
-    expect(prisma.branchSalesTransactionDetail.update).toHaveBeenCalledWith(
+    // The TO-FOLLOW line is claimed only while it still has no serial.
+    expect(prisma.branchSalesTransactionDetail.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "detail-1" },
+        where: expect.objectContaining({ id: "detail-1", serialNumberId: null }),
         data: expect.objectContaining({ serialNumberId: "sn-1" }),
       }),
     );
