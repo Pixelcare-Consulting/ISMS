@@ -13,6 +13,9 @@ import {
   listInventoryReportBranchesAction,
   listInventoryReportStatusOptionsAction,
 } from "@/features/reports/actions/reports.actions";
+import { ReportPreview } from "@/features/reporting/components/report-preview";
+import { describeDateRange } from "@/features/reporting/lib/filter-summary";
+import type { DatasetParams } from "@/features/reporting/schemas/dataset-params.schema";
 
 const DEFAULT_STATUS_CODES = ["STK"];
 
@@ -46,6 +49,7 @@ export function InventoryReportPanel() {
   const [branches, setBranches] = useState<BranchOption[]>([]);
   const [statusOptions, setStatusOptions] = useState<StatusOption[]>([]);
   const [refsLoaded, setRefsLoaded] = useState(false);
+  const [previewParams, setPreviewParams] = useState<DatasetParams | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -64,16 +68,20 @@ export function InventoryReportPanel() {
     };
   }, []);
 
+  function currentFilters() {
+    return {
+      from: from || undefined,
+      to: to || undefined,
+      sku: sku.trim() || undefined,
+      // Empty selection = all statuses (explicit empty array).
+      statusCodes,
+      branchId: branchId || undefined,
+    };
+  }
+
   function handleExport() {
     startTransition(async () => {
-      const result = await exportInventoryReportXlsxAction({
-        from: from || undefined,
-        to: to || undefined,
-        sku: sku.trim() || undefined,
-        // Empty selection = all statuses (explicit empty array).
-        statusCodes,
-        branchId: branchId || undefined,
-      });
+      const result = await exportInventoryReportXlsxAction(currentFilters());
       if ("error" in result && result.error) {
         toast.error(result.error);
         return;
@@ -98,69 +106,77 @@ export function InventoryReportPanel() {
   }));
 
   return (
-    <div className="max-w-xl space-y-4 rounded-xl border bg-card p-4 shadow-sm sm:p-6">
-      <p className="text-sm text-muted-foreground">
-        Branch stock units with dealer classification and delivery validation
-        columns (serial, status, DR#, aging). Excel includes a Summary sheet of
-        quantities and a Detail sheet of serials. Date filter uses DR date when
-        present, otherwise last inventory update. Scoped to your assigned
-        branch(es).
-      </p>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-2">
-          <Label htmlFor="inventory-from">From date</Label>
-          <Input
-            id="inventory-from"
-            type="date"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-          />
+    <div className="space-y-4">
+      <div className="max-w-xl space-y-4 rounded-xl border bg-card p-4 shadow-sm sm:p-6">
+        <p className="text-sm text-muted-foreground">
+          Branch stock units with dealer classification and delivery validation
+          columns (serial, status, DR#, aging). Excel includes a Summary sheet of
+          quantities and a Detail sheet of serials. Date filter uses DR date when
+          present, otherwise last inventory update. Scoped to your assigned
+          branch(es).
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="inventory-from">From date</Label>
+            <Input
+              id="inventory-from"
+              type="date"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="inventory-to">To date</Label>
+            <Input
+              id="inventory-to"
+              type="date"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+            />
+          </div>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="inventory-to">To date</Label>
+          <Label htmlFor="inventory-sku">SKU contains</Label>
           <Input
-            id="inventory-to"
-            type="date"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
+            id="inventory-sku"
+            value={sku}
+            onChange={(e) => setSku(e.target.value)}
+            placeholder="e.g. SWS-01"
+            autoComplete="off"
           />
         </div>
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="inventory-sku">SKU contains</Label>
-        <Input
-          id="inventory-sku"
-          value={sku}
-          onChange={(e) => setSku(e.target.value)}
-          placeholder="e.g. SWS-01"
-          autoComplete="off"
+        <SearchableMultiSelect
+          label="Status"
+          options={statusSelectOptions}
+          selectedIds={statusCodes}
+          onChange={setStatusCodes}
+          placeholder={refsLoaded ? "All statuses" : "Loading…"}
+          searchPlaceholder="Search status…"
+          emptyMessage="No status codes."
+          hint="Default STK. Clear selection for all statuses."
+          disabled={!refsLoaded}
         />
+        <SearchableSelect
+          label="Branch (optional)"
+          options={branchSelectOptions}
+          value={branchId}
+          onChange={setBranchId}
+          placeholder={refsLoaded ? "All assigned branches" : "Loading…"}
+          searchPlaceholder="Search branch…"
+          emptyMessage="No branches in your AOR."
+          allowClear
+          disabled={!refsLoaded}
+        />
+        <div className="flex flex-wrap gap-2">
+          <Button disabled={pending || !refsLoaded} onClick={handleExport}>
+            {pending ? "Exporting…" : "Export"}
+          </Button>
+          <Button variant="outline" disabled={!refsLoaded} onClick={() => setPreviewParams(currentFilters())}>
+            Preview report
+          </Button>
+        </div>
       </div>
-      <SearchableMultiSelect
-        label="Status"
-        options={statusSelectOptions}
-        selectedIds={statusCodes}
-        onChange={setStatusCodes}
-        placeholder={refsLoaded ? "All statuses" : "Loading…"}
-        searchPlaceholder="Search status…"
-        emptyMessage="No status codes."
-        hint="Default STK. Clear selection for all statuses."
-        disabled={!refsLoaded}
-      />
-      <SearchableSelect
-        label="Branch (optional)"
-        options={branchSelectOptions}
-        value={branchId}
-        onChange={setBranchId}
-        placeholder={refsLoaded ? "All assigned branches" : "Loading…"}
-        searchPlaceholder="Search branch…"
-        emptyMessage="No branches in your AOR."
-        allowClear
-        disabled={!refsLoaded}
-      />
-      <Button disabled={pending || !refsLoaded} onClick={handleExport}>
-        {pending ? "Exporting…" : "Export"}
-      </Button>
+      <ReportPreview reportKey="inventory" params={previewParams} filterSummary={describeDateRange(previewParams?.from, previewParams?.to)} onClose={() => setPreviewParams(null)} />
     </div>
   );
 }

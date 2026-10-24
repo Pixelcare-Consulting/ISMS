@@ -1,7 +1,9 @@
 "use client";
 
+import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
+import { Loader2 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { useOrdersCreateWorkspace } from "@/app/(app)/orders/_components/orders-create-workspace-context";
@@ -9,6 +11,7 @@ import {
   adminBulkCancelOrdersAction,
   approveOrderAction,
   deleteDraftOrderAction,
+  listOrdersAction,
   rejectOrderAction,
   submitDraftOrderAction,
 } from "@/features/orders/actions/order.actions";
@@ -20,6 +23,7 @@ import {
   isSuperAdminOrderOverride,
 } from "@/features/orders/constants/order-workflow";
 import { OrderDetailsDialog } from "@/app/(app)/orders/_components/order-details-dialog";
+import { SuggestedOrdersDialog } from "@/app/(app)/orders/_components/suggested-orders-dialog";
 import { OrderWorkflowDialog } from "@/app/(app)/orders/_components/order-workflow-dialog";
 import {
   EditOrderDialog,
@@ -29,23 +33,26 @@ import { Button } from "@/components/ui/button";
 import { BRANCH_ORDER_STATUS_LABELS } from "@/features/orders/constants/order-status";
 import { OrderTypeBadge } from "@/features/orders/components/order-type-badge";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
-import { useTableSelection } from "@/components/data-table/use-table-selection";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   parseTablePageSize,
   type TablePageSize,
 } from "@/components/data-table/table-page-size";
 import { uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
-import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  DataTable,
+  nextTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { DeleteConfirmDialog } from "@/components/data-table/delete-confirm-dialog";
 import { LoadingModal } from "@/components/ui/loading-modal";
+import {
+  formatOrderModeOfPayment,
+  formatOrderSapDocument,
+  type OrderSapDocType,
+} from "@/features/orders/constants/order-sap-doc-type";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
 interface OrderRow {
@@ -54,17 +61,29 @@ interface OrderRow {
   orderType: string;
   status: string;
   branchId: string;
+  brandId?: string | null;
   notes?: string | null;
   spaRemarks?: string | null;
+  updatedAt?: string | Date | null;
+  reviewSnapshot?: unknown;
+  reviewSnapshotAt?: string | Date | null;
+  sapDocType?: OrderSapDocType | null;
+  sapDocNum?: number | null;
   deliveryDueDate?: string | Date | null;
-  branch: { name: string; deliverySchedule?: unknown };
+  modeOfPayment?: { name: string } | null;
+  branch: {
+    name: string;
+    deliverySchedule?: unknown;
+    dealer?: { modeOfPayment: { name: string } | null } | null;
+  };
   createdBy: { name: string | null; email: string };
   details: {
     id: string;
     quantity: number;
     approvedQty?: number | null;
     remarks?: string | null;
-    model: { id: string; skuCode: string };
+    spRemarks?: string | null;
+    model: { id: string; skuCode: string; name?: string; brandId?: string | null };
   }[];
   approvalLevels?: {
     level: number;
@@ -75,6 +94,8 @@ interface OrderRow {
     approvedBy?: { name: string | null; email: string } | null;
   }[];
 }
+
+const orderColumn = createColumnHelper<DataTableFeatures, OrderRow>();
 
 type OrderSortField = "orderNumber" | "branch" | "orderType" | "status";
 type OrderSortDir = "asc" | "desc";
@@ -89,13 +110,13 @@ interface OrdersTableProps {
   };
   viewerRoleSlugs: string[];
   canEdit?: boolean;
-  /** Same gate as Supply Planning (`forecast.manage` / `planogram.manage`). */
-  canAccessSuggestedOrders?: boolean;
   /** When set, list is type-scoped and create dialog locks this type. */
   fixedOrderType?: BranchOrderType;
   /** Base path for pagination links (defaults to `/orders`). */
   basePath?: string;
   initialSort?: string;
+  /** Team Leaders offered in the TL filter; hidden when empty. */
+  teamLeaders?: { id: string; name: string }[];
   initialSortDir?: string;
 }
 
@@ -128,12 +149,14 @@ function buildOrdersHref(
   limit: number,
   sort?: string,
   sortDir?: string,
+  teamLeaderId?: string | null,
 ): string {
   const params = new URLSearchParams();
   if (page > 1) params.set("page", String(page));
   if (limit !== DEFAULT_TABLE_PAGE_SIZE) params.set("limit", String(limit));
   if (sort) params.set("sort", sort);
   if (sort && sortDir) params.set("dir", sortDir);
+  if (teamLeaderId) params.set("tl", teamLeaderId);
   const query = params.toString();
   return query ? `${basePath}?${query}` : basePath;
 }
@@ -145,30 +168,47 @@ function buildOrdersHrefWithTab(
   sort?: string,
   sortDir?: string,
   tab?: string | null,
+  teamLeaderId?: string | null,
 ): string {
-  const href = buildOrdersHref(basePath, page, limit, sort, sortDir);
+  const href = buildOrdersHref(basePath, page, limit, sort, sortDir, teamLeaderId);
   if (!tab || tab === "orders") return href;
   const join = href.includes("?") ? "&" : "?";
   return `${href}${join}tab=${tab}`;
 }
 
 export function OrdersTable({
-  result,
+  result: serverResult,
   viewerRoleSlugs,
   canEdit = false,
-  canAccessSuggestedOrders = false,
   fixedOrderType,
   basePath = "/orders",
   initialSort = "",
   initialSortDir = "desc",
+  teamLeaders = [],
 }: OrdersTableProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  /**
+   * The TL filter reloads only the table: its page of orders replaces the server's until
+   * the server renders again (paging, sorting, a refresh after an action), which then
+   * already reads `tl` from the URL.
+   */
+  const [filteredList, setFilteredList] = useState<{
+    source: OrdersTableProps["result"];
+    result: OrdersTableProps["result"];
+  } | null>(null);
+  const result =
+    filteredList && filteredList.source === serverResult ? filteredList.result : serverResult;
+  const [filtering, startFiltering] = useTransition();
+  const filterRequest = useRef(0);
+  /** The TL just picked, shown while its orders load; the URL takes over once they do. */
+  const [pickedTeamLeaderId, setPickedTeamLeaderId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [workflowOrder, setWorkflowOrder] = useState<OrderRow | null>(null);
-  const [detailsOrder, setDetailsOrder] = useState<OrderRow | null>(null);
+  const [detailsOrderId, setDetailsOrderId] = useState<string | null>(null);
   const [editingOrder, setEditingOrder] = useState<EditableOrder | null>(null);
   const [draftToDelete, setDraftToDelete] = useState<OrderRow | null>(null);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [bulkCancelOpen, setBulkCancelOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [processingAction, setProcessingAction] = useState<"approve" | "reject" | null>(
@@ -177,6 +217,11 @@ export function OrdersTable({
   const createWorkspace = useOrdersCreateWorkspace();
   const pageSize = parseTablePageSize(result.limit);
   const pageTab = searchParams.get("tab");
+  const teamLeaderId = searchParams.get("tl") ?? "";
+  const teamLeaderOptions = useMemo(
+    () => teamLeaders.map((leader) => ({ id: leader.id, label: leader.name })),
+    [teamLeaders],
+  );
   const sort = (searchParams.get("sort") ?? initialSort) || "";
   const sortDir = (
     (searchParams.get("dir") ?? initialSortDir) === "asc" ? "asc" : "desc"
@@ -184,14 +229,61 @@ export function OrdersTable({
 
   function handlePageSizeChange(limit: TablePageSize) {
     router.push(
-      buildOrdersHrefWithTab(basePath, 1, limit, sort, sort ? sortDir : undefined, pageTab),
+      buildOrdersHrefWithTab(
+        basePath,
+        1,
+        limit,
+        sort,
+        sort ? sortDir : undefined,
+        pageTab,
+        teamLeaderId,
+      ),
     );
+  }
+
+  /**
+   * Server-side, since a TL covers more branches than one page holds, but without a route
+   * navigation: that re-rendered the whole page. The URL still records the filter.
+   */
+  function handleTeamLeaderChange(nextTeamLeaderId: string) {
+    const request = ++filterRequest.current;
+    setPickedTeamLeaderId(nextTeamLeaderId);
+    const href = buildOrdersHrefWithTab(
+      basePath,
+      1,
+      pageSize,
+      sort,
+      sort ? sortDir : undefined,
+      pageTab,
+      nextTeamLeaderId,
+    );
+    startFiltering(async () => {
+      try {
+        const next = await listOrdersAction({
+          page: 1,
+          limit: pageSize,
+          orderType: fixedOrderType,
+          sort: sort || undefined,
+          sortDir: sort ? sortDir : undefined,
+          teamLeaderId: nextTeamLeaderId || undefined,
+        });
+        // A later pick already replaced this one.
+        if (request !== filterRequest.current) return;
+        setFilteredList({ source: serverResult, result: next });
+        setRowSelection({});
+        window.history.pushState(null, "", href);
+      } catch {
+        if (request === filterRequest.current) toast.error("Could not load orders. Try again.");
+      } finally {
+        if (request === filterRequest.current) setPickedTeamLeaderId(null);
+      }
+    });
   }
 
   function toggleSort(field: OrderSortField) {
     const next = nextTableSort(field, sort, sortDir);
     router.push(
-      buildOrdersHrefWithTab(basePath, 1, pageSize, next.sort, next.dir, pageTab),
+      buildOrdersHrefWithTab(basePath, 1, pageSize, next.sort, next.dir, pageTab, teamLeaderId),
     );
   }
 
@@ -213,17 +305,31 @@ export function OrdersTable({
     [result.items],
   );
 
-  const selection = useTableSelection(filtered.map((o) => o.id));
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const detailsOrder = useMemo(
+    () => result.items.find((item) => item.id === detailsOrderId) ?? null,
+    [detailsOrderId, result.items],
+  );
   const canSuperAdminBulkCancel = isSuperAdminOrderOverride(viewerRoleSlugs);
-  const selectedOrderIds = useMemo(() => {
-    const visibleIds = new Set(filtered.map((o) => o.id));
-    return selection.selectedIds.filter((id) => visibleIds.has(id));
-  }, [filtered, selection.selectedIds]);
+  const selectedOrderIds = useMemo(
+    () => filtered.map((order) => order.id).filter((id) => rowSelection[id]),
+    [filtered, rowSelection],
+  );
+  const selectedCount = selectedOrderIds.length;
 
   function handleApprove(input?: {
     comment?: string;
-    lineAdjustments?: { detailId: string; approvedQty: number }[];
+    lineAdjustments?: {
+      detailId: string;
+      approvedQty: number;
+      spRemarks?: string | null;
+    }[];
     deliveryDueDate?: string;
+    expectedUpdatedAt?: string;
+    reviewSnapshot?: {
+      kind: "order-review-snapshot";
+      version: 1;
+    };
   }) {
     if (!workflowOrder) return;
     setProcessingAction("approve");
@@ -266,9 +372,171 @@ export function OrdersTable({
     });
   }
 
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<OrderRow>[] = [
+      orderColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => row.index + 1,
+        meta: { className: "tabular-nums text-muted-foreground" },
+      }),
+      orderColumn.accessor((row) => row.orderNumber, {
+        id: "orderNumber",
+        header: "Order #",
+        enableSorting: true,
+        meta: { className: "font-mono" },
+      }),
+      orderColumn.accessor((row) => row.branch.name, {
+        id: "branch",
+        header: "Branch",
+        enableSorting: true,
+      }),
+      orderColumn.display({
+        id: "orderType",
+        header: "Type",
+        enableSorting: true,
+        cell: ({ row }) => <OrderTypeBadge orderType={row.original.orderType} />,
+      }),
+      orderColumn.display({
+        id: "status",
+        header: "Status",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <StatusCodeBadge
+            code={row.original.status}
+            name={
+              BRANCH_ORDER_STATUS_LABELS[row.original.status as BranchOrderStatus] ??
+              row.original.status
+            }
+          />
+        ),
+      }),
+      orderColumn.display({
+        id: "sapDocument",
+        header: "SAP document",
+        enableSorting: false,
+        cell: ({ row }) =>
+          formatOrderSapDocument({
+            sapDocType: row.original.sapDocType ?? null,
+            sapDocNum: row.original.sapDocNum ?? null,
+          }),
+      }),
+      orderColumn.display({
+        id: "lines",
+        header: "Lines",
+        enableSorting: false,
+        cell: ({ row }) =>
+          row.original.details
+            .map((detail) => `${detail.model.skuCode}×${detail.quantity}`)
+            .join(", "),
+      }),
+      orderColumn.display({
+        id: "actions",
+        header: "Actions",
+        enableSorting: false,
+        enableHiding: false,
+        cell: ({ row }) => {
+          const order = row.original;
+          return (
+            <div className="flex justify-end gap-2">
+              {isOrderPendingApproval(order.status as BranchOrderStatus) ? (
+                <OrderReviewButton
+                  order={order}
+                  viewerRoleSlugs={viewerRoleSlugs}
+                  onReview={() => setWorkflowOrder(order)}
+                />
+              ) : null}
+              {canEdit && order.status === "draft" ? (
+                <Button
+                  size="sm"
+                  disabled={pending}
+                  onClick={() => {
+                    startTransition(async () => {
+                      const result = await submitDraftOrderAction(order.id);
+                      if ("error" in result && result.error) {
+                        toast.error(result.error);
+                        return;
+                      }
+                      toast.success("Submitted for review", {
+                        description: draftSubmitDescription(order.orderType),
+                      });
+                      router.refresh();
+                    });
+                  }}
+                >
+                  Submit for review
+                </Button>
+              ) : null}
+              {canEdit && order.status === "draft" ? (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  disabled={pending}
+                  onClick={() => setDraftToDelete(order)}
+                >
+                  Delete
+                </Button>
+              ) : null}
+              {canEditOrderLines({
+                status: order.status as BranchOrderStatus,
+                orderType: order.orderType as BranchOrderType,
+                roleSlugs: viewerRoleSlugs,
+                hasCreatePermission: canEdit,
+              }) ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() =>
+                    setEditingOrder({
+                      id: order.id,
+                      orderNumber: order.orderNumber,
+                      branchId: order.branchId,
+                      branchName: order.branch.name,
+                      orderType: order.orderType as EditableOrder["orderType"],
+                      lines: order.details.map((detail) => ({
+                        modelId: detail.model.id,
+                        skuCode: detail.model.skuCode,
+                        quantity: detail.quantity,
+                      })),
+                    })
+                  }
+                >
+                  Edit
+                </Button>
+              ) : null}
+              <Button size="sm" variant="outline" onClick={() => setDetailsOrderId(order.id)}>
+                View details
+              </Button>
+            </div>
+          );
+        },
+      }),
+    ];
+    return cols;
+  }, [canEdit, pending, router, viewerRoleSlugs]);
+
   return (
     <>
-      <GlobalDataTable
+      <DataTable
+        data={filtered}
+        columns={columns}
+        loading={filtering}
+        getRowId={(row) => row.id}
+        manualSorting
+        manualPagination
+        enableSorting
+        sorting={{
+          sortKey: sort,
+          sortDir,
+          onSort: (columnId) => toggleSort(columnId as OrderSortField),
+        }}
+        // Selection only feeds Super Admin bulk cancel; other roles have nothing to do with it.
+        enableRowSelection={canSuperAdminBulkCancel}
+        rowSelection={rowSelection}
+        onRowSelectionChange={setRowSelection}
+        selectAllLabel="Select all orders"
+        getSelectionLabel={(row) => `Select order ${row.orderNumber}`}
         stickyHeader
         search={{
           value: query,
@@ -277,12 +545,42 @@ export function OrdersTable({
           suggestions,
         }}
         pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
+        toolbarLeading={
+          teamLeaderOptions.length > 0 || teamLeaderId ? (
+            <div className="flex w-full items-center gap-2 sm:w-auto">
+              <SearchableSelect
+                id="orders-team-leader-filter"
+                options={teamLeaderOptions}
+                value={pickedTeamLeaderId ?? teamLeaderId}
+                onChange={handleTeamLeaderChange}
+                placeholder="All team leaders"
+                searchPlaceholder="Search team leaders…"
+                emptyMessage="No team leader matches."
+                allowClear
+                className="w-full sm:w-56"
+              />
+              {/* Always mounted so screen readers announce the change. */}
+              <span
+                role="status"
+                aria-live="polite"
+                className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground"
+              >
+                {filtering ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" aria-hidden />
+                    <span>Loading orders…</span>
+                  </>
+                ) : null}
+              </span>
+            </div>
+          ) : null
+        }
         toolbarActions={
           <>
-            {selection.selectedCount > 0 ? (
+            {selectedCount > 0 ? (
               <>
-                <Button variant="secondary" onClick={selection.clearSelection}>
-                  {selection.selectedCount} selected
+                <Button variant="secondary" onClick={() => setRowSelection({})}>
+                  {selectedCount} selected
                 </Button>
                 {canSuperAdminBulkCancel ? (
                   <Button
@@ -296,9 +594,9 @@ export function OrdersTable({
                 ) : null}
               </>
             ) : null}
-            {canAccessSuggestedOrders ? (
-              <Button variant="outline" asChild>
-                <a href="/settings/planning/runs">Suggested orders</a>
+            {canEdit && fixedOrderType ? (
+              <Button type="button" variant="outline" onClick={() => setSuggestionsOpen(true)}>
+                Suggested orders
               </Button>
             ) : null}
             {canEdit && fixedOrderType !== "auto_replenish" ? (
@@ -311,7 +609,7 @@ export function OrdersTable({
           page: result.page,
           totalPages: result.totalPages,
           itemLabel: "order",
-            buildHref: (page) =>
+          buildHref: (page) =>
             buildOrdersHrefWithTab(
               basePath,
               page,
@@ -319,194 +617,74 @@ export function OrdersTable({
               sort,
               sort ? sortDir : undefined,
               pageTab,
+              teamLeaderId,
             ),
         }}
-      >
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <GlobalTableHead className="w-12 pl-3 pr-2">
-              <Checkbox
-                checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
-                onCheckedChange={(checked) => selection.toggleAll(checked === true)}
-                aria-label="Select all orders"
-              />
-            </GlobalTableHead>
-            <GlobalTableHead className="w-12">#</GlobalTableHead>
-            <GlobalTableHead
-              sortKey="orderNumber"
-              activeSortKey={sort}
-              sortDirection={sortDir}
-              onSort={(key) => toggleSort(key as OrderSortField)}
-            >
-              Order #
-            </GlobalTableHead>
-            <GlobalTableHead
-              sortKey="branch"
-              activeSortKey={sort}
-              sortDirection={sortDir}
-              onSort={(key) => toggleSort(key as OrderSortField)}
-            >
-              Branch
-            </GlobalTableHead>
-            <GlobalTableHead
-              sortKey="orderType"
-              activeSortKey={sort}
-              sortDirection={sortDir}
-              onSort={(key) => toggleSort(key as OrderSortField)}
-            >
-              Type
-            </GlobalTableHead>
-            <GlobalTableHead
-              sortKey="status"
-              activeSortKey={sort}
-              sortDirection={sortDir}
-              onSort={(key) => toggleSort(key as OrderSortField)}
-            >
-              Status
-            </GlobalTableHead>
-            <GlobalTableHead>Lines</GlobalTableHead>
-            <GlobalTableHead className="w-44" />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {filtered.map((o, index) => (
-            <TableRow key={o.id} data-state={selection.isRowSelected(o.id) ? "selected" : undefined}>
-              <TableCell className="w-12 pl-3 pr-2">
-                <Checkbox
-                  checked={selection.isRowSelected(o.id)}
-                  onCheckedChange={(checked) => selection.toggleRow(o.id, checked === true)}
-                  aria-label={`Select order ${o.orderNumber}`}
-                />
-              </TableCell>
-              <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
-              <TableCell className="font-mono text-sm">{o.orderNumber}</TableCell>
-              <TableCell>{o.branch.name}</TableCell>
-              <TableCell>
-                <OrderTypeBadge orderType={o.orderType} />
-              </TableCell>
-              <TableCell>
-                <StatusCodeBadge
-                  code={o.status}
-                  name={
-                    BRANCH_ORDER_STATUS_LABELS[o.status as BranchOrderStatus] ?? o.status
-                  }
-                />
-              </TableCell>
-              <TableCell>
-                {o.details.map((d) => `${d.model.skuCode}×${d.quantity}`).join(", ")}
-              </TableCell>
-              <TableCell>
-                <div className="flex justify-end gap-2">
-                  {isOrderPendingApproval(o.status as BranchOrderStatus) ? (
-                    <OrderReviewButton
-                      order={o}
-                      viewerRoleSlugs={viewerRoleSlugs}
-                      onReview={() => setWorkflowOrder(o)}
-                    />
-                  ) : null}
-                  {canEdit &&
-                  o.status === "draft" &&
-                  o.orderType === "auto_replenish" ? (
-                    <Button
-                      size="sm"
-                      disabled={pending}
-                      onClick={() => {
-                        startTransition(async () => {
-                          const result = await submitDraftOrderAction(o.id);
-                          if ("error" in result && result.error) {
-                            toast.error(result.error);
-                            return;
-                          }
-                          toast.success("Submitted for review", {
-                            description: "Team Leader can review this order now.",
-                          });
-                          router.refresh();
-                        });
-                      }}
-                    >
-                      Submit for review
-                    </Button>
-                  ) : null}
-                  {canEdit && o.status === "draft" ? (
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      disabled={pending}
-                      onClick={() => setDraftToDelete(o)}
-                    >
-                      Delete
-                    </Button>
-                  ) : null}
-                  {canEditOrderLines({
-                    status: o.status as BranchOrderStatus,
-                    orderType: o.orderType as BranchOrderType,
-                    roleSlugs: viewerRoleSlugs,
-                    hasCreatePermission: canEdit,
-                  }) ? (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() =>
-                        setEditingOrder({
-                          id: o.id,
-                          orderNumber: o.orderNumber,
-                          branchId: o.branchId,
-                          branchName: o.branch.name,
-                          orderType: o.orderType as EditableOrder["orderType"],
-                          lines: o.details.map((d) => ({
-                            modelId: d.model.id,
-                            skuCode: d.model.skuCode,
-                            quantity: d.quantity,
-                          })),
-                        })
-                      }
-                    >
-                      Edit
-                    </Button>
-                  ) : null}
-                  <Button size="sm" variant="outline" onClick={() => setDetailsOrder(o)}>
-                    View details
-                  </Button>
-                </div>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </GlobalDataTable>
+        empty={filtered.length === 0}
+        emptyMessage={
+          query.trim()
+            ? "No orders match your search."
+            : teamLeaderId
+              ? "No orders from this team leader's branches."
+              : "No orders."
+        }
+      />
       {detailsOrder ? (
         <OrderDetailsDialog
+          orderId={detailsOrder.id}
           orderNumber={detailsOrder.orderNumber}
           orderType={detailsOrder.orderType as BranchOrderType}
+          branchId={detailsOrder.branchId}
           branchName={detailsOrder.branch.name}
           status={detailsOrder.status as BranchOrderStatus}
           notes={detailsOrder.notes}
           deliveryDueDate={detailsOrder.deliveryDueDate}
           createdByName={detailsOrder.createdBy.name ?? detailsOrder.createdBy.email}
+          reviewSnapshot={detailsOrder.reviewSnapshot}
+          reviewSnapshotAt={detailsOrder.reviewSnapshotAt}
+          sapDocType={detailsOrder.sapDocType}
+          sapDocNum={detailsOrder.sapDocNum}
+          modeOfPaymentLabel={formatOrderModeOfPayment({
+            orderModeOfPayment: detailsOrder.modeOfPayment?.name ?? null,
+            dealerModeOfPayment: detailsOrder.branch.dealer?.modeOfPayment?.name ?? null,
+          })}
           lines={detailsOrder.details.map((d) => ({
             detailId: d.id,
+            modelId: d.model.id,
             skuCode: d.model.skuCode,
+            name: d.model.name,
             quantity: d.quantity,
             approvedQty: d.approvedQty,
             remarks: d.remarks,
+            spRemarks: d.spRemarks,
           }))}
           approvalLevels={detailsOrder.approvalLevels}
+          roleSlugs={viewerRoleSlugs}
+          hasCreatePermission={canEdit}
           open
           onOpenChange={(open) => {
-            if (!open) setDetailsOrder(null);
+            if (!open) setDetailsOrderId(null);
           }}
         />
       ) : null}
       {workflowOrder ? (
         <OrderWorkflowDialog
+          orderId={workflowOrder.id}
           orderNumber={workflowOrder.orderNumber}
           orderType={workflowOrder.orderType as "auto_replenish" | "manual" | "special"}
+          branchId={workflowOrder.branchId}
           branchName={workflowOrder.branch.name}
+          updatedAt={workflowOrder.updatedAt}
           deliverySchedule={workflowOrder.branch.deliverySchedule}
           lines={workflowOrder.details.map((d) => ({
             detailId: d.id,
+            modelId: d.model.id,
             skuCode: d.model.skuCode,
             quantity: d.quantity,
+            remarks: d.remarks,
+            spRemarks: d.spRemarks,
           }))}
+          approvalLevels={workflowOrder.approvalLevels}
           status={workflowOrder.status as BranchOrderStatus}
           open
           pending={pending}
@@ -550,7 +728,7 @@ export function OrdersTable({
             if (!open && !pending) setBulkCancelOpen(false);
           }}
           title="Cancel selected orders?"
-          description={`This applies to ${selection.selectedCount} selected order${selection.selectedCount === 1 ? "" : "s"}. Unsubmitted drafts are discarded permanently. Pending orders are marked Cancelled and move to Order History. Approved, rejected, cancelled, or delivery-linked orders are skipped.`}
+          description={`This applies to ${selectedCount} selected order${selectedCount === 1 ? "" : "s"}. Unsubmitted drafts are discarded permanently. Pending orders are marked Cancelled and move to Order History. Approved, rejected, cancelled, or delivery-linked orders are skipped.`}
           pending={pending}
           confirmLabel="Cancel selected"
           onConfirm={() => {
@@ -590,10 +768,16 @@ export function OrdersTable({
                 toast.success(summary);
               }
               setBulkCancelOpen(false);
-              selection.clearSelection();
+              setRowSelection({});
               router.refresh();
             });
           }}
+        />
+      ) : null}
+      {suggestionsOpen && fixedOrderType ? (
+        <SuggestedOrdersDialog
+          orderType={fixedOrderType}
+          onClose={() => setSuggestionsOpen(false)}
         />
       ) : null}
       <LoadingModal
@@ -614,6 +798,13 @@ interface OrderReviewButtonProps {
   order: OrderRow;
   viewerRoleSlugs: string[];
   onReview: () => void;
+}
+
+function draftSubmitDescription(orderType: string): string {
+  if (orderType === "auto_replenish") {
+    return "Team Leader can review this order now.";
+  }
+  return "Supply Planning can review this order now.";
 }
 
 function OrderReviewButton({ order, viewerRoleSlugs, onReview }: OrderReviewButtonProps) {

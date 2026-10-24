@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState, useTransition } from "react";
+import { createColumnHelper } from "@tanstack/react-table";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
@@ -16,15 +17,17 @@ import {
 } from "@/features/lookups/constants/lookup-registry";
 import { Button } from "@/components/ui/button";
 import {
-  TableEmptyRow,
-  TableIndexCell,
-  TableIndexHead,
   TableRowActions,
   TableStatusBadge,
   uniqueSearchSuggestions,
   useClientTablePagination,
 } from "@/components/data-table";
-import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
+import {
+  DataTable,
+  useClientTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import {
   Dialog,
   DialogContent,
@@ -37,13 +40,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  MODE_OF_PAYMENT_KIND_LABELS,
+  MODE_OF_PAYMENT_KIND_NOT_SET,
+  MODE_OF_PAYMENT_KINDS,
+  type ModeOfPaymentKindValue,
+} from "@/features/lookups/constants/mode-of-payment-kind";
 import { matchesTableSearch } from "@/utils/match-table-search";
-import { cn } from "@/utils/cn";
+
+const lookupColumn = createColumnHelper<DataTableFeatures, LookupRowData>();
 import type { LookupRecordStatus } from "@prisma/client";
 
 export interface LookupRowData {
@@ -53,6 +57,7 @@ export interface LookupRowData {
   code?: string | null;
   class?: string | null;
   quantity?: number | null;
+  kind?: ModeOfPaymentKindValue | null;
   brandId?: string | null;
   regionId?: string | null;
   sizeId?: string | null;
@@ -75,9 +80,17 @@ interface LookupTableProps {
   rows: LookupRowData[];
   parentOptions?: LookupOption[];
   childRows?: LookupRowData[];
+  /** Keep the list at 10 rows and hide the rows-per-page menu. */
+  fixedPageSize?: boolean;
 }
 
-export function LookupTable({ entity, rows, parentOptions, childRows }: LookupTableProps) {
+export function LookupTable({
+  entity,
+  rows,
+  parentOptions,
+  childRows,
+  fixedPageSize,
+}: LookupTableProps) {
   const config = LOOKUP_ENTITIES[entity];
   const childConfig = config.child ? LOOKUP_ENTITIES[config.child] : null;
   const childParentOptions = useMemo(
@@ -91,18 +104,32 @@ export function LookupTable({ entity, rows, parentOptions, childRows }: LookupTa
   if (childConfig && childRows) {
     return (
       <div className="space-y-6">
-        <LookupSection entity={entity} rows={rows} parentOptions={parentOptions} title={config.label} />
+        <LookupSection
+          entity={entity}
+          rows={rows}
+          parentOptions={parentOptions}
+          title={config.label}
+          fixedPageSize={fixedPageSize}
+        />
         <LookupSection
           entity={childConfig.key}
           rows={childRows}
           parentOptions={childParentOptions}
           title={childConfig.label}
+          fixedPageSize={fixedPageSize}
         />
       </div>
     );
   }
 
-  return <LookupSection entity={entity} rows={rows} parentOptions={parentOptions} />;
+  return (
+    <LookupSection
+      entity={entity}
+      rows={rows}
+      parentOptions={parentOptions}
+      fixedPageSize={fixedPageSize}
+    />
+  );
 }
 
 interface LookupSectionProps {
@@ -110,13 +137,20 @@ interface LookupSectionProps {
   rows: LookupRowData[];
   parentOptions?: LookupOption[];
   title?: string;
+  fixedPageSize?: boolean;
 }
 
 function sentenceCase(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProps) {
+function LookupSection({
+  entity,
+  rows,
+  parentOptions,
+  title,
+  fixedPageSize = false,
+}: LookupSectionProps) {
   const config = LOOKUP_ENTITIES[entity];
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -127,6 +161,7 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
   const [formParentId, setFormParentId] = useState("");
   const [formClass, setFormClass] = useState("");
   const [formQuantity, setFormQuantity] = useState("1");
+  const [formKind, setFormKind] = useState<ModeOfPaymentKindValue | "">("");
   const [pending, startTransition] = useTransition();
 
   const parentNamesById = useMemo(
@@ -174,6 +209,7 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
     code: (row) => row.code,
     class: (row) => row.class,
     quantity: (row) => row.quantity,
+    kind: (row) => row.kind,
     parent: (row) => parentNameOf(row),
     status: (row) => row.recordStatus,
   });
@@ -188,6 +224,7 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
     indexOffset,
   } = useClientTablePagination(sort.sorted, {
     resetKey: `${query}:${sort.sortKey}:${sort.sortDir}`,
+    ...(fixedPageSize ? { pageSize: 10 } : {}),
   });
 
   function openCreate() {
@@ -197,6 +234,7 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
     setFormParentId("");
     setFormClass("");
     setFormQuantity("1");
+    setFormKind("");
     setOpen(true);
   }
 
@@ -207,6 +245,7 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
     setFormParentId(config.parent ? row[config.parent.field] ?? "" : "");
     setFormClass(row.class ?? "");
     setFormQuantity(String(row.quantity ?? 1));
+    setFormKind(row.kind ?? "");
     setOpen(true);
   }
 
@@ -220,6 +259,7 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
       ...(config.quantityField
         ? { quantity: Number(formQuantity) || 1 }
         : {}),
+      ...(config.kindField ? { kind: formKind || undefined } : {}),
     };
     startTransition(async () => {
       const result = editing
@@ -260,20 +300,128 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
     config.parent?.required && (parentOptions?.length ?? 0) === 0,
   );
 
-  const colSpan =
-    3 +
-    (config.code ? 1 : 0) +
-    (config.classField ? 1 : 0) +
-    (config.quantityField ? 1 : 0) +
-    (config.parent ? 1 : 0);
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<LookupRowData>[] = [
+      lookupColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => indexOffset + row.index + 1,
+        meta: { className: "tabular-nums text-muted-foreground" },
+      }),
+      lookupColumn.display({
+        id: "name",
+        header: "Name",
+        enableSorting: true,
+        cell: ({ row }) => row.original.name,
+        meta: { className: "font-medium" },
+      }),
+    ];
+    if (config.code) {
+      cols.push(
+        lookupColumn.display({
+          id: "code",
+          header: "Code",
+          enableSorting: true,
+          cell: ({ row }) => row.original.code ?? "—",
+          meta: { className: "font-mono text-sm" },
+        }),
+      );
+    }
+    if (config.classField) {
+      cols.push(
+        lookupColumn.display({
+          id: "class",
+          header: "Class",
+          enableSorting: true,
+          cell: ({ row }) => row.original.class ?? "—",
+        }),
+      );
+    }
+    if (config.quantityField) {
+      cols.push(
+        lookupColumn.display({
+          id: "quantity",
+          header: "Qty",
+          enableSorting: true,
+          cell: ({ row }) => row.original.quantity ?? 1,
+          meta: { className: "tabular-nums" },
+        }),
+      );
+    }
+    if (config.kindField) {
+      cols.push(
+        lookupColumn.display({
+          id: "kind",
+          header: "Type",
+          enableSorting: true,
+          cell: ({ row }) =>
+            row.original.kind
+              ? MODE_OF_PAYMENT_KIND_LABELS[row.original.kind]
+              : MODE_OF_PAYMENT_KIND_NOT_SET,
+        }),
+      );
+    }
+    if (config.parent) {
+      cols.push(
+        lookupColumn.display({
+          id: "parent",
+          header: config.parent.label,
+          enableSorting: true,
+          cell: ({ row }) => parentNameOf(row.original) ?? "—",
+        }),
+      );
+    }
+    cols.push(
+      lookupColumn.display({
+        id: "status",
+        header: "Status",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <TableStatusBadge
+            status={row.original.recordStatus}
+            label={row.original.recordStatus === "active" ? "Active" : "Inactive"}
+          />
+        ),
+      }),
+      lookupColumn.display({
+        id: "actions",
+        header: "",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <TableRowActions asCell={false} onEdit={() => openEdit(row.original)} editDisabled={pending}>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={pending}
+              onClick={() => toggleStatus(row.original)}
+            >
+              {row.original.recordStatus === "active" ? "Deactivate" : "Activate"}
+            </Button>
+          </TableRowActions>
+        ),
+        meta: { align: "end" },
+      }),
+    );
+    return cols;
+  }, [config, indexOffset, parentNameOf, pending]);
 
   return (
     <>
-      <GlobalDataTable
+      <DataTable
+        data={pageItems}
+        columns={columns}
+        getRowId={(row) => row.id}
+        manualSorting
+        manualPagination
+        enableSorting
+        sorting={{
+          sortKey: sort.sortKey,
+          sortDir: sort.sortDir,
+          onSort: sort.toggleSort,
+        }}
         stickyHeader
-        toolbarLeading={
-          title ? <span className="text-sm font-medium">{title}</span> : null
-        }
+        toolbarLeading={title ? <span className="text-sm font-medium">{title}</span> : null}
         search={{
           value: query,
           onChange: setQuery,
@@ -285,9 +433,15 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
             <Plus className="size-4" /> Add {config.singular}
           </Button>
         }
-        empty={rows.length === 0}
-        emptyMessage={`No ${config.label.toLowerCase()} yet.`}
-        pageSize={{ value: pageSize, onChange: setPageSize }}
+        empty={pageItems.length === 0}
+        emptyMessage={
+          rows.length === 0
+            ? `No ${config.label.toLowerCase()} yet.`
+            : "No results match your search."
+        }
+        pageSize={
+          fixedPageSize ? undefined : { value: pageSize, onChange: setPageSize }
+        }
         pagination={{
           total,
           page,
@@ -295,73 +449,7 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
           itemLabel: config.singular,
           onPageChange: setPage,
         }}
-      >
-            <TableHeader>
-              <TableRow>
-                <TableIndexHead />
-                <GlobalTableHead {...sort.sortProps("name")}>Name</GlobalTableHead>
-                {config.code ? (
-                  <GlobalTableHead {...sort.sortProps("code")}>Code</GlobalTableHead>
-                ) : null}
-                {config.classField ? (
-                  <GlobalTableHead {...sort.sortProps("class")}>Class</GlobalTableHead>
-                ) : null}
-                {config.quantityField ? (
-                  <GlobalTableHead {...sort.sortProps("quantity")}>Qty</GlobalTableHead>
-                ) : null}
-                {config.parent ? (
-                  <GlobalTableHead {...sort.sortProps("parent")}>
-                    {config.parent.label}
-                  </GlobalTableHead>
-                ) : null}
-                <GlobalTableHead {...sort.sortProps("status")}>Status</GlobalTableHead>
-                <GlobalTableHead className="w-48" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.length === 0 ? (
-                <TableEmptyRow colSpan={colSpan} message="No results match your search." />
-              ) : (
-                pageItems.map((row, index) => (
-                  <TableRow
-                    key={row.id}
-                    className={cn(index % 2 === 1 && "bg-table-stripe")}
-                  >
-                    <TableIndexCell index={indexOffset + index + 1} />
-                    <TableCell className="font-medium">{row.name}</TableCell>
-                    {config.code ? (
-                      <TableCell className="font-mono text-sm">{row.code ?? "—"}</TableCell>
-                    ) : null}
-                    {config.classField ? (
-                      <TableCell>{row.class ?? "—"}</TableCell>
-                    ) : null}
-                    {config.quantityField ? (
-                      <TableCell className="tabular-nums">{row.quantity ?? 1}</TableCell>
-                    ) : null}
-                    {config.parent ? (
-                      <TableCell>{parentNameOf(row) ?? "—"}</TableCell>
-                    ) : null}
-                    <TableCell>
-                      <TableStatusBadge
-                        status={row.recordStatus}
-                        label={row.recordStatus === "active" ? "Active" : "Inactive"}
-                      />
-                    </TableCell>
-                    <TableRowActions onEdit={() => openEdit(row)} editDisabled={pending}>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={pending}
-                        onClick={() => toggleStatus(row)}
-                      >
-                        {row.recordStatus === "active" ? "Deactivate" : "Activate"}
-                      </Button>
-                    </TableRowActions>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-      </GlobalDataTable>
+      />
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
@@ -421,6 +509,22 @@ function LookupSection({ entity, rows, parentOptions, title }: LookupSectionProp
                   required
                 />
               </div>
+            ) : null}
+            {config.kindField ? (
+              <SearchableSelect
+                label="Type"
+                id={`${entity}-kind`}
+                options={MODE_OF_PAYMENT_KINDS.map((kind) => ({
+                  id: kind,
+                  label: MODE_OF_PAYMENT_KIND_LABELS[kind],
+                }))}
+                value={formKind}
+                onChange={(value) => setFormKind(value as ModeOfPaymentKindValue | "")}
+                allowClear
+                placeholder={MODE_OF_PAYMENT_KIND_NOT_SET}
+                searchPlaceholder="Search type…"
+                disabled={pending}
+              />
             ) : null}
             {config.parent ? (
               <SearchableSelect

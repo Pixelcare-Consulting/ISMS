@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { reportsService } from "@/features/reports/services/reports.service";
 import { requirePermission } from "@/lib/auth/permissions";
-import { getUserBranchIds } from "@/lib/aor/scope";
+import { resolveReportBranchScope } from "@/features/reports/lib/report-branch-scope";
 
 export async function GET(request: Request) {
   const session = await requirePermission("reports.view");
@@ -9,7 +9,10 @@ export async function GET(request: Request) {
   const from = searchParams.get("from");
   const to = searchParams.get("to");
   const q = searchParams.get("q");
-  const branchIds = (await getUserBranchIds(session.user.tenantId, session.user.id)) ?? [];
+  const branchIds = await resolveReportBranchScope(
+    { tenantId: session.user.tenantId, userId: session.user.id, permissions: session.user.permissions ?? [] },
+    "NO_BRANCHES",
+  );
 
   const csv = await reportsService.exportProcessedOrdersCsv(session.user.tenantId, {
     from: from ? new Date(from) : undefined,

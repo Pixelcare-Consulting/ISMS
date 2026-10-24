@@ -1,9 +1,19 @@
 jest.mock("@/lib/database/client", () => ({
   prisma: {
+    $queryRaw: jest.fn().mockResolvedValue([]),
+    $transaction: jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const { prisma: db } = jest.requireMock("@/lib/database/client") as {
+        prisma: unknown;
+      };
+      return fn(db);
+    }),
     branch: { findMany: jest.fn() },
     warehouse: { findMany: jest.fn() },
+    warehouseInventory: { findMany: jest.fn() },
+    serviceCenterInventory: { findMany: jest.fn() },
     serialNumber: { findMany: jest.fn() },
     branchInventory: {
+      findMany: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
       deleteMany: jest.fn(),
@@ -30,6 +40,9 @@ const warehouseFindMany = prisma.warehouse.findMany as jest.Mock;
 const serialFindMany = prisma.serialNumber.findMany as jest.Mock;
 const inventoryCreate = prisma.branchInventory.create as jest.Mock;
 const inventoryUpdate = prisma.branchInventory.update as jest.Mock;
+const inventoryFindMany = prisma.branchInventory.findMany as jest.Mock;
+const warehouseInventoryFindMany = prisma.warehouseInventory.findMany as jest.Mock;
+const serviceInventoryFindMany = prisma.serviceCenterInventory.findMany as jest.Mock;
 
 describe("partitionOnHandByMaster", () => {
   it("dedupes serials and drops blank warehouse codes", () => {
@@ -44,7 +57,7 @@ describe("partitionOnHandByMaster", () => {
       ),
     ).toEqual({
       known: [{ serialNo: "SN1", warehouseCode: "ABL001" }],
-      unknownSerialNos: ["SN2"],
+      unknown: [{ serialNo: "SN2", warehouseCode: "" }],
     });
   });
 });
@@ -53,14 +66,15 @@ describe("replicateOnHandSerialsToStk", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     findCodeId.mockResolvedValue({ id: "stk-1" });
+    inventoryFindMany.mockResolvedValue([]);
+    warehouseInventoryFindMany.mockResolvedValue([]);
+    serviceInventoryFindMany.mockResolvedValue([]);
   });
 
   it("creates STK when the serial has no branch inventory yet", async () => {
     branchFindMany.mockResolvedValue([{ id: "b1", sapCode: "ABL001" }]);
     warehouseFindMany.mockResolvedValue([]);
-    serialFindMany.mockResolvedValue([
-      { id: "sn1", serialNo: "SN1", branchInventories: [] },
-    ]);
+    serialFindMany.mockResolvedValue([{ id: "sn1", serialNo: "SN1" }]);
     inventoryCreate.mockResolvedValue({});
 
     const result = await replicateOnHandSerialsToStk("t1", [
@@ -81,18 +95,16 @@ describe("replicateOnHandSerialsToStk", () => {
   it("moves an existing STK row to the resolved branch", async () => {
     branchFindMany.mockResolvedValue([{ id: "b2", sapCode: "ABL001" }]);
     warehouseFindMany.mockResolvedValue([]);
-    serialFindMany.mockResolvedValue([
+    serialFindMany.mockResolvedValue([{ id: "sn1", serialNo: "SN1" }]);
+    inventoryFindMany.mockResolvedValue([
       {
-        id: "sn1",
-        serialNo: "SN1",
-        branchInventories: [
-          {
-            id: "inv1",
-            branchId: "b-old",
-            statusCodeId: "stk-1",
-            statusCode: { code: "STK" },
-          },
-        ],
+        id: "inv1",
+        tenantId: "t1",
+        serialNumberId: "sn1",
+        branchId: "b-old",
+        branch: { name: "Old branch" },
+        statusCode: { code: "STK" },
+        serialNumber: { serialNo: "SN1" },
       },
     ]);
     inventoryUpdate.mockResolvedValue({});
@@ -117,18 +129,16 @@ describe("replicateOnHandSerialsToStk", () => {
         primaryBranches: [{ id: "b1", sapCode: "DAV001" }],
       },
     ]);
-    serialFindMany.mockResolvedValue([
+    serialFindMany.mockResolvedValue([{ id: "sn1", serialNo: "SN1" }]);
+    inventoryFindMany.mockResolvedValue([
       {
-        id: "sn1",
-        serialNo: "SN1",
-        branchInventories: [
-          {
-            id: "inv1",
-            branchId: "b1",
-            statusCodeId: "sld-1",
-            statusCode: { code: "SLD" },
-          },
-        ],
+        id: "inv1",
+        tenantId: "t1",
+        serialNumberId: "sn1",
+        branchId: "b1",
+        branch: { name: "Davao" },
+        statusCode: { code: "SLD" },
+        serialNumber: { serialNo: "SN1" },
       },
     ]);
 

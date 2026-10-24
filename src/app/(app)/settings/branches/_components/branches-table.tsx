@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { createColumnHelper } from "@tanstack/react-table";
 import { LayoutGrid, Upload } from "lucide-react";
 
 import { syncBranchesFromSapWarehousesAction } from "@/features/branches/actions/branch.actions";
@@ -10,25 +11,21 @@ import { SapSyncButton } from "@/features/sap/components/sap-sync-button";
 import { EditBranchDialog } from "@/app/(app)/settings/branches/_components/edit-branch-dialog";
 import { ImportBranchesDialog } from "@/app/(app)/settings/branches/_components/import-branches-dialog";
 import {
-  TableEmptyRow,
-  TableIndexCell,
-  TableIndexHead,
   TableRowActions,
   TableStatusBadge,
   uniqueSearchSuggestions,
   useClientTablePagination,
 } from "@/components/data-table";
-import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
-import { Button } from "@/components/ui/button";
 import {
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  DataTable,
+  useClientTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
+import { Button } from "@/components/ui/button";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
-const COLUMN_COUNT = 6;
+const branchColumn = createColumnHelper<DataTableFeatures, BranchRow>();
 
 interface BranchRow {
   id: string;
@@ -109,9 +106,73 @@ export function BranchesTable({
     resetKey: `${query}:${sort.sortKey}:${sort.sortDir}`,
   });
 
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<BranchRow>[] = [
+      branchColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => indexOffset + row.index + 1,
+        meta: { className: "tabular-nums text-muted-foreground" },
+      }),
+      branchColumn.display({
+        id: "sapCode",
+        header: "SAP Code",
+        enableSorting: true,
+        cell: ({ row }) => row.original.sapCode,
+        meta: { className: "font-mono text-sm" },
+      }),
+      branchColumn.display({
+        id: "name",
+        header: "Branch Name",
+        enableSorting: true,
+        cell: ({ row }) => row.original.name,
+      }),
+      branchColumn.display({
+        id: "area",
+        header: "Area",
+        enableSorting: true,
+        cell: ({ row }) => row.original.branchArea?.name ?? "—",
+      }),
+      branchColumn.display({
+        id: "status",
+        header: "Status",
+        enableSorting: true,
+        cell: ({ row }) => <TableStatusBadge status={row.original.status} />,
+      }),
+      branchColumn.display({
+        id: "actions",
+        header: "",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <TableRowActions asCell={false} onEdit={() => setEditing(row.original)}>
+            <Button variant="ghost" size="icon" className="size-8" asChild title="Planogram">
+              <Link href={`/settings/planogram/${row.original.id}`}>
+                <LayoutGrid className="size-4" />
+              </Link>
+            </Button>
+          </TableRowActions>
+        ),
+        meta: { align: "end" },
+      }),
+    ];
+    return cols;
+  }, [indexOffset]);
+
   return (
     <>
-      <GlobalDataTable
+      <DataTable
+        data={pageItems}
+        columns={columns}
+        getRowId={(row) => row.id}
+        manualSorting
+        manualPagination
+        enableSorting
+        sorting={{
+          sortKey: sort.sortKey,
+          sortDir: sort.sortDir,
+          onSort: sort.toggleSort,
+        }}
         stickyHeader
         search={{
           value: query,
@@ -142,6 +203,8 @@ export function BranchesTable({
               </Button>
           </>
         }
+        empty={pageItems.length === 0}
+        emptyMessage="No branches found"
         pageSize={{ value: pageSize, onChange: setPageSize }}
         pagination={{
           total,
@@ -150,45 +213,7 @@ export function BranchesTable({
           itemLabel: "branch",
           onPageChange: setPage,
         }}
-      >
-            <TableHeader>
-              <TableRow>
-                <TableIndexHead />
-                <GlobalTableHead {...sort.sortProps("sapCode")}>SAP Code</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("name")}>Branch Name</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("area")}>Area</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("status")}>Status</GlobalTableHead>
-                <GlobalTableHead className="w-32" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.length === 0 ? (
-                <TableEmptyRow colSpan={COLUMN_COUNT} message="No branches found" />
-              ) : (
-                pageItems.map((branch, index) => (
-                  <TableRow
-                    key={branch.id}
-                    className={index % 2 === 1 ? "bg-table-stripe" : undefined}
-                  >
-                    <TableIndexCell index={indexOffset + index + 1} />
-                    <TableCell className="font-mono text-sm">{branch.sapCode}</TableCell>
-                    <TableCell>{branch.name}</TableCell>
-                    <TableCell>{branch.branchArea?.name ?? "—"}</TableCell>
-                    <TableCell>
-                      <TableStatusBadge status={branch.status} />
-                    </TableCell>
-                    <TableRowActions onEdit={() => setEditing(branch)}>
-                      <Button variant="ghost" size="icon" className="size-8" asChild title="Planogram">
-                        <Link href={`/settings/planogram/${branch.id}`}>
-                          <LayoutGrid className="size-4" />
-                        </Link>
-                      </Button>
-                    </TableRowActions>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-      </GlobalDataTable>
+      />
       {editing ? (
         <EditBranchDialog
           branch={editing}

@@ -1,5 +1,7 @@
 import type { SapIntegrationJob } from "@prisma/client";
 
+import type { SapDocRef } from "@/features/sap/services/sap-documents";
+
 /**
  * Swappable outbound contract for SAP B1 document create.
  *
@@ -7,16 +9,16 @@ import type { SapIntegrationJob } from "@prisma/client";
  * - Ordering: Inventory Transfer Request (ITR / OWTQ) and Sales Order (SO / ORDR)
  * - Delivery logistic: Inventory Transfer (OWTR) and Delivery Note (ODLN, DR#)
  *
- * Mock keeps today’s sapDocRef + local BranchDelivery open behavior.
- * Service Layer fills live B1 create later without rewriting order/logistics callers.
+ * The Service Layer adapter is the default and posts live B1 documents (ordering,
+ * dispatch, unit transfer, delivery return; pull-out still delegates to the
+ * mock). The mock (SAP_OUTBOUND_ADAPTER=mock) returns fake refs for local dev.
  */
 export interface SapOutboundPort {
   /**
-   * Process II ordering after SP approve → ITR (OWTQ) + SO (ORDR).
-   * Opens local BranchDelivery as Process III.A entry (Delivery Note / Inventory
-   * Transfer numbers land in sapDocRef when live).
+   * Process II ordering after final approval → ITR (OWTQ, consignment) or
+   * SO (ORDR, outright). Opens the BranchDelivery header (Process III.A entry).
    */
-  createApprovedOrderItrAndSo(input: {
+  createApprovedOrderDocument(input: {
     tenantId: string;
     userId?: string;
     job: SapIntegrationJob;
@@ -29,11 +31,34 @@ export interface SapOutboundPort {
     job: SapIntegrationJob;
   }): Promise<string>;
 
-  /**
-   * Partial / rejected delivery return-to-warehouse → Inventory Transfer (OWTR).
-   * Local STK/DIT movement stays in delivery-posting; this only queues the SAP doc.
-   */
+  /** Legacy `delivery_partial_return` jobs queued before returns needed approval. No new ones are queued. */
   createPartialDeliveryInventoryTransfer(input: {
+    tenantId: string;
+    userId?: string;
+    job: SapIntegrationJob;
+  }): Promise<string>;
+
+  /** Dispatch → Delivery Note (DR) for an outright order, or Inventory Transfer for a consignment one. */
+  createDispatchDocument(input: {
+    tenantId: string;
+    deliveryId: string;
+    /** The warehouse serials being dispatched: they become the SAP document's serial lines. */
+    serialNumberIds: string[];
+  }): Promise<SapDocRef>;
+
+  /**
+   * Approved delivery return job (`delivery_return`): IT back to the source
+   * warehouse for consignment, Return based on the DR for outright. On success
+   * the units move back to their warehouse locations in the same call.
+   */
+  createDeliveryReturnDocument(input: {
+    tenantId: string;
+    userId?: string;
+    job: SapIntegrationJob;
+  }): Promise<string>;
+
+  /** Unit transfer between branches job (`delivery_transfer`, Inventory Transfer OWTR). */
+  createDeliveryTransferDocument(input: {
     tenantId: string;
     userId?: string;
     job: SapIntegrationJob;

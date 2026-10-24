@@ -1,5 +1,6 @@
 "use client";
 
+import { createColumnHelper } from "@tanstack/react-table";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -10,13 +11,13 @@ import {
 } from "@/features/service-center-ops/actions/sc-logistics.actions";
 import { searchSerialsForScStockInAction } from "@/features/service-center-ops/actions/sc-inventory.actions";
 import type { ScLogisticsActionCapabilities } from "@/features/service-center-ops/constants/sc-permissions";
+import { useClientTablePagination } from "@/components/data-table";
 import {
-  TableEmptyRow,
-  TableIndexCell,
-  TableIndexHead,
-  useClientTablePagination,
-} from "@/components/data-table";
-import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
+  DataTable,
+  useClientTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,17 +31,13 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import {
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
 type DeliveryRow = Awaited<
   ReturnType<typeof listScDeliveriesAction>
 >["items"][number];
+
+const deliveryColumn = createColumnHelper<DataTableFeatures, DeliveryRow>();
 
 export function ScDeliveriesPanel({
   items,
@@ -134,17 +131,89 @@ export function ScDeliveriesPanel({
     });
   }
 
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<DeliveryRow>[] = [
+      deliveryColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => indexOffset + row.index + 1,
+        meta: { className: "text-center tabular-nums text-muted-foreground" },
+      }),
+      deliveryColumn.accessor((row) => row.deliveryNo, {
+        id: "delivery",
+        header: "Delivery",
+        enableSorting: true,
+        meta: { className: "font-medium" },
+      }),
+      deliveryColumn.accessor((row) => row.serviceCenter.name, {
+        id: "center",
+        header: "Center",
+        enableSorting: true,
+      }),
+      deliveryColumn.display({
+        id: "order",
+        header: "Order",
+        enableSorting: false,
+        cell: ({ row }) => row.original.order?.orderNumber ?? "—",
+      }),
+      deliveryColumn.display({
+        id: "status",
+        header: "Status",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <Badge variant="secondary">{row.original.statusCode?.code ?? "—"}</Badge>
+        ),
+      }),
+      deliveryColumn.accessor((row) => row._count.backloads, {
+        id: "serials",
+        header: "Serials",
+        enableSorting: false,
+        meta: { className: "tabular-nums" },
+      }),
+      deliveryColumn.display({
+        id: "actions",
+        header: "Actions",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const isAccepted = row.original.statusCode?.code === "accepted";
+          return capabilities.canAcceptDelivery && !isAccepted ? (
+            <Button size="sm" disabled={pending} onClick={() => openAccept(row.original)}>
+              Accept
+            </Button>
+          ) : null;
+        },
+      }),
+    ];
+    return cols;
+  }, [capabilities.canAcceptDelivery, indexOffset, pending]);
+
   return (
     <div className="space-y-4">
-      <GlobalDataTable
+      <DataTable
+        data={pageItems}
+        columns={columns}
+        getRowId={(row) => row.id}
+        manualSorting
+        manualPagination
+        enableSorting
+        sorting={{
+          sortKey: sort.sortKey,
+          sortDir: sort.sortDir,
+          onSort: sort.toggleSort,
+        }}
         stickyHeader
         search={{
           value: query,
           onChange: setQuery,
           placeholder: "Search delivery or center…",
         }}
-        empty={items.length === 0}
-        emptyMessage="No service center deliveries yet. Create one from an approved order."
+        empty={pageItems.length === 0}
+        emptyMessage={
+          items.length === 0
+            ? "No service center deliveries yet. Create one from an approved order."
+            : "No deliveries match your search."
+        }
         pageSize={{ value: pageSize, onChange: setPageSize }}
         pagination={{
           total,
@@ -153,55 +222,7 @@ export function ScDeliveriesPanel({
           itemLabel: "delivery",
           onPageChange: setPage,
         }}
-      >
-        <TableHeader>
-          <TableRow>
-            <TableIndexHead />
-            <GlobalTableHead {...sort.sortProps("delivery")}>
-              Delivery
-            </GlobalTableHead>
-            <GlobalTableHead {...sort.sortProps("center")}>Center</GlobalTableHead>
-            <GlobalTableHead>Order</GlobalTableHead>
-            <GlobalTableHead {...sort.sortProps("status")}>Status</GlobalTableHead>
-            <GlobalTableHead>Serials</GlobalTableHead>
-            <GlobalTableHead className="w-36">Actions</GlobalTableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {pageItems.length === 0 ? (
-            <TableEmptyRow colSpan={7} message="No deliveries match your search." />
-          ) : (
-            pageItems.map((row, index) => {
-              const isAccepted = row.statusCode?.code === "accepted";
-              return (
-                <TableRow key={row.id}>
-                  <TableIndexCell index={indexOffset + index + 1} />
-                  <TableCell className="font-medium">{row.deliveryNo}</TableCell>
-                  <TableCell>{row.serviceCenter.name}</TableCell>
-                  <TableCell>{row.order?.orderNumber ?? "—"}</TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">
-                      {row.statusCode?.code ?? "—"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{row._count.backloads}</TableCell>
-                  <TableCell>
-                    {capabilities.canAcceptDelivery && !isAccepted ? (
-                      <Button
-                        size="sm"
-                        disabled={pending}
-                        onClick={() => openAccept(row)}
-                      >
-                        Accept
-                      </Button>
-                    ) : null}
-                  </TableCell>
-                </TableRow>
-              );
-            })
-          )}
-        </TableBody>
-      </GlobalDataTable>
+      />
 
       <Sheet
         open={Boolean(accepting)}

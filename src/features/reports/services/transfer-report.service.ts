@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/database/client";
+import { TRANSFER_REPORT_HEADERS } from "@/features/reports/constants/report-headers";
 import { buildCsvContent } from "@/lib/shared/csv";
 
 export interface TransferReportFilters {
@@ -7,14 +8,22 @@ export interface TransferReportFilters {
   branchIds?: string[];
 }
 
-const HEADERS = ["TRANSFER NO", "FROM BRANCH", "TO BRANCH", "STATUS", "DATE", "NOTES"];
-
 function formatDate(value: Date): string {
   return value.toISOString().slice(0, 10);
 }
 
+export interface TransferReportRow {
+  transferNo: string;
+  fromBranch: string;
+  toBranch: string;
+  status: string;
+  date: string;
+  notes: string;
+}
+
 export const transferReportService = {
-  async generateCsv(tenantId: string, filters: TransferReportFilters = {}) {
+  /** Shared by the CSV export and the Stimulsoft dataset. */
+  async listRows(tenantId: string, filters: TransferReportFilters = {}): Promise<TransferReportRow[]> {
     const transfers = await prisma.branchTransfer.findMany({
       where: {
         tenantId,
@@ -43,15 +52,21 @@ export const transferReportService = {
       orderBy: { createdAt: "desc" },
     });
 
-    const rows = transfers.map((t) => [
-      t.transferNo,
-      t.fromBranch.name,
-      t.toBranch.name,
-      t.statusCode.name ?? t.statusCode.code,
-      formatDate(t.createdAt),
-      t.notes ?? "",
-    ]);
+    return transfers.map((t) => ({
+      transferNo: t.transferNo,
+      fromBranch: t.fromBranch.name,
+      toBranch: t.toBranch.name,
+      status: t.statusCode.name ?? t.statusCode.code,
+      date: formatDate(t.createdAt),
+      notes: t.notes ?? "",
+    }));
+  },
 
-    return buildCsvContent(HEADERS, rows);
+  async generateCsv(tenantId: string, filters: TransferReportFilters = {}) {
+    const rows = await this.listRows(tenantId, filters);
+    return buildCsvContent(
+      [...TRANSFER_REPORT_HEADERS],
+      rows.map((r) => [r.transferNo, r.fromBranch, r.toBranch, r.status, r.date, r.notes]),
+    );
   },
 };

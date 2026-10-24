@@ -1,9 +1,10 @@
 "use client";
 
+import { createColumnHelper } from "@tanstack/react-table";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 
-import { TableAmountCell } from "@/components/data-table/table-amount-cell";
 import {
   DEFAULT_TABLE_PAGE_SIZE,
   parseTablePageSize,
@@ -14,15 +15,18 @@ import { StatusCodeBadge } from "@/features/reason-status/components/status-code
 import { OrderTypeBadge } from "@/features/orders/components/order-type-badge";
 import { BRANCH_ORDER_STATUS_LABELS } from "@/features/orders/constants/order-status";
 import type { OrderHistoryRow } from "@/features/orders/types/order-analytics";
-import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
 import {
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  DataTable,
+  nextTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
+import { Button } from "@/components/ui/button";
+import { formatPeso } from "@/utils/format-currency";
 import { matchesTableSearch } from "@/utils/match-table-search";
 import type { BranchOrderStatus } from "@prisma/client";
+
+const historyColumn = createColumnHelper<DataTableFeatures, OrderHistoryRow>();
 
 type HistorySortField = "orderNumber" | "branch" | "orderType" | "status" | "createdAt";
 type HistorySortDir = "asc" | "desc";
@@ -113,8 +117,111 @@ export function OrderHistoryTable({
     [result.items],
   );
 
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<OrderHistoryRow>[] = [
+      historyColumn.accessor((row) => row.orderNumber, {
+        id: "orderNumber",
+        header: "SO#",
+        enableSorting: true,
+        meta: { className: "font-mono" },
+      }),
+      historyColumn.display({
+        id: "orderType",
+        header: "Type",
+        enableSorting: true,
+        cell: ({ row }) => <OrderTypeBadge orderType={row.original.orderType} />,
+      }),
+      historyColumn.accessor((row) => row.branchName, {
+        id: "branch",
+        header: "Branch",
+        enableSorting: true,
+      }),
+      historyColumn.accessor((row) => row.orderQty, {
+        id: "orderQty",
+        header: "Order Qty",
+        enableSorting: false,
+        meta: { className: "tabular-nums" },
+      }),
+      historyColumn.display({
+        id: "totalAmt",
+        header: "Total Amt",
+        enableSorting: false,
+        cell: ({ row }) => formatPeso(row.original.totalAmt),
+        meta: { align: "end", className: "font-mono" },
+      }),
+      historyColumn.accessor((row) => row.appQty, {
+        id: "appQty",
+        header: "App Qty",
+        enableSorting: false,
+        meta: { className: "tabular-nums" },
+      }),
+      historyColumn.display({
+        id: "appAmt",
+        header: "App Amt",
+        enableSorting: false,
+        cell: ({ row }) => formatPeso(row.original.appAmt),
+        meta: { align: "end", className: "font-mono" },
+      }),
+      historyColumn.display({
+        id: "createdAt",
+        header: "Date",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <div>
+            <p>{formatHistoryDate(row.original.createdAt)}</p>
+            <p className="text-xs text-muted-foreground">
+              Updated {formatHistoryDate(row.original.updatedAt)}
+            </p>
+          </div>
+        ),
+      }),
+      historyColumn.accessor((row) => row.lastUpdatedBy, {
+        id: "lastUpdatedBy",
+        header: "Last updated by",
+        enableSorting: false,
+      }),
+      historyColumn.display({
+        id: "status",
+        header: "Status",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <StatusCodeBadge
+            code={row.original.status}
+            name={
+              BRANCH_ORDER_STATUS_LABELS[row.original.status as BranchOrderStatus] ??
+              row.original.status
+            }
+          />
+        ),
+      }),
+      historyColumn.display({
+        id: "view",
+        header: "",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <Button size="sm" variant="outline" asChild>
+            <Link href={`${basePath}/${row.original.id}`}>View</Link>
+          </Button>
+        ),
+        meta: { align: "end" },
+      }),
+    ];
+    return cols;
+  }, [basePath]);
+
   return (
-    <GlobalDataTable
+    <DataTable
+      data={filtered}
+      columns={columns}
+      getRowId={(row) => row.id}
+      manualSorting
+      manualPagination
+      enableSorting
+      sorting={{
+        sortKey: sort,
+        sortDir,
+        onSort: (columnId) => toggleSort(columnId as HistorySortField),
+      }}
       stickyHeader
       search={{
         value: query,
@@ -131,87 +238,8 @@ export function OrderHistoryTable({
         buildHref: (page) =>
           buildHistoryHref(basePath, page, pageSize, sort, sort ? sortDir : undefined),
       }}
-    >
-      <TableHeader>
-        <TableRow className="hover:bg-transparent">
-          <GlobalTableHead
-            sortKey="orderNumber"
-            activeSortKey={sort}
-            sortDirection={sortDir}
-            onSort={(key) => toggleSort(key as HistorySortField)}
-          >
-            SO#
-          </GlobalTableHead>
-          <GlobalTableHead
-            sortKey="orderType"
-            activeSortKey={sort}
-            sortDirection={sortDir}
-            onSort={(key) => toggleSort(key as HistorySortField)}
-          >
-            Type
-          </GlobalTableHead>
-          <GlobalTableHead
-            sortKey="branch"
-            activeSortKey={sort}
-            sortDirection={sortDir}
-            onSort={(key) => toggleSort(key as HistorySortField)}
-          >
-            Branch
-          </GlobalTableHead>
-          <GlobalTableHead>Order Qty</GlobalTableHead>
-          <GlobalTableHead>Total Amt</GlobalTableHead>
-          <GlobalTableHead>App Qty</GlobalTableHead>
-          <GlobalTableHead>App Amt</GlobalTableHead>
-          <GlobalTableHead
-            sortKey="createdAt"
-            activeSortKey={sort}
-            sortDirection={sortDir}
-            onSort={(key) => toggleSort(key as HistorySortField)}
-          >
-            Date
-          </GlobalTableHead>
-          <GlobalTableHead>Last updated by</GlobalTableHead>
-          <GlobalTableHead
-            sortKey="status"
-            activeSortKey={sort}
-            sortDirection={sortDir}
-            onSort={(key) => toggleSort(key as HistorySortField)}
-          >
-            Status
-          </GlobalTableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {filtered.map((row) => (
-          <TableRow key={row.id}>
-            <TableCell className="font-mono text-sm">{row.orderNumber}</TableCell>
-            <TableCell>
-              <OrderTypeBadge orderType={row.orderType} />
-            </TableCell>
-            <TableCell>{row.branchName}</TableCell>
-            <TableCell className="tabular-nums">{row.orderQty}</TableCell>
-            <TableAmountCell value={row.totalAmt} />
-            <TableCell className="tabular-nums">{row.appQty}</TableCell>
-            <TableAmountCell value={row.appAmt} />
-            <TableCell>
-              <p>{formatHistoryDate(row.createdAt)}</p>
-              <p className="text-xs text-muted-foreground">
-                Updated {formatHistoryDate(row.updatedAt)}
-              </p>
-            </TableCell>
-            <TableCell>{row.lastUpdatedBy}</TableCell>
-            <TableCell>
-              <StatusCodeBadge
-                code={row.status}
-                name={
-                  BRANCH_ORDER_STATUS_LABELS[row.status as BranchOrderStatus] ??
-                  row.status
-                }
-              />
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </GlobalDataTable>
+      empty={filtered.length === 0}
+      emptyMessage={query.trim() ? "No results match your search." : "No order history."}
+    />
   );
 }

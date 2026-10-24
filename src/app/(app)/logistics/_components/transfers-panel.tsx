@@ -1,39 +1,26 @@
 "use client";
 
+import { createColumnHelper } from "@tanstack/react-table";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
-import { toast } from "sonner";
+import { useMemo, useState } from "react";
 
 import { TransferRequestDialog } from "@/app/(app)/logistics/_components/transfer-request-dialog";
-import {
-  approveTransferAction,
-  createTransferAction,
-  rejectTransferAction,
-} from "@/features/logistics/actions/logistics.actions";
+import { createTransferAction } from "@/features/logistics/actions/logistics.actions";
 import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
-import { TableIndexCell, TableIndexHead } from "@/components/data-table";
 import {
   parseTablePageSize,
   type TablePageSize,
 } from "@/components/data-table/table-page-size";
-import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
-import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
+  DataTable,
+  nextTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
+import { Button } from "@/components/ui/button";
 import {
   buildLogisticsPageHref,
   LOGISTICS_TRANSFERS_PATH,
@@ -67,32 +54,29 @@ interface TransferRow {
 interface TransfersPanelProps {
   transfers: PaginatedList<TransferRow>;
   capabilities: LogisticsActionCapabilities;
+  branchScope: string[] | null;
+  currentUserName: string;
   initialSort?: string;
   initialSortDir?: string;
 }
 
+const transferColumn = createColumnHelper<DataTableFeatures, TransferRow>();
+
 type TransferSortField = "transferNo" | "fromBranch" | "toBranch" | "status";
 type TransferSortDir = "asc" | "desc";
-
-type PendingConfirm = {
-  id: string;
-  transferNo: string;
-  route: string;
-  action: "approve" | "reject";
-};
 
 export function TransfersPanel({
   transfers,
   capabilities,
+  branchScope,
+  currentUserName,
   initialSort = "",
   initialSortDir = "desc",
 }: TransfersPanelProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
-  const [pending, startTransition] = useTransition();
   const [createOpen, setCreateOpen] = useState(false);
-  const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
   const pageSize = parseTablePageSize(transfers.limit);
   const sort = (searchParams.get("sort") ?? initialSort) || "";
   const sortDir = (
@@ -138,49 +122,85 @@ export function TransfersPanel({
     [transfers.items],
   );
 
-  const selection = useTableSelection(filtered.map((t) => t.id));
 
-  function confirmPendingAction() {
-    if (!pendingConfirm) return;
-    startTransition(async () => {
-      const result =
-        pendingConfirm.action === "approve"
-          ? await approveTransferAction(pendingConfirm.id)
-          : await rejectTransferAction(pendingConfirm.id);
-      if ("error" in result) {
-        toast.error(result.error);
-        return;
-      }
-      toast.success(pendingConfirm.action === "approve" ? "Transfer approved" : "Transfer rejected");
-      setPendingConfirm(null);
-      router.refresh();
-    });
-  }
-
-  const confirmTitle = pendingConfirm?.action === "reject" ? "Reject transfer?" : "Approve transfer?";
-  const confirmDescription =
-    pendingConfirm?.action === "reject"
-      ? "Rejected requests release only the units reserved on this transfer."
-      : "Team Lead approval keeps the units reserved and sends the request to the releasing branch. Stock at the receiving branch does not increase.";
+  const indexOffset = (transfers.page - 1) * transfers.limit;
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<TransferRow>[] = [
+      transferColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => indexOffset + row.index + 1,
+        meta: { className: "text-center tabular-nums text-muted-foreground" },
+      }),
+      transferColumn.accessor((row) => row.transferNo, {
+        id: "transferNo",
+        header: "No.",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <Link
+            href={`/logistics/transfers/${row.original.id}`}
+            className="font-medium hover:underline"
+          >
+            {row.original.transferNo}
+          </Link>
+        ),
+      }),
+      transferColumn.display({
+        id: "fromBranch",
+        header: "From → To",
+        enableSorting: true,
+        cell: ({ row }) =>
+          `${row.original.fromBranch.name} → ${row.original.toBranch.name}`,
+      }),
+      transferColumn.display({
+        id: "status",
+        header: "Status",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <StatusCodeBadge
+            code={row.original.statusCode.code}
+            name={row.original.statusCode.name}
+            color={row.original.statusCode.color}
+          />
+        ),
+      }),
+      transferColumn.display({
+        id: "actions",
+        header: "Actions",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <Button size="sm" variant="outline" asChild>
+            <Link href={`/logistics/transfers/${row.original.id}`}>Open</Link>
+          </Button>
+        ),
+      }),
+    ];
+    return cols;
+  }, [indexOffset]);
 
   return (
     <>
-      <GlobalDataTable
+      <DataTable
+        data={filtered}
+        columns={columns}
+        getRowId={(row) => row.id}
+        manualSorting
+        manualPagination
+        enableSorting
+        sorting={{
+          sortKey: sort,
+          sortDir,
+          onSort: (columnId) => toggleSort(columnId as TransferSortField),
+        }}
         stickyHeader
-        scrollable
         search={{ value: query, onChange: setQuery, placeholder: "Search transfers…", suggestions }}
         toolbarActions={
           <>
-            {selection.selectedCount > 0 ? (
-              <Button variant="secondary" onClick={selection.clearSelection}>
-                {selection.selectedCount} selected
-              </Button>
-            ) : null}
           {capabilities.canCreate ? (
             <Button
               size="sm"
               className="w-full sm:w-auto"
-              disabled={pending}
               onClick={() => setCreateOpen(true)}
             >
               New transfer request
@@ -203,160 +223,19 @@ export function TransfersPanel({
             ),
         }}
         pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
-      >
-            <TableHeader>
-              <TableRow>
-                <GlobalTableHead className="w-10">
-                  <Checkbox
-                    checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
-                    onCheckedChange={(checked) => selection.toggleAll(checked === true)}
-                    aria-label="Select all transfers"
-                  />
-                </GlobalTableHead>
-                <TableIndexHead />
-                <GlobalTableHead
-                  sortKey="transferNo"
-                  activeSortKey={sort}
-                  sortDirection={sortDir}
-                  onSort={(key) => toggleSort(key as TransferSortField)}
-                >
-                  No.
-                </GlobalTableHead>
-                <GlobalTableHead
-                  sortKey="fromBranch"
-                  activeSortKey={sort}
-                  sortDirection={sortDir}
-                  onSort={(key) => toggleSort(key as TransferSortField)}
-                >
-                  From → To
-                </GlobalTableHead>
-                <GlobalTableHead
-                  sortKey="status"
-                  activeSortKey={sort}
-                  sortDirection={sortDir}
-                  onSort={(key) => toggleSort(key as TransferSortField)}
-                >
-                  Status
-                </GlobalTableHead>
-                <GlobalTableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((t, index) => (
-                <TableRow key={t.id} data-state={selection.isRowSelected(t.id) ? "selected" : undefined}>
-                  <TableCell>
-                    <Checkbox
-                      checked={selection.isRowSelected(t.id)}
-                      onCheckedChange={(checked) => selection.toggleRow(t.id, checked === true)}
-                      aria-label={`Select transfer ${t.transferNo}`}
-                    />
-                  </TableCell>
-                  <TableIndexCell
-                    index={(transfers.page - 1) * transfers.limit + index + 1}
-                  />
-                  <TableCell>
-                    <Link href={`/logistics/transfers/${t.id}`} className="font-medium hover:underline">
-                      {t.transferNo}
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    {t.fromBranch.name} → {t.toBranch.name}
-                  </TableCell>
-                  <TableCell>
-                    <StatusCodeBadge
-                      code={t.statusCode.code}
-                      name={t.statusCode.name}
-                      color={t.statusCode.color}
-                    />
-                  </TableCell>
-                  <TableCell className="space-x-2">
-                    {["requested", "pending_tl"].includes(t.statusCode.code) &&
-                    capabilities.canApproveTl ? (
-                      <Button
-                        size="sm"
-                        disabled={pending}
-                        className="bg-amber-600 text-white hover:bg-amber-700"
-                        onClick={() =>
-                          setPendingConfirm({
-                            id: t.id,
-                            transferNo: t.transferNo,
-                            route: `${t.fromBranch.name} → ${t.toBranch.name}`,
-                            action: "approve",
-                          })
-                        }
-                      >
-                        TL approve
-                      </Button>
-                    ) : null}
-                    {["requested", "pending_tl"].includes(t.statusCode.code) &&
-                    capabilities.canRejectTransfer ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={pending}
-                        onClick={() =>
-                          setPendingConfirm({
-                            id: t.id,
-                            transferNo: t.transferNo,
-                            route: `${t.fromBranch.name} → ${t.toBranch.name}`,
-                            action: "reject",
-                          })
-                        }
-                      >
-                        Reject
-                      </Button>
-                    ) : null}
-                    <Button size="sm" variant="outline" asChild>
-                      <Link href={`/logistics/transfers/${t.id}`}>Open</Link>
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-      </GlobalDataTable>
+        empty={filtered.length === 0}
+        emptyMessage={query.trim() ? "No results match your search." : "No transfers."}
+      />
 
-      <AlertDialog
-        open={pendingConfirm !== null}
-        onOpenChange={(open) => {
-          if (!open && !pending) setPendingConfirm(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{confirmTitle}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {pendingConfirm ? (
-                <>
-                  Transfer{" "}
-                  <span className="font-medium text-foreground">
-                    {pendingConfirm.transferNo}
-                  </span>{" "}
-                  ({pendingConfirm.route}). {confirmDescription}
-                </>
-              ) : (
-                "Confirm this transfer action."
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={pending}
-              onClick={(event) => {
-                event.preventDefault();
-                confirmPendingAction();
-              }}
-            >
-              Confirm
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
       <TransferRequestDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
         onSubmit={createTransferAction}
         onCreated={() => router.refresh()}
+        onUpdated={() => router.refresh()}
+        currentUserName={currentUserName}
+        capabilities={capabilities}
+        branchScope={branchScope}
       />
     </>
   );

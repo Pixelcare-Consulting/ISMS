@@ -1,3 +1,4 @@
+import { lockSerialNumbers } from "@/features/inventory/services/serial-placement";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { sapService } from "@/features/sap/services/sap.service";
 import type { AllocatableSerial } from "@/features/logistics/services/posting-planner-types";
@@ -19,7 +20,7 @@ import {
   authorizePosting,
   claimHeader,
   claimInventory,
-  lockInventoryRows,
+  lockSerialsThenInventoryRows,
   openDocumentIdsBySerial,
   postingError,
   type PostingActor,
@@ -39,6 +40,22 @@ export interface PulloutSerialOption {
   inventoryCode: "STK" | "DEF";
 }
 
+/** Checklist choices for one selected serial. Each list needs at least one active lookup. */
+export interface PulloutCreateLine {
+  serialNumberId: string;
+  pulloutClassificationIds: string[];
+  unitPackingConditionIds: string[];
+  accessoryCompletenessIds: string[];
+}
+
+export interface PulloutCreateInput {
+  branchId: string;
+  warehouseId: string;
+  reasonStatusCodeId: string;
+  lines: PulloutCreateLine[];
+  notes?: string;
+}
+
 export interface PulloutSapJob {
   id: string;
   status: string;
@@ -52,9 +69,15 @@ export interface PulloutDetail {
   pulloutNo: string;
   notes: string | null;
   waybillNo: string | null;
+  createdAt: string;
+  createdByName: string | null;
+  scheduledAt: string | null;
+  scheduledByName: string | null;
+  actualScheduledDate: string | null;
   status: { code: string; name: string; color: string | null };
   branch: { id: string; name: string };
   warehouse: { id: string; name: string; code: string };
+  warehouseLocation: { name: string; code: string } | null;
   reason: { id: string; code: string; name: string; color: string | null } | null;
   lines: {
     serialNumberId: string;
@@ -63,6 +86,9 @@ export interface PulloutDetail {
     modelName: string;
     priorCode: string | null;
     inventoryCode: string | null;
+    classificationNames: string[];
+    unitPackingConditionNames: string[];
+    accessoryCompletenessNames: string[];
   }[];
   sapJob: PulloutSapJob | null;
   history: { id: string; action: string; at: string; userName: string | null }[];
@@ -232,6 +258,85 @@ async function stampApproval(
   await tx.branchPulloutApprovalLevel.update({ where: { id: existing.id }, data });
 }
 
+function displayName(name: string | null | undefined): string | null {
+  const trimmed = name?.trim();
+  return trimmed ? trimmed : null;
+}
+
+const CHECKLIST_REQUIRED =
+  "Choose classification, unit packing condition, and accessory completeness for every selected serial";
+const CHECKLIST_DUPLICATE =
+  "Each classification, packing condition, and accessory completeness can only be chosen once";
+const CHECKLIST_INACTIVE =
+  "Choose an active classification, unit packing condition, and accessory completeness for every selected serial";
+
+function requireChecklistIds(ids: readonly string[] | undefined): void {
+  if (!ids || ids.length === 0 || ids.some((id) => id.length === 0)) {
+    throw new Error(CHECKLIST_REQUIRED);
+  }
+  if (new Set(ids).size !== ids.length) {
+    throw new Error(CHECKLIST_DUPLICATE);
+  }
+}
+
+function checklistBySerial(lines: readonly PulloutCreateLine[]): Map<string, PulloutCreateLine> {
+  if (lines.length === 0) throw new Error("Select the serials to pull out");
+  const bySerial = new Map<string, PulloutCreateLine>();
+  for (const line of lines) {
+    if (!line.serialNumberId) throw new Error(CHECKLIST_REQUIRED);
+    requireChecklistIds(line.pulloutClassificationIds);
+    requireChecklistIds(line.unitPackingConditionIds);
+    requireChecklistIds(line.accessoryCompletenessIds);
+    if (bySerial.has(line.serialNumberId)) {
+      throw new Error("Each serial can only be selected once");
+    }
+    bySerial.set(line.serialNumberId, line);
+  }
+  return bySerial;
+}
+
+async function assertActiveChecklist(
+  tenantId: string,
+  lines: readonly PulloutCreateLine[],
+): Promise<void> {
+  const classificationIds = [...new Set(lines.flatMap((line) => line.pulloutClassificationIds))];
+  const packingIds = [...new Set(lines.flatMap((line) => line.unitPackingConditionIds))];
+  const accessoryIds = [...new Set(lines.flatMap((line) => line.accessoryCompletenessIds))];
+  const [classifications, packings, accessories] = await Promise.all([
+    prisma.pulloutClassification.findMany({
+      where: { tenantId, recordStatus: "active", id: { in: classificationIds } },
+      select: { id: true },
+    }),
+    prisma.unitPackingCondition.findMany({
+      where: { tenantId, recordStatus: "active", id: { in: packingIds } },
+      select: { id: true },
+    }),
+    prisma.accessoryCompleteness.findMany({
+      where: { tenantId, recordStatus: "active", id: { in: accessoryIds } },
+      select: { id: true },
+    }),
+  ]);
+  const activeClassifications = new Set(classifications.map((row) => row.id));
+  const activePackings = new Set(packings.map((row) => row.id));
+  const activeAccessories = new Set(accessories.map((row) => row.id));
+  for (const line of lines) {
+    if (
+      line.pulloutClassificationIds.some((id) => !activeClassifications.has(id)) ||
+      line.unitPackingConditionIds.some((id) => !activePackings.has(id)) ||
+      line.accessoryCompletenessIds.some((id) => !activeAccessories.has(id))
+    ) {
+      throw new Error(CHECKLIST_INACTIVE);
+    }
+  }
+}
+
+function savedNames(names: readonly (string | null | undefined)[]): string[] {
+  return names.flatMap((name) => {
+    const trimmed = displayName(name);
+    return trimmed ? [trimmed] : [];
+  });
+}
+
 function jobStub(metadata: unknown): boolean {
   if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return false;
   return (metadata as { stub?: unknown }).stub === true;
@@ -313,14 +418,32 @@ export const pulloutPostingService = {
         pulloutNo: true,
         notes: true,
         waybillNo: true,
+        createdAt: true,
+        scheduledAt: true,
+        actualScheduledDate: true,
+        createdBy: { select: { name: true } },
+        scheduledBy: { select: { name: true } },
         branch: { select: { id: true, name: true } },
         warehouse: { select: { id: true, name: true, code: true } },
+        warehouseLocation: { select: { name: true, code: true } },
         statusCode: { select: { code: true, name: true, color: true } },
         reasonStatusCode: { select: { id: true, code: true, name: true, color: true } },
         lines: {
           select: {
             serialNumberId: true,
             priorStatusCode: { select: { code: true } },
+            classifications: {
+              select: { pulloutClassification: { select: { name: true } } },
+              orderBy: { pulloutClassification: { name: "asc" } },
+            },
+            packingConditions: {
+              select: { unitPackingCondition: { select: { name: true } } },
+              orderBy: { unitPackingCondition: { name: "asc" } },
+            },
+            accessoryCompletenesses: {
+              select: { accessoryCompleteness: { select: { name: true } } },
+              orderBy: { accessoryCompleteness: { name: "asc" } },
+            },
             serialNumber: {
               select: { serialNo: true, model: { select: { skuCode: true, name: true } } },
             },
@@ -355,9 +478,15 @@ export const pulloutPostingService = {
       pulloutNo: pullout.pulloutNo,
       notes: pullout.notes,
       waybillNo: pullout.waybillNo,
+      createdAt: pullout.createdAt.toISOString(),
+      createdByName: displayName(pullout.createdBy?.name),
+      scheduledAt: pullout.scheduledAt?.toISOString() ?? null,
+      scheduledByName: displayName(pullout.scheduledBy?.name),
+      actualScheduledDate: pullout.actualScheduledDate?.toISOString() ?? null,
       status: pullout.statusCode,
       branch: pullout.branch,
       warehouse: pullout.warehouse,
+      warehouseLocation: pullout.warehouseLocation,
       reason: pullout.reasonStatusCode,
       lines: pullout.lines.map((line) => ({
         serialNumberId: line.serialNumberId,
@@ -366,6 +495,15 @@ export const pulloutPostingService = {
         modelName: line.serialNumber.model.name,
         priorCode: line.priorStatusCode?.code ?? null,
         inventoryCode: inventoryBySerial.get(line.serialNumberId)?.statusCode.code ?? null,
+        classificationNames: savedNames(
+          line.classifications.map((row) => row.pulloutClassification.name),
+        ),
+        unitPackingConditionNames: savedNames(
+          line.packingConditions.map((row) => row.unitPackingCondition.name),
+        ),
+        accessoryCompletenessNames: savedNames(
+          line.accessoryCompletenesses.map((row) => row.accessoryCompleteness.name),
+        ),
       })),
       sapJob,
       history: history.map((row) => ({
@@ -377,17 +515,10 @@ export const pulloutPostingService = {
     };
   },
 
-  async create(
-    actor: PostingActor,
-    input: {
-      branchId: string;
-      warehouseId: string;
-      reasonStatusCodeId: string;
-      serialNumberIds: string[];
-      notes?: string;
-    },
-  ) {
+  async create(actor: PostingActor, input: PulloutCreateInput) {
     await authorizePosting(actor, "pullout.create", input.branchId);
+    const checklist = checklistBySerial(input.lines);
+    await assertActiveChecklist(actor.tenantId, input.lines);
     const reason = await prisma.reasonStatusCode.findFirst({
       where: {
         id: input.reasonStatusCodeId,
@@ -398,13 +529,19 @@ export const pulloutPostingService = {
     });
     if (!reason) throw new Error("Choose a pull-out reason");
 
-    const serials = await loadAllocatable(actor.tenantId, input.branchId, input.serialNumberIds);
+    const serials = await loadAllocatable(actor.tenantId, input.branchId, [...checklist.keys()]);
     const plan = planPulloutCreate({
       branchId: input.branchId,
       warehouseId: input.warehouseId,
       serials,
     });
     if (!plan.ok) throw new Error(plan.error);
+    if (
+      plan.lines.length !== checklist.size ||
+      plan.lines.some((line) => !checklist.has(line.serialNumberId))
+    ) {
+      throw new Error(CHECKLIST_REQUIRED);
+    }
 
     const codes = await inventoryIds(actor.tenantId);
     const statusCodeId = await workflowId(actor.tenantId, "pending_tl");
@@ -412,7 +549,7 @@ export const pulloutPostingService = {
     try {
       return await prisma.$transaction(async (tx) => {
         const serialIds = plan.lines.map((line) => line.serialNumberId);
-        await lockInventoryRows(tx, actor.tenantId, input.branchId, serialIds);
+        await lockSerialsThenInventoryRows(tx, actor.tenantId, input.branchId, serialIds);
         await assertMovable(actor.tenantId, serialIds);
         const stillOpen = await openDocumentIdsBySerial(actor.tenantId, serialIds);
         if ([...stillOpen.values()].some((ids) => ids.length > 0)) {
@@ -442,10 +579,29 @@ export const pulloutPostingService = {
             notes: input.notes?.trim() || null,
             createdById: actor.userId,
             lines: {
-              create: plan.lines.map((line) => ({
-                serialNumberId: line.serialNumberId,
-                priorStatusCodeId: codes[line.priorCode],
-              })),
+              create: plan.lines.map((line) => {
+                const choice = checklist.get(line.serialNumberId);
+                if (!choice) throw new Error(CHECKLIST_REQUIRED);
+                return {
+                  serialNumberId: line.serialNumberId,
+                  priorStatusCodeId: codes[line.priorCode],
+                  classifications: {
+                    create: choice.pulloutClassificationIds.map((pulloutClassificationId) => ({
+                      pulloutClassificationId,
+                    })),
+                  },
+                  packingConditions: {
+                    create: choice.unitPackingConditionIds.map((unitPackingConditionId) => ({
+                      unitPackingConditionId,
+                    })),
+                  },
+                  accessoryCompletenesses: {
+                    create: choice.accessoryCompletenessIds.map((accessoryCompletenessId) => ({
+                      accessoryCompletenessId,
+                    })),
+                  },
+                };
+              }),
             },
             approvalLevels: { create: [{ level: 1, roleSlug: "tl" }] },
           },
@@ -499,6 +655,10 @@ export const pulloutPostingService = {
         const plan = planPulloutApprove(fresh);
         if (!plan.ok) throw new Error(plan.error);
         if (plan.idempotent) return;
+        await lockSerialNumbers(
+          tx,
+          plan.moves.map((move) => move.serialNumberId),
+        );
         await claimInventory(tx, {
           tenantId: actor.tenantId,
           branchId: fresh.branchId,
@@ -563,6 +723,10 @@ export const pulloutPostingService = {
         const plan = planPulloutReject(fresh);
         if (!plan.ok) throw new Error(plan.error);
         if (plan.idempotent) return;
+        await lockSerialNumbers(
+          tx,
+          plan.restores.map((row) => row.serialNumberId),
+        );
         for (const prior of ["STK", "DEF"] as const) {
           const ids = plan.restores.filter((row) => row.restoreCode === prior).map((row) => row.serialNumberId);
           await claimInventory(tx, {
@@ -672,7 +836,7 @@ export const pulloutPostingService = {
           ...freshPlan.restores.map((row) => row.serialNumberId),
           ...freshPlan.holds.map((hold) => hold.serialNumberId),
         ];
-        await lockInventoryRows(tx, actor.tenantId, fresh.branchId, touchedIds);
+        await lockSerialsThenInventoryRows(tx, actor.tenantId, fresh.branchId, touchedIds);
         await assertMovable(actor.tenantId, touchedIds);
         const holdIds = freshPlan.holds.map((hold) => hold.serialNumberId);
         const stillOpen = await openDocumentIdsBySerial(actor.tenantId, holdIds, {
@@ -718,6 +882,7 @@ export const pulloutPostingService = {
           });
         }
         if (freshPlan.holds.length > 0) {
+          // New lines from this screen have no checklist. Kept lines are not rewritten.
           await tx.branchPulloutLine.createMany({
             data: freshPlan.holds.map((hold) => ({
               pulloutId: fresh.id,
@@ -793,6 +958,10 @@ export const pulloutPostingService = {
             throw new Error("Warehouse receipt is not available yet. Units stay in transit.");
           }
           if (plan.idempotent) return;
+          await lockSerialNumbers(
+            tx,
+            plan.moves.map((move) => move.serialNumberId),
+          );
           await assertMovable(
             actor.tenantId,
             plan.moves.map((move) => move.serialNumberId),

@@ -43,3 +43,34 @@ export function manilaMonthWindow(at: Date = new Date()): ManilaMonthWindow {
     endExclusive,
   };
 }
+
+export interface ManilaDayWindow {
+  /** The calendar date itself, YYYY-MM-DD. */
+  date: string;
+  /** 00:00:00.000 Asia/Manila. */
+  start: Date;
+  /** 23:59:59.999 Asia/Manila. */
+  end: Date;
+}
+
+const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/**
+ * Bounds of one Manila calendar day, independent of the server's time zone.
+ * Returns null for anything that isn't a real YYYY-MM-DD date.
+ */
+export function manilaDayWindow(isoDate: string): ManilaDayWindow | null {
+  const match = ISO_DATE.exec(isoDate);
+  if (!match) return null;
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const start = manilaMidnightUtc(year, month, day);
+  const parts = manilaDateParts(start);
+  if (parts.year !== year || parts.month !== month || parts.day !== day) return null;
+  return { date: isoDate, start, end: new Date(manilaMidnightUtc(year, month, day + 1).getTime() - 1) };
+}
+
+/** Today's date in Manila as YYYY-MM-DD (works on server and in the browser). */
+export function manilaTodayIso(at: Date = new Date()): string {
+  const { year, month, day } = manilaDateParts(at);
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}

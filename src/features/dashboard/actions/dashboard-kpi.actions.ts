@@ -1,6 +1,9 @@
 "use server";
 
-import { resolveDashboardCapabilities } from "@/features/dashboard/constants/dashboard-permissions";
+import {
+  hasDashboardFullAccess,
+  resolveDashboardCapabilities,
+} from "@/features/dashboard/constants/dashboard-permissions";
 import {
   getDashboardAnalytics,
   getDashboardKpis,
@@ -8,23 +11,11 @@ import {
 import { getDashboardSalesAnalytics } from "@/features/dashboard/services/dashboard-sales.service";
 import { canAccessSales } from "@/features/sales/constants/sales-permissions";
 import { canAccessReturns } from "@/features/returns/constants/returns-permissions";
-import { hasAnyOrderPermission } from "@/features/orders/constants/order-permissions";
-import { hasPermission, requireAuth } from "@/lib/auth/permissions";
+import { requireAuth } from "@/lib/auth/permissions";
 
 function resolveOpsAccess(permissions: string[] | undefined) {
   const caps = resolveDashboardCapabilities(permissions);
-  const fullAccess =
-    hasAnyOrderPermission(permissions, "approve") ||
-    hasPermission(permissions, "branches.manage");
-
-  return { hasOps: caps.hasOps, fullAccess };
-}
-
-function resolveFullAccess(permissions: string[] | undefined) {
-  return (
-    hasAnyOrderPermission(permissions, "approve") ||
-    hasPermission(permissions, "branches.manage")
-  );
+  return { hasOps: caps.hasOps, fullAccess: hasDashboardFullAccess(permissions) };
 }
 
 export async function getDashboardKpisAction() {
@@ -60,6 +51,6 @@ export async function getDashboardSalesAnalyticsAction() {
   return getDashboardSalesAnalytics(
     session.user.tenantId,
     session.user.id,
-    resolveFullAccess(permissions),
+    hasDashboardFullAccess(permissions),
   );
 }

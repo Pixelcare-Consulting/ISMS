@@ -1,3 +1,8 @@
+import {
+  assertExclusivePlacement,
+  loadCurrentPlacements,
+  lockSerialNumbers,
+} from "@/features/inventory/services/serial-placement";
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
 import { prisma } from "@/lib/database/client";
 import { logger } from "@/lib/shared/logger";
@@ -39,15 +44,15 @@ export async function loadMasterWarehouseAllowList(tenantId: string): Promise<Se
 }
 
 /**
- * Keep on-hand rows whose warehouse code is in Branch/Warehouse master.
- * Unknown codes are treated as not on hand.
+ * Split on-hand rows by whether their warehouse code is in Branch/Warehouse master.
+ * `unknown` keeps the code so the sync can name the warehouses to sync first.
  */
 export function partitionOnHandByMaster(
   onHand: OnHandWarehouseSerial[],
   allowList: ReadonlySet<string>,
-): { known: OnHandWarehouseSerial[]; unknownSerialNos: string[] } {
+): { known: OnHandWarehouseSerial[]; unknown: OnHandWarehouseSerial[] } {
   const known: OnHandWarehouseSerial[] = [];
-  const unknownSerialNos: string[] = [];
+  const unknown: OnHandWarehouseSerial[] = [];
   const seen = new Set<string>();
   for (const row of onHand) {
     const serialNo = row.serialNo.trim();
@@ -57,10 +62,10 @@ export function partitionOnHandByMaster(
     if (warehouseCode && allowList.has(warehouseCode)) {
       known.push({ serialNo, warehouseCode });
     } else {
-      unknownSerialNos.push(serialNo);
+      unknown.push({ serialNo, warehouseCode });
     }
   }
-  return { known, unknownSerialNos };
+  return { known, unknown };
 }
 
 /**
@@ -108,6 +113,7 @@ async function resolveBranchesByWarehouseCode(
 /**
  * Upsert BranchInventory STK for on-hand serials whose warehouse resolves to one branch.
  * Skips warehouse-only / multi-branch codes. Leaves non-STK placements alone.
+ * Creates branch stock only when the serial has no current placement.
  */
 export async function replicateOnHandSerialsToStk(
   tenantId: string,
@@ -139,18 +145,7 @@ export async function replicateOnHandSerialsToStk(
   const serialNos = resolvable.map((row) => row.serialNo);
   const serials = await prisma.serialNumber.findMany({
     where: { tenantId, deletedAt: null, serialNo: { in: serialNos } },
-    select: {
-      id: true,
-      serialNo: true,
-      branchInventories: {
-        select: {
-          id: true,
-          branchId: true,
-          statusCodeId: true,
-          statusCode: { select: { code: true } },
-        },
-      },
-    },
+    select: { id: true, serialNo: true },
   });
   const serialByNo = new Map(serials.map((row) => [row.serialNo, row]));
 
@@ -162,63 +157,69 @@ export async function replicateOnHandSerialsToStk(
       continue;
     }
 
-    const placements = serial.branchInventories;
-    if (placements.length === 0) {
-      await prisma.branchInventory.create({
-        data: {
-          tenantId,
-          branchId: branch.id,
-          serialNumberId: serial.id,
-          statusCodeId: stk.id,
-        },
+    const outcome = await prisma.$transaction(async (tx) => {
+      await lockSerialNumbers(tx, [serial.id]);
+      const placements = await loadCurrentPlacements(tx, [serial.id]);
+      if (placements.some((placement) => placement.table !== "branch")) {
+        return "skipped" as const;
+      }
+      const branchRows = placements.filter((placement) => placement.table === "branch");
+      if (branchRows.length === 0) {
+        assertExclusivePlacement({ placements, replacingIds: [] });
+        await tx.branchInventory.create({
+          data: {
+            tenantId,
+            branchId: branch.id,
+            serialNumberId: serial.id,
+            statusCodeId: stk.id,
+          },
+        });
+        return "created" as const;
+      }
+      if (branchRows.some((placement) => placement.statusCode !== "STK")) {
+        return "skipped" as const;
+      }
+
+      const atTarget = branchRows.find((placement) => placement.branchId === branch.id);
+      const extras = branchRows.filter((placement) => placement.id !== atTarget?.id);
+      if (atTarget) {
+        if (extras.length > 0) {
+          await tx.branchInventory.deleteMany({
+            where: { id: { in: extras.map((placement) => placement.id) } },
+          });
+        }
+        return "moved" as const;
+      }
+
+      const primary = branchRows[0];
+      if (!primary) return "skipped" as const;
+      await tx.branchInventory.update({
+        where: { id: primary.id },
+        data: { branchId: branch.id, statusCodeId: stk.id },
       });
-      created += 1;
-      continue;
-    }
-
-    const nonStk = placements.some((placement) => placement.statusCode.code !== "STK");
-    if (nonStk) {
-      skipped += 1;
-      continue;
-    }
-
-    const atTarget = placements.find((placement) => placement.branchId === branch.id);
-    const extras = placements.filter((placement) => placement.id !== atTarget?.id);
-
-    if (atTarget) {
-      if (atTarget.statusCodeId !== stk.id) {
-        await prisma.branchInventory.update({
-          where: { id: atTarget.id },
-          data: { statusCodeId: stk.id },
+      if (branchRows.length > 1) {
+        await tx.branchInventory.deleteMany({
+          where: { id: { in: branchRows.slice(1).map((placement) => placement.id) } },
         });
       }
-      if (extras.length > 0) {
-        await prisma.branchInventory.deleteMany({
-          where: { id: { in: extras.map((placement) => placement.id) } },
-        });
-      }
-      moved += 1;
-      continue;
-    }
-
-    const primary = placements[0];
-    if (!primary) {
-      skipped += 1;
-      continue;
-    }
-
-    await prisma.branchInventory.update({
-      where: { id: primary.id },
-      data: { branchId: branch.id, statusCodeId: stk.id },
+      return "moved" as const;
     });
-    if (placements.length > 1) {
-      await prisma.branchInventory.deleteMany({
-        where: {
-          id: { in: placements.slice(1).map((placement) => placement.id) },
-        },
-      });
+
+    switch (outcome) {
+      case "created":
+        created += 1;
+        break;
+      case "moved":
+        moved += 1;
+        break;
+      case "skipped":
+        skipped += 1;
+        break;
+      default: {
+        const unreachable: never = outcome;
+        return unreachable;
+      }
     }
-    moved += 1;
   }
 
   return { created, moved, skipped };

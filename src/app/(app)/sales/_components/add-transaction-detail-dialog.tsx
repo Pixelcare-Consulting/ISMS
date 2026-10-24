@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import { SaleSerialField } from "@/app/(app)/sales/_components/sale-serial-field";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -11,7 +12,6 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   listModelsForSalesAction,
   listPackageTypesForSalesAction,
-  listSaleableSerialsAction,
   resolveModelPriceForSalesAction,
 } from "@/features/sales/actions/sales.actions";
 import {
@@ -60,18 +60,12 @@ type ModelOption = {
   brandId: string | null;
 };
 
-type SerialOption = {
-  id: string;
-  serialNo: string;
-  skuCode: string;
-  modelName: string;
-  modelId: string;
-};
-
 type DetailSetDraft = {
   brandId: string;
   modelId: string;
   serialNumberId: string;
+  serialNo: string;
+  serialSkuCode: string;
   saleAmount: string;
   modelPrice: string;
   /** True when the model has no master price list at all. */
@@ -93,6 +87,8 @@ function emptySet(): DetailSetDraft {
     brandId: "",
     modelId: "",
     serialNumberId: "",
+    serialNo: "",
+    serialSkuCode: "",
     saleAmount: "",
     modelPrice: "",
     noPriceList: false,
@@ -137,6 +133,8 @@ function draftToSet(
     brandId: row.brandId,
     modelId: row.modelId,
     serialNumberId: row.serialNumberId,
+    serialNo: row.serialNo,
+    serialSkuCode: "",
     saleAmount: String(row.saleAmount),
     modelPrice: row.modelPrice == null ? "" : String(row.modelPrice),
     noPriceList: false,
@@ -155,6 +153,7 @@ function rowsToSets(rows: DraftSaleDetail[]): DetailSetDraft[] {
 
 export function AddTransactionDetailDialog({
   stockBranchId,
+  stockSourceName,
   brands,
   promoTypes,
   usedSerialIds,
@@ -165,6 +164,7 @@ export function AddTransactionDetailDialog({
   onClose,
 }: {
   stockBranchId: string;
+  stockSourceName: string;
   brands: LookupOption[];
   promoTypes: LookupOption[];
   usedSerialIds: Set<string>;
@@ -183,7 +183,6 @@ export function AddTransactionDetailDialog({
   const [pending, startTransition] = useTransition();
   const [packages, setPackages] = useState<PackageOption[]>([]);
   const [models, setModels] = useState<ModelOption[]>([]);
-  const [serials, setSerials] = useState<SerialOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [packageTypeId, setPackageTypeId] = useState(
     () => initialRows?.[0]?.packageTypeId ?? "",
@@ -213,14 +212,12 @@ export function AddTransactionDetailDialog({
     void (async () => {
       setLoading(true);
       try {
-        const [pkgRows, serialRows, modelRows] = await Promise.all([
+        const [pkgRows, modelRows] = await Promise.all([
           listPackageTypesForSalesAction(),
-          listSaleableSerialsAction(stockBranchId),
           listModelsForSalesAction(),
         ]);
         if (cancelled) return;
         setPackages(pkgRows);
-        setSerials(serialRows);
         setModels(modelRows);
 
         // Re-apply edit values after options load so selects resolve correctly.
@@ -247,6 +244,20 @@ export function AddTransactionDetailDialog({
     };
   }, [stockBranchId]);
 
+  const stockBranchRef = useRef(stockBranchId);
+  useEffect(() => {
+    if (stockBranchRef.current === stockBranchId) return;
+    stockBranchRef.current = stockBranchId;
+    setSets((prev) =>
+      prev.map((set) => ({
+        ...set,
+        serialNumberId: "",
+        serialNo: "",
+        serialSkuCode: "",
+      })),
+    );
+  }, [stockBranchId]);
+
   function onPackageChange(id: string) {
     setPackageTypeId(id);
     const pkg = packages.find((p) => p.id === id);
@@ -265,6 +276,8 @@ export function AddTransactionDetailDialog({
       brandId,
       modelId: "",
       serialNumberId: "",
+      serialNo: "",
+      serialSkuCode: "",
       modelPrice: "",
       noPriceList: false,
       priceFallbackDate: null,
@@ -272,7 +285,12 @@ export function AddTransactionDetailDialog({
   }
 
   async function onModelChange(index: number, modelId: string) {
-    updateSet(index, { modelId, serialNumberId: "" });
+    updateSet(index, {
+      modelId,
+      serialNumberId: "",
+      serialNo: "",
+      serialSkuCode: "",
+    });
     if (!modelId) {
       updateSet(index, {
         modelPrice: "",
@@ -317,42 +335,15 @@ export function AddTransactionDetailDialog({
     return models.filter((m) => !set.brandId || m.brandId === set.brandId);
   }
 
-  function serialOptionsForSet(set: DetailSetDraft, index: number) {
-    // Only real serials count as "already used" — TO-FOLLOW can appear on multiple sets.
-    const claimedInOtherSets = new Set(
-      sets
-        .map((s, i) => (i === index ? null : s.serialNumberId))
-        .filter((id): id is string => Boolean(id) && !isToFollowSerial(id)),
-    );
-    const realSerials = serials.filter((s) => {
-      if (usedSerialIds.has(s.id) || claimedInOtherSets.has(s.id)) return false;
-      if (set.modelId && s.modelId !== set.modelId) return false;
-      return true;
+  function excludedSerialIdsFor(index: number): Set<string> {
+    const ids = new Set(usedSerialIds);
+    sets.forEach((set, setIndex) => {
+      if (setIndex === index) return;
+      if (set.serialNumberId && !isToFollowSerial(set.serialNumberId)) {
+        ids.add(set.serialNumberId);
+      }
     });
-    // Pin TO-FOLLOW at the top so it's always available for any model.
-    // Also keep the currently selected serial visible even if already in usedSerialIds
-    // (edit mode) or not in the fresh STK list.
-    const selected = set.serialNumberId
-      ? serials.find((s) => s.id === set.serialNumberId)
-      : undefined;
-    const options = [
-      {
-        id: TO_FOLLOW_SERIAL_ID,
-        serialNo: TO_FOLLOW_SERIAL_LABEL,
-        skuCode: "",
-        modelName: "",
-        modelId: set.modelId || "",
-      },
-      ...realSerials,
-    ];
-    if (
-      selected &&
-      !isToFollowSerial(selected.id) &&
-      !options.some((o) => o.id === selected.id)
-    ) {
-      options.splice(1, 0, selected);
-    }
-    return options;
+    return ids;
   }
 
   function submit() {
@@ -390,12 +381,8 @@ export function AddTransactionDetailDialog({
         return;
       }
       const model = models.find((m) => m.id === set.modelId);
-      // TO-FOLLOW is a UI placeholder — skip looking it up in branch STK serials.
       const isToFollow = isToFollowSerial(set.serialNumberId);
-      const serial = isToFollow
-        ? null
-        : serials.find((s) => s.id === set.serialNumberId);
-      if (!isToFollow && !serial) {
+      if (!isToFollow && !set.serialNo) {
         toast.error(`Set ${i + 1}: serial not found`);
         return;
       }
@@ -418,8 +405,8 @@ export function AddTransactionDetailDialog({
         promoTypeName: promo?.name ?? null,
         modelId: set.modelId,
         modelLabel: model ? `${model.skuCode} · ${model.name}` : set.modelId,
-        serialNumberId: isToFollow ? TO_FOLLOW_SERIAL_ID : serial!.id,
-        serialNo: isToFollow ? TO_FOLLOW_SERIAL_LABEL : serial!.serialNo,
+        serialNumberId: isToFollow ? TO_FOLLOW_SERIAL_ID : set.serialNumberId,
+        serialNo: isToFollow ? TO_FOLLOW_SERIAL_LABEL : set.serialNo,
         saleAmount,
         modelPrice,
         deliveryNo: showDelivery
@@ -466,6 +453,11 @@ export function AddTransactionDetailDialog({
             needs its own brand, model, and STK serial from the stock source
             branch.
           </p>
+          {stockSourceName ? (
+            <p className="mt-1 text-sm text-foreground">
+              Stock source: {stockSourceName}
+            </p>
+          ) : null}
         </div>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-6">
@@ -543,7 +535,6 @@ export function AddTransactionDetailDialog({
 
           <div className="space-y-3">
             {sets.map((set, index) => {
-              const serialOpts = serialOptionsForSet(set, index);
               const modelOpts = modelOptionsForSet(set);
               return (
                 <div
@@ -577,32 +568,31 @@ export function AddTransactionDetailDialog({
                       emptyMessage="No models for this brand."
                       disabled={loading || !set.brandId || !hydrated}
                     />
-                    <SearchableSelect
-                      label="Serial number *"
-                      options={serialOpts.map((s) => ({
-                        id: s.id,
-                        label: isToFollowSerial(s.id)
-                          ? s.serialNo
-                          : `${s.serialNo} · ${s.skuCode}`,
-                      }))}
+                    <SaleSerialField
+                      key={`${stockBranchId}:${set.modelId}:${index}`}
+                      id={`sale-serial-${index}`}
+                      stockBranchId={stockBranchId}
+                      modelId={set.modelId}
                       value={set.serialNumberId}
-                      onChange={(id) =>
-                        updateSet(index, { serialNumberId: id })
+                      excludeSerialIds={excludedSerialIdsFor(index)}
+                      selectedSerial={
+                        set.serialNumberId &&
+                        !isToFollowSerial(set.serialNumberId) &&
+                        set.serialNo
+                          ? {
+                              id: set.serialNumberId,
+                              serialNo: set.serialNo,
+                              skuCode: set.serialSkuCode,
+                            }
+                          : null
                       }
-                      placeholder={
-                        !set.modelId
-                          ? "Select model first…"
-                          : serialOpts.length === 0
-                            ? "No STK serials for model"
-                            : "Select serial…"
-                      }
-                      searchPlaceholder="Search serials…"
-                      emptyMessage="No sellable serials for this model at the stock source."
-                      disabled={
-                        loading ||
-                        !set.modelId ||
-                        !hydrated ||
-                        serialOpts.length === 0
+                      disabled={!hydrated}
+                      onChange={(serial) =>
+                        updateSet(index, {
+                          serialNumberId: serial.id,
+                          serialNo: serial.serialNo,
+                          serialSkuCode: serial.skuCode,
+                        })
                       }
                     />
                     <div className="space-y-2">

@@ -2,24 +2,16 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { createColumnHelper } from "@tanstack/react-table";
 
 import { TenantStatusActions } from "@/app/(provider)/provider/tenants/_components/tenant-status-actions";
 import {
-  DataTableScroll,
-  DataTableShell,
-  TableEmptyRow,
-} from "@/components/data-table/data-table-shell";
-import { TableSearchToolbar } from "@/components/data-table/table-search-bar";
+  DataTable,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { cn } from "@/utils/cn";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
@@ -31,6 +23,8 @@ export type ProviderTenantRow = {
   userCount: number;
   createdAt: string;
 };
+
+const tenantColumn = createColumnHelper<DataTableFeatures, ProviderTenantRow>();
 
 type StatusFilter = "all" | "active" | "disabled";
 
@@ -83,9 +77,69 @@ export function ProviderTenantsTable({ tenants }: ProviderTenantsTableProps) {
     [tenants, query, statusFilter],
   );
 
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<ProviderTenantRow>[] = [
+      tenantColumn.accessor("name", {
+        header: "Organization",
+        enableSorting: false,
+        meta: { className: "font-medium" },
+      }),
+      tenantColumn.accessor("slug", {
+        header: "Slug",
+        enableSorting: false,
+        meta: { className: "text-muted-foreground" },
+      }),
+      tenantColumn.display({
+        id: "status",
+        header: "Status",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <Badge variant={row.original.status === "active" ? "default" : "secondary"}>
+            {row.original.status === "active" ? "Active" : "Disabled"}
+          </Badge>
+        ),
+      }),
+      tenantColumn.accessor("userCount", {
+        header: "Users",
+        enableSorting: false,
+        meta: { align: "end", className: "tabular-nums" },
+      }),
+      tenantColumn.display({
+        id: "created",
+        header: "Created",
+        enableSorting: false,
+        cell: ({ row }) => formatDate(row.original.createdAt),
+      }),
+      tenantColumn.display({
+        id: "actions",
+        header: "Actions",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/provider/tenants/${row.original.id}`}>View</Link>
+            </Button>
+            <TenantStatusActions
+              tenantId={row.original.id}
+              tenantName={row.original.name}
+              status={row.original.status}
+              compact
+            />
+          </div>
+        ),
+        meta: { align: "end" },
+      }),
+    ];
+    return cols;
+  }, []);
+
   return (
-    <DataTableShell>
-      <div className="flex flex-col gap-3 border-b border-border/70 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+    <DataTable
+      data={filtered}
+      columns={columns}
+      getRowId={(row) => row.id}
+      stickyHeader
+      toolbarLeading={
         <div className="flex flex-wrap gap-2">
           {STATUS_FILTERS.map((filter) => {
             const selected = statusFilter === filter.id;
@@ -99,83 +153,23 @@ export function ProviderTenantsTable({ tenants }: ProviderTenantsTableProps) {
                 onClick={() => setStatusFilter(filter.id)}
               >
                 {filter.label}
-                <span className="ml-1 tabular-nums opacity-80">
-                  {statusCounts[filter.id]}
-                </span>
+                <span className="ml-1 tabular-nums opacity-80">{statusCounts[filter.id]}</span>
               </Button>
             );
           })}
         </div>
-        <TableSearchToolbar
-          value={query}
-          onChange={setQuery}
-          placeholder="Search tenants…"
-          className="border-0 p-0 sm:max-w-xs"
-        />
-      </div>
-      <DataTableScroll>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Organization</TableHead>
-              <TableHead>Slug</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Users</TableHead>
-              <TableHead>Created</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filtered.length === 0 ? (
-              <TableEmptyRow
-                colSpan={6}
-                message={
-                  tenants.length === 0
-                    ? "No customer tenants yet. Create one to get started."
-                    : "No tenants match your filters."
-                }
-              />
-            ) : (
-              filtered.map((tenant) => (
-                <TableRow key={tenant.id}>
-                  <TableCell className="font-medium">{tenant.name}</TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {tenant.slug}
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        tenant.status === "active" ? "default" : "secondary"
-                      }
-                    >
-                      {tenant.status === "active" ? "Active" : "Disabled"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {tenant.userCount}
-                  </TableCell>
-                  <TableCell>{formatDate(tenant.createdAt)}</TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex flex-wrap items-center justify-end gap-2">
-                      <Button asChild variant="outline" size="sm">
-                        <Link href={`/provider/tenants/${tenant.id}`}>
-                          View
-                        </Link>
-                      </Button>
-                      <TenantStatusActions
-                        tenantId={tenant.id}
-                        tenantName={tenant.name}
-                        status={tenant.status}
-                        compact
-                      />
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </DataTableScroll>
-    </DataTableShell>
+      }
+      search={{
+        value: query,
+        onChange: setQuery,
+        placeholder: "Search tenants…",
+      }}
+      empty={filtered.length === 0}
+      emptyMessage={
+        tenants.length === 0
+          ? "No customer tenants yet. Create one to get started."
+          : "No tenants match your filters."
+      }
+    />
   );
 }

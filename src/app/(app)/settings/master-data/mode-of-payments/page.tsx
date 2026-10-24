@@ -9,7 +9,7 @@ export default async function MasterDataModeOfPaymentsPage() {
 
   return (
     <div className="space-y-4">
-      <SectionPageLead>Mode of payment lookup for sales transactions.</SectionPageLead>
+      <SectionPageLead>Mode of payment for dealers. Type decides ITR (Consignment) or SO (Outright).</SectionPageLead>
       <LookupTable entity="modeOfPayment" rows={rows} />
     </div>
   );

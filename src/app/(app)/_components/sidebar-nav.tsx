@@ -10,6 +10,7 @@ import {
   filterNavByPermissions,
   type NavLinkItem,
 } from "@/config/app-navigation";
+import { setupNavigation } from "@/config/setup-navigation";
 
 export type NavCountBadgeKey = NonNullable<NavLinkItem["countBadgeKey"]>;
 
@@ -24,19 +25,22 @@ export function resolveNavCountBadge(
 }
 
 interface SidebarNavProps {
+  useSetupNavigation: boolean;
   permissions: string[];
   isPlatformOperator: boolean;
   countBadges?: NavCountBadges;
 }
 
 export function SidebarNav({
+  useSetupNavigation,
   permissions,
   isPlatformOperator,
   countBadges,
 }: SidebarNavProps) {
   const pathname = usePathname();
+  const navigation = useSetupNavigation ? setupNavigation : appNavigation;
   const entries = filterNavByPermissions(
-    appNavigation,
+    navigation,
     permissions,
     isPlatformOperator,
   );

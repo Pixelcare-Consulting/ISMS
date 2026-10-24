@@ -66,6 +66,553 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.79.1",
+    date: "2026-10-23",
+    releasedAt: "2026-10-23T15:45:00+08:00",
+    title: "Delivery progress",
+    highlights: [
+      "Opening a delivery shows its progress above the order, the DR, and the units.",
+      "Opening a delivery, transfer, or pull-out no longer repeats the module guide. The guide stays on the list.",
+      "Delivery, transfer, and pull-out details now share a cleaner layout with easier-to-read progress, unit lists, and history.",
+      "Delivery, transfer, and pull-out details use color so progress and each section are easier to scan.",
+      "Opening an order from Order History uses the same sections, with a plain header.",
+      "Progress steps move as an order, delivery, transfer, or pull-out moves forward.",
+      "On a pull-out, remarks sit with the requestor, next to the logistics details.",
+      "Repeated history events, such as Units received, show once.",
+      "The pull-out receipt note sits under the progress steps as a warning, not as a popup, and an in-transit document no longer uses a blue header.",
+      "Approve and Reject stay on the pull-out page. The list only opens it.",
+      "Opening a pull-out or transfer shows the current step, with the action for that step. Earlier steps stay as a short line.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Opening a delivery shows its progress above the order, the DR, and the units.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Opening a delivery, transfer, or pull-out no longer repeats the module guide. The guide stays on the list.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Delivery, transfer, and pull-out details now share a cleaner layout with easier-to-read progress, unit lists, and history.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Delivery, transfer, and pull-out details use color so progress and each section are easier to scan.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Opening an order from Order History uses the same sections, with a plain header.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Progress steps move as an order, delivery, transfer, or pull-out moves forward.",
+      },
+      {
+        type: "improvement",
+        description:
+          "On a pull-out, remarks sit with the requestor, next to the logistics details.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Repeated history events, such as Units received, show once.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The pull-out receipt note sits under the progress steps as a warning, not as a popup, and an in-transit document no longer uses a blue header.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Approve and Reject stay on the pull-out page. The list only opens it.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Opening a pull-out or transfer shows the current step, with the action for that step. Earlier steps stay as a short line.",
+      },
+    ],
+  },
+  {
+    version: "0.79.0",
+    date: "2026-10-23",
+    releasedAt: "2026-10-23T14:30:00+08:00",
+    title: "Setup account",
+    highlights: [
+      "The setup account opens a Setup home instead of daily operations.",
+      "That account keeps company, people, places, product lists, and the rules orders and pull-outs need.",
+      "That account can set up custom dashboards and see who is using the site.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "The setup account opens a Setup home and can maintain company details, people, branches, warehouses, dealers, and the product and lookup lists.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Orders, deliveries, stock, sales, returns, and reports stay with the teams that run them.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The setup account can set up custom dashboards and see who is using the site.",
+      },
+    ],
+  },
+  {
+    version: "0.78.0",
+    date: "2026-10-23",
+    releasedAt: "2026-10-23T12:50:00+08:00",
+    title: "Pull-out checklist",
+    highlights: [
+      "You can keep pull-out classification, unit packing condition, and accessory completeness under Settings → Master data.",
+      "On each selected unit you can choose more than one classification, packing condition, and accessory completeness.",
+      "The lists can be searched and show 10 at a time.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "You can keep pull-out classification, unit packing condition, and accessory completeness under Settings → Master data. On each selected unit you can choose more than one classification, packing condition, and accessory completeness. The lists can be searched and show 10 at a time.",
+      },
+    ],
+  },
+  {
+    version: "0.77.2",
+    date: "2026-10-23",
+    releasedAt: "2026-10-23T10:40:00+08:00",
+    title: "Pull-out details",
+    highlights: [
+      "A pull-out shows its stock or defective condition separately from its progress.",
+      "The steps are reserve, approval, the logistics list, and in transit.",
+      "A transfer shows the same progress steps as a pull-out.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "A pull-out shows its stock or defective condition separately from its progress.",
+      },
+      {
+        type: "improvement",
+        description: "The steps are reserve, approval, the logistics list, and in transit.",
+      },
+      {
+        type: "improvement",
+        description:
+          "While a transfer is waiting for approval, the form offers Approve and Reject for the whole request.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Starting a pull-out uses the same form as opening one, with each unit marked stock or defective.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Pull-outs and transfers open on the same kind of page. You choose the pull-out reason, and Approve and Reject look the same in the list and on the page.",
+      },
+      {
+        type: "improvement",
+        description:
+          "A new transfer warns you when the releasing branch has no units free to send.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Transfers and unit transfers now share one page, with Unit transfers as a tab. The separate sidebar item is gone.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The transfer summary shows only the steps you use: waiting for approval, ready to send, in transit, accepted, and rejected.",
+      },
+      {
+        type: "improvement",
+        description: "A transfer shows the same progress steps as a pull-out.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The pull-out receipt note sits under the progress steps as a warning, not as a popup.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Transfer and pull-out line lists can be searched and paged like the other tables.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Opening an order from Order History shows the order on its own page, with its approval steps above the details.",
+      },
+    ],
+  },
+  {
+    version: "0.77.1",
+    date: "2026-10-22",
+    releasedAt: "2026-10-22T16:10:00+08:00",
+    title: "Transfer form",
+    highlights: [
+      "The transfer form shows the transfer, who created it, both branches, and each serial.",
+      "Accept stays on each serial that is still on the way.",
+      "Approving or releasing a transfer is one action for the whole request, shown at the bottom of the form.",
+      "The transfer form matches the other screens in the app.",
+      "A new transfer shows its number, and the form has a header and actions along the bottom like the other screens.",
+      "Each serial on a transfer shows its number and the actions you can take, and you can add or remove several serials from a new request at once.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Opening a transfer or starting a new one uses the same form. It shows the transfer number, who created it, the releasing and receiving branches, the date, the status, and each serial.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Accept confirms one serial. Delete before approval cancels the request and frees the reserved units.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Approving or releasing a transfer is one action for the whole request, shown at the bottom of the form.",
+      },
+      {
+        type: "improvement",
+        description: "The transfer form matches the other screens in the app.",
+      },
+      {
+        type: "improvement",
+        description:
+          "A new transfer shows its number, and the form has a header and actions along the bottom like the other screens.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Each serial on a transfer shows its number and the actions you can take, and you can add or remove several serials from a new request at once.",
+      },
+    ],
+  },
+  {
+    version: "0.77.0",
+    date: "2026-10-20",
+    releasedAt: "2026-10-20T18:40:00+08:00",
+    title: "One place for each unit",
+    highlights: [
+      "A unit can be in stock in one place.",
+      "A sale serial must match the model on the sale.",
+      "Stocking in a serial that is already at that location does not add another unit.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "A unit can be in stock in one place. Stocking it in at a different place, or while it is already at a branch or service center, is refused.",
+      },
+      {
+        type: "fix",
+        description:
+          "A sale serial must match the model on the sale. When the model has a brand, the sale brand must match too. Only one person can assign a serial to a to-follow line.",
+      },
+      {
+        type: "fix",
+        description:
+          "Repeating stock-in for a serial already at that location does not add another unit.",
+      },
+    ],
+  },
+  {
+    version: "0.76.5",
+    date: "2026-10-20",
+    releasedAt: "2026-10-20T17:50:00+08:00",
+    title: "Sale serial search",
+    highlights: [
+      "When you record a sale, you can search serials for the model you chose at the stock source you selected, including units that used to be missing from the list.",
+      "Branch stock reads Branch Stock — STK, and units on the way in read Incoming to Branch — DIT.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Branch stock reads Branch Stock — STK, and units on the way in read Incoming to Branch — DIT.",
+      },
+      {
+        type: "fix",
+        description:
+          "When you record a sale, you can search serials for the model you chose at the stock source you selected, including units that used to be missing from the list.",
+      },
+    ],
+  },
+  {
+    version: "0.76.4",
+    date: "2026-10-20",
+    releasedAt: "2026-10-20T15:20:00+08:00",
+    title: "Order sheets",
+    highlights: [
+      "Suggested orders uses the same compact table as order details, with the model name under the code.",
+      "Opening order details no longer leaves the notes box highlighted.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Suggested orders uses the same compact table as order details. The model name sits under the code, quantities line up, and a total sits under the list.",
+      },
+      {
+        type: "fix",
+        description:
+          "Opening order details no longer leaves the notes box highlighted.",
+      },
+    ],
+  },
+  {
+    version: "0.76.3.1",
+    date: "2026-10-19",
+    releasedAt: "2026-10-19T17:30:00+08:00",
+    audience: "internal",
+    title: "Assistant switch saves",
+    highlights: [
+      "Saving the assistant switch for a company from Provider Console works again.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Saving the assistant switch for a company from Provider Console works again.",
+      },
+    ],
+  },
+  {
+    version: "0.76.3",
+    date: "2026-10-19",
+    releasedAt: "2026-10-19T15:50:00+08:00",
+    title: "Order sheet layout",
+    highlights: [
+      "Creating an order matches order details, and a line you do not want can be removed.",
+      "Order analytics shows stock and sales for that order type.",
+      "Stock badges use your inventory status colors, and totals sit in the page footer.",
+      "The model name is easier to scan, and the sheet shows 10 lines at a time.",
+      "Notes show in full.",
+      "A line removed while creating an order stays off the order.",
+      "A note can be typed straight through.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Creating an order matches order details, and a line you do not want can be removed.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Order analytics shows stock and sales for that order type, in the same layout as the order sheet.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The order sheet drops the Shelf column, labels each line No., and keeps that number only as wide as the digits. It shows the shelf maximum under the suggestion, and lists total lines and total quantity in the page footer. The model code stays on its own line, the model name wraps underneath, and the sheet fits without scrolling sideways.",
+      },
+      {
+        type: "improvement",
+        description: "The model name is easier to scan, and the sheet shows 10 lines at a time.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Stock badges on order analytics use the same colors as your inventory statuses.",
+      },
+      {
+        type: "improvement",
+        description: "Notes show in full.",
+      },
+      {
+        type: "fix",
+        description: "A note can be typed straight through without clicking the box for each letter.",
+      },
+      {
+        type: "fix",
+        description: "A line removed while creating an order stays off the order.",
+      },
+    ],
+  },
+  {
+    version: "0.76.1",
+    date: "2026-10-19",
+    releasedAt: "2026-10-19T15:30:00+08:00",
+    title: "Order sheet updates",
+    highlights: [
+      "The bell tells the next person when an order is submitted, approved, rejected, or cancelled.",
+      "Order analytics uses the same sheet as the order, and the extra tab is gone.",
+      "Auto replenish suggestions follow the released plan.",
+      "Approval history reads as a timeline.",
+      "CBM shows on the order sheet.",
+      "Extra items are picked in a window.",
+      "Approving an order saves again.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "The bell tells the next person when an order is submitted, approved, rejected, or cancelled.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Order analytics uses the same sheet as the order, and the extra tab is gone.",
+      },
+      {
+        type: "improvement",
+        description: "Auto replenish suggestions follow the released plan.",
+      },
+      {
+        type: "improvement",
+        description: "Approval history reads as a timeline.",
+      },
+      {
+        type: "improvement",
+        description: "CBM shows on the order sheet.",
+      },
+      {
+        type: "improvement",
+        description: "Extra items are picked in a window.",
+      },
+      {
+        type: "fix",
+        description: "Approving an order saves again.",
+      },
+    ],
+  },
+  {
+    version: "0.76.0",
+    date: "2026-10-19",
+    releasedAt: "2026-10-19T11:40:00+08:00",
+    title: "Order review sheet",
+    highlights: [
+      "Supply Planning can review a manual or special order on one sheet, with stock, sales, and line remarks, without opening Order Analytics.",
+      "A later plan change is a separate update. It does not replace the order you are reviewing.",
+      "From an order you can open edit and the branch analytics without leaving the details window.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Supply Planning can review a manual or special order on one sheet, with stock, sales, and line remarks, without opening Order Analytics.",
+      },
+      {
+        type: "improvement",
+        description:
+          "A later plan change is unrelated to this review. It does not change the sheet alread y open for a manual or special order.",
+      },
+      {
+        type: "improvement",
+        description:
+          "From an order you can open edit and the branch analytics without leaving the details window.",
+      },
+    ],
+  },
+  {
+    version: "0.75.0",
+    date: "2026-10-19",
+    releasedAt: "2026-10-19T10:47:00+08:00",
+    title: "Suggested Orders",
+    highlights: [
+      "Releasing a plan publishes suggestions for review. Planning no longer sends orders in by itself.",
+      "On Manual, Special, and Auto replenish, Suggested Orders opens a review for the branch. You choose quantities and create or update a draft. Nothing is submitted until you choose Submit for review.",
+      "Auto replenish suggestions come from the released plan. Manual suggestions are the shelf gap after stock and supply already on the way. Special orders are not given a made-up quantity.",
+      "A later plan update does not change quantities you already edited on a draft.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "On Manual, Special, and Auto replenish, Suggested Orders opens a review for the branch. You choose quantities and create or update a draft. Nothing is submitted until you choose Submit for review.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Releasing a plan publishes suggestions for review. Planning no longer sends orders in by itself.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Auto replenish suggestions come from the released plan. Manual suggestions are the shelf gap after stock and supply already on the way. Special orders are not given a made-up quantity.",
+      },
+      {
+        type: "improvement",
+        description:
+          "A later plan update does not change quantities you already edited on a draft.",
+      },
+    ],
+  },
+  {
+    version: "0.74.5",
+    date: "2026-10-19",
+    releasedAt: "2026-10-19T10:33:00+08:00",
+    audience: "internal",
+    title: "Turn the assistant on from Provider Console",
+    highlights: [
+      "Company Settings no longer shows the assistant on/off switch.",
+      "A provider turns the assistant on for a company from Provider Console, then Tenants, then the company, then Assistant.",
+      "The assistant stays off until a provider turns it on.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Company Settings no longer shows the assistant on/off switch. A provider turns the assistant on for a company from Provider Console, then Tenants, then the company, then Assistant. Ordinary company users still cannot see that switch. The assistant stays off until a provider turns it on.",
+      },
+    ],
+  },
+  {
+    version: "0.74.4",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T19:50:00+08:00",
+    title: "Easier Branch Inventory lists",
+    highlights: [
+      "Branch Inventory groups are easier to scan.",
+      "Serial lists no longer repeat the branch and model already shown above them.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Branch Inventory groups are easier to scan, and serial lists no longer repeat the branch and model already shown above them.",
+      },
+    ],
+  },
+  {
+    version: "0.74.3",
+    date: "2026-10-16",
+    releasedAt: "2026-10-16T19:15:00+08:00",
+    title: "Finden icon in the browser",
+    highlights: [
+      "The browser tab, bookmarks, and phone home screen show the Finden icon.",
+      "Product lists and the dashboard open faster when several people use them at the same time.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "The browser tab, bookmarks, and phone home screen show the Finden icon.",
+      },
+      {
+        type: "fix",
+        description:
+          "Product lists and the dashboard open faster. When several people open them at the same time, they share one load instead of each person waiting on their own.",
+      },
+    ],
+  },
+  {
     version: "0.74.2",
     date: "2026-10-16",
     releasedAt: "2026-10-16T17:40:00+08:00",

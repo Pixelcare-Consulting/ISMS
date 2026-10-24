@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { createColumnHelper } from "@tanstack/react-table";
 import { Pencil, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
@@ -12,7 +13,14 @@ import {
 } from "@/features/frequency-codes/actions/frequency-code.actions";
 import { FREQUENCY_LABELS, FREQUENCY_OPTIONS } from "@/features/frequency-codes/constants";
 import type { DeliveryFrequencyValue } from "@/features/frequency-codes/constants";
+import {
+  DataTable,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
+
+const codeColumn = createColumnHelper<DataTableFeatures, FrequencyCodeRow>();
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
@@ -104,61 +112,77 @@ export function FrequencyCodesPanel({ codes, canEdit }: FrequencyCodesPanelProps
     });
   }
 
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<FrequencyCodeRow>[] = [
+      codeColumn.accessor("code", {
+        header: "Code",
+        enableSorting: false,
+        meta: { className: "font-medium" },
+      }),
+      codeColumn.display({
+        id: "frequency",
+        header: "Frequency",
+        enableSorting: false,
+        cell: ({ row }) =>
+          FREQUENCY_LABELS[row.original.frequency as DeliveryFrequencyValue] ??
+          row.original.frequency,
+      }),
+      codeColumn.accessor("description", {
+        header: "Description",
+        enableSorting: false,
+        meta: { className: "text-muted-foreground" },
+      }),
+      codeColumn.accessor("usedBy", {
+        header: "Branches",
+        enableSorting: false,
+        meta: { className: "tabular-nums" },
+      }),
+    ];
+    if (canEdit) {
+      cols.push(
+        codeColumn.display({
+          id: "actions",
+          header: "",
+          enableSorting: false,
+          cell: ({ row }) => (
+            <div className="flex justify-end gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => startEdit(row.original)}
+                disabled={pending}
+                aria-label={`Edit ${row.original.code}`}
+              >
+                <Pencil className="size-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => onDelete(row.original)}
+                disabled={pending}
+                aria-label={`Delete ${row.original.code}`}
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            </div>
+          ),
+          meta: { align: "end" },
+        }),
+      );
+    }
+    return cols;
+  }, [canEdit, pending]);
+
   return (
     <div className="space-y-4">
-      {codes.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No frequency codes yet.</p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-left text-muted-foreground">
-                <th className="py-2 pr-4 font-medium">Code</th>
-                <th className="py-2 pr-4 font-medium">Frequency</th>
-                <th className="py-2 pr-4 font-medium">Description</th>
-                <th className="py-2 pr-4 font-medium">Branches</th>
-                {canEdit ? <th className="py-2 font-medium" /> : null}
-              </tr>
-            </thead>
-            <tbody>
-              {codes.map((row) => (
-                <tr key={row.id} className="border-b">
-                  <td className="py-2 pr-4 font-medium">{row.code}</td>
-                  <td className="py-2 pr-4">
-                    {FREQUENCY_LABELS[row.frequency as DeliveryFrequencyValue] ?? row.frequency}
-                  </td>
-                  <td className="py-2 pr-4 text-muted-foreground">{row.description}</td>
-                  <td className="py-2 pr-4 tabular-nums">{row.usedBy}</td>
-                  {canEdit ? (
-                    <td className="py-2">
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => startEdit(row)}
-                          disabled={pending}
-                          aria-label={`Edit ${row.code}`}
-                        >
-                          <Pencil className="size-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => onDelete(row)}
-                          disabled={pending}
-                          aria-label={`Delete ${row.code}`}
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
-                      </div>
-                    </td>
-                  ) : null}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <DataTable
+        data={codes}
+        columns={columns}
+        getRowId={(row) => row.id}
+        stickyHeader
+        empty={codes.length === 0}
+        emptyMessage="No frequency codes yet."
+      />
 
       {canEdit && draft ? (
         <div className="space-y-3 rounded-lg border p-3">

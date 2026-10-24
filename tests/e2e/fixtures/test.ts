@@ -1,7 +1,9 @@
 import { test as base } from "@playwright/test";
 
+import { CustomDashboardsPage } from "../pages/custom-dashboards.page";
 import { DashboardPage } from "../pages/dashboard.page";
 import { LoginPage } from "../pages/login.page";
+import { ReportPreviewPage } from "../pages/report-preview.page";
 
 /**
  * Page-object fixtures. Specs import `test`/`expect` from here instead of
@@ -14,6 +16,8 @@ import { LoginPage } from "../pages/login.page";
 type PageObjects = {
   loginPage: LoginPage;
   dashboardPage: DashboardPage;
+  reportPreviewPage: ReportPreviewPage;
+  customDashboardsPage: CustomDashboardsPage;
 };
 
 export const test = base.extend<PageObjects>({
@@ -22,6 +26,12 @@ export const test = base.extend<PageObjects>({
   },
   dashboardPage: async ({ page }, use) => {
     await use(new DashboardPage(page));
+  },
+  reportPreviewPage: async ({ page }, use) => {
+    await use(new ReportPreviewPage(page));
+  },
+  customDashboardsPage: async ({ page }, use) => {
+    await use(new CustomDashboardsPage(page));
   },
 });
 

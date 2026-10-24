@@ -11,7 +11,7 @@ jest.mock("@/lib/database/client", () => ({
 
 jest.mock("@/features/inventory/repositories/inventory.repository", () => ({
   inventoryRepository: {
-    findLatestAcceptedDeliveries: jest.fn(async () => []),
+    findLatestDeliveryReceipts: jest.fn(async () => []),
   },
 }));
 
@@ -41,7 +41,7 @@ describe("inventory report count remarks", () => {
       inventoryRow("sn-1", "SN-1"),
       inventoryRow("sn-2", "SN-2"),
     ]);
-    (inventoryRepository.findLatestAcceptedDeliveries as jest.Mock).mockResolvedValue(
+    (inventoryRepository.findLatestDeliveryReceipts as jest.Mock).mockResolvedValue(
       [],
     );
     (prisma.stockCountLine.findMany as jest.Mock).mockResolvedValue([

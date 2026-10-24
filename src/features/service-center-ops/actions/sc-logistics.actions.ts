@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { auditService } from "@/features/audit/services/audit.service";
+import { lockSerialNumbers } from "@/features/inventory/services/serial-placement";
+import { placeServiceCenterUnit } from "@/features/service-center-ops/services/service-center-placement";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import {
   SC_LOGISTICS_CREATE,
@@ -176,6 +178,7 @@ export async function acceptScDeliveryAction(
 
   try {
     await prisma.$transaction(async (tx) => {
+      await lockSerialNumbers(tx, parsed.data.serialNumberIds);
       for (const serialNumberId of parsed.data.serialNumberIds) {
         await tx.serviceBackload.create({
           data: {
@@ -186,24 +189,12 @@ export async function acceptScDeliveryAction(
             serialNumberId,
           },
         });
-        await tx.serviceCenterInventory.upsert({
-          where: {
-            serviceCenterLocationId_serialNumberId: {
-              serviceCenterLocationId: delivery.serviceCenterLocationId!,
-              serialNumberId,
-            },
-          },
-          update: {
-            statusCodeId: stkCodeId,
-            serviceCenterId: delivery.serviceCenterId,
-          },
-          create: {
-            tenantId: session.user.tenantId,
-            serviceCenterId: delivery.serviceCenterId,
-            serviceCenterLocationId: delivery.serviceCenterLocationId!,
-            serialNumberId,
-            statusCodeId: stkCodeId,
-          },
+        await placeServiceCenterUnit(tx, {
+          tenantId: session.user.tenantId,
+          serviceCenterId: delivery.serviceCenterId,
+          serviceCenterLocationId: delivery.serviceCenterLocationId!,
+          serialNumberId,
+          statusCodeId: stkCodeId,
         });
       }
       await tx.serviceCenterDelivery.update({
@@ -316,6 +307,7 @@ export async function createScPulloutAction(input: unknown) {
   const pulloutNo = nextNo("SCP");
   try {
     const pullout = await prisma.$transaction(async (tx) => {
+      await lockSerialNumbers(tx, parsed.data.serialNumberIds);
       const moved = await tx.serviceCenterInventory.updateMany({
         where: {
           tenantId: session.user.tenantId,
@@ -398,31 +390,33 @@ export async function approveScPulloutAction(pulloutId: string) {
     "FPO",
   );
 
-  if (pullout.details.length > 0 && pullout.serviceCenterLocationId) {
-    await prisma.serviceCenterInventory.updateMany({
-      where: {
-        tenantId: session.user.tenantId,
-        serviceCenterId: pullout.serviceCenterId,
-        serviceCenterLocationId: pullout.serviceCenterLocationId,
-        serialNumberId: {
-          in: pullout.details.map((d) => d.serialNumberId),
+  const serialIds = pullout.details.map((detail) => detail.serialNumberId);
+  await prisma.$transaction(async (tx) => {
+    if (serialIds.length > 0 && pullout.serviceCenterLocationId) {
+      await lockSerialNumbers(tx, serialIds);
+      const moved = await tx.serviceCenterInventory.updateMany({
+        where: {
+          tenantId: session.user.tenantId,
+          serviceCenterId: pullout.serviceCenterId,
+          serviceCenterLocationId: pullout.serviceCenterLocationId,
+          serialNumberId: { in: serialIds },
+          statusCodeId: rsvCodeId,
         },
-        statusCodeId: rsvCodeId,
-      },
-      data: { statusCodeId: fpoCodeId },
-    });
-  }
-
-  await prisma.$transaction([
-    prisma.serviceCenterPullout.update({
+        data: { statusCodeId: fpoCodeId },
+      });
+      if (moved.count !== serialIds.length) {
+        throw new Error("Serial status changed; retry pull-out approval");
+      }
+    }
+    await tx.serviceCenterPullout.update({
       where: { id: pulloutId },
       data: { statusCodeId: forPulloutCodeId },
-    }),
-    prisma.serviceCenterPulloutApprovalLevel.updateMany({
+    });
+    await tx.serviceCenterPulloutApprovalLevel.updateMany({
       where: { pulloutId, approvedAt: null, rejectedAt: null },
       data: { approvedAt: new Date(), approvedById: session.user.id },
-    }),
-  ]);
+    });
+  });
 
   revalidateScLogistics();
   return { success: true as const };
@@ -442,22 +436,23 @@ export async function completeScPulloutAction(pulloutId: string) {
     "completed",
   );
 
-  if (pullout.details.length > 0 && pullout.serviceCenterLocationId) {
-    await prisma.serviceCenterInventory.deleteMany({
-      where: {
-        tenantId: session.user.tenantId,
-        serviceCenterId: pullout.serviceCenterId,
-        serviceCenterLocationId: pullout.serviceCenterLocationId,
-        serialNumberId: {
-          in: pullout.details.map((d) => d.serialNumberId),
+  const serialIds = pullout.details.map((detail) => detail.serialNumberId);
+  await prisma.$transaction(async (tx) => {
+    if (serialIds.length > 0 && pullout.serviceCenterLocationId) {
+      await lockSerialNumbers(tx, serialIds);
+      await tx.serviceCenterInventory.deleteMany({
+        where: {
+          tenantId: session.user.tenantId,
+          serviceCenterId: pullout.serviceCenterId,
+          serviceCenterLocationId: pullout.serviceCenterLocationId,
+          serialNumberId: { in: serialIds },
         },
-      },
+      });
+    }
+    await tx.serviceCenterPullout.update({
+      where: { id: pulloutId },
+      data: { statusCodeId: completedCodeId },
     });
-  }
-
-  await prisma.serviceCenterPullout.update({
-    where: { id: pulloutId },
-    data: { statusCodeId: completedCodeId },
   });
 
   await auditService.log({

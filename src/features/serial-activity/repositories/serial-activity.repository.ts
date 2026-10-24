@@ -9,6 +9,11 @@ import type {
   SerialActivityType,
 } from "@/features/serial-activity/constants/serial-activity-display";
 import {
+  approvalReferenceLines,
+  approverIds,
+  type ApproverRef,
+} from "@/features/serial-activity/lib/approval-reference";
+import {
   documentReferenceFromHistoryDetails,
   historyActivityForTxn,
   historyTxnTypesForActivity,
@@ -86,6 +91,27 @@ function serialFields(serial: SerialRef): {
 const userSelect = {
   select: { name: true, email: true },
 } as const;
+
+const approvalLevelSelect = {
+  select: { level: true, roleSlug: true, approvedAt: true, approvedById: true, rejectedAt: true },
+  orderBy: { level: "asc" },
+} as const;
+
+/**
+ * Approvers by id, in one query. Transfer and pull-out levels store only the id, with no
+ * relation to load through. Deleted users are kept: the approval still happened.
+ */
+async function loadApprovers(
+  tenantId: string,
+  ids: string[],
+): Promise<Map<string, ApproverRef>> {
+  if (ids.length === 0) return new Map();
+  const users = await prisma.user.findMany({
+    where: { tenantId, id: { in: ids } },
+    select: { id: true, name: true, email: true },
+  });
+  return new Map(users.map((user) => [user.id, { name: user.name, email: user.email }]));
+}
 
 const RECORD_STATUS_LABELS: Record<string, string> = {
   active: "Record: Active",
@@ -313,12 +339,17 @@ async function transferredSource(
             toBranch: { select: { name: true } },
             statusCode: { select: { name: true } },
             createdBy: userSelect,
+            approvalLevels: approvalLevelSelect,
           },
         },
       },
     }),
     prisma.branchTransferLine.count({ where }),
   ]);
+  const approvers = await loadApprovers(
+    tenantId,
+    approverIds(rows.map((r) => r.transfer.approvalLevels)),
+  );
   return {
     count,
     events: rows.flatMap((r) => {
@@ -336,6 +367,7 @@ async function transferredSource(
           referenceDetails: referenceDetails(
             route(r.transfer.fromBranch.name, r.transfer.toBranch.name),
             r.transfer.notes ? `Note: ${r.transfer.notes}` : null,
+            ...approvalReferenceLines(r.transfer.approvalLevels, approvers),
           ),
           status: `Transfer: ${r.transfer.statusCode.name}`,
           performedBy: performedByLabel(r.transfer.createdBy),
@@ -475,12 +507,17 @@ async function pulledOutSource(
             statusCode: { select: { name: true } },
             reasonStatusCode: { select: { name: true } },
             createdBy: userSelect,
+            approvalLevels: approvalLevelSelect,
           },
         },
       },
     }),
     prisma.branchPulloutLine.count({ where }),
   ]);
+  const approvers = await loadApprovers(
+    tenantId,
+    approverIds(rows.map((r) => r.pullout.approvalLevels)),
+  );
   return {
     count,
     events: rows.flatMap((r) => {
@@ -504,6 +541,7 @@ async function pulledOutSource(
               : null,
             r.pullout.waybillNo ? `Waybill ${r.pullout.waybillNo}` : null,
             r.pullout.notes ? `Note: ${r.pullout.notes}` : null,
+            ...approvalReferenceLines(r.pullout.approvalLevels, approvers),
           ),
           status: `Pullout: ${r.pullout.statusCode.name}`,
           performedBy: performedByLabel(r.pullout.createdBy),
@@ -831,6 +869,45 @@ async function countedSource(
  * number inside `details`; reference details are the full details text.
  * Transfer, sale, pull-out, and count stay on their live sources only.
  */
+/**
+ * For delivery ledger rows: the order behind each delivery and who approved it, keyed by
+ * delivery number (the reference the ledger details carry).
+ */
+async function loadDeliveryOrderApprovals(
+  tenantId: string,
+  deliveryNos: (string | null)[],
+): Promise<Map<string, string[]>> {
+  const numbers = [...new Set(deliveryNos.filter((no): no is string => Boolean(no)))];
+  if (numbers.length === 0) return new Map();
+
+  const deliveries = await prisma.branchDelivery.findMany({
+    where: { tenantId, deliveryNo: { in: numbers } },
+    select: {
+      deliveryNo: true,
+      order: { select: { orderNumber: true, approvalLevels: approvalLevelSelect } },
+    },
+  });
+  const approvers = await loadApprovers(
+    tenantId,
+    approverIds(deliveries.flatMap((delivery) => (delivery.order ? [delivery.order.approvalLevels] : []))),
+  );
+  return new Map(
+    deliveries.flatMap((delivery) =>
+      delivery.order
+        ? [
+            [
+              delivery.deliveryNo,
+              [
+                `Order ${delivery.order.orderNumber}`,
+                ...approvalReferenceLines(delivery.order.approvalLevels, approvers),
+              ],
+            ] as const,
+          ]
+        : [],
+    ),
+  );
+}
+
 async function historyLedgerSource(
   tenantId: string,
   { window, q, dateFilter, dir }: SourceOptions,
@@ -873,6 +950,13 @@ async function historyLedgerSource(
     prisma.serialNumberHistory.count({ where }),
   ]);
 
+  const deliveryApprovals = await loadDeliveryOrderApprovals(
+    tenantId,
+    rows.flatMap((row) =>
+      row.txnType === "delivery" ? [documentReferenceFromHistoryDetails(row.details)] : [],
+    ),
+  );
+
   return {
     count,
     events: rows.flatMap((row) => {
@@ -880,6 +964,9 @@ async function historyLedgerSource(
       const activity = historyActivityForTxn(row.txnType);
       if (!serial || !activity) return [];
       const details = row.details?.trim() || null;
+      const reference = documentReferenceFromHistoryDetails(details);
+      const approvals =
+        row.txnType === "delivery" && reference ? deliveryApprovals.get(reference) ?? [] : [];
       return [
         {
           id: `history:${row.id}`,
@@ -889,8 +976,8 @@ async function historyLedgerSource(
           serialNo: serial.serialNo,
           modelLabel: serial.modelLabel,
           location: null,
-          reference: documentReferenceFromHistoryDetails(details),
-          referenceDetails: referenceDetails(details),
+          reference,
+          referenceDetails: referenceDetails(details, ...approvals),
           status: row.status?.trim() || null,
           performedBy: performedByLabel(row.createdBy),
         },

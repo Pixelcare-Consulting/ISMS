@@ -1,17 +1,13 @@
 "use client";
 
+import { createColumnHelper } from "@tanstack/react-table";
 import type { BranchOrderType } from "@prisma/client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { InventoryStatusChips } from "@/app/(app)/orders/_components/inventory-status-chips";
 import { useOrdersCreateWorkspace } from "@/app/(app)/orders/_components/orders-create-workspace-context";
-import {
-  DataTableShell,
-  TablePageSizeSelect,
-  TablePagination,
-  useClientTablePagination,
-} from "@/components/data-table";
+import { useClientTablePagination } from "@/components/data-table";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -23,25 +19,26 @@ import {
 import { Input } from "@/components/ui/input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableFooter,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  DataTable,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import {
   getOrderAnalyticsAction,
   listOrderAnalyticsBranchesAction,
 } from "@/features/orders/actions/order-analytics.actions";
 import type {
   OrderAnalyticsBrand,
+  OrderAnalyticsLine,
   OrderAnalyticsPayload,
 } from "@/features/orders/types/order-analytics";
 import { GlobalKpiCards } from "@/lib/kpi-cards";
 import { formatPeso } from "@/utils/format-currency";
 import { cn } from "@/utils/cn";
+
+const analyticsColumn = createColumnHelper<DataTableFeatures, OrderAnalyticsLine>();
+
+const ANALYTICS_TOTAL_ROW_ID = "__total__";
 
 function analyticsBranchStorageKey(orderType: BranchOrderType): string {
   return `orders-analytics-branch:${orderType}`;
@@ -79,7 +76,14 @@ function persistBrand(orderType: BranchOrderType, nextBrandId: string) {
   sessionStorage.setItem(analyticsBrandStorageKey(orderType), nextBrandId);
 }
 
-export function OrderAnalyticsPanel({ orderType }: { orderType: BranchOrderType }) {
+export function OrderAnalyticsPanel({
+  orderType,
+  initialBranchId,
+}: {
+  orderType: BranchOrderType;
+  /** When set and assigned to the viewer, the panel opens on this branch. */
+  initialBranchId?: string;
+}) {
   const { canEdit, openCreate } = useOrdersCreateWorkspace();
   const [branches, setBranches] = useState<
     { id: string; name: string; dealerId: string | null }[]
@@ -195,12 +199,18 @@ export function OrderAnalyticsPanel({ orderType }: { orderType: BranchOrderType 
         return;
       }
 
+      const preferredBranch =
+        initialBranchId && rows.some((row) => row.id === initialBranchId)
+          ? initialBranchId
+          : null;
       const initialBranch =
         rows.length === 1
           ? rows[0].id
-          : storedBranchValid && storedBranch
-            ? storedBranch
-            : "";
+          : preferredBranch
+            ? preferredBranch
+            : storedBranchValid && storedBranch
+              ? storedBranch
+              : "";
 
       if (!initialBranch) {
         setPickerOpen(true);
@@ -210,7 +220,11 @@ export function OrderAnalyticsPanel({ orderType }: { orderType: BranchOrderType 
 
       setBranchId(initialBranch);
       setPendingBranchId(initialBranch);
-      persistBranch(orderType, initialBranch);
+      const keepSavedBranch =
+        preferredBranch != null && initialBranch === preferredBranch && rows.length !== 1;
+      if (!keepSavedBranch) {
+        persistBranch(orderType, initialBranch);
+      }
 
       const result = await getOrderAnalyticsAction({
         branchId: initialBranch,
@@ -229,14 +243,16 @@ export function OrderAnalyticsPanel({ orderType }: { orderType: BranchOrderType 
       setCardBrands(brands);
       const initialBrand = resolveBrandId(brands, storedBrand);
       setBrandId(initialBrand);
-      persistBrand(orderType, initialBrand);
+      if (!keepSavedBranch) {
+        persistBrand(orderType, initialBrand);
+      }
       setBranchesReady(true);
     });
 
     return () => {
       cancelled = true;
     };
-  }, [orderType]);
+  }, [initialBranchId, orderType]);
 
   useEffect(() => {
     if (!branchId || !brandId) return;
@@ -327,6 +343,96 @@ export function OrderAnalyticsPanel({ orderType }: { orderType: BranchOrderType 
     );
   }, [data]);
 
+  const analyticsColumns = useMemo(() => {
+    const cols: DataTableColumn<OrderAnalyticsLine>[] = [
+      analyticsColumn.display({
+        id: "model",
+        header: "Model",
+        cell: ({ row }) =>
+          row.original.modelId === ANALYTICS_TOTAL_ROW_ID ? (
+            <span className="font-semibold">TOTAL</span>
+          ) : (
+            <div>
+              <p className="font-medium">{row.original.skuCode}</p>
+              <p className="text-xs text-muted-foreground">{row.original.name}</p>
+            </div>
+          ),
+      }),
+      analyticsColumn.display({
+        id: "inv",
+        header: "INV",
+        cell: ({ row }) =>
+          row.original.modelId === ANALYTICS_TOTAL_ROW_ID ? (
+            <span className="tabular-nums">STK {row.original.stkQty}</span>
+          ) : (
+            <InventoryStatusChips inventory={row.original.inventory} />
+          ),
+      }),
+      analyticsColumn.display({
+        id: "sales",
+        header: "SALES",
+        cell: ({ row }) => row.original.salesQty,
+        meta: { className: "tabular-nums" },
+      }),
+      analyticsColumn.display({
+        id: "rate",
+        header: "RATE",
+        cell: ({ row }) =>
+          row.original.modelId === ANALYTICS_TOTAL_ROW_ID
+            ? "100%"
+            : row.original.rate != null
+              ? `${(row.original.rate * 100).toFixed(1)}%`
+              : "—",
+        meta: { className: "tabular-nums" },
+      }),
+      analyticsColumn.display({
+        id: "milQty",
+        header: "MIL QTY",
+        cell: ({ row }) => row.original.milQty,
+        meta: { className: "tabular-nums" },
+      }),
+      analyticsColumn.display({
+        id: "milAmt",
+        header: "MIL AMT",
+        cell: ({ row }) => formatPeso(row.original.milAmt),
+        meta: { className: "tabular-nums" },
+      }),
+      analyticsColumn.display({
+        id: "sugQty",
+        header: "SUG QTY",
+        cell: ({ row }) => row.original.sugQty,
+        meta: { className: "tabular-nums" },
+      }),
+    ];
+    return cols;
+  }, []);
+
+  const analyticsRows = useMemo(() => {
+    if (!totals) return pageItems;
+    const totalRow: OrderAnalyticsLine = {
+      modelId: ANALYTICS_TOTAL_ROW_ID,
+      skuCode: "TOTAL",
+      name: "",
+      brandId: null,
+      srp: 0,
+      cbm: 0,
+      maxQty: 0,
+      milDays: 0,
+      inventory: [],
+      stkQty: totals.stkQty,
+      ditQty: 0,
+      salesQty: totals.salesQty,
+      salesAmount: 0,
+      rate: 1,
+      milQty: totals.milQty,
+      milAmt: totals.milAmt,
+      sugQty: totals.sugQty,
+      remainingCapacity: 0,
+      onPlanogram: true,
+    };
+    return [...pageItems, totalRow];
+  }, [pageItems, totals]);
+
   const selectionApplied = Boolean(branchId && brandId);
   const canClear = Boolean(brandId || (branchId && hasMultipleBranches));
 
@@ -363,6 +469,7 @@ export function OrderAnalyticsPanel({ orderType }: { orderType: BranchOrderType 
             <div className="w-56 min-w-44">
               <SearchableSelect
                 label="Brand"
+                popoverClassName={initialBranchId ? "z-[100]" : undefined}
                 options={brandOptions}
                 value={brandId}
                 onChange={assignBrand}
@@ -419,7 +526,13 @@ export function OrderAnalyticsPanel({ orderType }: { orderType: BranchOrderType 
           closePicker();
         }}
       >
-        <DialogContent className="flex max-h-[min(36rem,calc(100svh-2rem))] flex-col gap-0 overflow-hidden p-0">
+        <DialogContent
+          overlayClassName={initialBranchId ? "z-[90]" : undefined}
+          className={cn(
+            "flex max-h-[min(36rem,calc(100svh-2rem))] flex-col gap-0 overflow-hidden p-0",
+            initialBranchId && "z-[100]",
+          )}
+        >
           <DialogHeader className="shrink-0 border-b px-4 py-4 sm:px-6">
             <DialogTitle>Select branch</DialogTitle>
           </DialogHeader>
@@ -518,70 +631,22 @@ export function OrderAnalyticsPanel({ orderType }: { orderType: BranchOrderType 
           No planogram models for this branch.
         </p>
       ) : (
-        <DataTableShell>
-          <Table className="min-w-3xl">
-            <TableHeader className="bg-muted">
-              <TableRow className="hover:bg-transparent">
-                <TableHead className="px-3">Model</TableHead>
-                <TableHead className="px-3">INV</TableHead>
-                <TableHead className="px-3">SALES</TableHead>
-                <TableHead className="px-3">RATE</TableHead>
-                <TableHead className="px-3">MIL QTY</TableHead>
-                <TableHead className="px-3">MIL AMT</TableHead>
-                <TableHead className="px-3">SUG QTY</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {pageItems.map((line) => (
-                <TableRow key={line.modelId} className="even:bg-muted/50">
-                  <TableCell className="px-3 py-2">
-                    <p className="font-medium">{line.skuCode}</p>
-                    <p className="text-xs text-muted-foreground">{line.name}</p>
-                  </TableCell>
-                  <TableCell className="px-3 py-2">
-                    <InventoryStatusChips inventory={line.inventory} />
-                  </TableCell>
-                  <TableCell className="px-3 py-2 tabular-nums">{line.salesQty}</TableCell>
-                  <TableCell className="px-3 py-2 tabular-nums">
-                    {line.rate != null ? `${(line.rate * 100).toFixed(1)}%` : "—"}
-                  </TableCell>
-                  <TableCell className="px-3 py-2 tabular-nums">{line.milQty}</TableCell>
-                  <TableCell className="px-3 py-2 tabular-nums">
-                    {formatPeso(line.milAmt)}
-                  </TableCell>
-                  <TableCell className="px-3 py-2 tabular-nums">{line.sugQty}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-            {totals ? (
-              <TableFooter>
-                <TableRow className="hover:bg-transparent">
-                  <TableCell className="px-3 py-2 font-semibold">TOTAL</TableCell>
-                  <TableCell className="px-3 py-2 tabular-nums">STK {totals.stkQty}</TableCell>
-                  <TableCell className="px-3 py-2 tabular-nums">{totals.salesQty}</TableCell>
-                  <TableCell className="px-3 py-2 tabular-nums">100%</TableCell>
-                  <TableCell className="px-3 py-2 tabular-nums">{totals.milQty}</TableCell>
-                  <TableCell className="px-3 py-2 tabular-nums">
-                    {formatPeso(totals.milAmt)}
-                  </TableCell>
-                  <TableCell className="px-3 py-2 tabular-nums">{totals.sugQty}</TableCell>
-                </TableRow>
-              </TableFooter>
-            ) : null}
-          </Table>
-          <div className="flex flex-wrap items-center px-4 pt-3">
-            <TablePageSizeSelect value={pageSize} onChange={setPageSize} />
-          </div>
-          <TablePagination
-            meta={{
-              total,
-              page,
-              totalPages,
-              itemLabel: "model",
-            }}
-            onPageChange={setPage}
-          />
-        </DataTableShell>
+        <DataTable
+          data={analyticsRows}
+          columns={analyticsColumns}
+          getRowId={(row) => row.modelId}
+          manualPagination
+          stickyHeader
+          tableClassName="min-w-3xl"
+          pageSize={{ value: pageSize, onChange: setPageSize }}
+          pagination={{
+            total,
+            page,
+            totalPages,
+            itemLabel: "model",
+            onPageChange: setPage,
+          }}
+        />
       )}
     </div>
   );

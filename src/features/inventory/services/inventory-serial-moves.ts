@@ -1,8 +1,13 @@
 import { assertSerialSellableAtStockSource } from "@/features/inventory/services/inventory-sellable-guards";
+import { lockSerialNumbers } from "@/features/inventory/services/serial-placement";
 import { assertSerialsNotFrozenInStockCount } from "@/features/stock-audit/services/stock-count-freeze";
-import { prisma } from "@/lib/database/client";
+import type { Prisma } from "@/lib/database/generated/prisma/client";
 
-type BranchInventoryTx = Pick<typeof prisma, "branchInventory">;
+type BranchInventoryTx = Pick<Prisma.TransactionClient, "branchInventory" | "$queryRaw">;
+
+/** Conditional STK update matched nothing — another status was not overwritten. */
+export const SERIAL_SOLD_OR_RESERVED_AFTER_LOOKUP =
+  "This unit was sold or reserved after lookup";
 
 /**
  * Mark a STK unit at the stock source as sold/reserved/official-sold.
@@ -19,9 +24,18 @@ export async function markSerialSoldFromStockSource(
     stkCodeId: string;
     targetStatusCodeId: string;
     updatedById: string;
+    /** When set, the serial's model must match before the status move. */
+    expectedModelId?: string;
   },
 ) {
-  await assertSerialSellableAtStockSource(tx, input);
+  await lockSerialNumbers(tx, [input.serialNumberId]);
+  await assertSerialSellableAtStockSource(tx, {
+    tenantId: input.tenantId,
+    serialNumberId: input.serialNumberId,
+    stockBranchId: input.stockBranchId,
+    stkCodeId: input.stkCodeId,
+    expectedModelId: input.expectedModelId,
+  });
   await assertSerialsNotFrozenInStockCount(input.tenantId, [input.serialNumberId]);
 
   const relocate = input.stockBranchId !== input.soldBranchId;
@@ -39,7 +53,7 @@ export async function markSerialSoldFromStockSource(
     },
   });
   if (updated.count === 0) {
-    throw new Error("Serial is not in sellable stock at the stock source branch");
+    throw new Error(SERIAL_SOLD_OR_RESERVED_AFTER_LOOKUP);
   }
 }
 
@@ -63,6 +77,7 @@ export async function restoreSerialToStockSource(
     restoreToBranchId?: string;
   },
 ): Promise<string | null> {
+  await lockSerialNumbers(tx, [input.serialNumberId]);
   let oldInv = await tx.branchInventory.findFirst({
     where: {
       tenantId: input.tenantId,

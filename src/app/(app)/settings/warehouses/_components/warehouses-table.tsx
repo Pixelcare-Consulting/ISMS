@@ -1,6 +1,7 @@
-"use client";
+﻿"use client";
 
-import { Fragment, useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useState, useTransition } from "react";
+import { createColumnHelper } from "@tanstack/react-table";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Package } from "lucide-react";
@@ -14,24 +15,21 @@ import {
 import { SapSyncButton } from "@/features/sap/components/sap-sync-button";
 import {
   DeleteConfirmDialog,
-  TableEmptyRow,
-  TableIndexCell,
-  TableIndexHead,
   TableRowActions,
   uniqueSearchSuggestions,
   useClientTablePagination,
 } from "@/components/data-table";
-import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
+import {
+  DataTable,
+  useClientTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { cn } from "@/utils/cn";
 import { matchesTableSearch } from "@/utils/match-table-search";
+
+const warehouseColumn = createColumnHelper<DataTableFeatures, WarehouseRow>();
 
 import { WarehouseLocationsPanel } from "./warehouse-locations-panel";
 
@@ -49,8 +47,6 @@ interface WarehouseRow {
   locations: LocationRow[];
   _count: { aors: number; pulloutsDestination: number };
 }
-
-const COL_COUNT = 6;
 
 export function WarehousesTable({
   warehouses,
@@ -73,8 +69,6 @@ export function WarehousesTable({
     location: LocationRow;
   } | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [locCode, setLocCode] = useState("");
-  const [locName, setLocName] = useState("");
 
   const filtered = useMemo(
     () =>
@@ -113,13 +107,10 @@ export function WarehousesTable({
     resetKey: `${query}:${sort.sortKey}:${sort.sortDir}`,
   });
 
-  function addLocation(warehouseId: string) {
+  const addLocation = useCallback(
+    (warehouseId: string, code: string, name: string, onAdded: () => void) => {
     startTransition(async () => {
-      const result = await addWarehouseLocationAction({
-        warehouseId,
-        code: locCode,
-        name: locName,
-      });
+      const result = await addWarehouseLocationAction({ warehouseId, code, name });
       if (result.error) {
         toast.error(String(result.error));
         return;
@@ -137,11 +128,12 @@ export function WarehousesTable({
           ),
         );
       }
-      setLocCode("");
-      setLocName("");
+      onAdded();
       router.refresh();
     });
-  }
+    },
+    [router],
+  );
 
   function removeLocation() {
     if (!deletingLocation) return;
@@ -174,9 +166,107 @@ export function WarehousesTable({
       ? "No warehouses yet."
       : "No warehouses match your search.";
 
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<WarehouseRow>[] = [
+      warehouseColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => indexOffset + row.index + 1,
+        meta: { className: "tabular-nums text-muted-foreground" },
+      }),
+      warehouseColumn.display({
+        id: "code",
+        header: "Code",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-sm">{row.original.code}</span>
+            {row.original.isMain ? <Badge variant="secondary">Main</Badge> : null}
+          </div>
+        ),
+      }),
+      warehouseColumn.display({
+        id: "name",
+        header: "Name",
+        enableSorting: true,
+        cell: ({ row }) => row.original.name,
+      }),
+      warehouseColumn.display({
+        id: "locations",
+        header: "Locations",
+        enableSorting: true,
+        cell: ({ row }) => {
+          const open = expandedId === row.original.id;
+          return (
+            <div className="space-y-2">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setExpandedId(open ? null : row.original.id)}
+              >
+                {row.original.locations.length} location
+                {row.original.locations.length === 1 ? "" : "s"}
+              </Button>
+              {open ? (
+                <WarehouseLocationsPanel
+                  warehouseId={row.original.id}
+                  warehouseName={row.original.name}
+                  locations={row.original.locations}
+                  pending={pending}
+                  onAdd={addLocation}
+                  onRemove={(warehouseId, location) =>
+                    setDeletingLocation({ warehouseId, location })
+                  }
+                />
+              ) : null}
+            </div>
+          );
+        },
+        meta: { wrap: true, className: "min-w-[28rem]" },
+      }),
+      warehouseColumn.display({
+        id: "links",
+        header: "Links",
+        enableSorting: true,
+        cell: ({ row }) =>
+          `${row.original._count.aors} AOR · ${row.original._count.pulloutsDestination} pull-outs`,
+        meta: { className: "text-sm text-muted-foreground" },
+      }),
+      warehouseColumn.display({
+        id: "actions",
+        header: "Actions",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <TableRowActions asCell={false}>
+            <Button asChild size="sm" variant="ghost" title="View warehouse stock">
+              <Link href={`/inventory/warehouse-stock?warehouse=${row.original.id}`}>
+                <Package className="mr-1 h-3.5 w-3.5" />
+                Stock
+              </Link>
+            </Button>
+          </TableRowActions>
+        ),
+        meta: { align: "end" },
+      }),
+    ];
+    return cols;
+  }, [addLocation, expandedId, indexOffset, pending]);
+
   return (
     <>
-      <GlobalDataTable
+      <DataTable
+        data={pageItems}
+        columns={columns}
+        getRowId={(row) => row.id}
+        manualSorting
+        manualPagination
+        enableSorting
+        sorting={{
+          sortKey: sort.sortKey,
+          sortDir: sort.sortDir,
+          onSort: sort.toggleSort,
+        }}
         stickyHeader
         search={{
           value: query,
@@ -245,6 +335,8 @@ export function WarehousesTable({
   } */}
           </>
         }
+        empty={pageItems.length === 0}
+        emptyMessage={emptyMessage}
         pageSize={{ value: pageSize, onChange: setPageSize }}
         pagination={{
           total,
@@ -253,87 +345,7 @@ export function WarehousesTable({
           itemLabel: "warehouse",
           onPageChange: setPage,
         }}
-      >
-            <TableHeader>
-              <TableRow className="bg-muted/30 hover:bg-muted/30">
-                <TableIndexHead />
-                <GlobalTableHead {...sort.sortProps("code")}>Code</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("name")}>Name</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("locations")}>Locations</GlobalTableHead>
-                <GlobalTableHead {...sort.sortProps("links")}>Links</GlobalTableHead>
-                <GlobalTableHead className="w-36 text-right">Actions</GlobalTableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.length === 0 ? (
-                <TableEmptyRow colSpan={COL_COUNT} message={emptyMessage} />
-              ) : (
-                pageItems.map((w, index) => (
-                  <Fragment key={w.id}>
-                    <TableRow className={cn(index % 2 === 1 && "bg-table-stripe")}>
-                      <TableIndexCell index={indexOffset + index + 1} />
-                      <TableCell className="font-mono text-sm">
-                        {w.code}
-                        {w.isMain ? (
-                          <Badge variant="secondary" className="ml-2">
-                            Main
-                          </Badge>
-                        ) : null}
-                      </TableCell>
-                      <TableCell>{w.name}</TableCell>
-                      <TableCell>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setExpandedId(expandedId === w.id ? null : w.id)}
-                        >
-                          {w.locations.length} location{w.locations.length === 1 ? "" : "s"}
-                        </Button>
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {w._count.aors} AOR · {w._count.pulloutsDestination} pull-outs
-                      </TableCell>
-                      <TableRowActions>
-                        <Button
-                          asChild
-                          size="sm"
-                          variant="ghost"
-                          title="View warehouse stock"
-                        >
-                          <Link
-                            href={`/inventory/warehouse-stock?warehouse=${w.id}`}
-                          >
-                            <Package className="mr-1 h-3.5 w-3.5" />
-                            Stock
-                          </Link>
-                        </Button>
-                      </TableRowActions>
-                    </TableRow>
-                    {expandedId === w.id ? (
-                      <TableRow key={`${w.id}-locations`} className="hover:bg-transparent">
-                        <TableCell colSpan={COL_COUNT} className="p-2 sm:p-3">
-                          <WarehouseLocationsPanel
-                            warehouseId={w.id}
-                            warehouseName={w.name}
-                            locations={w.locations}
-                            locCode={locCode}
-                            locName={locName}
-                            pending={pending}
-                            onLocCodeChange={setLocCode}
-                            onLocNameChange={setLocName}
-                            onAdd={addLocation}
-                            onRemove={(warehouseId, location) =>
-                              setDeletingLocation({ warehouseId, location })
-                            }
-                          />
-                        </TableCell>
-                      </TableRow>
-                    ) : null}
-                  </Fragment>
-                ))
-              )}
-            </TableBody>
-      </GlobalDataTable>
+      />
 
       <DeleteConfirmDialog
         open={deletingLocation !== null}

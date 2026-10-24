@@ -1,7 +1,8 @@
-"use client";
+﻿"use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
+import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
 import { toast } from "sonner";
 
 import {
@@ -12,33 +13,23 @@ import {
   SAP_JOB_STATUS_LABELS,
   SAP_JOB_TYPE_LABELS,
 } from "@/features/sap/constants/sap-job-types";
-import { useTableSelection } from "@/components/data-table/use-table-selection";
-import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
+import {
+  DataTable,
+  nextTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import type { SapIntegrationJobStatus, SapIntegrationJobType } from "@prisma/client";
 
-interface SapJobRow {
-  id: string;
-  jobType: SapIntegrationJobType;
-  status: SapIntegrationJobStatus;
-  idempotencyKey: string;
-  referenceType: string | null;
-  referenceId: string | null;
-  sapDocRef: string | null;
-  attemptCount: number;
-  maxAttempts: number;
-  lastError: string | null;
-  createdAt: Date;
-  processedAt: Date | null;
-}
+import {
+  SapJobDetailsDialog,
+  type SapJobDetail,
+} from "@/app/(app)/settings/sap-integration/_components/sap-job-details-dialog";
+
+type SapJobRow = SapJobDetail;
+
+const sapColumn = createColumnHelper<DataTableFeatures, SapJobRow>();
 
 interface PaginatedList<T> {
   items: T[];
@@ -80,7 +71,9 @@ export function SapIntegrationPanel({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
-  const selection = useTableSelection(jobs.items.map((job) => job.id));
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const [viewing, setViewing] = useState<SapJobRow | null>(null);
+  const selectedCount = jobs.items.filter((job) => rowSelection[job.id]).length;
   const sort = (searchParams.get("sort") ?? initialSort) || "";
   const sortDir = (
     (searchParams.get("dir") ?? initialSortDir) === "asc" ? "asc" : "desc"
@@ -110,6 +103,85 @@ export function SapIntegrationPanel({
     });
   }
 
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<SapJobRow>[] = [
+      sapColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => row.index + 1,
+        meta: { className: "tabular-nums text-muted-foreground" },
+      }),
+      sapColumn.display({
+        id: "jobType",
+        header: "Type",
+        enableSorting: true,
+        cell: ({ row }) => SAP_JOB_TYPE_LABELS[row.original.jobType],
+        meta: { className: "text-sm" },
+      }),
+      sapColumn.display({
+        id: "status",
+        header: "Status",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <Badge variant="outline">{SAP_JOB_STATUS_LABELS[row.original.status]}</Badge>
+        ),
+      }),
+      sapColumn.display({
+        id: "referenceId",
+        header: "Reference",
+        enableSorting: true,
+        cell: ({ row }) =>
+          `${row.original.referenceType ?? "—"}${
+            row.original.referenceId ? ` / ${row.original.referenceId.slice(-8)}` : ""
+          }`,
+        meta: { className: "text-xs text-muted-foreground" },
+      }),
+      sapColumn.display({
+        id: "sapDocNum",
+        header: "SAP doc",
+        enableSorting: true,
+        cell: ({ row }) => row.original.sapDocRef ?? "—",
+        meta: { className: "font-mono text-xs" },
+      }),
+      sapColumn.display({
+        id: "attempts",
+        header: "Attempts",
+        enableSorting: true,
+        cell: ({ row }) => `${row.original.attemptCount}/${row.original.maxAttempts}`,
+        meta: { className: "text-sm" },
+      }),
+      sapColumn.display({
+        id: "error",
+        header: "Error",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <span title={row.original.lastError ?? undefined}>{row.original.lastError ?? "—"}</span>
+        ),
+        meta: {
+          className: "max-w-[200px] truncate text-xs text-destructive",
+        },
+      }),
+      sapColumn.display({
+        id: "actions",
+        header: "Actions",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <Button
+            size="sm"
+            variant="outline"
+            className="max-sm:h-11"
+            onClick={() => setViewing(row.original)}
+          >
+            View
+          </Button>
+        ),
+        meta: { align: "end" },
+      }),
+    ];
+    return cols;
+  }, []);
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap justify-end gap-2">
@@ -121,12 +193,28 @@ export function SapIntegrationPanel({
         </Button>
       </div>
 
-      <GlobalDataTable
+      <DataTable
+        data={jobs.items}
+        columns={columns}
+        getRowId={(row) => row.id}
+        manualSorting
+        manualPagination
+        enableSorting
+        sorting={{
+          sortKey: sort,
+          sortDir,
+          onSort: (columnId) => toggleSort(columnId as SapJobSortField),
+        }}
+        enableRowSelection
+        rowSelection={rowSelection}
+        onRowSelectionChange={setRowSelection}
+        selectAllLabel="Select all SAP jobs"
+        getSelectionLabel={(row) => `Select SAP job ${row.id.slice(-8)}`}
         stickyHeader
         toolbarActions={
-          selection.selectedCount > 0 ? (
-            <Button variant="secondary" size="sm" onClick={selection.clearSelection}>
-              {selection.selectedCount} selected
+          selectedCount > 0 ? (
+            <Button variant="secondary" size="sm" onClick={() => setRowSelection({})}>
+              {selectedCount} selected
             </Button>
           ) : null
         }
@@ -137,100 +225,11 @@ export function SapIntegrationPanel({
           itemLabel: "job",
           buildHref: (page) => buildSapJobsHref(page, sort || undefined, sort ? sortDir : undefined),
         }}
-      >
-            <TableHeader>
-              <TableRow>
-                <GlobalTableHead className="w-10">
-                  <Checkbox
-                    checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
-                    onCheckedChange={(checked) => selection.toggleAll(checked === true)}
-                    aria-label="Select all SAP jobs"
-                  />
-                </GlobalTableHead>
-                <GlobalTableHead className="w-12">#</GlobalTableHead>
-                <GlobalTableHead
-                  sortKey="jobType"
-                  activeSortKey={sort}
-                  sortDirection={sortDir}
-                  onSort={(key) => toggleSort(key as SapJobSortField)}
-                >
-                  Type
-                </GlobalTableHead>
-                <GlobalTableHead
-                  sortKey="status"
-                  activeSortKey={sort}
-                  sortDirection={sortDir}
-                  onSort={(key) => toggleSort(key as SapJobSortField)}
-                >
-                  Status
-                </GlobalTableHead>
-                <GlobalTableHead
-                  sortKey="referenceId"
-                  activeSortKey={sort}
-                  sortDirection={sortDir}
-                  onSort={(key) => toggleSort(key as SapJobSortField)}
-                >
-                  Reference
-                </GlobalTableHead>
-                <GlobalTableHead
-                  sortKey="sapDocNum"
-                  activeSortKey={sort}
-                  sortDirection={sortDir}
-                  onSort={(key) => toggleSort(key as SapJobSortField)}
-                >
-                  SAP doc
-                </GlobalTableHead>
-                <GlobalTableHead
-                  sortKey="attempts"
-                  activeSortKey={sort}
-                  sortDirection={sortDir}
-                  onSort={(key) => toggleSort(key as SapJobSortField)}
-                >
-                  Attempts
-                </GlobalTableHead>
-                <GlobalTableHead>Error</GlobalTableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {jobs.items.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-muted-foreground text-center">
-                    No integration jobs yet. Approve an order to enqueue an approved_order job.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                jobs.items.map((job, index) => (
-                  <TableRow key={job.id} data-state={selection.isRowSelected(job.id) ? "selected" : undefined}>
-                    <TableCell>
-                      <Checkbox
-                        checked={selection.isRowSelected(job.id)}
-                        onCheckedChange={(checked) => selection.toggleRow(job.id, checked === true)}
-                        aria-label={`Select SAP job ${job.id.slice(-8)}`}
-                      />
-                    </TableCell>
-                    <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
-                    <TableCell className="text-sm">
-                      {SAP_JOB_TYPE_LABELS[job.jobType]}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{SAP_JOB_STATUS_LABELS[job.status]}</Badge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-xs">
-                      {job.referenceType ?? "—"}
-                      {job.referenceId ? ` / ${job.referenceId.slice(-8)}` : ""}
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">{job.sapDocRef ?? "—"}</TableCell>
-                    <TableCell className="text-sm">
-                      {job.attemptCount}/{job.maxAttempts}
-                    </TableCell>
-                    <TableCell className="text-destructive max-w-[200px] truncate text-xs">
-                      {job.lastError ?? "—"}
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-      </GlobalDataTable>
+        empty={jobs.items.length === 0}
+        emptyMessage="No integration jobs yet. Approve an order to enqueue an approved_order job."
+      />
+
+      <SapJobDetailsDialog job={viewing} onClose={() => setViewing(null)} />
     </div>
   );
 }

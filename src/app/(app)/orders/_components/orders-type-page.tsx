@@ -5,6 +5,7 @@ import {
   getOrdersKpisAction,
   listOrderHistoryAction,
   listOrdersAction,
+  listOrderTeamLeadersAction,
 } from "@/features/orders/actions/order.actions";
 import {
   hasOrderPermission,
@@ -18,7 +19,6 @@ import { hasPermission, requireAnyPermission } from "@/lib/auth/permissions";
 import { ordersModuleGuideForType } from "@/content/module-guides/orders";
 import { BRANCH_ORDERS_PAGE_TUTORIAL } from "@/content/page-tutorials/branch-orders";
 import { PageHeader } from "@/app/(app)/_components/page-header";
-import { OrderAnalyticsPanel } from "@/app/(app)/orders/_components/order-analytics-panel";
 import { OrderHistoryTable } from "@/app/(app)/orders/_components/order-history-table";
 import { OrdersCreateWorkspaceProvider } from "@/app/(app)/orders/_components/orders-create-workspace-context";
 import { OrdersPageTabs } from "@/app/(app)/orders/_components/orders-page-tabs";
@@ -38,13 +38,15 @@ interface OrdersTypePageProps {
     limit?: string;
     sort?: string;
     dir?: string;
+    /** Team Leader user id filter on the Orders tab. */
+    tl?: string;
   }>;
 }
 
 function ordersTypePageDescription(orderType: BranchOrderType): string {
   switch (orderType) {
     case "auto_replenish":
-      return "Showing auto replenish requests waiting for your role. Approved orders are in Order History. Suggestions are generated under Settings → Planning.";
+      return "Showing auto replenish requests waiting for your role. Approved orders are in Order History. Review suggestions from Suggested Orders on this screen. They are not submitted until you submit the draft.";
     case "manual":
       return "Showing manual requests waiting for your role. Approved orders are in Order History. Path: Product Specialist submits → Pending SP (Team Leader may optionally edit) → Supply Planning approves.";
     case "special":
@@ -63,19 +65,20 @@ export async function OrdersTypePage({
   const session = await requireAnyPermission(orderTypeAccessPermissions(orderType));
   const params = await searchParams;
   const pageTabs = ordersPageTabsForType(orderType);
-  const showAnalytics = pageTabs.includes("analytics");
   const activeTab = parseOrdersPageTab(params.tab, pageTabs);
   const page = Number(params.page) || 1;
   const limit = parseTablePageSize(params.limit);
   const viewerRoleSlugs = session.user.roleSlugs ?? [];
   const canEdit = hasOrderPermission(session.user.permissions, orderType, "create");
+  const canCreateSpecial = hasOrderPermission(session.user.permissions, "special", "create");
   const canAccessSuggestedOrders =
     hasPermission(session.user.permissions, "forecast.manage") ||
     hasPermission(session.user.permissions, "planogram.manage");
   const typeLabel = BRANCH_ORDER_TYPE_LABELS[orderType];
   const basePath = ORDER_TYPE_ROUTE[orderType];
 
-  const [kpis, ordersResult, historyResult] = await Promise.all([
+  const teamLeaderId = params.tl?.trim() || undefined;
+  const [kpis, ordersResult, historyResult, teamLeaders] = await Promise.all([
     getOrdersKpisAction(orderType),
     activeTab === "orders"
       ? listOrdersAction({
@@ -84,6 +87,7 @@ export async function OrdersTypePage({
           orderType,
           sort: params.sort,
           sortDir: params.dir,
+          teamLeaderId,
         })
       : Promise.resolve(null),
     activeTab === "history"
@@ -95,6 +99,7 @@ export async function OrdersTypePage({
           sortDir: params.dir,
         })
       : Promise.resolve(null),
+    activeTab === "orders" ? listOrderTeamLeadersAction(orderType) : Promise.resolve([]),
   ]);
 
   return (
@@ -107,7 +112,7 @@ export async function OrdersTypePage({
         actions={
           canAccessSuggestedOrders ? (
             <Button variant="outline" asChild>
-              <Link href="/settings/planning">Planning & suggestions</Link>
+              <Link href="/settings/planning">Planning</Link>
             </Button>
           ) : undefined
         }
@@ -116,7 +121,7 @@ export async function OrdersTypePage({
       <OrdersCreateWorkspaceProvider
         orderType={orderType}
         canEdit={canEdit}
-        canAccessSuggestedOrders={canAccessSuggestedOrders}
+        canCreateSpecial={canCreateSpecial}
       >
         <OrdersPageTabs
           activeTab={activeTab}
@@ -130,18 +135,13 @@ export async function OrdersTypePage({
                   result={ordersResult}
                   viewerRoleSlugs={viewerRoleSlugs}
                   canEdit={canEdit}
-                  canAccessSuggestedOrders={canAccessSuggestedOrders}
                   fixedOrderType={orderType}
                   basePath={basePath}
                   initialSort={params.sort ?? ""}
                   initialSortDir={params.dir ?? "desc"}
+                  teamLeaders={teamLeaders}
                 />
               </div>
-            ) : null
-          }
-          analyticsContent={
-            showAnalytics && activeTab === "analytics" ? (
-              <OrderAnalyticsPanel key={orderType} orderType={orderType} />
             ) : null
           }
           historyContent={

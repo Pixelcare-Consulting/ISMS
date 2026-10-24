@@ -4,11 +4,13 @@ import { notFound } from "next/navigation";
 import { PageHeader } from "@/app/(app)/_components/page-header";
 import { EditOrganizationForm } from "@/app/(provider)/provider/tenants/_components/edit-organization-form";
 import { ProviderUsersTable } from "@/app/(provider)/provider/tenants/_components/provider-users-table";
+import { TenantAssistantPolicyForm } from "@/app/(provider)/provider/tenants/_components/tenant-assistant-policy-form";
 import { TenantSapServiceLayerForm } from "@/app/(provider)/provider/tenants/_components/tenant-sap-service-layer-form";
 import { TenantStatusActions } from "@/app/(provider)/provider/tenants/_components/tenant-status-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { getProviderAiAssistantPolicyAction } from "@/features/provider/actions/provider-assistant.actions";
 import {
   getProviderCustomerDetailAction,
   listProviderCustomerUsersAction,
@@ -34,10 +36,11 @@ export default async function ProviderTenantDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [tenant, usersBundle, sapSettings] = await Promise.all([
+  const [tenant, usersBundle, sapSettings, assistantPolicy] = await Promise.all([
     getProviderCustomerDetailAction(id),
     listProviderCustomerUsersAction(id),
     listProviderSapSettingsAction(id),
+    getProviderAiAssistantPolicyAction(id),
   ]);
 
   if (!tenant || !usersBundle) {
@@ -138,6 +141,27 @@ export default async function ProviderTenantDetailPage({
           </CardContent>
         </Card>
       </div>
+
+      {assistantPolicy ? (
+        <div className="space-y-3">
+          <div>
+            <h2 className="text-base font-semibold">Assistant</h2>
+            <p className="text-sm text-muted-foreground">
+              Turn Pixelcare AI and ISMS Assist on for this company. Company
+              users do not see this switch.
+            </p>
+          </div>
+          <Card>
+            <CardContent className="pt-6">
+              <TenantAssistantPolicyForm
+                tenantId={tenant.id}
+                initialValues={assistantPolicy}
+                canEdit={!orgDisabled}
+              />
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
 
       <div className="space-y-3">
         <div>

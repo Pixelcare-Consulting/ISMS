@@ -1,3 +1,4 @@
+import { SETUP_PERMISSION_SLUGS } from "@/features/roles/constants/setup-access";
 import { DEFAULT_DEPARTMENT_NAMES } from "@/features/users/constants/department.constants";
 import { departmentService } from "@/features/users/services/department.service";
 import { prisma } from "@/lib/database/client";
@@ -86,7 +87,7 @@ async function seedTenantRoles(tenantId: string) {
 
     const slugs =
       roleDef.slug === "super_admin"
-        ? permissions.map((permission) => permission.slug)
+        ? [...SETUP_PERMISSION_SLUGS]
         : (ROLE_PERMISSION_MATRIX[roleDef.slug] ?? []);
     await prisma.rolePermission.deleteMany({ where: { roleId: role.id } });
     for (const slug of slugs) {

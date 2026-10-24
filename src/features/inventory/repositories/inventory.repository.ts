@@ -163,9 +163,13 @@ function resolveEffectiveBranchIds(
     : branchIds;
 }
 
-export type LatestAcceptedDelivery = {
+export type LatestDeliveryReceipt = {
   serialNumberId: string;
+  /** Display DR#: SAP DR number when present, else ISMS delivery number. */
   deliveryNo: string;
+  /** ISMS delivery number (links to the deliveries list). */
+  internalDeliveryNo: string;
+  /** DR date: SAP DR date, else acceptedAt, else createdAt. */
   deliveryDate: Date;
 };
 
@@ -233,7 +237,7 @@ export const inventoryRepository = {
       onPlanogram: boolean;
     };
 
-    const deliveries = await this.findLatestAcceptedDeliveries(
+    const deliveries = await this.findLatestDeliveryReceipts(
       tenantId,
       candidates.map((c) => c.serialNumberId),
     );
@@ -340,10 +344,10 @@ export const inventoryRepository = {
     return toPaginatedResult(ordered, total, page, limit);
   },
 
-  async findLatestAcceptedDeliveries(
+  async findLatestDeliveryReceipts(
     tenantId: string,
     serialNumberIds: string[],
-  ): Promise<LatestAcceptedDelivery[]> {
+  ): Promise<LatestDeliveryReceipt[]> {
     if (serialNumberIds.length === 0) return [];
 
     const lines = await prisma.branchDeliveryLine.findMany({
@@ -351,9 +355,12 @@ export const inventoryRepository = {
         serialNumberId: { in: serialNumberIds },
         delivery: {
           tenantId,
+          // pending/partial = units already DIT with a SAP DR; acceptedAt keeps legacy rows.
           OR: [
             { acceptedAt: { not: null } },
-            { statusCode: { code: "accepted" } },
+            {
+              statusCode: { code: { in: ["pending", "partial", "accepted"] } },
+            },
           ],
         },
       },
@@ -362,6 +369,8 @@ export const inventoryRepository = {
         delivery: {
           select: {
             deliveryNo: true,
+            drNo: true,
+            drDate: true,
             acceptedAt: true,
             createdAt: true,
           },
@@ -373,19 +382,25 @@ export const inventoryRepository = {
       serialNumberId: string;
       delivery: {
         deliveryNo: string;
+        drNo: string | null;
+        drDate: Date | null;
         acceptedAt: Date | null;
         createdAt: Date;
       };
     };
 
-    const latest = new Map<string, LatestAcceptedDelivery>();
+    const latest = new Map<string, LatestDeliveryReceipt>();
     for (const line of lines as DeliveryLineRow[]) {
-      const deliveryDate = line.delivery.acceptedAt ?? line.delivery.createdAt;
+      const deliveryDate =
+        line.delivery.drDate ??
+        line.delivery.acceptedAt ??
+        line.delivery.createdAt;
       const existing = latest.get(line.serialNumberId);
       if (!existing || deliveryDate.getTime() > existing.deliveryDate.getTime()) {
         latest.set(line.serialNumberId, {
           serialNumberId: line.serialNumberId,
-          deliveryNo: line.delivery.deliveryNo,
+          deliveryNo: line.delivery.drNo ?? line.delivery.deliveryNo,
+          internalDeliveryNo: line.delivery.deliveryNo,
           deliveryDate,
         });
       }
@@ -512,4 +527,5 @@ export type {
   InventoryGroupListFilters,
   InventoryGroupModelRow,
   InventoryGroupStatusCodeRef,
+  InventoryGroupWarehouseRow,
 } from "@/features/inventory/repositories/inventory-group.repository";

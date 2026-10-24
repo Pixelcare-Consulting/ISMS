@@ -2,7 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { orderService } from "@/features/orders/services/order.service";
+import {
+  orderService,
+  type OrderApprovalLineAdjustment,
+} from "@/features/orders/services/order.service";
+import { suggestionApplyService } from "@/features/orders/services/suggestion-apply.service";
 import { orderRepository } from "@/features/orders/repositories/order.repository";
 import type {
   OrderListSort,
@@ -18,6 +22,7 @@ import {
   canAccessOrderType,
   hasAnyOrderPermission,
   hasOrderPermission,
+  hasOrdersForceCancelPermission,
   ORDER_TYPE_ROUTE,
   orderPermissionCandidates,
   orderTypeAccessPermissions,
@@ -38,7 +43,7 @@ import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { resolveActiveOrderPrice } from "@/features/master-data/utils/resolve-active-order-price";
 import type { OrderHistoryRow } from "@/features/orders/types/order-analytics";
 import { toClientOrderListItem } from "@/features/orders/utils/to-client-order-list";
-import type { BranchOrderType } from "@prisma/client";
+import type { BranchOrderType, Prisma } from "@prisma/client";
 
 function hasFullOrderAccess(permissions: string[] | undefined) {
   return (
@@ -116,6 +121,8 @@ export async function listOrdersAction(input?: {
   orderType?: BranchOrderType;
   sort?: string;
   sortDir?: string;
+  /** Team Leader user id: only orders from that TL's AOR branches. */
+  teamLeaderId?: string;
 }) {
   const session = input?.orderType
     ? await requireOrderTypePageAccess(input.orderType)
@@ -130,13 +137,31 @@ export async function listOrdersAction(input?: {
     session.user.tenantId,
     session.user.id,
     hasFullOrderAccess(session.user.permissions),
-    { page: input?.page, limit, orderType: input?.orderType, statuses: queueStatuses },
+    {
+      page: input?.page,
+      limit,
+      orderType: input?.orderType,
+      statuses: queueStatuses,
+      teamLeaderId: input?.teamLeaderId?.trim() || undefined,
+    },
     { field: parseOrderSort(input?.sort), dir: parseOrderSortDir(input?.sortDir) },
   );
   return {
     ...result,
     items: result.items.map((order) => toClientOrderListItem(order)),
   };
+}
+
+/** Team Leaders for the order list filter, limited to the viewer's branch scope. */
+export async function listOrderTeamLeadersAction(orderType?: BranchOrderType) {
+  const session = orderType
+    ? await requireOrderTypePageAccess(orderType)
+    : await requireAnyPermission(anyOrderTypePermissions("view"));
+  return orderService.listTeamLeaderOptions(
+    session.user.tenantId,
+    session.user.id,
+    hasFullOrderAccess(session.user.permissions),
+  );
 }
 
 export async function getOrdersKpisAction(orderType?: BranchOrderType) {
@@ -177,6 +202,7 @@ export async function listActiveDealersForOrderAction(orderType?: BranchOrderTyp
     return dealers.map((d) => ({
       id: d.id,
       name: d.sapCode ? `${d.name} (${d.sapCode})` : d.name,
+      modeOfPaymentId: d.modeOfPaymentId,
     }));
   }
 
@@ -192,7 +218,16 @@ export async function listActiveDealersForOrderAction(orderType?: BranchOrderTyp
     .map((d) => ({
       id: d.id,
       name: d.sapCode ? `${d.name} (${d.sapCode})` : d.name,
+      modeOfPaymentId: d.modeOfPaymentId,
     }));
+}
+
+/** Modes of payment an order can use: master data entries that have a type. */
+export async function listModesOfPaymentForOrderAction(orderType?: BranchOrderType) {
+  const session = orderType
+    ? await requireOrderTypePermission(orderType, "create")
+    : await requireAnyPermission(anyOrderTypePermissions("create"));
+  return orderRepository.listModesOfPaymentForOrder(session.user.tenantId);
 }
 
 export async function listBranchesForOrderAction(
@@ -259,11 +294,57 @@ export async function checkOrderWindowAction(
   return { blocked: reason !== null, reason };
 }
 
+export async function listOrderSuggestionsAction(input: {
+  branchId: string;
+  orderType: BranchOrderType;
+}) {
+  const session = await requireOrderTypePermission(input.orderType, "create");
+  if (!input.branchId) {
+    return { error: "Choose a branch to see suggestions." };
+  }
+  try {
+    const data = await suggestionApplyService.list(
+      {
+        tenantId: session.user.tenantId,
+        userId: session.user.id,
+        hasFullAccess: hasFullOrderAccess(session.user.permissions),
+      },
+      input,
+    );
+    return { success: true as const, data };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to load suggestions" };
+  }
+}
+
+export async function applyOrderSuggestionsAction(input: {
+  branchId: string;
+  orderType: BranchOrderType;
+  lines: { modelId: string; quantity: number }[];
+}) {
+  const session = await requireOrderTypePermission(input.orderType, "create");
+  try {
+    const data = await suggestionApplyService.apply(
+      {
+        tenantId: session.user.tenantId,
+        userId: session.user.id,
+        hasFullAccess: hasFullOrderAccess(session.user.permissions),
+      },
+      input,
+    );
+    revalidateOrderPaths(input.orderType);
+    return { success: true as const, ...data };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to add suggestions to the draft" };
+  }
+}
+
 export async function createOrderAction(input: {
   branchId: string;
   orderType: "auto_replenish" | "manual" | "special";
   notes?: string;
   brandId?: string | null;
+  modeOfPaymentId?: string | null;
   details: { modelId: string; quantity: number; remarks?: string | null }[];
 }) {
   const session = await requireOrderTypePermission(input.orderType, "create");
@@ -362,6 +443,9 @@ export async function adminBulkCancelOrdersAction(orderIds: string[]) {
   if (!isSuperAdminOrderOverride(roleSlugs)) {
     return { error: "Only Super Admin can cancel selected orders in bulk." };
   }
+  if (!hasOrdersForceCancelPermission(session.user.permissions)) {
+    return { error: "An orders permission is required to cancel selected orders." };
+  }
 
   const uniqueIds = [...new Set(orderIds.filter(Boolean))];
   if (uniqueIds.length === 0) {
@@ -373,7 +457,7 @@ export async function adminBulkCancelOrdersAction(orderIds: string[]) {
       session.user.tenantId,
       session.user.id,
       uniqueIds,
-      { roleSlugs },
+      { roleSlugs, permissions: session.user.permissions },
     );
     revalidateOrderPaths();
     return { success: true as const, ...result };
@@ -388,8 +472,10 @@ export async function approveOrderAction(
   orderId: string,
   input?: {
     comment?: string;
-    lineAdjustments?: { detailId: string; approvedQty: number }[];
+    lineAdjustments?: OrderApprovalLineAdjustment[];
     deliveryDueDate?: string;
+    expectedUpdatedAt?: string;
+    reviewSnapshot?: Prisma.InputJsonValue | null;
   },
 ) {
   const session = await requireAuth();
@@ -416,6 +502,8 @@ export async function approveOrderAction(
             deliveryDueDate: input.deliveryDueDate
               ? new Date(input.deliveryDueDate)
               : undefined,
+            expectedUpdatedAt: input.expectedUpdatedAt,
+            reviewSnapshot: input.reviewSnapshot,
           }
         : undefined,
     );
@@ -515,7 +603,16 @@ export async function listOrderHistoryAction(input?: {
       orderNumber: order.orderNumber,
       orderType: order.orderType,
       status: order.status,
+      branchId: order.branchId,
       branchName: order.branch.name,
+      brandId: order.brandId,
+      notes: order.notes,
+      deliveryDueDate: order.deliveryDueDate?.toISOString() ?? null,
+      createdByName: order.createdBy.name?.trim() || order.createdBy.email,
+      reviewSnapshot: order.reviewSnapshot,
+      reviewSnapshotAt: order.reviewSnapshotAt?.toISOString() ?? null,
+      sapDocType: order.sapDocType,
+      sapDocNum: order.sapDocNum,
       orderQty,
       totalAmt,
       appQty,
@@ -523,6 +620,26 @@ export async function listOrderHistoryAction(input?: {
       createdAt: order.createdAt.toISOString(),
       updatedAt: order.updatedAt.toISOString(),
       lastUpdatedBy: lastUpdatedByName(order),
+      lines: order.details.map((detail) => ({
+        detailId: detail.id,
+        modelId: detail.model.id,
+        skuCode: detail.model.skuCode,
+        name: detail.model.name,
+        quantity: detail.quantity,
+        approvedQty: detail.approvedQty,
+        remarks: detail.remarks,
+        spRemarks: detail.spRemarks,
+      })),
+      approvalLevels: order.approvalLevels.map((level) => ({
+        level: level.level,
+        roleSlug: level.roleSlug,
+        approvedAt: level.approvedAt?.toISOString() ?? null,
+        rejectedAt: level.rejectedAt?.toISOString() ?? null,
+        comment: level.comment,
+        approvedBy: level.approvedBy
+          ? { name: level.approvedBy.name, email: level.approvedBy.email }
+          : null,
+      })),
     };
   });
 

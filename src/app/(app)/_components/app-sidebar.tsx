@@ -24,12 +24,14 @@ interface AppSidebarProps {
     permissions: string[];
     isPlatformOperator: boolean;
   };
+  useSetupNavigation: boolean;
   countBadges?: NavCountBadges;
 }
 
 export function AppSidebar({
   branding,
   user,
+  useSetupNavigation,
   countBadges,
 }: AppSidebarProps) {
   return (
@@ -44,6 +46,7 @@ export function AppSidebar({
 
       <SidebarContent className="themed-scrollbar">
         <SidebarNav
+          useSetupNavigation={useSetupNavigation}
           permissions={user.permissions}
           isPlatformOperator={user.isPlatformOperator}
           countBadges={countBadges}

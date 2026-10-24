@@ -163,7 +163,7 @@ export type DemandPlanningSourcePreview = {
 
 export type ReleasePreviewBranch = {
   branchName: string;
-  /** Present for open-order skips (order number, optionally with period). */
+  /** Optional note shown next to the branch. Release does not create orders. */
   detail?: string;
 };
 

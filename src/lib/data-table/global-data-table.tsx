@@ -55,6 +55,8 @@ export interface GlobalDataTableProps {
   emptyMessage?: ReactNode;
   /** Extra classes on the empty-state block (padding / hierarchy). */
   emptyClassName?: string;
+  /** Extra classes on pagination controls. Omitted callers keep the shared size. */
+  paginationButtonClassName?: string;
 }
 
 /**
@@ -83,6 +85,7 @@ export function GlobalDataTable({
   empty = false,
   emptyMessage = "No data.",
   emptyClassName,
+  paginationButtonClassName,
 }: GlobalDataTableProps) {
   const toolbarRef = useRef<HTMLDivElement>(null);
   const tableWrapRef = useRef<HTMLDivElement>(null);
@@ -237,6 +240,7 @@ export function GlobalDataTable({
                 meta={pagination}
                 buildHref={pagination.buildHref}
                 onPageChange={pagination.onPageChange}
+                buttonClassName={paginationButtonClassName}
               />
             ) : null}
           </>

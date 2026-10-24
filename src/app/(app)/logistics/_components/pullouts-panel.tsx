@@ -1,29 +1,26 @@
 "use client";
 
+import { createColumnHelper } from "@tanstack/react-table";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
-import { toast } from "sonner";
+import { useMemo, useState } from "react";
 
 import { PulloutRequestDialog } from "@/app/(app)/logistics/_components/pullout-request-dialog";
-import {
-  approvePulloutTlAction,
-  createPulloutAction,
-  rejectPulloutAction,
-} from "@/features/logistics/actions/logistics.actions";
+import { createPulloutAction } from "@/features/logistics/actions/logistics.actions";
 import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
-import { TableIndexCell, TableIndexHead } from "@/components/data-table";
 import {
   parseTablePageSize,
   type TablePageSize,
 } from "@/components/data-table/table-page-size";
-import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
-import { GlobalDataTable, GlobalTableHead, nextTableSort } from "@/lib/data-table";
+import {
+  DataTable,
+  nextTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import {
   buildLogisticsPageHref,
   LOGISTICS_PICKUPS_PATH,
@@ -57,9 +54,12 @@ interface PulloutRow {
 interface PulloutsPanelProps {
   pullouts: PaginatedList<PulloutRow>;
   capabilities: LogisticsActionCapabilities;
+  currentUserName?: string;
   initialSort?: string;
   initialSortDir?: string;
 }
+
+const pulloutColumn = createColumnHelper<DataTableFeatures, PulloutRow>();
 
 type PulloutSortField = "pulloutNo" | "branch" | "warehouse" | "reason" | "status";
 type PulloutSortDir = "asc" | "desc";
@@ -67,13 +67,13 @@ type PulloutSortDir = "asc" | "desc";
 export function PulloutsPanel({
   pullouts,
   capabilities,
+  currentUserName = "",
   initialSort = "",
   initialSortDir = "desc",
 }: PulloutsPanelProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
-  const [pending, startTransition] = useTransition();
   const [createOpen, setCreateOpen] = useState(false);
   const pageSize = parseTablePageSize(pullouts.limit);
   const sort = (searchParams.get("sort") ?? initialSort) || "";
@@ -124,41 +124,105 @@ export function PulloutsPanel({
     [pullouts.items],
   );
 
-  const selection = useTableSelection(filtered.map((p) => p.id));
 
-  function runAction(
-    action: () => Promise<{ error: string } | { success: true }>,
-    message: string,
-  ) {
-    startTransition(async () => {
-      const result = await action();
-      if ("error" in result) {
-        toast.error(result.error);
-        return;
-      }
-      toast.success(message);
-      router.refresh();
-    });
-  }
+  const indexOffset = (pullouts.page - 1) * pullouts.limit;
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<PulloutRow>[] = [
+      pulloutColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => indexOffset + row.index + 1,
+        meta: { className: "text-center tabular-nums text-muted-foreground" },
+      }),
+      pulloutColumn.accessor((row) => row.pulloutNo, {
+        id: "pulloutNo",
+        header: "No.",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <Link
+            href={`/logistics/pickups/${row.original.id}`}
+            className="font-medium hover:underline"
+          >
+            {row.original.pulloutNo}
+          </Link>
+        ),
+      }),
+      pulloutColumn.accessor((row) => row.branch.name, {
+        id: "branch",
+        header: "Branch",
+        enableSorting: true,
+      }),
+      pulloutColumn.accessor((row) => row.warehouse.name, {
+        id: "warehouse",
+        header: "Warehouse",
+        enableSorting: true,
+      }),
+      pulloutColumn.display({
+        id: "reason",
+        header: "Reason",
+        enableSorting: true,
+        cell: ({ row }) =>
+          row.original.reasonStatusCode ? (
+            <StatusCodeBadge
+              code={row.original.reasonStatusCode.code}
+              name={row.original.reasonStatusCode.name}
+              color={row.original.reasonStatusCode.color}
+            />
+          ) : (
+            "—"
+          ),
+      }),
+      pulloutColumn.display({
+        id: "status",
+        header: "Status",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <StatusCodeBadge
+            code={row.original.statusCode.code}
+            name={row.original.statusCode.name}
+            color={row.original.statusCode.color}
+          />
+        ),
+      }),
+      pulloutColumn.display({
+        id: "actions",
+        header: "Actions",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" asChild>
+              <Link href={`/logistics/pickups/${row.original.id}`}>Open</Link>
+            </Button>
+          </div>
+        ),
+      }),
+    ];
+    return cols;
+  }, [indexOffset]);
 
   return (
     <>
-    <GlobalDataTable
+    <DataTable
+      data={filtered}
+      columns={columns}
+      getRowId={(row) => row.id}
+      manualSorting
+      manualPagination
+      enableSorting
+      sorting={{
+        sortKey: sort,
+        sortDir,
+        onSort: (columnId) => toggleSort(columnId as PulloutSortField),
+      }}
       stickyHeader
-      scrollable
       search={{ value: query, onChange: setQuery, placeholder: "Search pull-outs…", suggestions }}
       toolbarActions={
         <>
-          {selection.selectedCount > 0 ? (
-            <Button variant="secondary" onClick={selection.clearSelection}>
-              {selection.selectedCount} selected
-            </Button>
-          ) : null}
         {capabilities.canCreate ? (
           <Button
             size="sm"
             className="w-full sm:w-auto"
-            disabled={pending}
             onClick={() => setCreateOpen(true)}
           >
             New pull-out
@@ -181,136 +245,15 @@ export function PulloutsPanel({
           ),
       }}
       pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
-    >
-          <TableHeader>
-            <TableRow>
-              <GlobalTableHead className="w-10">
-                <Checkbox
-                  checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
-                  onCheckedChange={(checked) => selection.toggleAll(checked === true)}
-                  aria-label="Select all pull-outs"
-                />
-              </GlobalTableHead>
-              <TableIndexHead />
-              <GlobalTableHead
-                sortKey="pulloutNo"
-                activeSortKey={sort}
-                sortDirection={sortDir}
-                onSort={(key) => toggleSort(key as PulloutSortField)}
-              >
-                No.
-              </GlobalTableHead>
-              <GlobalTableHead
-                sortKey="branch"
-                activeSortKey={sort}
-                sortDirection={sortDir}
-                onSort={(key) => toggleSort(key as PulloutSortField)}
-              >
-                Branch
-              </GlobalTableHead>
-              <GlobalTableHead
-                sortKey="warehouse"
-                activeSortKey={sort}
-                sortDirection={sortDir}
-                onSort={(key) => toggleSort(key as PulloutSortField)}
-              >
-                Warehouse
-              </GlobalTableHead>
-              <GlobalTableHead
-                sortKey="reason"
-                activeSortKey={sort}
-                sortDirection={sortDir}
-                onSort={(key) => toggleSort(key as PulloutSortField)}
-              >
-                Reason
-              </GlobalTableHead>
-              <GlobalTableHead
-                sortKey="status"
-                activeSortKey={sort}
-                sortDirection={sortDir}
-                onSort={(key) => toggleSort(key as PulloutSortField)}
-              >
-                Status
-              </GlobalTableHead>
-              <GlobalTableHead />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filtered.map((p, index) => (
-              <TableRow key={p.id} data-state={selection.isRowSelected(p.id) ? "selected" : undefined}>
-                <TableCell>
-                  <Checkbox
-                    checked={selection.isRowSelected(p.id)}
-                    onCheckedChange={(checked) => selection.toggleRow(p.id, checked === true)}
-                    aria-label={`Select pull-out ${p.pulloutNo}`}
-                  />
-                </TableCell>
-                <TableIndexCell
-                  index={(pullouts.page - 1) * pullouts.limit + index + 1}
-                />
-                <TableCell>
-                  <Link href={`/logistics/pickups/${p.id}`} className="font-medium hover:underline">
-                    {p.pulloutNo}
-                  </Link>
-                </TableCell>
-                <TableCell>{p.branch.name}</TableCell>
-                <TableCell>{p.warehouse.name}</TableCell>
-                <TableCell>
-                  {p.reasonStatusCode ? (
-                    <StatusCodeBadge
-                      code={p.reasonStatusCode.code}
-                      name={p.reasonStatusCode.name}
-                      color={p.reasonStatusCode.color}
-                    />
-                  ) : (
-                    "—"
-                  )}
-                </TableCell>
-                <TableCell>
-                  <StatusCodeBadge
-                    code={p.statusCode.code}
-                    name={p.statusCode.name}
-                    color={p.statusCode.color}
-                  />
-                </TableCell>
-                <TableCell className="space-x-2">
-                  {p.statusCode.code === "pending_tl" && capabilities.canApproveTl ? (
-                    <Button
-                      size="sm"
-                      disabled={pending}
-                      className="bg-amber-600 text-white hover:bg-amber-700"
-                      onClick={() =>
-                        runAction(() => approvePulloutTlAction(p.id), "Pull-out approved")
-                      }
-                    >
-                      TL approve
-                    </Button>
-                  ) : null}
-                  {p.statusCode.code === "pending_tl" && capabilities.canRejectTransfer ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={pending}
-                      onClick={() =>
-                        runAction(() => rejectPulloutAction(p.id), "Pull-out rejected")
-                      }
-                    >
-                      Reject
-                    </Button>
-                  ) : null}
-                  <Button size="sm" variant="outline" asChild>
-                    <Link href={`/logistics/pickups/${p.id}`}>Open</Link>
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-    </GlobalDataTable>
+      empty={filtered.length === 0}
+      emptyMessage={query.trim() ? "No results match your search." : "No pull-outs."}
+    />
     <PulloutRequestDialog
       open={createOpen}
       onOpenChange={setCreateOpen}
       onSubmit={createPulloutAction}
       onCreated={() => router.refresh()}
+      currentUserName={currentUserName}
     />
     </>
   );

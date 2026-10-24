@@ -22,6 +22,9 @@ function resolveLogisticsTutorial(pathname: string): PageTutorialContent {
 }
 
 function resolveLogisticsDescription(pathname: string): string {
+  if (pathname.startsWith("/logistics/delivery-transfers")) {
+    return "Transfers of delivered units the branch did not accept.";
+  }
   if (pathname.startsWith("/logistics/transfers")) {
     return "Inter-branch transfers of serialized stock.";
   }
@@ -32,6 +35,9 @@ function resolveLogisticsDescription(pathname: string): string {
 }
 
 function resolveLogisticsGuideIcon(pathname: string): LucideIcon {
+  if (pathname.startsWith("/logistics/delivery-transfers")) {
+    return ArrowLeftRight;
+  }
   if (pathname.startsWith("/logistics/transfers")) {
     return ArrowLeftRight;
   }
@@ -41,14 +47,32 @@ function resolveLogisticsGuideIcon(pathname: string): LucideIcon {
   return Truck;
 }
 
+/** List pages are /logistics/{section}. A third segment is one record. */
+function isLogisticsRecordDetail(pathname: string): boolean {
+  const [root, section, id, extra] = pathname.split("/").filter(Boolean);
+  if (root !== "logistics" || extra !== undefined || !section || !id) {
+    return false;
+  }
+  switch (section) {
+    case "deliveries":
+    case "transfers":
+    case "pickups":
+    case "delivery-transfers":
+      return true;
+    default:
+      return false;
+  }
+}
+
 export function LogisticsSectionLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const guide = resolveLogisticsModuleGuide(pathname);
-  const GuideIcon = resolveLogisticsGuideIcon(pathname);
+  const showModuleGuide = !isLogisticsRecordDetail(pathname);
+  const guide = showModuleGuide ? resolveLogisticsModuleGuide(pathname) : null;
+  const GuideIcon = showModuleGuide ? resolveLogisticsGuideIcon(pathname) : null;
 
   return (
     <SectionLayout
@@ -57,7 +81,9 @@ export function LogisticsSectionLayout({
       tutorial={resolveLogisticsTutorial(pathname)}
     >
       <div className="space-y-6">
-        <ModuleGuide {...guide} icon={GuideIcon} resetKey={pathname} />
+        {guide && GuideIcon ? (
+          <ModuleGuide {...guide} icon={GuideIcon} resetKey={pathname} />
+        ) : null}
         {children}
       </div>
     </SectionLayout>

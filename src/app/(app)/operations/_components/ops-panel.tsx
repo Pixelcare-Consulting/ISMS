@@ -1,45 +1,44 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useTransition } from "react";
-import { toast } from "sonner";
+import { useMemo, useState } from "react";
+import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
 
+import {
+  DeliveryReceiveDialog,
+  type ReceiveTarget,
+} from "@/app/(app)/logistics/_components/delivery-receive-dialog";
 import { PulloutRequestDialog } from "@/app/(app)/logistics/_components/pullout-request-dialog";
 import { TransferRequestDialog } from "@/app/(app)/logistics/_components/transfer-request-dialog";
+import {
+  DeliveryReturnCell,
+  DeliveryReturnRequestDialog,
+  DeliveryReturnReviewDialog,
+  type LatestDeliveryReturn,
+  type ReturnTarget,
+  type ReviewReturnActions,
+} from "@/app/(app)/logistics/_components/delivery-return-dialogs";
+import { isReturnOpen, needsSapRetry } from "@/features/logistics/constants/delivery-workflow-labels";
 import {
   acceptDeliveryAction,
   createPulloutAction,
   createTransferAction,
-  rejectDeliveryAction,
+  cancelDeliveryReturnAction,
+  decideDeliveryReturnAction,
+  getDeliveryReturnAction,
+  listDeliveryReceiptLinesAction,
+  requestDeliveryReturnAction,
+  retryDeliveryReturnSapAction,
 } from "@/features/ops/actions/ops.actions";
+import { formatInventoryDrDate } from "@/app/(app)/inventory/_components/inventory-list-format";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { Button } from "@/components/ui/button";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
-  DataTableScroll,
-  DataTableShell,
-} from "@/components/data-table/data-table-shell";
-import { useTableSelection } from "@/components/data-table/use-table-selection";
-import { GlobalTableHead, useClientTableSort } from "@/lib/data-table";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { useState } from "react";
+  DataTable,
+  useClientTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 
 interface StatusCodeRef {
   id: string;
@@ -49,11 +48,16 @@ interface StatusCodeRef {
 }
 
 interface OpsPanelProps {
+  currentUserName?: string;
   deliveries: {
     id: string;
     deliveryNo: string;
+    drNo: string | null;
+    drDate: Date | string | null;
     statusCode: StatusCodeRef;
     branch: { name: string };
+    /** Latest return request, newest first (at most one). */
+    returnRequests: LatestDeliveryReturn[];
   }[];
   transfers: {
     id: string;
@@ -62,26 +66,48 @@ interface OpsPanelProps {
     toBranch: { name: string };
   }[];
   pullouts: { id: string; statusCode: StatusCodeRef; branch: { name: string } }[];
+  /** Shows Transfer actions in the receive dialog. */
+  canCreateDeliveryTransfer?: boolean;
+  canRequestDeliveryReturn?: boolean;
+  canApproveDeliveryReturn?: boolean;
 }
 
-interface PendingDeliveryAction {
-  id: string;
-  deliveryNo: string;
-  branchName: string;
-  action: "accept" | "reject";
-}
+const REVIEW_ACTIONS: ReviewReturnActions = {
+  load: getDeliveryReturnAction,
+  decide: decideDeliveryReturnAction,
+  retry: retryDeliveryReturnSapAction,
+  cancel: cancelDeliveryReturnAction,
+};
 
-export function OpsPanel({ deliveries, transfers, pullouts }: OpsPanelProps) {
+type DeliveryRow = OpsPanelProps["deliveries"][number];
+type TransferRow = OpsPanelProps["transfers"][number];
+type PulloutRow = OpsPanelProps["pullouts"][number];
+
+const deliveryColumn = createColumnHelper<DataTableFeatures, DeliveryRow>();
+const transferColumn = createColumnHelper<DataTableFeatures, TransferRow>();
+const pulloutColumn = createColumnHelper<DataTableFeatures, PulloutRow>();
+
+/** Dispatched deliveries the branch can still receive or return. */
+const RECEIVABLE_DELIVERY_CODES = new Set(["pending", "partial"]);
+
+export function OpsPanel({
+  deliveries,
+  transfers,
+  pullouts,
+  currentUserName = "",
+  canCreateDeliveryTransfer = false,
+  canRequestDeliveryReturn = false,
+  canApproveDeliveryReturn = false,
+}: OpsPanelProps) {
   const router = useRouter();
   const [transferOpen, setTransferOpen] = useState(false);
   const [pulloutOpen, setPulloutOpen] = useState(false);
-  const [pendingDelivery, setPendingDelivery] = useState<PendingDeliveryAction | null>(
-    null,
-  );
-  const [pending, startTransition] = useTransition();
-  const deliverySelection = useTableSelection(deliveries.map((delivery) => delivery.id));
-  const transferSelection = useTableSelection(transfers.map((transfer) => transfer.id));
-  const pulloutSelection = useTableSelection(pullouts.map((pullout) => pullout.id));
+  const [returnRequestTarget, setReturnRequestTarget] = useState<ReturnTarget | null>(null);
+  const [returnReviewTarget, setReturnReviewTarget] = useState<ReturnTarget | null>(null);
+  const [receiveTarget, setReceiveTarget] = useState<ReceiveTarget | null>(null);
+  const [deliverySelection, setDeliverySelection] = useState<RowSelectionState>({});
+  const [transferSelection, setTransferSelection] = useState<RowSelectionState>({});
+  const [pulloutSelection, setPulloutSelection] = useState<RowSelectionState>({});
 
   const deliverySort = useClientTableSort(deliveries, {
     branch: (d) => d.branch.name,
@@ -98,30 +124,6 @@ export function OpsPanel({ deliveries, transfers, pullouts }: OpsPanelProps) {
     status: (p) => p.statusCode.name,
   });
 
-  function confirmDeliveryAction() {
-    if (!pendingDelivery) return;
-    const { action, id } = pendingDelivery;
-    startTransition(async () => {
-      const result =
-        action === "accept"
-          ? await acceptDeliveryAction(id)
-          : await rejectDeliveryAction(id);
-      if (result.error) {
-        toast.error(result.error);
-        return;
-      }
-      toast.success(
-        action === "accept"
-          ? "movedCount" in result && result.movedCount
-            ? "Delivery accepted — DIT moved to stock"
-            : "Delivery accepted"
-          : "Delivery rejected",
-      );
-      setPendingDelivery(null);
-      router.refresh();
-    });
-  }
-
   function submitTransfer(input: {
     fromBranchId: string;
     toBranchId: string;
@@ -129,6 +131,7 @@ export function OpsPanel({ deliveries, transfers, pullouts }: OpsPanelProps) {
     quantity: number;
     serialNumberIds: string[];
     notes?: string;
+    transferNo?: string;
   }) {
     return createTransferAction(input);
   }
@@ -137,257 +140,288 @@ export function OpsPanel({ deliveries, transfers, pullouts }: OpsPanelProps) {
     branchId: string;
     warehouseId: string;
     reasonStatusCodeId: string;
-    serialNumberIds: string[];
+    lines: {
+      serialNumberId: string;
+      pulloutClassificationIds: string[];
+      unitPackingConditionIds: string[];
+      accessoryCompletenessIds: string[];
+    }[];
   }) {
     return createPulloutAction(input);
   }
 
+  const deliveryColumns = useMemo(() => {
+    const cols: DataTableColumn<DeliveryRow>[] = [
+      deliveryColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => row.index + 1,
+        meta: { className: "tabular-nums text-muted-foreground" },
+      }),
+      deliveryColumn.display({
+        id: "branch",
+        header: "Branch",
+        enableSorting: true,
+        cell: ({ row }) => row.original.branch.name,
+      }),
+      deliveryColumn.display({
+        id: "reference",
+        header: "Reference",
+        enableSorting: true,
+        cell: ({ row }) => row.original.deliveryNo,
+      }),
+      deliveryColumn.display({
+        id: "drNo",
+        header: "DR#",
+        enableSorting: false,
+        cell: ({ row }) => row.original.drNo ?? "—",
+      }),
+      deliveryColumn.display({
+        id: "drDate",
+        header: "DR date",
+        enableSorting: false,
+        cell: ({ row }) => formatInventoryDrDate(row.original.drDate),
+      }),
+      deliveryColumn.display({
+        id: "status",
+        header: "Status",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <StatusCodeBadge
+            code={row.original.statusCode.code}
+            name={row.original.statusCode.name}
+            color={row.original.statusCode.color}
+          />
+        ),
+      }),
+      deliveryColumn.display({
+        id: "return",
+        header: "Return",
+        enableSorting: false,
+        cell: ({ row }) => <DeliveryReturnCell latest={row.original.returnRequests[0]} />,
+      }),
+      deliveryColumn.display({
+        id: "actions",
+        header: "Action",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const delivery = row.original;
+          const receivable = RECEIVABLE_DELIVERY_CODES.has(delivery.statusCode.code);
+          const latestReturn = delivery.returnRequests[0];
+          const returnOpen = isReturnOpen(latestReturn);
+          const target = { id: delivery.id, deliveryNo: delivery.deliveryNo, branchName: delivery.branch.name };
+          return (
+            <div className="flex flex-wrap justify-end gap-2">
+              {receivable && !returnOpen && canRequestDeliveryReturn ? (
+                <Button size="sm" variant="outline" onClick={() => setReturnRequestTarget(target)}>
+                  Request return
+                </Button>
+              ) : null}
+              {latestReturn?.status === "PENDING_APPROVAL" && canApproveDeliveryReturn ? (
+                <Button size="sm" onClick={() => setReturnReviewTarget(target)}>
+                  Review return
+                </Button>
+              ) : null}
+              {needsSapRetry(latestReturn) && (canApproveDeliveryReturn || canRequestDeliveryReturn) ? (
+                <Button size="sm" variant="outline" onClick={() => setReturnReviewTarget(target)}>
+                  Retry SAP posting
+                </Button>
+              ) : null}
+              {receivable && !returnOpen ? (
+                <Button
+                  size="sm"
+
+                  className="bg-emerald-600 text-white hover:bg-emerald-700"
+                  onClick={() => setReceiveTarget(target)}
+                >
+                  {delivery.statusCode.code === "partial" ? "Receive remaining" : "Receive"}
+                </Button>
+              ) : null}
+            </div>
+          );
+        },
+        meta: { align: "end" },
+      }),
+    ];
+    return cols;
+  }, [canApproveDeliveryReturn, canRequestDeliveryReturn]);
+
+  const transferColumns = useMemo(() => {
+    const cols: DataTableColumn<TransferRow>[] = [
+      transferColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => row.index + 1,
+        meta: { className: "tabular-nums text-muted-foreground" },
+      }),
+      transferColumn.display({
+        id: "from",
+        header: "From",
+        enableSorting: true,
+        cell: ({ row }) => row.original.fromBranch.name,
+      }),
+      transferColumn.display({
+        id: "to",
+        header: "To",
+        enableSorting: true,
+        cell: ({ row }) => row.original.toBranch.name,
+      }),
+      transferColumn.display({
+        id: "status",
+        header: "Status",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <StatusCodeBadge
+            code={row.original.statusCode.code}
+            name={row.original.statusCode.name}
+            color={row.original.statusCode.color}
+          />
+        ),
+      }),
+    ];
+    return cols;
+  }, []);
+
+  const pulloutColumns = useMemo(() => {
+    const cols: DataTableColumn<PulloutRow>[] = [
+      pulloutColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => row.index + 1,
+        meta: { className: "tabular-nums text-muted-foreground" },
+      }),
+      pulloutColumn.display({
+        id: "branch",
+        header: "Branch",
+        enableSorting: true,
+        cell: ({ row }) => row.original.branch.name,
+      }),
+      pulloutColumn.display({
+        id: "status",
+        header: "Status",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <StatusCodeBadge
+            code={row.original.statusCode.code}
+            name={row.original.statusCode.name}
+            color={row.original.statusCode.color}
+          />
+        ),
+      }),
+    ];
+    return cols;
+  }, []);
+
   return (
     <div className="space-y-8">
-      <DataTableShell>
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
-          <h3 className="font-medium">Deliveries (accept DIT → Stock)</h3>
-        </div>
-        <DataTableScroll>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-10">
-                  <Checkbox
-                    checked={deliverySelection.isAllSelected || (deliverySelection.isPartiallySelected ? "indeterminate" : false)}
-                    onCheckedChange={(checked) => deliverySelection.toggleAll(checked === true)}
-                    aria-label="Select all deliveries"
-                  />
-                </TableHead>
-                <TableHead className="w-12">#</TableHead>
-                <GlobalTableHead {...deliverySort.sortProps("branch")}>Branch</GlobalTableHead>
-                <GlobalTableHead {...deliverySort.sortProps("reference")}>Reference</GlobalTableHead>
-                <GlobalTableHead {...deliverySort.sortProps("status")}>Status</GlobalTableHead>
-                <TableHead className="text-right">Action</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {deliverySort.sorted.map((d, index) => (
-                <TableRow key={d.id} data-state={deliverySelection.isRowSelected(d.id) ? "selected" : undefined}>
-                  <TableCell>
-                    <Checkbox
-                      checked={deliverySelection.isRowSelected(d.id)}
-                      onCheckedChange={(checked) => deliverySelection.toggleRow(d.id, checked === true)}
-                      aria-label={`Select delivery ${d.deliveryNo}`}
-                    />
-                  </TableCell>
-                  <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
-                  <TableCell>{d.branch.name}</TableCell>
-                  <TableCell>{d.deliveryNo}</TableCell>
-                  <TableCell>
-                    <StatusCodeBadge
-                      code={d.statusCode.code}
-                      name={d.statusCode.name}
-                      color={d.statusCode.color}
-                    />
-                  </TableCell>
-                  <TableCell className="space-x-2 text-right">
-                    {d.statusCode.code === "pending" ? (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={pending}
-                          onClick={() =>
-                            setPendingDelivery({
-                              id: d.id,
-                              deliveryNo: d.deliveryNo,
-                              branchName: d.branch.name,
-                              action: "reject",
-                            })
-                          }
-                        >
-                          Reject
-                        </Button>
-                        <Button
-                          size="sm"
-                          disabled={pending}
-                          className="bg-emerald-600 text-white hover:bg-emerald-700"
-                          onClick={() =>
-                            setPendingDelivery({
-                              id: d.id,
-                              deliveryNo: d.deliveryNo,
-                              branchName: d.branch.name,
-                              action: "accept",
-                            })
-                          }
-                        >
-                          Accept
-                        </Button>
-                      </>
-                    ) : null}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </DataTableScroll>
-      </DataTableShell>
+      <DataTable
+        data={deliverySort.sorted}
+        columns={deliveryColumns}
+        getRowId={(row) => row.id}
+        manualSorting
+        enableSorting
+        sorting={{
+          sortKey: deliverySort.sortKey,
+          sortDir: deliverySort.sortDir,
+          onSort: deliverySort.toggleSort,
+        }}
+        enableRowSelection
+        rowSelection={deliverySelection}
+        onRowSelectionChange={setDeliverySelection}
+        selectAllLabel="Select all deliveries"
+        getSelectionLabel={(row) => `Select delivery ${row.deliveryNo}`}
+        stickyHeader
+        toolbarLeading={<h3 className="font-medium">Deliveries (accept DIT → Stock)</h3>}
+        empty={deliverySort.sorted.length === 0}
+        emptyMessage="No deliveries."
+      />
+      <DataTable
+        data={transferSort.sorted}
+        columns={transferColumns}
+        getRowId={(row) => row.id}
+        manualSorting
+        enableSorting
+        sorting={{
+          sortKey: transferSort.sortKey,
+          sortDir: transferSort.sortDir,
+          onSort: transferSort.toggleSort,
+        }}
+        enableRowSelection
+        rowSelection={transferSelection}
+        onRowSelectionChange={setTransferSelection}
+        selectAllLabel="Select all transfers"
+        getSelectionLabel={(row) => `Select transfer ${row.id}`}
+        stickyHeader
+        toolbarLeading={<h3 className="font-medium">Branch transfers</h3>}
+        toolbarActions={<Button size="sm" onClick={() => setTransferOpen(true)}>New transfer</Button>}
+        empty={transferSort.sorted.length === 0}
+        emptyMessage="No transfers."
+      />
 
-      <DataTableShell>
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
-          <h3 className="font-medium">Branch transfers</h3>
-          <Button size="sm" onClick={() => setTransferOpen(true)}>New transfer</Button>
-        </div>
-        <DataTableScroll>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-10">
-                  <Checkbox
-                    checked={transferSelection.isAllSelected || (transferSelection.isPartiallySelected ? "indeterminate" : false)}
-                    onCheckedChange={(checked) => transferSelection.toggleAll(checked === true)}
-                    aria-label="Select all transfers"
-                  />
-                </TableHead>
-                <TableHead className="w-12">#</TableHead>
-                <GlobalTableHead {...transferSort.sortProps("from")}>From</GlobalTableHead>
-                <GlobalTableHead {...transferSort.sortProps("to")}>To</GlobalTableHead>
-                <GlobalTableHead {...transferSort.sortProps("status")}>Status</GlobalTableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {transferSort.sorted.map((t, index) => (
-                <TableRow key={t.id} data-state={transferSelection.isRowSelected(t.id) ? "selected" : undefined}>
-                  <TableCell>
-                    <Checkbox
-                      checked={transferSelection.isRowSelected(t.id)}
-                      onCheckedChange={(checked) => transferSelection.toggleRow(t.id, checked === true)}
-                      aria-label={`Select transfer ${t.id}`}
-                    />
-                  </TableCell>
-                  <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
-                  <TableCell>{t.fromBranch.name}</TableCell>
-                  <TableCell>{t.toBranch.name}</TableCell>
-                  <TableCell>
-                    <StatusCodeBadge
-                      code={t.statusCode.code}
-                      name={t.statusCode.name}
-                      color={t.statusCode.color}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </DataTableScroll>
-      </DataTableShell>
-
-      <DataTableShell>
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
-          <h3 className="font-medium">Pull-outs</h3>
-          <Button size="sm" onClick={() => setPulloutOpen(true)}>New pull-out</Button>
-        </div>
-        <DataTableScroll>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-10">
-                  <Checkbox
-                    checked={pulloutSelection.isAllSelected || (pulloutSelection.isPartiallySelected ? "indeterminate" : false)}
-                    onCheckedChange={(checked) => pulloutSelection.toggleAll(checked === true)}
-                    aria-label="Select all pull-outs"
-                  />
-                </TableHead>
-                <TableHead className="w-12">#</TableHead>
-                <GlobalTableHead {...pulloutSort.sortProps("branch")}>Branch</GlobalTableHead>
-                <GlobalTableHead {...pulloutSort.sortProps("status")}>Status</GlobalTableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {pulloutSort.sorted.map((p, index) => (
-                <TableRow key={p.id} data-state={pulloutSelection.isRowSelected(p.id) ? "selected" : undefined}>
-                  <TableCell>
-                    <Checkbox
-                      checked={pulloutSelection.isRowSelected(p.id)}
-                      onCheckedChange={(checked) => pulloutSelection.toggleRow(p.id, checked === true)}
-                      aria-label={`Select pull-out ${p.id}`}
-                    />
-                  </TableCell>
-                  <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
-                  <TableCell>{p.branch.name}</TableCell>
-                  <TableCell>
-                    <StatusCodeBadge
-                      code={p.statusCode.code}
-                      name={p.statusCode.name}
-                      color={p.statusCode.color}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </DataTableScroll>
-      </DataTableShell>
-
+      <DataTable
+        data={pulloutSort.sorted}
+        columns={pulloutColumns}
+        getRowId={(row) => row.id}
+        manualSorting
+        enableSorting
+        sorting={{
+          sortKey: pulloutSort.sortKey,
+          sortDir: pulloutSort.sortDir,
+          onSort: pulloutSort.toggleSort,
+        }}
+        enableRowSelection
+        rowSelection={pulloutSelection}
+        onRowSelectionChange={setPulloutSelection}
+        selectAllLabel="Select all pull-outs"
+        getSelectionLabel={(row) => `Select pull-out ${row.id}`}
+        stickyHeader
+        toolbarLeading={<h3 className="font-medium">Pull-outs</h3>}
+        toolbarActions={<Button size="sm" onClick={() => setPulloutOpen(true)}>New pull-out</Button>}
+        empty={pulloutSort.sorted.length === 0}
+        emptyMessage="No pull-outs."
+      />
       <TransferRequestDialog
         open={transferOpen}
         onOpenChange={setTransferOpen}
         onSubmit={submitTransfer}
         onCreated={() => router.refresh()}
+        currentUserName={currentUserName}
       />
       <PulloutRequestDialog
         open={pulloutOpen}
         onOpenChange={setPulloutOpen}
         onSubmit={submitPullout}
         onCreated={() => router.refresh()}
+        currentUserName={currentUserName}
       />
 
-      <AlertDialog
-        open={pendingDelivery !== null}
-        onOpenChange={(open) => {
-          if (!open && !pending) setPendingDelivery(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {pendingDelivery?.action === "reject" ? "Reject delivery?" : "Accept delivery?"}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {pendingDelivery?.action === "reject" ? (
-                <>
-                  Reject{" "}
-                  <span className="font-medium text-foreground">
-                    {pendingDelivery.deliveryNo}
-                  </span>{" "}
-                  at {pendingDelivery.branchName}. DIT inventory is unchanged.
-                </>
-              ) : (
-                <>
-                  Confirm acceptance of{" "}
-                  <span className="font-medium text-foreground">
-                    {pendingDelivery?.deliveryNo}
-                  </span>{" "}
-                  at {pendingDelivery?.branchName}. DIT inventory will move to Stock.
-                </>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={pending}
-              className={
-                pendingDelivery?.action === "reject"
-                  ? undefined
-                  : "bg-emerald-600 text-white hover:bg-emerald-700"
-              }
-              onClick={(event) => {
-                event.preventDefault();
-                confirmDeliveryAction();
-              }}
-            >
-              {pendingDelivery?.action === "reject" ? "Reject" : "Accept"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeliveryReceiveDialog
+        target={receiveTarget}
+        onClose={() => setReceiveTarget(null)}
+        onReceived={() => router.refresh()}
+        loadLines={listDeliveryReceiptLinesAction}
+        accept={acceptDeliveryAction}
+        canTransfer={canCreateDeliveryTransfer}
+      />
+
+      <DeliveryReturnRequestDialog
+        target={returnRequestTarget}
+        onClose={() => setReturnRequestTarget(null)}
+        onDone={() => router.refresh()}
+        submit={requestDeliveryReturnAction}
+      />
+
+      <DeliveryReturnReviewDialog
+        target={returnReviewTarget}
+        canApprove={canApproveDeliveryReturn}
+        canRetry={canApproveDeliveryReturn || canRequestDeliveryReturn}
+        actions={REVIEW_ACTIONS}
+        onClose={() => setReturnReviewTarget(null)}
+        onDone={() => router.refresh()}
+      />
     </div>
   );
 }

@@ -1,7 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
+import { OrderApprovalTimeline } from "@/app/(app)/orders/_components/order-approval-timeline";
+import { OrderWorksheet } from "@/app/(app)/orders/_components/order-worksheet";
+import { useOrderWorksheet } from "@/app/(app)/orders/_components/use-order-worksheet";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -31,39 +34,73 @@ import {
   getCurrentApproverLabel,
   isSupplyPlanningApprovalStep,
 } from "@/features/orders/constants/order-workflow";
+import type { ApprovalTimelineSource } from "@/features/orders/lib/order-approval-timeline";
+import { worksheetLinesOnOrder } from "@/features/orders/lib/order-create-details";
+import { worksheetOrderTotals } from "@/features/orders/lib/order-worksheet-filters";
+import { buildOrderReviewSnapshot, type OrderReviewSnapshot } from "@/features/orders/lib/order-review-snapshot";
+import {
+  draftsForOrderLines,
+  EMPTY_WORKSHEET_DRAFT,
+  projectWorksheetLines,
+  type WorksheetDraftInput,
+} from "@/features/orders/lib/order-worksheet-rows";
 import { getDeliveryDueDateWarning } from "@/features/orders/utils/delivery-schedule";
 import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
 
 export interface OrderWorkflowLine {
   detailId: string;
+  modelId: string;
   skuCode: string;
   quantity: number;
+  remarks?: string | null;
+  spRemarks?: string | null;
 }
 
 interface OrderWorkflowDialogProps {
+  orderId: string;
   orderNumber: string;
   orderType: BranchOrderType;
+  branchId: string;
   branchName: string;
+  updatedAt?: string | Date | null;
   deliverySchedule?: unknown;
   lines: OrderWorkflowLine[];
+  approvalLevels?: readonly ApprovalTimelineSource[];
   status: BranchOrderStatus;
   open: boolean;
   pending?: boolean;
   onOpenChange: (open: boolean) => void;
   onApprove: (input?: {
     comment?: string;
-    lineAdjustments?: { detailId: string; approvedQty: number }[];
+    lineAdjustments?: {
+      detailId: string;
+      approvedQty: number;
+      spRemarks?: string | null;
+    }[];
     deliveryDueDate?: string;
+    expectedUpdatedAt?: string;
+    reviewSnapshot?: OrderReviewSnapshot;
   }) => void;
   onReject: (comment?: string) => void;
 }
 
+function toIso(value: string | Date | null | undefined): string | undefined {
+  if (!value) return undefined;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return undefined;
+  return date.toISOString();
+}
+
 export function OrderWorkflowDialog({
+  orderId,
   orderNumber,
   orderType,
+  branchId,
   branchName,
+  updatedAt,
   deliverySchedule,
   lines,
+  approvalLevels = [],
   status,
   open,
   pending,
@@ -75,9 +112,25 @@ export function OrderWorkflowDialog({
   const [deliveryDueDate, setDeliveryDueDate] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<"approve" | "reject" | null>(null);
-  const [approvedQtyByLine, setApprovedQtyByLine] = useState<Record<string, number>>(() =>
-    Object.fromEntries(lines.map((l) => [l.detailId, l.quantity])),
+  const [drafts, setDrafts] = useState<Record<string, WorksheetDraftInput>>({});
+  const [draftsForOrderId, setDraftsForOrderId] = useState<string | null>(null);
+  const modelIds = useMemo(() => lines.map((line) => line.modelId), [lines]);
+  const worksheet = useOrderWorksheet({
+    enabled: open,
+    branchId,
+    orderType,
+    existingModelIds: modelIds,
+    excludeOrderId: orderId,
+  });
+  const orderModelIds = useMemo(() => new Set(lines.map((line) => line.modelId)), [lines]);
+  const orderSheetLines = useMemo(
+    () => worksheetLinesOnOrder(worksheet.payload?.lines ?? [], orderModelIds),
+    [orderModelIds, worksheet.payload],
   );
+  if (worksheet.payload && draftsForOrderId !== orderId) {
+    setDraftsForOrderId(orderId);
+    setDrafts(draftsForOrderLines(worksheet.payload.lines, lines));
+  }
 
   const isSpFinalStep = isSupplyPlanningApprovalStep(status, orderType);
   const deliveryDueWarning = isSpFinalStep
@@ -85,8 +138,6 @@ export function OrderWorkflowDialog({
     : null;
   const currentApprover = getCurrentApproverLabel(status, orderType);
   const afterApprove = getAfterApproveHint(status, orderType);
-  const totalLines = lines.length;
-  const totalQuantity = lines.reduce((sum, line) => sum + line.quantity, 0);
 
   function handleOpenChange(nextOpen: boolean) {
     if (!nextOpen && pending) return;
@@ -95,24 +146,52 @@ export function OrderWorkflowDialog({
       setDeliveryDueDate("");
       setActionError(null);
       setConfirmAction(null);
-      setApprovedQtyByLine(Object.fromEntries(lines.map((l) => [l.detailId, l.quantity])));
     }
     onOpenChange(nextOpen);
   }
 
   function submitApprove() {
     setActionError(null);
+    if (isSpFinalStep && (worksheet.loading || !worksheet.payload)) {
+      setActionError("Wait for the worksheet to load before approving.");
+      setConfirmAction(null);
+      return;
+    }
+    if (isSpFinalStep && worksheet.error) {
+      setActionError(worksheet.error);
+      setConfirmAction(null);
+      return;
+    }
+
+    const projected = worksheet.payload
+      ? projectWorksheetLines(worksheet.payload.lines, drafts, orderType, "readonly")
+      : [];
     const lineAdjustments = isSpFinalStep
-      ? lines.map((l) => ({
-          detailId: l.detailId,
-          approvedQty: approvedQtyByLine[l.detailId] ?? l.quantity,
-        }))
+      ? lines
+          .filter((line) => line.quantity >= 1)
+          .map((line) => {
+            const row = projected.find((item) => item.modelId === line.modelId);
+            return {
+              detailId: line.detailId,
+              approvedQty: row?.approvedQty ?? line.quantity,
+              spRemarks: row?.spRemarks.trim() ? row.spRemarks.trim() : null,
+            };
+          })
       : undefined;
+    const reviewSnapshot =
+      isSpFinalStep && worksheet.payload
+        ? buildOrderReviewSnapshot(
+            worksheet.payload.summary,
+            worksheetOrderTotals(projected, { includeApproved: true }),
+          )
+        : undefined;
 
     onApprove({
       comment: comment || undefined,
       lineAdjustments,
       deliveryDueDate: isSpFinalStep && deliveryDueDate ? deliveryDueDate : undefined,
+      expectedUpdatedAt: toIso(updatedAt),
+      reviewSnapshot,
     });
   }
 
@@ -143,139 +222,134 @@ export function OrderWorkflowDialog({
     setConfirmAction(null);
   }
 
+  function updateDraft(modelId: string, patch: Partial<WorksheetDraftInput>) {
+    setDrafts((prev) => ({
+      ...prev,
+      [modelId]: {
+        ...EMPTY_WORKSHEET_DRAFT,
+        ...prev[modelId],
+        ...patch,
+      },
+    }));
+  }
+
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="max-h-[90svh] overflow-hidden sm:max-w-4xl">
-        <DialogHeader>
-          <DialogTitle>Review order {orderNumber}</DialogTitle>
-          <DialogDescription>
-            {isSpFinalStep
-              ? "Supply Planning approves the request or cancels it. Approval opens a delivery and does not move stock."
-              : "Manual requests go to Supply Planning; Team Leaders may optionally edit before SP decides. Auto-replenish still needs Team Leader then Supply Planning."}
-          </DialogDescription>
-        </DialogHeader>
-        <div className="grid max-h-[calc(90svh-9.5rem)] min-h-0 gap-4 overflow-hidden md:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
-          <div className="min-h-0 space-y-4 overflow-y-auto pl-1 pr-2">
-            <dl className="space-y-2 text-sm">
-              <div className="flex justify-between gap-4">
+        <DialogContent className="flex max-h-[calc(100svh-1rem)] w-[calc(100%-1rem)] max-w-90rem flex-col gap-0 overflow-hidden p-0 sm:max-w-[90rem] sm:p-0">
+          <DialogHeader className="shrink-0 border-b px-4 py-4 sm:px-6">
+            <DialogTitle>Review order {orderNumber}</DialogTitle>
+            <DialogDescription className="max-w-3xl">
+              {isSpFinalStep
+                ? "Supply Planning approves the request or cancels it. Approval opens a delivery and does not move stock."
+                : "Manual requests go to Supply Planning. Team Leaders may optionally edit before Supply Planning decides. Auto-replenish still needs Team Leader, then Supply Planning."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto xl:flex-row xl:overflow-hidden">
+            <aside className="flex w-full shrink-0 flex-col gap-4 border-b px-4 py-4 sm:px-6 xl:w-80 xl:overflow-y-auto xl:border-b-0 xl:border-r xl:px-5">
+              <dl className="grid grid-cols-[4.75rem_minmax(0,1fr)] items-center gap-x-3 gap-y-2 text-sm">
                 <dt className="text-muted-foreground">Type</dt>
-                <dd>{BRANCH_ORDER_TYPE_LABELS[orderType] ?? orderType}</dd>
-              </div>
-              <div className="flex justify-between gap-4">
+                <dd className="min-w-0 break-words">
+                  {BRANCH_ORDER_TYPE_LABELS[orderType] ?? orderType}
+                </dd>
                 <dt className="text-muted-foreground">Branch</dt>
-                <dd>{branchName}</dd>
-              </div>
-              <div className="flex justify-between gap-4">
+                <dd className="min-w-0 break-words">{branchName}</dd>
                 <dt className="text-muted-foreground">Status</dt>
-                <dd>
+                <dd className="min-w-0">
                   <OrderStatusBadge status={status} />
                 </dd>
-              </div>
-              {currentApprover ? (
-                <div className="flex justify-between gap-4">
-                  <dt className="text-muted-foreground">Approver</dt>
-                  <dd>{currentApprover}</dd>
+                {currentApprover ? (
+                  <>
+                    <dt className="text-muted-foreground">Approver</dt>
+                    <dd className="min-w-0 break-words">{currentApprover}</dd>
+                  </>
+                ) : null}
+              </dl>
+              {afterApprove ? (
+                <p className="text-sm leading-relaxed text-muted-foreground">{afterApprove}</p>
+              ) : null}
+              {isSpFinalStep ? (
+                <div className="space-y-1.5">
+                  <Label htmlFor="delivery-due">Delivery due date (optional)</Label>
+                  <Input
+                    id="delivery-due"
+                    type="date"
+                    value={deliveryDueDate}
+                    onChange={(event) => setDeliveryDueDate(event.target.value)}
+                  />
+                  {deliveryDueWarning ? (
+                    <p className="text-xs text-amber-600 dark:text-amber-500">{deliveryDueWarning}</p>
+                  ) : null}
                 </div>
               ) : null}
-              {afterApprove ? (
-                <div className="rounded-md bg-muted/50 px-3 py-2 text-muted-foreground">{afterApprove}</div>
-              ) : null}
-            </dl>
-            {isSpFinalStep ? (
-              <div className="space-y-2">
-                <Label htmlFor="delivery-due">Delivery due date (optional)</Label>
-                <Input
-                  id="delivery-due"
-                  type="date"
-                  value={deliveryDueDate}
-                  onChange={(e) => setDeliveryDueDate(e.target.value)}
+              <div className="space-y-1.5">
+                <Label htmlFor="order-comment">Overall comment (optional)</Label>
+                <Textarea
+                  id="order-comment"
+                  value={comment}
+                  onChange={(event) => setComment(event.target.value)}
+                  rows={4}
+                  className="min-h-24"
                 />
-                {deliveryDueWarning ? (
-                  <p className="text-xs text-amber-600 dark:text-amber-500">{deliveryDueWarning}</p>
-                ) : null}
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  This comment stays on the order. Line remarks for Supply Planning are entered on
+                  requested rows.
+                </p>
+                {actionError ? <p className="text-xs text-destructive">{actionError}</p> : null}
               </div>
-            ) : null}
-            <div className="space-y-2">
-              <Label htmlFor="order-comment">
-                {isSpFinalStep ? "SPA remarks (optional)" : "Comment (optional)"}
-              </Label>
-              <Textarea
-                id="order-comment"
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                rows={3}
+              <div className="space-y-1.5">
+                <Label htmlFor="order-review-history">Approval history</Label>
+                <OrderApprovalTimeline
+                  id="order-review-history"
+                  orderType={orderType}
+                  levels={approvalLevels}
+                />
+              </div>
+            </aside>
+            <div className="flex min-h-[24rem] min-w-0 flex-1 flex-col px-4 py-3 sm:px-6 xl:min-h-0 xl:overflow-hidden">
+              <OrderWorksheet
+                lines={orderSheetLines}
+                brands={worksheet.payload?.brands ?? []}
+                drafts={drafts}
+                mode="review"
+                orderType={orderType}
+                loading={worksheet.loading}
+                error={worksheet.error}
+                summary={worksheet.payload?.summary ?? null}
+                summaryMode="current"
+                showApprovedQty={isSpFinalStep}
+                approvedQtyEditable={isSpFinalStep}
+                showSpRemarks={isSpFinalStep}
+                spRemarksEditable={isSpFinalStep}
+                onApprovedQtyChange={(modelId, quantity) =>
+                  updateDraft(modelId, {
+                    approvedQty: Number.isFinite(quantity) ? Math.floor(quantity) : null,
+                  })
+                }
+                onSpRemarksChange={(modelId, spRemarks) => updateDraft(modelId, { spRemarks })}
               />
-              {actionError ? <p className="text-xs text-destructive">{actionError}</p> : null}
             </div>
           </div>
-          <div className="flex min-h-0 flex-col space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <Label>Order lines</Label>
-              <span className="text-xs text-muted-foreground">Total {totalLines}</span>
-            </div>
-            <div className="min-h-0 max-h-105 flex-1 overflow-y-auto rounded-md border">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/40 text-xs text-muted-foreground">
-                  <tr>
-                    <th className="w-10 px-3 py-2 text-left font-medium">#</th>
-                    <th className="px-3 py-2 text-left font-medium">SKU</th>
-                    <th className="w-24 px-3 py-2 text-right font-medium">Qty</th>
-                    {isSpFinalStep ? (
-                      <th className="w-40 px-3 py-2 text-right font-medium">Approved qty</th>
-                    ) : null}
-                  </tr>
-                </thead>
-                <tbody>
-                  {lines.map((line, index) => (
-                    <tr key={line.detailId} className="border-t">
-                      <td className="px-3 py-2 text-muted-foreground">{index + 1}</td>
-                      <td className="px-3 py-2 font-mono">{line.skuCode}</td>
-                      <td className="px-3 py-2 text-right">×{line.quantity}</td>
-                      {isSpFinalStep ? (
-                        <td className="px-3 py-2">
-                          <Input
-                            type="number"
-                            min={1}
-                            max={line.quantity}
-                            className="ml-auto h-8 w-24 text-right"
-                            value={approvedQtyByLine[line.detailId] ?? line.quantity}
-                            onChange={(e) =>
-                              setApprovedQtyByLine((prev) => ({
-                                ...prev,
-                                [line.detailId]: Number(e.target.value),
-                              }))
-                            }
-                          />
-                        </td>
-                      ) : null}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-              Total lines: <span className="font-medium text-foreground">{totalLines}</span>
-              {" • "}
-              Total qty: <span className="font-medium text-foreground">{totalQuantity}</span>
-            </div>
-          </div>
-        </div>
-        <DialogFooter className="mt-1 gap-2 border-t pt-3 sm:justify-end">
-          <Button
-            variant="outline"
-            disabled={pending}
-            onClick={handleReject}
-          >
-            {isSpFinalStep ? "Cancel request" : "Reject"}
-          </Button>
-          <Button disabled={pending} onClick={handleApprove}>
-            {pending ? "Saving…" : isSpFinalStep ? "Approve" : status === "pending_ps" ? "Submit" : "Approve"}
-          </Button>
-        </DialogFooter>
+          <DialogFooter className="shrink-0 gap-2 border-t px-4 py-4 sm:justify-end sm:px-6">
+            <Button variant="outline" disabled={pending} onClick={handleReject}>
+              {isSpFinalStep ? "Cancel request" : "Reject"}
+            </Button>
+            <Button disabled={pending} onClick={handleApprove}>
+              {pending
+                ? "Saving…"
+                : isSpFinalStep
+                  ? "Approve"
+                  : status === "pending_ps"
+                    ? "Submit"
+                    : "Approve"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
-      <AlertDialog open={confirmAction !== null} onOpenChange={(nextOpen) => !nextOpen && setConfirmAction(null)}>
+      <AlertDialog
+        open={confirmAction !== null}
+        onOpenChange={(nextOpen) => !nextOpen && setConfirmAction(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -300,9 +374,17 @@ export function OrderWorkflowDialog({
             <AlertDialogAction
               disabled={pending}
               onClick={handleConfirmAction}
-              className={confirmAction === "reject" ? "bg-destructive text-white hover:bg-destructive/90" : undefined}
+              className={
+                confirmAction === "reject"
+                  ? "bg-destructive text-white hover:bg-destructive/90"
+                  : undefined
+              }
             >
-              {confirmAction === "approve" ? "Confirm approve" : isSpFinalStep ? "Confirm cancel" : "Confirm reject"}
+              {confirmAction === "approve"
+                ? "Confirm approve"
+                : isSpFinalStep
+                  ? "Confirm cancel"
+                  : "Confirm reject"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

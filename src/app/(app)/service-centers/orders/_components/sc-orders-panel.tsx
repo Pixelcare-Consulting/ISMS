@@ -1,5 +1,6 @@
 "use client";
 
+import { createColumnHelper } from "@tanstack/react-table";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -13,13 +14,13 @@ import {
   listScOrdersAction,
   rejectScOrderAction,
 } from "@/features/service-center-ops/actions/sc-orders.actions";
+import { useClientTablePagination } from "@/components/data-table";
 import {
-  TableEmptyRow,
-  TableIndexCell,
-  TableIndexHead,
-  useClientTablePagination,
-} from "@/components/data-table";
-import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
+  DataTable,
+  useClientTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,16 +34,12 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import {
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
 type OrderRow = Awaited<ReturnType<typeof listScOrdersAction>>["items"][number];
 type CenterOption = Awaited<ReturnType<typeof listScCentersForOpsAction>>[number];
+
+const orderColumn = createColumnHelper<DataTableFeatures, OrderRow>();
 
 export function ScOrdersPanel({
   items,
@@ -158,9 +155,104 @@ export function ScOrdersPanel({
     });
   }
 
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<OrderRow>[] = [
+      orderColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => indexOffset + row.index + 1,
+        meta: { className: "text-center tabular-nums text-muted-foreground" },
+      }),
+      orderColumn.accessor((row) => row.orderNumber, {
+        id: "order",
+        header: "Order",
+        enableSorting: true,
+        meta: { className: "font-medium" },
+      }),
+      orderColumn.accessor((row) => row.serviceCenter.name, {
+        id: "center",
+        header: "Center",
+        enableSorting: true,
+      }),
+      orderColumn.display({
+        id: "lines",
+        header: "Lines",
+        enableSorting: false,
+        cell: ({ row }) =>
+          row.original.details
+            .map((detail) => `${detail.model.skuCode} × ${detail.quantity}`)
+            .join(", "),
+      }),
+      orderColumn.display({
+        id: "status",
+        header: "Status",
+        enableSorting: true,
+        cell: ({ row }) => <Badge variant="secondary">{row.original.status}</Badge>,
+      }),
+      orderColumn.display({
+        id: "actions",
+        header: "Actions",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const order = row.original;
+          return (
+            <div className="flex flex-col gap-1">
+              {canApprove && ["pending_tl", "pending_sp"].includes(order.status) ? (
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={pending}
+                    onClick={() => run(() => approveScOrderAction(order.id), "Order approved")}
+                  >
+                    Approve
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={pending}
+                    onClick={() => run(() => rejectScOrderAction(order.id), "Order rejected")}
+                  >
+                    Reject
+                  </Button>
+                </>
+              ) : null}
+              {canCreateDelivery &&
+              order.status === "approved" &&
+              order._count.deliveries === 0 ? (
+                <Button
+                  size="sm"
+                  disabled={pending}
+                  onClick={() =>
+                    run(() => createScDeliveryFromOrderAction(order.id), "Delivery created")
+                  }
+                >
+                  Create delivery
+                </Button>
+              ) : null}
+            </div>
+          );
+        },
+      }),
+    ];
+    return cols;
+  }, [canApprove, canCreateDelivery, indexOffset, pending]);
+
   return (
     <div className="space-y-4">
-      <GlobalDataTable
+      <DataTable
+        data={pageItems}
+        columns={columns}
+        getRowId={(row) => row.id}
+        manualSorting
+        manualPagination
+        enableSorting
+        sorting={{
+          sortKey: sort.sortKey,
+          sortDir: sort.sortDir,
+          onSort: sort.toggleSort,
+        }}
         stickyHeader
         search={{
           value: query,
@@ -174,8 +266,10 @@ export function ScOrdersPanel({
             </Button>
           ) : null
         }
-        empty={items.length === 0}
-        emptyMessage="No service center orders yet."
+        empty={pageItems.length === 0}
+        emptyMessage={
+          items.length === 0 ? "No service center orders yet." : "No orders match your search."
+        }
         pageSize={{ value: pageSize, onChange: setPageSize }}
         pagination={{
           total,
@@ -184,84 +278,7 @@ export function ScOrdersPanel({
           itemLabel: "order",
           onPageChange: setPage,
         }}
-      >
-        <TableHeader>
-          <TableRow>
-            <TableIndexHead />
-            <GlobalTableHead {...sort.sortProps("order")}>Order</GlobalTableHead>
-            <GlobalTableHead {...sort.sortProps("center")}>Center</GlobalTableHead>
-            <GlobalTableHead>Lines</GlobalTableHead>
-            <GlobalTableHead {...sort.sortProps("status")}>Status</GlobalTableHead>
-            <GlobalTableHead className="w-48">Actions</GlobalTableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {pageItems.length === 0 ? (
-            <TableEmptyRow colSpan={6} message="No orders match your search." />
-          ) : (
-            pageItems.map((row, index) => (
-              <TableRow key={row.id}>
-                <TableIndexCell index={indexOffset + index + 1} />
-                <TableCell className="font-medium">{row.orderNumber}</TableCell>
-                <TableCell>{row.serviceCenter.name}</TableCell>
-                <TableCell>
-                  {row.details
-                    .map((d) => `${d.model.skuCode} × ${d.quantity}`)
-                    .join(", ")}
-                </TableCell>
-                <TableCell>
-                  <Badge variant="secondary">{row.status}</Badge>
-                </TableCell>
-                <TableCell>
-                  <div className="flex flex-col gap-1">
-                    {canApprove &&
-                    ["pending_tl", "pending_sp"].includes(row.status) ? (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={pending}
-                          onClick={() =>
-                            run(() => approveScOrderAction(row.id), "Order approved")
-                          }
-                        >
-                          Approve
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={pending}
-                          onClick={() =>
-                            run(() => rejectScOrderAction(row.id), "Order rejected")
-                          }
-                        >
-                          Reject
-                        </Button>
-                      </>
-                    ) : null}
-                    {canCreateDelivery &&
-                    row.status === "approved" &&
-                    row._count.deliveries === 0 ? (
-                      <Button
-                        size="sm"
-                        disabled={pending}
-                        onClick={() =>
-                          run(
-                            () => createScDeliveryFromOrderAction(row.id),
-                            "Delivery created",
-                          )
-                        }
-                      >
-                        Create delivery
-                      </Button>
-                    ) : null}
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))
-          )}
-        </TableBody>
-      </GlobalDataTable>
+      />
 
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
         <SheetContent className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-md">

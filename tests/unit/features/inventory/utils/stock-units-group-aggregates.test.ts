@@ -19,6 +19,7 @@ describe("stock units group aggregates", () => {
       defective: 2,
       reserved: 1,
       pendingInspection: 3,
+      notStockedIn: 0,
       statusCounts: {},
       total: 13,
     });
@@ -59,9 +60,26 @@ describe("stock units group aggregates", () => {
       defective: 2,
       reserved: 1,
       pendingInspection: 3,
+      notStockedIn: 0,
       statusCounts: {},
       total: 13,
     });
+  });
+
+  it("counts STK units that are not stocked in only toward the total", () => {
+    const counts = inventoryGroupAggregatesFromSqlRow({
+      stk: 4,
+      def: 1,
+      rsv: 0,
+      pending_inspection: 1,
+      stk_not_stocked_in: 3,
+      status_counts: { STK: 5, DEF: 1 },
+    });
+
+    expect(counts.available).toBe(4);
+    expect(counts.notStockedIn).toBe(3);
+    expect(counts.statusCounts.STK).toBe(5);
+    expect(counts.total).toBe(9);
   });
 
   it("keeps full status counts, including zeros, separate from net STK", () => {

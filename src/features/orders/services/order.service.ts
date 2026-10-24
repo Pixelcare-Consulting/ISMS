@@ -1,6 +1,8 @@
-import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
+import type { BranchOrderStatus, BranchOrderType, Prisma } from "@prisma/client";
 
+import { aorRepository } from "@/features/aors/repositories/aor.repository";
 import { auditService } from "@/features/audit/services/audit.service";
+import { hasOrdersForceCancelPermission } from "@/features/orders/constants/order-permissions";
 import {
   BRANCH_ORDER_STATUS_LABELS,
   BRANCH_ORDER_TYPE_LABELS,
@@ -12,22 +14,33 @@ import {
   declineOrderStatus,
   getApprovalLevelForStatus,
   getInitialOrderStatus,
+  getOrderApprovalChain,
   getRoleSlugForApproval,
   isOrderEditable,
   isSuperAdminOrderOverride,
   nextStatusAfterApprove,
+  SUPPLY_PLANNING_APPROVER_SLUGS,
 } from "@/features/orders/constants/order-workflow";
-import { orderRepository } from "@/features/orders/repositories/order.repository";
+import { notificationService } from "@/features/notifications/services/notification.service";
+import {
+  ORDER_CHANGED_MESSAGE,
+  orderRepository,
+} from "@/features/orders/repositories/order.repository";
+import { suggestionApplyService } from "@/features/orders/services/suggestion-apply.service";
+import { resolveOrderSapRouting } from "@/features/orders/services/order-sap-routing";
+import { validateOrderLines } from "@/features/orders/services/order-line-validation";
 import type {
   OrderListSort,
   OrderListSortDir,
 } from "@/features/orders/repositories/order.repository";
+import { SAP_REFERENCE_TYPES } from "@/features/sap/constants/sap-job-types";
 import { sapService } from "@/features/sap/services/sap.service";
 import { branchQuotaService } from "@/features/branch-quotas/services/branch-quota.service";
 import { planogramRepository } from "@/features/planogram/repositories/planogram.repository";
 import { masterDataRepository } from "@/features/master-data/repositories/master-data.repository";
 import { resolveActiveOrderPrice } from "@/features/master-data/utils/resolve-active-order-price";
 import { getUserBranchIds } from "@/lib/aor/scope";
+import { resolvePagination, toPaginatedResult } from "@/lib/shared/pagination";
 import { resolveDeliveryDueDate } from "@/features/orders/utils/delivery-schedule";
 import { assertOrderingAllowed } from "@/features/orders/utils/order-window";
 import { branchRepository } from "@/features/branches/repositories/branch.repository";
@@ -43,6 +56,80 @@ export interface OrderStatusKpi {
 export interface OrderKpis {
   totalOrders: number;
   statuses: OrderStatusKpi[];
+}
+
+export interface OrderApprovalLineAdjustment {
+  detailId: string;
+  approvedQty: number;
+  spRemarks?: string | null;
+}
+
+function canPersistSpRemarks(status: BranchOrderStatus, roleSlugs: string[]): boolean {
+  return (
+    status === "pending_sp" &&
+    SUPPLY_PLANNING_APPROVER_SLUGS.some((slug) => roleSlugs.includes(slug))
+  );
+}
+
+function isWholeApprovedQuantity(qty: number, requested: number): boolean {
+  return Number.isInteger(qty) && qty >= 1 && qty <= requested;
+}
+
+function parseExpectedUpdatedAt(value: Date | string | null | undefined): Date | undefined {
+  if (value == null || value === "") return undefined;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(ORDER_CHANGED_MESSAGE);
+  }
+  return date;
+}
+
+/**
+ * Every submitted line must belong to the order. Approved quantity is checked
+ * only on the final step. SP remarks are rejected outside pending SP.
+ */
+function indexApprovalLines(
+  details: { id: string; quantity: number }[],
+  adjustments: OrderApprovalLineAdjustment[],
+  opts: { validateApprovedQty: boolean; mayWriteSpRemarks: boolean },
+): Map<string, OrderApprovalLineAdjustment> {
+  const requestedById = new Map(details.map((detail) => [detail.id, detail.quantity]));
+  const byId = new Map<string, OrderApprovalLineAdjustment>();
+
+  for (const line of adjustments) {
+    const requested = requestedById.get(line.detailId);
+    if (requested == null) {
+      throw new Error("One or more lines do not belong to this order.");
+    }
+    if (line.spRemarks !== undefined && !opts.mayWriteSpRemarks) {
+      throw new Error(
+        "Only Supply Planning can save line remarks while the order is pending Supply Planning.",
+      );
+    }
+    if (opts.validateApprovedQty && !isWholeApprovedQuantity(line.approvedQty, requested)) {
+      throw new Error(
+        `Approved quantity must be a whole number from 1 through the requested quantity (${requested}).`,
+      );
+    }
+    byId.set(line.detailId, line);
+  }
+
+  return byId;
+}
+
+/**
+ * A Team Leader's AOR branches, narrowed to the viewer's scope (null = unrestricted).
+ * Unlike `getUserBranchIds`, a TL with no AOR yields no branches, never "all".
+ */
+async function teamLeaderBranchScope(
+  tenantId: string,
+  teamLeaderId: string,
+  viewerBranchIds: string[] | null,
+): Promise<string[]> {
+  const tlBranchIds = await aorRepository.listExistingBranchIds(tenantId, teamLeaderId);
+  if (viewerBranchIds === null) return [...new Set(tlBranchIds)];
+  const inScope = new Set(viewerBranchIds);
+  return [...new Set(tlBranchIds.filter((id) => inScope.has(id)))];
 }
 
 const ORDER_STATUS_ORDER = Object.keys(
@@ -72,6 +159,57 @@ function orderAuditMetadata(order: {
   };
 }
 
+const ORDER_LIST_HREF: Record<BranchOrderType, string> = {
+  manual: "/orders/manual",
+  special: "/orders/special",
+  auto_replenish: "/orders/auto-replenish",
+};
+
+type OrderBellOrder = {
+  id: string;
+  orderNumber: string;
+  orderType: BranchOrderType;
+  createdById: string;
+  branch: { name: string };
+};
+
+function orderBellTitle(order: Pick<OrderBellOrder, "orderNumber" | "branch">): string {
+  return `${order.orderNumber} · ${order.branch.name}`;
+}
+
+/** In-app bell for the next person. Skips the actor when they are the only recipient. */
+async function notifyOrderStep(input: {
+  tenantId: string;
+  actorUserId: string;
+  order: OrderBellOrder;
+  audience: "ROLE" | "USER";
+  roleSlug?: string | null;
+  body: string;
+}) {
+  if (input.audience === "USER") {
+    if (!input.order.createdById || input.order.createdById === input.actorUserId) {
+      return;
+    }
+  } else if (!input.roleSlug) {
+    return;
+  }
+
+  await notificationService.createNotification({
+    tenantId: input.tenantId,
+    actorUserId: input.actorUserId,
+    data: {
+      audience: input.audience,
+      roleSlug: input.audience === "ROLE" ? input.roleSlug : null,
+      userId: input.audience === "USER" ? input.order.createdById : null,
+      type: "order",
+      title: orderBellTitle(input.order),
+      body: input.body,
+      href: ORDER_LIST_HREF[input.order.orderType],
+      metadata: { orderId: input.order.id },
+    },
+  });
+}
+
 function pendingApprovalEmail(status: BranchOrderStatus, orderType: BranchOrderType) {
   if (orderType === "special" && status === "pending_sp") {
     return "Special order submitted — pending Supply Planning approval.";
@@ -99,51 +237,6 @@ async function priceOrderDetails<T extends { modelId: string; quantity: number }
   });
 }
 
-async function validateOrderLines(
-  tenantId: string,
-  branchId: string,
-  orderType: BranchOrderType,
-  details: { modelId: string; quantity: number }[],
-) {
-  if (details.length === 0) throw new Error("Order must include at least one line");
-
-  for (const line of details) {
-    if (line.quantity < 1) throw new Error("Quantity must be at least 1");
-
-    const model = await masterDataRepository.findModel(tenantId, line.modelId);
-    if (!model) throw new Error(`Model not found: ${line.modelId}`);
-
-    if (model.status === "hold" || model.status === "retired") {
-      throw new Error(`SKU ${model.skuCode} is ${model.status} and cannot be ordered`);
-    }
-
-    if (orderType === "special") continue;
-
-    const planogram = await planogramRepository.findPlanogramEntry(
-      tenantId,
-      branchId,
-      line.modelId,
-    );
-    if (!planogram) {
-      throw new Error(
-        `SKU ${model.skuCode} is not on the branch planogram. Use a special order for off-planogram SKUs.`,
-      );
-    }
-
-    const stockCount = await planogramRepository.countStockForModel(
-      tenantId,
-      branchId,
-      line.modelId,
-    );
-    const remainingCapacity = Math.max(0, planogram.maxQty - stockCount);
-    if (line.quantity > remainingCapacity) {
-      throw new Error(
-        `Quantity for ${model.skuCode} exceeds shelf capacity (${remainingCapacity} remaining of Shelf max ${planogram.maxQty})`,
-      );
-    }
-  }
-}
-
 export const orderService = {
   async list(
     tenantId: string,
@@ -154,11 +247,28 @@ export const orderService = {
       limit?: number;
       orderType?: BranchOrderType;
       statuses?: BranchOrderStatus[];
+      /** Only orders from branches in this Team Leader's AOR. */
+      teamLeaderId?: string;
     },
     sort?: { field?: OrderListSort; dir?: OrderListSortDir },
   ) {
-    const branchIds = hasFullAccess ? null : await getUserBranchIds(tenantId, userId);
+    const viewerBranchIds = hasFullAccess ? null : await getUserBranchIds(tenantId, userId);
+    const branchIds = pagination?.teamLeaderId
+      ? await teamLeaderBranchScope(tenantId, pagination.teamLeaderId, viewerBranchIds)
+      : viewerBranchIds;
+    // The repository reads an empty list as unrestricted, so "no branches" stops here.
+    if (branchIds !== null && branchIds.length === 0) {
+      const { limit, page } = resolvePagination(pagination);
+      return toPaginatedResult([], 0, page, limit);
+    }
     return orderRepository.listForTenant(tenantId, branchIds, pagination, sort);
+  },
+
+  /** Team Leaders the viewer can filter the order list by. */
+  async listTeamLeaderOptions(tenantId: string, userId: string, hasFullAccess: boolean) {
+    const viewerBranchIds = hasFullAccess ? null : await getUserBranchIds(tenantId, userId);
+    const users = await orderRepository.listTeamLeaderOptions(tenantId, viewerBranchIds);
+    return users.map((user) => ({ id: user.id, name: user.name.trim() || user.email }));
   },
 
   async getKpis(
@@ -247,6 +357,8 @@ export const orderService = {
       orderType: BranchOrderType;
       notes?: string;
       brandId?: string | null;
+      /** Mode of payment picked for this order; kept only when it differs from the dealer's. */
+      modeOfPaymentId?: string | null;
       details: {
         modelId: string;
         quantity: number;
@@ -314,10 +426,30 @@ export const orderService = {
       })),
     );
 
+    let modeOfPaymentOverride: string | null = null;
+    if (data.modeOfPaymentId) {
+      const choice = await orderRepository.findModeOfPaymentChoice(
+        tenantId,
+        data.branchId,
+        data.modeOfPaymentId,
+      );
+      if (!choice.modeOfPayment) throw new Error("That mode of payment is not available.");
+      if (!choice.modeOfPayment.kind) {
+        throw new Error(
+          `Mode of payment ${choice.modeOfPayment.name} has no type. Set it to Consignment or Outright in Settings → Master data → Modes of payment.`,
+        );
+      }
+      // Same as the dealer's: store nothing, so the order keeps following the dealer.
+      if (choice.modeOfPayment.id !== choice.dealerModeOfPaymentId) {
+        modeOfPaymentOverride = choice.modeOfPayment.id;
+      }
+    }
+
     const order = await orderRepository.create(tenantId, {
       branchId: data.branchId,
       orderType: data.orderType,
       brandId: data.brandId,
+      modeOfPaymentId: modeOfPaymentOverride,
       notes,
       details,
       createdById: userId,
@@ -385,10 +517,24 @@ export const orderService = {
     await validateOrderLines(tenantId, order.branchId, order.orderType, opts.details);
 
     const details = await priceOrderDetails(tenantId, opts.details);
-    const updated = await orderRepository.updateLines(tenantId, orderId, {
-      orderType: order.orderType,
-      details,
-    });
+    const updated = await orderRepository.updateLines(
+      tenantId,
+      orderId,
+      {
+        orderType: order.orderType,
+        details,
+      },
+      {
+        syncAllocations: (tx) =>
+          suggestionApplyService.allocationEditsForLineChange(tx, {
+            tenantId,
+            orderId,
+            branchId: order.branchId,
+            orderType: order.orderType,
+            nextLines: opts.details,
+          }),
+      },
+    );
 
     await auditService.log({
       tenantId,
@@ -442,8 +588,28 @@ export const orderService = {
         : null,
     });
 
+    await validateOrderLines(
+      tenantId,
+      order.branchId,
+      order.orderType,
+      order.details.map((detail) => ({ modelId: detail.modelId, quantity: detail.quantity })),
+    );
+
     const nextStatus = getInitialOrderStatus(order.orderType);
-    const updated = await orderRepository.submitDraft(tenantId, orderId, order.orderType);
+    const updated = await orderRepository.submitDraft(tenantId, orderId, order.orderType, {
+      beforeStatusChange: (tx) =>
+        suggestionApplyService.assertSubmittable(tx, {
+          tenantId,
+          branchId: order.branchId,
+          orderType: order.orderType,
+          details: order.details.map((detail) => ({
+            id: detail.id,
+            modelId: detail.modelId,
+            quantity: detail.quantity,
+            skuCode: detail.model.skuCode,
+          })),
+        }),
+    });
 
     await auditService.log({
       tenantId,
@@ -461,6 +627,22 @@ export const orderService = {
     await sendWorkflowEmail({
       subject: `Branch order ${order.orderNumber} submitted for review`,
       body: pendingApprovalEmail(nextStatus, order.orderType),
+    });
+
+    const firstApprover = getOrderApprovalChain(order.orderType)[0]?.roleSlug ?? null;
+    await notifyOrderStep({
+      tenantId,
+      actorUserId: userId,
+      order: {
+        id: updated.id,
+        orderNumber: updated.orderNumber,
+        orderType: updated.orderType,
+        createdById: updated.createdById,
+        branch: { name: updated.branch.name },
+      },
+      audience: "ROLE",
+      roleSlug: firstApprover,
+      body: "Submitted for review.",
     });
 
     return updated;
@@ -514,10 +696,13 @@ export const orderService = {
     tenantId: string,
     userId: string,
     orderIds: string[],
-    opts: { roleSlugs: string[] },
+    opts: { roleSlugs: string[]; permissions: string[] | undefined },
   ) {
     if (!isSuperAdminOrderOverride(opts.roleSlugs)) {
       throw new Error("Only Super Admin can bulk cancel or discard orders.");
+    }
+    if (!hasOrdersForceCancelPermission(opts.permissions)) {
+      throw new Error("An orders permission is required to cancel or discard orders.");
     }
 
     const uniqueIds = [...new Set(orderIds.filter(Boolean))];
@@ -614,6 +799,20 @@ export const orderService = {
         },
       });
 
+      await notifyOrderStep({
+        tenantId,
+        actorUserId: userId,
+        order: {
+          id: order.id,
+          orderNumber: order.orderNumber,
+          orderType: order.orderType,
+          createdById: order.createdById,
+          branch: { name: order.branch.name },
+        },
+        audience: "USER",
+        body: "Cancelled.",
+      });
+
       cancelled += 1;
     }
 
@@ -635,8 +834,10 @@ export const orderService = {
     roleSlugs: string[],
     input?: {
       comment?: string;
-      lineAdjustments?: { detailId: string; approvedQty: number }[];
+      lineAdjustments?: OrderApprovalLineAdjustment[];
       deliveryDueDate?: Date;
+      expectedUpdatedAt?: Date | string;
+      reviewSnapshot?: Prisma.InputJsonValue | null;
     },
   ) {
     const order = await orderRepository.findById(tenantId, orderId);
@@ -660,28 +861,14 @@ export const orderService = {
 
     const nextStatus = nextStatusAfterApprove(order.status, order.orderType);
     const isFinal = nextStatus === "approved";
-
-    const adjustmentMap = new Map(
-      (input?.lineAdjustments ?? []).map((l) => [l.detailId, l.approvedQty]),
-    );
-
-    if (isFinal) {
-      for (const line of order.details) {
-        const qty = adjustmentMap.get(line.id);
-        if (qty != null && (qty < 1 || qty > line.quantity)) {
-          throw new Error(
-            `Approved quantity must be between 1 and ordered quantity (${line.quantity})`,
-          );
-        }
-      }
-    }
-
-    await orderRepository.addApproval(orderId, {
-      level,
-      roleSlug,
-      approvedById: userId,
-      comment,
+    const adjustmentById = indexApprovalLines(order.details, input?.lineAdjustments ?? [], {
+      validateApprovedQty: isFinal,
+      mayWriteSpRemarks: canPersistSpRemarks(order.status, roleSlugs),
     });
+    const expectedUpdatedAt = parseExpectedUpdatedAt(input?.expectedUpdatedAt);
+    if (expectedUpdatedAt && order.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+      throw new Error(ORDER_CHANGED_MESSAGE);
+    }
 
     const deliveryResolution =
       isFinal && input?.deliveryDueDate
@@ -692,10 +879,31 @@ export const orderService = {
         : { dueDate: null as Date | null, rescheduled: false, rescheduledFrom: undefined as string | undefined };
 
     if (isFinal) {
-      const lineApprovedQty = order.details.map((line) => ({
-        detailId: line.id,
-        approvedQty: adjustmentMap.get(line.id) ?? line.quantity,
-      }));
+      // Decide ITR or SO and block before anything is written, so the order stays at its step.
+      const routingContext = await orderRepository.findSapRoutingContext(
+        tenantId,
+        order.branchId,
+        order.id,
+      );
+      if (!routingContext.branch) throw new Error("Branch not found");
+      const routing = resolveOrderSapRouting({
+        branch: routingContext.branch,
+        mainWarehouse: routingContext.mainWarehouse,
+        dealer: routingContext.branch.dealer,
+        orderModeOfPayment: routingContext.orderModeOfPayment,
+      });
+      if (!routing.ok) throw new Error(routing.error);
+
+      const lines = order.details.map((line) => {
+        const adjustment = adjustmentById.get(line.id);
+        return {
+          detailId: line.id,
+          approvedQty: adjustment?.approvedQty ?? line.quantity,
+          ...(adjustment && adjustment.spRemarks !== undefined
+            ? { spRemarks: adjustment.spRemarks }
+            : {}),
+        };
+      });
 
       const brandIds = order.details
         .map((d) => d.model.brandId)
@@ -708,11 +916,17 @@ export const orderService = {
           : null;
 
       await orderRepository.finalizeApproved(tenantId, orderId, {
+        fromStatus: order.status,
+        expectedUpdatedAt,
+        level,
         approvedById: userId,
+        comment,
         spaRemarks: comment,
         deliveryDueDate: deliveryResolution.dueDate ?? undefined,
         brandId,
-        lineApprovedQty,
+        sapDocType: routing.docType,
+        reviewSnapshot: input?.reviewSnapshot,
+        lines,
       });
 
       const refreshed = await orderRepository.findById(tenantId, orderId);
@@ -725,6 +939,7 @@ export const orderService = {
             orderNumber: refreshed.orderNumber,
             branchId: refreshed.branchId,
             branchSapCode: refreshed.branch.sapCode,
+            docType: refreshed.sapDocType,
             processedAt: refreshed.processedAt,
             lines: refreshed.details.map((d) => ({
               skuCode: d.model.skuCode,
@@ -732,7 +947,11 @@ export const orderService = {
               quantity: d.quantity,
             })),
           });
-          await sapService.processPendingJobs(tenantId, userId);
+          // Only this order's job: a backlog of other jobs must not delay or block it.
+          await sapService.processPendingJobs(tenantId, userId, 1, {
+            referenceType: SAP_REFERENCE_TYPES.BranchOrder,
+            referenceId: orderId,
+          });
         } catch (e) {
           await auditService.log({
             tenantId,
@@ -745,6 +964,12 @@ export const orderService = {
         }
       }
     } else {
+      await orderRepository.addApproval(orderId, {
+        level,
+        roleSlug,
+        approvedById: userId,
+        comment,
+      });
       await orderRepository.updateStatus(tenantId, orderId, nextStatus);
     }
 
@@ -780,6 +1005,32 @@ export const orderService = {
         ? "Order approved. A branch delivery has been queued for logistics fulfillment."
         : `Order status is now ${nextStatus}.`,
     });
+
+    const bellOrder = {
+      id: order.id,
+      orderNumber: order.orderNumber,
+      orderType: order.orderType,
+      createdById: order.createdById,
+      branch: { name: order.branch.name },
+    };
+    if (isFinal) {
+      await notifyOrderStep({
+        tenantId,
+        actorUserId: userId,
+        order: bellOrder,
+        audience: "USER",
+        body: "Approved.",
+      });
+    } else if (order.orderType === "auto_replenish" && order.status === "pending_tl") {
+      await notifyOrderStep({
+        tenantId,
+        actorUserId: userId,
+        order: bellOrder,
+        audience: "ROLE",
+        roleSlug: "sp",
+        body: "Approved by the team leader. Waiting for supply planning.",
+      });
+    }
   },
 
   async reject(
@@ -819,6 +1070,20 @@ export const orderService = {
         to: nextStatus,
         ...(comment ? { comment } : {}),
       },
+    });
+
+    await notifyOrderStep({
+      tenantId,
+      actorUserId: userId,
+      order: {
+        id: order.id,
+        orderNumber: order.orderNumber,
+        orderType: order.orderType,
+        createdById: order.createdById,
+        branch: { name: order.branch.name },
+      },
+      audience: "USER",
+      body: nextStatus === "cancelled" ? "Cancelled." : "Rejected.",
     });
   },
 

@@ -3,13 +3,25 @@ import { resolvePagination, toPaginatedResult } from "@/lib/shared/pagination";
 import {
   getInitialOrderStatus,
   getOrderApprovalChain,
+  TEAM_LEADER_ROLE_SLUG,
 } from "@/features/orders/constants/order-workflow";
 import { nextSalesOrderNumber } from "@/features/orders/utils/next-sales-order-number";
-import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
-import type { Prisma } from "@prisma/client";
+import type { BranchOrderStatus, BranchOrderType, Prisma, SapOrderDocType } from "@prisma/client";
+
+/** Shown when approval is attempted against a row that changed after it was opened. */
+export const ORDER_CHANGED_MESSAGE = "This order changed. Refresh and review again.";
 
 const orderListInclude = {
-  branch: { select: { id: true, name: true, sapCode: true, deliverySchedule: true } },
+  branch: {
+    select: {
+      id: true,
+      name: true,
+      sapCode: true,
+      deliverySchedule: true,
+      dealer: { select: { modeOfPayment: { select: { name: true } } } },
+    },
+  },
+  modeOfPayment: { select: { name: true } },
   createdBy: { select: { id: true, name: true, email: true } },
   details: {
     include: {
@@ -86,6 +98,23 @@ function orderPrismaOrderBy(
 }
 
 export const orderRepository = {
+  /**
+   * Team Leaders with at least one AOR branch, for the order list filter. With a branch
+   * scope, only TLs covering at least one of those branches.
+   */
+  listTeamLeaderOptions(tenantId: string, branchIds: string[] | null) {
+    return prisma.user.findMany({
+      where: {
+        tenantId,
+        deletedAt: null,
+        userRoles: { some: { role: { slug: TEAM_LEADER_ROLE_SLUG, deletedAt: null } } },
+        aors: { some: { tenantId, branchId: branchIds ? { in: branchIds } : { not: null } } },
+      },
+      select: { id: true, name: true, email: true },
+      orderBy: [{ name: "asc" }, { email: "asc" }],
+    });
+  },
+
   async listForTenant(
     tenantId: string,
     branchIds: string[] | null,
@@ -167,6 +196,85 @@ export const orderRepository = {
     });
   },
 
+  /** History page load: same branch scope as the order list, priced like history rows. */
+  findScopedById(
+    tenantId: string,
+    id: string,
+    branchIds: string[] | null,
+    orderType: BranchOrderType,
+  ) {
+    return prisma.branchOrder.findFirst({
+      where: {
+        id,
+        tenantId,
+        orderType,
+        ...(branchIds === null ? {} : { branchId: { in: branchIds } }),
+      },
+      include: orderListInclude,
+    });
+  },
+
+  /** Branch, dealer mode of payment and main warehouse needed to pick ITR or SO. */
+  /** Active modes of payment that have a type, as named in master data. */
+  listModesOfPaymentForOrder(tenantId: string) {
+    return prisma.modeOfPayment.findMany({
+      where: { tenantId, recordStatus: "active", kind: { not: null } },
+      select: { id: true, name: true, kind: true },
+      orderBy: { name: "asc" },
+    });
+  },
+
+  /**
+   * The chosen mode of payment (active, with a type) and the branch dealer's own,
+   * so an order stores an override only when it differs from the dealer's.
+   */
+  async findModeOfPaymentChoice(tenantId: string, branchId: string, modeOfPaymentId: string) {
+    const [modeOfPayment, branch] = await Promise.all([
+      prisma.modeOfPayment.findFirst({
+        where: { id: modeOfPaymentId, tenantId, recordStatus: "active" },
+        select: { id: true, name: true, kind: true },
+      }),
+      prisma.branch.findFirst({
+        where: { id: branchId, tenantId },
+        select: { dealer: { select: { modeOfPaymentId: true } } },
+      }),
+    ]);
+    return { modeOfPayment, dealerModeOfPaymentId: branch?.dealer?.modeOfPaymentId ?? null };
+  },
+
+  /** Pass `orderId` to include that order's own mode of payment (its override of the dealer's). */
+  async findSapRoutingContext(tenantId: string, branchId: string, orderId?: string) {
+    const [branch, mainWarehouse, order] = await Promise.all([
+      prisma.branch.findFirst({
+        where: { id: branchId, tenantId },
+        select: {
+          name: true,
+          sapCode: true,
+          primaryWarehouse: { select: { id: true, code: true } },
+          dealer: {
+            select: {
+              name: true,
+              sapCode: true,
+              modeOfPayment: { select: { name: true, kind: true } },
+            },
+          },
+        },
+      }),
+      prisma.warehouse.findFirst({
+        where: { tenantId, isMain: true, deletedAt: null },
+        select: { id: true, code: true },
+        orderBy: { createdAt: "asc" },
+      }),
+      orderId
+        ? prisma.branchOrder.findFirst({
+            where: { id: orderId, tenantId },
+            select: { modeOfPayment: { select: { name: true, kind: true } } },
+          })
+        : Promise.resolve(null),
+    ]);
+    return { branch, mainWarehouse, orderModeOfPayment: order?.modeOfPayment ?? null };
+  },
+
   async create(
     tenantId: string,
     data: {
@@ -175,6 +283,8 @@ export const orderRepository = {
       createdById: string;
       notes?: string;
       brandId?: string | null;
+      /** Override of the dealer's mode of payment; null follows the dealer. */
+      modeOfPaymentId?: string | null;
       details: {
         modelId: string;
         quantity: number;
@@ -198,6 +308,7 @@ export const orderRepository = {
         createdById: data.createdById,
         notes: data.notes,
         brandId: data.brandId ?? null,
+        modeOfPaymentId: data.modeOfPaymentId ?? null,
         details: {
           create: data.details.map((line) => ({
             modelId: line.modelId,
@@ -221,7 +332,12 @@ export const orderRepository = {
     });
   },
 
-  /** Replace an order's lines and restart its approval chain from the top. */
+  /**
+   * Replace an order's lines and restart its approval chain from the top.
+   * Lines that stay on the same model keep their id so suggestion allocations survive.
+   * Existing lines update quantity and amount only, so requester remarks and SP remarks stay.
+   * `syncAllocations` runs inside the lock of this transaction and may reject the edit.
+   */
   async updateLines(
     tenantId: string,
     orderId: string,
@@ -229,12 +345,67 @@ export const orderRepository = {
       orderType: BranchOrderType;
       details: { modelId: string; quantity: number; amount?: number | null }[];
     },
+    hooks?: {
+      syncAllocations?: (tx: Prisma.TransactionClient) => Promise<Record<string, number>>;
+    },
   ) {
     const approvalChain = getOrderApprovalChain(data.orderType);
     const initialStatus = getInitialOrderStatus(data.orderType);
 
     return prisma.$transaction(async (tx) => {
-      await tx.branchOrderDetail.deleteMany({ where: { orderId } });
+      const allocationQtyByDetailId = hooks?.syncAllocations
+        ? await hooks.syncAllocations(tx)
+        : {};
+
+      const existing = await tx.branchOrderDetail.findMany({
+        where: { orderId },
+        select: { id: true, modelId: true },
+      });
+      const byModel = new Map<string, string>();
+      const removeIds = new Set<string>();
+      for (const detail of existing) {
+        if (byModel.has(detail.modelId)) {
+          removeIds.add(detail.id);
+          continue;
+        }
+        byModel.set(detail.modelId, detail.id);
+      }
+
+      const nextModelIds = new Set(data.details.map((line) => line.modelId));
+      for (const detail of existing) {
+        if (!nextModelIds.has(detail.modelId)) removeIds.add(detail.id);
+      }
+      if (removeIds.size > 0) {
+        await tx.branchOrderDetail.deleteMany({ where: { id: { in: [...removeIds] } } });
+      }
+
+      for (const line of data.details) {
+        const detailId = byModel.get(line.modelId);
+        if (detailId && !removeIds.has(detailId)) {
+          await tx.branchOrderDetail.update({
+            where: { id: detailId },
+            data: { quantity: line.quantity, amount: line.amount ?? null },
+          });
+          const nextAllocated = allocationQtyByDetailId[detailId];
+          if (nextAllocated != null) {
+            await tx.orderSuggestionAllocation.update({
+              where: { orderDetailId: detailId },
+              data: { allocatedQty: nextAllocated },
+            });
+          }
+          continue;
+        }
+
+        await tx.branchOrderDetail.create({
+          data: {
+            orderId,
+            modelId: line.modelId,
+            quantity: line.quantity,
+            amount: line.amount ?? null,
+          },
+        });
+      }
+
       await tx.branchOrderApprovalLevel.deleteMany({ where: { orderId } });
 
       return tx.branchOrder.update({
@@ -245,13 +416,6 @@ export const orderRepository = {
           processedAt: null,
           spaRemarks: null,
           deliveryDueDate: null,
-          details: {
-            create: data.details.map((line) => ({
-              modelId: line.modelId,
-              quantity: line.quantity,
-              amount: line.amount ?? null,
-            })),
-          },
           approvalLevels: {
             create: approvalChain.map((step) => ({
               level: step.level,
@@ -273,11 +437,17 @@ export const orderRepository = {
     tenantId: string,
     orderId: string,
     orderType: BranchOrderType,
+    hooks?: {
+      beforeStatusChange?: (tx: Prisma.TransactionClient) => Promise<void>;
+    },
   ) {
     const approvalChain = getOrderApprovalChain(orderType);
     const initialStatus = getInitialOrderStatus(orderType);
 
     return prisma.$transaction(async (tx) => {
+      if (hooks?.beforeStatusChange) {
+        await hooks.beforeStatusChange(tx);
+      }
       await tx.branchOrderApprovalLevel.deleteMany({ where: { orderId } });
 
       return tx.branchOrder.update({
@@ -395,37 +565,92 @@ export const orderRepository = {
     });
   },
 
+  /**
+   * Final approval in one transaction: level, quantities, SP remarks, snapshot,
+   * status, overall remarks, and delivery due date. SAP emission stays outside.
+   */
   async finalizeApproved(
     tenantId: string,
     orderId: string,
     data: {
+      fromStatus: BranchOrderStatus;
+      expectedUpdatedAt?: Date;
+      level: number;
       approvedById: string;
+      comment?: string;
       spaRemarks?: string;
       deliveryDueDate?: Date;
       brandId?: string | null;
-      lineApprovedQty: { detailId: string; approvedQty: number }[];
+      sapDocType?: SapOrderDocType;
+      reviewSnapshot?: Prisma.InputJsonValue | null;
+      lines: {
+        detailId: string;
+        approvedQty: number;
+        spRemarks?: string | null;
+      }[];
     },
   ) {
     const processedAt = new Date();
+    const reviewSnapshot = data.reviewSnapshot;
 
-    await prisma.$transaction([
-      ...data.lineApprovedQty.map((line) =>
-        prisma.branchOrderDetail.update({
-          where: { id: line.detailId },
-          data: { approvedQty: line.approvedQty },
-        }),
-      ),
-      prisma.branchOrder.update({
-        where: { id: orderId, tenantId },
+    await prisma.$transaction(async (tx) => {
+      const approved = await tx.branchOrder.updateMany({
+        where: {
+          id: orderId,
+          tenantId,
+          status: data.fromStatus,
+          ...(data.expectedUpdatedAt ? { updatedAt: data.expectedUpdatedAt } : {}),
+        },
         data: {
           status: "approved",
-          approvedById: data.approvedById,
           processedAt,
           spaRemarks: data.spaRemarks ?? null,
           deliveryDueDate: data.deliveryDueDate ?? null,
-          brandId: data.brandId ?? null,
+          ...(reviewSnapshot != null
+            ? {
+                reviewSnapshot,
+                reviewSnapshotAt: processedAt,
+              }
+            : {}),
         },
-      }),
-    ]);
+      });
+      if (approved.count !== 1) {
+        throw new Error(ORDER_CHANGED_MESSAGE);
+      }
+
+      await tx.branchOrder.update({
+        where: { id: orderId },
+        data: {
+          approvedById: data.approvedById,
+          brandId: data.brandId ?? null,
+          ...(data.sapDocType ? { sapDocType: data.sapDocType } : {}),
+        },
+      });
+
+      for (const line of data.lines) {
+        const lineData: Prisma.BranchOrderDetailUpdateManyMutationInput = {
+          approvedQty: line.approvedQty,
+        };
+        if (line.spRemarks !== undefined) {
+          lineData.spRemarks = line.spRemarks;
+        }
+        const updated = await tx.branchOrderDetail.updateMany({
+          where: { id: line.detailId, orderId },
+          data: lineData,
+        });
+        if (updated.count !== 1) {
+          throw new Error("One or more lines do not belong to this order.");
+        }
+      }
+
+      await tx.branchOrderApprovalLevel.update({
+        where: { orderId_level: { orderId, level: data.level } },
+        data: {
+          approvedAt: processedAt,
+          approvedById: data.approvedById,
+          comment: data.comment ?? null,
+        },
+      });
+    });
   },
 };

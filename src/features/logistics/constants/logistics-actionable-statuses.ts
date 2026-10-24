@@ -9,7 +9,7 @@ export function getDeliveryActionableStatusCodes(
   capabilities: LogisticsActionCapabilities,
 ): string[] {
   const codes: string[] = [];
-  if (capabilities.canManage) codes.push("approved");
+  if (capabilities.canDispatch) codes.push("approved");
   if (capabilities.canAcceptDelivery) {
     codes.push("pending", "partial");
   }

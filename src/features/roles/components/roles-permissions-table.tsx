@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition, type ReactNode } from "react";
+import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
 
 import { Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -24,25 +25,18 @@ import {
   usePermissionChangeDialog,
 } from "@/features/roles/components/permission-toggle";
 import type { RolesPermissionsMatrix } from "@/features/roles/types/role.types";
-import {
-  DataTableEmpty,
-  DataTableShell,
-} from "@/components/data-table/data-table-shell";
-import { useTableSelection } from "@/components/data-table/use-table-selection";
 import { DeleteConfirmDialog } from "@/components/data-table/delete-confirm-dialog";
-import { TableSearchToolbar, uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { uniqueSearchSuggestions } from "@/components/data-table/table-search-bar";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  DataTable,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
+import { Button } from "@/components/ui/button";
 import { matchesTableSearch } from "@/utils/match-table-search";
-import { cn } from "@/utils/cn";
+
+type RoleRow = RolesPermissionsMatrix["roles"][number];
+const roleColumn = createColumnHelper<DataTableFeatures, RoleRow>();
 
 interface RolesPermissionsTableProps {
   matrix: RolesPermissionsMatrix;
@@ -51,19 +45,14 @@ interface RolesPermissionsTableProps {
   toolbarActions?: ReactNode;
 }
 
-const stickyHeadCheckboxClassName =
-  "sticky left-0 top-0 z-40 w-10 min-w-10 border-r border-border/60 bg-muted text-center";
-const stickyHeadIndexClassName =
-  "sticky left-10 top-0 z-40 w-12 min-w-12 border-r border-border/60 bg-muted text-center";
-const stickyHeadRoleClassName =
-  "sticky left-22 top-0 z-30 min-w-[220px] border-r border-border/60 bg-muted shadow-[4px_0_8px_-4px_rgba(0,0,0,0.08)]";
-const stickyHeadDefaultClassName = "sticky top-0 z-20 bg-muted";
-const stickyCellCheckboxClassName =
-  "sticky left-0 z-10 w-10 min-w-10 border-r border-border/60";
-const stickyCellIndexClassName =
-  "sticky left-10 z-10 w-12 min-w-12 border-r border-border/60";
-const stickyCellRoleClassName =
-  "sticky left-22 z-[9] min-w-[220px] border-r border-border/60 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.06)]";
+const stickyIndexClassName =
+  "sticky left-0 z-10 w-12 min-w-12 border-r border-border/60 bg-card text-center";
+const stickyIndexHeadClassName =
+  "sticky left-0 z-30 w-12 min-w-12 border-r border-border/60 bg-muted text-center";
+const stickyRoleClassName =
+  "sticky left-12 z-10 min-w-[220px] border-r border-border/60 bg-card shadow-[4px_0_8px_-4px_rgba(0,0,0,0.06)]";
+const stickyRoleHeadClassName =
+  "sticky left-12 z-30 min-w-[220px] border-r border-border/60 bg-muted shadow-[4px_0_8px_-4px_rgba(0,0,0,0.08)]";
 
 export function RolesPermissionsTable({
   matrix,
@@ -102,7 +91,7 @@ export function RolesPermissionsTable({
     [roles],
   );
 
-  const selection = useTableSelection(filteredRoles.map((role) => role.id));
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
 
   const {
     pendingChange,
@@ -139,215 +128,159 @@ export function RolesPermissionsTable({
     });
   }
 
-  if (roles.length === 0) {
-    return (
-      <DataTableShell>
-        <TableSearchToolbar
-          value={query}
-          onChange={setQuery}
-          placeholder="Search by role name, slug, or description…"
-          suggestions={suggestions}
-        >
-          {selection.selectedCount > 0 ? (
-            <Button variant="secondary" size="sm" onClick={selection.clearSelection}>
-              {selection.selectedCount} selected
-            </Button>
-          ) : null}
-          {addRoleAction}
-        </TableSearchToolbar>
-        <DataTableEmpty
-          message={
-            canManageSystemRoleAccess
-              ? "No roles configured yet."
-              : "No custom roles yet. Use Add role to create one, or assign built-in roles from Settings → Users."
-          }
-        />
-      </DataTableShell>
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<RoleRow>[] = [
+      roleColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => row.index + 1,
+        meta: {
+          className: `${stickyIndexClassName} tabular-nums text-muted-foreground`,
+          headClassName: stickyIndexHeadClassName,
+        },
+      }),
+      roleColumn.display({
+        id: "role",
+        header: "Role",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const role = row.original;
+          return (
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-medium">{role.name}</p>
+                <RoleUserCountBadge roleName={role.name} userCount={role.userCount} />
+              </div>
+              <p className="text-xs text-muted-foreground">{role.slug}</p>
+              {role.description ? (
+                <p className="mt-0.5 text-xs text-muted-foreground">{role.description}</p>
+              ) : null}
+              {role.isSystem ? (
+                <span className="mt-1 inline-block rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                  System
+                </span>
+              ) : null}
+            </div>
+          );
+        },
+        meta: {
+          className: stickyRoleClassName,
+          headClassName: stickyRoleHeadClassName,
+          wrap: true,
+        },
+      }),
+    ];
+
+    for (const permission of permissions) {
+      cols.push(
+        roleColumn.display({
+          id: permission.id,
+          header: permission.name,
+          enableSorting: false,
+          cell: ({ row }) => {
+            const role = row.original;
+            const permissionsLocked =
+              isProviderOnlyRole(role.slug) ||
+              (role.isSystem && !canManageSystemRoleAccess);
+            const assigned = new Set(role.permissionSlugs);
+            return (
+              <div className="flex justify-center">
+                <PermissionToggle
+                  roleId={role.id}
+                  roleName={role.name}
+                  permissionSlug={permission.slug}
+                  permissionName={permission.name}
+                  checked={assigned.has(permission.slug)}
+                  disabled={permissionsLocked}
+                  pending={isPending}
+                  onToggleRequest={openChangeDialog}
+                />
+              </div>
+            );
+          },
+          meta: { className: "min-w-30 text-center", headClassName: "min-w-30 text-center normal-case" },
+        }),
+      );
+    }
+
+    cols.push(
+      roleColumn.display({
+        id: "actions",
+        header: "Actions",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const role = row.original;
+          const metaLocked =
+            isProviderOnlyRole(role.slug) || (role.isSystem && !isPlatformOperator);
+          return (
+            <div className="flex justify-end gap-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                disabled={metaLocked}
+                title={metaLocked ? "This role cannot be renamed" : "Edit role"}
+                onClick={() => setEditingRole(role)}
+              >
+                <Pencil className="size-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8 text-destructive hover:text-destructive"
+                disabled={metaLocked || role.userCount > 0 || role.isSystem}
+                title={
+                  metaLocked || role.isSystem
+                    ? "System roles cannot be deleted"
+                    : role.userCount > 0
+                      ? "Remove users from this role first"
+                      : "Delete role"
+                }
+                onClick={() => setDeletingRole(role)}
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            </div>
+          );
+        },
+        meta: { align: "end", headClassName: "min-w-25 text-right normal-case" },
+      }),
     );
-  }
+
+    return cols;
+  }, [canManageSystemRoleAccess, isPending, isPlatformOperator, openChangeDialog, permissions]);
 
   return (
     <>
-      <DataTableShell>
-        <TableSearchToolbar
-          value={query}
-          onChange={setQuery}
-          placeholder="Search by role name, slug, or description…"
-          suggestions={suggestions}
-        >
-          {addRoleAction}
-        </TableSearchToolbar>
-        {filteredRoles.length === 0 ? (
-          <div className="py-12 text-center text-muted-foreground">
-            No roles match your search.
-          </div>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-muted/30 hover:bg-muted/30">
-                <TableHead
-                  className={cn(
-                    stickyHeadCheckboxClassName,
-                    "text-muted-foreground",
-                  )}
-                >
-                  <Checkbox
-                    checked={selection.isAllSelected || (selection.isPartiallySelected ? "indeterminate" : false)}
-                    onCheckedChange={(checked) => selection.toggleAll(checked === true)}
-                    aria-label="Select all roles"
-                  />
-                </TableHead>
-                <TableHead
-                  className={cn(
-                    stickyHeadIndexClassName,
-                    "text-muted-foreground",
-                  )}
-                >
-                  #
-                </TableHead>
-                <TableHead className={stickyHeadRoleClassName}>Role</TableHead>
-                {permissions.map((permission) => (
-                  <TableHead
-                    key={permission.id}
-                    className={cn(
-                      stickyHeadDefaultClassName,
-                      "min-w-30 text-center normal-case",
-                    )}
-                    title={permission.slug}
-                  >
-                    {permission.name}
-                  </TableHead>
-                ))}
-                <TableHead
-                  className={cn(
-                    stickyHeadDefaultClassName,
-                    "min-w-25 text-right normal-case",
-                  )}
-                >
-                  Actions
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredRoles.map((role, index) => {
-                const permissionsLocked =
-                  isProviderOnlyRole(role.slug) ||
-                  (role.isSystem && !canManageSystemRoleAccess);
-                const metaLocked =
-                  isProviderOnlyRole(role.slug) ||
-                  (role.isSystem && !isPlatformOperator);
-                const assigned = new Set(role.permissionSlugs);
-                const rowBg = index % 2 === 1 ? "bg-table-stripe" : "bg-card";
-
-                return (
-                  <TableRow
-                    key={role.id}
-                    data-state={selection.isRowSelected(role.id) ? "selected" : undefined}
-                    className={cn(index % 2 === 1 && "bg-table-stripe")}
-                  >
-                    <TableCell
-                      className={cn(
-                        stickyCellCheckboxClassName,
-                        rowBg,
-                      )}
-                    >
-                      <Checkbox
-                        checked={selection.isRowSelected(role.id)}
-                        onCheckedChange={(checked) => selection.toggleRow(role.id, checked === true)}
-                        aria-label={`Select role ${role.name}`}
-                      />
-                    </TableCell>
-                    <TableCell
-                      className={cn(
-                        stickyCellIndexClassName,
-                        "text-center tabular-nums text-muted-foreground",
-                        rowBg,
-                      )}
-                    >
-                      {index + 1}
-                    </TableCell>
-                    <TableCell className={cn(stickyCellRoleClassName, rowBg)}>
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-medium">{role.name}</p>
-                          <RoleUserCountBadge
-                            roleName={role.name}
-                            userCount={role.userCount}
-                          />
-                        </div>
-                        <p className="text-xs text-muted-foreground">{role.slug}</p>
-                        {role.description ? (
-                          <p className="mt-0.5 text-xs text-muted-foreground">
-                            {role.description}
-                          </p>
-                        ) : null}
-                        {role.isSystem ? (
-                          <span className="mt-1 inline-block rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                            System
-                          </span>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                    {permissions.map((permission) => (
-                      <TableCell key={permission.id} className={cn("text-center", rowBg)}>
-                        <div className="flex justify-center">
-                          <PermissionToggle
-                            roleId={role.id}
-                            roleName={role.name}
-                            permissionSlug={permission.slug}
-                            permissionName={permission.name}
-                            checked={assigned.has(permission.slug)}
-                            disabled={permissionsLocked}
-                            pending={isPending}
-                            onToggleRequest={openChangeDialog}
-                          />
-                        </div>
-                      </TableCell>
-                    ))}
-                    <TableCell className={cn("text-right", rowBg)}>
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="size-8"
-                          disabled={metaLocked}
-                          title={
-                            metaLocked
-                              ? "This role cannot be renamed"
-                              : "Edit role"
-                          }
-                          onClick={() => setEditingRole(role)}
-                        >
-                          <Pencil className="size-4" />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="size-8 text-destructive hover:text-destructive"
-                          disabled={metaLocked || role.userCount > 0 || role.isSystem}
-                          title={
-                            metaLocked || role.isSystem
-                              ? "System roles cannot be deleted"
-                              : role.userCount > 0
-                                ? "Remove users from this role first"
-                                : "Delete role"
-                          }
-                          onClick={() => setDeletingRole(role)}
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        )}
-      </DataTableShell>
-
+      <DataTable
+        data={filteredRoles}
+        columns={columns}
+        getRowId={(row) => row.id}
+        enableRowSelection
+        rowSelection={rowSelection}
+        onRowSelectionChange={setRowSelection}
+        selectAllLabel="Select all roles"
+        getSelectionLabel={(row) => `Select role ${row.name}`}
+        stickyHeader
+        search={{
+          value: query,
+          onChange: setQuery,
+          placeholder: "Search by role name, slug, or description…",
+          suggestions,
+        }}
+        toolbarActions={addRoleAction}
+        empty={filteredRoles.length === 0}
+        emptyMessage={
+          roles.length === 0
+            ? canManageSystemRoleAccess
+              ? "No roles configured yet."
+              : "No custom roles yet. Use Add role to create one, or assign built-in roles from Settings → Users."
+            : "No roles match your search."
+        }
+      />
       {pendingChange ? (
         <PermissionChangeDialog
           open

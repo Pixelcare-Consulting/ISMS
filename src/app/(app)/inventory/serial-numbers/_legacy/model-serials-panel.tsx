@@ -2,15 +2,20 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { createColumnHelper } from "@tanstack/react-table";
 import { Barcode } from "lucide-react";
 
 import type { LookupRecordStatus } from "@prisma/client";
 
-import { TablePagination } from "@/components/data-table/table-pagination";
 import {
   TableSearchBar,
   uniqueSearchSuggestions,
 } from "@/components/data-table/table-search-bar";
+import {
+  DataTable,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { MODEL_SERIAL_PAGE_SIZE } from "@/features/serial-numbers/constants/model-serial-page";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +42,8 @@ export interface ModelSerialPageState {
   onHandRecorded: boolean;
   loading?: boolean;
 }
+
+const panelColumn = createColumnHelper<DataTableFeatures, ModelSerialPanelRow>();
 
 interface ModelSerialsPanelProps {
   skuCode: string;
@@ -66,6 +73,110 @@ export function ModelSerialsPanel({
   const loaded = page !== "loading" && page !== undefined ? page : null;
   const count = loaded?.total ?? 0;
   const startIndex = loaded ? (loaded.page - 1) * MODEL_SERIAL_PAGE_SIZE : 0;
+
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<ModelSerialPanelRow>[] = [
+      panelColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => startIndex + row.index + 1,
+        meta: { className: "text-center tabular-nums text-muted-foreground" },
+      }),
+      panelColumn.display({
+        id: "serial",
+        header: "Serial no",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <Link
+            href={`/inventory/serial-numbers/${row.original.id}`}
+            className="font-mono underline-offset-4 hover:underline"
+          >
+            {row.original.serialNo}
+          </Link>
+        ),
+      }),
+      panelColumn.display({
+        id: "branchCode",
+        header: "Branch code",
+        enableSorting: false,
+        cell: ({ row }) => row.original.branchCode ?? "—",
+        meta: { className: "font-mono" },
+      }),
+      panelColumn.display({
+        id: "branchName",
+        header: "Branch name",
+        enableSorting: false,
+        cell: ({ row }) => row.original.branchName ?? "—",
+      }),
+      panelColumn.display({
+        id: "qty",
+        header: "Branch qty",
+        enableSorting: false,
+        cell: ({ row }) =>
+          row.original.branchQty == null ? "—" : row.original.branchQty.toLocaleString(),
+        meta: { align: "end", className: "tabular-nums" },
+      }),
+      panelColumn.display({
+        id: "status",
+        header: "ISMS status",
+        enableSorting: false,
+        cell: ({ row }) =>
+          row.original.statusCode ? (
+            <StatusCodeBadge
+              code={row.original.statusCode.code}
+              name={row.original.statusCode.name}
+              color={row.original.statusCode.color}
+            />
+          ) : (
+            "—"
+          ),
+      }),
+      panelColumn.display({
+        id: "record",
+        header: "Record",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <Badge variant={row.original.recordStatus === "active" ? "default" : "secondary"}>
+            {row.original.recordStatus === "active" ? "Active" : "Inactive"}
+          </Badge>
+        ),
+      }),
+    ];
+    if (canManage) {
+      cols.push(
+        panelColumn.display({
+          id: "actions",
+          header: "Actions",
+          enableSorting: false,
+          cell: ({ row }) => (
+            <div className="flex justify-end gap-2 whitespace-nowrap">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={pending || loaded?.loading}
+                onClick={() => onEdit(row.original)}
+              >
+                Edit
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={pending || loaded?.loading}
+                onClick={() => onToggleStatus(row.original)}
+              >
+                {row.original.recordStatus === "active" ? "Deactivate" : "Activate"}
+              </Button>
+            </div>
+          ),
+          meta: { align: "end" },
+        }),
+      );
+    }
+    return cols;
+  }, [canManage, loaded?.loading, onEdit, onToggleStatus, pending, startIndex]);
 
   const suggestions = useMemo(
     () =>
@@ -140,129 +251,26 @@ export function ModelSerialsPanel({
             : `No units of ${skuCode} are currently on hand.`}
         </p>
       ) : (
-        <div
-          className={cn(
-            "overflow-hidden rounded-md border border-border/70 bg-white",
-            loaded.loading && "opacity-60",
-          )}
-        >
-          <table className="w-full border-separate border-spacing-0 text-sm">
-            <colgroup>
-              <col className="w-12" />
-              <col />
-              <col className="w-28" />
-              <col />
-              <col className="w-24" />
-              <col className="w-36" />
-              <col className="w-28" />
-              {canManage ? <col className="w-48" /> : null}
-            </colgroup>
-            <thead>
-              <tr className="bg-muted/40 text-xs font-medium text-muted-foreground">
-                <th className="border-b border-border/70 px-3 py-2 text-center align-middle font-medium">
-                  #
-                </th>
-                <th className="border-b border-border/70 px-3 py-2 text-left align-middle font-medium">
-                  Serial no
-                </th>
-                <th className="border-b border-border/70 px-3 py-2 text-left align-middle font-medium">
-                  Branch code
-                </th>
-                <th className="border-b border-border/70 px-3 py-2 text-left align-middle font-medium">
-                  Branch name
-                </th>
-                <th className="border-b border-border/70 px-3 py-2 text-right align-middle font-medium">
-                  Branch qty
-                </th>
-                <th className="border-b border-border/70 px-3 py-2 text-left align-middle font-medium">
-                  ISMS status
-                </th>
-                <th className="border-b border-border/70 px-3 py-2 text-left align-middle font-medium">
-                  Record
-                </th>
-                {canManage ? (
-                  <th className="border-b border-border/70 px-3 py-2 text-right align-middle font-medium">
-                    Actions
-                  </th>
-                ) : null}
-              </tr>
-            </thead>
-            <tbody>
-              {loaded.items.map((serial, index) => (
-                <tr key={serial.id} className="bg-white last:[&>td]:border-b-0">
-                  <td className="border-b border-border/60 px-3 py-2.5 text-center align-middle tabular-nums text-muted-foreground">
-                    {startIndex + index + 1}
-                  </td>
-                  <td className="border-b border-border/60 px-3 py-2.5 text-left align-middle">
-                    <Link
-                      href={`/inventory/serial-numbers/${serial.id}`}
-                      className="font-mono text-foreground underline-offset-4 hover:underline"
-                    >
-                      {serial.serialNo}
-                    </Link>
-                  </td>
-                  <td className="border-b border-border/60 px-3 py-2.5 text-left align-middle font-mono text-foreground">
-                    {serial.branchCode ?? "—"}
-                  </td>
-                  <td className="border-b border-border/60 px-3 py-2.5 text-left align-middle text-foreground">
-                    {serial.branchName ?? "—"}
-                  </td>
-                  <td className="border-b border-border/60 px-3 py-2.5 text-right align-middle tabular-nums text-foreground">
-                    {serial.branchQty == null ? "—" : serial.branchQty.toLocaleString()}
-                  </td>
-                  <td className="border-b border-border/60 px-3 py-2.5 text-left align-middle">
-                    {serial.statusCode ? (
-                      <StatusCodeBadge
-                        code={serial.statusCode.code}
-                        name={serial.statusCode.name}
-                        color={serial.statusCode.color}
-                      />
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                  <td className="border-b border-border/60 px-3 py-2.5 text-left align-middle">
-                    <Badge variant={serial.recordStatus === "active" ? "default" : "secondary"}>
-                      {serial.recordStatus === "active" ? "Active" : "Inactive"}
-                    </Badge>
-                  </td>
-                  {canManage ? (
-                    <td className="border-b border-border/60 px-3 py-2.5 text-right align-middle">
-                      <div className="flex justify-end gap-2 whitespace-nowrap">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          disabled={pending || loaded.loading}
-                          onClick={() => onEdit(serial)}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          disabled={pending || loaded.loading}
-                          onClick={() => onToggleStatus(serial)}
-                        >
-                          {serial.recordStatus === "active" ? "Deactivate" : "Activate"}
-                        </Button>
-                      </div>
-                    </td>
-                  ) : null}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {count > MODEL_SERIAL_PAGE_SIZE ? (
-            <TablePagination
-              total={count}
-              page={loaded.page}
-              totalPages={loaded.totalPages}
-              label="serial"
-              onPageChange={onPageChange}
-            />
-          ) : null}
+        <div className={cn(loaded.loading && "opacity-60")}>
+          <DataTable
+            chrome="plain"
+            data={loaded.items}
+            columns={columns}
+            getRowId={(row) => row.id}
+            manualPagination
+            stickyHeader
+            pagination={
+              count > MODEL_SERIAL_PAGE_SIZE
+                ? {
+                    total: count,
+                    page: loaded.page,
+                    totalPages: loaded.totalPages,
+                    itemLabel: "serial",
+                    onPageChange,
+                  }
+                : undefined
+            }
+          />
         </div>
       )}
     </div>

@@ -1,18 +1,29 @@
 "use client";
 
+import { createColumnHelper } from "@tanstack/react-table";
 import { Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   FormEvent,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useTransition,
 } from "react";
 import { toast } from "sonner";
 
-import { TableIndexCell, TableIndexHead } from "@/components/data-table";
+import {
+  DEFAULT_TABLE_PAGE_SIZE,
+  parseTablePageSize,
+  type TablePageSize,
+} from "@/components/data-table/table-page-size";
+import {
+  DataTable,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,14 +37,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { LoadingModal } from "@/components/ui/loading-modal";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -82,6 +85,9 @@ interface MonthlySirRow {
     status: string;
   } | null;
 }
+
+const sirColumn = createColumnHelper<DataTableFeatures, MonthlySirRow>();
+const scanColumn = createColumnHelper<DataTableFeatures, ScannedSerial>();
 
 interface PaginatedRequests {
   items: MonthlySirRow[];
@@ -201,13 +207,16 @@ export function MonthlySirPanel({
     tab?: "all" | "approval";
     branch?: string;
     page?: number;
+    limit?: number;
   }) {
     const params = new URLSearchParams();
     const nextTab = next.tab ?? tab;
     const nextBranch = next.branch === undefined ? branchId : next.branch;
+    const nextLimit = next.limit ?? requests.limit;
     if (nextTab === "approval") params.set("tab", "approval");
     if (nextBranch) params.set("branch", nextBranch);
     if ((next.page ?? 1) > 1) params.set("page", String(next.page));
+    if (nextLimit !== DEFAULT_TABLE_PAGE_SIZE) params.set("limit", String(nextLimit));
     const query = params.toString();
     return query ? `/inventory/monthly-sir?${query}` : "/inventory/monthly-sir";
   }
@@ -417,6 +426,198 @@ export function MonthlySirPanel({
     });
   }
 
+  const pageSize = parseTablePageSize(requests.limit);
+  const indexOffset = (requests.page - 1) * requests.limit;
+
+  function handlePageSizeChange(limit: TablePageSize) {
+    router.push(href({ page: 1, limit }));
+  }
+
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<MonthlySirRow>[] = [
+      sirColumn.display({
+        id: "index",
+        header: "#",
+        cell: ({ row }) => indexOffset + row.index + 1,
+        meta: { className: "text-center tabular-nums text-muted-foreground" },
+      }),
+      sirColumn.display({
+        id: "branch",
+        header: "Branch",
+        cell: ({ row }) => (
+          <div>
+            <div className="font-medium">{row.original.branch.name}</div>
+            <div className="text-xs text-muted-foreground">{row.original.branch.sapCode}</div>
+          </div>
+        ),
+      }),
+      sirColumn.display({
+        id: "requestedBy",
+        header: "Requested By",
+        cell: ({ row }) => row.original.requestedBy.name || row.original.requestedBy.email,
+      }),
+      sirColumn.accessor((row) => row.purpose, {
+        id: "purpose",
+        header: "Purpose",
+        meta: { wrap: true, className: "max-w-65 whitespace-normal" },
+      }),
+      sirColumn.display({
+        id: "createdAt",
+        header: "Request Date",
+        cell: ({ row }) => new Date(row.original.createdAt).toLocaleDateString(),
+      }),
+      sirColumn.display({
+        id: "status",
+        header: "Status",
+        cell: ({ row }) => (
+          <Badge
+            variant="outline"
+            className={cn("font-normal", MONTHLY_SIR_STATUS_VARIANTS[row.original.status])}
+          >
+            {MONTHLY_SIR_STATUS_LABELS[row.original.status]}
+          </Badge>
+        ),
+      }),
+      sirColumn.display({
+        id: "actions",
+        header: "Actions",
+        enableHiding: false,
+        cell: ({ row }) => {
+          const request = row.original;
+          return (
+            <div className="flex flex-wrap gap-2">
+              {request.status === "pending" && canManage ? (
+                <Button size="sm" onClick={() => setReviewRow(request)}>
+                  Review
+                </Button>
+              ) : null}
+              {request.status === "approved" ? (
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={downloadKind === "template"}
+                    onClick={() => downloadTemplate(request)}
+                  >
+                    Download template
+                  </Button>
+                  {request.stockCountSession?.status === "in_progress" ? (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setScans([]);
+                          setScanInput("");
+                          setScanRow(request);
+                        }}
+                      >
+                        Scan serials
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={psUploadClosed}
+                        title={
+                          psUploadClosed
+                            ? allowanceForBranch?.message ?? undefined
+                            : undefined
+                        }
+                        onClick={() => setUploadRow(request)}
+                      >
+                        Upload P-COUNT
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={downloadKind === "variance"}
+                      onClick={() => generateVariance(request)}
+                    >
+                      Generate variance
+                    </Button>
+                  )}
+                  {request.stockCountSession ? (
+                    <Button asChild size="sm" variant="outline">
+                      <Link href={`/inventory/stock-count/${request.stockCountSession.id}`}>
+                        Open P-Count
+                      </Link>
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        toast.error(
+                          "No P-Count session is linked. Ask a Team Leader to re-approve this request.",
+                        )
+                      }
+                    >
+                      Open P-Count
+                    </Button>
+                  )}
+                </>
+              ) : null}
+            </div>
+          );
+        },
+      }),
+    ];
+    return cols;
+  }, [
+    allowanceForBranch?.message,
+    canManage,
+    downloadKind,
+    indexOffset,
+    psUploadClosed,
+  ]);
+
+  const scanColumns = useMemo(() => {
+    const cols: DataTableColumn<ScannedSerial>[] = [
+      scanColumn.accessor("serialNo", {
+        header: "Serial number",
+        enableSorting: false,
+        meta: { className: "font-mono text-sm" },
+      }),
+      scanColumn.display({
+        id: "result",
+        header: "Result",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <Badge variant={row.original.status === "invalid" ? "destructive" : "outline"}>
+            {row.original.status === "validating"
+              ? "Checking"
+              : row.original.status === "valid"
+                ? "OK"
+                : row.original.status === "invalid"
+                  ? "Not in catalog"
+                  : "Duplicate"}
+          </Badge>
+        ),
+      }),
+      scanColumn.display({
+        id: "remove",
+        header: () => <span className="sr-only">Remove</span>,
+        enableSorting: false,
+        cell: ({ row }) => (
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            aria-label={`Remove ${row.original.serialNo}`}
+            onClick={() =>
+              setScans((current) => current.filter((item) => item.id !== row.original.id))
+            }
+          >
+            <Trash2 className="size-4" />
+          </Button>
+        ),
+      }),
+    ];
+    return cols;
+  }, []);
+
   return (
     <div className="space-y-4">
       <p className="rounded-xl border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
@@ -480,156 +681,23 @@ export function MonthlySirPanel({
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border bg-card">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableIndexHead />
-              <TableHead>Branch</TableHead>
-              <TableHead>Requested By</TableHead>
-              <TableHead>Purpose</TableHead>
-              <TableHead>Request Date</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="min-w-85">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {requests.items.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
-                  No Monthly SIR requests found.
-                </TableCell>
-              </TableRow>
-            ) : (
-              requests.items.map((row, index) => (
-                <TableRow key={row.id}>
-                  <TableIndexCell
-                    index={(requests.page - 1) * requests.limit + index + 1}
-                  />
-                  <TableCell>
-                    <div className="font-medium">{row.branch.name}</div>
-                    <div className="text-xs text-muted-foreground">{row.branch.sapCode}</div>
-                  </TableCell>
-                  <TableCell>{row.requestedBy.name || row.requestedBy.email}</TableCell>
-                  <TableCell className="max-w-65 whitespace-normal">{row.purpose}</TableCell>
-                  <TableCell>{new Date(row.createdAt).toLocaleDateString()}</TableCell>
-                  <TableCell>
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "font-normal",
-                        MONTHLY_SIR_STATUS_VARIANTS[row.status],
-                      )}
-                    >
-                      {MONTHLY_SIR_STATUS_LABELS[row.status]}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap gap-2">
-                      {row.status === "pending" && canManage ? (
-                        <Button size="sm" onClick={() => setReviewRow(row)}>
-                          Review
-                        </Button>
-                      ) : null}
-                      {row.status === "approved" ? (
-                        <>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={downloadKind === "template"}
-                            onClick={() => downloadTemplate(row)}
-                          >
-                            Download template
-                          </Button>
-                          {row.stockCountSession?.status === "in_progress" ? (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  setScans([]);
-                                  setScanInput("");
-                                  setScanRow(row);
-                                }}
-                              >
-                                Scan serials
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                disabled={psUploadClosed}
-                                title={
-                                  psUploadClosed
-                                    ? allowanceForBranch?.message ?? undefined
-                                    : undefined
-                                }
-                                onClick={() => setUploadRow(row)}
-                              >
-                                Upload P-COUNT
-                              </Button>
-                            </>
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={downloadKind === "variance"}
-                              onClick={() => generateVariance(row)}
-                            >
-                              Generate variance
-                            </Button>
-                          )}
-                          {row.stockCountSession ? (
-                            <Button asChild size="sm" variant="outline">
-                              <Link
-                                href={`/inventory/stock-count/${row.stockCountSession.id}`}
-                              >
-                                Open P-Count
-                              </Link>
-                            </Button>
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() =>
-                                toast.error(
-                                  "No P-Count session is linked. Ask a Team Leader to re-approve this request.",
-                                )
-                              }
-                            >
-                              Open P-Count
-                            </Button>
-                          )}
-                        </>
-                      ) : null}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
-
-      {requests.totalPages > 1 ? (
-        <div className="flex items-center justify-end gap-2">
-          <Button asChild variant="outline" size="sm" disabled={requests.page <= 1}>
-            <Link href={href({ page: Math.max(1, requests.page - 1) })}>Previous</Link>
-          </Button>
-          <span className="text-sm text-muted-foreground">
-            Page {requests.page} of {requests.totalPages}
-          </span>
-          <Button
-            asChild
-            variant="outline"
-            size="sm"
-            disabled={requests.page >= requests.totalPages}
-          >
-            <Link href={href({ page: Math.min(requests.totalPages, requests.page + 1) })}>
-              Next
-            </Link>
-          </Button>
-        </div>
-      ) : null}
+      <DataTable
+        data={requests.items}
+        columns={columns}
+        getRowId={(row) => row.id}
+        manualPagination
+        stickyHeader
+        pageSize={{ value: pageSize, onChange: handlePageSizeChange }}
+        pagination={{
+          total: requests.total,
+          page: requests.page,
+          totalPages: requests.totalPages,
+          itemLabel: "request",
+          buildHref: (page) => href({ page, limit: pageSize }),
+        }}
+        empty={requests.items.length === 0}
+        emptyMessage="No Monthly SIR requests found."
+      />
 
       <Dialog open={requestOpen} onOpenChange={setRequestOpen}>
         <DialogContent>
@@ -842,62 +910,16 @@ export function MonthlySirPanel({
               <strong>{scans.filter((scan) => scan.status === "valid").length}</strong>
             </span>
           </div>
-          <div className="max-h-72 overflow-y-auto rounded-lg border">
-            {scans.length === 0 ? (
-              <p className="p-6 text-center text-sm text-muted-foreground">
-                No serials scanned yet.
-              </p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Serial number</TableHead>
-                    <TableHead>Result</TableHead>
-                    <TableHead className="w-14">
-                      <span className="sr-only">Remove</span>
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {scans.map((scan) => (
-                    <TableRow key={scan.id}>
-                      <TableCell className="font-mono text-sm">
-                        {scan.serialNo}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={scan.status === "invalid" ? "destructive" : "outline"}
-                        >
-                          {scan.status === "validating"
-                            ? "Checking"
-                            : scan.status === "valid"
-                              ? "OK"
-                              : scan.status === "invalid"
-                                ? "Not in catalog"
-                                : "Duplicate"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          aria-label={`Remove ${scan.serialNo}`}
-                          onClick={() =>
-                            setScans((current) =>
-                              current.filter((item) => item.id !== scan.id),
-                            )
-                          }
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </div>
+          <DataTable
+            chrome="plain"
+            className="max-h-72 overflow-auto"
+            data={scans}
+            columns={scanColumns}
+            getRowId={(row) => String(row.id)}
+            stickyHeader
+            empty={scans.length === 0}
+            emptyMessage="No serials scanned yet."
+          />
           <DialogFooter>
             <Button
               type="button"

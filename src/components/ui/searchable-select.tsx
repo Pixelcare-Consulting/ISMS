@@ -45,6 +45,18 @@ type SearchableSelectProps = {
   /** Extra classes for the options popover (e.g. raise z-index above a dialog). */
   popoverClassName?: string;
   onOpenChange?: (open: boolean) => void;
+  /**
+   * Server-search mode. When set, options are not filtered in the browser.
+   * The parent owns debounce, paging, and which rows to pass in.
+   */
+  onQueryChange?: (query: string) => void;
+  /**
+   * Trigger label when `value` is not in `options` (a choice from another page).
+   */
+  selectedOption?: SearchableOption | null;
+  hasMore?: boolean;
+  onLoadMore?: () => void;
+  loadingMore?: boolean;
 };
 
 export function SearchableSelect({
@@ -62,30 +74,45 @@ export function SearchableSelect({
   className,
   popoverClassName,
   onOpenChange,
+  onQueryChange,
+  selectedOption,
+  hasMore = false,
+  onLoadMore,
+  loadingMore = false,
 }: SearchableSelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const serverSearch = onQueryChange != null;
 
-  const selected = useMemo(
-    () => options.find((option) => option.id === value) ?? null,
-    [options, value],
-  );
+  const selected = useMemo(() => {
+    const fromList = options.find((option) => option.id === value) ?? null;
+    if (fromList) return fromList;
+    if (selectedOption?.id === value) return selectedOption;
+    return null;
+  }, [options, selectedOption, value]);
 
   // Lists here reach five figures (product models). Lowercase once per list
-  // rather than once per option per keystroke.
+  // rather than once per option per keystroke. Server search skips this.
   const haystack = useMemo(
     () =>
-      options.map((option) => ({
-        option,
-        text: `${option.label} ${option.description ?? ""}`.toLowerCase(),
-      })),
-    [options],
+      serverSearch
+        ? []
+        : options.map((option) => ({
+            option,
+            text: `${option.label} ${option.description ?? ""}`.toLowerCase(),
+          })),
+    [options, serverSearch],
   );
 
   // cmdk registers every rendered item in a store and re-sorts on each change,
   // so rendering all matches locks the browser for seconds on big lists. Render
-  // a capped window and let the search box do the narrowing.
+  // a capped window and let the search box do the narrowing. Server search
+  // already paged in the database, so those options are shown as given.
   const { visible, matchCount } = useMemo(() => {
+    if (serverSearch) {
+      return { visible: options, matchCount: options.length };
+    }
+
     const q = query.trim().toLowerCase();
     const out: SearchableOption[] = [];
     let count = 0;
@@ -104,14 +131,19 @@ export function SearchableSelect({
     }
 
     return { visible: out, matchCount: count };
-  }, [haystack, query, selected]);
+  }, [haystack, options, query, selected, serverSearch]);
 
   const hiddenCount = matchCount - visible.length;
+
+  function publishQuery(next: string) {
+    setQuery(next);
+    onQueryChange?.(next);
+  }
 
   function selectOption(next: string) {
     onChange(next);
     setOpen(false);
-    setQuery("");
+    publishQuery("");
   }
 
   return (
@@ -127,7 +159,7 @@ export function SearchableSelect({
         open={open}
         onOpenChange={(next) => {
           setOpen(next);
-          if (!next) setQuery("");
+          if (!next) publishQuery("");
           onOpenChange?.(next);
         }}
       >
@@ -173,7 +205,7 @@ export function SearchableSelect({
             <CommandInput
               placeholder={searchPlaceholder}
               value={query}
-              onValueChange={setQuery}
+              onValueChange={publishQuery}
             />
             {/* stopPropagation: Dialog RemoveScroll otherwise steals wheel events */}
             <CommandList onWheel={(event) => event.stopPropagation()}>
@@ -229,6 +261,21 @@ export function SearchableSelect({
                   {hiddenCount.toLocaleString()} more match
                   {hiddenCount === 1 ? "" : "es"} — keep typing to narrow.
                 </p>
+              ) : null}
+              {hasMore && onLoadMore ? (
+                <div className="border-t p-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="w-full"
+                    disabled={loadingMore}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => onLoadMore()}
+                  >
+                    {loadingMore ? "Loading…" : "Load more"}
+                  </Button>
+                </div>
               ) : null}
             </CommandList>
           </Command>

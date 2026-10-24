@@ -5,9 +5,10 @@ import { z } from "zod";
 
 import { parseStockInSerialNos } from "@/features/inventory/services/warehouse-stock-in.rules";
 import {
-  listModelsForStockIn,
-  stockInWarehouseLocation,
-} from "@/features/inventory/services/warehouse-stock-in.service";
+  listTaggableModels,
+  listTaggableSerials,
+  tagSerialsToLocation,
+} from "@/features/inventory/services/branch-stock-location.service";
 import { warehouseSapSyncService } from "@/features/warehouses/services/warehouse-sap-sync.service";
 import { warehouseService } from "@/features/warehouses/services/warehouse.service";
 import { warehouseRepository } from "@/features/warehouses/repositories/warehouse.repository";
@@ -111,10 +112,20 @@ export async function addWarehouseLocationAction(input: unknown) {
   }
 }
 
-export async function listModelsForWarehouseStockInAction() {
+/** Models with untagged shelf stock at the branches this warehouse supplies. */
+export async function listModelsForWarehouseStockInAction(warehouseId: string) {
   const session = await requirePermission("warehouses.manage");
-  const models = await listModelsForStockIn(session.user.tenantId);
+  if (!warehouseId) return { models: [] };
+  const models = await listTaggableModels(session.user.tenantId, warehouseId);
   return { models };
+}
+
+/** Serials of a model at those branches that are not stocked into a location yet. */
+export async function listSerialsForWarehouseStockInAction(warehouseId: string, modelId: string) {
+  const session = await requirePermission("warehouses.manage");
+  if (!warehouseId || !modelId) return { serialNos: [] as string[] };
+  const serialNos = await listTaggableSerials(session.user.tenantId, warehouseId, modelId);
+  return { serialNos };
 }
 
 export async function stockInWarehouseLocationAction(input: unknown) {
@@ -128,7 +139,7 @@ export async function stockInWarehouseLocationAction(input: unknown) {
   }
 
   try {
-    const result = await stockInWarehouseLocation({
+    const result = await tagSerialsToLocation({
       tenantId: session.user.tenantId,
       userId: session.user.id,
       warehouseId: parsed.data.warehouseId,
@@ -138,6 +149,7 @@ export async function stockInWarehouseLocationAction(input: unknown) {
     });
     revalidatePath("/settings/warehouses");
     revalidatePath("/inventory/warehouse-stock");
+    revalidatePath("/inventory");
     return { success: true as const, ...result };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to stock in" };

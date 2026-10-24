@@ -78,6 +78,19 @@ export function hasAnyOrderPermission(
   );
 }
 
+/**
+ * Super Admin force-cancel still needs an orders view or approve permission.
+ * The role slug alone is not enough.
+ */
+export function hasOrdersForceCancelPermission(
+  permissions: string[] | undefined,
+): boolean {
+  return (
+    hasAnyOrderPermission(permissions, "view") ||
+    hasAnyOrderPermission(permissions, "approve")
+  );
+}
+
 export function canAccessOrderType(
   permissions: string[] | undefined,
   orderType: BranchOrderType,

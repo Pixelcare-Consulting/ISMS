@@ -129,6 +129,7 @@ export const masterDataRepository = {
           },
           orderBy: { skuCode: "asc" },
         }),
+      { localOnly: true },
     );
   },
 

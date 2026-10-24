@@ -2,6 +2,9 @@ import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
 
 import { BRANCH_ORDER_STATUS_LABELS } from "@/features/orders/constants/order-status";
 
+/** Role slug of Team Leaders: the first approver on auto-replenish orders. */
+export const TEAM_LEADER_ROLE_SLUG = "tl";
+
 export interface OrderApprovalStep {
   level: number;
   roleSlug: string;

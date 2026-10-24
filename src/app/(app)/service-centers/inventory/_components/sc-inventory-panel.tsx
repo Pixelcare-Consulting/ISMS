@@ -1,5 +1,6 @@
 "use client";
 
+import { createColumnHelper } from "@tanstack/react-table";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -9,13 +10,13 @@ import {
   manualScStockInAction,
   searchSerialsForScStockInAction,
 } from "@/features/service-center-ops/actions/sc-inventory.actions";
+import { useClientTablePagination } from "@/components/data-table";
 import {
-  TableEmptyRow,
-  TableIndexCell,
-  TableIndexHead,
-  useClientTablePagination,
-} from "@/components/data-table";
-import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
+  DataTable,
+  useClientTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,12 +29,6 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import {
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
@@ -49,6 +44,8 @@ type CenterOption = {
 };
 
 type StatusOption = { id: string; code: string; name: string };
+
+const inventoryColumn = createColumnHelper<DataTableFeatures, InventoryRow>();
 
 export function ScInventoryPanel({
   items,
@@ -164,9 +161,79 @@ export function ScInventoryPanel({
     });
   }
 
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<InventoryRow>[] = [
+      inventoryColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => indexOffset + row.index + 1,
+        meta: { className: "text-center tabular-nums text-muted-foreground" },
+      }),
+      inventoryColumn.display({
+        id: "center",
+        header: "Center",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <div>
+            <div className="font-medium">{row.original.serviceCenter.name}</div>
+            <div className="text-xs text-muted-foreground">{row.original.serviceCenter.sapCode}</div>
+          </div>
+        ),
+      }),
+      inventoryColumn.display({
+        id: "location",
+        header: "Location",
+        enableSorting: false,
+        cell: ({ row }) =>
+          `${row.original.serviceCenterLocation.name} (${row.original.serviceCenterLocation.code})`,
+      }),
+      inventoryColumn.accessor((row) => row.serialNumber.serialNo, {
+        id: "serial",
+        header: "Serial",
+        enableSorting: true,
+        meta: { className: "font-mono" },
+      }),
+      inventoryColumn.display({
+        id: "model",
+        header: "Model",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <div>
+            <div className="font-medium">{row.original.serialNumber.model.skuCode}</div>
+            <div className="text-xs text-muted-foreground">{row.original.serialNumber.model.name}</div>
+          </div>
+        ),
+      }),
+      inventoryColumn.display({
+        id: "status",
+        header: "Status",
+        enableSorting: true,
+        cell: ({ row }) =>
+          row.original.statusCode ? (
+            <Badge variant="secondary">{row.original.statusCode.code}</Badge>
+          ) : (
+            "—"
+          ),
+      }),
+    ];
+    return cols;
+  }, [indexOffset]);
+
   return (
     <div className="space-y-4">
-      <GlobalDataTable
+      <DataTable
+        data={pageItems}
+        columns={columns}
+        getRowId={(row) => row.id}
+        manualSorting
+        manualPagination
+        enableSorting
+        sorting={{
+          sortKey: sort.sortKey,
+          sortDir: sort.sortDir,
+          onSort: sort.toggleSort,
+        }}
         stickyHeader
         search={{
           value: query,
@@ -180,8 +247,12 @@ export function ScInventoryPanel({
             </Button>
           ) : null
         }
-        empty={items.length === 0}
-        emptyMessage="No service center inventory yet."
+        empty={pageItems.length === 0}
+        emptyMessage={
+          items.length === 0
+            ? "No service center inventory yet."
+            : "No units match your search."
+        }
         pageSize={{ value: pageSize, onChange: setPageSize }}
         pagination={{
           total,
@@ -190,54 +261,7 @@ export function ScInventoryPanel({
           itemLabel: "unit",
           onPageChange: setPage,
         }}
-      >
-        <TableHeader>
-          <TableRow>
-            <TableIndexHead />
-            <GlobalTableHead {...sort.sortProps("center")}>Center</GlobalTableHead>
-            <GlobalTableHead>Location</GlobalTableHead>
-            <GlobalTableHead {...sort.sortProps("serial")}>Serial</GlobalTableHead>
-            <GlobalTableHead {...sort.sortProps("model")}>Model</GlobalTableHead>
-            <GlobalTableHead {...sort.sortProps("status")}>Status</GlobalTableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {pageItems.length === 0 ? (
-            <TableEmptyRow colSpan={6} message="No units match your search." />
-          ) : (
-            pageItems.map((row, index) => (
-              <TableRow key={row.id}>
-                <TableIndexCell index={indexOffset + index + 1} />
-                <TableCell>
-                  <div className="font-medium">{row.serviceCenter.name}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {row.serviceCenter.sapCode}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  {row.serviceCenterLocation.name} ({row.serviceCenterLocation.code})
-                </TableCell>
-                <TableCell className="font-mono text-sm">
-                  {row.serialNumber.serialNo}
-                </TableCell>
-                <TableCell>
-                  <div className="font-medium">{row.serialNumber.model.skuCode}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {row.serialNumber.model.name}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  {row.statusCode ? (
-                    <Badge variant="secondary">{row.statusCode.code}</Badge>
-                  ) : (
-                    "—"
-                  )}
-                </TableCell>
-              </TableRow>
-            ))
-          )}
-        </TableBody>
-      </GlobalDataTable>
+      />
 
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
         <SheetContent className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-md">

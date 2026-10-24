@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
+import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
 import { toast } from "sonner";
 
 import {
@@ -26,17 +27,19 @@ import {
 import type { StockCountSessionDetailDto } from "@/features/stock-audit/services/stock-count-session-detail";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { TableIndexCell, TableIndexHead } from "@/components/data-table";
-import { useTableSelection } from "@/components/data-table/use-table-selection";
-import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
+  DataTable,
+  useClientTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
+
+type CountLineRow = StockCountSessionDetailDto["lines"][number];
+type VarianceRow = StockCountSessionDetailDto["variances"][number];
+
+const lineColumn = createColumnHelper<DataTableFeatures, CountLineRow>();
+const varianceColumn = createColumnHelper<DataTableFeatures, VarianceRow>();
 
 interface StockCountDetailPanelProps {
   session: StockCountSessionDetailDto;
@@ -48,8 +51,8 @@ export function StockCountDetailPanel({ session }: StockCountDetailPanelProps) {
   const [scanInput, setScanInput] = useState("");
   const [investigationNotes, setInvestigationNotes] = useState<Record<string, string>>({});
   const [permissionDialogOpen, setPermissionDialogOpen] = useState(false);
-  const lineSelection = useTableSelection(session.lines.map((line) => line.id));
-  const varianceSelection = useTableSelection(session.variances.map((variance) => variance.id));
+  const [lineSelection, setLineSelection] = useState<RowSelectionState>({});
+  const [varianceSelection, setVarianceSelection] = useState<RowSelectionState>({});
 
   const lineSort = useClientTableSort(session.lines, {
     serial: (line) => line.serialNumber.serialNo,
@@ -140,6 +143,234 @@ export function StockCountDetailPanel({ session }: StockCountDetailPanelProps) {
     "variances_under_investigation",
     "pending_adjustment",
   ];
+
+  const lineColumns = useMemo(() => {
+    const cols: DataTableColumn<CountLineRow>[] = [
+      lineColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => row.index + 1,
+        meta: { className: "tabular-nums text-muted-foreground" },
+      }),
+      lineColumn.display({
+        id: "serial",
+        header: "Serial",
+        enableSorting: true,
+        cell: ({ row }) => row.original.serialNumber.serialNo,
+        meta: { className: "font-mono text-sm" },
+      }),
+      lineColumn.display({
+        id: "sku",
+        header: "SKU",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <>
+            <div>{row.original.model.skuCode}</div>
+            <div className="text-xs text-muted-foreground">{row.original.model.name}</div>
+          </>
+        ),
+      }),
+      lineColumn.display({
+        id: "expected",
+        header: "Expected",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <Badge variant={row.original.expectedInCount ? "outline" : "secondary"}>
+            {row.original.expectedInCount ? "Expected" : "Surplus"}
+          </Badge>
+        ),
+      }),
+      lineColumn.display({
+        id: "status",
+        header: "Status",
+        enableSorting: true,
+        cell: ({ row }) => <Badge variant="outline">{row.original.status}</Badge>,
+      }),
+      lineColumn.display({
+        id: "action",
+        header: "Action",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const line = row.original;
+          return (
+            <div className="flex flex-col items-end gap-1">
+              {session.status === "in_progress" && line.status === "pending" ? (
+                <Button
+                  size="sm"
+                  disabled={pending}
+                  onClick={() =>
+                    runAction(() => recordStockCountLineAction(session.id, line.id), "Unit recorded")
+                  }
+                >
+                  Mark counted
+                </Button>
+              ) : null}
+              {canRecountStatuses.includes(session.status) &&
+              (line.status === "counted" || line.status === "variance") ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={pending}
+                  onClick={() =>
+                    runAction(
+                      () => recountStockCountLineAction(session.id, line.id),
+                      "Line opened for recount",
+                    )
+                  }
+                >
+                  Recount
+                </Button>
+              ) : null}
+              {line.countedBy ? (
+                <span className="text-xs text-muted-foreground">
+                  {line.countedBy.name ?? line.countedBy.email}
+                </span>
+              ) : null}
+            </div>
+          );
+        },
+        meta: { align: "end" },
+      }),
+    ];
+    return cols;
+  }, [canRecountStatuses, pending, session.id, session.status]);
+
+  const varianceColumns = useMemo(() => {
+    const cols: DataTableColumn<VarianceRow>[] = [
+      varianceColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => row.index + 1,
+        meta: { className: "tabular-nums text-muted-foreground" },
+      }),
+      varianceColumn.display({
+        id: "serial",
+        header: "Serial / SKU",
+        enableSorting: true,
+        cell: ({ row }) => {
+          const variance = row.original;
+          return (
+            <>
+              {variance.line ? (
+                <>
+                  <div className="font-mono text-sm">{variance.line.serialNumber.serialNo}</div>
+                  <div className="text-xs text-muted-foreground">{variance.line.model.skuCode}</div>
+                </>
+              ) : (
+                "—"
+              )}
+              {variance.description ? (
+                <div className="mt-1 text-xs text-muted-foreground">{variance.description}</div>
+              ) : null}
+            </>
+          );
+        },
+        meta: { wrap: true },
+      }),
+      varianceColumn.display({
+        id: "type",
+        header: "Type",
+        enableSorting: true,
+        cell: ({ row }) => row.original.varianceType,
+      }),
+      varianceColumn.display({
+        id: "status",
+        header: "Status",
+        enableSorting: true,
+        cell: ({ row }) => (
+          <Badge variant="outline">{STOCK_VARIANCE_STATUS_LABELS[row.original.status]}</Badge>
+        ),
+      }),
+      varianceColumn.display({
+        id: "sapRef",
+        header: "SAP ref",
+        enableSorting: true,
+        cell: ({ row }) => row.original.sapDocRef ?? "—",
+        meta: { className: "font-mono text-xs" },
+      }),
+      varianceColumn.display({
+        id: "actions",
+        header: "Actions",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const variance = row.original;
+          return (
+            <div className="flex flex-col gap-2">
+              {["open", "investigating"].includes(variance.status) ? (
+                <>
+                  <Input
+                    placeholder="Investigation notes"
+                    value={investigationNotes[variance.id] ?? ""}
+                    onChange={(event) =>
+                      setInvestigationNotes((prev) => ({
+                        ...prev,
+                        [variance.id]: event.target.value,
+                      }))
+                    }
+                  />
+                  {variance.status === "open" ? (
+                    <Button
+                      size="sm"
+                      disabled={pending}
+                      onClick={() =>
+                        runAction(
+                          () =>
+                            investigateStockVarianceAction(variance.id, {
+                              notes: investigationNotes[variance.id] ?? "",
+                            }),
+                          "Investigation recorded",
+                        )
+                      }
+                    >
+                      Start investigation
+                    </Button>
+                  ) : null}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={pending}
+                    onClick={() =>
+                      runAction(
+                        () =>
+                          rejectStockVarianceAction(variance.id, {
+                            notes: investigationNotes[variance.id],
+                          }),
+                        "Variance rejected",
+                      )
+                    }
+                  >
+                    Reject
+                  </Button>
+                  {variance.line && canRecountStatuses.includes(session.status) ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={pending}
+                      onClick={() =>
+                        runAction(
+                          () => recountStockCountLineAction(session.id, variance.line!.id),
+                          "Line opened for recount",
+                        )
+                      }
+                    >
+                      Recount line
+                    </Button>
+                  ) : null}
+                </>
+              ) : null}
+              {variance.investigationNotes ? (
+                <p className="text-xs text-muted-foreground">{variance.investigationNotes}</p>
+              ) : null}
+            </div>
+          );
+        },
+        meta: { wrap: true },
+      }),
+    ];
+    return cols;
+  }, [canRecountStatuses, investigationNotes, pending, session.id, session.status]);
 
   return (
     <div className="space-y-6">
@@ -257,99 +488,26 @@ export function StockCountDetailPanel({ session }: StockCountDetailPanelProps) {
           candidates.
         </p>
       </div>
-      <GlobalDataTable stickyHeader scrollable>
-        <TableHeader>
-          <TableRow>
-            <GlobalTableHead className="w-10">
-              <Checkbox
-                checked={
-                  lineSelection.isAllSelected ||
-                  (lineSelection.isPartiallySelected ? "indeterminate" : false)
-                }
-                onCheckedChange={(checked) => lineSelection.toggleAll(checked === true)}
-                aria-label="Select all count lines"
-              />
-            </GlobalTableHead>
-            <TableIndexHead />
-            <GlobalTableHead {...lineSort.sortProps("serial")}>Serial</GlobalTableHead>
-            <GlobalTableHead {...lineSort.sortProps("sku")}>SKU</GlobalTableHead>
-            <GlobalTableHead {...lineSort.sortProps("expected")}>Expected</GlobalTableHead>
-            <GlobalTableHead {...lineSort.sortProps("status")}>Status</GlobalTableHead>
-            <GlobalTableHead className="text-right">Action</GlobalTableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {lineSort.sorted.map((line, index) => (
-            <TableRow
-              key={line.id}
-              data-state={lineSelection.isRowSelected(line.id) ? "selected" : undefined}
-            >
-              <TableCell>
-                <Checkbox
-                  checked={lineSelection.isRowSelected(line.id)}
-                  onCheckedChange={(checked) =>
-                    lineSelection.toggleRow(line.id, checked === true)
-                  }
-                  aria-label={`Select line ${line.serialNumber.serialNo}`}
-                />
-              </TableCell>
-              <TableIndexCell index={index + 1} />
-              <TableCell className="font-mono text-sm">{line.serialNumber.serialNo}</TableCell>
-              <TableCell>
-                <div>{line.model.skuCode}</div>
-                <div className="text-muted-foreground text-xs">{line.model.name}</div>
-              </TableCell>
-              <TableCell>
-                <Badge variant={line.expectedInCount ? "outline" : "secondary"}>
-                  {line.expectedInCount ? "Expected" : "Surplus"}
-                </Badge>
-              </TableCell>
-              <TableCell>
-                <Badge variant="outline">{line.status}</Badge>
-              </TableCell>
-              <TableCell className="text-right">
-                <div className="flex flex-col items-end gap-1">
-                  {session.status === "in_progress" && line.status === "pending" && (
-                    <Button
-                      size="sm"
-                      disabled={pending}
-                      onClick={() =>
-                        runAction(
-                          () => recordStockCountLineAction(session.id, line.id),
-                          "Unit recorded",
-                        )
-                      }
-                    >
-                      Mark counted
-                    </Button>
-                  )}
-                  {canRecountStatuses.includes(session.status) &&
-                    (line.status === "counted" || line.status === "variance") && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        disabled={pending}
-                        onClick={() =>
-                          runAction(
-                            () => recountStockCountLineAction(session.id, line.id),
-                            "Line opened for recount",
-                          )
-                        }
-                      >
-                        Recount
-                      </Button>
-                    )}
-                  {line.countedBy && (
-                    <span className="text-muted-foreground text-xs">
-                      {line.countedBy.name ?? line.countedBy.email}
-                    </span>
-                  )}
-                </div>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </GlobalDataTable>
+      <DataTable
+        data={lineSort.sorted}
+        columns={lineColumns}
+        getRowId={(row) => row.id}
+        manualSorting
+        enableSorting
+        sorting={{
+          sortKey: lineSort.sortKey,
+          sortDir: lineSort.sortDir,
+          onSort: lineSort.toggleSort,
+        }}
+        enableRowSelection
+        rowSelection={lineSelection}
+        onRowSelectionChange={setLineSelection}
+        selectAllLabel="Select all count lines"
+        getSelectionLabel={(row) => `Select line ${row.serialNumber.serialNo}`}
+        stickyHeader
+        empty={lineSort.sorted.length === 0}
+        emptyMessage="No count lines."
+      />
 
       {session.variances.length > 0 && (
         <>
@@ -360,138 +518,26 @@ export function StockCountDetailPanel({ session }: StockCountDetailPanelProps) {
               and send an Inventory Posting to SAP when connected.
             </p>
           </div>
-          <GlobalDataTable stickyHeader scrollable>
-            <TableHeader>
-              <TableRow>
-                <GlobalTableHead className="w-10">
-                  <Checkbox
-                    checked={
-                      varianceSelection.isAllSelected ||
-                      (varianceSelection.isPartiallySelected ? "indeterminate" : false)
-                    }
-                    onCheckedChange={(checked) =>
-                      varianceSelection.toggleAll(checked === true)
-                    }
-                    aria-label="Select all variances"
-                  />
-                </GlobalTableHead>
-                <TableIndexHead />
-                <GlobalTableHead {...varianceSort.sortProps("serial")}>
-                  Serial / SKU
-                </GlobalTableHead>
-                <GlobalTableHead {...varianceSort.sortProps("type")}>Type</GlobalTableHead>
-                <GlobalTableHead {...varianceSort.sortProps("status")}>Status</GlobalTableHead>
-                <GlobalTableHead {...varianceSort.sortProps("sapRef")}>SAP ref</GlobalTableHead>
-                <GlobalTableHead>Actions</GlobalTableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {varianceSort.sorted.map((v, index) => (
-                <TableRow
-                  key={v.id}
-                  data-state={varianceSelection.isRowSelected(v.id) ? "selected" : undefined}
-                >
-                  <TableCell>
-                    <Checkbox
-                      checked={varianceSelection.isRowSelected(v.id)}
-                      onCheckedChange={(checked) =>
-                        varianceSelection.toggleRow(v.id, checked === true)
-                      }
-                      aria-label={`Select variance ${v.id}`}
-                    />
-                  </TableCell>
-                  <TableIndexCell index={index + 1} />
-                  <TableCell>
-                    {v.line ? (
-                      <>
-                        <div className="font-mono text-sm">{v.line.serialNumber.serialNo}</div>
-                        <div className="text-muted-foreground text-xs">{v.line.model.skuCode}</div>
-                      </>
-                    ) : (
-                      "—"
-                    )}
-                    {v.description && (
-                      <div className="text-muted-foreground mt-1 text-xs">{v.description}</div>
-                    )}
-                  </TableCell>
-                  <TableCell>{v.varianceType}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{STOCK_VARIANCE_STATUS_LABELS[v.status]}</Badge>
-                  </TableCell>
-                  <TableCell className="font-mono text-xs">{v.sapDocRef ?? "—"}</TableCell>
-                  <TableCell>
-                    <div className="flex flex-col gap-2">
-                      {["open", "investigating"].includes(v.status) && (
-                        <>
-                          <Input
-                            placeholder="Investigation notes"
-                            value={investigationNotes[v.id] ?? ""}
-                            onChange={(e) =>
-                              setInvestigationNotes((prev) => ({
-                                ...prev,
-                                [v.id]: e.target.value,
-                              }))
-                            }
-                          />
-                          {v.status === "open" && (
-                            <Button
-                              size="sm"
-                              disabled={pending}
-                              onClick={() =>
-                                runAction(
-                                  () =>
-                                    investigateStockVarianceAction(v.id, {
-                                      notes: investigationNotes[v.id] ?? "",
-                                    }),
-                                  "Investigation recorded",
-                                )
-                              }
-                            >
-                              Start investigation
-                            </Button>
-                          )}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={pending}
-                            onClick={() =>
-                              runAction(
-                                () =>
-                                  rejectStockVarianceAction(v.id, {
-                                    notes: investigationNotes[v.id],
-                                  }),
-                                "Variance rejected",
-                              )
-                            }
-                          >
-                            Reject
-                          </Button>
-                          {v.line && canRecountStatuses.includes(session.status) && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              disabled={pending}
-                              onClick={() =>
-                                runAction(
-                                  () => recountStockCountLineAction(session.id, v.line!.id),
-                                  "Line opened for recount",
-                                )
-                              }
-                            >
-                              Recount line
-                            </Button>
-                          )}
-                        </>
-                      )}
-                      {v.investigationNotes && (
-                        <p className="text-muted-foreground text-xs">{v.investigationNotes}</p>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </GlobalDataTable>
+          <DataTable
+            data={varianceSort.sorted}
+            columns={varianceColumns}
+            getRowId={(row) => row.id}
+            manualSorting
+            enableSorting
+            sorting={{
+              sortKey: varianceSort.sortKey,
+              sortDir: varianceSort.sortDir,
+              onSort: varianceSort.toggleSort,
+            }}
+            enableRowSelection
+            rowSelection={varianceSelection}
+            onRowSelectionChange={setVarianceSelection}
+            selectAllLabel="Select all variances"
+            getSelectionLabel={(row) => `Select variance ${row.id}`}
+            stickyHeader
+            empty={varianceSort.sorted.length === 0}
+            emptyMessage="No variances."
+          />
         </>
       )}
       <StockCountPermissionDialog

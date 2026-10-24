@@ -35,7 +35,10 @@ jest.mock("@/lib/auth/permissions", () => ({
 import type { AutomationExecutorContext } from "@/features/pixelcare-ai/automations/executors";
 import { executeDailyBriefing } from "@/features/pixelcare-ai/automations/briefing";
 import { executePendingWorkReminder } from "@/features/pixelcare-ai/automations/reminders";
-import { executeReplenishmentReview } from "@/features/pixelcare-ai/automations/replenishment";
+import {
+  confirmReplenishmentProposal,
+  executeReplenishmentReview,
+} from "@/features/pixelcare-ai/automations/replenishment";
 import type { OwnerAccess } from "@/features/pixelcare-ai/automations/owner-access";
 import { computeSugQty } from "@/features/pixelcare-ai/lib/sug";
 import {
@@ -47,6 +50,7 @@ import {
 } from "@/features/pixelcare-ai/automations/proposal-lines";
 import { notificationRepository } from "@/features/notifications/repositories/notification.repository";
 import { orderService } from "@/features/orders/services/order.service";
+import { prisma } from "@/lib/database/client";
 
 const createOrder = orderService.create as jest.Mock;
 const createNotification = notificationRepository.create as jest.Mock;
@@ -151,6 +155,23 @@ describe("confirmOpenProposal", () => {
       ),
     ).rejects.toThrow(/Nothing was saved/);
     expect(createDraft).not.toHaveBeenCalled();
+  });
+});
+
+describe("confirmReplenishmentProposal", () => {
+  it("does not create an auto-replenish order", async () => {
+    await expect(
+      confirmReplenishmentProposal({
+        tenantId: "tenant-1",
+        actorUserId: "owner-1",
+        proposalId: "proposal-1",
+      }),
+    ).rejects.toThrow(
+      "Replenishment orders are reviewed in Suggested Orders on the Auto replenish screen.",
+    );
+    expect(createOrder).not.toHaveBeenCalled();
+    expect(prisma.aiReplenishmentProposal.updateMany).not.toHaveBeenCalled();
+    expect(prisma.branchOrder.findFirst).not.toHaveBeenCalled();
   });
 });
 

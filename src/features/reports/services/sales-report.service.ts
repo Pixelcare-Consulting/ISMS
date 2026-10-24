@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/database/client";
+import { SALES_REPORT_HEADERS } from "@/features/reports/constants/report-headers";
 import { buildCsvContent } from "@/lib/shared/csv";
 
 export interface SalesReportFilters {
@@ -7,27 +8,31 @@ export interface SalesReportFilters {
   branchIds?: string[];
 }
 
-const HEADERS = [
-  "DATE",
-  "TRANSACTION NO",
-  "BRANCH",
-  "STOCK SOURCE BRANCH",
-  "SERIAL NO",
-  "MODEL",
-  "PACKAGE",
-  "SALE AMOUNT",
-  "ATR STATUS",
-  "RETURN STATUS",
-  "CUSTOMER",
-  "SI/TRANS",
-];
-
 function formatDate(value: Date): string {
   return value.toISOString().slice(0, 10);
 }
 
+export interface SalesReportRow {
+  date: string;
+  transactionNo: string;
+  branch: string;
+  stockSourceBranch: string;
+  serialNo: string;
+  skuCode: string;
+  model: string;
+  /** "SKU · Name", the approved CSV's MODEL column. */
+  modelLabel: string;
+  packageType: string;
+  saleAmount: number;
+  atrStatus: string;
+  returnStatus: string;
+  customer: string;
+  siTrans: string;
+}
+
 export const salesReportService = {
-  async generateCsv(tenantId: string, filters: SalesReportFilters = {}) {
+  /** One row per sale line; shared by the CSV export and the Stimulsoft dataset. */
+  async listRows(tenantId: string, filters: SalesReportFilters = {}): Promise<SalesReportRow[]> {
     const dateFilter =
       filters.from || filters.to
         ? {
@@ -77,27 +82,42 @@ export const salesReportService = {
       orderBy: [{ sale: { createdAt: "desc" } }, { createdAt: "asc" }],
     });
 
-    const rows = details.map((d) => {
-      const saleDate = d.sale.transactionDate ?? d.sale.createdAt;
-      const modelLabel = d.model
-        ? `${d.model.skuCode} · ${d.model.name}`
-        : "";
-      return [
-        formatDate(saleDate),
-        d.sale.transactionNo,
-        d.sale.branch.name,
-        d.sale.stockSourceBranch?.name ?? d.sale.branch.name,
-        d.serialNumber?.serialNo ?? "",
-        modelLabel,
-        d.packageType?.name ?? "",
-        (d.saleAmount ?? d.amount ?? 0).toString(),
-        d.sale.atrStatus,
-        d.sale.returnRequest?.status ?? "",
-        d.sale.customerName ?? "",
-        d.sale.siTrans ?? "",
-      ];
-    });
+    return details.map((d) => ({
+      date: formatDate(d.sale.transactionDate ?? d.sale.createdAt),
+      transactionNo: d.sale.transactionNo,
+      branch: d.sale.branch.name,
+      stockSourceBranch: d.sale.stockSourceBranch?.name ?? d.sale.branch.name,
+      serialNo: d.serialNumber?.serialNo ?? "",
+      skuCode: d.model?.skuCode ?? "",
+      model: d.model?.name ?? "",
+      modelLabel: d.model ? `${d.model.skuCode} · ${d.model.name}` : "",
+      packageType: d.packageType?.name ?? "",
+      saleAmount: Number(d.saleAmount ?? d.amount ?? 0),
+      atrStatus: d.sale.atrStatus,
+      returnStatus: d.sale.returnRequest?.status ?? "",
+      customer: d.sale.customerName ?? "",
+      siTrans: d.sale.siTrans ?? "",
+    }));
+  },
 
-    return buildCsvContent(HEADERS, rows);
+  async generateCsv(tenantId: string, filters: SalesReportFilters = {}) {
+    const rows = await this.listRows(tenantId, filters);
+    return buildCsvContent(
+      [...SALES_REPORT_HEADERS],
+      rows.map((r) => [
+        r.date,
+        r.transactionNo,
+        r.branch,
+        r.stockSourceBranch,
+        r.serialNo,
+        r.modelLabel,
+        r.packageType,
+        r.saleAmount.toString(),
+        r.atrStatus,
+        r.returnStatus,
+        r.customer,
+        r.siTrans,
+      ]),
+    );
   },
 };

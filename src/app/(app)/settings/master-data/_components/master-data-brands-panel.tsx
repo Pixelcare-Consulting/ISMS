@@ -1,17 +1,20 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
+import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { createBrandAction } from "@/features/master-data/actions/master-data.actions";
-import { DataTableEmpty } from "@/components/data-table";
 import { useClientTablePagination } from "@/components/data-table/use-client-table-pagination";
-import { useTableSelection } from "@/components/data-table/use-table-selection";
-import { GlobalDataTable, GlobalTableHead, useClientTableSort } from "@/lib/data-table";
+import {
+  DataTable,
+  useClientTableSort,
+  type DataTableColumn,
+  type DataTableFeatures,
+} from "@/lib/data-table";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -22,15 +25,16 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import {
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+interface BrandRow {
+  id: string;
+  code: string | null;
+  name: string;
+}
+
+const brandColumn = createColumnHelper<DataTableFeatures, BrandRow>();
 
 interface MasterDataBrandsPanelProps {
-  brands: { id: string; code: string | null; name: string }[];
+  brands: BrandRow[];
 }
 
 export function MasterDataBrandsPanel({ brands }: MasterDataBrandsPanelProps) {
@@ -50,7 +54,8 @@ export function MasterDataBrandsPanel({ brands }: MasterDataBrandsPanelProps) {
   const [brandOpen, setBrandOpen] = useState(false);
   const [brandCode, setBrandCode] = useState("");
   const [brandName, setBrandName] = useState("");
-  const brandSelection = useTableSelection(brands.map((brand) => brand.id));
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const selectedCount = brandRows.filter((brand) => rowSelection[brand.id]).length;
   const brandSort = useClientTableSort(brandRows, {
     code: (b) => b.code,
     name: (b) => b.name,
@@ -95,87 +100,79 @@ export function MasterDataBrandsPanel({ brands }: MasterDataBrandsPanelProps) {
     });
   }
 
+  const columns = useMemo(() => {
+    const cols: DataTableColumn<BrandRow>[] = [
+      brandColumn.display({
+        id: "index",
+        header: "#",
+        enableSorting: false,
+        cell: ({ row }) => brandIndexOffset + row.index + 1,
+        meta: { className: "tabular-nums text-muted-foreground" },
+      }),
+      brandColumn.display({
+        id: "code",
+        header: "Code",
+        enableSorting: true,
+        cell: ({ row }) => row.original.code ?? "—",
+        meta: { className: "font-mono text-sm" },
+      }),
+      brandColumn.display({
+        id: "name",
+        header: "Name",
+        enableSorting: true,
+        cell: ({ row }) => row.original.name,
+        meta: { className: "font-medium" },
+      }),
+    ];
+    return cols;
+  }, [brandIndexOffset]);
+
   return (
     <div className="grid gap-6">
       <div className="space-y-4">
-        {brandRows.length === 0 ? (
-          <div className="space-y-4">
-            <div className="flex justify-end">
+        <DataTable
+          data={brandPageItems}
+          columns={columns}
+          getRowId={(row) => row.id}
+          manualSorting
+          manualPagination
+          enableSorting
+          sorting={{
+            sortKey: brandSort.sortKey,
+            sortDir: brandSort.sortDir,
+            onSort: brandSort.toggleSort,
+          }}
+          enableRowSelection
+          rowSelection={rowSelection}
+          onRowSelectionChange={setRowSelection}
+          selectAllLabel="Select all brands"
+          getSelectionLabel={(row) => `Select brand ${row.name}`}
+          stickyHeader
+          toolbarLeading={<span className="text-sm font-medium">Brands</span>}
+          toolbarActions={
+            <>
+              {selectedCount > 0 ? (
+                <Button variant="secondary" size="sm" onClick={() => setRowSelection({})}>
+                  {selectedCount} selected
+                </Button>
+              ) : null}
               <Button type="button" size="sm" onClick={() => onBrandOpenChange(true)}>
                 <Plus className="size-3.5" />
                 Add brand
               </Button>
-            </div>
-            <DataTableEmpty message="No brands yet." />
-          </div>
-        ) : (
-          <GlobalDataTable
-            stickyHeader
-            toolbarLeading={<span className="text-sm font-medium">Brands</span>}
-            toolbarActions={
-              <>
-                {brandSelection.selectedCount > 0 ? (
-                  <Button variant="secondary" size="sm" onClick={brandSelection.clearSelection}>
-                    {brandSelection.selectedCount} selected
-                  </Button>
-                ) : null}
-                <Button type="button" size="sm" onClick={() => onBrandOpenChange(true)}>
-                  <Plus className="size-3.5" />
-                  Add brand
-                </Button>
-              </>
-            }
-            pagination={{
-              total: brandTotal,
-              page: brandPage,
-              totalPages: brandTotalPages,
-              itemLabel: "brand",
-              onPageChange: setBrandPage,
-            }}
-            pageSize={{ value: brandPageSize, onChange: setBrandPageSize }}
-          >
-                <TableHeader>
-                  <TableRow>
-                    <GlobalTableHead className="w-10">
-                      <Checkbox
-                        checked={
-                          brandSelection.isAllSelected ||
-                          (brandSelection.isPartiallySelected ? "indeterminate" : false)
-                        }
-                        onCheckedChange={(checked) => brandSelection.toggleAll(checked === true)}
-                        aria-label="Select all brands"
-                      />
-                    </GlobalTableHead>
-                    <GlobalTableHead className="w-12">#</GlobalTableHead>
-                    <GlobalTableHead {...brandSort.sortProps("code")}>Code</GlobalTableHead>
-                    <GlobalTableHead {...brandSort.sortProps("name")}>Name</GlobalTableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {brandPageItems.map((b, index) => (
-                    <TableRow
-                      key={b.id}
-                      data-state={brandSelection.isRowSelected(b.id) ? "selected" : undefined}
-                    >
-                      <TableCell>
-                        <Checkbox
-                          checked={brandSelection.isRowSelected(b.id)}
-                          onCheckedChange={(checked) =>
-                            brandSelection.toggleRow(b.id, checked === true)
-                          }
-                          aria-label={`Select brand ${b.name}`}
-                        />
-                      </TableCell>
-                      <TableCell className="tabular-nums text-muted-foreground">
-                        {brandIndexOffset + index + 1}
-                      </TableCell>
-                      <TableCell className="font-mono text-sm">{b.code ?? "—"}</TableCell>
-                      <TableCell className="font-medium">{b.name}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-          </GlobalDataTable>
-        )}
+            </>
+          }
+          empty={brandPageItems.length === 0}
+          emptyMessage="No brands yet."
+          pagination={{
+            total: brandTotal,
+            page: brandPage,
+            totalPages: brandTotalPages,
+            itemLabel: "brand",
+            onPageChange: setBrandPage,
+          }}
+          pageSize={{ value: brandPageSize, onChange: setBrandPageSize }}
+        />
       </div>
 
       <Sheet open={brandOpen} onOpenChange={onBrandOpenChange}>
