@@ -76,13 +76,27 @@ export function formatOrderHistoryWhen(value: string | null | undefined): string
   return ORDER_HISTORY_TIME.format(date);
 }
 
+function railLabel(orderType: BranchOrderType, status: BranchOrderStatus): string {
+  switch (orderType) {
+    case "auto_replenish":
+      return status === "pending_tl" ? "Waiting for approval" : BRANCH_ORDER_STATUS_LABELS[status];
+    case "manual":
+    case "special":
+      return BRANCH_ORDER_STATUS_LABELS[status];
+    default: {
+      const unreachable: never = orderType;
+      return unreachable;
+    }
+  }
+}
+
 function trackerSteps(orderType: BranchOrderType): TrackerStep[] {
   const chain = getOrderApprovalChain(orderType);
   return [
     ...chain.map((step) => ({
       key: step.status,
       status: step.status,
-      label: BRANCH_ORDER_STATUS_LABELS[step.status],
+      label: railLabel(orderType, step.status),
       level: step.level,
     })),
     {
@@ -347,6 +361,7 @@ export function buildOrderHistoryTracker(input: OrderHistoryTrackerInput): Order
       badge: { code: pos.status, name: label },
       events: closedEvents(input, pos.status),
     });
+    return nodes.slice(0, proven + 1);
   }
 
   const approved = steps[approvedIndex];
@@ -366,8 +381,10 @@ export function buildOrderHistoryTracker(input: OrderHistoryTrackerInput): Order
 }
 
 /**
- * Created, then that order type's approval chain, then Approved.
+ * Open-page rail: Created, then that order type's approval chain, then Approved.
+ * Auto replenish adds Waiting for approval before Pending SP.
  * Created uses the stored creator and time. Chain steps keep only approval rows.
+ * A rejection or cancellation stops the rail on that step.
  */
 export function buildSubmittedOrderProgress(input: OrderHistoryTrackerInput): OrderTrackerNode[] {
   const at = presentAt(input.createdAt);

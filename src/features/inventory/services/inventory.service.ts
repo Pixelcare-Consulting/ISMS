@@ -18,15 +18,13 @@ import {
   type InventoryListSort,
   type InventoryListSortDir,
 } from "@/features/inventory/repositories/inventory.repository";
+import { groupStockByModelSeries } from "@/features/inventory/utils/group-stock-by-model-series";
 import {
   inventoryGroupStatusesFromCounts,
   type InventoryGroupAggregates,
   type InventoryGroupCountParts,
 } from "@/features/inventory/utils/stock-units-group-aggregates";
-import {
-  deriveSkuSeries,
-  wholeDaysBetween,
-} from "@/features/inventory/utils/sku-series";
+import { wholeDaysBetween } from "@/features/inventory/utils/sku-series";
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
 import { decimalToNumber } from "@/lib/database/decimal";
 import {
@@ -513,36 +511,20 @@ export const inventoryService = {
       return { rows: [], totalQty: 0, totalValue: 0 };
     }
 
-    // SQL GROUP BY sku — avoids loading every inventory row into Node.
+    // One row per SKU price, with the series stored on that model.
     const skuRows = await inventoryRepository.aggregateSeriesBySku(
       tenantId,
       branchIds,
       toListFilters(filters),
     );
 
-    const bySeries = new Map<string, { qty: number; value: number }>();
-    for (const row of skuRows) {
-      const series = deriveSkuSeries(row.skuCode);
-      const srp = decimalToNumber(row.srp) ?? 0;
-      const current = bySeries.get(series) ?? { qty: 0, value: 0 };
-      current.qty += row.qty;
-      current.value += srp * row.qty;
-      bySeries.set(series, current);
-    }
-
-    const summaryRows = Array.from(bySeries.entries())
-      .map(([series, agg]) => ({
-        series,
-        qty: agg.qty,
-        value: agg.value,
-      }))
-      .sort((a, b) => a.series.localeCompare(b.series));
-
-    return {
-      rows: summaryRows,
-      totalQty: summaryRows.reduce((sum, r) => sum + r.qty, 0),
-      totalValue: summaryRows.reduce((sum, r) => sum + r.value, 0),
-    };
+    return groupStockByModelSeries(
+      skuRows.map((row) => ({
+        seriesName: row.seriesName,
+        srp: decimalToNumber(row.srp),
+        qty: row.qty,
+      })),
+    );
   },
 
   /** AOR-scoped STK count matching Stock units list scoping. */

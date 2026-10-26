@@ -19,7 +19,7 @@ import { cn } from "@/utils/cn";
 
 function stateText(state: OrderTrackerState): string {
   switch (state) {
-    case "completed":
+    case "completed": 
       return "Completed";
     case "current":
       return "Current";

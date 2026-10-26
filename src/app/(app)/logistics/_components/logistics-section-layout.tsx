@@ -74,6 +74,10 @@ export function LogisticsSectionLayout({
   const guide = showModuleGuide ? resolveLogisticsModuleGuide(pathname) : null;
   const GuideIcon = showModuleGuide ? resolveLogisticsGuideIcon(pathname) : null;
 
+  if (isLogisticsRecordDetail(pathname)) {
+    return <div className="space-y-6">{children}</div>;
+  }
+
   return (
     <SectionLayout
       title="Logistics"

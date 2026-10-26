@@ -1,19 +1,14 @@
 "use client";
 
-import { createColumnHelper } from "@tanstack/react-table";
 import { Loader2 } from "lucide-react";
-import { Truck } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { deliveryAuditLabel, DeliveryTracker } from "@/app/(app)/logistics/_components/delivery-tracker";
 import {
-  LogisticsDocumentHeader,
-  LogisticsHistoryCard,
-  LogisticsInfoCard,
-  LogisticsProgressCard,
-  LogisticsTableHeading,
+  DocumentDetailBand,
+  LogisticsHistoryBody,
 } from "@/app/(app)/logistics/_components/logistics-detail-ui";
 import {
   DeliveryDispatchDialog,
@@ -31,7 +26,12 @@ import {
   type ReviewReturnActions,
 } from "@/app/(app)/logistics/_components/delivery-return-dialogs";
 import { formatInventoryDrDate } from "@/app/(app)/inventory/_components/inventory-list-format";
-import { uniqueSearchSuggestions, useClientTablePagination } from "@/components/data-table";
+import {
+  CompactLineTable,
+  CompactModelCell,
+  type CompactLineColumn,
+} from "@/components/compact-line-table";
+import { RecordFieldGrid, RecordReadout, RecordSection, RecordSheet } from "@/components/record-section";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -58,13 +58,7 @@ import {
 import { isReturnOpen, needsSapRetry } from "@/features/logistics/constants/delivery-workflow-labels";
 import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
 import type { DeliveryDetail } from "@/features/logistics/services/delivery-posting.service";
-import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
-import {
-  DataTable,
-  type DataTableColumn,
-  type DataTableFeatures,
-} from "@/lib/data-table";
-import { matchesTableSearch } from "@/utils/match-table-search";
+import { worksheetTotalsLabel } from "@/features/orders/lib/order-worksheet-filters";
 
 const REVIEW_ACTIONS: ReviewReturnActions = {
   load: getDeliveryReturnAction,
@@ -76,162 +70,67 @@ const REVIEW_ACTIONS: ReviewReturnActions = {
 type OrderLine = DeliveryDetail["orderLines"][number];
 type SerialLine = DeliveryDetail["serials"][number];
 
-const orderLineColumn = createColumnHelper<DataTableFeatures, OrderLine>();
-const serialColumn = createColumnHelper<DataTableFeatures, SerialLine>();
+const ORDER_LINE_COLUMNS: CompactLineColumn<OrderLine>[] = [
+  {
+    id: "model",
+    header: "Model",
+    cell: (line) => <CompactModelCell code={line.skuCode} name={line.modelName} />,
+  },
+  {
+    id: "quantity",
+    header: "Quantity",
+    align: "right",
+    className: "w-28 tabular-nums",
+    cell: (line) => line.quantity.toLocaleString(),
+  },
+];
 
-function ModelSummary({ skuCode, name }: { skuCode: string; name: string }) {
-  const title = name ? `${skuCode} — ${name}` : skuCode;
-  return (
-    <div className="w-56 max-w-full min-w-0" title={title}>
-      <p className="truncate">{skuCode}</p>
-      {name ? <p className="truncate text-xs text-muted-foreground">{name}</p> : null}
-    </div>
-  );
-}
+const SERIAL_COLUMNS: CompactLineColumn<SerialLine>[] = [
+  {
+    id: "model",
+    header: "Model",
+    cell: (line) => <CompactModelCell code={line.skuCode} name={line.modelName} />,
+  },
+  {
+    id: "serial",
+    header: "Serial number",
+    className: "w-48 font-mono",
+    cell: (line) => line.serialNo,
+  },
+];
 
 function OrderLinesTable({ lines }: { lines: OrderLine[] }) {
-  const [query, setQuery] = useState("");
-  const filtered = useMemo(
-    () =>
-      lines.filter((line) =>
-        matchesTableSearch(query, [line.skuCode, line.modelName, String(line.quantity)]),
-      ),
-    [lines, query],
-  );
-  const suggestions = useMemo(
-    () =>
-      uniqueSearchSuggestions(
-        lines.map((line) => line.skuCode),
-        lines.map((line) => line.modelName),
-      ),
-    [lines],
-  );
-  const { page, setPage, pageSize, setPageSize, total, totalPages, pageItems, indexOffset } =
-    useClientTablePagination(filtered, { resetKey: query });
-
-  const columns = useMemo(() => {
-    const cols: DataTableColumn<OrderLine>[] = [
-      orderLineColumn.display({
-        id: "index",
-        header: "#",
-        cell: ({ row }) => indexOffset + row.index + 1,
-        meta: { className: "tabular-nums text-muted-foreground" },
-      }),
-      orderLineColumn.display({
-        id: "model",
-        header: "Model",
-        cell: ({ row }) => (
-          <ModelSummary skuCode={row.original.skuCode} name={row.original.modelName} />
-        ),
-      }),
-      orderLineColumn.display({
-        id: "quantity",
-        header: "Quantity",
-        cell: ({ row }) => row.original.quantity,
-        meta: { className: "tabular-nums" },
-      }),
-    ];
-    return cols;
-  }, [indexOffset]);
-
   return (
-    <DataTable
-      data={pageItems}
-      columns={columns}
-      getRowId={(row) => row.id}
-      manualPagination
-      stickyHeader
-      search={{
-        value: query,
-        onChange: setQuery,
-        placeholder: "Search lines…",
-        suggestions,
-      }}
-      pageSize={{ value: pageSize, onChange: setPageSize }}
-      toolbarLeading={
-        <LogisticsTableHeading title="Approved lines" count={lines.length} itemLabel="line" />
+    <CompactLineTable
+      rows={lines}
+      getRowId={(line) => line.id}
+      columns={ORDER_LINE_COLUMNS}
+      searchText={(line) => [line.skuCode, line.modelName, String(line.quantity)]}
+      searchPlaceholder="Search lines…"
+      itemLabel="line"
+      emptyMessage="No approved lines on this order."
+      noMatchMessage="No matching lines."
+      summaryFor={(visible) =>
+        worksheetTotalsLabel(
+          visible.length,
+          visible.reduce((sum, line) => sum + line.quantity, 0),
+        )
       }
-      pagination={{
-        total,
-        page,
-        totalPages,
-        itemLabel: "line",
-        onPageChange: setPage,
-      }}
-      empty={pageItems.length === 0}
-      emptyMessage={lines.length === 0 ? "No approved lines on this order." : "No matching lines."}
     />
   );
 }
 
 function SerialsTable({ lines }: { lines: SerialLine[] }) {
-  const [query, setQuery] = useState("");
-  const filtered = useMemo(
-    () =>
-      lines.filter((line) => matchesTableSearch(query, [line.skuCode, line.modelName, line.serialNo])),
-    [lines, query],
-  );
-  const suggestions = useMemo(
-    () =>
-      uniqueSearchSuggestions(
-        lines.map((line) => line.serialNo),
-        lines.map((line) => line.skuCode),
-        lines.map((line) => line.modelName),
-      ),
-    [lines],
-  );
-  const { page, setPage, pageSize, setPageSize, total, totalPages, pageItems, indexOffset } =
-    useClientTablePagination(filtered, { resetKey: query });
-
-  const columns = useMemo(() => {
-    const cols: DataTableColumn<SerialLine>[] = [
-      serialColumn.display({
-        id: "index",
-        header: "#",
-        cell: ({ row }) => indexOffset + row.index + 1,
-        meta: { className: "tabular-nums text-muted-foreground" },
-      }),
-      serialColumn.display({
-        id: "model",
-        header: "Model",
-        cell: ({ row }) => (
-          <ModelSummary skuCode={row.original.skuCode} name={row.original.modelName} />
-        ),
-      }),
-      serialColumn.display({
-        id: "serial",
-        header: "Serial number",
-        cell: ({ row }) => row.original.serialNo,
-        meta: { className: "font-mono" },
-      }),
-    ];
-    return cols;
-  }, [indexOffset]);
-
   return (
-    <DataTable
-      data={pageItems}
-      columns={columns}
-      getRowId={(row) => row.serialNumberId}
-      manualPagination
-      stickyHeader
-      search={{
-        value: query,
-        onChange: setQuery,
-        placeholder: "Search serials…",
-        suggestions,
-      }}
-      pageSize={{ value: pageSize, onChange: setPageSize }}
-      toolbarLeading={<LogisticsTableHeading title="Units" count={lines.length} itemLabel="unit" />}
-      pagination={{
-        total,
-        page,
-        totalPages,
-        itemLabel: "serial",
-        onPageChange: setPage,
-      }}
-      empty={pageItems.length === 0}
-      emptyMessage={lines.length === 0 ? "No serials on this delivery." : "No matching serials."}
+    <CompactLineTable
+      rows={lines}
+      getRowId={(line) => line.serialNumberId}
+      columns={SERIAL_COLUMNS}
+      searchText={(line) => [line.skuCode, line.modelName, line.serialNo]}
+      searchPlaceholder="Search serials…"
+      itemLabel="serial"
+      emptyMessage="No serials on this delivery."
+      noMatchMessage="No matching serials."
     />
   );
 }
@@ -327,36 +226,26 @@ export function DeliveryDetailView({
 
   return (
     <div className="space-y-6">
-      <LogisticsDocumentHeader
+      <DocumentDetailBand
         backHref="/logistics/deliveries"
         backLabel="Back to deliveries"
-        context="Delivery"
         title={detail.deliveryNo}
-        statusCode={detail.status.code}
-        statusColor={detail.status.color}
-        badges={
-          <StatusCodeBadge
-            code={detail.status.code}
-            name={detail.status.name}
-            color={detail.status.color}
-          />
-        }
+        statusLine={detail.status.name}
         actions={
           <>
             {code === "approved" && capabilities.canDispatch ? (
-              <Button size="sm" disabled={pending} aria-busy={openingDispatch} onClick={openDispatch}>
+              <Button disabled={pending} aria-busy={openingDispatch} onClick={openDispatch}>
                 {openingDispatch ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
                 Dispatch
               </Button>
             ) : null}
             {code === "approved" && capabilities.canDispatch ? (
-              <Button size="sm" variant="outline" disabled={pending} onClick={() => setRejectOpen(true)}>
+              <Button variant="outline" disabled={pending} onClick={() => setRejectOpen(true)}>
                 Reject
               </Button>
             ) : null}
             {dispatched && !returnOpen && capabilities.canRequestDeliveryReturn ? (
               <Button
-                size="sm"
                 variant="outline"
                 disabled={pending}
                 onClick={() => setReturnRequestTarget(returnTarget)}
@@ -365,14 +254,13 @@ export function DeliveryDetailView({
               </Button>
             ) : null}
             {latestReturn?.status === "PENDING_APPROVAL" && capabilities.canApproveDeliveryReturn ? (
-              <Button size="sm" disabled={pending} onClick={() => setReturnReviewTarget(returnTarget)}>
+              <Button disabled={pending} onClick={() => setReturnReviewTarget(returnTarget)}>
                 Review return
               </Button>
             ) : null}
             {needsSapRetry(latestReturn) &&
             (capabilities.canApproveDeliveryReturn || capabilities.canRequestDeliveryReturn) ? (
               <Button
-                size="sm"
                 variant="outline"
                 disabled={pending}
                 onClick={() => setReturnReviewTarget(returnTarget)}
@@ -382,7 +270,6 @@ export function DeliveryDetailView({
             ) : null}
             {dispatched && !returnOpen && capabilities.canAcceptDelivery ? (
               <Button
-                size="sm"
                 disabled={pending}
                 className="bg-emerald-600 text-white hover:bg-emerald-700"
                 onClick={() =>
@@ -400,42 +287,49 @@ export function DeliveryDetailView({
         }
       />
 
-      <LogisticsProgressCard>
-        <DeliveryTracker status={detail.status} history={detail.history} />
-      </LogisticsProgressCard>
-
-      <LogisticsInfoCard title="Delivery" icon={Truck} tone="sky">
-        <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
-          <div className="min-w-0">
-            <dt className="text-xs text-muted-foreground">Order</dt>
-            <dd className="mt-1 text-sm font-medium">{detail.order?.orderNumber ?? "—"}</dd>
-          </div>
-          <div className="min-w-0">
-            <dt className="text-xs text-muted-foreground">Branch</dt>
-            <dd className="mt-1 text-sm font-medium">{detail.branch.name}</dd>
-          </div>
-          <div className="min-w-0">
-            <dt className="text-xs text-muted-foreground">DR number</dt>
-            <dd className="mt-1 text-sm font-medium">{detail.drNo ?? "—"}</dd>
-          </div>
-          <div className="min-w-0">
-            <dt className="text-xs text-muted-foreground">DR date</dt>
-            <dd className="mt-1 text-sm font-medium">{formatInventoryDrDate(detail.drDate)}</dd>
-          </div>
-        </dl>
-      </LogisticsInfoCard>
-
-      {hasSerials ? <SerialsTable lines={detail.serials} /> : <OrderLinesTable lines={detail.orderLines} />}
-
-      <LogisticsHistoryCard
-        groupByLabel={false}
-        items={detail.history.map((row) => ({
-          id: row.id,
-          label: deliveryAuditLabel(row.action),
-          actor: row.userName,
-          at: row.at,
-        }))}
-      />
+      <RecordSheet>
+        <RecordSection title="Progress">
+          <DeliveryTracker status={detail.status} history={detail.history} />
+        </RecordSection>
+        <RecordSection
+          title="Delivery"
+          description="Order, branch, and the delivery receipt."
+          divided
+        >
+          <RecordFieldGrid>
+            <RecordReadout label="Order" value={detail.order?.orderNumber ?? "—"} />
+            <RecordReadout label="Branch" value={detail.branch.name} />
+            <RecordReadout label="DR number" value={detail.drNo ?? "—"} />
+            <RecordReadout label="DR date" value={formatInventoryDrDate(detail.drDate)} />
+          </RecordFieldGrid>
+        </RecordSection>
+        <RecordSection
+          title={hasSerials ? "Units" : "Models"}
+          description={
+            hasSerials
+              ? "Serials on this delivery."
+              : "Approved models and quantities on this delivery."
+          }
+          divided
+        >
+          {hasSerials ? (
+            <SerialsTable lines={detail.serials} />
+          ) : (
+            <OrderLinesTable lines={detail.orderLines} />
+          )}
+        </RecordSection>
+        <RecordSection title="History" divided>
+          <LogisticsHistoryBody
+            groupByLabel={false}
+            items={detail.history.map((row) => ({
+              id: row.id,
+              label: deliveryAuditLabel(row.action),
+              actor: row.userName,
+              at: row.at,
+            }))}
+          />
+        </RecordSection>
+      </RecordSheet>
 
       <AlertDialog
         open={rejectOpen}

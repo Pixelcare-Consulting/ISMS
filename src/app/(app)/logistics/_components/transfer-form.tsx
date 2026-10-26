@@ -1,17 +1,17 @@
 "use client";
 
-import { createColumnHelper } from "@tanstack/react-table";
 import { Plus, Trash2 } from "lucide-react";
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState, useTransition } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import { LogisticsHistoryBody } from "@/app/(app)/logistics/_components/logistics-detail-ui";
+import { transferAuditLabel, TransferTracker } from "@/app/(app)/logistics/_components/transfer-tracker";
 import {
-  LogisticsHistoryCard,
-  LogisticsStepWorkspace,
-  LogisticsTableHeading,
-} from "@/app/(app)/logistics/_components/logistics-detail-ui";
-import { transferAuditLabel } from "@/app/(app)/logistics/_components/transfer-tracker";
-import { useClientTablePagination, uniqueSearchSuggestions } from "@/components/data-table";
+  CompactLineTable,
+  CompactModelCell,
+  type CompactLineColumn,
+} from "@/components/compact-line-table";
+import { RecordFieldGrid, RecordReadout, RecordSection, RecordSheet } from "@/components/record-section";
 
 import {
   approveTransferAction,
@@ -26,12 +26,6 @@ import type { LogisticsActionCapabilities } from "@/features/logistics/constants
 import { nextTransferNo } from "@/features/logistics/lib/transfer-number";
 import type { TransferDetail } from "@/features/logistics/services/transfer-posting.service";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
-import {
-  DataTable,
-  type DataTableColumn,
-  type DataTableFeatures,
-} from "@/lib/data-table";
-import { matchesTableSearch } from "@/utils/match-table-search";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -216,7 +210,49 @@ function modelLabel(model: { skuCode: string; name: string } | null | undefined)
 
 type TransferLineRow = TransferDetail["lines"][number];
 
-const transferLineColumn = createColumnHelper<DataTableFeatures, TransferLineRow>();
+function transferLineColumns(
+  fromBranchId: string | null,
+  canReceive: boolean,
+  pending: boolean,
+  onAccept: (line: TransferLineRow) => void,
+): CompactLineColumn<TransferLineRow>[] {
+  const columns: CompactLineColumn<TransferLineRow>[] = [
+    {
+      id: "model",
+      header: "Model",
+      cell: (line) => <CompactModelCell code={line.skuCode} name={line.modelName} />,
+    },
+    {
+      id: "serial",
+      header: "Serial number",
+      className: "w-48 font-mono",
+      cell: (line) => line.serialNo,
+    },
+  ];
+  if (!canReceive) return columns;
+  columns.push({
+    id: "action",
+    header: "Action",
+    align: "right",
+    className: "w-28",
+    cell: (line) => {
+      const inTransit = line.inventoryCode === "DIT" && line.branchId === fromBranchId;
+      if (!inTransit) return null;
+      return (
+        <Button
+          type="button"
+          size="sm"
+          disabled={pending}
+          className="bg-emerald-600 text-white hover:bg-emerald-700"
+          onClick={() => onAccept(line)}
+        >
+          Accept
+        </Button>
+      );
+    },
+  });
+  return columns;
+}
 
 function TransferLinesTable({
   lines,
@@ -224,109 +260,37 @@ function TransferLinesTable({
   canReceive,
   pending,
   onAccept,
+  showHeading = true,
 }: {
   lines: TransferLineRow[];
   fromBranchId: string | null;
   canReceive: boolean;
   pending: boolean;
   onAccept: (line: TransferLineRow) => void;
+  showHeading?: boolean;
 }) {
-  const [query, setQuery] = useState("");
-  const filtered = useMemo(
-    () =>
-      lines.filter((line) =>
-        matchesTableSearch(query, [line.skuCode, line.modelName, line.serialNo]),
-      ),
-    [lines, query],
-  );
-  const suggestions = useMemo(
-    () =>
-      uniqueSearchSuggestions(
-        lines.map((line) => line.serialNo),
-        lines.map((line) => line.skuCode),
-        lines.map((line) => line.modelName),
-      ),
-    [lines],
-  );
-  const { page, setPage, pageSize, setPageSize, total, totalPages, pageItems, indexOffset } =
-    useClientTablePagination(filtered, { resetKey: query });
-
-  const columns = useMemo(() => {
-    const cols: DataTableColumn<TransferLineRow>[] = [
-      transferLineColumn.display({
-        id: "index",
-        header: "#",
-        cell: ({ row }) => indexOffset + row.index + 1,
-        meta: { className: "tabular-nums text-muted-foreground" },
-      }),
-      transferLineColumn.display({
-        id: "model",
-        header: "Model",
-        cell: ({ row }) => (
-          <ModelSummary skuCode={row.original.skuCode} name={row.original.modelName} />
-        ),
-      }),
-      transferLineColumn.display({
-        id: "serial",
-        header: "Serial number",
-        cell: ({ row }) => row.original.serialNo,
-        meta: { className: "font-mono" },
-      }),
-    ];
-    if (canReceive) {
-      cols.push(
-        transferLineColumn.display({
-          id: "action",
-          header: "Action",
-          cell: ({ row }) => {
-            const line = row.original;
-            const inTransit = line.inventoryCode === "DIT" && line.branchId === fromBranchId;
-            if (!inTransit) return null;
-            return (
-              <Button
-                type="button"
-                size="sm"
-                disabled={pending}
-                className="bg-emerald-600 text-white hover:bg-emerald-700"
-                onClick={() => onAccept(line)}
-              >
-                Accept
-              </Button>
-            );
-          },
-        }),
-      );
-    }
-    return cols;
-  }, [canReceive, fromBranchId, indexOffset, onAccept, pending]);
-
   return (
-    <DataTable
-      data={pageItems}
-      columns={columns}
-      getRowId={(row) => row.serialNumberId}
-      manualPagination
-      stickyHeader
-      search={{
-        value: query,
-        onChange: setQuery,
-        placeholder: "Search serials…",
-        suggestions,
-      }}
-      pageSize={{ value: pageSize, onChange: setPageSize }}
-      toolbarLeading={
-        <LogisticsTableHeading title="Transfer details" count={lines.length} itemLabel="serial" />
-      }
-      pagination={{
-        total,
-        page,
-        totalPages,
-        itemLabel: "serial",
-        onPageChange: setPage,
-      }}
-      empty={pageItems.length === 0}
-      emptyMessage={lines.length === 0 ? "No serials on this transfer." : "No matching serials."}
-    />
+    <div>
+      {showHeading ? (
+        <div className="min-w-0">
+          <p className="font-medium">Transfer details</p>
+          <p className="text-xs text-muted-foreground">
+            {lines.length} serial{lines.length === 1 ? "" : "s"}
+          </p>
+        </div>
+      ) : null}
+      <CompactLineTable
+        rows={lines}
+        getRowId={(line) => line.serialNumberId}
+        columns={transferLineColumns(fromBranchId, canReceive, pending, onAccept)}
+        searchText={(line) => [line.skuCode, line.modelName, line.serialNo]}
+        searchPlaceholder="Search serials…"
+        itemLabel="serial"
+        emptyMessage="No serials on this transfer."
+        noMatchMessage="No matching serials."
+        paginationInset={!showHeading}
+      />
+    </div>
   );
 }
 
@@ -367,16 +331,6 @@ export function TransferDocumentActionButtons({
         </Button>
       ) : null}
     </>
-  );
-}
-
-function ModelSummary({ skuCode, name }: { skuCode: string; name: string }) {
-  const title = name ? `${skuCode} — ${name}` : skuCode;
-  return (
-    <div className="min-w-0 max-w-full" title={title}>
-      <p className="truncate">{skuCode}</p>
-      {name ? <p className="truncate text-xs text-muted-foreground">{name}</p> : null}
-    </div>
   );
 }
 
@@ -538,23 +492,6 @@ function showsOnTheWay(kind: TransferWorkspaceKind): boolean {
   }
 }
 
-function showsDocumentActions(kind: TransferWorkspaceKind): boolean {
-  switch (kind) {
-    case "waiting":
-    case "release":
-      return true;
-    case "transit":
-    case "accepted":
-    case "stopped":
-    case "recorded":
-      return false;
-    default: {
-      const unreachable: never = kind;
-      return unreachable;
-    }
-  }
-}
-
 function serialsStillOnTheWay(detail: TransferDetail): number {
   return detail.lines.filter(
     (line) => line.inventoryCode === "DIT" && line.branchId === detail.fromBranch.id,
@@ -566,83 +503,67 @@ function onTheWayLine(count: number): string {
   return `${count} serials are still on the way.`;
 }
 
-function TransferFactList({
-  detail,
-  includeModel,
-}: {
-  detail: TransferDetail;
-  includeModel: boolean;
-}) {
-  return (
-    <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
-      <div className="min-w-0">
-        <dt className="text-xs text-muted-foreground">Releasing branch</dt>
-        <dd className="mt-1 text-sm font-medium">{detail.fromBranch.name}</dd>
-      </div>
-      <div className="min-w-0">
-        <dt className="text-xs text-muted-foreground">Receiving branch</dt>
-        <dd className="mt-1 text-sm font-medium">{detail.toBranch.name}</dd>
-      </div>
-      {includeModel ? (
-        <div className="min-w-0 sm:col-span-2">
-          <dt className="text-xs text-muted-foreground">Model</dt>
-          <dd className="mt-1 text-sm font-medium">{modelLabel(detail.model)}</dd>
-        </div>
-      ) : null}
-    </dl>
-  );
-}
-
 function TransferPageWorkspace({
   detail,
-  documentActions,
   canReceive,
   pending,
-  onAction,
   onAccept,
 }: {
   detail: TransferDetail;
-  documentActions: TransferDocumentActions;
   canReceive: boolean;
   pending: boolean;
-  onAction: (action: TransferDocumentAction) => void;
   onAccept: (line: TransferLineRow) => void;
 }) {
   const kind = transferWorkspaceKind(detail.status.code);
   const remarks = detail.notes?.trim() ?? "";
-  const footer =
-    showsDocumentActions(kind) && hasTransferDocumentAction(documentActions) ? (
-      <TransferDocumentActionButtons actions={documentActions} onAction={onAction} />
-    ) : undefined;
 
   return (
-    <LogisticsStepWorkspace
-      title={workspaceTitle(kind, detail.status.code)}
-      description={workspaceDescription(kind)}
-      actions={footer}
-    >
-      <div className="space-y-4">
+    <RecordSheet>
+      <RecordSection title="Progress">
+        <TransferTracker status={detail.status} history={detail.history} />
+      </RecordSection>
+      <RecordSection
+        title={workspaceTitle(kind, detail.status.code)}
+        description={workspaceDescription(kind)}
+        divided
+      >
         {showsBranches(kind) ? (
-          <TransferFactList detail={detail} includeModel={showsModel(kind)} />
+          <RecordFieldGrid>
+            <RecordReadout label="Releasing branch" value={detail.fromBranch.name} />
+            <RecordReadout label="Receiving branch" value={detail.toBranch.name} />
+            {showsModel(kind) ? (
+              <RecordReadout label="Model" value={modelLabel(detail.model)} wide />
+            ) : null}
+            {remarks ? <RecordReadout label="Remarks" value={remarks} wide multiline /> : null}
+          </RecordFieldGrid>
+        ) : remarks ? (
+          <RecordReadout label="Remarks" value={remarks} wide multiline />
         ) : null}
         {showsOnTheWay(kind) ? (
           <p className="text-sm">{onTheWayLine(serialsStillOnTheWay(detail))}</p>
         ) : null}
+      </RecordSection>
+      <RecordSection title="Units" description="Serials on this transfer." divided>
         <TransferLinesTable
           lines={detail.lines}
           fromBranchId={detail.fromBranch.id}
           canReceive={showsOnTheWay(kind) && canReceive}
           pending={pending}
           onAccept={onAccept}
+          showHeading={false}
         />
-        {remarks ? (
-          <div className="min-w-0">
-            <p className="text-xs text-muted-foreground">Remarks</p>
-            <p className="mt-1 text-sm whitespace-pre-wrap">{detail.notes}</p>
-          </div>
-        ) : null}
-      </div>
-    </LogisticsStepWorkspace>
+      </RecordSection>
+      <RecordSection title="History" divided>
+        <LogisticsHistoryBody
+          items={detail.history.map((row) => ({
+            id: row.id,
+            label: transferAuditLabel(row.action),
+            actor: row.userName,
+            at: row.at,
+          }))}
+        />
+      </RecordSection>
+    </RecordSheet>
   );
 }
 
@@ -1038,10 +959,8 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
       {pageLayout && detail ? (
         <TransferPageWorkspace
           detail={detail}
-          documentActions={documentActions}
           canReceive={canReceive}
           pending={pending}
-          onAction={openDocumentAction}
           onAccept={(line) =>
             setPendingConfirm({
               type: "receive",
@@ -1292,17 +1211,6 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
       ) : null}
         </>
       )}
-
-      {pageLayout && detail ? (
-        <LogisticsHistoryCard
-          items={detail.history.map((row) => ({
-            id: row.id,
-            label: transferAuditLabel(row.action),
-            actor: row.userName,
-            at: row.at,
-          }))}
-        />
-      ) : null}
 
       <AlertDialog
         open={pendingConfirm !== null}

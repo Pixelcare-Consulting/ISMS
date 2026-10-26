@@ -23,7 +23,7 @@ const orderListInclude = {
       name: true,
       sapCode: true,
       deliverySchedule: true,
-      dealer: { select: { modeOfPayment: { select: { name: true } } } },
+      dealer: { select: { name: true, modeOfPayment: { select: { name: true } } } },
     },
   },
   modeOfPayment: { select: { name: true } },
@@ -37,6 +37,7 @@ const orderListInclude = {
           name: true,
           brandId: true,
           srp: true,
+          cbm: true,
           priceLists: {
             select: {
               amount: true,
@@ -254,6 +255,12 @@ export const orderRepository = {
         orderNumber: true,
         orderType: true,
         status: true,
+        branchId: true,
+        notes: true,
+        sapDocType: true,
+        sapDocNum: true,
+        reviewSnapshot: true,
+        reviewSnapshotAt: true,
         createdAt: true,
         processedAt: true,
         createdById: true,
@@ -274,9 +281,12 @@ export const orderRepository = {
           orderBy: { model: { skuCode: "asc" } },
           select: {
             id: true,
+            modelId: true,
             quantity: true,
             amount: true,
-            model: { select: { skuCode: true, name: true } },
+            remarks: true,
+            spRemarks: true,
+            model: { select: { skuCode: true, name: true, cbm: true } },
           },
         },
         approvalLevels: {

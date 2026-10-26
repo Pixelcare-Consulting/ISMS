@@ -7,7 +7,7 @@ export const INVENTORY_MODULE_GUIDE: ModuleGuideContent = {
   /** Kept for Help. Stock units renders status counts in the guide instead of these chips. */
   tips: [
     { label: "Lists Stock (STK) units only — sold and other statuses live in Sales / Logistics" },
-    { label: "Series summary groups QTY and value by SKU — click to expand" },
+    { label: "Series summary groups QTY and value by the model's series — click to expand" },
     {
       label:
         "To validate order STK, use By model here or Reports → Inventory Report (SKU / status / branch filters + Excel Summary and Detail tabs) — All serials is AOR-wide, not one branch",

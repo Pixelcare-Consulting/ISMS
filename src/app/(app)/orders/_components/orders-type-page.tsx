@@ -310,29 +310,6 @@ export async function OrdersTypePage({
           ? ordersModuleGuideForType(listFilter === "special" ? "special" : "manual")
           : ordersModuleGuideForType(orderType))}
       />
-      {typeOptions.length > 1 ? (
-        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Order type">
-          {typeOptions.map((option) => {
-            const selected = option.id === listFilter;
-            return (
-              <Button
-                key={option.id}
-                variant={selected ? "default" : "outline"}
-                size="sm"
-                asChild
-              >
-                <Link
-                  href={combinedListHref(option.id, preserved)}
-                  role="radio"
-                  aria-checked={selected}
-                >
-                  {option.label}
-                </Link>
-              </Button>
-            );
-          })}
-        </div>
-      ) : null}
       <OrdersCreateWorkspaceProvider
         orderType={combinedManualSpecial ? "manual" : orderType}
         canEdit={canEdit}
@@ -347,6 +324,29 @@ export async function OrdersTypePage({
             ordersResult ? (
               <div className="space-y-4">
                 <OrderKpisSummary kpis={kpis} />
+                {typeOptions.length > 1 ? (
+                  <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Order type">
+                    {typeOptions.map((option) => {
+                      const selected = option.id === listFilter;
+                      return (
+                        <Button
+                          key={option.id}
+                          variant={selected ? "default" : "outline"}
+                          size="sm"
+                          asChild
+                        >
+                          <Link
+                            href={combinedListHref(option.id, preserved)}
+                            role="radio"
+                            aria-checked={selected}
+                          >
+                            {option.label}
+                          </Link>
+                        </Button>
+                      );
+                    })}
+                  </div>
+                ) : null}
                 <OrdersTable
                   result={ordersResult}
                   viewerRoleSlugs={viewerRoleSlugs}

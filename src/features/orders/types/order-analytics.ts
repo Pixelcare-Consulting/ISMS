@@ -241,6 +241,8 @@ export interface OrderHistoryRow {
 export interface OrderHistoryDetailLine extends OrderHistoryLine {
   amount: number;
   approvedAmount: number | null;
+  /** Unit CBM stored on the model. Null when the model has none. */
+  unitCbm: number | null;
 }
 
 /** The one delivery linked to an order. Display and link only. */
@@ -253,6 +255,9 @@ export interface OrderHistoryLinkedDelivery {
 /** One order opened from Order History, including the approval clock. */
 export interface OrderHistoryDetail extends Omit<OrderHistoryRow, "lines" | "status"> {
   status: BranchOrderStatus;
+  dealerName: string | null;
+  /** Resolved payment name. Null when neither the order nor the dealer has one. */
+  paymentLabel: string | null;
   processedAt: string | null;
   lines: OrderHistoryDetailLine[];
   /** Null when this order has no delivery. Not an overall fulfillment status. */

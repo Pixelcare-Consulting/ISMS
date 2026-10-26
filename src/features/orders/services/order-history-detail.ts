@@ -5,7 +5,10 @@ import { prisma } from "@/lib/database/client";
 import { hasPermission, requireAnyPermission } from "@/lib/auth/permissions";
 import { decimalToNumberOrNull } from "@/lib/database/decimal";
 import { resolveActiveOrderPrice } from "@/features/master-data/utils/resolve-active-order-price";
-import { formatOrderModeOfPayment } from "@/features/orders/constants/order-sap-doc-type";
+import {
+  formatOrderModeOfPayment,
+  type OrderSapDocType,
+} from "@/features/orders/constants/order-sap-doc-type";
 import {
   canAccessOrderType,
   hasAnyOrderPermission,
@@ -146,14 +149,27 @@ export async function getOrderHistoryDetail(
       spRemarks: detail.spRemarks,
       amount: detail.quantity * srp,
       approvedAmount: detail.approvedQty == null ? null : detail.approvedQty * srp,
+      unitCbm: decimalToNumberOrNull(detail.model.cbm),
     };
   });
+
+  const orderPayment = order.modeOfPayment?.name?.trim() || null;
+  const dealerPayment = order.branch.dealer?.modeOfPayment?.name?.trim() || null;
+  const formattedPayment =
+    orderPayment || dealerPayment
+      ? formatOrderModeOfPayment({
+          orderModeOfPayment: orderPayment,
+          dealerModeOfPayment: dealerPayment,
+        })
+      : null;
 
   return {
     id: order.id,
     orderNumber: order.orderNumber,
     orderType: order.orderType,
     status: order.status,
+    dealerName: order.branch.dealer?.name?.trim() || null,
+    paymentLabel: formattedPayment && formattedPayment !== "—" ? formattedPayment : null,
     branchId: order.branchId,
     branchName: order.branch.name,
     brandId: order.brandId,
@@ -189,11 +205,16 @@ export async function getOrderHistoryDetail(
 
 export interface SubmittedOrderLine {
   id: string;
+  modelId: string;
   skuCode: string;
   name: string;
   quantity: number;
   /** Stored line amount. Null when the order has no amount for this line. */
   amount: number | null;
+  /** Unit CBM on the model. Null when the model has none. */
+  unitCbm: number | null;
+  note: string | null;
+  spNote: string | null;
 }
 
 export interface SubmittedOrderSummary {
@@ -201,10 +222,15 @@ export interface SubmittedOrderSummary {
   orderNumber: string;
   orderType: "manual" | "special";
   status: BranchOrderStatus;
+  branchId: string;
   dealerName: string | null;
   branchName: string;
   /** Resolved payment name, or null when the order has none. */
   paymentLabel: string | null;
+  notes: string | null;
+  sapDocType: OrderSapDocType | null;
+  sapDocNum: number | null;
+  reviewSnapshot: unknown;
   createdAt: string;
   processedAt: string | null;
   createdByName: string;
@@ -266,18 +292,27 @@ export async function getSubmittedOrderSummary(
     orderNumber: order.orderNumber,
     orderType: order.orderType,
     status: order.status,
+    branchId: order.branchId,
     dealerName: order.branch.dealer?.name?.trim() || null,
     branchName: order.branch.name,
     paymentLabel: paymentLabel === "—" ? null : paymentLabel,
+    notes: order.notes,
+    sapDocType: order.sapDocType,
+    sapDocNum: order.sapDocNum,
+    reviewSnapshot: order.reviewSnapshot,
     createdAt: order.createdAt.toISOString(),
     processedAt: order.processedAt?.toISOString() ?? null,
     createdByName: order.createdBy.name?.trim() || order.createdBy.email,
     lines: order.details.map((detail) => ({
       id: detail.id,
+      modelId: detail.modelId,
       skuCode: detail.model.skuCode,
       name: detail.model.name,
       quantity: detail.quantity,
       amount: decimalToNumberOrNull(detail.amount),
+      unitCbm: decimalToNumberOrNull(detail.model.cbm),
+      note: detail.remarks,
+      spNote: detail.spRemarks,
     })),
     approvalLevels: order.approvalLevels.map((level) => ({
       level: level.level,

@@ -66,6 +66,61 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.80.16",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T15:25:00+08:00",
+    title: "Series summary follows Master data",
+    highlights: [
+      "Stock units Series summary groups quantity and value by the series saved on each model.",
+      "Change a model's series in Master data and that quantity moves into the new series.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Series summary follows the series on the model. Moving a model from one series to another moves its quantity, and models with no series stay together.",
+      },
+    ],
+  },
+  {
+    version: "0.80.15",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T15:10:00+08:00",
+    title: "Same page as creating an order",
+    highlights: [
+      "Opening a delivery, transfer, pull-out, or saved order uses the same page and table as creating an order, with that document's progress on the page.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Opening a delivery, transfer, pull-out, or saved order uses the same page and table as creating an order, with that document's progress on the page.",
+      },
+    ],
+  },
+  {
+    version: "0.80.14",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T14:35:00+08:00",
+    title: "Open a delivery from the list",
+    highlights: [
+      "A delivery row opens the delivery, the same way a transfer or pull-out does.",
+      "Opening an order or a delivery uses the same sections as creating an order, and the order page shows the stock, request, and approval details.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "A delivery row opens the delivery, the same way a transfer or pull-out does.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Opening an order or a delivery uses the same sections as creating an order, and the order page shows the stock, request, and approval details.",
+      },
+    ],
+  },
+  {
     version: "0.80.13",
     date: "2026-10-26",
     releasedAt: "2026-10-26T14:10:00+08:00",

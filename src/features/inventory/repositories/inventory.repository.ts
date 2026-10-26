@@ -74,12 +74,15 @@ export const STOCK_UNITS_LIST_STATUS_CODES = ["STK"] as const;
 
 export type InventorySeriesSkuAgg = {
   skuCode: string;
+  /** Series name on the model. Null when Master data has no series. */
+  seriesName: string | null;
   srp: { toString(): string } | number | null;
   qty: number;
 };
 
 type SeriesSkuAggRaw = {
   sku_code: string;
+  series_name: string | null;
   srp: { toString(): string } | number | null;
   qty: number | bigint;
 };
@@ -409,7 +412,7 @@ export const inventoryRepository = {
   },
 
   /**
-   * Aggregate inventory qty/value by SKU in SQL (GROUP BY).
+   * Aggregate inventory qty by SKU, including the series stored on the model.
    * Off-planogram uses a set-based NOT EXISTS against branch_planograms.
    */
   async aggregateSeriesBySku(
@@ -446,18 +449,21 @@ export const inventoryRepository = {
     const rows = await prisma.$queryRaw<SeriesSkuAggRaw[]>`
       SELECT
         pm.sku_code,
+        s.name AS series_name,
         pm.srp,
         COUNT(*)::int AS qty
       FROM branch_inventories bi
       INNER JOIN serial_numbers sn ON sn.id = bi.serial_number_id
       INNER JOIN product_models pm ON pm.id = sn.model_id
+      LEFT JOIN series s ON s.id = pm.series_id
       INNER JOIN reason_status_codes rsc ON rsc.id = bi.status_code_id
       WHERE ${Prisma.join(conditions, " AND ")}
-      GROUP BY pm.sku_code, pm.srp
+      GROUP BY pm.sku_code, pm.srp, s.name
     `;
 
     return rows.map((row) => ({
       skuCode: row.sku_code,
+      seriesName: row.series_name,
       srp: row.srp,
       qty: Number(row.qty),
     }));

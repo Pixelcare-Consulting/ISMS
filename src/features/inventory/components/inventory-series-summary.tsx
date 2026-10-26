@@ -204,8 +204,8 @@ export function InventorySeriesSummaryPanel({ summary }: InventorySeriesSummaryP
             <h2 className="text-sm font-semibold tracking-wide">Series summary</h2>
             {expanded ? (
               <p className="text-xs text-muted-foreground">
-                QTY and peso value by SKU series (trailing digits stripped). Follows
-                applied filters.
+                QTY and peso value by the series saved on each model in Master data.
+                Follows applied filters.
               </p>
             ) : (
               <p className="mt-0.5 text-xs text-muted-foreground">
@@ -271,7 +271,7 @@ export function InventorySeriesSummaryPanel({ summary }: InventorySeriesSummaryP
           <DialogHeader className="shrink-0 space-y-1 border-b px-4 py-4 text-left sm:px-6 sm:text-left">
             <DialogTitle>Series summary</DialogTitle>
             <DialogDescription>
-              Search and review QTY / peso value by SKU series for the current inventory filters.
+              Search and review QTY and peso value by the series saved on each model for the current filters.
             </DialogDescription>
           </DialogHeader>
 
