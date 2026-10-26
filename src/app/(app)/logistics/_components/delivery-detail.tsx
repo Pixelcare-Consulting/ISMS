@@ -7,6 +7,11 @@ import { toast } from "sonner";
 
 import { deliveryAuditLabel, DeliveryTracker } from "@/app/(app)/logistics/_components/delivery-tracker";
 import {
+  LogisticsShipmentSection,
+  ShipmentPrintButton,
+} from "@/app/(app)/logistics/_components/logistics-shipment-section";
+import { shipmentPrintDocument } from "@/app/(app)/logistics/_components/shipment-print";
+import {
   DocumentDetailBand,
   LogisticsHistoryBody,
 } from "@/app/(app)/logistics/_components/logistics-detail-ui";
@@ -43,6 +48,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import {
   acceptDeliveryAction,
   cancelDeliveryReturnAction,
@@ -53,9 +59,14 @@ import {
   listDispatchCandidatesAction,
   rejectDeliveryAction,
   requestDeliveryReturnAction,
+  saveDeliveryShipmentAction,
   retryDeliveryReturnSapAction,
 } from "@/features/logistics/actions/logistics.actions";
 import { isReturnOpen, needsSapRetry } from "@/features/logistics/constants/delivery-workflow-labels";
+import {
+  DELIVERY_WORKFLOW_CODE,
+  type WorkflowStatusOption,
+} from "@/features/logistics/constants/workflow-codes";
 import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
 import type { DeliveryDetail } from "@/features/logistics/services/delivery-posting.service";
 import { worksheetTotalsLabel } from "@/features/orders/lib/order-worksheet-filters";
@@ -135,12 +146,41 @@ function SerialsTable({ lines }: { lines: SerialLine[] }) {
   );
 }
 
+function deliveryPrintDocument(detail: DeliveryDetail) {
+  const hasSerials = detail.serials.length > 0;
+  return shipmentPrintDocument({
+    title: "Delivery",
+    documentNo: detail.deliveryNo,
+    shipment: detail.shipment,
+    fields: [
+      { label: "Order", value: detail.order?.orderNumber ?? "—" },
+      { label: "Branch", value: detail.branch.name },
+      { label: "DR number", value: detail.drNo ?? "—" },
+      { label: "DR date", value: formatInventoryDrDate(detail.drDate) },
+    ],
+    lines: hasSerials
+      ? detail.serials.map((line) => ({
+          model: `${line.skuCode} ${line.modelName}`,
+          detail: line.serialNo,
+        }))
+      : detail.orderLines.map((line) => ({
+          model: `${line.skuCode} ${line.modelName}`,
+          detail: line.quantity.toLocaleString(),
+        })),
+    lineHeaders: hasSerials
+      ? { model: "Model", detail: "Serial number" }
+      : { model: "Model", detail: "Quantity" },
+  });
+}
+
 export function DeliveryDetailView({
   detail,
   capabilities,
+  workflowStatuses,
 }: {
   detail: DeliveryDetail;
   capabilities: LogisticsActionCapabilities;
+  workflowStatuses: readonly WorkflowStatusOption[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -154,7 +194,8 @@ export function DeliveryDetailView({
   const [dispatching, setDispatching] = useState(false);
 
   const code = detail.status.code;
-  const dispatched = code === "pending" || code === "partial";
+  const dispatched =
+    code === DELIVERY_WORKFLOW_CODE.pending || code === DELIVERY_WORKFLOW_CODE.partial;
   const latestReturn = detail.latestReturn;
   const returnOpen = isReturnOpen(latestReturn);
   const returnTarget = {
@@ -163,6 +204,9 @@ export function DeliveryDetailView({
     branchName: detail.branch.name,
   };
   const hasSerials = detail.serials.length > 0;
+  const canEditShipment =
+    (capabilities.canManage || capabilities.canDispatch) &&
+    code !== DELIVERY_WORKFLOW_CODE.rejected;
 
   function refresh() {
     router.refresh();
@@ -230,16 +274,22 @@ export function DeliveryDetailView({
         backHref="/logistics/deliveries"
         backLabel="Back to deliveries"
         title={detail.deliveryNo}
-        statusLine={detail.status.name}
+        statusLine={
+          <StatusCodeBadge
+            code={detail.status.code}
+            name={detail.status.name}
+            color={detail.status.color}
+          />
+        }
         actions={
           <>
-            {code === "approved" && capabilities.canDispatch ? (
+            {code === DELIVERY_WORKFLOW_CODE.approved && capabilities.canDispatch ? (
               <Button disabled={pending} aria-busy={openingDispatch} onClick={openDispatch}>
                 {openingDispatch ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
                 Dispatch
               </Button>
             ) : null}
-            {code === "approved" && capabilities.canDispatch ? (
+            {code === DELIVERY_WORKFLOW_CODE.approved && capabilities.canDispatch ? (
               <Button variant="outline" disabled={pending} onClick={() => setRejectOpen(true)}>
                 Reject
               </Button>
@@ -280,16 +330,21 @@ export function DeliveryDetailView({
                   })
                 }
               >
-                {code === "partial" ? "Receive remaining" : "Receive"}
+                {code === DELIVERY_WORKFLOW_CODE.partial ? "Receive remaining" : "Receive"}
               </Button>
             ) : null}
+            <ShipmentPrintButton document={deliveryPrintDocument(detail)} />
           </>
         }
       />
 
       <RecordSheet>
         <RecordSection title="Progress">
-          <DeliveryTracker status={detail.status} history={detail.history} />
+          <DeliveryTracker
+            status={detail.status}
+            history={detail.history}
+            catalog={workflowStatuses}
+          />
         </RecordSection>
         <RecordSection
           title="Delivery"
@@ -303,6 +358,16 @@ export function DeliveryDetailView({
             <RecordReadout label="DR date" value={formatInventoryDrDate(detail.drDate)} />
           </RecordFieldGrid>
         </RecordSection>
+        <LogisticsShipmentSection
+          key={`${detail.shipment.waybillNo ?? ""}|${detail.shipment.courierName ?? ""}|${detail.shipment.scheduledAt ?? ""}`}
+          shipment={detail.shipment}
+          canEdit={canEditShipment}
+          onSave={async (input) => {
+            const result = await saveDeliveryShipmentAction(detail.id, input);
+            if ("success" in result && result.success) refresh();
+            return result;
+          }}
+        />
         <RecordSection
           title={hasSerials ? "Units" : "Models"}
           description={

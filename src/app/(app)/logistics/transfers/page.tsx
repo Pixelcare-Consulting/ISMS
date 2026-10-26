@@ -6,6 +6,7 @@ import { TransfersPanel } from "@/app/(app)/logistics/_components/transfers-pane
 import { SectionPageLead } from "@/components/navigation/section-page-lead";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { TransferKpisStrip } from "@/features/logistics/components/transfer-kpis";
+import { loadWorkflowCatalog } from "@/features/logistics/constants/workflow-catalog";
 import {
   getTransferKpisAction,
   listDeliveryTransfersAction,
@@ -73,7 +74,7 @@ export default async function TransfersPage({ searchParams }: TransfersPageProps
 
   const capabilities = resolveLogisticsCapabilities(session.user.permissions);
   const unrestricted = isBranchScopeUnrestricted(session.user.permissions);
-  const [transfers, kpis, branchScope, unitTransfers] = await Promise.all([
+  const [transfers, kpis, branchScope, unitTransfers, workflowStatuses] = await Promise.all([
     activeTab === "transfers"
       ? listTransfersAction({ page, limit, sort: params.sort, sortDir: params.dir })
       : Promise.resolve(null),
@@ -84,6 +85,7 @@ export default async function TransfersPage({ searchParams }: TransfersPageProps
     activeTab === "unit"
       ? listDeliveryTransfersAction({ page, limit })
       : Promise.resolve(null),
+    loadWorkflowCatalog(session.user.tenantId, "transfer_workflow"),
   ]);
   const currentUserName = session.user.name?.trim() || session.user.email || "";
 
@@ -105,6 +107,7 @@ export default async function TransfersPage({ searchParams }: TransfersPageProps
                 capabilities={capabilities}
                 branchScope={unrestricted ? null : branchScope}
                 currentUserName={currentUserName}
+                workflowStatuses={workflowStatuses}
                 initialSort={params.sort ?? ""}
                 initialSortDir={params.dir ?? "desc"}
               />
@@ -117,7 +120,10 @@ export default async function TransfersPage({ searchParams }: TransfersPageProps
               <SectionPageLead>
                 Units a branch did not accept from a delivery go on a unit transfer. Approve or delete each line, release it, then accept each unit where it arrives.
               </SectionPageLead>
-              <DeliveryTransfersPanel transfers={unitTransfers} />
+              <DeliveryTransfersPanel
+                transfers={unitTransfers}
+                workflowStatuses={workflowStatuses}
+              />
             </div>
           ) : null
         }

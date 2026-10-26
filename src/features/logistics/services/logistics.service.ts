@@ -1,6 +1,7 @@
 import { Prisma } from "@/lib/database/generated/prisma/client";
 
 import { auditService } from "@/features/audit/services/audit.service";
+import { DELIVERY_WORKFLOW_CODE } from "@/features/logistics/constants/workflow-codes";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { prisma } from "@/lib/database/client";
 
@@ -34,7 +35,11 @@ export const logisticsService = {
     // Callers inside a transaction pass the id so no other connection is used mid-tx.
     const statusCodeId =
       options.statusCodeId ??
-      (await reasonStatusService.requireCodeId(tenantId, "delivery_workflow", "approved"));
+      (await reasonStatusService.requireCodeId(
+        tenantId,
+        "delivery_workflow",
+        DELIVERY_WORKFLOW_CODE.approved,
+      ));
 
     let row;
     try {

@@ -173,7 +173,7 @@ export type LatestDeliveryReceipt = {
   /** ISMS delivery number (links to the deliveries list). */
   internalDeliveryNo: string;
   /** DR date: SAP DR date, else acceptedAt, else createdAt. */
-  deliveryDate: Date;
+  deliveryDate: Date | null;
 };
 
 export const inventoryRepository = {
@@ -399,7 +399,10 @@ export const inventoryRepository = {
         line.delivery.acceptedAt ??
         line.delivery.createdAt;
       const existing = latest.get(line.serialNumberId);
-      if (!existing || deliveryDate.getTime() > existing.deliveryDate.getTime()) {
+      if (
+        !existing?.deliveryDate ||
+        deliveryDate.getTime() > existing.deliveryDate.getTime()
+      ) {
         latest.set(line.serialNumberId, {
           serialNumberId: line.serialNumberId,
           deliveryNo: line.delivery.drNo ?? line.delivery.deliveryNo,
@@ -407,6 +410,46 @@ export const inventoryRepository = {
           deliveryDate,
         });
       }
+    }
+
+    const acceptedLines = await prisma.branchTransferLine.findMany({
+      where: {
+        serialNumberId: { in: serialNumberIds },
+        decision: "accepted",
+        transfer: { tenantId, drNo: { not: null } },
+      },
+      select: {
+        serialNumberId: true,
+        decidedAt: true,
+        transfer: { select: { drNo: true, transferNo: true } },
+      },
+    });
+    const newestTransfer = new Map<string, { drNo: string; transferNo: string; decidedAt: number }>();
+    for (const row of acceptedLines) {
+      const drNo = row.transfer.drNo;
+      if (!drNo) continue;
+      const decidedAt = row.decidedAt?.getTime() ?? 0;
+      const current = newestTransfer.get(row.serialNumberId);
+      if (!current || decidedAt >= current.decidedAt) {
+        newestTransfer.set(row.serialNumberId, {
+          drNo,
+          transferNo: row.transfer.transferNo,
+          decidedAt,
+        });
+      }
+    }
+    for (const [serialNumberId, slip] of newestTransfer) {
+      const existing = latest.get(serialNumberId);
+      if (existing) {
+        latest.set(serialNumberId, { ...existing, deliveryNo: slip.drNo });
+        continue;
+      }
+      latest.set(serialNumberId, {
+        serialNumberId,
+        deliveryNo: slip.drNo,
+        internalDeliveryNo: slip.transferNo,
+        deliveryDate: null,
+      });
     }
     return Array.from(latest.values());
   },

@@ -7,13 +7,9 @@
  * DIT while in transit and STK only after the branch accepts.
  */
 
-export type DeliveryWorkflowCode =
-  | "approved"
-  | "pending"
-  | "accepted"
-  | "rejected"
-  | "partial"
-  | "requested";
+import type { DeliveryWorkflowCodeKey } from "@/features/logistics/constants/workflow-codes";
+
+export type DeliveryWorkflowCode = DeliveryWorkflowCodeKey;
 
 export type BranchUnitStatus = "DIT" | "STK" | "SLD" | "DEF" | "OTHER";
 

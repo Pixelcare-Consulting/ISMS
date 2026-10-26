@@ -481,9 +481,9 @@ export function ProgressTracker({
                 </div>
                 <div className={cn("min-w-0 sm:px-2", last ? "pb-0" : "pb-5 sm:pb-0")}>
                   <span className="sr-only">{stateText(item.state)}. </span>
-                  {item.state === "cancelled" ? (
+                  {item.state === "cancelled" || item.state === "current" ? (
                     <StatusCodeBadge
-                      code={item.badgeCode ?? "cancelled"}
+                      code={item.badgeCode ?? item.key}
                       name={item.label}
                       color={item.color}
                     />

@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import { PulloutDetailView } from "@/app/(app)/logistics/_components/pullout-detail";
 import { getPulloutDetailAction } from "@/features/logistics/actions/logistics.actions";
+import { loadWorkflowCatalog } from "@/features/logistics/constants/workflow-catalog";
 import {
   LOGISTICS_PAGE_PERMISSIONS,
   resolveLogisticsCapabilities,
@@ -17,7 +18,10 @@ export default async function PulloutDetailPage({
 }) {
   const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
   const { id } = await params;
-  const result = await getPulloutDetailAction(id);
+  const [result, workflowStatuses] = await Promise.all([
+    getPulloutDetailAction(id),
+    loadWorkflowCatalog(session.user.tenantId, "pullout_workflow"),
+  ]);
   if ("error" in result || !result.detail) notFound();
   const branchScope = isBranchScopeUnrestricted(session.user.permissions)
     ? null
@@ -28,6 +32,7 @@ export default async function PulloutDetailPage({
       detail={result.detail}
       capabilities={resolveLogisticsCapabilities(session.user.permissions)}
       branchScope={branchScope}
+      workflowStatuses={workflowStatuses}
     />
   );
 }

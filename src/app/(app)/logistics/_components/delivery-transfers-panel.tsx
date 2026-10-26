@@ -7,7 +7,10 @@ import { useMemo, useState } from "react";
 
 import { DeliveryTransferStatusBadge } from "@/app/(app)/logistics/_components/delivery-transfer-status-badge";
 import { transfersListHref } from "@/features/logistics/constants/transfers-page-tabs";
-import { DELIVERY_TRANSFER_STATUS_LABELS } from "@/features/logistics/constants/delivery-workflow-labels";
+import {
+  unitTransferStatusPresentation,
+  type WorkflowStatusOption,
+} from "@/features/logistics/constants/workflow-codes";
 import type { DeliveryTransferListRow } from "@/features/logistics/services/delivery-transfer.service";
 import { parseTablePageSize, type TablePageSize } from "@/components/data-table/table-page-size";
 import { DataTable, type DataTableColumn, type DataTableFeatures } from "@/lib/data-table";
@@ -25,7 +28,13 @@ const column = createColumnHelper<DataTableFeatures, DeliveryTransferListRow>();
 
 const dateFormat = new Intl.DateTimeFormat("en-PH", { dateStyle: "medium" });
 
-export function DeliveryTransfersPanel({ transfers }: { transfers: PaginatedList<DeliveryTransferListRow> }) {
+export function DeliveryTransfersPanel({
+  transfers,
+  workflowStatuses,
+}: {
+  transfers: PaginatedList<DeliveryTransferListRow>;
+  workflowStatuses: readonly WorkflowStatusOption[];
+}) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const pageSize = parseTablePageSize(transfers.limit);
@@ -38,10 +47,10 @@ export function DeliveryTransfersPanel({ transfers }: { transfers: PaginatedList
           row.deliveryNo,
           row.releaseName,
           row.receiveName,
-          DELIVERY_TRANSFER_STATUS_LABELS[row.status],
+          unitTransferStatusPresentation(row.status, workflowStatuses).name,
         ]),
       ),
-    [transfers.items, query],
+    [transfers.items, query, workflowStatuses],
   );
 
   const indexOffset = (transfers.page - 1) * transfers.limit;
@@ -76,7 +85,12 @@ export function DeliveryTransfersPanel({ transfers }: { transfers: PaginatedList
       column.display({
         id: "status",
         header: "Transfer status",
-        cell: ({ row }) => <DeliveryTransferStatusBadge status={row.original.status} />,
+        cell: ({ row }) => (
+          <DeliveryTransferStatusBadge
+            status={row.original.status}
+            catalog={workflowStatuses}
+          />
+        ),
       }),
       column.display({
         id: "sap",
@@ -96,7 +110,7 @@ export function DeliveryTransfersPanel({ transfers }: { transfers: PaginatedList
         cell: ({ row }) => dateFormat.format(new Date(row.original.createdAt)),
       }),
     ],
-    [indexOffset],
+    [indexOffset, workflowStatuses],
   );
 
   return (

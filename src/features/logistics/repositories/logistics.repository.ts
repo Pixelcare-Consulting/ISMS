@@ -109,16 +109,16 @@ export const logisticsRepository = {
     return prisma.branchDelivery.count({ where: { tenantId } });
   },
 
-  countTransfersByStatus(tenantId: string) {
+  countTransfersByStatus(tenantId: string, extra?: Prisma.BranchTransferWhereInput) {
     return prisma.branchTransfer.groupBy({
       by: ["statusCodeId"],
-      where: { tenantId },
+      where: { tenantId, ...extra },
       _count: { id: true },
     });
   },
 
-  countAllTransfers(tenantId: string) {
-    return prisma.branchTransfer.count({ where: { tenantId } });
+  countAllTransfers(tenantId: string, extra?: Prisma.BranchTransferWhereInput) {
+    return prisma.branchTransfer.count({ where: { tenantId, ...extra } });
   },
 
   countPulloutsByStatus(tenantId: string) {
@@ -140,10 +140,14 @@ export const logisticsRepository = {
     });
   },
 
-  countTransfersByStatusCodes(tenantId: string, codes: string[]) {
+  countTransfersByStatusCodes(
+    tenantId: string,
+    codes: string[],
+    extra?: Prisma.BranchTransferWhereInput,
+  ) {
     if (codes.length === 0) return Promise.resolve(0);
     return prisma.branchTransfer.count({
-      where: { tenantId, statusCode: { code: { in: codes } } },
+      where: { tenantId, statusCode: { code: { in: codes } }, ...extra },
     });
   },
 
@@ -183,9 +187,10 @@ export const logisticsRepository = {
     tenantId: string,
     pagination?: { page?: number; limit?: number },
     sort?: { field?: TransferListSort; dir?: LogisticsListSortDir },
+    extra?: Prisma.BranchTransferWhereInput,
   ) {
     const { limit, page, skip } = resolvePagination(pagination);
-    const where: Prisma.BranchTransferWhereInput = { tenantId };
+    const where: Prisma.BranchTransferWhereInput = { tenantId, ...extra };
     const orderBy = sort?.field
       ? transferPrismaOrderBy(sort.field, sort.dir ?? "desc")
       : { createdAt: "desc" as const };

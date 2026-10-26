@@ -4,10 +4,12 @@ import { inventoryRepository } from "@/features/inventory/repositories/inventory
 jest.mock("@/lib/database/client", () => ({
   prisma: {
     branchDeliveryLine: { findMany: jest.fn() },
+    branchTransferLine: { findMany: jest.fn() },
   },
 }));
 
 const findMany = prisma.branchDeliveryLine.findMany as jest.Mock;
+const findTransferLines = prisma.branchTransferLine.findMany as jest.Mock;
 
 function line(
   serialNumberId: string,
@@ -33,7 +35,11 @@ function line(
 }
 
 describe("inventoryRepository.findLatestDeliveryReceipts", () => {
-  beforeEach(() => findMany.mockReset());
+  beforeEach(() => {
+    findMany.mockReset();
+    findTransferLines.mockReset();
+    findTransferLines.mockResolvedValue([]);
+  });
 
   it("DIT unit shows DR# from drNo", async () => {
     const drDate = new Date("2026-10-10T00:00:00.000Z");
@@ -83,5 +89,23 @@ describe("inventoryRepository.findLatestDeliveryReceipts", () => {
     const rows = await inventoryRepository.findLatestDeliveryReceipts("t1", ["sn-1"]);
     expect(rows).toHaveLength(1);
     expect(rows[0].deliveryNo).toBe("DR-2");
+  });
+
+  it("shows the transfer delivery receipt number and keeps the original date", async () => {
+    const drDate = new Date("2026-02-01T00:00:00.000Z");
+    findMany.mockResolvedValue([
+      line("sn-1", { deliveryNo: "DLV-1", drNo: "DR-OLD", drDate }),
+    ]);
+    findTransferLines.mockResolvedValue([
+      {
+        serialNumberId: "sn-1",
+        decidedAt: new Date("2026-10-26T00:00:00.000Z"),
+        transfer: { drNo: "DR-XFR", transferNo: "XFR-1" },
+      },
+    ]);
+
+    const [row] = await inventoryRepository.findLatestDeliveryReceipts("t1", ["sn-1"]);
+    expect(row.deliveryNo).toBe("DR-XFR");
+    expect(row.deliveryDate).toEqual(drDate);
   });
 });

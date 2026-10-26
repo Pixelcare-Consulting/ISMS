@@ -4,24 +4,21 @@ import {
   progressEventsForActions,
   ProgressTracker,
   type ProgressAuditRow,
-  type ProgressNode,
-  type ProgressStepState,
+  type ProgressStageIcon,
 } from "@/app/(app)/logistics/_components/progress-tracker";
+import {
+  DELIVERY_SETTLED_CODES,
+  DELIVERY_STOP_CODES,
+  DELIVERY_WORKFLOW_CODE,
+  type WorkflowStatusOption,
+} from "@/features/logistics/constants/workflow-codes";
+import { buildCatalogProgress } from "@/features/logistics/constants/workflow-progress";
 
 /**
- * Progress for a branch delivery. Steps are only the statuses this flow writes.
- * A step time comes only from the history action that recorded it.
- * A rejected delivery marks only steps that already have a time, then stops.
- * Partially accepted leaves Accepted as the current step.
+ * Progress for a branch delivery. Steps, names, colors, and order come from
+ * the Delivery workflow codes in Status settings. A rejected delivery marks
+ * only steps that already have a time, then stops.
  */
-
-const TRACKER_STEPS = [
-  { code: "approved", fallback: "Approved", icon: "approval" },
-  { code: "pending_acceptance", fallback: "Pending acceptance", icon: "pending_acceptance" },
-  { code: "accepted", fallback: "Accepted", icon: "accepted" },
-] as const;
-
-type TrackerStepCode = (typeof TRACKER_STEPS)[number]["code"];
 
 type DeliveryAuditAction =
   | "delivery.created_from_order"
@@ -29,7 +26,16 @@ type DeliveryAuditAction =
   | "delivery.dispatched"
   | "delivery.accepted"
   | "delivery.rejected"
-  | "delivery.sap_dispatch_posted";
+  | "delivery.sap_dispatch_posted"
+  | "delivery.shipment_saved";
+
+const DELIVERY_ICONS: Readonly<Record<string, ProgressStageIcon>> = {
+  [DELIVERY_WORKFLOW_CODE.requested]: "approval",
+  [DELIVERY_WORKFLOW_CODE.approved]: "approval",
+  [DELIVERY_WORKFLOW_CODE.pending]: "pending_acceptance",
+  [DELIVERY_WORKFLOW_CODE.accepted]: "accepted",
+  [DELIVERY_WORKFLOW_CODE.partial]: "accepted",
+};
 
 function asDeliveryAuditAction(action: string): DeliveryAuditAction | null {
   switch (action) {
@@ -39,6 +45,7 @@ function asDeliveryAuditAction(action: string): DeliveryAuditAction | null {
     case "delivery.accepted":
     case "delivery.rejected":
     case "delivery.sap_dispatch_posted":
+    case "delivery.shipment_saved":
       return action;
     default:
       return null;
@@ -61,6 +68,8 @@ export function deliveryAuditLabel(action: string): string {
       return "Rejected";
     case "delivery.sap_dispatch_posted":
       return "Dispatch posted";
+    case "delivery.shipment_saved":
+      return "Waybill and schedule saved";
     default: {
       const unreachable: never = known;
       return unreachable;
@@ -68,62 +77,18 @@ export function deliveryAuditLabel(action: string): string {
   }
 }
 
-function stepAuditActions(code: TrackerStepCode): readonly string[] {
+function stepAuditActions(code: string): readonly string[] {
   switch (code) {
-    case "approved":
+    case DELIVERY_WORKFLOW_CODE.requested:
+    case DELIVERY_WORKFLOW_CODE.approved:
       return ["delivery.created_from_order", "delivery.created"];
-    case "pending_acceptance":
+    case DELIVERY_WORKFLOW_CODE.pending:
       return ["delivery.dispatched"];
-    case "accepted":
+    case DELIVERY_WORKFLOW_CODE.accepted:
+    case DELIVERY_WORKFLOW_CODE.partial:
       return ["delivery.accepted"];
-    default: {
-      const unreachable: never = code;
-      return unreachable;
-    }
-  }
-}
-
-type KnownStatus = "approved" | "pending" | "partial" | "accepted" | "rejected" | "requested";
-
-type TrackerMode =
-  | { kind: "active"; index: number; finishCurrent: boolean }
-  | { kind: "stopped" }
-  | { kind: "recorded" };
-
-function asKnownStatus(code: string): KnownStatus | null {
-  switch (code) {
-    case "approved":
-    case "pending":
-    case "partial":
-    case "accepted":
-    case "rejected":
-    case "requested":
-      return code;
     default:
-      return null;
-  }
-}
-
-function trackerMode(code: string): TrackerMode {
-  const known = asKnownStatus(code);
-  if (!known) return { kind: "recorded" };
-  switch (known) {
-    case "approved":
-      return { kind: "active", index: 0, finishCurrent: false };
-    case "pending":
-      return { kind: "active", index: 1, finishCurrent: false };
-    case "partial":
-      return { kind: "active", index: 2, finishCurrent: false };
-    case "accepted":
-      return { kind: "active", index: 2, finishCurrent: true };
-    case "rejected":
-      return { kind: "stopped" };
-    case "requested":
-      return { kind: "recorded" };
-    default: {
-      const unreachable: never = known;
-      return unreachable;
-    }
+      return [];
   }
 }
 
@@ -146,93 +111,51 @@ function latestAction(history: readonly ProgressAuditRow[], action: string): str
   return latest;
 }
 
-function occurredAt(code: TrackerStepCode, history: readonly ProgressAuditRow[]): string | null {
+function occurredAt(code: string, history: readonly ProgressAuditRow[]): string | null {
   switch (code) {
-    case "approved":
-    case "pending_acceptance":
+    case DELIVERY_WORKFLOW_CODE.requested:
+    case DELIVERY_WORKFLOW_CODE.approved:
+    case DELIVERY_WORKFLOW_CODE.pending:
       return earliestAction(history, stepAuditActions(code));
-    case "accepted":
+    case DELIVERY_WORKFLOW_CODE.accepted:
+    case DELIVERY_WORKFLOW_CODE.partial:
       return latestAction(history, "delivery.accepted");
-    default: {
-      const unreachable: never = code;
-      return unreachable;
-    }
+    default:
+      return null;
   }
-}
-
-function prefixCount(times: (string | null)[]): number {
-  let count = 0;
-  for (const time of times) {
-    if (!time) break;
-    count += 1;
-  }
-  return count;
-}
-
-function nodeState(index: number, mode: TrackerMode, provenCount: number): ProgressStepState {
-  switch (mode.kind) {
-    case "active":
-      if (index < mode.index) return "completed";
-      if (index > mode.index) return "upcoming";
-      return mode.finishCurrent ? "completed" : "current";
-    case "stopped":
-    case "recorded":
-      return index < provenCount ? "completed" : "upcoming";
-    default: {
-      const unreachable: never = mode;
-      return unreachable;
-    }
-  }
-}
-
-function stoppedLabel(status: { name: string }): string {
-  const name = status.name.trim();
-  if (name) return name;
-  return "Rejected";
 }
 
 export function buildDeliveryTracker(
   status: { code: string; name: string; color: string | null },
   history: readonly ProgressAuditRow[],
-): ProgressNode[] {
-  const mode = trackerMode(status.code);
-  const times = TRACKER_STEPS.map((step) => occurredAt(step.code, history));
-  const provenCount = prefixCount(times);
-  const nodes: ProgressNode[] = TRACKER_STEPS.map((step, index) => {
-    const state = nodeState(index, mode, provenCount);
-    return {
-      key: step.code,
-      label: step.fallback,
-      state,
-      at: state === "upcoming" ? null : times[index] ?? null,
-      color: null,
-      icon: step.icon,
-      events: progressEventsForActions(history, stepAuditActions(step.code), deliveryAuditLabel),
-    };
+  catalog: readonly WorkflowStatusOption[],
+) {
+  return buildCatalogProgress({
+    catalog,
+    status,
+    stopCodes: DELIVERY_STOP_CODES,
+    settledCodes: DELIVERY_SETTLED_CODES,
+    icons: DELIVERY_ICONS,
+    occurredAt: (code) => occurredAt(code, history),
+    eventsFor: (code) => progressEventsForActions(history, stepAuditActions(code), deliveryAuditLabel),
+    stopAt: earliestAction(history, ["delivery.rejected"]),
+    stopEvents: progressEventsForActions(history, ["delivery.rejected"], deliveryAuditLabel),
   });
-
-  if (mode.kind === "stopped") {
-    nodes.splice(provenCount, 0, {
-      key: "rejected",
-      label: stoppedLabel(status),
-      state: "cancelled",
-      at: earliestAction(history, ["delivery.rejected"]),
-      color: status.color,
-      badgeCode: status.code,
-      icon: "stopped",
-      events: progressEventsForActions(history, ["delivery.rejected"], deliveryAuditLabel),
-    });
-  }
-
-  return nodes;
 }
 
 export function DeliveryTracker({
   status,
   history,
+  catalog,
 }: {
   status: { code: string; name: string; color: string | null };
   history: readonly ProgressAuditRow[];
+  catalog: readonly WorkflowStatusOption[];
 }) {
-  return <ProgressTracker ariaLabel="Delivery progress" items={buildDeliveryTracker(status, history)} />;
+  return (
+    <ProgressTracker
+      ariaLabel="Delivery progress"
+      items={buildDeliveryTracker(status, history, catalog)}
+    />
+  );
 }

@@ -13,6 +13,10 @@ import {
   LOGISTICS_MANAGE,
 } from "@/features/logistics/constants/logistics-permissions";
 import {
+  resolveLogisticsBranchScope,
+  transferListWhere,
+} from "@/features/logistics/lib/transfer-visibility";
+import {
   deliveryReturnCancelNoteSchema,
   deliveryReturnDecisionSchema,
   deliveryReturnReasonSchema,
@@ -73,7 +77,14 @@ export async function listDeliveriesAction() {
 
 export async function listTransfersAction() {
   const session = await requirePermission("inventory.view");
-  return opsService.listTransfers(session.user.tenantId);
+  const where = transferListWhere(
+    await resolveLogisticsBranchScope({
+      tenantId: session.user.tenantId,
+      userId: session.user.id,
+      permissions: session.user.permissions,
+    }),
+  );
+  return opsService.listTransfers(session.user.tenantId, where);
 }
 
 export async function listPulloutsAction() {

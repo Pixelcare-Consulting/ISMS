@@ -8,6 +8,7 @@ export function PulloutKpisStrip({ kpis }: { kpis: LogisticsKpis }) {
         totalLabel: "Total pull-outs",
         totalValue: kpis.total,
         statuses: kpis.statuses,
+        statusBadges: true,
       })}
     />
   );

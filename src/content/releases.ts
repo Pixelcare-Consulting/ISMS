@@ -66,6 +66,74 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.80.19",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T17:10:00+08:00",
+    title: "Transfers stay inside a dealer group",
+    highlights: [
+      "A transfer can go to another branch of the same dealer, even when that branch is outside your area of responsibility.",
+      "A different dealer stays blocked.",
+      "Only the releasing branch's team leader is asked to approve.",
+      "After approval, the receiving branch can accept or reject each serial, and a rejected serial needs a reason.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "The receiving branch can accept or reject each serial. Accept moves the unit to that branch as stock and updates the delivery receipt number. The original delivery date stays the same. Reject leaves the unit at the releasing branch as stock. The release slip and delivery receipt print when the releasing team leader approves.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Branches of the same dealer can transfer to each other. Approval waits only for the team leader of the releasing branch, and the receiving branch sees the request after that approval.",
+      },
+      {
+        type: "fix",
+        description:
+          "Choosing another branch of the same dealer no longer says it is outside your area of responsibility.",
+      },
+    ],
+  },
+  {
+    version: "0.80.18",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T16:45:00+08:00",
+    title: "Print after the waybill is saved",
+    highlights: [
+      "Logistics can enter the waybill, courier, and schedule date on a delivery or a transfer.",
+      "Print is available after those details are saved.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Print a delivery or a transfer after the waybill, courier, and schedule date are saved.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Transfers now include the same waybill, courier, and schedule date as deliveries.",
+      },
+    ],
+  },
+  {
+    version: "0.80.17",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T16:05:00+08:00",
+    title: "Logistics statuses follow Status settings",
+    highlights: [
+      "Deliveries, transfers, and pull-outs use the names, colors, and order saved in Organization → Status settings.",
+      "Add, rename, recolor, or turn off a delivery, transfer, or pull-out status and the lists, progress, and counts follow that change.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Delivery, transfer, and pull-out progress and counts follow the statuses in Status settings, including the name, color, and order.",
+      },
+    ],
+  },
+  {
     version: "0.80.16",
     date: "2026-10-26",
     releasedAt: "2026-10-26T15:25:00+08:00",

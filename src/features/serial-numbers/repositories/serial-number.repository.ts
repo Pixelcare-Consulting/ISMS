@@ -8,6 +8,11 @@ import {
   type FlatSerialListSortDir,
 } from "@/features/serial-numbers/constants/flat-serial-sort";
 import { MODEL_SERIAL_PAGE_SIZE } from "@/features/serial-numbers/constants/model-serial-page";
+import {
+  DELIVERY_WORKFLOW_CODE,
+  PULLOUT_WORKFLOW_CODE,
+  TRANSFER_WORKFLOW_CODE,
+} from "@/features/logistics/constants/workflow-codes";
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
 import { SAP_SYNC_CHUNK } from "@/features/sap/services/sap-master-data";
 import {
@@ -776,24 +781,29 @@ function listedModelWhere(
 }
 
 /** Delivery / transfer / pull-out codes that mean the document is still open. */
-const OPEN_DELIVERY_CODES = ["requested", "approved", "pending", "partial"] as const;
+const OPEN_DELIVERY_CODES = [
+  DELIVERY_WORKFLOW_CODE.requested,
+  DELIVERY_WORKFLOW_CODE.approved,
+  DELIVERY_WORKFLOW_CODE.pending,
+  DELIVERY_WORKFLOW_CODE.partial,
+] as const;
 const OPEN_TRANSFER_CODES = [
-  "requested",
-  "approved",
-  "draft",
-  "pending_tl",
-  "for_transfer",
-  "in_transit",
+  TRANSFER_WORKFLOW_CODE.requested,
+  TRANSFER_WORKFLOW_CODE.approved,
+  TRANSFER_WORKFLOW_CODE.draft,
+  TRANSFER_WORKFLOW_CODE.pending_tl,
+  TRANSFER_WORKFLOW_CODE.for_transfer,
+  TRANSFER_WORKFLOW_CODE.in_transit,
 ] as const;
 const OPEN_PULLOUT_CODES = [
-  "requested",
-  "approved",
-  "draft",
-  "pending_tl",
-  "for_pullout",
-  "scheduled",
-  "pending_logistics",
-  "in_transit",
+  PULLOUT_WORKFLOW_CODE.requested,
+  PULLOUT_WORKFLOW_CODE.approved,
+  PULLOUT_WORKFLOW_CODE.draft,
+  PULLOUT_WORKFLOW_CODE.pending_tl,
+  PULLOUT_WORKFLOW_CODE.for_pullout,
+  PULLOUT_WORKFLOW_CODE.scheduled,
+  PULLOUT_WORKFLOW_CODE.pending_logistics,
+  PULLOUT_WORKFLOW_CODE.in_transit,
 ] as const;
 const OPEN_ATR_STATUSES = ["open", "reserve"] as const;
 const OPEN_RETURN_STATUSES = ["pending_cs", "pending_tl", "approved"] as const;

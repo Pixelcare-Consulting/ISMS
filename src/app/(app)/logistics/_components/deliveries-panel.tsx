@@ -29,6 +29,7 @@ import {
 } from "@/app/(app)/logistics/_components/logistics-paths";
 import { CompactProgressRail } from "@/app/(app)/logistics/_components/compact-progress-rail";
 import { buildDeliveryTracker } from "@/app/(app)/logistics/_components/delivery-tracker";
+import type { WorkflowStatusOption } from "@/features/logistics/constants/workflow-codes";
 import {
   LogisticsListViewSwitch,
   useLogisticsListProgressView,
@@ -64,6 +65,7 @@ interface DeliveryRow {
 
 interface DeliveriesPanelProps {
   deliveries: PaginatedList<DeliveryRow>;
+  workflowStatuses: readonly WorkflowStatusOption[];
   initialSort?: string;
   initialSortDir?: string;
 }
@@ -76,6 +78,7 @@ type DeliverySortDir = "asc" | "desc";
 
 export function DeliveriesPanel({
   deliveries,
+  workflowStatuses,
   initialSort = "",
   initialSortDir = "desc",
 }: DeliveriesPanelProps) {
@@ -167,6 +170,7 @@ export function DeliveriesPanel({
                 color: row.original.statusCode.color ?? null,
               },
               [],
+              workflowStatuses,
             )}
           />
         ),
@@ -235,7 +239,7 @@ export function DeliveriesPanel({
       "actions",
     ]);
     return cols.filter((column) => column.id != null && progressIds.has(column.id));
-  }, [indexOffset, progressView]);
+  }, [indexOffset, progressView, workflowStatuses]);
 
   return (
     <DataTable

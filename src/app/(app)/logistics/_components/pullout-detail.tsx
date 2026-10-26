@@ -34,6 +34,11 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Textarea } from "@/components/ui/textarea";
 import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
 import {
+  PULLOUT_WORKFLOW_CODE,
+  workflowStatusLabel,
+  type WorkflowStatusOption,
+} from "@/features/logistics/constants/workflow-codes";
+import {
   approvePulloutTlAction,
   listPulloutSerialsAction,
   listWarehousesForLogisticsAction,
@@ -335,10 +340,10 @@ function readOnlyToggle() {}
 
 function pulloutOpenKind(code: string): PulloutOpenKind {
   switch (code) {
-    case "pending_tl":
-    case "for_pullout":
-    case "pending_logistics":
-    case "in_transit":
+    case PULLOUT_WORKFLOW_CODE.pending_tl:
+    case PULLOUT_WORKFLOW_CODE.for_pullout:
+    case PULLOUT_WORKFLOW_CODE.pending_logistics:
+    case PULLOUT_WORKFLOW_CODE.in_transit:
       return code;
     default:
       return "other";
@@ -606,7 +611,7 @@ function RecordedPullout({ detail }: { detail: PulloutDetail }) {
   return (
     <>
       <RecordSection
-        title="Pull-out"
+        title={workflowStatusLabel(detail.status)}
         description="Branch, reason, and where these units were sent."
         divided
       >
@@ -633,15 +638,18 @@ export function PulloutDetailView({
   detail,
   capabilities,
   branchScope,
+  workflowStatuses,
 }: {
   detail: PulloutDetail;
   capabilities: LogisticsActionCapabilities;
   branchScope: string[] | null;
+  workflowStatuses: readonly WorkflowStatusOption[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const canEditList =
-    (detail.status.code === "for_pullout" || detail.status.code === "pending_logistics") &&
+    (detail.status.code === PULLOUT_WORKFLOW_CODE.for_pullout ||
+      detail.status.code === PULLOUT_WORKFLOW_CODE.pending_logistics) &&
     capabilities.canManage &&
     inScope(branchScope, detail.branch.id);
   const [warehouses, setWarehouses] = useState<{ id: string; name: string; code: string }[]>([]);
@@ -723,9 +731,10 @@ export function PulloutDetailView({
   const onPulloutIds = new Set(detail.lines.map((line) => line.serialNumberId));
   const availableSerials = extraSerials.filter((serial) => !onPulloutIds.has(serial.serialNumberId));
   const condition = requestCondition(detail.lines);
-  const showApprove = detail.status.code === "pending_tl" && capabilities.canApproveTl;
+  const showApprove =
+    detail.status.code === PULLOUT_WORKFLOW_CODE.pending_tl && capabilities.canApproveTl;
   const showReject = showApprove && capabilities.canRejectTransfer;
-  const showSend = canEditList && detail.status.code === "pending_logistics";
+  const showSend = canEditList && detail.status.code === PULLOUT_WORKFLOW_CODE.pending_logistics;
   const listDirty =
     warehouseId !== detail.warehouse.id ||
     waybillNo !== (detail.waybillNo ?? "") ||
@@ -758,7 +767,7 @@ export function PulloutDetailView({
   function submitList(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canEditList || pending || selected.length === 0) return;
-    if (detail.status.code === "pending_logistics" && !listDirty) return;
+    if (detail.status.code === PULLOUT_WORKFLOW_CODE.pending_logistics && !listDirty) return;
     saveList();
   }
 
@@ -824,11 +833,11 @@ export function PulloutDetailView({
   function workspaceSections(): ReactNode {
     const kind = pulloutOpenKind(detail.status.code);
     switch (kind) {
-      case "pending_tl":
+      case PULLOUT_WORKFLOW_CODE.pending_tl:
         return (
           <>
             <RecordSection
-              title="Waiting for approval"
+              title={workflowStatusLabel(detail.status)}
               description="Team Lead approves or rejects this pull-out."
               divided
             >
@@ -843,18 +852,26 @@ export function PulloutDetailView({
             </RecordSection>
           </>
         );
-      case "for_pullout":
-        return listSections("Prepare units", "Confirm these units, then save the list.", false);
-      case "pending_logistics":
+      case PULLOUT_WORKFLOW_CODE.for_pullout:
         return listSections(
-          "Ready to send",
+          workflowStatusLabel(detail.status),
+          "Confirm these units, then save the list.",
+          false,
+        );
+      case PULLOUT_WORKFLOW_CODE.pending_logistics:
+        return listSections(
+          workflowStatusLabel(detail.status),
           "The list is saved. Send it when the units are ready to leave.",
           true,
         );
-      case "in_transit":
+      case PULLOUT_WORKFLOW_CODE.in_transit:
         return (
           <>
-            <RecordSection title="In transit" description="These units are in transit." divided>
+            <RecordSection
+              title={workflowStatusLabel(detail.status)}
+              description="These units are in transit."
+              divided
+            >
               <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
                 {`Warehouse receipt is not available yet. After this pull-out is sent, the units stay in transit at ${detail.branch.name}.`}
               </p>
@@ -876,7 +893,7 @@ export function PulloutDetailView({
   function headerActions(): ReactNode {
     const kind = pulloutOpenKind(detail.status.code);
     switch (kind) {
-      case "pending_tl":
+      case PULLOUT_WORKFLOW_CODE.pending_tl:
         if (!showApprove) return null;
         return (
           <>
@@ -899,7 +916,7 @@ export function PulloutDetailView({
             ) : null}
           </>
         );
-      case "for_pullout":
+      case PULLOUT_WORKFLOW_CODE.for_pullout:
         if (!canEditList) return null;
         return (
           <Button
@@ -910,7 +927,7 @@ export function PulloutDetailView({
             Save list
           </Button>
         );
-      case "pending_logistics":
+      case PULLOUT_WORKFLOW_CODE.pending_logistics:
         if (!showSend && !(canEditList && listDirty)) return null;
         return (
           <>
@@ -935,7 +952,7 @@ export function PulloutDetailView({
             ) : null}
           </>
         );
-      case "in_transit":
+      case PULLOUT_WORKFLOW_CODE.in_transit:
       case "other":
         return null;
       default: {
@@ -952,6 +969,7 @@ export function PulloutDetailView({
           status={detail.status}
           createdAt={detail.createdAt}
           history={detail.history}
+          catalog={workflowStatuses}
         />
       </RecordSection>
       {workspaceSections()}
@@ -979,7 +997,11 @@ export function PulloutDetailView({
         title={detail.pulloutNo}
         statusLine={
           <span className="inline-flex flex-wrap items-center gap-2">
-            <span>{detail.status.name}</span>
+            <StatusCodeBadge
+              code={detail.status.code}
+              name={detail.status.name}
+              color={detail.status.color}
+            />
             {condition ? <RequestConditionBadge condition={condition} /> : null}
           </span>
         }

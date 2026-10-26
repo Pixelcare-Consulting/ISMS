@@ -27,6 +27,7 @@ import {
 } from "@/app/(app)/logistics/_components/logistics-paths";
 import { CompactProgressRail } from "@/app/(app)/logistics/_components/compact-progress-rail";
 import { buildPulloutTracker } from "@/app/(app)/logistics/_components/pullout-tracker";
+import type { WorkflowStatusOption } from "@/features/logistics/constants/workflow-codes";
 import {
   LogisticsListViewSwitch,
   useLogisticsListProgressView,
@@ -60,6 +61,7 @@ interface PulloutRow {
 interface PulloutsPanelProps {
   pullouts: PaginatedList<PulloutRow>;
   capabilities: LogisticsActionCapabilities;
+  workflowStatuses: readonly WorkflowStatusOption[];
   currentUserName?: string;
   initialSort?: string;
   initialSortDir?: string;
@@ -73,6 +75,7 @@ type PulloutSortDir = "asc" | "desc";
 export function PulloutsPanel({
   pullouts,
   capabilities,
+  workflowStatuses,
   currentUserName = "",
   initialSort = "",
   initialSortDir = "desc",
@@ -170,6 +173,7 @@ export function PulloutsPanel({
               },
               "",
               [],
+              workflowStatuses,
             )}
           />
         ),
@@ -236,7 +240,7 @@ export function PulloutsPanel({
       "actions",
     ]);
     return cols.filter((column) => column.id != null && progressIds.has(column.id));
-  }, [indexOffset, progressView]);
+  }, [indexOffset, progressView, workflowStatuses]);
 
   return (
     <>

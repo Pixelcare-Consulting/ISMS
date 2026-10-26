@@ -27,6 +27,7 @@ import {
 } from "@/app/(app)/logistics/_components/logistics-paths";
 import { CompactProgressRail } from "@/app/(app)/logistics/_components/compact-progress-rail";
 import { buildTransferTracker } from "@/app/(app)/logistics/_components/transfer-tracker";
+import type { WorkflowStatusOption } from "@/features/logistics/constants/workflow-codes";
 import {
   LogisticsListViewSwitch,
   useLogisticsListProgressView,
@@ -62,6 +63,7 @@ interface TransfersPanelProps {
   capabilities: LogisticsActionCapabilities;
   branchScope: string[] | null;
   currentUserName: string;
+  workflowStatuses: readonly WorkflowStatusOption[];
   initialSort?: string;
   initialSortDir?: string;
 }
@@ -76,6 +78,7 @@ export function TransfersPanel({
   capabilities,
   branchScope,
   currentUserName,
+  workflowStatuses,
   initialSort = "",
   initialSortDir = "desc",
 }: TransfersPanelProps) {
@@ -167,6 +170,7 @@ export function TransfersPanel({
                 color: row.original.statusCode.color ?? null,
               },
               [],
+              workflowStatuses,
             )}
           />
         ),
@@ -205,7 +209,7 @@ export function TransfersPanel({
     if (!progressView) return cols.filter((column) => column.id !== "progress");
     const progressIds = new Set(["transferNo", "progress", "fromBranch", "status", "actions"]);
     return cols.filter((column) => column.id != null && progressIds.has(column.id));
-  }, [indexOffset, progressView]);
+  }, [indexOffset, progressView, workflowStatuses]);
 
   return (
     <>
