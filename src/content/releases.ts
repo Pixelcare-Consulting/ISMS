@@ -66,6 +66,181 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.80.8",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T09:55:00+08:00",
+    title: "Submit confirmation includes total CBM",
+    highlights: [
+      "Before you submit an order, the confirmation includes the total CBM already shown on that order.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Before you submit an order, the confirmation includes the total CBM already shown on that order.",
+      },
+      {
+        type: "fix",
+        description: "Confirming an order sends it one time.",
+      },
+    ],
+  },
+  {
+    version: "0.80.7",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T09:45:00+08:00",
+    title: "After you submit, you can see the order",
+    highlights: [
+      "After you submit an order, a page shows the order number, where it is waiting, and the models you sent.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "After you submit an order, a page shows the order number, where it is waiting, and the models you sent.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Before an order is submitted, you can filter models by the brands on that branch’s planogram and review a summary.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The orders list shows who created each order and when, and editing a line uses a simpler form.",
+      },
+    ],
+  },
+  {
+    version: "0.80.6",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T09:15:00+08:00",
+    title: "Create Order is easier to leave and trim",
+    highlights: [
+      "On Create Order, Back to orders is the way out, model rows can be numbered and removed together, and a special order shows a note above the models.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "On Create Order, Back to orders is the way out, model rows can be numbered and removed together, and a special order shows a note above the models.",
+      },
+    ],
+  },
+  {
+    version: "0.80.5",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T09:10:00+08:00",
+    title: "Create order reads like a form",
+    highlights: [
+      "The create-order page reads like a form, with each model on a single row.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "The create-order page reads like a form, with each model on a single row.",
+      },
+    ],
+  },
+  {
+    version: "0.80.4",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T09:05:00+08:00",
+    title: "One menu collapse button",
+    highlights: [
+      "While a section menu is open, the extra collapse button beside the version is hidden. It comes back when the menu is closed so you can open it again.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "While a section menu is open, the extra collapse button beside the version is hidden. It comes back when the menu is closed so you can open it again.",
+      },
+    ],
+  },
+  {
+    version: "0.80.3",
+    date: "2026-10-24",
+    releasedAt: "2026-10-24T16:50:00+08:00",
+    title: "Create order asks first",
+    highlights: [
+      "Choosing Create Order asks for the dealer, branch, and order type first, then shows the models for that branch.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Choosing Create Order asks for the dealer, branch, and order type first, then shows the models for that branch.",
+      },
+    ],
+  },
+  {
+    version: "0.80.2",
+    date: "2026-10-24",
+    releasedAt: "2026-10-24T15:50:00+08:00",
+    title: "Models on their own rows",
+    highlights: [
+      "Creating an order lists each model on its own row instead of a spreadsheet, with stock, quantity, and totals still on the page.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Creating an order lists each model on its own row instead of a spreadsheet, with stock, quantity, and totals still on the page.",
+      },
+    ],
+  },
+  {
+    version: "0.80.1",
+    date: "2026-10-24",
+    releasedAt: "2026-10-24T15:30:00+08:00",
+    title: "Clearer create order",
+    highlights: [
+      "Creating an order keeps the same steps, with the models, totals, and branch details easier to scan.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Creating an order keeps the same steps, with the models, totals, and branch details easier to scan.",
+      },
+    ],
+  },
+  {
+    version: "0.80.0",
+    date: "2026-10-24",
+    releasedAt: "2026-10-24T13:50:00+08:00",
+    title: "Easier menus and orders",
+    highlights: [
+      "Menus open in two steps: choose a section, then the page you need.",
+      "Manual and Special orders share one list. Choose which type to see. Auto replenish stays on its own page.",
+      "Creating an order opens its own page.",
+      "Order, delivery, transfer, and pull-out details show the real stage and the history already recorded for that stage.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Menus open in two steps: choose a section, then the page you need.",
+      },
+      {
+        type: "feature",
+        description:
+          "Manual and Special orders share one list, with a choice of type. Auto replenish stays on its own page.",
+      },
+      {
+        type: "feature",
+        description: "Creating an order opens its own page.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Order, delivery, transfer, and pull-out details show the real stage and the history already recorded for that stage.",
+      },
+    ],
+  },
+  {
     version: "0.79.1",
     date: "2026-10-23",
     releasedAt: "2026-10-23T15:45:00+08:00",

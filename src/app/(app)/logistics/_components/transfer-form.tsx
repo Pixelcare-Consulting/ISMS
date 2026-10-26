@@ -10,6 +10,7 @@ import {
   LogisticsStepWorkspace,
   LogisticsTableHeading,
 } from "@/app/(app)/logistics/_components/logistics-detail-ui";
+import { transferAuditLabel } from "@/app/(app)/logistics/_components/transfer-tracker";
 import { useClientTablePagination, uniqueSearchSuggestions } from "@/components/data-table";
 
 import {
@@ -155,23 +156,6 @@ function formatTransferDate(value: Date | string): string {
 
 function inScope(scope: string[] | null, branchId: string): boolean {
   return scope === null || scope.includes(branchId);
-}
-
-function historyLabel(action: string): string {
-  switch (action) {
-    case "transfer.created":
-      return "Request submitted";
-    case "transfer.approved":
-      return "Approved by Team Lead";
-    case "transfer.rejected":
-      return "Rejected";
-    case "transfer.released":
-      return "Released — in transit";
-    case "transfer.received":
-      return "Units received";
-    default:
-      return action;
-  }
 }
 
 function confirmTitle(confirm: PendingConfirm, transferNo: string): string {
@@ -1297,7 +1281,7 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
               <ul className="space-y-1 text-sm">
                 {detail.history.map((row) => (
                   <li key={row.id}>
-                    {historyLabel(row.action)}
+                    {transferAuditLabel(row.action)}
                     {row.userName ? ` · ${row.userName}` : ""} ·{" "}
                     {new Date(row.at).toLocaleString()}
                   </li>
@@ -1313,7 +1297,7 @@ export const TransferForm = forwardRef<TransferFormHandle, TransferFormProps>(
         <LogisticsHistoryCard
           items={detail.history.map((row) => ({
             id: row.id,
-            label: historyLabel(row.action),
+            label: transferAuditLabel(row.action),
             actor: row.userName,
             at: row.at,
           }))}

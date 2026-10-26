@@ -23,6 +23,7 @@ const EXTRA_ROUTE_TITLES: Record<string, string> = {
   "/settings/permissions": "Permissions",
   "/logistics": "Logistics",
   "/orders": "Orders",
+  "/orders/special": "Special Order",
   "/reports": "Reports",
   "/reports/demand-planning": "Supply Planning",
   "/login": "Sign in",
@@ -40,17 +41,24 @@ function navHrefTitles(): Record<string, string> {
   const map: Record<string, string> = {};
 
   for (const entry of appNavigation) {
-    if (entry.type === "link") {
-      map[entry.href] = entry.label;
-      continue;
-    }
-    for (const child of entry.items) {
-      if (isNavSubGroup(child)) {
-        for (const link of collectNavLinks(child.items)) {
-          map[link.href] = link.label;
+    switch (entry.type) {
+      case "link":
+        map[entry.href] = entry.label;
+        break;
+      case "group":
+        for (const child of entry.items) {
+          if (isNavSubGroup(child)) {
+            for (const link of collectNavLinks(child.items)) {
+              map[link.href] = link.label;
+            }
+          } else {
+            map[child.href] = child.label;
+          }
         }
-      } else {
-        map[child.href] = child.label;
+        break;
+      default: {
+        const _exhaustive: never = entry;
+        return _exhaustive;
       }
     }
   }

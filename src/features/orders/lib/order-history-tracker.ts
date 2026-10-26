@@ -18,6 +18,7 @@ export interface OrderTrackerApproval {
   level: number;
   approvedAt: string | null;
   rejectedAt: string | null;
+  actorName?: string | null;
 }
 
 export interface OrderHistoryTrackerInput {
@@ -25,7 +26,15 @@ export interface OrderHistoryTrackerInput {
   status: BranchOrderStatus;
   createdAt: string;
   processedAt: string | null;
+  createdByName?: string | null;
   approvalLevels: readonly OrderTrackerApproval[];
+}
+
+export interface OrderTrackerEvent {
+  id: string;
+  label: string | null;
+  actor: string | null;
+  at: string | null;
 }
 
 export interface OrderTrackerNode {
@@ -34,6 +43,7 @@ export interface OrderTrackerNode {
   state: OrderTrackerState;
   at: string | null;
   badge: { code: string; name: string } | null;
+  events: OrderTrackerEvent[];
 }
 
 interface TrackerStep {
@@ -167,6 +177,134 @@ function enteredAt(
   return approvalAt(input.approvalLevels, previous?.level ?? null)?.approvedAt ?? null;
 }
 
+function presentAt(value: string | null | undefined): string | null {
+  if (!value || !value.trim()) return null;
+  return value;
+}
+
+function actorOf(level: OrderTrackerApproval | undefined): string | null {
+  const name = level?.actorName?.trim();
+  return name ? name : null;
+}
+
+function sortEvents(events: OrderTrackerEvent[]): OrderTrackerEvent[] {
+  return [...events].sort((left, right) => {
+    if (left.at === right.at) return 0;
+    if (!left.at) return 1;
+    if (!right.at) return -1;
+    return left.at < right.at ? -1 : 1;
+  });
+}
+
+function submittedEvent(input: OrderHistoryTrackerInput): OrderTrackerEvent | null {
+  const at = presentAt(input.createdAt);
+  if (!at) return null;
+  const actor = input.createdByName?.trim();
+  return {
+    id: "order-submitted",
+    label: "Submitted",
+    actor: actor ? actor : null,
+    at,
+  };
+}
+
+function approvedEvent(
+  level: OrderTrackerApproval,
+  id: string,
+  label: string,
+): OrderTrackerEvent | null {
+  const at = presentAt(level.approvedAt);
+  if (!at) return null;
+  return { id, label, actor: actorOf(level), at };
+}
+
+function chainEvents(
+  index: number,
+  steps: readonly TrackerStep[],
+  input: OrderHistoryTrackerInput,
+  state: OrderTrackerState,
+): OrderTrackerEvent[] {
+  if (state === "upcoming") return [];
+  const step = steps[index];
+  if (!step) return [];
+  const events: OrderTrackerEvent[] = [];
+
+  if (index === 0 && getInitialOrderStatus(input.orderType) === step.status) {
+    const submitted = submittedEvent(input);
+    if (submitted) events.push(submitted);
+  }
+
+  if (index > 0) {
+    const previous = steps[index - 1];
+    const opener = approvalAt(input.approvalLevels, previous?.level ?? null);
+    if (previous && opener) {
+      const opened = approvedEvent(
+        opener,
+        `opened-${step.key}-${opener.level}`,
+        `${previous.label} approved`,
+      );
+      if (opened) events.push(opened);
+    }
+  }
+
+  if (step.level != null) {
+    const level = approvalAt(input.approvalLevels, step.level);
+    if (level) {
+      const decided = approvedEvent(level, `approval-${step.key}-${level.level}`, "Approved");
+      if (decided) events.push(decided);
+    }
+  }
+
+  return sortEvents(events);
+}
+
+function approvedNodeEvents(
+  steps: readonly TrackerStep[],
+  input: OrderHistoryTrackerInput,
+  complete: boolean,
+): OrderTrackerEvent[] {
+  if (!complete) return [];
+  const previous = steps[steps.length - 2];
+  const level = approvalAt(input.approvalLevels, previous?.level ?? null);
+  const approvedAt = presentAt(level?.approvedAt);
+  const processedAt = presentAt(input.processedAt);
+  const events: OrderTrackerEvent[] = [];
+  if (level && approvedAt) {
+    events.push({
+      id: `order-approved-${level.level}`,
+      label: "Approved",
+      actor: actorOf(level),
+      at: approvedAt,
+    });
+  }
+  if (processedAt && processedAt !== approvedAt) {
+    events.push({
+      id: "order-processed",
+      label: "Approved",
+      actor: null,
+      at: processedAt,
+    });
+  }
+  return sortEvents(events);
+}
+
+function closedEvents(
+  input: OrderHistoryTrackerInput,
+  status: "rejected" | "cancelled",
+): OrderTrackerEvent[] {
+  const level = input.approvalLevels.find((row) => presentAt(row.rejectedAt));
+  const at = presentAt(level?.rejectedAt);
+  if (!level || !at) return [];
+  return [
+    {
+      id: `order-closed-${level.level}`,
+      label: BRANCH_ORDER_STATUS_LABELS[status],
+      actor: actorOf(level),
+      at,
+    },
+  ];
+}
+
 export function buildOrderHistoryTracker(input: OrderHistoryTrackerInput): OrderTrackerNode[] {
   const steps = trackerSteps(input.orderType);
   const approvedIndex = steps.length - 1;
@@ -194,6 +332,7 @@ export function buildOrderHistoryTracker(input: OrderHistoryTrackerInput): Order
       state,
       at: state === "upcoming" ? null : enteredAt(index, steps, input),
       badge: null,
+      events: chainEvents(index, steps, input, state),
     });
   }
 
@@ -206,6 +345,7 @@ export function buildOrderHistoryTracker(input: OrderHistoryTrackerInput): Order
       state: pos.status,
       at: rejected?.rejectedAt ?? null,
       badge: { code: pos.status, name: label },
+      events: closedEvents(input, pos.status),
     });
   }
 
@@ -218,8 +358,33 @@ export function buildOrderHistoryTracker(input: OrderHistoryTrackerInput): Order
       state: approvedComplete ? "completed" : "upcoming",
       at: approvedComplete ? enteredAt(approvedIndex, steps, input) : null,
       badge: null,
+      events: approvedNodeEvents(steps, input, approvedComplete),
     });
   }
 
   return nodes;
+}
+
+/**
+ * Created, then that order type's approval chain, then Approved.
+ * Created uses the stored creator and time. Chain steps keep only approval rows.
+ */
+export function buildSubmittedOrderProgress(input: OrderHistoryTrackerInput): OrderTrackerNode[] {
+  const at = presentAt(input.createdAt);
+  const actor = input.createdByName?.trim() || null;
+  const created: OrderTrackerNode = {
+    key: "created",
+    label: "Created",
+    state: "completed",
+    at,
+    badge: null,
+    events: at
+      ? [{ id: "order-created", label: "Order created", actor, at }]
+      : [],
+  };
+  const chain = buildOrderHistoryTracker(input).map((node) => ({
+    ...node,
+    events: node.events.filter((event) => event.id !== "order-submitted"),
+  }));
+  return [created, ...chain];
 }

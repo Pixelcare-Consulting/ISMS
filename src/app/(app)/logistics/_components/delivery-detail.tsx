@@ -7,9 +7,10 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
-import { DeliveryTracker } from "@/app/(app)/logistics/_components/delivery-tracker";
+import { deliveryAuditLabel, DeliveryTracker } from "@/app/(app)/logistics/_components/delivery-tracker";
 import {
   LogisticsDocumentHeader,
+  LogisticsHistoryCard,
   LogisticsInfoCard,
   LogisticsProgressCard,
   LogisticsTableHeading,
@@ -425,6 +426,16 @@ export function DeliveryDetailView({
       </LogisticsInfoCard>
 
       {hasSerials ? <SerialsTable lines={detail.serials} /> : <OrderLinesTable lines={detail.orderLines} />}
+
+      <LogisticsHistoryCard
+        groupByLabel={false}
+        items={detail.history.map((row) => ({
+          id: row.id,
+          label: deliveryAuditLabel(row.action),
+          actor: row.userName,
+          at: row.at,
+        }))}
+      />
 
       <AlertDialog
         open={rejectOpen}

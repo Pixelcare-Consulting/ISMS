@@ -1,7 +1,13 @@
+"use client";
+
 import {
   ProgressCompletedMark,
   ProgressCurrentMark,
   ProgressLink,
+  ProgressStagePopover,
+  ProgressStageSummary,
+  progressSummaryParts,
+  type ProgressNode,
 } from "@/app/(app)/logistics/_components/progress-tracker";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import {
@@ -61,59 +67,78 @@ function StepMark({ state, delayMs }: { state: OrderTrackerState; delayMs: numbe
   }
 }
 
+function summaryNodes(items: readonly OrderTrackerNode[]): ProgressNode[] {
+  return items.map((item) => ({
+    key: item.key,
+    label: item.label,
+    state: item.state === "rejected" ? "cancelled" : item.state,
+    at: item.at,
+    color: null,
+  }));
+}
+
 export function OrderHistoryTracker({ items }: { items: OrderTrackerNode[] }) {
+  const summary = progressSummaryParts(summaryNodes(items));
+
   return (
-    <ol aria-label="Order progress" className="flex flex-col sm:flex-row sm:items-start">
-      {items.map((item, index) => {
-        const last = index === items.length - 1;
-        const when = item.state === "upcoming" ? null : formatOrderHistoryWhen(item.at);
-        const previous = index > 0 ? items[index - 1] : null;
-        const delayMs = index * 80;
-        return (
-          <li
-            key={item.key}
-            className="relative flex flex-1 gap-3 sm:flex-col sm:items-center sm:gap-2 sm:text-center"
-            aria-current={item.state === "current" ? "step" : undefined}
-          >
-            {index > 0 ? (
-              <ProgressLink
-                direction="horizontal"
-                filled={previous?.state === "completed"}
-                delayMs={(index - 1) * 80}
-              />
-            ) : null}
-            <div className="relative z-10 flex w-6 shrink-0 justify-center sm:w-auto">
-              <StepMark state={item.state} delayMs={delayMs} />
-              {last ? null : (
+    <div>
+      {summary ? <ProgressStageSummary lead={summary.lead} detail={summary.detail} /> : null}
+      <ol aria-label="Order progress" className="flex flex-col sm:flex-row sm:items-start">
+        {items.map((item, index) => {
+          const last = index === items.length - 1;
+          const when = item.state === "upcoming" ? null : formatOrderHistoryWhen(item.at);
+          const previous = index > 0 ? items[index - 1] : null;
+          const delayMs = index * 80;
+          return (
+            <li
+              key={item.key}
+              className="relative flex min-w-0 flex-1"
+              aria-current={item.state === "current" ? "step" : undefined}
+            >
+              {index > 0 ? (
                 <ProgressLink
-                  direction="vertical"
-                  filled={item.state === "completed"}
-                  delayMs={delayMs}
+                  direction="horizontal"
+                  filled={previous?.state === "completed"}
+                  delayMs={(index - 1) * 80}
                 />
-              )}
-            </div>
-            <div className={cn("min-w-0 sm:px-2", last ? "pb-0" : "pb-5 sm:pb-0")}>
-              <span className="sr-only">{stateText(item.state)}. </span>
-              {item.badge ? (
-                <StatusCodeBadge code={item.badge.code} name={item.badge.name} />
-              ) : (
-                <p
-                  className={cn(
-                    "text-sm",
-                    item.state === "upcoming" ? "text-muted-foreground" : "text-foreground",
-                    item.state === "current" && "font-medium",
+              ) : null}
+              <ProgressStagePopover label={item.label} events={item.events} className="sm:gap-2">
+                <div className="relative flex w-6 shrink-0 justify-center sm:w-auto">
+                  <StepMark state={item.state} delayMs={delayMs} />
+                  {last ? null : (
+                    <ProgressLink
+                      direction="vertical"
+                      filled={item.state === "completed"}
+                      delayMs={delayMs}
+                    />
                   )}
-                >
-                  {item.label}
-                </p>
-              )}
-              {item.state === "upcoming" ? null : (
-                <p className="text-xs text-muted-foreground">{when ?? "—"}</p>
-              )}
-            </div>
-          </li>
-        );
-      })}
-    </ol>
+                </div>
+                <div className={cn("min-w-0 sm:px-2", last ? "pb-0" : "pb-5 sm:pb-0")}>
+                  <span className="sr-only">{stateText(item.state)}. </span>
+                  {item.badge ? (
+                    <StatusCodeBadge code={item.badge.code} name={item.badge.name} />
+                  ) : (
+                    <p
+                      className={cn(
+                        "text-sm underline-offset-2 group-hover:underline",
+                        item.state === "upcoming" ? "text-muted-foreground" : "text-foreground",
+                        item.state === "current" && "font-medium",
+                      )}
+                    >
+                      {item.label}
+                    </p>
+                  )}
+                  {item.state === "upcoming" ? null : (
+                    <p className="text-xs text-muted-foreground">
+                      {when ?? "Time unavailable"}
+                    </p>
+                  )}
+                </div>
+              </ProgressStagePopover>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
   );
 }

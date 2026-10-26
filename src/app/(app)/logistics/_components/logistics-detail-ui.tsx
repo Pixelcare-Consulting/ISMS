@@ -20,9 +20,10 @@ const ACTIVITY_TIME = new Intl.DateTimeFormat("en-PH", {
   timeZone: "Asia/Manila",
 });
 
-function formatActivityTime(value: string): string {
+function formatActivityTime(value: string): { text: string; dateTime: string | null } {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : ACTIVITY_TIME.format(date);
+  if (Number.isNaN(date.getTime())) return { text: "Time unavailable", dateTime: null };
+  return { text: ACTIVITY_TIME.format(date), dateTime: value };
 }
 
 /** Soft wash for the document header. In transit (sky) is a plain white card. */
@@ -358,8 +359,29 @@ export function LogisticsTimeline({ items }: { items: LogisticsTimelineItem[] })
   );
 }
 
-export function LogisticsHistoryCard({ items }: { items: LogisticsActivity[] }) {
-  const grouped = groupActivities(items);
+function ActivityStamp({ at }: { at: string }) {
+  const stamp = formatActivityTime(at);
+  if (!stamp.dateTime) return <span>{stamp.text}</span>;
+  return <time dateTime={stamp.dateTime}>{stamp.text}</time>;
+}
+
+export function LogisticsHistoryCard({
+  items,
+  groupByLabel = true,
+}: {
+  items: LogisticsActivity[];
+  /** Repeated labels stay separate when this is off, so they are not counted as units. */
+  groupByLabel?: boolean;
+}) {
+  const grouped = groupByLabel
+    ? groupActivities(items)
+    : items.map((item) => ({
+        id: item.id,
+        label: item.label,
+        actor: item.actor,
+        at: item.at,
+        count: 1,
+      }));
 
   return (
     <LogisticsInfoCard title="History" icon={History} tone="slate">
@@ -373,7 +395,7 @@ export function LogisticsHistoryCard({ items }: { items: LogisticsActivity[] }) 
             subtitle: (
               <>
                 {item.actor ? <span>{item.actor}</span> : null}
-                <time dateTime={item.at}>{formatActivityTime(item.at)}</time>
+                <ActivityStamp at={item.at} />
                 {item.count > 1 ? <span>{item.count} units</span> : null}
               </>
             ),

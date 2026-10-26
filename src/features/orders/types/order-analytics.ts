@@ -243,9 +243,18 @@ export interface OrderHistoryDetailLine extends OrderHistoryLine {
   approvedAmount: number | null;
 }
 
+/** The one delivery linked to an order. Display and link only. */
+export interface OrderHistoryLinkedDelivery {
+  id: string;
+  deliveryNo: string;
+  status: { code: string; name: string; color: string | null };
+}
+
 /** One order opened from Order History, including the approval clock. */
 export interface OrderHistoryDetail extends Omit<OrderHistoryRow, "lines" | "status"> {
   status: BranchOrderStatus;
   processedAt: string | null;
   lines: OrderHistoryDetailLine[];
+  /** Null when this order has no delivery. Not an overall fulfillment status. */
+  delivery: OrderHistoryLinkedDelivery | null;
 }

@@ -23,6 +23,7 @@ import {
 } from "@/app/(app)/logistics/_components/logistics-detail-ui";
 import {
   finishedPulloutSteps,
+  pulloutAuditLabel,
   PulloutTracker,
 } from "@/app/(app)/logistics/_components/pullout-tracker";
 import { uniqueSearchSuggestions, useClientTablePagination } from "@/components/data-table";
@@ -97,23 +98,6 @@ const MANILA_DATE_TIME = new Intl.DateTimeFormat("en-PH", {
   minute: "2-digit",
   timeZone: "Asia/Manila",
 });
-
-function historyLabel(action: string): string {
-  switch (action) {
-    case "pullout.created":
-      return "Request submitted";
-    case "pullout.approved":
-      return "Approved by Team Lead";
-    case "pullout.rejected":
-      return "Rejected";
-    case "pullout.list_saved":
-      return "Logistics list saved";
-    case "pullout.finalized":
-      return "Sent — in transit";
-    default:
-      return action;
-  }
-}
 
 function inScope(scope: string[] | null, branchId: string): boolean {
   return scope === null || scope.includes(branchId);
@@ -1126,7 +1110,7 @@ export function PulloutDetailView({
       <LogisticsHistoryCard
         items={detail.history.map((row) => ({
           id: row.id,
-          label: historyLabel(row.action),
+          label: pulloutAuditLabel(row.action),
           actor: row.userName,
           at: row.at,
         }))}

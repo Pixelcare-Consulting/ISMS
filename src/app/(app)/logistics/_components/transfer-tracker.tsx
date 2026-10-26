@@ -1,7 +1,9 @@
 "use client";
 
 import {
+  progressEventsForActions,
   ProgressTracker,
+  type ProgressAuditRow,
   type ProgressNode,
   type ProgressStepState,
 } from "@/app/(app)/logistics/_components/progress-tracker";
@@ -20,6 +22,47 @@ const TRACKER_STEPS = [
 ] as const;
 
 type TrackerStepCode = (typeof TRACKER_STEPS)[number]["code"];
+
+type TransferAuditAction =
+  | "transfer.created"
+  | "transfer.approved"
+  | "transfer.rejected"
+  | "transfer.released"
+  | "transfer.received";
+
+function asTransferAuditAction(action: string): TransferAuditAction | null {
+  switch (action) {
+    case "transfer.created":
+    case "transfer.approved":
+    case "transfer.rejected":
+    case "transfer.released":
+    case "transfer.received":
+      return action;
+    default:
+      return null;
+  }
+}
+
+export function transferAuditLabel(action: string): string {
+  const known = asTransferAuditAction(action);
+  if (!known) return action;
+  switch (known) {
+    case "transfer.created":
+      return "Request submitted";
+    case "transfer.approved":
+      return "Approved by Team Lead";
+    case "transfer.rejected":
+      return "Rejected";
+    case "transfer.released":
+      return "Released — in transit";
+    case "transfer.received":
+      return "Units received";
+    default: {
+      const unreachable: never = known;
+      return unreachable;
+    }
+  }
+}
 
 type KnownStatus =
   | "requested"
@@ -80,7 +123,7 @@ function trackerMode(code: string): TrackerMode {
   }
 }
 
-function earliestAction(history: { action: string; at: string }[], action: string): string | null {
+function earliestAction(history: readonly ProgressAuditRow[], action: string): string | null {
   let earliest: string | null = null;
   for (const row of history) {
     if (row.action !== action) continue;
@@ -89,7 +132,7 @@ function earliestAction(history: { action: string; at: string }[], action: strin
   return earliest;
 }
 
-function latestAction(history: { action: string; at: string }[], action: string): string | null {
+function latestAction(history: readonly ProgressAuditRow[], action: string): string | null {
   let latest: string | null = null;
   for (const row of history) {
     if (row.action !== action) continue;
@@ -101,7 +144,7 @@ function latestAction(history: { action: string; at: string }[], action: string)
 function occurredAt(
   code: TrackerStepCode,
   statusCode: string,
-  history: { action: string; at: string }[],
+  history: readonly ProgressAuditRow[],
 ): string | null {
   switch (code) {
     case "pending_tl":
@@ -136,7 +179,7 @@ function stoppedLabel(status: { code: string; name: string }): string {
 
 function buildTracker(
   status: { code: string; name: string; color: string | null },
-  history: { action: string; at: string }[],
+  history: readonly ProgressAuditRow[],
 ): ProgressNode[] {
   const mode = trackerMode(status.code);
   const times = TRACKER_STEPS.map((step) => occurredAt(step.code, status.code, history));
@@ -152,6 +195,7 @@ function buildTracker(
         state,
         at: state === "upcoming" ? null : times[index] ?? null,
         color: null,
+        events: progressEventsForActions(history, [historyPick(step.code).action], transferAuditLabel),
       };
     }
     const completed = index < provenCount;
@@ -161,6 +205,7 @@ function buildTracker(
       state: completed ? "completed" : "upcoming",
       at: completed ? times[index] ?? null : null,
       color: null,
+      events: progressEventsForActions(history, [historyPick(step.code).action], transferAuditLabel),
     };
   });
 
@@ -172,13 +217,14 @@ function buildTracker(
       at: earliestAction(history, "transfer.rejected"),
       color: status.color,
       badgeCode: status.code,
+      events: progressEventsForActions(history, ["transfer.rejected"], transferAuditLabel),
     });
   }
 
   return nodes;
 }
 
-type TrackerHistoryRow = { action: string; at: string; userName?: string | null };
+type TrackerHistoryRow = ProgressAuditRow;
 
 export interface TransferFinishedStep {
   key: string;
@@ -251,7 +297,7 @@ export function TransferTracker({
   history,
 }: {
   status: { code: string; name: string; color: string | null };
-  history: { action: string; at: string }[];
+  history: readonly ProgressAuditRow[];
 }) {
   return <ProgressTracker ariaLabel="Transfer progress" items={buildTracker(status, history)} />;
 }

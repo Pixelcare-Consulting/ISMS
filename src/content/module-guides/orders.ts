@@ -6,7 +6,7 @@ export const MANUAL_ORDERS_MODULE_GUIDE: ModuleGuideContent = {
   description:
     "Create a live branch request; it goes straight to Supply Planning. Team Leaders may optionally edit while it is Pending SP. Orders shows requests waiting for your role (including optional edit). Order History holds approved and past SO#s. Order analytics on an order opens stock, sales, and days of cover for that branch. Logistics fulfills only after Supply Planning’s final approval.",
   tips: [
-    { label: "Use Create order for this branch. Additional item opens a separate special order" },
+    { label: "Use Create order for this branch. Additional item switches that order to Special" },
     { label: "Enter a quantity of 1 or more per model. Suggest is the shelf gap" },
     {
       label:

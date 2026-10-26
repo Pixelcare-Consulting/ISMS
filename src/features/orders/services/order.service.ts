@@ -33,6 +33,11 @@ import type {
   OrderListSort,
   OrderListSortDir,
 } from "@/features/orders/repositories/order.repository";
+import { manualSpecialQueueStatusKeys } from "@/features/orders/lib/manual-special-order-scope";
+import {
+  hasQueryableTypeScopes,
+  type OrderTypeScope,
+} from "@/features/orders/lib/order-scope-where";
 import { SAP_REFERENCE_TYPES } from "@/features/sap/constants/sap-job-types";
 import { sapService } from "@/features/sap/services/sap.service";
 import { branchQuotaService } from "@/features/branch-quotas/services/branch-quota.service";
@@ -247,6 +252,8 @@ export const orderService = {
       limit?: number;
       orderType?: BranchOrderType;
       statuses?: BranchOrderStatus[];
+      /** One query across types. Replaces orderType + statuses. */
+      typeScopes?: OrderTypeScope[];
       /** Only orders from branches in this Team Leader's AOR. */
       teamLeaderId?: string;
     },
@@ -277,8 +284,11 @@ export const orderService = {
     hasFullAccess: boolean,
     orderType?: BranchOrderType,
     statuses?: BranchOrderStatus[],
+    typeScopes?: OrderTypeScope[],
   ): Promise<OrderKpis> {
-    const statusKeys = statuses ?? ORDER_STATUS_ORDER;
+    const statusKeys = typeScopes
+      ? manualSpecialQueueStatusKeys(typeScopes, ORDER_STATUS_ORDER)
+      : (statuses ?? ORDER_STATUS_ORDER);
     const emptyStatuses = statusKeys.map((status) => ({
       code: status,
       name: BRANCH_ORDER_STATUS_LABELS[status],
@@ -290,10 +300,17 @@ export const orderService = {
     if (!hasFullAccess && branchIds !== null && branchIds.length === 0) {
       return { totalOrders: 0, statuses: emptyStatuses };
     }
+    if (typeScopes && !hasQueryableTypeScopes(typeScopes)) {
+      return { totalOrders: 0, statuses: emptyStatuses };
+    }
 
     const [statusGroups, totalOrders] = await Promise.all([
-      orderRepository.countByStatus(tenantId, branchIds, orderType, statuses),
-      orderRepository.countAll(tenantId, branchIds, orderType, statuses),
+      typeScopes
+        ? orderRepository.countByStatus(tenantId, branchIds, undefined, undefined, typeScopes)
+        : orderRepository.countByStatus(tenantId, branchIds, orderType, statuses),
+      typeScopes
+        ? orderRepository.countAll(tenantId, branchIds, undefined, undefined, typeScopes)
+        : orderRepository.countAll(tenantId, branchIds, orderType, statuses),
     ]);
 
     const countByStatus = new Map(

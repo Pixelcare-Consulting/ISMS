@@ -1,8 +1,5 @@
 import { SidebarBrand } from "@/app/(app)/_components/sidebar-brand";
-import {
-  SidebarNav,
-  type NavCountBadges,
-} from "@/app/(app)/_components/sidebar-nav";
+import { SidebarNav } from "@/app/(app)/_components/sidebar-nav";
 import { UserNav } from "@/app/(app)/_components/user-nav";
 import {
   Sidebar,
@@ -21,19 +18,10 @@ interface AppSidebarProps {
     name?: string | null;
     email?: string | null;
     image?: string | null;
-    permissions: string[];
-    isPlatformOperator: boolean;
   };
-  useSetupNavigation: boolean;
-  countBadges?: NavCountBadges;
 }
 
-export function AppSidebar({
-  branding,
-  user,
-  useSetupNavigation,
-  countBadges,
-}: AppSidebarProps) {
+export function AppSidebar({ branding, user }: AppSidebarProps) {
   return (
     <Sidebar collapsible="icon" className="app-sidebar">
       <SidebarHeader className="h-14 justify-center border-b border-sidebar-border">
@@ -45,12 +33,7 @@ export function AppSidebar({
       </SidebarHeader>
 
       <SidebarContent className="themed-scrollbar">
-        <SidebarNav
-          useSetupNavigation={useSetupNavigation}
-          permissions={user.permissions}
-          isPlatformOperator={user.isPlatformOperator}
-          countBadges={countBadges}
-        />
+        <SidebarNav />
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border">

@@ -1,7 +1,9 @@
 "use client";
 
 import {
+  progressEventsForActions,
   ProgressTracker,
+  type ProgressAuditRow,
   type ProgressNode,
   type ProgressStepState,
 } from "@/app/(app)/logistics/_components/progress-tracker";
@@ -19,6 +21,47 @@ const TRACKER_STEPS = [
 ] as const;
 
 type TrackerStepCode = (typeof TRACKER_STEPS)[number]["code"];
+
+type PulloutAuditAction =
+  | "pullout.created"
+  | "pullout.approved"
+  | "pullout.rejected"
+  | "pullout.list_saved"
+  | "pullout.finalized";
+
+function asPulloutAuditAction(action: string): PulloutAuditAction | null {
+  switch (action) {
+    case "pullout.created":
+    case "pullout.approved":
+    case "pullout.rejected":
+    case "pullout.list_saved":
+    case "pullout.finalized":
+      return action;
+    default:
+      return null;
+  }
+}
+
+export function pulloutAuditLabel(action: string): string {
+  const known = asPulloutAuditAction(action);
+  if (!known) return action;
+  switch (known) {
+    case "pullout.created":
+      return "Request submitted";
+    case "pullout.approved":
+      return "Approved by Team Lead";
+    case "pullout.rejected":
+      return "Rejected";
+    case "pullout.list_saved":
+      return "Logistics list saved";
+    case "pullout.finalized":
+      return "Sent — in transit";
+    default: {
+      const unreachable: never = known;
+      return unreachable;
+    }
+  }
+}
 
 type WorkflowCode =
   | "requested"
@@ -99,7 +142,7 @@ function historyAction(code: TrackerStepCode): string {
   }
 }
 
-function earliestRow<T extends { action: string; at: string }>(history: T[], action: string): T | null {
+function earliestRow<T extends ProgressAuditRow>(history: readonly T[], action: string): T | null {
   let earliest: T | null = null;
   for (const row of history) {
     if (row.action !== action) continue;
@@ -108,14 +151,14 @@ function earliestRow<T extends { action: string; at: string }>(history: T[], act
   return earliest;
 }
 
-function earliestAction(history: { action: string; at: string }[], action: string): string | null {
+function earliestAction(history: readonly ProgressAuditRow[], action: string): string | null {
   return earliestRow(history, action)?.at ?? null;
 }
 
 function occurredAt(
   code: TrackerStepCode,
   createdAt: string,
-  history: { action: string; at: string }[],
+  history: readonly ProgressAuditRow[],
 ): string | null {
   const at = earliestAction(history, historyAction(code));
   switch (code) {
@@ -134,7 +177,7 @@ function occurredAt(
 
 function actorForStep(
   code: TrackerStepCode,
-  history: { action: string; at: string; userName?: string | null }[],
+  history: readonly ProgressAuditRow[],
 ): string | null {
   const name = earliestRow(history, historyAction(code))?.userName?.trim() ?? "";
   return name.length > 0 ? name : null;
@@ -160,7 +203,7 @@ export interface PulloutFinishedStep {
 export function finishedPulloutSteps(
   statusCode: string,
   createdAt: string,
-  history: { action: string; at: string; userName?: string | null }[],
+  history: readonly ProgressAuditRow[],
 ): PulloutFinishedStep[] {
   const mode = trackerMode(statusCode);
   const times = TRACKER_STEPS.map((step) => occurredAt(step.code, createdAt, history));
@@ -176,7 +219,7 @@ export function finishedPulloutSteps(
 function buildTracker(
   status: { code: string; name: string; color: string | null },
   createdAt: string,
-  history: { action: string; at: string }[],
+  history: readonly ProgressAuditRow[],
 ): ProgressNode[] {
   const mode = trackerMode(status.code);
   const times = TRACKER_STEPS.map((step) => occurredAt(step.code, createdAt, history));
@@ -191,6 +234,7 @@ function buildTracker(
         state,
         at: state === "upcoming" ? null : times[index] ?? null,
         color: null,
+        events: progressEventsForActions(history, [historyAction(step.code)], pulloutAuditLabel),
       };
     }
     const completed = index < provenCount;
@@ -200,6 +244,7 @@ function buildTracker(
       state: completed ? "completed" : "upcoming",
       at: completed ? times[index] ?? null : null,
       color: null,
+      events: progressEventsForActions(history, [historyAction(step.code)], pulloutAuditLabel),
     };
   });
 
@@ -210,6 +255,7 @@ function buildTracker(
       state: "cancelled",
       at: earliestAction(history, "pullout.rejected"),
       color: status.color,
+      events: progressEventsForActions(history, ["pullout.rejected"], pulloutAuditLabel),
     });
   }
 
@@ -223,7 +269,7 @@ export function PulloutTracker({
 }: {
   status: { code: string; name: string; color: string | null };
   createdAt: string;
-  history: { action: string; at: string }[];
+  history: readonly ProgressAuditRow[];
 }) {
   return (
     <ProgressTracker

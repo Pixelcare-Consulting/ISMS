@@ -9,12 +9,13 @@ import { OrderHistoryLinesTable } from "@/app/(app)/orders/_components/order-his
 import {
   OrderHistoryApprovals,
   OrderHistoryFactsCard,
+  OrderLinkedDeliveryCard,
   type OrderApprovalTimelineItem,
 } from "@/app/(app)/orders/_components/order-history-sections";
 import { OrderHistoryTracker } from "@/app/(app)/orders/_components/order-history-tracker";
 import { formatOrderSapDocument } from "@/features/orders/constants/order-sap-doc-type";
 import { BRANCH_ORDER_STATUS_LABELS, BRANCH_ORDER_TYPE_LABELS } from "@/features/orders/constants/order-status";
-import { ORDER_TYPE_ROUTE } from "@/features/orders/constants/order-permissions";
+import { ORDER_TYPE_ROUTE } from "@/features/orders/constants/order-type-route";
 import { getOrderApprovalChain, type OrderApprovalStep } from "@/features/orders/constants/order-workflow";
 import {
   buildOrderHistoryTracker,
@@ -50,6 +51,13 @@ function recordedOutcome(level: OrderHistoryApproval, status: BranchOrderStatus)
   return null;
 }
 
+function approvalActor(level: OrderHistoryApproval): string | null {
+  const name = level.approvedBy?.name?.trim();
+  if (name) return name;
+  const email = level.approvedBy?.email?.trim();
+  return email || null;
+}
+
 function personLabel(level: OrderHistoryApproval): string {
   const name = level.approvedBy?.name?.trim();
   if (name) return name;
@@ -57,7 +65,9 @@ function personLabel(level: OrderHistoryApproval): string {
 }
 
 function decisionWhen(level: OrderHistoryApproval): string | null {
-  return formatOrderHistoryWhen(level.rejectedAt ?? level.approvedAt);
+  const raw = level.rejectedAt ?? level.approvedAt;
+  if (!raw) return null;
+  return formatOrderHistoryWhen(raw) ?? "Time unavailable";
 }
 
 function firstWaitingIndex(status: BranchOrderStatus, chain: readonly OrderApprovalStep[]): number {
@@ -139,7 +149,13 @@ export function OrderHistoryDetailView({ order }: { order: OrderHistoryDetail })
     status: order.status,
     createdAt: order.createdAt,
     processedAt: order.processedAt,
-    approvalLevels: order.approvalLevels,
+    createdByName: order.createdByName,
+    approvalLevels: order.approvalLevels.map((level) => ({
+      level: level.level,
+      approvedAt: level.approvedAt,
+      rejectedAt: level.rejectedAt,
+      actorName: approvalActor(level),
+    })),
   });
   const backHref = `${ORDER_TYPE_ROUTE[order.orderType]}?tab=history`;
 
@@ -160,6 +176,8 @@ export function OrderHistoryDetailView({ order }: { order: OrderHistoryDetail })
       <LogisticsProgressCard>
         <OrderHistoryTracker items={tracker} />
       </LogisticsProgressCard>
+
+      {order.delivery ? <OrderLinkedDeliveryCard delivery={order.delivery} /> : null}
 
       <OrderHistoryFactsCard>
         <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
