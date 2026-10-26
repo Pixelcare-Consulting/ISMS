@@ -66,6 +66,87 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.80.13",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T14:10:00+08:00",
+    title: "Review until the order moves on",
+    highlights: [
+      "Supply Planning sees Review until the order has moved on, and a delivery, transfer, or pull-out shows its progress once.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Supply Planning sees Review until the order has moved on, and a delivery, transfer, or pull-out shows its progress once.",
+      },
+    ],
+  },
+  {
+    version: "0.80.12",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T13:45:00+08:00",
+    title: "Product specialists see their own orders",
+    highlights: ["A product specialist sees only the orders they created."],
+    changes: [
+      {
+        type: "improvement",
+        description: "A product specialist sees only the orders they created.",
+      },
+    ],
+  },
+  {
+    version: "0.80.11",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T13:20:00+08:00",
+    title: "Stages show icons and recorded times",
+    highlights: [
+      "Opening a delivery, transfer, or pull-out shows its stages with icons and the time already recorded.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Opening a delivery, transfer, or pull-out shows its stages with icons and the time already recorded.",
+      },
+    ],
+  },
+  {
+    version: "0.80.10",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T12:55:00+08:00",
+    title: "See logistics as a table or with progress",
+    highlights: [
+      "Deliveries, transfers, and pull-outs can be shown as a table or with each document's progress on the row.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Deliveries, transfers, and pull-outs can be shown as a table or with each document's progress on the row.",
+      },
+    ],
+  },
+  {
+    version: "0.80.9",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T12:40:00+08:00",
+    title: "Your special order stays on the list",
+    highlights: [
+      "A special order you submitted stays on the orders list, and View details can open the full order page.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "A special order you submitted stays on the orders list, and View details can open the full order page.",
+      },
+      {
+        type: "improvement",
+        description: "On the orders list, the time sits under the date so the actions stay in view.",
+      },
+    ],
+  },
+  {
     version: "0.80.8",
     date: "2026-10-26",
     releasedAt: "2026-10-26T09:55:00+08:00",

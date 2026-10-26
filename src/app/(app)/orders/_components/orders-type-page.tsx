@@ -61,7 +61,7 @@ function ordersTypePageDescription(orderType: BranchOrderType): string {
     case "manual":
       return "Showing manual requests waiting for your role. Approved orders are in Order History. Path: Product Specialist submits → Pending SP (Team Leader may optionally edit) → Supply Planning approves.";
     case "special":
-      return "Showing special requests waiting for your role. Approved orders are in Order History. Team Leaders create these requests; Supply Planning gives final approval.";
+      return "Showing special requests on this list, including a special order you submitted. Approved orders are in Order History. Team Leaders create these requests; Supply Planning gives final approval.";
     default: {
       const _exhaustive: never = orderType;
       return _exhaustive;
@@ -99,7 +99,7 @@ function combinedOrdersDescription(
     case "all":
       if (canAccessManual && !canAccessSpecial) return ordersTypePageDescription("manual");
       if (canAccessSpecial && !canAccessManual) return ordersTypePageDescription("special");
-      return "Showing manual and special requests waiting for your role. Approved orders are in Order History. Use the type filter to see one kind of order. Each order keeps its own approval path.";
+      return "Showing manual and special requests waiting for your role, including a special order you submitted. Approved orders are in Order History. Use the type filter to see one kind of order. Each order keeps its own approval path.";
     case "manual":
       return ordersTypePageDescription("manual");
     case "special":

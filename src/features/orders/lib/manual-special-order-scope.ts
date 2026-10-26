@@ -4,7 +4,10 @@ import {
   canAccessOrderType,
   hasOrderPermission,
 } from "@/features/orders/constants/order-permissions";
-import { getOrderQueueStatuses } from "@/features/orders/constants/order-workflow";
+import {
+  getOrderQueueStatuses,
+  isProductSpecialistOwnOrdersOnly,
+} from "@/features/orders/constants/order-workflow";
 import type { OrderTypeScope } from "@/features/orders/lib/order-scope-where";
 
 export const MANUAL_SPECIAL_TYPE_FILTERS = ["all", "manual", "special"] as const;
@@ -39,32 +42,74 @@ export function permittedManualSpecialTypes(
 }
 
 /**
+ * A Product Specialist who is not an admin and not Supply Planning only matches
+ * orders they created. Other roles keep the scope they already had.
+ */
+function withProductSpecialistCreator(
+  scopes: OrderTypeScope[],
+  roleSlugs: string[],
+  viewerUserId?: string,
+): OrderTypeScope[] {
+  if (!viewerUserId || !isProductSpecialistOwnOrdersOnly(roleSlugs)) return scopes;
+  return scopes.map((scope) => ({ ...scope, createdById: viewerUserId }));
+}
+
+/**
  * Queue OR branches. Each type uses its own `getOrderQueueStatuses`, so Manual
  * pending_sp optional-edit visibility is not applied to Special rows.
+ * Special Pending SP stays an approver step for everyone else. The creator
+ * still sees their own order at that step.
+ * Product Specialists are limited to `createdById` on every branch, including that step.
  */
 export function manualSpecialQueueScopes(
   permissions: string[] | undefined,
   roleSlugs: string[],
   filter: ManualSpecialTypeFilter,
+  viewerUserId?: string,
 ): OrderTypeScope[] {
-  return permittedManualSpecialTypes(permissions, filter).map((orderType) => ({
+  const scopes = permittedManualSpecialTypes(permissions, filter).map((orderType) => ({
     orderType,
     statuses: getOrderQueueStatuses(orderType, roleSlugs, {
       includeDraft: hasOrderPermission(permissions, orderType, "create"),
     }),
   }));
+
+  const withCreatorSpecial = appendCreatorSpecialPendingSp(scopes, viewerUserId);
+  return withProductSpecialistCreator(withCreatorSpecial, roleSlugs, viewerUserId);
+}
+
+function appendCreatorSpecialPendingSp(
+  scopes: OrderTypeScope[],
+  viewerUserId?: string,
+): OrderTypeScope[] {
+  if (!viewerUserId) return scopes;
+  const special = scopes.find((scope) => scope.orderType === "special");
+  if (!special || special.statuses?.includes("pending_sp")) return scopes;
+
+  return [
+    ...scopes,
+    {
+      orderType: "special",
+      statuses: ["pending_sp"],
+      createdById: viewerUserId,
+    },
+  ];
 }
 
 /**
  * History keeps today's status set: no status predicate. The OR only limits type.
+ * A Product Specialist still only sees orders they created.
  */
 export function manualSpecialHistoryScopes(
   permissions: string[] | undefined,
   filter: ManualSpecialTypeFilter,
+  roleSlugs: string[] = [],
+  viewerUserId?: string,
 ): OrderTypeScope[] {
-  return permittedManualSpecialTypes(permissions, filter).map((orderType) => ({
+  const scopes = permittedManualSpecialTypes(permissions, filter).map((orderType) => ({
     orderType,
   }));
+  return withProductSpecialistCreator(scopes, roleSlugs, viewerUserId);
 }
 
 /** KPI cards follow the queue status set, in the existing status order. */

@@ -25,6 +25,12 @@ import {
   buildLogisticsPageHref,
   LOGISTICS_TRANSFERS_PATH,
 } from "@/app/(app)/logistics/_components/logistics-paths";
+import { CompactProgressRail } from "@/app/(app)/logistics/_components/compact-progress-rail";
+import { buildTransferTracker } from "@/app/(app)/logistics/_components/transfer-tracker";
+import {
+  LogisticsListViewSwitch,
+  useLogisticsListProgressView,
+} from "@/app/(app)/logistics/_components/logistics-list-view-switch";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
 interface StatusCodeRef {
@@ -75,6 +81,7 @@ export function TransfersPanel({
 }: TransfersPanelProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [progressView] = useLogisticsListProgressView();
   const [query, setQuery] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const pageSize = parseTablePageSize(transfers.limit);
@@ -147,6 +154,25 @@ export function TransfersPanel({
         ),
       }),
       transferColumn.display({
+        id: "progress",
+        header: "Progress",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <CompactProgressRail
+            ariaLabel={`${row.original.transferNo} progress`}
+            items={buildTransferTracker(
+              {
+                code: row.original.statusCode.code,
+                name: row.original.statusCode.name,
+                color: row.original.statusCode.color ?? null,
+              },
+              [],
+            )}
+          />
+        ),
+        meta: { className: "w-52 min-w-52" },
+      }),
+      transferColumn.display({
         id: "fromBranch",
         header: "From → To",
         enableSorting: true,
@@ -176,8 +202,10 @@ export function TransfersPanel({
         ),
       }),
     ];
-    return cols;
-  }, [indexOffset]);
+    if (!progressView) return cols.filter((column) => column.id !== "progress");
+    const progressIds = new Set(["transferNo", "progress", "fromBranch", "status", "actions"]);
+    return cols.filter((column) => column.id != null && progressIds.has(column.id));
+  }, [indexOffset, progressView]);
 
   return (
     <>
@@ -197,6 +225,7 @@ export function TransfersPanel({
         search={{ value: query, onChange: setQuery, placeholder: "Search transfers…", suggestions }}
         toolbarActions={
           <>
+          <LogisticsListViewSwitch />
           {capabilities.canCreate ? (
             <Button
               size="sm"

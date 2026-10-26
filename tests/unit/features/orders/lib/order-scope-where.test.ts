@@ -78,6 +78,121 @@ describe("combined manual and special order scope", () => {
     });
   });
 
+  it("limits a product specialist list to orders that person created", () => {
+    const scopes = manualSpecialQueueScopes(BOTH, ["ps"], "all", "user-1");
+    expect(scopes).toEqual([
+      {
+        orderType: "manual",
+        statuses: ["draft", "pending_ps", "pending_sp"],
+        createdById: "user-1",
+      },
+      {
+        orderType: "special",
+        statuses: ["draft"],
+        createdById: "user-1",
+      },
+      {
+        orderType: "special",
+        statuses: ["pending_sp"],
+        createdById: "user-1",
+      },
+    ]);
+    const listed = orderScopeWhere("tenant-1", ["branch-1"], { typeScopes: scopes }).OR;
+    expect(listed).toEqual([
+      {
+        orderType: "manual",
+        status: { in: ["draft", "pending_ps", "pending_sp"] },
+        createdById: "user-1",
+      },
+      { orderType: "special", status: { in: ["draft"] }, createdById: "user-1" },
+      { orderType: "special", status: { in: ["pending_sp"] }, createdById: "user-1" },
+    ]);
+    expect(listed?.some((branch) => branch.createdById === "user-2")).toBe(false);
+
+    const manualOnly = manualSpecialQueueScopes(BOTH, ["ps"], "manual", "user-1");
+    expect(manualOnly).toEqual([
+      {
+        orderType: "manual",
+        statuses: ["draft", "pending_ps", "pending_sp"],
+        createdById: "user-1",
+      },
+    ]);
+
+    const specialOnly = manualSpecialQueueScopes(BOTH, ["ps"], "special", "user-1");
+    expect(specialOnly).toEqual([
+      { orderType: "special", statuses: ["draft"], createdById: "user-1" },
+      { orderType: "special", statuses: ["pending_sp"], createdById: "user-1" },
+    ]);
+  });
+
+  it("keeps a non-specialist creator's own special Pending SP without opening that step", () => {
+    const scopes = manualSpecialQueueScopes(BOTH, ["tl"], "special", "user-1");
+    expect(scopes).toEqual([
+      { orderType: "special", statuses: ["draft"] },
+      { orderType: "special", statuses: ["pending_sp"], createdById: "user-1" },
+    ]);
+  });
+
+  it("leaves team leader, supply planning, and admin queues open to other creators", () => {
+    const teamLeader = manualSpecialQueueScopes(
+      ["orders.manual.view", "orders.special.view"],
+      ["tl"],
+      "all",
+      "user-1",
+    );
+    expect(teamLeader).toEqual([
+      { orderType: "manual", statuses: ["pending_sp"] },
+      { orderType: "special", statuses: [] },
+      { orderType: "special", statuses: ["pending_sp"], createdById: "user-1" },
+    ]);
+    expect(teamLeader.find((scope) => scope.orderType === "manual")?.createdById).toBeUndefined();
+
+    const planning = manualSpecialQueueScopes(
+      [
+        "orders.manual.view",
+        "orders.manual.approve",
+        "orders.special.view",
+        "orders.special.approve",
+      ],
+      ["ps", "sp"],
+      "all",
+      "user-1",
+    );
+    expect(planning).toEqual([
+      { orderType: "manual", statuses: ["pending_ps", "pending_sp"] },
+      { orderType: "special", statuses: ["pending_sp"] },
+    ]);
+
+    const admin = manualSpecialQueueScopes(BOTH, ["ps", "tenant_admin"], "all", "user-1");
+    expect(admin.every((scope) => scope.createdById == null)).toBe(true);
+    expect(admin.find((scope) => scope.orderType === "manual")?.statuses).toContain("pending_tl");
+  });
+
+  it("limits product specialist history to orders they created", () => {
+    const scopes = manualSpecialHistoryScopes(BOTH, "all", ["ps"], "user-1");
+    expect(scopes).toEqual([
+      { orderType: "manual", createdById: "user-1" },
+      { orderType: "special", createdById: "user-1" },
+    ]);
+    expect(orderScopeWhere("tenant-1", null, { typeScopes: scopes }).OR).toEqual([
+      { orderType: "manual", createdById: "user-1" },
+      { orderType: "special", createdById: "user-1" },
+    ]);
+    expect(manualSpecialHistoryScopes(BOTH, "special", ["super_admin"], "user-1")).toEqual([
+      { orderType: "special" },
+    ]);
+  });
+
+  it("leaves special Pending SP on the role queue when the viewer can already approve it", () => {
+    const scopes = manualSpecialQueueScopes(
+      ["orders.manual.view", "orders.special.view", "orders.special.approve"],
+      ["sp"],
+      "special",
+      "user-1",
+    );
+    expect(scopes).toEqual([{ orderType: "special", statuses: ["pending_sp"] }]);
+  });
+
   it("matches nothing when every requested type is outside the viewer's access", () => {
     const scopes = manualSpecialQueueScopes(["orders.manual.view"], ["sp"], "special");
     expect(scopes).toEqual([]);

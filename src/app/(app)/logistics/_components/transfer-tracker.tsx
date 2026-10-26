@@ -15,10 +15,10 @@ import {
  */
 
 const TRACKER_STEPS = [
-  { code: "pending_tl", label: "Waiting for approval" },
-  { code: "for_transfer", label: "Ready to release" },
-  { code: "in_transit", label: "In transit" },
-  { code: "accepted", label: "Accepted" },
+  { code: "pending_tl", label: "Waiting for approval", icon: "approval" },
+  { code: "for_transfer", label: "Ready to release", icon: "ready" },
+  { code: "in_transit", label: "In transit", icon: "transit" },
+  { code: "accepted", label: "Accepted", icon: "accepted" },
 ] as const;
 
 type TrackerStepCode = (typeof TRACKER_STEPS)[number]["code"];
@@ -177,7 +177,7 @@ function stoppedLabel(status: { code: string; name: string }): string {
   return status.code === "cancelled" ? "Cancelled" : "Rejected";
 }
 
-function buildTracker(
+export function buildTransferTracker(
   status: { code: string; name: string; color: string | null },
   history: readonly ProgressAuditRow[],
 ): ProgressNode[] {
@@ -195,7 +195,8 @@ function buildTracker(
         state,
         at: state === "upcoming" ? null : times[index] ?? null,
         color: null,
-        events: progressEventsForActions(history, [historyPick(step.code).action], transferAuditLabel),
+        icon: step.icon,
+        events: progressEventsForActions(history, [historyAction(step.code)], transferAuditLabel),
       };
     }
     const completed = index < provenCount;
@@ -205,7 +206,8 @@ function buildTracker(
       state: completed ? "completed" : "upcoming",
       at: completed ? times[index] ?? null : null,
       color: null,
-      events: progressEventsForActions(history, [historyPick(step.code).action], transferAuditLabel),
+      icon: step.icon,
+      events: progressEventsForActions(history, [historyAction(step.code)], transferAuditLabel),
     };
   });
 
@@ -217,6 +219,7 @@ function buildTracker(
       at: earliestAction(history, "transfer.rejected"),
       color: status.color,
       badgeCode: status.code,
+      icon: "stopped",
       events: progressEventsForActions(history, ["transfer.rejected"], transferAuditLabel),
     });
   }
@@ -224,72 +227,21 @@ function buildTracker(
   return nodes;
 }
 
-type TrackerHistoryRow = ProgressAuditRow;
-
-export interface TransferFinishedStep {
-  key: string;
-  title: string;
-  at: string | null;
-  actor: string | null;
-}
-
-function asTrackerStepCode(code: string): TrackerStepCode | null {
+function historyAction(code: TrackerStepCode): string {
   switch (code) {
     case "pending_tl":
+      return "transfer.created";
     case "for_transfer":
+      return "transfer.approved";
     case "in_transit":
+      return "transfer.released";
     case "accepted":
-      return code;
-    default:
-      return null;
-  }
-}
-
-function historyPick(code: TrackerStepCode): { action: string; pick: "earliest" | "latest" } {
-  switch (code) {
-    case "pending_tl":
-      return { action: "transfer.created", pick: "earliest" };
-    case "for_transfer":
-      return { action: "transfer.approved", pick: "earliest" };
-    case "in_transit":
-      return { action: "transfer.released", pick: "earliest" };
-    case "accepted":
-      return { action: "transfer.received", pick: "latest" };
+      return "transfer.received";
     default: {
       const unreachable: never = code;
       return unreachable;
     }
   }
-}
-
-function stepActor(code: string, at: string | null, history: TrackerHistoryRow[]): string | null {
-  if (!at) return null;
-  const step = asTrackerStepCode(code);
-  if (!step) return null;
-  const { action, pick } = historyPick(step);
-  let match: TrackerHistoryRow | null = null;
-  for (const row of history) {
-    if (row.action !== action) continue;
-    if (!match || (pick === "earliest" ? row.at < match.at : row.at > match.at)) match = row;
-  }
-  if (!match || match.at !== at) return null;
-  const name = match.userName?.trim();
-  return name ? name : null;
-}
-
-/** Finished jobs only. Same completion rules as the tracker rail. */
-export function transferFinishedSteps(
-  status: { code: string; name: string; color: string | null },
-  history: TrackerHistoryRow[],
-): TransferFinishedStep[] {
-  return buildTracker(status, history)
-    .filter((node) => node.state === "completed")
-    .map((node) => ({
-      key: node.key,
-      title: node.label,
-      at: node.at,
-      actor: stepActor(node.key, node.at, history),
-    }));
 }
 
 export function TransferTracker({
@@ -299,5 +251,5 @@ export function TransferTracker({
   status: { code: string; name: string; color: string | null };
   history: readonly ProgressAuditRow[];
 }) {
-  return <ProgressTracker ariaLabel="Transfer progress" items={buildTracker(status, history)} />;
+  return <ProgressTracker ariaLabel="Transfer progress" items={buildTransferTracker(status, history)} />;
 }

@@ -25,6 +25,12 @@ import {
   buildLogisticsPageHref,
   LOGISTICS_PICKUPS_PATH,
 } from "@/app/(app)/logistics/_components/logistics-paths";
+import { CompactProgressRail } from "@/app/(app)/logistics/_components/compact-progress-rail";
+import { buildPulloutTracker } from "@/app/(app)/logistics/_components/pullout-tracker";
+import {
+  LogisticsListViewSwitch,
+  useLogisticsListProgressView,
+} from "@/app/(app)/logistics/_components/logistics-list-view-switch";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
 interface StatusCodeRef {
@@ -73,6 +79,7 @@ export function PulloutsPanel({
 }: PulloutsPanelProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [progressView] = useLogisticsListProgressView();
   const [query, setQuery] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const pageSize = parseTablePageSize(pullouts.limit);
@@ -148,6 +155,26 @@ export function PulloutsPanel({
           </Link>
         ),
       }),
+      pulloutColumn.display({
+        id: "progress",
+        header: "Progress",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <CompactProgressRail
+            ariaLabel={`${row.original.pulloutNo} progress`}
+            items={buildPulloutTracker(
+              {
+                code: row.original.statusCode.code,
+                name: row.original.statusCode.name,
+                color: row.original.statusCode.color ?? null,
+              },
+              "",
+              [],
+            )}
+          />
+        ),
+        meta: { className: "w-52 min-w-52" },
+      }),
       pulloutColumn.accessor((row) => row.branch.name, {
         id: "branch",
         header: "Branch",
@@ -198,8 +225,18 @@ export function PulloutsPanel({
         ),
       }),
     ];
-    return cols;
-  }, [indexOffset]);
+    if (!progressView) return cols.filter((column) => column.id !== "progress");
+    const progressIds = new Set([
+      "pulloutNo",
+      "progress",
+      "branch",
+      "warehouse",
+      "reason",
+      "status",
+      "actions",
+    ]);
+    return cols.filter((column) => column.id != null && progressIds.has(column.id));
+  }, [indexOffset, progressView]);
 
   return (
     <>
@@ -219,6 +256,7 @@ export function PulloutsPanel({
       search={{ value: query, onChange: setQuery, placeholder: "Search pull-outs…", suggestions }}
       toolbarActions={
         <>
+        <LogisticsListViewSwitch />
         {capabilities.canCreate ? (
           <Button
             size="sm"

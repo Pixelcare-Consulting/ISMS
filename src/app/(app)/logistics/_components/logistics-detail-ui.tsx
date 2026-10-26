@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, History, Route } from "lucide-react";
+import { History, Route } from "lucide-react";
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
@@ -12,7 +12,7 @@ import {
 import { cn } from "@/utils/cn";
 
 const ACTIVITY_TIME = new Intl.DateTimeFormat("en-PH", {
-  year: "numeric",
+  year: "numeric", 
   month: "short",
   day: "2-digit",
   hour: "numeric",
@@ -140,38 +140,6 @@ export function LogisticsProgressCard({ children }: { children: ReactNode }) {
       </div>
       <div className="bg-card p-4 sm:p-5">{children}</div>
     </section>
-  );
-}
-
-function doneLineDetail(detail: ReactNode): ReactNode | null {
-  if (typeof detail === "string") {
-    const trimmed = detail.trim();
-    return trimmed.length > 0 ? trimmed : null;
-  }
-  return detail ?? null;
-}
-
-/** One finished step: a check, the job name, and an optional person and time. */
-export function LogisticsDoneLine({
-  title,
-  detail,
-}: {
-  title: string;
-  detail?: ReactNode;
-}) {
-  const shown = doneLineDetail(detail);
-
-  return (
-    <p className="flex min-w-0 flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
-      <Check className="size-3.5 shrink-0 text-emerald-600" aria-hidden />
-      <span>{title}</span>
-      {shown ? (
-        <span className="min-w-0">
-          <span aria-hidden> · </span>
-          {shown}
-        </span>
-      ) : null}
-    </p>
   );
 }
 

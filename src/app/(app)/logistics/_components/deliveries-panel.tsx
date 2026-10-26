@@ -66,6 +66,12 @@ import {
   buildLogisticsPageHref,
   LOGISTICS_DELIVERIES_PATH,
 } from "@/app/(app)/logistics/_components/logistics-paths";
+import { CompactProgressRail } from "@/app/(app)/logistics/_components/compact-progress-rail";
+import { buildDeliveryTracker } from "@/app/(app)/logistics/_components/delivery-tracker";
+import {
+  LogisticsListViewSwitch,
+  useLogisticsListProgressView,
+} from "@/app/(app)/logistics/_components/logistics-list-view-switch";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
 interface StatusCodeRef {
@@ -130,6 +136,7 @@ export function DeliveriesPanel({
 }: DeliveriesPanelProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [progressView] = useLogisticsListProgressView();
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
   const [pendingConfirm, setPendingConfirm] = useState<PendingReject | null>(null);
@@ -270,6 +277,25 @@ export function DeliveriesPanel({
           </Link>
         ),
       }),
+      deliveryColumn.display({
+        id: "progress",
+        header: "Progress",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <CompactProgressRail
+            ariaLabel={`${row.original.deliveryNo} progress`}
+            items={buildDeliveryTracker(
+              {
+                code: row.original.statusCode.code,
+                name: row.original.statusCode.name,
+                color: row.original.statusCode.color ?? null,
+              },
+              [],
+            )}
+          />
+        ),
+        meta: { className: "w-52 min-w-52" },
+      }),
       deliveryColumn.accessor((row) => row.drNo ?? "", {
         id: "drNo",
         header: "DR#",
@@ -405,7 +431,17 @@ export function DeliveriesPanel({
         },
       }),
     ];
-    return cols;
+    if (!progressView) return cols.filter((column) => column.id !== "progress");
+    const progressIds = new Set([
+      "deliveryNo",
+      "progress",
+      "orderNumber",
+      "branch",
+      "status",
+      "return",
+      "actions",
+    ]);
+    return cols.filter((column) => column.id != null && progressIds.has(column.id));
   }, [
     capabilities.canAcceptDelivery,
     capabilities.canApproveDeliveryReturn,
@@ -414,6 +450,7 @@ export function DeliveriesPanel({
     indexOffset,
     openingDispatchId,
     pending,
+    progressView,
   ]);
 
   return (
@@ -432,6 +469,7 @@ export function DeliveriesPanel({
         }}
         stickyHeader
         search={{ value: query, onChange: setQuery, placeholder: "Search deliveries…", suggestions }}
+        toolbarActions={<LogisticsListViewSwitch />}
         pagination={{
           total: deliveries.total,
           page: deliveries.page,

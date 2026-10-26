@@ -73,7 +73,8 @@ export function SubmittedOrderView({ order }: { order: SubmittedOrderSummary }) 
     showAmount && order.lines.every((line) => line.amount != null)
       ? order.lines.reduce((sum, line) => sum + (line.amount ?? 0), 0)
       : null;
-  const backHref = `/orders/manual?type=${order.orderType}`;
+  const backHref =
+    order.orderType === "special" ? "/orders/manual?type=special" : "/orders/manual?type=manual";
 
   return (
     <div className="mx-auto max-w-3xl space-y-8">

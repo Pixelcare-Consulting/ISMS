@@ -1,13 +1,45 @@
 "use client";
 
-import { Check } from "lucide-react";
-import type { ReactNode } from "react";
+import {
+  Ban,
+  Check,
+  CircleCheck,
+  ClipboardCheck,
+  Package,
+  PackageCheck,
+  PackageOpen,
+  Truck,
+  type LucideIcon,
+} from "lucide-react";
+import { type ReactNode } from "react";
 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { cn } from "@/utils/cn";
 
 export type ProgressStepState = "completed" | "current" | "upcoming" | "cancelled";
+
+/** One glyph per stage meaning. Stopped steps use the ban mark. */
+export type ProgressStageIcon =
+  | "approval"
+  | "prepare"
+  | "ready"
+  | "pending_acceptance"
+  | "transit"
+  | "accepted"
+  | "stopped";
+
+const STAGE_ICONS: Record<ProgressStageIcon, LucideIcon> = {
+  approval: ClipboardCheck,
+  prepare: Package,
+  ready: PackageCheck,
+  pending_acceptance: PackageOpen,
+  transit: Truck,
+  accepted: CircleCheck,
+  stopped: Ban,
+};
+
+type ProgressMarkSize = "rail" | "compact";
 
 /** One audit row already stored for a stage. Missing actor or time stays empty. */
 export interface ProgressStepEvent {
@@ -34,6 +66,8 @@ export interface ProgressNode {
   badgeCode?: string;
   /** Audit rows for this stage. Empty means history is unavailable. */
   events?: readonly ProgressStepEvent[];
+  /** Stage glyph. Omitted screens keep a plain circle. */
+  icon?: ProgressStageIcon;
 }
 
 const TRACKER_TIME = new Intl.DateTimeFormat("en-PH", {
@@ -262,7 +296,112 @@ export function ProgressCurrentMark() {
   );
 }
 
-function StepMark({ state, delayMs }: { state: ProgressStepState; delayMs: number }) {
+function markBox(size: ProgressMarkSize): string {
+  switch (size) {
+    case "rail":
+      return "size-6";
+    case "compact":
+      return "size-5";
+    default: {
+      const unreachable: never = size;
+      return unreachable;
+    }
+  }
+}
+
+function markGlyph(size: ProgressMarkSize): string {
+  switch (size) {
+    case "rail":
+      return "size-3.5";
+    case "compact":
+      return "size-3";
+    default: {
+      const unreachable: never = size;
+      return unreachable;
+    }
+  }
+}
+
+function currentRing(size: ProgressMarkSize): string {
+  switch (size) {
+    case "compact":
+      return "ring-2 ring-primary/25";
+    case "rail":
+      return "ring-4 ring-primary/20";
+    default: {
+      const unreachable: never = size;
+      return unreachable;
+    }
+  }
+}
+
+/** Stage icon in the completed, current, upcoming, or stopped treatment. */
+export function ProgressStageMark({
+  icon,
+  state,
+  delayMs = 0,
+  size = "rail",
+}: {
+  icon: ProgressStageIcon;
+  state: ProgressStepState;
+  delayMs?: number;
+  size?: ProgressMarkSize;
+}) {
+  const Icon = STAGE_ICONS[icon];
+  const box = cn(
+    "relative z-10 flex shrink-0 items-center justify-center rounded-full",
+    markBox(size),
+  );
+  const glyph = markGlyph(size);
+  switch (state) {
+    case "completed":
+      return (
+        <span className={cn(box, "border-2 border-emerald-600 bg-emerald-600 text-white")}>
+          <Icon
+            className={cn(
+              glyph,
+              size === "rail" && "origin-center animate-progress-check motion-reduce:animate-none",
+            )}
+            style={size === "rail" ? { animationDelay: `${delayMs}ms` } : undefined}
+            aria-hidden
+          />
+        </span>
+      );
+    case "current":
+      return (
+        <span className={cn(box, "border-2 border-primary bg-card text-primary", currentRing(size))}>
+          <Icon className={glyph} aria-hidden />
+        </span>
+      );
+    case "upcoming":
+      return (
+        <span className={cn(box, "border border-border bg-muted/40 text-muted-foreground")}>
+          <Icon className={glyph} aria-hidden />
+        </span>
+      );
+    case "cancelled":
+      return (
+        <span className={cn(box, "border border-rose-300 bg-rose-50 text-rose-600")}>
+          <Icon className={glyph} aria-hidden />
+        </span>
+      );
+    default: {
+      const unreachable: never = state;
+      return unreachable;
+    }
+  }
+}
+
+function StepMark({
+  state,
+  icon,
+  delayMs,
+}: {
+  state: ProgressStepState;
+  icon?: ProgressStageIcon;
+  delayMs: number;
+}) {
+  if (icon) return <ProgressStageMark icon={icon} state={state} delayMs={delayMs} />;
   switch (state) {
     case "completed":
       return <ProgressCompletedMark delayMs={delayMs} />;
@@ -285,6 +424,18 @@ function StepMark({ state, delayMs }: { state: ProgressStepState; delayMs: numbe
   }
 }
 
+function stageTimeText(item: ProgressNode): string | null {
+  if (item.state === "upcoming") return null;
+  return formatWhen(item.at) ?? "Time unavailable";
+}
+
+function StageTime({ at, text }: { at: string | null; text: string }) {
+  if (!at || text === "Time unavailable") return <span>{text}</span>;
+  const date = new Date(at);
+  if (Number.isNaN(date.getTime())) return <span>{text}</span>;
+  return <time dateTime={at}>{text}</time>;
+}
+
 /** Horizontal step list shared by pull-outs and transfers. Callers decide the steps. */
 export function ProgressTracker({
   ariaLabel,
@@ -301,9 +452,9 @@ export function ProgressTracker({
       <ol aria-label={ariaLabel} className="flex flex-col sm:flex-row sm:items-start">
         {items.map((item, index) => {
           const last = index === items.length - 1;
-          const when = item.state === "upcoming" ? null : formatWhen(item.at);
           const previous = index > 0 ? items[index - 1] : null;
           const delayMs = index * 80;
+          const timeText = stageTimeText(item);
           return (
             <li
               key={item.key}
@@ -319,7 +470,7 @@ export function ProgressTracker({
               ) : null}
               <ProgressStagePopover label={item.label} events={item.events ?? []}>
                 <div className="relative flex w-6 shrink-0 justify-center sm:w-auto">
-                  <StepMark state={item.state} delayMs={delayMs} />
+                  <StepMark state={item.state} icon={item.icon} delayMs={delayMs} />
                   {last ? null : (
                     <ProgressLink
                       direction="vertical"
@@ -347,11 +498,11 @@ export function ProgressTracker({
                       {item.label}
                     </p>
                   )}
-                  {item.state === "upcoming" ? null : (
-                    <p className="text-xs text-muted-foreground">
-                      {when ?? "Time unavailable"}
+                  {timeText ? (
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      <StageTime at={item.at} text={timeText} />
                     </p>
-                  )}
+                  ) : null}
                 </div>
               </ProgressStagePopover>
             </li>

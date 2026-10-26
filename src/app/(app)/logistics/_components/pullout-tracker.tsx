@@ -14,10 +14,10 @@ import {
  */
 
 const TRACKER_STEPS = [
-  { code: "pending_tl", label: "Waiting for approval" },
-  { code: "for_pullout", label: "Prepare units" },
-  { code: "pending_logistics", label: "Ready to send" },
-  { code: "in_transit", label: "In transit" },
+  { code: "pending_tl", label: "Waiting for approval", icon: "approval" },
+  { code: "for_pullout", label: "Prepare units", icon: "prepare" },
+  { code: "pending_logistics", label: "Ready to send", icon: "ready" },
+  { code: "in_transit", label: "In transit", icon: "transit" },
 ] as const;
 
 type TrackerStepCode = (typeof TRACKER_STEPS)[number]["code"];
@@ -175,14 +175,6 @@ function occurredAt(
   }
 }
 
-function actorForStep(
-  code: TrackerStepCode,
-  history: readonly ProgressAuditRow[],
-): string | null {
-  const name = earliestRow(history, historyAction(code))?.userName?.trim() ?? "";
-  return name.length > 0 ? name : null;
-}
-
 function prefixCount(times: (string | null)[]): number {
   let count = 0;
   for (const time of times) {
@@ -192,31 +184,7 @@ function prefixCount(times: (string | null)[]): number {
   return count;
 }
 
-export interface PulloutFinishedStep {
-  code: TrackerStepCode;
-  title: string;
-  at: string | null;
-  actor: string | null;
-}
-
-/** Steps the tracker already marks completed, with the same times and the user on that history row. */
-export function finishedPulloutSteps(
-  statusCode: string,
-  createdAt: string,
-  history: readonly ProgressAuditRow[],
-): PulloutFinishedStep[] {
-  const mode = trackerMode(statusCode);
-  const times = TRACKER_STEPS.map((step) => occurredAt(step.code, createdAt, history));
-  const count = mode.kind === "active" ? mode.index : prefixCount(times);
-  return TRACKER_STEPS.slice(0, count).map((step, index) => ({
-    code: step.code,
-    title: step.label,
-    at: times[index] ?? null,
-    actor: actorForStep(step.code, history),
-  }));
-}
-
-function buildTracker(
+export function buildPulloutTracker(
   status: { code: string; name: string; color: string | null },
   createdAt: string,
   history: readonly ProgressAuditRow[],
@@ -234,6 +202,7 @@ function buildTracker(
         state,
         at: state === "upcoming" ? null : times[index] ?? null,
         color: null,
+        icon: step.icon,
         events: progressEventsForActions(history, [historyAction(step.code)], pulloutAuditLabel),
       };
     }
@@ -244,6 +213,7 @@ function buildTracker(
       state: completed ? "completed" : "upcoming",
       at: completed ? times[index] ?? null : null,
       color: null,
+      icon: step.icon,
       events: progressEventsForActions(history, [historyAction(step.code)], pulloutAuditLabel),
     };
   });
@@ -255,6 +225,8 @@ function buildTracker(
       state: "cancelled",
       at: earliestAction(history, "pullout.rejected"),
       color: status.color,
+      badgeCode: status.code,
+      icon: "stopped",
       events: progressEventsForActions(history, ["pullout.rejected"], pulloutAuditLabel),
     });
   }
@@ -274,7 +246,7 @@ export function PulloutTracker({
   return (
     <ProgressTracker
       ariaLabel="Pull-out progress"
-      items={buildTracker(status, createdAt, history)}
+      items={buildPulloutTracker(status, createdAt, history)}
     />
   );
 }

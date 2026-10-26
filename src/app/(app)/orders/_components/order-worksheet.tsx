@@ -5,7 +5,6 @@ import type { BranchOrderType } from "@prisma/client";
 import { CircleHelp, Trash2 } from "lucide-react";
 import { createContext, useContext, useId, useMemo, useState, type ReactNode } from "react";
 
-import { WorksheetLineNote } from "@/app/(app)/orders/_components/worksheet-line-note";
 import { WorksheetModelLabel } from "@/app/(app)/orders/_components/worksheet-model-label";
 import { TablePagination } from "@/components/data-table/table-pagination";
 import { Button } from "@/components/ui/button";
@@ -725,15 +724,35 @@ function CreateModelRow({
   );
 }
 
-function CreateLineNote({
-  row,
-  onRemarksChange,
+function LineNotePopover({
+  skuCode,
+  value,
+  buttonLabel,
+  label,
+  help,
+  placeholder = "Optional",
+  triggerDisabled = false,
+  fieldDisabled = false,
+  lockedTitle,
+  buttonClassName,
+  onChange,
 }: {
-  row: ProjectedWorksheetLine;
-  onRemarksChange?: OrderWorksheetProps["onRemarksChange"];
+  skuCode: string;
+  value: string;
+  buttonLabel: string;
+  label: string;
+  help: string;
+  placeholder?: string;
+  /** Line cannot take a note, so the button stays closed. */
+  triggerDisabled?: boolean;
+  /** Note stays visible inside the popover, but cannot be edited. */
+  fieldDisabled?: boolean;
+  lockedTitle?: string;
+  buttonClassName?: string;
+  onChange?: (value: string) => void;
 }) {
-  const hasNote = row.remarks.trim().length > 0;
-  const disabled = !row.requestable && row.requestedQty < 1;
+  const trimmed = value.trim();
+  const hasNote = trimmed.length > 0;
   return (
     <Popover modal>
       <PopoverTrigger asChild>
@@ -741,33 +760,59 @@ function CreateLineNote({
           type="button"
           variant="ghost"
           size="sm"
-          disabled={disabled}
+          disabled={triggerDisabled}
           className={cn(
-            "h-7 justify-self-end px-2 text-xs font-normal",
+            "h-7 px-2 text-xs font-normal",
             hasNote ? "text-primary" : "text-muted-foreground",
+            buttonClassName,
           )}
-          aria-label={`Requester remarks for ${row.skuCode}`}
-          title={hasNote ? row.remarks.trim() : WORKSHEET_COLUMN_HELP.note}
+          aria-label={label}
+          title={lockedTitle ?? (hasNote ? trimmed : help)}
         >
-          Note
+          {buttonLabel}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" collisionPadding={16} className="z-[100] w-72 space-y-2 p-3">
         <div>
-          <p className="text-sm font-medium">Note</p>
-          <p className="text-xs text-muted-foreground">{row.skuCode}</p>
+          <p className="text-sm font-medium">{buttonLabel}</p>
+          <p className="text-xs text-muted-foreground">{skuCode}</p>
         </div>
         <Textarea
-          value={row.remarks}
-          disabled={disabled}
-          placeholder="Optional"
+          value={value}
+          disabled={fieldDisabled || onChange == null}
+          placeholder={onChange ? placeholder : "—"}
           rows={3}
-          aria-label={`Requester remarks for ${row.skuCode}`}
+          aria-label={label}
+          title={lockedTitle}
           className="min-h-20 resize-none rounded-lg border-transparent bg-muted/70 shadow-none"
-          onChange={(event) => onRemarksChange?.(row.modelId, event.target.value)}
+          onChange={(event) => onChange?.(event.target.value)}
         />
       </PopoverContent>
     </Popover>
+  );
+}
+
+function CreateLineNote({
+  row,
+  onRemarksChange,
+}: {
+  row: ProjectedWorksheetLine;
+  onRemarksChange?: OrderWorksheetProps["onRemarksChange"];
+}) {
+  const disabled = !row.requestable && row.requestedQty < 1;
+  return (
+    <LineNotePopover
+      skuCode={row.skuCode}
+      value={row.remarks}
+      buttonLabel="Note"
+      label={`Requester remarks for ${row.skuCode}`}
+      help={WORKSHEET_COLUMN_HELP.note}
+      placeholder="Optional"
+      triggerDisabled={disabled}
+      fieldDisabled={disabled}
+      buttonClassName="justify-self-end"
+      onChange={(value) => onRemarksChange?.(row.modelId, value)}
+    />
   );
 }
 
@@ -1462,16 +1507,39 @@ function RemarksCell({
   mode: OrderWorksheetProps["mode"];
   onRemarksChange?: OrderWorksheetProps["onRemarksChange"];
 }) {
-  if (mode !== "create") return <RemarkText value={row.remarks} />;
-  return (
-    <WorksheetLineNote
-      value={row.remarks}
-      disabled={!row.requestable && row.requestedQty < 1}
-      placeholder="Optional"
-      label={`Requester remarks for ${row.skuCode}`}
-      onChange={(value: string) => onRemarksChange?.(row.modelId, value)}
-    />
-  );
+  switch (mode) {
+    case "view":
+      return <RemarkText value={row.remarks} />;
+    case "review":
+      return (
+        <LineNotePopover
+          skuCode={row.skuCode}
+          value={row.remarks}
+          buttonLabel="Note"
+          label={`Requester remarks for ${row.skuCode}`}
+          help={WORKSHEET_COLUMN_HELP.note}
+          buttonClassName="whitespace-nowrap"
+        />
+      );
+    case "create":
+      return (
+        <LineNotePopover
+          skuCode={row.skuCode}
+          value={row.remarks}
+          buttonLabel="Note"
+          label={`Requester remarks for ${row.skuCode}`}
+          help={WORKSHEET_COLUMN_HELP.note}
+          placeholder="Optional"
+          triggerDisabled={!row.requestable && row.requestedQty < 1}
+          fieldDisabled={!row.requestable && row.requestedQty < 1}
+          onChange={(value) => onRemarksChange?.(row.modelId, value)}
+        />
+      );
+    default: {
+      const _exhaustive: never = mode;
+      return _exhaustive;
+    }
+  }
 }
 
 function SpRemarksCell({
@@ -1486,13 +1554,19 @@ function SpRemarksCell({
   const approvalLocked = row.requestedQty < 1;
   if (!editable) return <RemarkText value={row.spRemarks} />;
   return (
-    <WorksheetLineNote
+    <LineNotePopover
+      skuCode={row.skuCode}
       value={row.spRemarks}
-      disabled={approvalLocked}
-      placeholder={approvalLocked ? "No request" : "Optional"}
+      buttonLabel="SP note"
       label={`SP remarks for ${row.skuCode}`}
-      title={approvalLocked ? "SP remarks apply only to lines with a requested quantity." : undefined}
-      onChange={(value: string) => onSpRemarksChange?.(row.modelId, value)}
+      help={WORKSHEET_COLUMN_HELP.spNote}
+      placeholder={approvalLocked ? "No request" : "Optional"}
+      fieldDisabled={approvalLocked}
+      buttonClassName="whitespace-nowrap"
+      lockedTitle={
+        approvalLocked ? "SP remarks apply only to lines with a requested quantity." : undefined
+      }
+      onChange={(value) => onSpRemarksChange?.(row.modelId, value)}
     />
   );
 }

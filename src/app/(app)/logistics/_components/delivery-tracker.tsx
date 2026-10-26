@@ -16,9 +16,9 @@ import {
  */
 
 const TRACKER_STEPS = [
-  { code: "approved", fallback: "Approved" },
-  { code: "pending_acceptance", fallback: "Pending acceptance" },
-  { code: "accepted", fallback: "Accepted" },
+  { code: "approved", fallback: "Approved", icon: "approval" },
+  { code: "pending_acceptance", fallback: "Pending acceptance", icon: "pending_acceptance" },
+  { code: "accepted", fallback: "Accepted", icon: "accepted" },
 ] as const;
 
 type TrackerStepCode = (typeof TRACKER_STEPS)[number]["code"];
@@ -191,7 +191,7 @@ function stoppedLabel(status: { name: string }): string {
   return "Rejected";
 }
 
-function buildTracker(
+export function buildDeliveryTracker(
   status: { code: string; name: string; color: string | null },
   history: readonly ProgressAuditRow[],
 ): ProgressNode[] {
@@ -206,6 +206,7 @@ function buildTracker(
       state,
       at: state === "upcoming" ? null : times[index] ?? null,
       color: null,
+      icon: step.icon,
       events: progressEventsForActions(history, stepAuditActions(step.code), deliveryAuditLabel),
     };
   });
@@ -218,6 +219,7 @@ function buildTracker(
       at: earliestAction(history, ["delivery.rejected"]),
       color: status.color,
       badgeCode: status.code,
+      icon: "stopped",
       events: progressEventsForActions(history, ["delivery.rejected"], deliveryAuditLabel),
     });
   }
@@ -232,5 +234,5 @@ export function DeliveryTracker({
   status: { code: string; name: string; color: string | null };
   history: readonly ProgressAuditRow[];
 }) {
-  return <ProgressTracker ariaLabel="Delivery progress" items={buildTracker(status, history)} />;
+  return <ProgressTracker ariaLabel="Delivery progress" items={buildDeliveryTracker(status, history)} />;
 }

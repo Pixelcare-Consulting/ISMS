@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { EditOrderDialog } from "@/app/(app)/orders/_components/edit-order-dialog";
@@ -75,6 +76,20 @@ interface OrderDetailsDialogProps {
   hasCreatePermission?: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+}
+
+function submittedOrderHref(orderType: BranchOrderType, orderId: string): string | null {
+  switch (orderType) {
+    case "manual":
+    case "special":
+      return `/orders/manual/submitted/${orderId}`;
+    case "auto_replenish":
+      return null;
+    default: {
+      const unreachable: never = orderType;
+      return unreachable;
+    }
+  }
 }
 
 function formatOptionalDate(value: string | Date | null | undefined): string | null {
@@ -154,6 +169,7 @@ export function OrderDetailsDialog({
   const snapshotAtLabel = formatOptionalDate(reviewSnapshotAt);
   const showApprovedQty =
     status === "approved" || lines.some((line) => line.approvedQty != null);
+  const summaryHref = submittedOrderHref(orderType, orderId);
   const showEdit = canEditOrderLines({
     status,
     orderType,
@@ -285,6 +301,11 @@ export function OrderDetailsDialog({
             <Button type="button" variant="outline" onClick={() => setAnalyticsOpen(true)}>
               Order analytics
             </Button>
+            {summaryHref ? (
+              <Button type="button" variant="outline" asChild>
+                <Link href={summaryHref}>All details</Link>
+              </Button>
+            ) : null}
             <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
               Close
             </Button>

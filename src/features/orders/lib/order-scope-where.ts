@@ -3,10 +3,12 @@ import type { BranchOrderStatus, BranchOrderType, Prisma } from "@prisma/client"
 /**
  * One list branch. `statuses` omitted means every status (history).
  * An empty `statuses` array matches nothing and is left out of the OR.
+ * `createdById` limits that branch to orders this person created.
  */
 export interface OrderTypeScope {
   orderType: BranchOrderType;
   statuses?: BranchOrderStatus[];
+  createdById?: string;
 }
 
 export function hasQueryableTypeScopes(typeScopes: readonly OrderTypeScope[]): boolean {
@@ -37,6 +39,7 @@ export function orderScopeWhere(
       const branch: Prisma.BranchOrderWhereInput = {
         orderType: entry.orderType,
         ...(entry.statuses ? { status: { in: entry.statuses } } : {}),
+        ...(entry.createdById ? { createdById: entry.createdById } : {}),
       };
       return [branch];
     });

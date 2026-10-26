@@ -256,6 +256,7 @@ export const orderRepository = {
         status: true,
         createdAt: true,
         processedAt: true,
+        createdById: true,
         createdBy: { select: { name: true, email: true } },
         branch: {
           select: {

@@ -11,6 +11,7 @@ import {
   hasAnyOrderPermission,
   orderTypeAccessPermissions,
 } from "@/features/orders/constants/order-permissions";
+import { mayViewOrderAsProductSpecialist } from "@/features/orders/constants/order-workflow";
 import { orderRepository } from "@/features/orders/repositories/order.repository";
 import type {
   OrderHistoryDetail,
@@ -100,6 +101,26 @@ export async function getOrderHistoryDetail(
     orderType,
   );
   if (!order) return null;
+  switch (orderType) {
+    case "manual":
+    case "special":
+      if (
+        !mayViewOrderAsProductSpecialist({
+          roleSlugs: session.user.roleSlugs ?? [],
+          viewerUserId: session.user.id,
+          createdById: order.createdById,
+        })
+      ) {
+        return null;
+      }
+      break;
+    case "auto_replenish":
+      break;
+    default: {
+      const _exhaustive: never = orderType;
+      return _exhaustive;
+    }
+  }
 
   const delivery = await findLinkedDelivery(session.user.tenantId, order.id, branchScope);
 
@@ -220,6 +241,15 @@ export async function getSubmittedOrderSummary(
   if (!order) return null;
   if (order.orderType !== "manual" && order.orderType !== "special") return null;
   if (!canAccessOrderType(session.user.permissions, order.orderType)) return null;
+  if (
+    !mayViewOrderAsProductSpecialist({
+      roleSlugs: session.user.roleSlugs ?? [],
+      viewerUserId: session.user.id,
+      createdById: order.createdById,
+    })
+  ) {
+    return null;
+  }
 
   const orderPayment = order.modeOfPayment?.name?.trim() || null;
   const dealerPayment = order.branch.dealer?.modeOfPayment?.name?.trim() || null;

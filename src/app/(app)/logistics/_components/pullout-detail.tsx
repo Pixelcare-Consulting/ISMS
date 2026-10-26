@@ -15,17 +15,12 @@ import { toast } from "sonner";
 
 import {
   LogisticsDocumentHeader,
-  LogisticsDoneLine,
   LogisticsHistoryCard,
   LogisticsProgressCard,
   LogisticsStepWorkspace,
   LogisticsTableHeading,
 } from "@/app/(app)/logistics/_components/logistics-detail-ui";
-import {
-  finishedPulloutSteps,
-  pulloutAuditLabel,
-  PulloutTracker,
-} from "@/app/(app)/logistics/_components/pullout-tracker";
+import { pulloutAuditLabel, PulloutTracker } from "@/app/(app)/logistics/_components/pullout-tracker";
 import { uniqueSearchSuggestions, useClientTablePagination } from "@/components/data-table";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -416,12 +411,6 @@ function pulloutOpenKind(code: string): PulloutOpenKind {
     default:
       return "other";
   }
-}
-
-function doneLineDetail(at: string | null, actor: string | null): string | undefined {
-  const when = formatWhen(at, true);
-  if (actor && when) return `${actor} · ${when}`;
-  return when ?? actor ?? undefined;
 }
 
 function sameIds(left: readonly string[], right: readonly string[]): boolean {
@@ -853,8 +842,6 @@ export function PulloutDetailView({
       selected,
       detail.lines.map((line) => line.serialNumberId),
     );
-  const doneLines = finishedPulloutSteps(detail.status.code, detail.createdAt, detail.history);
-
   function toggleSerial(serialNumberId: string, on: boolean) {
     setSelected((current) => {
       if (!on) return current.filter((id) => id !== serialNumberId);
@@ -1092,18 +1079,6 @@ export function PulloutDetailView({
           history={detail.history}
         />
       </LogisticsProgressCard>
-
-      {doneLines.length > 0 ? (
-        <div className="space-y-2">
-          {doneLines.map((step) => (
-            <LogisticsDoneLine
-              key={step.code}
-              title={step.title}
-              detail={doneLineDetail(step.at, step.actor)}
-            />
-          ))}
-        </div>
-      ) : null}
 
       {currentWorkspace()}
 

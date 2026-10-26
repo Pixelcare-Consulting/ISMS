@@ -20,11 +20,11 @@ import {
   canApproveOrder,
   isOrderPendingApproval,
   isSuperAdminOrderOverride,
+  PRODUCT_SPECIALIST_ROLE_SLUG,
 } from "@/features/orders/constants/order-workflow";
 import { OrderDetailsDialog } from "@/app/(app)/orders/_components/order-details-dialog";
 import { SuggestedOrdersDialog } from "@/app/(app)/orders/_components/suggested-orders-dialog";
 import { OrderWorkflowDialog } from "@/app/(app)/orders/_components/order-workflow-dialog";
-import { formatOrderHistoryWhen } from "@/features/orders/lib/order-history-tracker";
 import { Button } from "@/components/ui/button";
 import { BRANCH_ORDER_STATUS_LABELS } from "@/features/orders/constants/order-status";
 import { OrderTypeBadge } from "@/features/orders/components/order-type-badge";
@@ -156,10 +156,29 @@ function orderCreatorLabel(createdBy: OrderRow["createdBy"] | null | undefined):
   return email || "—";
 }
 
-function formatOrderCreatedAt(value: string | Date | null | undefined): string {
+const ORDER_CREATED_DATE = new Intl.DateTimeFormat("en-PH", {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+  timeZone: "Asia/Manila",
+});
+
+const ORDER_CREATED_TIME = new Intl.DateTimeFormat("en-PH", {
+  hour: "numeric",
+  minute: "2-digit",
+  timeZone: "Asia/Manila",
+});
+
+function OrderCreatedAtCell({ value }: { value: string | Date | null | undefined }) {
   if (!value) return "—";
-  const iso = value instanceof Date ? value.toISOString() : value;
-  return formatOrderHistoryWhen(iso) ?? "—";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return (
+    <div className="whitespace-normal leading-tight">
+      <p>{ORDER_CREATED_DATE.format(date)}</p>
+      <p>{ORDER_CREATED_TIME.format(date)}</p>
+    </div>
+  );
 }
 
 function buildOrdersHref(
@@ -501,8 +520,8 @@ export function OrdersTable({
         id: "createdAt",
         header: "Created at",
         enableSorting: true,
-        cell: ({ row }) => formatOrderCreatedAt(row.original.createdAt),
-        meta: { className: "whitespace-nowrap tabular-nums" },
+        cell: ({ row }) => <OrderCreatedAtCell value={row.original.createdAt} />,
+        meta: { className: "tabular-nums" },
       }),
       orderColumn.display({
         id: "lines",
@@ -572,14 +591,16 @@ export function OrdersTable({
                   Delete
                 </Button>
               ) : null}
-              <Button
-                size="sm"
-                variant="outline"
-                className="shrink-0"
-                onClick={() => setDetailsOrderId(order.id)}
-              >
-                View details
-              </Button>
+              {showOrderViewDetails(order, viewerRoleSlugs) ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0"
+                  onClick={() => setDetailsOrderId(order.id)}
+                >
+                  View details
+                </Button>
+              ) : null}
             </div>
           );
         },
@@ -903,6 +924,20 @@ function draftSubmitDescription(orderType: string): string {
     return "Team Leader can review this order now.";
   }
   return "Supply Planning can review this order now.";
+}
+
+/**
+ * View details shows once this viewer no longer has Review on the row
+ * (approved, rejected, cancelled, or any step past their review), including Order History.
+ * Product Specialists always keep View details. Review itself is unchanged.
+ */
+function showOrderViewDetails(order: OrderRow, viewerRoleSlugs: string[]): boolean {
+  if (viewerRoleSlugs.includes(PRODUCT_SPECIALIST_ROLE_SLUG)) return true;
+  const status = order.status as BranchOrderStatus;
+  const orderType = order.orderType as BranchOrderType;
+  const reviewShown =
+    isOrderPendingApproval(status) && canApproveOrder(status, orderType, viewerRoleSlugs);
+  return !reviewShown;
 }
 
 function OrderReviewButton({ order, viewerRoleSlugs, onReview }: OrderReviewButtonProps) {

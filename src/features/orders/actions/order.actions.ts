@@ -152,6 +152,7 @@ export async function listOrdersAction(input?: {
         session.user.permissions,
         session.user.roleSlugs ?? [],
         input.listFilter,
+        session.user.id,
       )
     : undefined;
   const queueStatuses = typeScopes
@@ -207,6 +208,7 @@ export async function getOrdersKpisAction(
       session.user.permissions,
       session.user.roleSlugs ?? [],
       listFilter,
+      session.user.id,
     );
     return orderService.getKpis(
       session.user.tenantId,
@@ -641,7 +643,12 @@ export async function listOrderHistoryAction(input?: {
       : await requireAnyPermission(anyOrderTypePermissions("view"));
   const limit = parseTablePageSize(input?.limit);
   const typeScopes = input?.listFilter
-    ? manualSpecialHistoryScopes(session.user.permissions, input.listFilter)
+    ? manualSpecialHistoryScopes(
+        session.user.permissions,
+        input.listFilter,
+        session.user.roleSlugs ?? [],
+        session.user.id,
+      )
     : undefined;
   const result = await orderService.list(
     session.user.tenantId,
