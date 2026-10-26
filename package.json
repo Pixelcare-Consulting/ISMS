@@ -100,7 +100,7 @@
     "stimulsoft-dashboards-js-react": "2026.4.1",
     "tailwind-merge": "^3.7.0",
     "xlsx": "file:vendor/xlsx-0.20.3.tgz",
-    "zod": "^4.6.5",
+    "zod": "^4.6.6",
     "zustand": "^5.0.15"
   },
   "devDependencies": {
