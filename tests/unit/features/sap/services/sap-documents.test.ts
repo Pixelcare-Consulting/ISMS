@@ -3,7 +3,6 @@ jest.mock("@/features/sap/services/sap-service-layer-client", () => ({
 }));
 
 import {
-  buildDrBody,
   buildItBody,
   buildItrBody,
   fitSapText,
@@ -42,18 +41,6 @@ describe("SAP document builders", () => {
     expect(line.Quantity).toBe(1);
     expect(line.BaseEntry).toBe(77);
     expect(line.BaseType).toBe("InventoryTransferRequest");
-  });
-
-  it("buildDrBody uses BaseType 17", () => {
-    const body = buildDrBody({
-      ismsRef: "D-1",
-      cardCode: "C1",
-      whs: "W",
-      baseSoEntry: 5,
-      lines: [{ itemCode: "X", serialNos: ["S1", "S2"], baseEntry: 5, baseLine: 1 }],
-    }) as Body;
-    expect(body.DocumentLines[0].BaseType).toBe(17);
-    expect(body.DocumentLines[0].Quantity).toBe(2);
   });
 
   it("buildReturnBody uses BaseType 15", () => {

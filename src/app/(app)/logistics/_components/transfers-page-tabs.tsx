@@ -121,13 +121,16 @@ export function TransfersPageTabs({
         });
       }}
     >
-      <TabsList className="gap-2">
-        {tabs.map((tab) => (
-          <TabsTrigger key={tab} value={tab}>
-            {tabLabel(tab)}
-          </TabsTrigger>
-        ))}
-      </TabsList>
+      {/* One tab needs no tab bar. */}
+      {tabs.length > 1 ? (
+        <TabsList className="gap-2">
+          {tabs.map((tab) => (
+            <TabsTrigger key={tab} value={tab}>
+              {tabLabel(tab)}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      ) : null}
       {tabs.map((tab) => (
         <TabsContent key={tab} value={tab}>
           {displayTab === tab && (pending || contentFor(tab) == null)

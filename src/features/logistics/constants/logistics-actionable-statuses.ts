@@ -9,7 +9,10 @@ function uniqueCodes(codes: string[]): string[] {
   return [...new Set(codes)];
 }
 
-/** Delivery workflow codes the viewer can Dispatch / Accept (Reject shares those gates). */
+/**
+ * Delivery workflow codes needing the viewer. Approved: waiting on SAP Copy To, which
+ * logistics schedules (waybill, courier) and follows up. Pending / partial: to accept.
+ */
 export function getDeliveryActionableStatusCodes(
   capabilities: LogisticsActionCapabilities,
 ): string[] {

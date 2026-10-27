@@ -218,8 +218,8 @@ export const WORKFLOW_SWIMLANE_CHARTS: WorkflowChart[] = [
       },
     ],
     nodes: [
-      { id: "sched", label: "Create / update delivery" },
-      { id: "dispatch", label: "Set schedule & notes" },
+      { id: "sched", label: "Set schedule & waybill" },
+      { id: "dispatch", label: "Copy To IT / DR in SAP" },
       { id: "receive", label: "Accept in Operations" },
       { id: "resolve", label: "Resolve shortage / damage" },
     ],
@@ -230,6 +230,7 @@ export const WORKFLOW_SWIMLANE_CHARTS: WorkflowChart[] = [
     ],
     callouts: [
       "Process III.A entry is the local delivery opened after approved order → ITR/SO.",
+      "Dispatch is SAP Copy To (ITR → IT, SO → DR); ISMS applies it to the delivery within about 10 minutes.",
       "Units move In transit → On hand when the branch accepts.",
       "Partial accept then return-to-warehouse queues Inventory Transfer (OWTR) for SAP (mock until live).",
     ],

@@ -26,8 +26,7 @@ const LINES_FIELD: Record<SapDocKind, "StockTransferLines" | "DocumentLines"> = 
   RETURN: "DocumentLines",
 };
 
-/** SAP object-type codes for the base document of a copied line. */
-const BASE_TYPE_SO = 17;
+/** SAP object-type code of a Delivery (DR), the base document of a Return line. */
 const BASE_TYPE_DR = 15;
 
 export interface SapDocRef {
@@ -201,16 +200,6 @@ function buildBasedDocumentBody(
       ...(l.baseEntry == null ? { BaseEntry: baseEntry, BaseLine: l.baseLine ?? 0 } : baseRef(l)),
     })),
   };
-}
-
-export function buildDrBody(i: {
-  ismsRef: string;
-  cardCode: string;
-  whs: string;
-  baseSoEntry: number;
-  lines: SapSerialLine[];
-}): Record<string, unknown> {
-  return buildBasedDocumentBody(i.ismsRef, i.cardCode, i.whs, BASE_TYPE_SO, i.baseSoEntry, i.lines);
 }
 
 export function buildReturnBody(i: {

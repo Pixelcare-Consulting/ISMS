@@ -356,36 +356,6 @@ export async function createDeliveryAction(input: unknown) {
   return { success: true as const };
 }
 
-export async function listDispatchCandidatesAction(id: string) {
-  const session = await requireAnyPermission([...DISPATCH_PERMISSIONS]);
-  try {
-    const result = await deliveryPostingService.listDispatchCandidates(session.user.tenantId, id);
-    return { success: true as const, ...result };
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : "Failed to load warehouse serials" };
-  }
-}
-
-export async function dispatchDeliveryAction(id: string, input: unknown) {
-  const session = await requireAnyPermission([...DISPATCH_PERMISSIONS]);
-  const parsed = serialIdsSchema.safeParse(input);
-  if (!parsed.success) return { error: "Select the serials to dispatch" };
-
-  try {
-    const result = await deliveryPostingService.dispatch({
-      tenantId: session.user.tenantId,
-      userId: session.user.id,
-      permissions: session.user.permissions,
-      deliveryId: id,
-      serialNumberIds: parsed.data.serialNumberIds,
-    });
-    revalidateDelivery(id);
-    return { success: true as const, movedCount: result.movedCount, drNo: result.drNo };
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : "Failed to dispatch delivery" };
-  }
-}
-
 export async function listDeliveryReceiptLinesAction(id: string) {
   const session = await requireAnyPermission([...DELIVERY_RECEIVE_PERMISSIONS]);
   try {
@@ -427,24 +397,6 @@ export async function acceptDeliveryAction(id: string, input?: unknown) {
     };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to accept delivery" };
-  }
-}
-
-/** Reject only closes an undispatched delivery, so it belongs to whoever may dispatch it. */
-export async function rejectDeliveryAction(id: string, notes?: string) {
-  const session = await requireAnyPermission([...DISPATCH_PERMISSIONS]);
-  try {
-    const result = await deliveryPostingService.reject({
-      tenantId: session.user.tenantId,
-      userId: session.user.id,
-      permissions: session.user.permissions,
-      deliveryId: id,
-      notes,
-    });
-    revalidateDelivery(id);
-    return { success: true as const, returnedCount: result.returnedCount };
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : "Failed to reject delivery" };
   }
 }
 

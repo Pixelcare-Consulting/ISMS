@@ -1,9 +1,7 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
-import { toast } from "sonner";
+import { useState } from "react";
 
 import { deliveryAuditLabel, DeliveryTracker } from "@/app/(app)/logistics/_components/delivery-tracker";
 import {
@@ -15,11 +13,6 @@ import {
   DocumentDetailBand,
   LogisticsHistoryBody,
 } from "@/app/(app)/logistics/_components/logistics-detail-ui";
-import {
-  DeliveryDispatchDialog,
-  DispatchingModal,
-  type DispatchTarget,
-} from "@/app/(app)/logistics/_components/delivery-dispatch-dialog";
 import {
   DeliveryReceiveDialog,
   type ReceiveTarget,
@@ -37,27 +30,15 @@ import {
   type CompactLineColumn,
 } from "@/components/compact-line-table";
 import { RecordFieldGrid, RecordReadout, RecordSection, RecordSheet } from "@/components/record-section";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import {
   acceptDeliveryAction,
   cancelDeliveryReturnAction,
   decideDeliveryReturnAction,
-  dispatchDeliveryAction,
   getDeliveryReturnAction,
   listDeliveryReceiptLinesAction,
-  listDispatchCandidatesAction,
-  rejectDeliveryAction,
   requestDeliveryReturnAction,
   saveDeliveryShipmentAction,
   retryDeliveryReturnSapAction,
@@ -69,6 +50,13 @@ import {
 } from "@/features/logistics/constants/workflow-codes";
 import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
 import type { DeliveryDetail } from "@/features/logistics/services/delivery-posting.service";
+import {
+  SAP_FOLLOW_STATUS_HINTS,
+  SAP_FOLLOW_STATUS_LABELS,
+  SAP_FOLLOW_STATUS_TONES,
+} from "@/features/logistics/constants/sap-follow-status";
+import { orderSapDocumentFields } from "@/features/orders/constants/order-sap-doc-type";
+import { cn } from "@/utils/cn";
 import { worksheetTotalsLabel } from "@/features/orders/lib/order-worksheet-filters";
 
 const REVIEW_ACTIONS: ReviewReturnActions = {
@@ -146,6 +134,76 @@ function SerialsTable({ lines }: { lines: SerialLine[] }) {
   );
 }
 
+/** What a SAP user copies to, by the order's document: an ITR becomes an IT, an SO a DR. */
+const COPY_TO_TARGET: Record<string, string> = {
+  ITR: "an Inventory Transfer",
+  SO: "a Delivery",
+};
+
+/**
+ * The SAP side of the delivery: the ITR / SO ISMS posted at approval, and the IT / DR
+ * documents SAP users made from it with Copy To, as the cron follow-up found them.
+ */
+function SapDocumentsSection({ detail }: { detail: DeliveryDetail }) {
+  const order = detail.order;
+  if (!order?.sapDocType) return null;
+  const base = orderSapDocumentFields({ sapDocType: order.sapDocType, sapDocNum: order.sapDocNum });
+  const waiting =
+    detail.status.code === DELIVERY_WORKFLOW_CODE.approved &&
+    !detail.sapDocuments.some((doc) => doc.status === "APPLIED");
+
+  return (
+    <RecordSection
+      title="SAP"
+      description="Dispatch happens in SAP. ISMS checks SAP about every 10 minutes and adds the units it finds."
+      divided
+    >
+      <RecordFieldGrid>
+        <RecordReadout label="SAP document" value={base.type} />
+        <RecordReadout
+          label={base.numberLabel}
+          value={<span className="font-mono tabular-nums">{base.number}</span>}
+        />
+      </RecordFieldGrid>
+      {waiting ? (
+        <p className="mt-3 text-sm text-muted-foreground">
+          Waiting for SAP: copy {order.sapDocType} {base.number} to {COPY_TO_TARGET[order.sapDocType]} in
+          SAP to dispatch this delivery.
+        </p>
+      ) : null}
+      {detail.sapDocuments.length > 0 ? (
+        <ul className="mt-3 divide-y rounded-md border">
+          {detail.sapDocuments.map((doc) => (
+            <li key={`${doc.docKind}-${doc.displayNo}`} className="grid gap-1 px-3 py-2.5 text-sm">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span className="font-medium">
+                  {doc.docKind} <span className="font-mono tabular-nums">{doc.displayNo}</span>
+                </span>
+                <span className="text-muted-foreground">{formatInventoryDrDate(doc.docDate)}</span>
+                {doc.status === "APPLIED" ? (
+                  <span className="text-muted-foreground tabular-nums">
+                    {doc.serialCount} unit{doc.serialCount === 1 ? "" : "s"} added
+                  </span>
+                ) : null}
+                <Badge
+                  variant="outline"
+                  className={cn("ml-auto font-normal", SAP_FOLLOW_STATUS_TONES[doc.status])}
+                >
+                  {SAP_FOLLOW_STATUS_LABELS[doc.status] ?? doc.status}
+                </Badge>
+              </div>
+              {doc.error ? <p className="text-destructive">{doc.error}</p> : null}
+              {SAP_FOLLOW_STATUS_HINTS[doc.status] ? (
+                <p className="text-xs text-muted-foreground">{SAP_FOLLOW_STATUS_HINTS[doc.status]}</p>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </RecordSection>
+  );
+}
+
 function deliveryPrintDocument(detail: DeliveryDetail) {
   const hasSerials = detail.serials.length > 0;
   return shipmentPrintDocument({
@@ -183,15 +241,9 @@ export function DeliveryDetailView({
   workflowStatuses: readonly WorkflowStatusOption[];
 }) {
   const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const [rejectOpen, setRejectOpen] = useState(false);
   const [receiveTarget, setReceiveTarget] = useState<ReceiveTarget | null>(null);
   const [returnRequestTarget, setReturnRequestTarget] = useState<ReturnTarget | null>(null);
   const [returnReviewTarget, setReturnReviewTarget] = useState<ReturnTarget | null>(null);
-  const [dispatchTarget, setDispatchTarget] = useState<DispatchTarget | null>(null);
-  // Own flags: the shared `pending` also covers reject and return actions.
-  const [openingDispatch, setOpeningDispatch] = useState(false);
-  const [dispatching, setDispatching] = useState(false);
 
   const code = detail.status.code;
   const dispatched =
@@ -212,62 +264,6 @@ export function DeliveryDetailView({
     router.refresh();
   }
 
-  function openDispatch() {
-    setOpeningDispatch(true);
-    startTransition(async () => {
-      try {
-        const result = await listDispatchCandidatesAction(detail.id);
-        if (!("success" in result)) {
-          toast.error(result.error);
-          return;
-        }
-        setDispatchTarget({
-          id: detail.id,
-          deliveryNo: detail.deliveryNo,
-          branchName: detail.branch.name,
-          models: result.models,
-          serials: result.serials,
-        });
-      } finally {
-        setOpeningDispatch(false);
-      }
-    });
-  }
-
-  function confirmDispatch(serialNumberIds: string[]) {
-    if (!dispatchTarget) return;
-    setDispatching(true);
-    startTransition(async () => {
-      try {
-        const result = await dispatchDeliveryAction(dispatchTarget.id, { serialNumberIds });
-        if (result.error) {
-          toast.error(result.error);
-          return;
-        }
-        toast.success(
-          `Dispatched ${result.movedCount} serial${result.movedCount === 1 ? "" : "s"}.${result.drNo ? ` DR# ${result.drNo}.` : ""}`,
-        );
-        setDispatchTarget(null);
-        refresh();
-      } finally {
-        setDispatching(false);
-      }
-    });
-  }
-
-  function confirmReject() {
-    startTransition(async () => {
-      const result = await rejectDeliveryAction(detail.id);
-      if (result.error) {
-        toast.error(result.error);
-        return;
-      }
-      toast.success("Delivery rejected. Warehouse quantity is unchanged.");
-      setRejectOpen(false);
-      refresh();
-    });
-  }
-
   return (
     <div className="space-y-6">
       <DocumentDetailBand
@@ -283,28 +279,16 @@ export function DeliveryDetailView({
         }
         actions={
           <>
-            {code === DELIVERY_WORKFLOW_CODE.approved && capabilities.canDispatch ? (
-              <Button disabled={pending} aria-busy={openingDispatch} onClick={openDispatch}>
-                {openingDispatch ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
-                Dispatch
-              </Button>
-            ) : null}
-            {code === DELIVERY_WORKFLOW_CODE.approved && capabilities.canDispatch ? (
-              <Button variant="outline" disabled={pending} onClick={() => setRejectOpen(true)}>
-                Reject
-              </Button>
-            ) : null}
             {dispatched && !returnOpen && capabilities.canRequestDeliveryReturn ? (
               <Button
                 variant="outline"
-                disabled={pending}
                 onClick={() => setReturnRequestTarget(returnTarget)}
               >
                 Request return
               </Button>
             ) : null}
             {latestReturn?.status === "PENDING_APPROVAL" && capabilities.canApproveDeliveryReturn ? (
-              <Button disabled={pending} onClick={() => setReturnReviewTarget(returnTarget)}>
+              <Button onClick={() => setReturnReviewTarget(returnTarget)}>
                 Review return
               </Button>
             ) : null}
@@ -312,7 +296,6 @@ export function DeliveryDetailView({
             (capabilities.canApproveDeliveryReturn || capabilities.canRequestDeliveryReturn) ? (
               <Button
                 variant="outline"
-                disabled={pending}
                 onClick={() => setReturnReviewTarget(returnTarget)}
               >
                 Retry SAP posting
@@ -320,7 +303,6 @@ export function DeliveryDetailView({
             ) : null}
             {dispatched && !returnOpen && capabilities.canAcceptDelivery ? (
               <Button
-                disabled={pending}
                 className="bg-emerald-600 text-white hover:bg-emerald-700"
                 onClick={() =>
                   setReceiveTarget({
@@ -358,6 +340,7 @@ export function DeliveryDetailView({
             <RecordReadout label="DR date" value={formatInventoryDrDate(detail.drDate)} />
           </RecordFieldGrid>
         </RecordSection>
+        <SapDocumentsSection detail={detail} />
         <LogisticsShipmentSection
           key={`${detail.shipment.waybillNo ?? ""}|${detail.shipment.courierName ?? ""}|${detail.shipment.scheduledAt ?? ""}`}
           shipment={detail.shipment}
@@ -396,36 +379,6 @@ export function DeliveryDetailView({
         </RecordSection>
       </RecordSheet>
 
-      <AlertDialog
-        open={rejectOpen}
-        onOpenChange={(open) => {
-          if (!open && !pending) setRejectOpen(false);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Reject delivery?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Reject <span className="font-medium text-foreground">{detail.deliveryNo}</span>
-              {detail.order?.orderNumber ? <> (order {detail.order.orderNumber})</> : null} at {detail.branch.name}.
-              Nothing has been dispatched, so warehouse quantity stays the same.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={pending}
-              onClick={(event) => {
-                event.preventDefault();
-                confirmReject();
-              }}
-            >
-              Reject
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
       <DeliveryReturnRequestDialog
         target={returnRequestTarget}
         onClose={() => setReturnRequestTarget(null)}
@@ -450,14 +403,6 @@ export function DeliveryDetailView({
         accept={acceptDeliveryAction}
         canTransfer={capabilities.canCreateDeliveryTransfer}
       />
-
-      <DeliveryDispatchDialog
-        target={dispatchTarget}
-        pending={pending}
-        onClose={() => setDispatchTarget(null)}
-        onConfirm={confirmDispatch}
-      />
-      <DispatchingModal open={dispatching} deliveryNo={dispatchTarget?.deliveryNo} />
     </div>
   );
 }

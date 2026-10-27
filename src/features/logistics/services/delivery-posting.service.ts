@@ -1,11 +1,7 @@
 import type { DeliveryReturnStatus, SapOrderDocType } from "@prisma/client";
 import { Prisma } from "@/lib/database/generated/prisma/client";
 
-import {
-  assertExclusivePlacement,
-  loadCurrentPlacements,
-  lockSerialNumbers,
-} from "@/features/inventory/services/serial-placement";
+import { lockSerialNumbers } from "@/features/inventory/services/serial-placement";
 import { prisma } from "@/lib/database/client";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import {
@@ -16,19 +12,13 @@ import {
 import {
   assertExclusiveClaim,
   planAccept,
-  planDispatch,
   planDeliverySettle,
-  planDispatchBranchPlacement,
-  planReject,
   receiptLineState,
   RETURN_WAITING_ERROR,
-  selectDispatchCandidates,
   type BranchUnitStatus,
   type DeliveryPostingView,
   type DeliveryReceiptLineState,
-  type WarehouseHold,
 } from "@/features/logistics/services/delivery-posting.planner";
-import { resolveSapOutboundPort } from "@/features/sap/adapters/resolve-sap-outbound";
 import { authorizeDeliveryScope } from "@/features/logistics/services/delivery-scope";
 import {
   assertNotOnOpenTransfer,
@@ -47,11 +37,11 @@ import type { PostingActor, PostingDb } from "@/features/logistics/services/post
  *
  * Process II ends when Supply Planning approves: the approved_order job posts
  * the live SAP ITR (OWTQ, consignment) or SO (ORDR, outright) and opens the
- * local BranchDelivery (Process III.A entry). Dispatch posts the SAP IT or DR
- * copied from that document first, then moves warehouse → DIT; accept moves
- * DIT → STK per unit, and units not accepted go on a unit transfer.
- * Reject only closes an undispatched delivery; in-transit units go back through
- * a return request (delivery-return.service), which posts SAP first.
+ * local BranchDelivery (Process III.A entry). Dispatch happens in SAP: a SAP user
+ * copies that document to an IT or DR, and the cron follow-up
+ * (sap-copy-to-follow.service) moves its serials to DIT. Accept moves DIT → STK per
+ * unit, and units not accepted go on a unit transfer. In-transit units go back
+ * through a return request (delivery-return.service), which posts SAP first.
  */
 
 async function workflowCodeId(tenantId: string, code: DeliveryWorkflowCodeKey) {
@@ -140,257 +130,6 @@ export async function loadDelivery(tenantId: string, deliveryId: string): Promis
   };
 }
 
-const SAP_DISPATCH_POSTED_ACTION = "delivery.sap_dispatch_posted";
-
-/** A retry must dispatch the serials already on the SAP document. No audit row means posted before this guard. */
-async function assertSameSerialsAsSapPost(
-  tenantId: string,
-  deliveryId: string,
-  drNo: string | null,
-  requestedIds: string[],
-) {
-  const posted = await prisma.auditLog.findFirst({
-    where: { tenantId, entityType: "BranchDelivery", entityId: deliveryId, action: SAP_DISPATCH_POSTED_ACTION },
-    orderBy: { createdAt: "desc" },
-    select: { metadata: true },
-  });
-  const metadata = posted?.metadata as { serialNumberIds?: unknown } | null | undefined;
-  const postedIds = Array.isArray(metadata?.serialNumberIds)
-    ? (metadata.serialNumberIds as string[]).slice().sort()
-    : null;
-  if (!postedIds) return;
-  if (postedIds.length === requestedIds.length && postedIds.every((id, i) => id === requestedIds[i])) return;
-
-  const rows = await prisma.serialNumber.findMany({
-    where: { tenantId, id: { in: postedIds } },
-    select: { serialNo: true },
-    orderBy: { serialNo: "asc" },
-  });
-  throw new Error(
-    `SAP already has DR# ${drNo ?? ""} for this delivery with different serials. Dispatch the same serials: ${rows.map((r) => r.serialNo).join(", ")}.`,
-  );
-}
-
-async function loadHolds(tenantId: string, serialNumberIds: string[]): Promise<WarehouseHold[]> {
-  if (serialNumberIds.length === 0) return [];
-  const [rows, tagged, sapPlaced] = await Promise.all([
-    prisma.warehouseInventory.findMany({
-      where: { tenantId, serialNumberId: { in: serialNumberIds } },
-      select: {
-        serialNumberId: true,
-        warehouseLocationId: true,
-        warehouseLocation: { select: { warehouseId: true } },
-        serialNumber: { select: { modelId: true } },
-      },
-    }),
-    prisma.branchInventory.findMany({
-      where: { ...taggedStockWhere(tenantId), serialNumberId: { in: serialNumberIds } },
-      select: {
-        serialNumberId: true,
-        warehouseLocationId: true,
-        warehouseLocation: { select: { warehouseId: true } },
-        serialNumber: { select: { modelId: true } },
-      },
-    }),
-    loadSapPlacedSerials(prisma, tenantId, { serialNumberIds }),
-  ]);
-  return [
-    ...sapPlaced.map((row) => ({
-      serialNumberId: row.id,
-      modelId: row.modelId,
-      warehouseId: row.warehouseId,
-      warehouseLocationId: null,
-      source: "SAP" as const,
-    })),
-    ...rows.map((row) => ({
-      serialNumberId: row.serialNumberId,
-      modelId: row.serialNumber.modelId,
-      warehouseId: row.warehouseLocation.warehouseId,
-      warehouseLocationId: row.warehouseLocationId,
-      source: "WAREHOUSE" as const,
-    })),
-    ...tagged.flatMap((row) =>
-      row.warehouseLocation && row.warehouseLocationId
-        ? [
-            {
-              serialNumberId: row.serialNumberId,
-              modelId: row.serialNumber.modelId,
-              warehouseId: row.warehouseLocation.warehouseId,
-              warehouseLocationId: row.warehouseLocationId,
-              source: "BRANCH" as const,
-            },
-          ]
-        : [],
-    ),
-  ];
-}
-
-/**
- * Branch stock with a warehouse location and still sellable stock:
- * dispatch may take it from that location like warehouse stock.
- */
-function taggedStockWhere(tenantId: string) {
-  return {
-    tenantId,
-    warehouseLocationId: { not: null },
-    statusCode: { code: "STK" },
-  };
-}
-
-/**
- * Serials the SAP serial sync places in a live warehouse (`sap_whs_code`) that ISMS holds
- * nowhere else: no warehouse or service-center row, and at most the sync's own branch STK
- * row with no location. Inventory comes from SAP, so dispatch takes these as they are.
- *
- * Narrowed either to specific serials (re-checking a pick) or to models in one warehouse
- * (listing candidates). Each row carries the ISMS warehouse its SAP code resolves to.
- */
-async function loadSapPlacedSerials(
-  db: PostingDb,
-  tenantId: string,
-  filter: { serialNumberIds: string[] } | { modelIds: string[]; warehouseId: string | null },
-): Promise<
-  { id: string; serialNo: string; modelId: string; warehouseId: string; warehouseCode: string; heldBy: string | null }[]
-> {
-  const warehouses = await db.warehouse.findMany({
-    where: {
-      tenantId,
-      deletedAt: null,
-      ...("warehouseId" in filter && filter.warehouseId ? { id: filter.warehouseId } : {}),
-    },
-    select: { id: true, code: true },
-  });
-  if (warehouses.length === 0) return [];
-  const warehouseByCode = new Map(warehouses.map((row) => [row.code, row]));
-
-  const rows = await db.serialNumber.findMany({
-    where: {
-      tenantId,
-      deletedAt: null,
-      sapWhsCode: { in: [...warehouseByCode.keys()] },
-      warehouseInventories: { none: {} },
-      serviceCenterInventories: { none: {} },
-      branchInventories: { every: { warehouseLocationId: null, statusCode: { code: "STK" } } },
-      ...("serialNumberIds" in filter
-        ? { id: { in: filter.serialNumberIds } }
-        : { modelId: { in: filter.modelIds } }),
-    },
-    select: {
-      id: true,
-      serialNo: true,
-      modelId: true,
-      sapWhsCode: true,
-      branchInventories: { select: { branch: { select: { name: true } } }, take: 1 },
-    },
-  });
-
-  return rows.flatMap((row) => {
-    const warehouse = row.sapWhsCode ? warehouseByCode.get(row.sapWhsCode) : undefined;
-    if (!warehouse) return [];
-    return [
-      {
-        id: row.id,
-        serialNo: row.serialNo,
-        modelId: row.modelId,
-        warehouseId: warehouse.id,
-        warehouseCode: warehouse.code,
-        heldBy: row.branchInventories[0]?.branch.name ?? null,
-      },
-    ];
-  });
-}
-
-/**
- * Put SAP-placed serials in transit to the delivery branch. Re-checked under the serial
- * lock: each must still be in this warehouse per SAP and held nowhere else in ISMS. The
- * sync's own STK row (if any) moves to the delivery branch; otherwise a DIT row is added.
- *
- * SAP has just moved the serial out of the warehouse with the dispatch document, so the
- * warehouse link is cleared now rather than left for the next serial sync, which would
- * otherwise still offer it from the warehouse once the branch accepts it.
- */
-async function dispatchSapPlacedSerials(
-  tx: PostingDb,
-  input: {
-    tenantId: string;
-    userId: string;
-    serialNumberIds: string[];
-    warehouseId: string;
-    branchId: string;
-    ditCodeId: string;
-    stkCodeId: string;
-  },
-): Promise<void> {
-  const still = await loadSapPlacedSerials(tx, input.tenantId, {
-    serialNumberIds: input.serialNumberIds,
-  });
-  assertExclusiveClaim(
-    still.filter((row) => row.warehouseId === input.warehouseId).length,
-    input.serialNumberIds.length,
-    "One or more serials were moved in SAP or taken in ISMS. Reload and pick again.",
-  );
-
-  const withRow = await tx.branchInventory.findMany({
-    where: { tenantId: input.tenantId, serialNumberId: { in: input.serialNumberIds } },
-    select: { serialNumberId: true },
-  });
-  const hasRow = new Set(withRow.map((row) => row.serialNumberId));
-
-  if (hasRow.size > 0) {
-    const moved = await tx.branchInventory.updateMany({
-      where: {
-        tenantId: input.tenantId,
-        serialNumberId: { in: [...hasRow] },
-        statusCodeId: input.stkCodeId,
-        warehouseLocationId: null,
-      },
-      data: { branchId: input.branchId, statusCodeId: input.ditCodeId, updatedById: input.userId },
-    });
-    assertExclusiveClaim(
-      moved.count,
-      hasRow.size,
-      "One or more serials were sold or moved at a branch. Reload and pick again.",
-    );
-  }
-
-  const inserts = input.serialNumberIds.filter((id) => !hasRow.has(id));
-  if (inserts.length > 0) {
-    await tx.branchInventory.createMany({
-      data: inserts.map((serialNumberId) => ({
-        tenantId: input.tenantId,
-        branchId: input.branchId,
-        serialNumberId,
-        statusCodeId: input.ditCodeId,
-        updatedById: input.userId,
-      })),
-    });
-  }
-
-  await tx.serialNumber.updateMany({
-    where: { tenantId: input.tenantId, id: { in: input.serialNumberIds } },
-    data: { sapWhsCode: null, sapOnHand: false },
-  });
-}
-
-export interface DispatchCandidate {
-  id: string;
-  serialNo: string;
-  modelId: string;
-  warehouseCode: string;
-  /** Null when the serial is in the warehouse per SAP with no ISMS location. */
-  locationCode: string | null;
-  /** Branch whose stock row the unit sits on (located branch stock, or the SAP sync's STK row). */
-  heldBy: string | null;
-}
-
-/** One ordered model on a delivery and how many serials dispatch must pick for it. */
-export interface DispatchModelRequirement {
-  modelId: string;
-  skuCode: string;
-  modelName: string;
-  requiredQty: number;
-}
-
 export interface DeliveryReceiptLine {
   serialNumberId: string;
   serialNo: string;
@@ -463,7 +202,21 @@ export interface DeliveryDetail {
   shipment: LogisticsShipment;
   status: { code: string; name: string; color: string | null };
   branch: { name: string };
-  order: { orderNumber: string } | null;
+  order: {
+    orderNumber: string;
+    /** The ITR / SO ISMS posted at approval, that SAP users Copy To an IT / DR. */
+    sapDocType: SapOrderDocType | null;
+    sapDocNum: number | null;
+  } | null;
+  /** ITs / DRs the cron follow-up found for this delivery, newest first. */
+  sapDocuments: {
+    docKind: string;
+    displayNo: string;
+    docDate: string | null;
+    status: string;
+    serialCount: number;
+    error: string | null;
+  }[];
   /** Approved order lines. Shown when the delivery has no serials yet. */
   orderLines: { id: string; skuCode: string; modelName: string; quantity: number }[];
   serials: { serialNumberId: string; serialNo: string; skuCode: string; modelName: string }[];
@@ -497,6 +250,8 @@ export const deliveryPostingService = {
         order: {
           select: {
             orderNumber: true,
+            sapDocType: true,
+            sapDocNum: true,
             details: {
               select: {
                 id: true,
@@ -524,6 +279,17 @@ export const deliveryPostingService = {
           orderBy: { requestedAt: "desc" },
           take: 1,
           select: { id: true, requestNo: true, status: true, sapError: true },
+        },
+        sapDocuments: {
+          orderBy: { docEntry: "desc" },
+          select: {
+            docKind: true,
+            displayNo: true,
+            docDate: true,
+            status: true,
+            serialCount: true,
+            error: true,
+          },
         },
       },
     });
@@ -565,7 +331,17 @@ export const deliveryPostingService = {
       },
       status: delivery.statusCode,
       branch: { name: delivery.branch.name },
-      order: delivery.order ? { orderNumber: delivery.order.orderNumber } : null,
+      order: delivery.order
+        ? {
+            orderNumber: delivery.order.orderNumber,
+            sapDocType: delivery.order.sapDocType,
+            sapDocNum: delivery.order.sapDocNum,
+          }
+        : null,
+      sapDocuments: delivery.sapDocuments.map((row) => ({
+        ...row,
+        docDate: row.docDate ? row.docDate.toISOString() : null,
+      })),
       orderLines,
       serials: delivery.lines.map((line) => ({
         serialNumberId: line.serialNumberId,
@@ -703,377 +479,6 @@ export const deliveryPostingService = {
     };
   },
 
-  async listDispatchCandidates(tenantId: string, deliveryId: string): Promise<{
-    requiredQty: number;
-    models: DispatchModelRequirement[];
-    serials: DispatchCandidate[];
-  }> {
-    const delivery = await loadDelivery(tenantId, deliveryId);
-    if (!delivery) throw new Error("Delivery not found");
-    if (delivery.status !== "approved") {
-      throw new Error("Only an approved delivery can be dispatched");
-    }
-    const modelIds = delivery.requirements.map((row) => row.modelId);
-    const requiredQty = delivery.requirements.reduce((sum, row) => sum + row.quantity, 0);
-    if (modelIds.length === 0) {
-      return { requiredQty: 0, models: [], serials: [] };
-    }
-
-    // An order can carry the same model on more than one line; dispatch picks per model.
-    const requiredByModel = new Map<string, number>();
-    for (const row of delivery.requirements) {
-      requiredByModel.set(row.modelId, (requiredByModel.get(row.modelId) ?? 0) + row.quantity);
-    }
-    const modelRows = await prisma.productModel.findMany({
-      where: { tenantId, id: { in: [...requiredByModel.keys()] } },
-      select: { id: true, skuCode: true, name: true },
-      orderBy: { skuCode: "asc" },
-    });
-    const branch = await prisma.branch.findFirst({
-      where: { id: delivery.branchId, tenantId },
-      select: { primaryWarehouseId: true },
-    });
-
-    const primaryWarehouseId = branch?.primaryWarehouseId ?? null;
-    const models: DispatchModelRequirement[] = modelRows.map((model) => ({
-      modelId: model.id,
-      skuCode: model.skuCode,
-      modelName: model.name,
-      requiredQty: requiredByModel.get(model.id) ?? 0,
-    }));
-    const locationSelect = {
-      select: { code: true, warehouse: { select: { id: true, code: true } } },
-    } as const;
-    const [rows, tagged, sapPlaced] = await Promise.all([
-      prisma.warehouseInventory.findMany({
-        where: {
-          tenantId,
-          serialNumber: { modelId: { in: modelIds }, deletedAt: null },
-          ...(primaryWarehouseId
-            ? { warehouseLocation: { warehouseId: primaryWarehouseId } }
-            : {}),
-        },
-        select: {
-          serialNumberId: true,
-          serialNumber: { select: { serialNo: true, modelId: true } },
-          warehouseLocation: locationSelect,
-        },
-      }),
-      prisma.branchInventory.findMany({
-        where: {
-          ...taggedStockWhere(tenantId),
-          serialNumber: { modelId: { in: modelIds }, deletedAt: null },
-          ...(primaryWarehouseId
-            ? { warehouseLocation: { warehouseId: primaryWarehouseId } }
-            : {}),
-        },
-        select: {
-          serialNumberId: true,
-          branch: { select: { name: true } },
-          serialNumber: { select: { serialNo: true, modelId: true } },
-          warehouseLocation: locationSelect,
-        },
-      }),
-      loadSapPlacedSerials(prisma, tenantId, { modelIds, warehouseId: primaryWarehouseId }),
-    ]);
-
-    const located = [
-      ...rows.map((row) => ({ ...row, heldBy: null as string | null })),
-      ...tagged.flatMap((row) =>
-        row.warehouseLocation
-          ? [{ ...row, warehouseLocation: row.warehouseLocation, heldBy: row.branch.name }]
-          : [],
-      ),
-    ].map((row) => ({
-      id: row.serialNumberId,
-      serialNo: row.serialNumber.serialNo,
-      modelId: row.serialNumber.modelId,
-      deleted: false,
-      warehouseId: row.warehouseLocation.warehouse.id,
-      warehouseCode: row.warehouseLocation.warehouse.code,
-      locationCode: row.warehouseLocation.code as string | null,
-      heldBy: row.heldBy,
-    }));
-    const fromSap = sapPlaced.map((row) => ({ ...row, deleted: false, locationCode: null }));
-
-    const serials = selectDispatchCandidates(
-      [...located, ...fromSap].sort((a, b) => a.serialNo.localeCompare(b.serialNo)),
-      modelIds,
-      primaryWarehouseId,
-    );
-
-    return {
-      requiredQty,
-      models,
-      serials: serials.map((row) => ({
-        id: row.id,
-        serialNo: row.serialNo,
-        modelId: row.modelId,
-        warehouseCode: row.warehouseCode,
-        locationCode: row.locationCode,
-        heldBy: row.heldBy,
-      })),
-    };
-  },
-
-  async dispatch(input: {
-    tenantId: string;
-    userId: string;
-    permissions?: string[];
-    deliveryId: string;
-    serialNumberIds: string[];
-  }): Promise<{ movedCount: number; drNo: string | null }> {
-    const preview = await loadDelivery(input.tenantId, input.deliveryId);
-    if (!preview) throw new Error("Delivery not found");
-    const holds = await loadHolds(input.tenantId, input.serialNumberIds);
-    const plan = planDispatch(preview, holds, input.serialNumberIds);
-    if (!plan.ok) throw new Error(plan.error);
-
-    const branch = await prisma.branch.findFirst({
-      where: { id: preview.branchId, tenantId: input.tenantId },
-      select: { primaryWarehouseId: true, name: true },
-    });
-    if (branch?.primaryWarehouseId && plan.warehouseId !== branch.primaryWarehouseId) {
-      throw new Error("One or more serials are missing, already allocated, or not in that warehouse");
-    }
-
-    await authorizeDeliveryScope(input, preview);
-
-    // SAP first: stock only moves once SAP has the IT or DR. The reference is saved
-    // straight away so a retry after a failed local move does not post a second one.
-    let drNo = preview.drNo;
-    const requestedIds = [...plan.moves.map((move) => move.serialNumberId)].sort();
-    if (preview.sapDocEntry == null) {
-      const ref = await resolveSapOutboundPort().createDispatchDocument({
-        tenantId: input.tenantId,
-        deliveryId: input.deliveryId,
-        serialNumberIds: requestedIds,
-      });
-      await prisma.$transaction(async (tx) => {
-        await tx.branchDelivery.update({
-          where: { id: input.deliveryId },
-          // SAP can omit DocDate: an empty string would store an Invalid Date.
-          data: { sapDocEntry: ref.docEntry, drNo: ref.displayNo, drDate: ref.docDate ? new Date(ref.docDate) : null },
-        });
-        // Remembers which serials SAP transferred, so a retry cannot move different ones.
-        await tx.auditLog.create({
-          data: {
-            tenantId: input.tenantId,
-            userId: input.userId,
-            action: SAP_DISPATCH_POSTED_ACTION,
-            entityType: "BranchDelivery",
-            entityId: input.deliveryId,
-            metadata: { sapDocEntry: ref.docEntry, drNo: ref.displayNo, serialNumberIds: requestedIds },
-          },
-        });
-      });
-      drNo = ref.displayNo;
-    } else {
-      await assertSameSerialsAsSapPost(input.tenantId, input.deliveryId, drNo, requestedIds);
-    }
-
-    const [pendingCodeId, ditCodeId, stkCodeId] = await Promise.all([
-      workflowCodeId(input.tenantId, "pending"),
-      inventoryCodeId(input.tenantId, "DIT"),
-      inventoryCodeId(input.tenantId, "STK"),
-    ]);
-    // Located branch units are relocated, SAP-placed serials land on the branch, and
-    // warehouse rows are removed as before.
-    const sourceById = new Map(holds.map((hold) => [hold.serialNumberId, hold.source]));
-    const idsFrom = (source: WarehouseHold["source"]) =>
-      plan.moves.map((move) => move.serialNumberId).filter((id) => sourceById.get(id) === source);
-    const relocateIds = idsFrom("BRANCH");
-    const relocating = new Set(relocateIds);
-    const sapIds = idsFrom("SAP");
-    const fromSap = new Set(sapIds);
-    const warehouseMoveIds = idsFrom("WAREHOUSE");
-    const approvedCodeId = await workflowCodeId(input.tenantId, "approved");
-
-    try {
-    await prisma.$transaction(async (tx) => {
-      const claimed = await tx.branchDelivery.updateMany({
-        where: { id: input.deliveryId, tenantId: input.tenantId, statusCodeId: approvedCodeId },
-        data: { statusCodeId: pendingCodeId },
-      });
-      assertExclusiveClaim(
-        claimed.count,
-        1,
-        "This delivery has already been dispatched",
-      );
-
-      const moveIds = plan.moves.map((move) => move.serialNumberId);
-      await lockSerialNumbers(tx, moveIds);
-      const [serialRows, shelfRows] = await Promise.all([
-        tx.serialNumber.findMany({
-          where: { tenantId: input.tenantId, id: { in: moveIds } },
-          select: { id: true, serialNo: true },
-        }),
-        tx.branchInventory.findMany({
-          where: { tenantId: input.tenantId, serialNumberId: { in: warehouseMoveIds } },
-          select: {
-            serialNumberId: true,
-            branchId: true,
-            branch: { select: { name: true } },
-            statusCode: { select: { code: true } },
-          },
-        }),
-      ]);
-      const serialNoById = new Map(serialRows.map((row) => [row.id, row.serialNo]));
-      const placement = planDispatchBranchPlacement(
-        preview.branchId,
-        warehouseMoveIds.map((serialNumberId) => ({
-          serialNumberId,
-          serialNo: serialNoById.get(serialNumberId) ?? serialNumberId,
-        })),
-        shelfRows.map((row) => ({
-          serialNumberId: row.serialNumberId,
-          branchId: row.branchId,
-          branchName: row.branch.name,
-          status: asBranchStatus(row.statusCode.code) ?? "OTHER",
-        })),
-      );
-      if (!placement.ok) {
-        throw new Error(placement.error);
-      }
-
-      const occupied = await loadCurrentPlacements(tx, moveIds);
-      const replacingIds = occupied
-        .filter((row) => {
-          if (row.table === "warehouse" && row.warehouseId === plan.warehouseId) return true;
-          if (row.table === "branch" && relocating.has(row.serialNumberId)) return true;
-          if (row.table === "branch" && fromSap.has(row.serialNumberId)) return true;
-          return (
-            row.table === "branch" &&
-            row.branchId === preview.branchId &&
-            placement.updates.includes(row.serialNumberId)
-          );
-        })
-        .map((row) => row.id);
-      assertExclusivePlacement({ placements: occupied, replacingIds });
-
-      if (warehouseMoveIds.length > 0) {
-        const removed = await tx.warehouseInventory.deleteMany({
-          where: {
-            tenantId: input.tenantId,
-            serialNumberId: { in: warehouseMoveIds },
-            warehouseLocation: { warehouseId: plan.warehouseId },
-          },
-        });
-        assertExclusiveClaim(
-          removed.count,
-          warehouseMoveIds.length,
-          "One or more serials are missing, already allocated, or not in that warehouse",
-        );
-      }
-
-      if (relocateIds.length > 0) {
-        // Still stock and still on a shelf of this warehouse, re-read under the lock.
-        const relocated = await tx.branchInventory.updateMany({
-          where: {
-            tenantId: input.tenantId,
-            serialNumberId: { in: relocateIds },
-            statusCodeId: stkCodeId,
-            warehouseLocation: { warehouseId: plan.warehouseId },
-          },
-          data: {
-            branchId: preview.branchId,
-            statusCodeId: ditCodeId,
-            warehouseLocationId: null,
-            updatedById: input.userId,
-          },
-        });
-        assertExclusiveClaim(
-          relocated.count,
-          relocateIds.length,
-          "One or more serials were sold, moved or taken off their location. Reload and pick again.",
-        );
-      }
-
-      if (sapIds.length > 0) {
-        await dispatchSapPlacedSerials(tx, {
-          tenantId: input.tenantId,
-          userId: input.userId,
-          serialNumberIds: sapIds,
-          warehouseId: plan.warehouseId,
-          branchId: preview.branchId,
-          ditCodeId,
-          stkCodeId,
-        });
-      }
-
-      if (placement.inserts.length > 0) {
-        await tx.branchInventory.createMany({
-          data: placement.inserts.map((serialNumberId) => ({
-            tenantId: input.tenantId,
-            branchId: preview.branchId,
-            serialNumberId,
-            statusCodeId: ditCodeId,
-            updatedById: input.userId,
-          })),
-        });
-      }
-
-      if (placement.updates.length > 0) {
-        const updated = await tx.branchInventory.updateMany({
-          where: {
-            tenantId: input.tenantId,
-            branchId: preview.branchId,
-            serialNumberId: { in: placement.updates },
-          },
-          data: { statusCodeId: ditCodeId, updatedById: input.userId },
-        });
-        assertExclusiveClaim(
-          updated.count,
-          placement.updates.length,
-          "One or more serials are no longer on this branch",
-        );
-      }
-
-      await tx.branchDeliveryLine.createMany({
-        data: plan.moves.map((move) => ({
-          deliveryId: input.deliveryId,
-          serialNumberId: move.serialNumberId,
-          warehouseLocationFromId: move.warehouseLocationId,
-        })),
-      });
-
-      const header = await tx.branchDelivery.findFirst({
-        where: { id: input.deliveryId, tenantId: input.tenantId },
-        select: { deliveryNo: true },
-      });
-
-      await tx.serialNumberHistory.createMany({
-        data: plan.moves.map((move) => ({
-          tenantId: input.tenantId,
-          serialNumberId: move.serialNumberId,
-          txnType: "delivery" as const,
-          details: `Dispatched on ${header?.deliveryNo ?? input.deliveryId} to ${branch?.name ?? "the branch"}`,
-          status: "DIT",
-          createdById: input.userId,
-        })),
-      });
-
-      await tx.auditLog.create({
-        data: {
-          tenantId: input.tenantId,
-          userId: input.userId,
-          action: "delivery.dispatched",
-          entityType: "BranchDelivery",
-          entityId: input.deliveryId,
-          metadata: {
-            movedCount: plan.moves.length,
-            serialNumberIds: plan.moves.map((move) => move.serialNumberId),
-          },
-        },
-      });
-    });
-    } catch (error) {
-      throw claimError(error);
-    }
-
-    return { movedCount: plan.moves.length, drNo };
-  },
-
   async accept(input: {
     tenantId: string;
     userId: string;
@@ -1193,53 +598,5 @@ export const deliveryPostingService = {
       idempotent: plan.idempotent,
       status: finalStatus,
     };
-  },
-
-  /** Closes a delivery that was never dispatched. Dispatched units go back through a return request. */
-  async reject(input: {
-    tenantId: string;
-    userId: string;
-    permissions: string[] | undefined;
-    deliveryId: string;
-    notes?: string;
-  }): Promise<{ returnedCount: number; idempotent: boolean }> {
-    const preview = await loadDelivery(input.tenantId, input.deliveryId);
-    if (!preview) throw new Error("Delivery not found");
-    await authorizeDeliveryScope(input, preview);
-    const plan = planReject(preview);
-    if (!plan.ok) throw new Error(plan.error);
-    if (plan.idempotent) {
-      return { returnedCount: 0, idempotent: true };
-    }
-
-    const [rejectedCodeId, approvedCodeId] = await Promise.all([
-      workflowCodeId(input.tenantId, "rejected"),
-      workflowCodeId(input.tenantId, "approved"),
-    ]);
-
-    try {
-      await prisma.$transaction(async (tx) => {
-        const claimed = await tx.branchDelivery.updateMany({
-          where: { id: input.deliveryId, tenantId: input.tenantId, statusCodeId: approvedCodeId },
-          data: { statusCodeId: rejectedCodeId },
-        });
-        assertExclusiveClaim(claimed.count, 1, "Delivery could not be rejected");
-
-        await tx.auditLog.create({
-          data: {
-            tenantId: input.tenantId,
-            userId: input.userId,
-            action: "delivery.rejected",
-            entityType: "BranchDelivery",
-            entityId: input.deliveryId,
-            metadata: { returnedCount: 0, ...(input.notes ? { notes: input.notes } : {}) },
-          },
-        });
-      });
-    } catch (error) {
-      throw claimError(error);
-    }
-
-    return { returnedCount: 0, idempotent: false };
   },
 };

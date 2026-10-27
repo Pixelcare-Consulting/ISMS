@@ -12,13 +12,15 @@ export const DELIVERIES_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "What this page is for",
       description:
-        "Deliveries sync from approved orders (SAP ITR/SO). Logistics schedules inbound movement; branch PS accepts DIT → Stock in Operations.",
+        "A delivery opens when Supply Planning approves an order and ISMS posts its ITR (consignment) or SO (outright) to SAP. Dispatch happens in SAP, not here.",
     },
     {
       title: "How to use it",
       bullets: [
-        "Create or update delivery records tied to approved orders.",
-        "Assign schedule, carrier notes, and expected arrival windows.",
+        "Save the waybill, courier, and schedule date on the delivery.",
+        "In SAP, use Copy To on the ITR (to an Inventory Transfer) or the SO (to a Delivery) and pick the serials.",
+        "ISMS checks SAP about every 10 minutes. The serials then appear on the delivery as in transit, and the SAP section shows the IT or DR number.",
+        "If the SAP section says a document needs review or was not applied yet, it names the reason (for example a serial ISMS already has elsewhere).",
         "Branch staff accept in Operations and resolve shortages before closing lines.",
       ],
     },

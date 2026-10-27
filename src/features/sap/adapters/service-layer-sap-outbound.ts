@@ -12,7 +12,6 @@ import type { SapOutboundPort } from "@/features/sap/ports/sap-outbound.port";
 import { SAP_REFERENCE_TYPES } from "@/features/sap/constants/sap-job-types";
 import { sapIntegrationRepository } from "@/features/sap/repositories/sap-integration.repository";
 import {
-  buildDrBody,
   buildItBody,
   buildItrBody,
   buildReturnBody,
@@ -36,50 +35,6 @@ import type { SapIntegrationJob } from "@prisma/client";
 /** YYYY-MM-DD, as SAP expects for DocDueDate. */
 function isoDate(d: Date) {
   return d.toISOString().slice(0, 10);
-}
-
-const LEGACY_ORDER_MESSAGE =
-  "This order was approved before SAP posting was enabled. Re-approve or post it in SAP.";
-
-interface DispatchDetail {
-  modelId: string;
-  skuCode: string;
-  capacity: number;
-  sapLineNum: number | null;
-}
-
-/**
- * Splits the dispatched serials across the order lines: grouped by model, then
- * filled into that model's lines in order up to each line's approved quantity.
- */
-function mapSerialsToLines(
-  details: DispatchDetail[],
-  serials: { serialNo: string; modelId: string; skuCode: string }[],
-  baseEntry: number,
-): SapSerialLine[] {
-  const remaining = new Map<string, string[]>();
-  for (const s of serials) {
-    remaining.set(s.modelId, [...(remaining.get(s.modelId) ?? []), s.serialNo]);
-  }
-
-  const lines: SapSerialLine[] = [];
-  for (const detail of details) {
-    const pool = remaining.get(detail.modelId);
-    if (!pool || pool.length === 0 || detail.capacity <= 0) continue;
-    if (detail.sapLineNum == null) {
-      throw new Error(`Order line for ${detail.skuCode} has no SAP line number`);
-    }
-    lines.push({
-      itemCode: detail.skuCode,
-      serialNos: pool.splice(0, detail.capacity),
-      baseEntry,
-      baseLine: detail.sapLineNum,
-    });
-  }
-
-  const unmapped = [...remaining.values()].reduce((sum, pool) => sum + pool.length, 0);
-  if (unmapped > 0) throw new Error("Some serials do not match an approved order line");
-  return lines;
 }
 
 /** Serials grouped by item, sorted, without a base document. */
@@ -506,98 +461,6 @@ export const serviceLayerSapOutbound: SapOutboundPort = {
 
   createPartialDeliveryInventoryTransfer: (args) =>
     mockSapOutbound.createPartialDeliveryInventoryTransfer(args),
-
-  async createDispatchDocument({ tenantId, deliveryId, serialNumberIds }) {
-    const creds = await sapServiceLayerService.getCredentials(tenantId);
-    if (!creds) throw new Error("SAP Service Layer is not configured");
-
-    const delivery = await prisma.branchDelivery.findFirst({
-      where: { id: deliveryId, tenantId },
-      include: {
-        sourceWarehouse: { select: { code: true } },
-        order: {
-          include: {
-            branch: { select: { sapCode: true, dealer: { select: { sapCode: true } } } },
-            details: {
-              orderBy: { id: "asc" },
-              include: { model: { select: { skuCode: true } } },
-            },
-          },
-        },
-      },
-    });
-    if (!delivery) throw new Error("Delivery not found");
-    const order = delivery.order;
-    if (!order) throw new Error("Delivery has no order");
-    // No base document to copy from: never post a loose transfer or delivery.
-    if (order.sapDocEntry == null) throw new Error(LEGACY_ORDER_MESSAGE);
-    const docType = docTypeForOrder(order);
-
-    let sourceWhsCode = delivery.sourceWarehouse?.code ?? null;
-    if (!sourceWhsCode) {
-      const ctx = await orderRepository.findSapRoutingContext(tenantId, delivery.branchId, order.id);
-      if (!ctx.branch) throw new Error("Branch not found");
-      const routing = resolveOrderSapRouting({
-        branch: ctx.branch,
-        mainWarehouse: ctx.mainWarehouse,
-        dealer: ctx.branch.dealer,
-        orderModeOfPayment: ctx.orderModeOfPayment,
-      });
-      if (!routing.ok) throw new Error(routing.error);
-      sourceWhsCode = routing.sourceWhsCode;
-    }
-
-    const serialRows = await prisma.serialNumber.findMany({
-      where: { tenantId, id: { in: serialNumberIds } },
-      select: { serialNo: true, modelId: true, model: { select: { skuCode: true } } },
-      orderBy: { serialNo: "asc" },
-    });
-    if (serialRows.length !== serialNumberIds.length) {
-      throw new Error("One or more serials were not found");
-    }
-
-    const lines = mapSerialsToLines(
-      order.details.map((d) => ({
-        modelId: d.modelId,
-        skuCode: d.model.skuCode,
-        capacity: d.approvedQty ?? d.quantity,
-        sapLineNum: d.sapLineNum,
-      })),
-      serialRows.map((r) => ({ serialNo: r.serialNo, modelId: r.modelId, skuCode: r.model.skuCode })),
-      order.sapDocEntry,
-    );
-
-    if (docType === "SO") {
-      const cardCode = order.branch.dealer?.sapCode;
-      if (!cardCode) throw new Error("Dealer has no SAP customer code");
-      return postSapDocument(
-        creds,
-        "DR",
-        order.orderNumber,
-        buildDrBody({
-          ismsRef: order.orderNumber,
-          cardCode,
-          whs: sourceWhsCode,
-          baseSoEntry: order.sapDocEntry,
-          lines,
-        }),
-      );
-    }
-
-    if (!order.branch.sapCode) throw new Error("Branch has no SAP warehouse code");
-    return postSapDocument(
-      creds,
-      "IT",
-      order.orderNumber,
-      buildItBody({
-        ismsRef: order.orderNumber,
-        fromWhs: sourceWhsCode,
-        toWhs: order.branch.sapCode,
-        baseItrEntry: order.sapDocEntry,
-        lines,
-      }),
-    );
-  },
 
   async createDeliveryReturnDocument({ tenantId, userId, job }) {
     const returnId = job.referenceId;
