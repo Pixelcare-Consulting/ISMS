@@ -3,7 +3,7 @@ import {
   OrderRecordPage,
   type OrderRecordLine,
 } from "@/app/(app)/orders/_components/order-history-sections";
-import { formatOrderSapDocument } from "@/features/orders/constants/order-sap-doc-type";
+import { orderSapDocumentFields } from "@/features/orders/constants/order-sap-doc-type";
 import { BRANCH_ORDER_TYPE_LABELS } from "@/features/orders/constants/order-status";
 import { ORDER_TYPE_ROUTE } from "@/features/orders/constants/order-type-route";
 import {
@@ -102,7 +102,7 @@ export function OrderHistoryDetailView({ order }: { order: OrderHistoryDetail })
       dealerName={order.dealerName}
       branchName={order.branchName}
       paymentLabel={order.paymentLabel}
-      sapLabel={formatOrderSapDocument({ sapDocType: order.sapDocType, sapDocNum: order.sapDocNum })}
+      sapDocument={orderSapDocumentFields({ sapDocType: order.sapDocType, sapDocNum: order.sapDocNum })}
       createdByName={order.createdByName}
       notes={order.notes}
       deliveryDueLabel={formatOrderHistoryWhen(order.deliveryDueDate)}

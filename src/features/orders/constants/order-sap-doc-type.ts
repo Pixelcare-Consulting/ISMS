@@ -55,12 +55,23 @@ export function orderModeOfPaymentSearchText(resolved: ResolvedOrderModeOfPaymen
   return [resolved.kind ? MODE_OF_PAYMENT_KIND_LABELS[resolved.kind] : "", resolved.name].join(" ");
 }
 
-/** "ITR (Consignment) · 1234", or "—" when the order has no document type yet. */
-export function formatOrderSapDocument(order: {
+/** The SAP document an order shows as two fields: what it is, and its number in SAP. */
+export interface OrderSapDocumentFields {
+  /** "ITR (Consignment)", or "—" before approval decides it. */
+  type: string;
+  /** "ITR no." / "SO no.", or "SAP document no." while the type is unknown. */
+  numberLabel: string;
+  /** SAP's DocNum, or "—" until SAP has posted the document. */
+  number: string;
+}
+
+export function orderSapDocumentFields(order: {
   sapDocType: OrderSapDocType | null;
   sapDocNum: number | null;
-}): string {
-  if (!order.sapDocType) return "—";
-  const label = SAP_ORDER_DOC_TYPE_LABELS[order.sapDocType];
-  return order.sapDocNum != null ? `${label} · ${order.sapDocNum}` : label;
+}): OrderSapDocumentFields {
+  return {
+    type: order.sapDocType ? SAP_ORDER_DOC_TYPE_LABELS[order.sapDocType] : "—",
+    numberLabel: order.sapDocType ? `${order.sapDocType} no.` : "SAP document no.",
+    number: order.sapDocNum != null ? String(order.sapDocNum) : "—",
+  };
 }
