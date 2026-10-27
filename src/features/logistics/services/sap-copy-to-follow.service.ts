@@ -48,20 +48,9 @@ const RETRIES_PER_RUN = 20;
 /** Delivery statuses a Copy To document may still land on. */
 const OPEN_DELIVERY_CODES = ["approved", "pending", "partial", "accepted"];
 
-const SOURCES: Record<
-  FollowedDocKind,
-  { entity: string; select: string; cursor: string }
-> = {
-  IT: {
-    entity: "StockTransfers",
-    select: "DocEntry,DocNum,DocDate,U_ISMS_PO_No,ToWarehouse,StockTransferLines",
-    cursor: "copy-to-follow:it",
-  },
-  DR: {
-    entity: "DeliveryNotes",
-    select: "DocEntry,DocNum,DocDate,U_ISMS_PO_No,U_DR_NUMBER,Cancelled,CancelStatus,DocumentLines",
-    cursor: "copy-to-follow:dr",
-  },
+const SOURCES: Record<FollowedDocKind, { entity: string; cursor: string }> = {
+  IT: { entity: "StockTransfers", cursor: "copy-to-follow:it" },
+  DR: { entity: "DeliveryNotes", cursor: "copy-to-follow:dr" },
 };
 
 /** A document that cannot be applied, with how to record it. */
@@ -148,12 +137,9 @@ async function readDocument(
   kind: FollowedDocKind,
   docEntry: number,
 ): Promise<FollowedDocument> {
-  const { entity, select } = SOURCES[kind];
-  const raw = await sapGet<Record<string, unknown>>(
-    creds,
-    `/${entity}(${docEntry})?$select=${select}`,
-    entity,
-  );
+  const { entity } = SOURCES[kind];
+  // No $select: with one, the Service Layer leaves each line's SerialNumbers out.
+  const raw = await sapGet<Record<string, unknown>>(creds, `/${entity}(${docEntry})`, entity);
   const parsed = parseFollowedDocument(kind, raw ?? {});
   if ("error" in parsed) throw new FollowError(SAP_FOLLOW_STATUS.FAILED, parsed.error);
   return parsed;
@@ -335,15 +321,21 @@ async function applyDocument(
       );
     }
 
-    const idBySerial = await resolveSerials(tx, tenantId, doc, serialNos);
+    // The delivery's own SAP document: one ISMS dispatch posted before Copy To replaced it.
+    // Its units are already on the delivery, so it is recorded and nothing else changes.
+    const ownDocument = delivery.sapDocEntry === doc.docEntry;
+    const idBySerial = ownDocument
+      ? new Map<string, string>()
+      : await resolveSerials(tx, tenantId, doc, serialNos);
     const onDelivery = new Set(delivery.lines.map((line) => line.serialNumberId));
     // A serial already on this delivery (an earlier, overlapping document) is not moved again.
     const serialIds = [...idBySerial.values()].filter((id) => !onDelivery.has(id));
     await lockSerialNumbers(tx, serialIds);
 
-    const placements = (await loadCurrentPlacements(tx, serialIds)).filter(
-      (row) => row.tenantId === tenantId,
-    );
+    const placements =
+      serialIds.length === 0
+        ? []
+        : (await loadCurrentPlacements(tx, serialIds)).filter((row) => row.tenantId === tenantId);
     const { replaceIds, blocked } = placementsToReplace(placements);
     if (blocked.length > 0) {
       throw new FollowError(
@@ -412,21 +404,25 @@ async function applyDocument(
       });
     }
 
-    const nextStatusId = await txWorkflowCodeId(tx, tenantId, nextStatus);
-    await tx.branchDelivery.update({
-      where: { id: deliveryId },
-      data: {
-        statusCodeId: nextStatusId,
-        // The first document is the delivery's SAP reference; returns post against it.
-        ...(delivery.sapDocEntry == null
-          ? {
-              sapDocEntry: doc.docEntry,
-              drNo: doc.displayNo,
-              drDate: doc.docDate ? new Date(doc.docDate) : null,
-            }
-          : {}),
-      },
-    });
+    // Only a document that brought units changes the delivery: one that added nothing
+    // (its own document, or units already here) must not reopen an accepted delivery.
+    if (serialIds.length > 0) {
+      const nextStatusId = await txWorkflowCodeId(tx, tenantId, nextStatus);
+      await tx.branchDelivery.update({
+        where: { id: deliveryId },
+        data: {
+          statusCodeId: nextStatusId,
+          // The first document is the delivery's SAP reference; returns post against it.
+          ...(delivery.sapDocEntry == null
+            ? {
+                sapDocEntry: doc.docEntry,
+                drNo: doc.displayNo,
+                drDate: doc.docDate ? new Date(doc.docDate) : null,
+              }
+            : {}),
+        },
+      });
+    }
 
     const record = {
       deliveryId,
@@ -443,6 +439,7 @@ async function applyDocument(
       update: { ...record, attempts: { increment: 1 } },
     });
 
+    if (serialIds.length === 0) return;
     await tx.auditLog.create({
       data: {
         tenantId,

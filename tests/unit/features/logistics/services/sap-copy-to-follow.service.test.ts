@@ -248,3 +248,24 @@ it("starts from a date on the first run and does nothing when no delivery waits 
   expect(result.scanned).toBe(0);
   expect(request).not.toHaveBeenCalled();
 });
+
+it("records the delivery's own ISMS-posted IT without moving stock or changing the delivery", async () => {
+  sapWith();
+  mockTx.branchDelivery.findFirst.mockResolvedValue({
+    branchId: "b1",
+    deliveryNo: "DEL-1",
+    sapDocEntry: 491349,
+    statusCode: { code: "accepted" },
+    lines: [{ serialNumberId: "s1" }],
+  });
+
+  const result = await runSapCopyToFollow("t1");
+
+  expect(result.applied).toBe(1);
+  expect(mockTx.branchInventory.updateMany).not.toHaveBeenCalled();
+  expect(mockTx.branchDelivery.update).not.toHaveBeenCalled();
+  expect(mockTx.auditLog.create).not.toHaveBeenCalled();
+  expect(mockTx.deliverySapDocument.upsert).toHaveBeenCalledWith(
+    expect.objectContaining({ create: expect.objectContaining({ status: "APPLIED", serialCount: 0 }) }),
+  );
+});
