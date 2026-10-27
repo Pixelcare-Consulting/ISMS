@@ -62,6 +62,22 @@ export interface SapSyncSegment<TContext = unknown> {
 }
 
 /**
+ * A narrower read of a segmentable entity: only rows whose `field` holds one of `keys`.
+ *
+ * Built by the entity's own service from what the user picked (a model, a warehouse, a
+ * list of serials), then walked by `runSapTargetedSync` the same way a segment is walked
+ * in a pass. The keys need not be the entity's usual segment field: a serial target
+ * matches `SerialNumber` where a pass matches `ItemCode`.
+ */
+export interface SapSyncTarget {
+  field: string;
+  kind: SapSyncKeyKind;
+  keys: string[];
+  /** What was picked, e.g. `MODEL:abc123`. Names the lock and the audit record. */
+  label: string;
+}
+
+/**
  * Keep ISMS's *membership* in step with SAP, not only its fields.
  *
  * A sync pass reads everything SAP currently returns for the entity, so a row ISMS holds

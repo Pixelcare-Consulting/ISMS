@@ -19,6 +19,7 @@ import {
   FLAT_SERIAL_DEFAULT_SORT_DIR,
 } from "@/features/serial-numbers/constants/flat-serial-sort";
 import { SapSyncButton } from "@/features/sap/components/sap-sync-button";
+import { SerialTargetedSyncDialog } from "@/features/serial-numbers/components/serial-targeted-sync-dialog";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { uniqueSearchSuggestions } from "@/components/data-table";
 import {
@@ -432,11 +433,14 @@ export function SerialNumberTable({
               <Link href="/inventory/serial-numbers?view=by-model">By model</Link>
             </Button>
             {canSync ? (
-              <SapSyncButton
-                syncKey="serial-number"
-                noun={{ one: "serial number", many: "serial numbers" }}
-                onSync={syncSerialNumbersFromSapAction}
-              />
+              <>
+                <SapSyncButton
+                  syncKey="serial-number"
+                  noun={{ one: "serial number", many: "serial numbers" }}
+                  onSync={syncSerialNumbersFromSapAction}
+                />
+                <SerialTargetedSyncDialog />
+              </>
             ) : null}
             <SearchableSelect
               id="serial-status"

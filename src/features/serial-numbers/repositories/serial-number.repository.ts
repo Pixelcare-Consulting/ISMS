@@ -1286,6 +1286,91 @@ export const serialNumberRepository = {
     });
   },
 
+  /** SAP item codes of the named live models, or of every live model of the named brands. */
+  async listSapItemCodesFor(
+    tenantId: string,
+    filter: { modelIds: string[] } | { brandIds: string[] },
+  ): Promise<string[]> {
+    const rows = await prisma.productModel.findMany({
+      where: {
+        tenantId,
+        deletedAt: null,
+        ...("modelIds" in filter
+          ? { id: { in: filter.modelIds } }
+          : { brandId: { in: filter.brandIds } }),
+      },
+      select: { skuCode: true },
+    });
+    return rows.map((row) => row.skuCode.trim()).filter(Boolean);
+  },
+
+  /**
+   * SAP warehouse codes for the named live branches (the branch's own code plus its
+   * primary warehouse's) or warehouses.
+   */
+  async listSapWarehouseCodesFor(
+    tenantId: string,
+    filter: { branchIds: string[] } | { warehouseIds: string[] },
+  ): Promise<string[]> {
+    const codes =
+      "branchIds" in filter
+        ? (
+            await prisma.branch.findMany({
+              where: { tenantId, deletedAt: null, id: { in: filter.branchIds } },
+              select: { sapCode: true, primaryWarehouse: { select: { code: true, deletedAt: true } } },
+            })
+          ).flatMap((row) => [
+            row.sapCode,
+            row.primaryWarehouse && row.primaryWarehouse.deletedAt === null
+              ? row.primaryWarehouse.code
+              : "",
+          ])
+        : (
+            await prisma.warehouse.findMany({
+              where: { tenantId, deletedAt: null, id: { in: filter.warehouseIds } },
+              select: { code: true },
+            })
+          ).map((row) => row.code);
+    return [...new Set(codes.map((code) => code.trim()).filter(Boolean))];
+  },
+
+  /** Live serials whose last on-hand read placed them in one of these SAP warehouses. */
+  async listSerialNosAtSapWarehouses(tenantId: string, codes: string[]): Promise<string[]> {
+    if (codes.length === 0) return [];
+    const rows = await prisma.serialNumber.findMany({
+      where: { tenantId, deletedAt: null, sapWhsCode: { in: codes } },
+      select: { serialNo: true },
+    });
+    return rows.map((row) => row.serialNo);
+  },
+
+  /** Choices for the targeted sync picker. Live rows only, sorted for display. */
+  async listSapSyncTargetOptions(tenantId: string) {
+    const [models, brands, branches, warehouses] = await Promise.all([
+      prisma.productModel.findMany({
+        where: { tenantId, deletedAt: null },
+        select: { id: true, skuCode: true, name: true },
+        orderBy: { skuCode: "asc" },
+      }),
+      prisma.brand.findMany({
+        where: { tenantId, models: { some: { deletedAt: null } } },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      }),
+      prisma.branch.findMany({
+        where: { tenantId, deletedAt: null },
+        select: { id: true, sapCode: true, name: true },
+        orderBy: { name: "asc" },
+      }),
+      prisma.warehouse.findMany({
+        where: { tenantId, deletedAt: null },
+        select: { id: true, code: true, name: true },
+        orderBy: { name: "asc" },
+      }),
+    ]);
+    return { models, brands, branches, warehouses };
+  },
+
   create(
     tenantId: string,
     data: { serialNo: string; modelId: string; createdById?: string },
