@@ -84,6 +84,12 @@ describe("buildItrBody", () => {
     expect(body.JournalMemo).toBe("ISMS ITR#2026-10-94860 · ABENSON LCC IRIGA");
   });
 
+  it("sends the order's delivery due date, and leaves Due Date to SAP when there is none", () => {
+    expect((buildItrBody({ ...base, dueDate: "2026-11-03" }) as Body).DueDate).toBe("2026-11-03");
+    expect(buildItrBody({ ...base, dueDate: null })).not.toHaveProperty("DueDate");
+    expect(buildItrBody(base)).not.toHaveProperty("DueDate");
+  });
+
   it("falls back to the ISMS reference in Remarks when the order has no notes", () => {
     const body = buildItrBody({ ...base, notes: "  " }) as Body;
     expect(body.Comments).toBe("ISMS ITR#2026-10-94860");

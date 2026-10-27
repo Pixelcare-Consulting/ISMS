@@ -403,6 +403,7 @@ export const serviceLayerSapOutbound: SapOutboundPort = {
         toWhs: routing.branchWhsCode,
         branchName: order.branch.name,
         notes: order.notes,
+        dueDate: order.deliveryDueDate ? isoDate(order.deliveryDueDate) : null,
         lines: plainLines,
       });
     }

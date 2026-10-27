@@ -94,6 +94,7 @@ export function fitSapText(value: string, max: number): string {
  *
  * Header: Remarks carry the order notes (the ISMS reference when there are none), and
  * Journal Remarks read `ISMS <order #> · <branch>` instead of SAP's generic default.
+ * Due Date is sent only when the order has a delivery due date; without one SAP sets it.
  * Lines: the order number (ISMS PO#) and the branch name on every line, full name in
  * Branch Namelong and the 20-character Branch Name column filled as far as it fits.
  */
@@ -103,6 +104,8 @@ export function buildItrBody(i: {
   toWhs: string;
   branchName: string;
   notes?: string | null;
+  /** YYYY-MM-DD. Omitted (not sent) when the order has no delivery due date. */
+  dueDate?: string | null;
   lines: PlainLine[];
 }): Record<string, unknown> {
   const branchName = i.branchName.trim();
@@ -114,6 +117,7 @@ export function buildItrBody(i: {
       branchName ? `ISMS ${i.ismsRef} · ${branchName}` : `ISMS ${i.ismsRef}`,
       ITR_TEXT_LIMITS.journalMemo,
     ),
+    ...(i.dueDate ? { DueDate: i.dueDate } : {}),
     FromWarehouse: i.fromWhs,
     ToWarehouse: i.toWhs,
     StockTransferLines: i.lines.map((l) => ({
