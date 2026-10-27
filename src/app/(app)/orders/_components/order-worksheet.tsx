@@ -63,6 +63,7 @@ import {
 import { dataTableFeatures } from "@/lib/data-table/data-table-features";
 import { GlobalTableStickyContext } from "@/lib/data-table/sticky-context";
 import { cn } from "@/utils/cn";
+import { parseQtyInput, qtyInputValue } from "@/features/orders/lib/qty-input";
 import { formatPeso } from "@/utils/format-currency";
 
 /** Status chips already named in the stock list. */
@@ -1730,10 +1731,12 @@ function RequestedCell({
             : "ml-auto h-8 w-full min-w-0 text-right",
         !row.requestable && "bg-muted",
       )}
-      value={row.requestedQty}
+      value={qtyInputValue(row.requestedQty)}
+      placeholder="0"
+      inputMode="numeric"
       title={blockedReason}
       aria-label={`Requested quantity for ${row.skuCode}`}
-      onChange={(event) => onRequestedQtyChange?.(row.modelId, Number(event.target.value))}
+      onChange={(event) => onRequestedQtyChange?.(row.modelId, parseQtyInput(event.target.value))}
     />
   );
 }
@@ -1759,10 +1762,12 @@ function ApprovedCell({
       max={row.requestedQty}
       disabled={approvalLocked}
       className="ml-auto h-8 w-full min-w-0 text-right disabled:bg-muted"
-      value={approvalLocked ? "" : (row.approvedQty ?? row.requestedQty)}
+      value={approvalLocked ? "" : qtyInputValue(row.approvedQty ?? row.requestedQty)}
+      placeholder={approvalLocked ? undefined : "0"}
+      inputMode="numeric"
       aria-label={`Approved quantity for ${row.skuCode}`}
       title={approvalLocked ? "Approval applies only to lines with a requested quantity." : undefined}
-      onChange={(event) => onApprovedQtyChange?.(row.modelId, Number(event.target.value))}
+      onChange={(event) => onApprovedQtyChange?.(row.modelId, parseQtyInput(event.target.value))}
     />
   );
 }
@@ -2272,6 +2277,7 @@ function suggestionCaption(row: ProjectedWorksheetLine, orderType: BranchOrderTy
 function formatQty(value: number): string {
   return value.toLocaleString();
 }
+
 
 function formatCount(value: number | null, unavailable: boolean): string {
   if (unavailable || value == null) return "N/A";

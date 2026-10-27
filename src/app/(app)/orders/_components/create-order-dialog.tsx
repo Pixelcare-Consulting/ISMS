@@ -39,6 +39,7 @@ import type {
 } from "@/features/orders/types/order-analytics";
 import { formatPeso } from "@/utils/format-currency";
 import { cn } from "@/utils/cn";
+import { parseQtyInput, qtyInputValue } from "@/features/orders/lib/qty-input";
 
 interface WorkspaceLine extends OrderAnalyticsLine {
   qty: number;
@@ -588,9 +589,11 @@ function AutoReplenishCreateOrderDialog({
                                 }
                                 disabled={locked}
                                 className={cn("h-8 w-full min-w-0", locked && "bg-muted")}
-                                value={line.qty}
+                                value={qtyInputValue(line.qty)}
+                                placeholder="0"
+                                inputMode="numeric"
                                 onChange={(e) =>
-                                  setLineQty(line.modelId, Number(e.target.value))
+                                  setLineQty(line.modelId, parseQtyInput(e.target.value))
                                 }
                               />
                               {locked ? (
