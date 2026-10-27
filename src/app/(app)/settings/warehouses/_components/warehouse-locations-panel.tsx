@@ -8,8 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-import { WarehouseStockInDialog } from "./warehouse-stock-in-dialog";
-
 interface LocationRow {
   id: string;
   code: string;
@@ -34,7 +32,6 @@ export function WarehouseLocationsPanel({
   onAdd,
   onRemove,
 }: WarehouseLocationsPanelProps) {
-  const [stocking, setStocking] = useState<LocationRow | null>(null);
   // Held here, not in the table: table columns that depend on typed text are rebuilt per
   // keystroke, which remounts this panel and drops input focus after every character.
   const [locCode, setLocCode] = useState("");
@@ -80,16 +77,6 @@ export function WarehouseLocationsPanel({
               <span className="min-w-0 flex-1 truncate text-foreground">
                 {loc.name}
               </span>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={pending}
-                className="h-8 shrink-0"
-                onClick={() => setStocking(loc)}
-              >
-                Stock in
-              </Button>
               <Button
                 type="button"
                 size="icon"
@@ -154,19 +141,6 @@ export function WarehouseLocationsPanel({
           </Button>
         </div>
       </div>
-
-      {stocking ? (
-        <WarehouseStockInDialog
-          open
-          warehouseId={warehouseId}
-          locationId={stocking.id}
-          locationCode={stocking.code}
-          locationName={stocking.name}
-          onOpenChange={(open) => {
-            if (!open) setStocking(null);
-          }}
-        />
-      ) : null}
     </div>
   );
 }

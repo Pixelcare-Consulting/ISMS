@@ -173,7 +173,7 @@ async function assertSameSerialsAsSapPost(
 
 async function loadHolds(tenantId: string, serialNumberIds: string[]): Promise<WarehouseHold[]> {
   if (serialNumberIds.length === 0) return [];
-  const [rows, tagged] = await Promise.all([
+  const [rows, tagged, sapPlaced] = await Promise.all([
     prisma.warehouseInventory.findMany({
       where: { tenantId, serialNumberId: { in: serialNumberIds } },
       select: {
@@ -192,8 +192,16 @@ async function loadHolds(tenantId: string, serialNumberIds: string[]): Promise<W
         serialNumber: { select: { modelId: true } },
       },
     }),
+    loadSapPlacedSerials(prisma, tenantId, { serialNumberIds }),
   ]);
   return [
+    ...sapPlaced.map((row) => ({
+      serialNumberId: row.id,
+      modelId: row.modelId,
+      warehouseId: row.warehouseId,
+      warehouseLocationId: null,
+      source: "SAP" as const,
+    })),
     ...rows.map((row) => ({
       serialNumberId: row.serialNumberId,
       modelId: row.serialNumber.modelId,
@@ -218,7 +226,7 @@ async function loadHolds(tenantId: string, serialNumberIds: string[]): Promise<W
 }
 
 /**
- * Branch stock stocked into a warehouse location and still sellable stock:
+ * Branch stock with a warehouse location and still sellable stock:
  * dispatch may take it from that location like warehouse stock.
  */
 function taggedStockWhere(tenantId: string) {
@@ -230,36 +238,138 @@ function taggedStockWhere(tenantId: string) {
 }
 
 /**
- * Per model: serials the SAP sync places in the warehouse (`sap_whs_code`) that have no
- * ISMS shelf location and that ISMS holds nowhere else. Dispatch only takes shelved
- * stock, so these are counted to prompt a Stock in, never offered for picking.
+ * Serials the SAP serial sync places in a live warehouse (`sap_whs_code`) that ISMS holds
+ * nowhere else: no warehouse or service-center row, and at most the sync's own branch STK
+ * row with no location. Inventory comes from SAP, so dispatch takes these as they are.
+ *
+ * Narrowed either to specific serials (re-checking a pick) or to models in one warehouse
+ * (listing candidates). Each row carries the ISMS warehouse its SAP code resolves to.
  */
-async function countUnshelvedByModel(
+async function loadSapPlacedSerials(
+  db: PostingDb,
   tenantId: string,
-  modelIds: string[],
-  warehouseId: string | null,
-): Promise<Map<string, number>> {
-  const warehouses = await prisma.warehouse.findMany({
-    where: { tenantId, deletedAt: null, ...(warehouseId ? { id: warehouseId } : {}) },
-    select: { code: true },
-  });
-  if (warehouses.length === 0 || modelIds.length === 0) return new Map();
-
-  const groups = await prisma.serialNumber.groupBy({
-    by: ["modelId"],
+  filter: { serialNumberIds: string[] } | { modelIds: string[]; warehouseId: string | null },
+): Promise<
+  { id: string; serialNo: string; modelId: string; warehouseId: string; warehouseCode: string; heldBy: string | null }[]
+> {
+  const warehouses = await db.warehouse.findMany({
     where: {
       tenantId,
       deletedAt: null,
-      modelId: { in: modelIds },
-      sapWhsCode: { in: warehouses.map((warehouse) => warehouse.code) },
+      ...("warehouseId" in filter && filter.warehouseId ? { id: filter.warehouseId } : {}),
+    },
+    select: { id: true, code: true },
+  });
+  if (warehouses.length === 0) return [];
+  const warehouseByCode = new Map(warehouses.map((row) => [row.code, row]));
+
+  const rows = await db.serialNumber.findMany({
+    where: {
+      tenantId,
+      deletedAt: null,
+      sapWhsCode: { in: [...warehouseByCode.keys()] },
       warehouseInventories: { none: {} },
       serviceCenterInventories: { none: {} },
-      // No branch row, or the sync's own stock-in: branch STK with no location.
       branchInventories: { every: { warehouseLocationId: null, statusCode: { code: "STK" } } },
+      ...("serialNumberIds" in filter
+        ? { id: { in: filter.serialNumberIds } }
+        : { modelId: { in: filter.modelIds } }),
     },
-    _count: { _all: true },
+    select: {
+      id: true,
+      serialNo: true,
+      modelId: true,
+      sapWhsCode: true,
+      branchInventories: { select: { branch: { select: { name: true } } }, take: 1 },
+    },
   });
-  return new Map(groups.map((group) => [group.modelId, group._count._all]));
+
+  return rows.flatMap((row) => {
+    const warehouse = row.sapWhsCode ? warehouseByCode.get(row.sapWhsCode) : undefined;
+    if (!warehouse) return [];
+    return [
+      {
+        id: row.id,
+        serialNo: row.serialNo,
+        modelId: row.modelId,
+        warehouseId: warehouse.id,
+        warehouseCode: warehouse.code,
+        heldBy: row.branchInventories[0]?.branch.name ?? null,
+      },
+    ];
+  });
+}
+
+/**
+ * Put SAP-placed serials in transit to the delivery branch. Re-checked under the serial
+ * lock: each must still be in this warehouse per SAP and held nowhere else in ISMS. The
+ * sync's own STK row (if any) moves to the delivery branch; otherwise a DIT row is added.
+ *
+ * SAP has just moved the serial out of the warehouse with the dispatch document, so the
+ * warehouse link is cleared now rather than left for the next serial sync, which would
+ * otherwise still offer it from the warehouse once the branch accepts it.
+ */
+async function dispatchSapPlacedSerials(
+  tx: PostingDb,
+  input: {
+    tenantId: string;
+    userId: string;
+    serialNumberIds: string[];
+    warehouseId: string;
+    branchId: string;
+    ditCodeId: string;
+    stkCodeId: string;
+  },
+): Promise<void> {
+  const still = await loadSapPlacedSerials(tx, input.tenantId, {
+    serialNumberIds: input.serialNumberIds,
+  });
+  assertExclusiveClaim(
+    still.filter((row) => row.warehouseId === input.warehouseId).length,
+    input.serialNumberIds.length,
+    "One or more serials were moved in SAP or taken in ISMS. Reload and pick again.",
+  );
+
+  const withRow = await tx.branchInventory.findMany({
+    where: { tenantId: input.tenantId, serialNumberId: { in: input.serialNumberIds } },
+    select: { serialNumberId: true },
+  });
+  const hasRow = new Set(withRow.map((row) => row.serialNumberId));
+
+  if (hasRow.size > 0) {
+    const moved = await tx.branchInventory.updateMany({
+      where: {
+        tenantId: input.tenantId,
+        serialNumberId: { in: [...hasRow] },
+        statusCodeId: input.stkCodeId,
+        warehouseLocationId: null,
+      },
+      data: { branchId: input.branchId, statusCodeId: input.ditCodeId, updatedById: input.userId },
+    });
+    assertExclusiveClaim(
+      moved.count,
+      hasRow.size,
+      "One or more serials were sold or moved at a branch. Reload and pick again.",
+    );
+  }
+
+  const inserts = input.serialNumberIds.filter((id) => !hasRow.has(id));
+  if (inserts.length > 0) {
+    await tx.branchInventory.createMany({
+      data: inserts.map((serialNumberId) => ({
+        tenantId: input.tenantId,
+        branchId: input.branchId,
+        serialNumberId,
+        statusCodeId: input.ditCodeId,
+        updatedById: input.userId,
+      })),
+    });
+  }
+
+  await tx.serialNumber.updateMany({
+    where: { tenantId: input.tenantId, id: { in: input.serialNumberIds } },
+    data: { sapWhsCode: null, sapOnHand: false },
+  });
 }
 
 export interface DispatchCandidate {
@@ -267,8 +377,9 @@ export interface DispatchCandidate {
   serialNo: string;
   modelId: string;
   warehouseCode: string;
-  locationCode: string;
-  /** Branch holding a stocked-in branch unit; null for warehouse stock. */
+  /** Null when the serial is in the warehouse per SAP with no ISMS location. */
+  locationCode: string | null;
+  /** Branch whose stock row the unit sits on (located branch stock, or the SAP sync's STK row). */
   heldBy: string | null;
 }
 
@@ -278,8 +389,6 @@ export interface DispatchModelRequirement {
   skuCode: string;
   modelName: string;
   requiredQty: number;
-  /** In the warehouse per SAP but not on an ISMS shelf yet, so not pickable. */
-  unshelvedQty: number;
 }
 
 export interface DeliveryReceiptLine {
@@ -626,22 +735,16 @@ export const deliveryPostingService = {
     });
 
     const primaryWarehouseId = branch?.primaryWarehouseId ?? null;
-    const unshelvedByModel = await countUnshelvedByModel(
-      tenantId,
-      [...requiredByModel.keys()],
-      primaryWarehouseId,
-    );
     const models: DispatchModelRequirement[] = modelRows.map((model) => ({
       modelId: model.id,
       skuCode: model.skuCode,
       modelName: model.name,
       requiredQty: requiredByModel.get(model.id) ?? 0,
-      unshelvedQty: unshelvedByModel.get(model.id) ?? 0,
     }));
     const locationSelect = {
       select: { code: true, warehouse: { select: { id: true, code: true } } },
     } as const;
-    const [rows, tagged] = await Promise.all([
+    const [rows, tagged, sapPlaced] = await Promise.all([
       prisma.warehouseInventory.findMany({
         where: {
           tenantId,
@@ -671,28 +774,30 @@ export const deliveryPostingService = {
           warehouseLocation: locationSelect,
         },
       }),
+      loadSapPlacedSerials(prisma, tenantId, { modelIds, warehouseId: primaryWarehouseId }),
     ]);
 
-    const merged = [
+    const located = [
       ...rows.map((row) => ({ ...row, heldBy: null as string | null })),
       ...tagged.flatMap((row) =>
         row.warehouseLocation
           ? [{ ...row, warehouseLocation: row.warehouseLocation, heldBy: row.branch.name }]
           : [],
       ),
-    ].sort((a, b) => a.serialNumber.serialNo.localeCompare(b.serialNumber.serialNo));
+    ].map((row) => ({
+      id: row.serialNumberId,
+      serialNo: row.serialNumber.serialNo,
+      modelId: row.serialNumber.modelId,
+      deleted: false,
+      warehouseId: row.warehouseLocation.warehouse.id,
+      warehouseCode: row.warehouseLocation.warehouse.code,
+      locationCode: row.warehouseLocation.code as string | null,
+      heldBy: row.heldBy,
+    }));
+    const fromSap = sapPlaced.map((row) => ({ ...row, deleted: false, locationCode: null }));
 
     const serials = selectDispatchCandidates(
-      merged.map((row) => ({
-        id: row.serialNumberId,
-        serialNo: row.serialNumber.serialNo,
-        modelId: row.serialNumber.modelId,
-        deleted: false,
-        warehouseId: row.warehouseLocation.warehouse.id,
-        warehouseCode: row.warehouseLocation.warehouse.code,
-        locationCode: row.warehouseLocation.code,
-        heldBy: row.heldBy,
-      })),
+      [...located, ...fromSap].sort((a, b) => a.serialNo.localeCompare(b.serialNo)),
       modelIds,
       primaryWarehouseId,
     );
@@ -772,14 +877,16 @@ export const deliveryPostingService = {
       inventoryCodeId(input.tenantId, "DIT"),
       inventoryCodeId(input.tenantId, "STK"),
     ]);
-    // Stocked-in branch units are relocated; warehouse rows are removed as before.
-    const relocateIds = plan.moves
-      .filter((move) => holds.find((hold) => hold.serialNumberId === move.serialNumberId)?.source === "BRANCH")
-      .map((move) => move.serialNumberId);
+    // Located branch units are relocated, SAP-placed serials land on the branch, and
+    // warehouse rows are removed as before.
+    const sourceById = new Map(holds.map((hold) => [hold.serialNumberId, hold.source]));
+    const idsFrom = (source: WarehouseHold["source"]) =>
+      plan.moves.map((move) => move.serialNumberId).filter((id) => sourceById.get(id) === source);
+    const relocateIds = idsFrom("BRANCH");
     const relocating = new Set(relocateIds);
-    const warehouseMoveIds = plan.moves
-      .map((move) => move.serialNumberId)
-      .filter((serialNumberId) => !relocating.has(serialNumberId));
+    const sapIds = idsFrom("SAP");
+    const fromSap = new Set(sapIds);
+    const warehouseMoveIds = idsFrom("WAREHOUSE");
     const approvedCodeId = await workflowCodeId(input.tenantId, "approved");
 
     try {
@@ -834,6 +941,7 @@ export const deliveryPostingService = {
         .filter((row) => {
           if (row.table === "warehouse" && row.warehouseId === plan.warehouseId) return true;
           if (row.table === "branch" && relocating.has(row.serialNumberId)) return true;
+          if (row.table === "branch" && fromSap.has(row.serialNumberId)) return true;
           return (
             row.table === "branch" &&
             row.branchId === preview.branchId &&
@@ -879,6 +987,18 @@ export const deliveryPostingService = {
           relocateIds.length,
           "One or more serials were sold, moved or taken off their location. Reload and pick again.",
         );
+      }
+
+      if (sapIds.length > 0) {
+        await dispatchSapPlacedSerials(tx, {
+          tenantId: input.tenantId,
+          userId: input.userId,
+          serialNumberIds: sapIds,
+          warehouseId: plan.warehouseId,
+          branchId: preview.branchId,
+          ditCodeId,
+          stkCodeId,
+        });
       }
 
       if (placement.inserts.length > 0) {

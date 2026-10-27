@@ -10,7 +10,7 @@ export type WarehouseInventoryListRow = {
   id: string;
   /**
    * WAREHOUSE: warehouse stock (returns, transfers back). BRANCH: branch stock
-   * stocked into a location of this warehouse; it stays at its branch.
+   * with a location in this warehouse; it stays at its branch.
    */
   source: "WAREHOUSE" | "BRANCH";
   /** Set for BRANCH rows: the branch that holds the unit. */

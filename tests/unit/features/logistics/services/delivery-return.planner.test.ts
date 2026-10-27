@@ -48,12 +48,14 @@ describe("planReturnRequest", () => {
     });
   });
 
-  it("refuses when a DIT line has no from-location", () => {
+  it("returns a unit dispatched from SAP's placement with no location to go back to", () => {
     const d = delivery();
     d.lines[2] = { ...d.lines[2], warehouseLocationFromId: null };
-    expect(planReturnRequest(d, false)).toEqual({
-      ok: false,
-      error: "A dispatched serial has no warehouse location to return to",
+    const plan = planReturnRequest(d, false);
+    expect(plan.ok).toBe(true);
+    expect(plan.ok && plan.lines.find((line) => line.serialNumberId === d.lines[2].serialNumberId)).toEqual({
+      serialNumberId: d.lines[2].serialNumberId,
+      warehouseLocationToId: null,
     });
   });
 

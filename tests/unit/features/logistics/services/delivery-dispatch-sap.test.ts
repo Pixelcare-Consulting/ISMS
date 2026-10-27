@@ -1,7 +1,8 @@
 jest.mock("@/lib/database/client", () => {
   const tx = {
     branchDelivery: { updateMany: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
-    serialNumber: { findMany: jest.fn() },
+    serialNumber: { findMany: jest.fn(), updateMany: jest.fn() },
+    warehouse: { findMany: jest.fn() },
     branchInventory: { findMany: jest.fn(), createMany: jest.fn(), updateMany: jest.fn() },
     warehouseInventory: { deleteMany: jest.fn() },
     branchDeliveryLine: { createMany: jest.fn() },
@@ -16,6 +17,7 @@ jest.mock("@/lib/database/client", () => {
       serialNumber: { findMany: jest.fn() },
       branchInventory: { findMany: jest.fn() },
       warehouseInventory: { findMany: jest.fn() },
+      warehouse: { findMany: jest.fn() },
       branch: { findFirst: jest.fn() },
       $transaction: jest.fn(async (fn: (t: typeof tx) => unknown) => fn(tx)),
     },
@@ -100,6 +102,9 @@ beforeEach(() => {
   ]);
   mockTx.branchInventory.findMany.mockResolvedValue([]);
   mockTx.warehouseInventory.deleteMany.mockResolvedValue({ count: 2 });
+  // No warehouse resolves a SAP code unless a test says so: no SAP-placed holds.
+  mockPrisma.warehouse.findMany.mockResolvedValue([]);
+  mockTx.warehouse.findMany.mockResolvedValue([]);
 });
 
 describe("deliveryPostingService.dispatch SAP posting", () => {
@@ -207,5 +212,59 @@ describe("deliveryPostingService.dispatch SAP posting", () => {
       "approved before SAP posting was enabled",
     );
     expect(mockTx.warehouseInventory.deleteMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("deliveryPostingService.dispatch from SAP placement", () => {
+  const sapRows = [
+    { id: "s1", serialNo: "SN1", modelId: "m1", sapWhsCode: "W1", branchInventories: [{ branch: { name: "Owner" } }] },
+    { id: "s2", serialNo: "SN2", modelId: "m1", sapWhsCode: "W1", branchInventories: [] },
+  ];
+
+  beforeEach(() => {
+    mockPrisma.warehouseInventory.findMany.mockResolvedValue([]);
+    mockPrisma.warehouse.findMany.mockResolvedValue([{ id: "w1", code: "W1" }]);
+    mockPrisma.serialNumber.findMany.mockResolvedValue(sapRows);
+    mockTx.warehouse.findMany.mockResolvedValue([{ id: "w1", code: "W1" }]);
+    mockTx.serialNumber.findMany.mockImplementation(async ({ where }: { where: Record<string, unknown> }) =>
+      "sapWhsCode" in where ? sapRows : sapRows.map(({ id, serialNo }) => ({ id, serialNo })),
+    );
+    // s1 carries the serial sync's own STK row; s2 has no ISMS stock row at all.
+    mockTx.branchInventory.findMany.mockImplementation(async ({ select }: { select: Record<string, unknown> }) =>
+      "branch" in select ? [] : [{ serialNumberId: "s1" }],
+    );
+    mockTx.branchInventory.updateMany.mockResolvedValue({ count: 1 });
+  });
+
+  it("moves the sync's STK row, adds a DIT row for the rest, and clears the SAP warehouse link", async () => {
+    await deliveryPostingService.dispatch(input);
+
+    expect(mockTx.warehouseInventory.deleteMany).not.toHaveBeenCalled();
+    expect(mockTx.branchInventory.updateMany).toHaveBeenCalledWith({
+      where: { tenantId: "t1", serialNumberId: { in: ["s1"] }, statusCodeId: "code1", warehouseLocationId: null },
+      data: { branchId: "b1", statusCodeId: "code1", updatedById: "u1" },
+    });
+    expect(mockTx.branchInventory.createMany).toHaveBeenCalledWith({
+      data: [{ tenantId: "t1", branchId: "b1", serialNumberId: "s2", statusCodeId: "code1", updatedById: "u1" }],
+    });
+    expect(mockTx.serialNumber.updateMany).toHaveBeenCalledWith({
+      where: { tenantId: "t1", id: { in: ["s1", "s2"] } },
+      data: { sapWhsCode: null, sapOnHand: false },
+    });
+    expect(mockTx.branchDeliveryLine.createMany).toHaveBeenCalledWith({
+      data: [
+        { deliveryId: "del1", serialNumberId: "s1", warehouseLocationFromId: null },
+        { deliveryId: "del1", serialNumberId: "s2", warehouseLocationFromId: null },
+      ],
+    });
+  });
+
+  it("refuses when SAP moved a serial out of the warehouse after it was picked", async () => {
+    mockTx.serialNumber.findMany.mockImplementation(async ({ where }: { where: Record<string, unknown> }) =>
+      "sapWhsCode" in where ? sapRows.slice(0, 1) : sapRows.map(({ id, serialNo }) => ({ id, serialNo })),
+    );
+
+    await expect(deliveryPostingService.dispatch(input)).rejects.toThrow(/moved in SAP or taken in ISMS/);
+    expect(mockTx.branchInventory.createMany).not.toHaveBeenCalled();
   });
 });

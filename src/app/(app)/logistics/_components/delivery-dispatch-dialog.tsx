@@ -116,7 +116,7 @@ function DispatchBody({
       ? serials.filter(
           (serial) =>
             serial.serialNo.toLowerCase().includes(needle) ||
-            serial.locationCode.toLowerCase().includes(needle),
+            (serial.locationCode ?? "").toLowerCase().includes(needle),
         )
       : serials;
     return { model, serials, visible, picked };
@@ -185,12 +185,6 @@ function DispatchBody({
                       <span className="block font-mono text-sm font-semibold">{model.skuCode}</span>
                       <span className="block truncate text-xs font-normal text-muted-foreground">
                         {model.modelName} · {serials.length} available
-                        {model.unshelvedQty > 0 ? (
-                          <span className="text-amber-700 dark:text-amber-400">
-                            {" "}
-                            · {model.unshelvedQty} without location
-                          </span>
-                        ) : null}
                       </span>
                     </span>
                     <span
@@ -208,19 +202,8 @@ function DispatchBody({
                 <AccordionContent className="px-4 pt-3">
                   {short ? (
                     <p className="mb-3 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive" role="alert">
-                      Only {serials.length} available, {model.requiredQty} needed. Stock in more before
-                      dispatching.
-                    </p>
-                  ) : null}
-                  {model.unshelvedQty > 0 ? (
-                    <p
-                      className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-200"
-                      role="status"
-                    >
-                      {model.unshelvedQty} more {model.unshelvedQty === 1 ? "serial is" : "serials are"} in
-                      this warehouse per SAP but {model.unshelvedQty === 1 ? "has" : "have"} no location. Stock{" "}
-                      {model.unshelvedQty === 1 ? "it" : "them"} in to a location (Settings, Warehouses) to
-                      dispatch {model.unshelvedQty === 1 ? "it" : "them"}.
+                      Only {serials.length} available, {model.requiredQty} needed. Sync serial numbers
+                      from SAP if the warehouse has received more.
                     </p>
                   ) : null}
                   {visible.length === 0 ? (
@@ -243,7 +226,7 @@ function DispatchBody({
                             <div className="mb-2 flex items-center justify-between gap-2">
                               <div className="flex items-center gap-2">
                                 <span className="rounded-md bg-primary/10 px-2 py-0.5 font-mono text-xs font-semibold text-primary">
-                                  {location.locationCode}
+                                  {location.locationCode ?? "No location"}
                                 </span>
                                 <span className="text-xs text-muted-foreground">
                                   {location.warehouseCode}
@@ -318,18 +301,24 @@ interface LocationGroup {
   key: string;
   label: string;
   warehouseCode: string;
-  locationCode: string;
+  /** Null for serials SAP places in the warehouse with no ISMS location. */
+  locationCode: string | null;
   serials: DispatchCandidate[];
 }
 
-/** Serials under their shelf location, locations in code order, so pickers walk aisle by aisle. */
+/**
+ * Serials under their shelf location, locations in code order, so pickers walk aisle by
+ * aisle. Serials with no ISMS location (in the warehouse per SAP) come last, as one group.
+ */
 function groupByLocation(serials: DispatchCandidate[]): LocationGroup[] {
   const groups = new Map<string, LocationGroup>();
   for (const serial of serials) {
-    const key = `${serial.warehouseCode}/${serial.locationCode}`;
+    const key = `${serial.warehouseCode}/${serial.locationCode ?? ""}`;
     const group = groups.get(key) ?? {
       key,
-      label: `${serial.warehouseCode} / ${serial.locationCode}`,
+      label: serial.locationCode
+        ? `${serial.warehouseCode} / ${serial.locationCode}`
+        : `${serial.warehouseCode} (per SAP)`,
       warehouseCode: serial.warehouseCode,
       locationCode: serial.locationCode,
       serials: [],
@@ -337,7 +326,10 @@ function groupByLocation(serials: DispatchCandidate[]): LocationGroup[] {
     group.serials.push(serial);
     groups.set(key, group);
   }
-  return [...groups.values()].sort((a, b) =>
-    a.locationCode.localeCompare(b.locationCode, undefined, { numeric: true }),
-  );
+  return [...groups.values()].sort((a, b) => {
+    if (a.locationCode === null || b.locationCode === null) {
+      return a.locationCode === b.locationCode ? 0 : a.locationCode === null ? 1 : -1;
+    }
+    return a.locationCode.localeCompare(b.locationCode, undefined, { numeric: true });
+  });
 }

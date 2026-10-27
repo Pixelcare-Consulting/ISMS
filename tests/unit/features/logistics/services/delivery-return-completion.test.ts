@@ -6,6 +6,7 @@ jest.mock("@/lib/database/client", () => {
     branchDelivery: { findFirst: jest.fn(), updateMany: jest.fn() },
     branchInventory: { deleteMany: jest.fn() },
     warehouseInventory: { createMany: jest.fn() },
+    serialNumber: { updateMany: jest.fn() },
     serialNumberHistory: { createMany: jest.fn() },
     reasonStatusCode: { findFirst: jest.fn() },
     auditLog: { create: jest.fn() },
@@ -39,7 +40,7 @@ function approvedRequest(status = "APPROVED") {
     status,
     requestNo: "RTN-1",
     deliveryId: "del1",
-    delivery: { branchId: "b1" },
+    delivery: { branchId: "b1", sourceWarehouse: { code: "W1", deletedAt: null } },
     lines: [
       { serialNumberId: "s2", warehouseLocationToId: "loc1" },
       { serialNumberId: "s3", warehouseLocationToId: "loc2" },
@@ -155,5 +156,25 @@ describe("completeDeliveryReturn", () => {
     mockTx.branchInventory.deleteMany.mockResolvedValue({ count: 1 });
     await expect(completeDeliveryReturn(input)).rejects.toThrow("Some units are no longer in transit at the branch");
     expect(mockTx.warehouseInventory.createMany).not.toHaveBeenCalled();
+  });
+
+  it("links a unit dispatched from SAP's placement back to the source warehouse, with no stock row", async () => {
+    mockTx.deliveryReturnRequest.findFirst.mockResolvedValue({
+      ...approvedRequest(),
+      lines: [
+        { serialNumberId: "s2", warehouseLocationToId: "loc1" },
+        { serialNumberId: "s3", warehouseLocationToId: null },
+      ],
+    });
+
+    await completeDeliveryReturn(input);
+
+    expect(mockTx.warehouseInventory.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ serialNumberId: "s2", warehouseLocationId: "loc1" })],
+    });
+    expect(mockTx.serialNumber.updateMany).toHaveBeenCalledWith({
+      where: { tenantId: "t1", id: { in: ["s3"] } },
+      data: expect.objectContaining({ sapWhsCode: "W1", sapOnHand: true }),
+    });
   });
 });

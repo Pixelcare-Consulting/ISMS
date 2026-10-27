@@ -33,12 +33,14 @@ export interface WarehouseHold {
   serialNumberId: string;
   modelId: string;
   warehouseId: string;
-  warehouseLocationId: string;
+  /** Null for SAP: SAP places the serial in the warehouse, not in an ISMS location. */
+  warehouseLocationId: string | null;
   /**
-   * WAREHOUSE: a warehouse stock row. BRANCH: branch stock stocked into a
-   * location of this warehouse; dispatch relocates that branch row.
+   * WAREHOUSE: a warehouse stock row. BRANCH: branch stock in a location of this
+   * warehouse; dispatch relocates that branch row. SAP: the serial sync puts it in this
+   * warehouse and ISMS holds it nowhere else (at most the sync's own branch STK row).
    */
-  source: "WAREHOUSE" | "BRANCH";
+  source: "WAREHOUSE" | "BRANCH" | "SAP";
 }
 
 /**
@@ -82,7 +84,7 @@ export type PlanFailure = { ok: false; error: string };
 export interface DispatchPlan {
   ok: true;
   warehouseId: string;
-  moves: { serialNumberId: string; warehouseLocationId: string }[];
+  moves: { serialNumberId: string; warehouseLocationId: string | null }[];
 }
 
 export interface AcceptPlan {

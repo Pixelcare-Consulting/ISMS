@@ -1763,8 +1763,9 @@ model BranchInventory {
   serialNumberId String   @map("serial_number_id")
   statusCodeId   String   @map("status_code_id")
   updatedById    String?  @map("updated_by_id")
-  /// Shelf location in the branch's primary warehouse, set by warehouse Stock in.
-  /// A label only: the unit stays branch stock. Null until stocked into a location.
+  /// Shelf location in the branch's primary warehouse. A label only: the unit stays branch
+  /// stock. ISMS no longer sets a first location (stock comes from SAP); existing ones can
+  /// still be moved.
   warehouseLocationId String? @map("warehouse_location_id")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
@@ -3261,11 +3262,13 @@ model DeliveryReturnLine {
   id                    String @id @default(cuid())
   returnId              String @map("return_id")
   serialNumberId        String @map("serial_number_id")
-  warehouseLocationToId String @map("warehouse_location_to_id")
+  /// Null when the unit was dispatched from SAP's warehouse placement with no ISMS location;
+  /// it then goes back to the delivery's source warehouse per SAP, not to a location.
+  warehouseLocationToId String? @map("warehouse_location_to_id")
 
   returnRequest       DeliveryReturnRequest @relation(fields: [returnId], references: [id], onDelete: Cascade)
   serialNumber        SerialNumber          @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)
-  warehouseLocationTo WarehouseLocation     @relation(fields: [warehouseLocationToId], references: [id], onDelete: Restrict)
+  warehouseLocationTo WarehouseLocation?    @relation(fields: [warehouseLocationToId], references: [id], onDelete: Restrict)
 
   @@unique([returnId, serialNumberId])
   @@index([serialNumberId])
