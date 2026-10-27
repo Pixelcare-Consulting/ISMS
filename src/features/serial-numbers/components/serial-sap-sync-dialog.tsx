@@ -2,9 +2,11 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { RefreshCw } from "lucide-react";
 
 import {
   listSerialSyncTargetOptionsAction,
+  syncSerialNumbersFromSapAction,
   syncSerialNumbersTargetFromSapAction,
 } from "@/features/serial-numbers/actions/serial-number.actions";
 import {
@@ -32,8 +34,9 @@ import { SearchableMultiSelect } from "@/components/ui/searchable-multi-select";
 import { SearchableSelect, type SearchableOption } from "@/components/ui/searchable-select";
 import { Textarea } from "@/components/ui/textarea";
 
-/** Its own key, so a targeted run and a full sync each keep their own progress modal. */
-const SYNC_KEY = "serial-number:target";
+/** The full sync keeps the key it always had; a targeted run gets its own progress modal. */
+const FULL_SYNC_KEY = "serial-number";
+const TARGET_SYNC_KEY = "serial-number:target";
 const NOUN = { one: "serial number", many: "serial numbers" };
 
 type TargetOptions = Awaited<ReturnType<typeof listSerialSyncTargetOptionsAction>>;
@@ -68,16 +71,18 @@ function parseSerials(text: string): string[] {
 }
 
 /**
- * "Sync selected" for serial numbers: re-read from SAP only the serials, models, brands,
- * branches or warehouses picked here, instead of walking every serial ISMS carries.
+ * "Sync from SAP" for serial numbers. With nothing picked it runs the full sync; with
+ * serials, models, brands, branches or warehouses picked it re-reads only those.
  *
- * The run itself goes through the shared `runSapSync`, so it gets the same progress modal,
- * Stop button and skip report as the full sync. Each slice hands back a `resume` token,
- * which this closure keeps and sends with the next slice.
+ * Either run goes through the shared `runSapSync`, so both get the same progress modal,
+ * Stop button and skip report. A targeted slice hands back a `resume` token, which the
+ * closure keeps and sends with the next slice.
  */
-export function SerialTargetedSyncDialog() {
+export function SerialSapSyncDialog() {
   const router = useRouter();
-  const pending = useSapSyncPending(SYNC_KEY);
+  const fullPending = useSapSyncPending(FULL_SYNC_KEY);
+  const targetPending = useSapSyncPending(TARGET_SYNC_KEY);
+  const pending = fullPending || targetPending;
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<SerialSyncTargetKind>("SERIAL");
   const [serialText, setSerialText] = useState("");
@@ -89,7 +94,8 @@ export function SerialTargetedSyncDialog() {
   const serials = useMemo(() => parseSerials(serialText), [serialText]);
   const values = kind === "SERIAL" ? serials : selectedIds;
   const tooMany = values.length > SERIAL_SYNC_TARGET_MAX_VALUES;
-  const canSubmit = values.length > 0 && !tooMany && !pending;
+  const syncAll = values.length === 0;
+  const canSubmit = !tooMany && !pending;
 
   async function loadOptions() {
     if (options || loadingOptions) return;
@@ -114,6 +120,14 @@ export function SerialTargetedSyncDialog() {
 
   function submit() {
     if (!canSubmit) return;
+    setOpen(false);
+    const refresh = () => router.refresh();
+
+    if (syncAll) {
+      runSapSync(FULL_SYNC_KEY, NOUN, syncSerialNumbersFromSapAction, refresh);
+      return;
+    }
+
     const target = { kind, values };
     let resume: string | null = null;
 
@@ -123,8 +137,7 @@ export function SerialTargetedSyncDialog() {
       return response;
     };
 
-    runSapSync(SYNC_KEY, NOUN, action, () => router.refresh());
-    setOpen(false);
+    runSapSync(TARGET_SYNC_KEY, NOUN, action, refresh);
   }
 
   const pickerOptions = options && kind !== "SERIAL" ? toPickerOptions(options, kind) : [];
@@ -133,15 +146,17 @@ export function SerialTargetedSyncDialog() {
   return (
     <>
       <Button variant="outline" size="sm" disabled={pending} onClick={() => setOpen(true)}>
-        {pending ? "Syncing selected…" : "Sync selected"}
+        <RefreshCw className={`mr-1 size-4 ${pending ? "animate-spin" : ""}`} />
+        {pending ? "Syncing…" : "Sync from SAP"}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Sync selected serial numbers</DialogTitle>
+            <DialogTitle>Sync serial numbers from SAP</DialogTitle>
             <DialogDescription>
-              Pull only what you pick from SAP. The full sync keeps its place, and nothing is
-              removed from ISMS by this run.
+              Leave the selection empty to sync every serial number. Pick serials, models,
+              brands, branches or warehouses to sync only those; a selective run removes
+              nothing from ISMS and does not affect the full sync&apos;s progress.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">
@@ -171,7 +186,7 @@ export function SerialTargetedSyncDialog() {
                 <p className="text-xs text-muted-foreground">
                   {serials.length > 0
                     ? `${serials.length.toLocaleString()} serial(s) listed.`
-                    : "Separate serials with a new line or a comma."}
+                    : "Separate serials with a new line or a comma. Leave empty to sync all."}
                 </p>
               </div>
             ) : (
@@ -180,7 +195,7 @@ export function SerialTargetedSyncDialog() {
                 options={pickerOptions}
                 selectedIds={selectedIds}
                 onChange={setSelectedIds}
-                placeholder={loadingOptions ? "Loading…" : `Select ${label.toLowerCase()}…`}
+                placeholder={loadingOptions ? "Loading…" : `All ${label.toLowerCase()}`}
                 searchPlaceholder={`Search ${label.toLowerCase()}…`}
                 emptyMessage={optionsError ?? `No ${label.toLowerCase()} in ISMS.`}
                 disabled={loadingOptions || Boolean(optionsError)}
@@ -197,14 +212,20 @@ export function SerialTargetedSyncDialog() {
                 At most {SERIAL_SYNC_TARGET_MAX_VALUES.toLocaleString()} at a time.
               </p>
             ) : null}
-            <p className="text-sm text-muted-foreground">{KIND_HINTS[kind]}</p>
+            <p className="text-sm text-muted-foreground">
+              {syncAll
+                ? "Nothing selected: syncs every serial number. A full sync can take several minutes."
+                : KIND_HINTS[kind]}
+            </p>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
             <Button type="button" onClick={submit} disabled={!canSubmit}>
-              Sync from SAP
+              {syncAll
+                ? "Sync all serial numbers"
+                : `Sync ${values.length.toLocaleString()} selected`}
             </Button>
           </DialogFooter>
         </DialogContent>
