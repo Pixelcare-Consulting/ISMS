@@ -9,8 +9,11 @@ function inventoryChipClassName(code: string, color?: string | null): string {
 
 export function InventoryStatusChips({
   inventory,
+  stacked = false,
 }: {
   inventory: OrderInventoryStatusCount[];
+  /** One chip per line. Supply Planning review stacks statuses. */
+  stacked?: boolean;
 }) {
   if (inventory.length === 0) {
     return (
@@ -21,7 +24,7 @@ export function InventoryStatusChips({
   }
 
   return (
-    <div className="flex flex-wrap gap-1">
+    <div className={stacked ? "flex flex-col items-start gap-1" : "flex flex-wrap gap-1"}>
       {inventory.map((row) => (
         <Badge
           key={row.code}

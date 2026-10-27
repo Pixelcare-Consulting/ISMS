@@ -66,6 +66,64 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.80.22",
+    date: "2026-10-27",
+    releasedAt: "2026-10-27T11:45:00+08:00",
+    title: "New orders get a random order number",
+    highlights: [
+      "New orders get a random order number for the month, and a number already in use is never given out again.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "New orders get a random order number for the month, and a number already in use is never given out again.",
+      },
+    ],
+  },
+  {
+    version: "0.80.21",
+    date: "2026-10-27",
+    releasedAt: "2026-10-27T11:21:00+08:00",
+    title: "A message when SAP does not accept an order",
+    highlights: [
+      "If SAP does not accept the order, a message explains why, and the order stays pending under the same order number.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "If SAP does not accept the order, a message explains why, and the order stays pending under the same order number.",
+      },
+    ],
+  },
+  {
+    version: "0.80.20",
+    date: "2026-10-27",
+    releasedAt: "2026-10-27T10:40:00+08:00",
+    title: "Supply Planning review follows the order sheet",
+    highlights: [
+      "Supply Planning’s review screen follows the order sheet, including the branch quota, days of inventory, and the columns used to approve a request.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Supply Planning’s review screen follows the order sheet: brand quota, DII, inventory by status, sales, rate, MIL, suggestion, order, CBM, approved quantity, and SP remarks.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Creating an order now shows each model’s sales this month and its share of the brand, in the same column order as the order sheet.",
+      },
+      {
+        type: "fix",
+        description:
+          "Creating an order on a shorter screen keeps the model list scrolling inside the page, with stock totals and columns staying in view.",
+      },
+    ],
+  },
+  {
     version: "0.80.19",
     date: "2026-10-26",
     releasedAt: "2026-10-26T17:10:00+08:00",

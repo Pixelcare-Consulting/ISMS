@@ -10,7 +10,12 @@ import {
   orderScopeWhere,
   type OrderTypeScope,
 } from "@/features/orders/lib/order-scope-where";
-import { nextSalesOrderNumber } from "@/features/orders/utils/next-sales-order-number";
+import {
+  isSalesOrderNumberConflict,
+  MAX_SALES_ORDER_NUMBER_ATTEMPTS,
+  nextSalesOrderNumber,
+  SALES_ORDER_NUMBER_EXHAUSTED_MESSAGE,
+} from "@/features/orders/utils/next-sales-order-number";
 import type { BranchOrderStatus, BranchOrderType, Prisma, SapOrderDocType } from "@prisma/client";
 
 /** Shown when approval is attempted against a row that changed after it was opened. */
@@ -384,40 +389,49 @@ export const orderRepository = {
     const approvalChain = getOrderApprovalChain(data.orderType);
     const initialStatus = getInitialOrderStatus(data.orderType);
 
-    const orderNumber = await nextSalesOrderNumber(tenantId);
+    for (let attempt = 0; attempt < MAX_SALES_ORDER_NUMBER_ATTEMPTS; attempt += 1) {
+      try {
+        return await prisma.$transaction(async (tx) => {
+          const orderNumber = await nextSalesOrderNumber(tenantId, { db: tx });
+          return tx.branchOrder.create({
+            data: {
+              tenantId,
+              branchId: data.branchId,
+              orderType: data.orderType,
+              orderNumber,
+              status: initialStatus,
+              createdById: data.createdById,
+              notes: data.notes,
+              brandId: data.brandId ?? null,
+              modeOfPaymentId: data.modeOfPaymentId ?? null,
+              details: {
+                create: data.details.map((line) => ({
+                  modelId: line.modelId,
+                  quantity: line.quantity,
+                  remarks: line.remarks ?? null,
+                  amount: line.amount ?? null,
+                })),
+              },
+              approvalLevels: {
+                create: approvalChain.map((step) => ({
+                  level: step.level,
+                  roleSlug: step.roleSlug,
+                })),
+              },
+            },
+            include: {
+              branch: { select: { name: true } },
+              details: { include: { model: { select: { skuCode: true } } } },
+              approvalLevels: true,
+            },
+          });
+        });
+      } catch (error) {
+        if (!isSalesOrderNumberConflict(error)) throw error;
+      }
+    }
 
-    return prisma.branchOrder.create({
-      data: {
-        tenantId,
-        branchId: data.branchId,
-        orderType: data.orderType,
-        orderNumber,
-        status: initialStatus,
-        createdById: data.createdById,
-        notes: data.notes,
-        brandId: data.brandId ?? null,
-        modeOfPaymentId: data.modeOfPaymentId ?? null,
-        details: {
-          create: data.details.map((line) => ({
-            modelId: line.modelId,
-            quantity: line.quantity,
-            remarks: line.remarks ?? null,
-            amount: line.amount ?? null,
-          })),
-        },
-        approvalLevels: {
-          create: approvalChain.map((step) => ({
-            level: step.level,
-            roleSlug: step.roleSlug,
-          })),
-        },
-      },
-      include: {
-        branch: { select: { name: true } },
-        details: { include: { model: { select: { skuCode: true } } } },
-        approvalLevels: true,
-      },
-    });
+    throw new Error(SALES_ORDER_NUMBER_EXHAUSTED_MESSAGE);
   },
 
   /**
@@ -739,6 +753,48 @@ export const orderRepository = {
           comment: data.comment ?? null,
         },
       });
+    });
+  },
+
+  /**
+   * SAP refused the document after final approval was saved. The order goes
+   * back to Pending Supply Planning. The SO#, lines, approved quantities, and
+   * SP remarks stay so the same order can be approved again.
+   */
+  async revertSupplyPlanningApproval(
+    tenantId: string,
+    orderId: string,
+    level: number,
+  ): Promise<{ updatedAt: Date }> {
+    return prisma.$transaction(async (tx) => {
+      const reverted = await tx.branchOrder.updateMany({
+        where: { id: orderId, tenantId, status: "approved" },
+        data: {
+          status: "pending_sp",
+          processedAt: null,
+          approvedById: null,
+        },
+      });
+      if (reverted.count !== 1) {
+        throw new Error("This order could not be returned to Pending Supply Planning.");
+      }
+
+      await tx.branchOrderApprovalLevel.update({
+        where: { orderId_level: { orderId, level } },
+        data: {
+          approvedAt: null,
+          approvedById: null,
+        },
+      });
+
+      const row = await tx.branchOrder.findFirst({
+        where: { id: orderId, tenantId },
+        select: { updatedAt: true },
+      });
+      if (!row) {
+        throw new Error("This order could not be returned to Pending Supply Planning.");
+      }
+      return { updatedAt: row.updatedAt };
     });
   },
 };

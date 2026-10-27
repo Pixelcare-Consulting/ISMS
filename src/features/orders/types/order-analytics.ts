@@ -133,6 +133,11 @@ export interface OrderWorksheetLine {
   salesUnavailable: boolean;
   sugQty: number | null;
   suggestionUnavailableReason: string | null;
+  /**
+   * Usual days of cover for this model.
+   * Same branch MIL setting order analytics uses. Missing settings use 30 days.
+   */
+  milDays: number;
   /** DIT serials coming into the branch. Not subtracted from SUG. */
   incomingQty: number;
   /**
@@ -167,6 +172,12 @@ export interface OrderWorksheetSummary {
   salesUnavailable: boolean;
 }
 
+/** Current-month quantity stored on Branch Quotas for one brand. */
+export interface OrderWorksheetBrandQuota {
+  brandId: string;
+  quantity: number;
+}
+
 export interface OrderWorksheetPayload {
   branchId: string;
   branchName: string;
@@ -175,6 +186,10 @@ export interface OrderWorksheetPayload {
   brands: OrderAnalyticsBrand[];
   brandId: string | null;
   orderType: BranchOrderType;
+  /** Frequency code on the branch delivery schedule, such as F1. Blank when none. */
+  deliveryFrequencyCode: string | null;
+  /** One current-month quota per brand. Empty when the branch has none. */
+  brandQuotas: OrderWorksheetBrandQuota[];
   lines: OrderWorksheetLine[];
   summary: OrderWorksheetSummary;
 }

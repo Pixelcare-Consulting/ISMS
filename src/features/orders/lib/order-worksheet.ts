@@ -13,6 +13,7 @@ import {
   WORKSHEET_SALES_TIME_ZONE,
   type OrderAnalyticsBrand,
   type OrderInventoryStatusCount,
+  type OrderWorksheetBrandQuota,
   type OrderWorksheetInput,
   type OrderWorksheetInventory,
   type OrderWorksheetLine,
@@ -38,6 +39,9 @@ const MONTH_NAMES = [
 ] as const;
 
 const INV_CODE_ORDER = ["STK", "DIT", "RSV", "DEF", "SLD", "OFS"] as const;
+
+/** Used when a model has no branch MIL setting. Same fallback as order analytics. */
+export const WORKSHEET_DEFAULT_MIL_DAYS = 30;
 
 /** Pull-out workflows that are no longer waiting at the branch. */
 export const AWAITING_PULLOUT_EXCLUDED_WORKFLOWS = [
@@ -161,6 +165,161 @@ export function worksheetDii(input: {
     computedDii: input.inventoryAmount / dailySales,
     diiUnavailableReason: null,
   };
+}
+
+/**
+ * Most common MIL days. Ties keep the smaller number.
+ * An empty list has no target.
+ */
+export function usualMilDays(days: readonly number[]): number | null {
+  if (days.length === 0) return null;
+  const counts = new Map<number, number>();
+  for (const value of days) {
+    if (!Number.isFinite(value)) continue;
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+  let best: number | null = null;
+  let bestCount = 0;
+  for (const [value, count] of counts) {
+    if (best == null || count > bestCount || (count === bestCount && value < best)) {
+      best = value;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
+export interface WorksheetSalesLine {
+  brandId: string | null;
+  salesQty: number | null;
+  salesUnavailable: boolean;
+}
+
+/**
+ * Month-to-date sales quantity for each brand.
+ * A failed sales query makes that brand's total unavailable.
+ */
+export function worksheetBrandSalesQty(
+  lines: readonly WorksheetSalesLine[],
+): ReadonlyMap<string, number | null> {
+  const groups = new Map<string, { qty: number; unavailable: boolean }>();
+  for (const line of lines) {
+    const key = line.brandId ?? "";
+    const current = groups.get(key) ?? { qty: 0, unavailable: false };
+    if (line.salesUnavailable || line.salesQty == null) {
+      current.unavailable = true;
+    } else {
+      current.qty += line.salesQty;
+    }
+    groups.set(key, current);
+  }
+  const result = new Map<string, number | null>();
+  for (const [key, value] of groups) {
+    result.set(key, value.unavailable ? null : value.qty);
+  }
+  return result;
+}
+
+/** Model month-to-date sales divided by that brand's month-to-date sales. */
+export function worksheetModelRate(
+  salesQty: number | null,
+  salesUnavailable: boolean,
+  brandSalesQty: number | null,
+): number | null {
+  if (salesUnavailable || salesQty == null || brandSalesQty == null || brandSalesQty <= 0) {
+    return null;
+  }
+  return salesQty / brandSalesQty;
+}
+
+export interface WorksheetPlanningFigureLine {
+  brandId: string | null;
+  srp: number;
+  cbm: number;
+  salesAmount: number | null;
+  salesUnavailable: boolean;
+  milDays: number;
+  onPlanogram: boolean;
+  onHandQty: number;
+  requestedQty: number;
+  approvedQty: number | null;
+}
+
+export interface WorksheetPlanningFigures {
+  quotaQty: number | null;
+  computedDii: number | null;
+  diiUnavailableReason: typeof NO_SALES_DII_REASON | null;
+  salesUnavailable: boolean;
+  inventoryAmount: number;
+  targetDiiDays: number | null;
+  approvedOrderAmount: number;
+  totalInventoryAmount: number;
+  totalCbm: number;
+}
+
+/**
+ * Brand-scoped planning figures.
+ * Pass every worksheet line. Search and "with a quantity" stay outside this function.
+ * An empty brand id uses every line.
+ */
+export function worksheetPlanningFigures(input: {
+  lines: readonly WorksheetPlanningFigureLine[];
+  brandId: string | null;
+  brandQuotas: readonly OrderWorksheetBrandQuota[];
+  daysElapsed: number;
+}): WorksheetPlanningFigures {
+  const brandId = input.brandId?.trim() ? input.brandId.trim() : null;
+  const scoped = input.lines.filter((line) => !brandId || line.brandId === brandId);
+  let inventoryAmount = 0;
+  let approvedOrderAmount = 0;
+  let totalCbm = 0;
+  let salesUnavailable = false;
+  let salesAmount = 0;
+  for (const line of scoped) {
+    const onHand = Number.isFinite(line.onHandQty) ? line.onHandQty : 0;
+    const price = Number.isFinite(line.srp) ? line.srp : 0;
+    inventoryAmount += onHand * price;
+    if (line.approvedQty != null && line.approvedQty > 0) {
+      approvedOrderAmount += line.approvedQty * price;
+    }
+    if (line.requestedQty > 0) {
+      const unitCbm = Number.isFinite(line.cbm) ? line.cbm : 0;
+      totalCbm += line.requestedQty * unitCbm;
+    }
+    if (line.salesUnavailable || line.salesAmount == null) {
+      salesUnavailable = true;
+    } else {
+      salesAmount += line.salesAmount;
+    }
+  }
+  const dii = worksheetDii({
+    inventoryAmount,
+    salesAmount: salesUnavailable ? null : salesAmount,
+    salesUnavailable,
+    daysElapsed: input.daysElapsed,
+  });
+  const planogramDays = scoped.filter((line) => line.onPlanogram).map((line) => line.milDays);
+  const targetDays = planogramDays.length > 0 ? planogramDays : scoped.map((line) => line.milDays);
+  return {
+    quotaQty: quotaQuantity(input.brandQuotas, brandId),
+    computedDii: dii.computedDii,
+    diiUnavailableReason: dii.diiUnavailableReason,
+    salesUnavailable,
+    inventoryAmount,
+    targetDiiDays: usualMilDays(targetDays),
+    approvedOrderAmount,
+    totalInventoryAmount: inventoryAmount + approvedOrderAmount,
+    totalCbm,
+  };
+}
+
+function quotaQuantity(
+  quotas: readonly OrderWorksheetBrandQuota[],
+  brandId: string | null,
+): number | null {
+  const matched = brandId ? quotas.filter((row) => row.brandId === brandId) : quotas;
+  if (matched.length === 0) return null;
+  return matched.reduce((sum, row) => sum + (Number.isFinite(row.quantity) ? row.quantity : 0), 0);
 }
 
 export function resolveDitDirection(input: {
@@ -397,6 +556,36 @@ export function classifyWorksheetInventory(input: {
   return result;
 }
 
+function applyStatusColors(
+  chips: OrderInventoryStatusCount[],
+  colors: ReadonlyMap<string, string | null> | undefined,
+): OrderInventoryStatusCount[] {
+  if (!colors) return chips;
+  return chips.map((chip) => ({
+    code: chip.code,
+    count: chip.count,
+    color: colors.get(chip.code) ?? null,
+  }));
+}
+
+function normalizeFrequencyCode(code: string | null | undefined): string | null {
+  const trimmed = code?.trim() ?? "";
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeBrandQuotas(
+  quotas: readonly OrderWorksheetBrandQuota[] | undefined,
+): OrderWorksheetBrandQuota[] {
+  if (!quotas) return [];
+  const result: OrderWorksheetBrandQuota[] = [];
+  for (const quota of quotas) {
+    const brandId = quota.brandId.trim();
+    if (!brandId || !Number.isFinite(quota.quantity)) continue;
+    result.push({ brandId, quantity: quota.quantity });
+  }
+  return result;
+}
+
 function salesForModel(
   sales: WorksheetSalesByModel,
   modelId: string,
@@ -450,6 +639,14 @@ export function assembleOrderWorksheet(input: {
   sales: WorksheetSalesByModel;
   window: ManilaMonthWindow;
   inventoryAsOf: string;
+  /** Branch delivery schedule code. Omitted callers stay blank. */
+  deliveryFrequencyCode?: string | null;
+  /** Current-month quotas. Omitted callers stay empty. */
+  brandQuotas?: readonly OrderWorksheetBrandQuota[];
+  /** Branch MIL settings. Models without one use the usual 30 days. */
+  milDaysByModel?: ReadonlyMap<string, number>;
+  /** Inventory status palette. Omitted callers leave chip color unset. */
+  statusColors?: ReadonlyMap<string, string | null>;
 }): OrderWorksheetPayload {
   const brandFiltered = input.brandId != null;
   const classified = classifyWorksheetInventory({
@@ -477,6 +674,7 @@ export function assembleOrderWorksheet(input: {
       });
       const sales = salesForModel(input.sales, model.modelId);
       const incomingSerialIds = new Set(inventory.incomingSerialIds);
+      const configuredMil = input.milDaysByModel?.get(model.modelId);
       return {
         modelId: model.modelId,
         skuCode: model.skuCode,
@@ -503,8 +701,12 @@ export function assembleOrderWorksheet(input: {
           transitOutgoingQty: inventory.transitOutgoingQty,
           transitUnclassifiedQty: inventory.transitUnclassifiedQty,
           ditQty: inventory.ditQty,
-          byStatus: inventory.byStatus,
+          byStatus: applyStatusColors(inventory.byStatus, input.statusColors),
         },
+        milDays:
+          configuredMil != null && Number.isFinite(configuredMil)
+            ? configuredMil
+            : WORKSHEET_DEFAULT_MIL_DAYS,
         salesQty: sales.salesQty,
         salesAmount: sales.salesAmount,
         salesUnavailable: sales.salesUnavailable,
@@ -552,6 +754,8 @@ export function assembleOrderWorksheet(input: {
     brands: [...input.brands],
     brandId: input.brandId,
     orderType: input.orderType,
+    deliveryFrequencyCode: normalizeFrequencyCode(input.deliveryFrequencyCode),
+    brandQuotas: normalizeBrandQuotas(input.brandQuotas),
     lines,
     summary: {
       branchId: input.branch.id,

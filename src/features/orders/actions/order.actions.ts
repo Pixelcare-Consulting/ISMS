@@ -16,6 +16,7 @@ import { branchService } from "@/features/branches/services/branch.service";
 import { branchRepository } from "@/features/branches/repositories/branch.repository";
 import { dealerRepository } from "@/features/dealers/repositories/dealer.repository";
 import { orderingPolicyService } from "@/features/ordering/services/ordering-policy.service";
+import { SapOrderPostRejectedError } from "@/features/orders/lib/sap-order-rejection";
 import { checkOrderingAllowed } from "@/features/orders/utils/order-window";
 import {
   anyOrderTypePermissions,
@@ -573,6 +574,15 @@ export async function approveOrderAction(
     revalidatePath("/operations");
     return { success: true as const };
   } catch (e) {
+    if (e instanceof SapOrderPostRejectedError) {
+      revalidateOrderPaths(existing.orderType);
+      return {
+        error: e.message,
+        sapRejected: true as const,
+        sapMessage: e.sapMessage,
+        updatedAt: e.updatedAt,
+      };
+    }
     return { error: e instanceof Error ? e.message : "Failed to approve order" };
   }
 }

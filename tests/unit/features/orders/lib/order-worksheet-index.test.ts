@@ -40,6 +40,7 @@ function stub(modelId: string): OrderWorksheetLine {
       ditQty: 0,
       byStatus: [],
     },
+    milDays: 30,
     salesQty: 0,
     salesAmount: 0,
     salesUnavailable: false,

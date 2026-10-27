@@ -1,7 +1,7 @@
 "use client";
 
 import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
-import { Loader2 } from "lucide-react";
+import { CircleAlert, Loader2 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -25,6 +25,15 @@ import {
 import { OrderDetailsDialog } from "@/app/(app)/orders/_components/order-details-dialog";
 import { SuggestedOrdersDialog } from "@/app/(app)/orders/_components/suggested-orders-dialog";
 import { OrderWorkflowDialog } from "@/app/(app)/orders/_components/order-workflow-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { BRANCH_ORDER_STATUS_LABELS } from "@/features/orders/constants/order-status";
 import { OrderTypeBadge } from "@/features/orders/components/order-type-badge";
@@ -50,6 +59,7 @@ import {
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { matchesTableSearch } from "@/utils/match-table-search";
 import type { ManualSpecialTypeFilter } from "@/features/orders/lib/manual-special-order-scope";
+import { describeSapOrderRejection } from "@/features/orders/lib/sap-order-rejection";
 
 interface OrderRow {
   id: string;
@@ -266,6 +276,7 @@ export function OrdersTable({
   const [pickedTeamLeaderId, setPickedTeamLeaderId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [workflowOrder, setWorkflowOrder] = useState<OrderRow | null>(null);
+  const [sapRejection, setSapRejection] = useState<{ sapMessage: string | null } | null>(null);
   const [detailsOrderId, setDetailsOrderId] = useState<string | null>(null);
   const [draftToDelete, setDraftToDelete] = useState<OrderRow | null>(null);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
@@ -438,6 +449,15 @@ export function OrdersTable({
       const waitMs = minMs - (Date.now() - started);
       if (waitMs > 0) await delay(waitMs);
       setProcessingAction(null);
+      if ("sapRejected" in result && result.sapRejected) {
+        setSapRejection({ sapMessage: result.sapMessage });
+        if (result.updatedAt) {
+          const updatedAt = result.updatedAt;
+          setWorkflowOrder((current) => (current ? { ...current, updatedAt } : current));
+        }
+        router.refresh();
+        return;
+      }
       if (result.error) {
         toast.error(result.error);
         return;
@@ -610,6 +630,10 @@ export function OrdersTable({
     return cols;
   }, [canEdit, createByType, pending, router, viewerRoleSlugs]);
 
+  const sapRejectionCopy = sapRejection
+    ? describeSapOrderRejection(sapRejection.sapMessage)
+    : null;
+
   return (
     <>
       <DataTable
@@ -779,6 +803,7 @@ export function OrdersTable({
           orderType={workflowOrder.orderType as "auto_replenish" | "manual" | "special"}
           branchId={workflowOrder.branchId}
           branchName={workflowOrder.branch.name}
+          createdAt={workflowOrder.createdAt}
           updatedAt={workflowOrder.updatedAt}
           deliverySchedule={workflowOrder.branch.deliverySchedule}
           lines={workflowOrder.details.map((d) => ({
@@ -793,11 +818,61 @@ export function OrdersTable({
           status={workflowOrder.status as BranchOrderStatus}
           open
           pending={pending}
-          onOpenChange={() => setWorkflowOrder(null)}
+          onOpenChange={() => {
+            if (sapRejection) return;
+            setWorkflowOrder(null);
+          }}
           onApprove={handleApprove}
           onReject={handleReject}
         />
       ) : null}
+      <AlertDialog
+        open={sapRejection !== null}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setSapRejection(null);
+        }}
+      >
+        <AlertDialogContent
+          className="z-[80] gap-0 sm:max-w-lg"
+          overlayClassName="z-[80]"
+        >
+          <AlertDialogHeader className="space-y-4 text-left">
+            <div className="flex items-center gap-3">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <CircleAlert className="size-4" aria-hidden />
+              </span>
+              <AlertDialogTitle className="text-base font-semibold leading-snug tracking-tight text-foreground sm:text-lg">
+                This order could not be approved
+              </AlertDialogTitle>
+            </div>
+            <AlertDialogDescription asChild className="text-foreground">
+              <div className="space-y-4 text-left text-sm leading-relaxed">
+                <p className="text-muted-foreground">
+                  This order is still waiting for Supply Planning. It keeps the same order
+                  number, so you do not need to create a new one.
+                </p>
+                <div className="rounded-lg border border-border/80 border-l-[3px] border-l-primary/70 bg-muted/40 px-3.5 py-3">
+                  <p className="font-medium text-foreground">{sapRejectionCopy?.summary}</p>
+                  {sapRejectionCopy?.detail ? (
+                    <p className="mt-2 break-words text-xs leading-relaxed text-muted-foreground">
+                      {sapRejectionCopy.detail}
+                    </p>
+                  ) : null}
+                </div>
+                <p className="text-foreground">{sapRejectionCopy?.nextStep}</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="-mx-4 mt-5 border-t px-4 pt-4 sm:-mx-6 sm:justify-end sm:px-6">
+            <AlertDialogAction
+              className="w-full sm:w-auto"
+              onClick={() => setSapRejection(null)}
+            >
+              Back to the order
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {draftToDelete ? (
         <DeleteConfirmDialog
           open
