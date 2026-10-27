@@ -281,6 +281,7 @@ model Tenant {
   branchAllowedModels         BranchAllowedModel[]
   branchOrders                BranchOrder[]
   branchDeliveries            BranchDelivery[]
+  deliverySapDocuments        DeliverySapDocument[]
   deliveryReturnRequests      DeliveryReturnRequest[]
   deliveryTransfers           DeliveryTransfer[]
   branchTransfers             BranchTransfer[]
@@ -2290,6 +2291,7 @@ model BranchDelivery {
   statusCode ReasonStatusCode     @relation(fields: [statusCodeId], references: [id])
   scheduledBy User?               @relation("BranchDeliveryScheduledBy", fields: [scheduledById], references: [id], onDelete: SetNull)
   lines      BranchDeliveryLine[]
+  sapDocuments DeliverySapDocument[]
   backloads  BranchBackload[]
   returnRequests DeliveryReturnRequest[]
   transfers  DeliveryTransfer[]
@@ -3225,6 +3227,37 @@ model BranchDeliveryLine {
   @@unique([deliveryId, serialNumberId])
   @@index([serialNumberId])
   @@map("branch_delivery_lines")
+}
+
+/// An IT (from the order's ITR) or DR (from its SO) that a SAP user made with Copy To, as the
+/// cron follow-up found it. One row per SAP document, so a document is applied at most once.
+/// status: APPLIED (serials are DIT on the delivery), FAILED (retried on later runs),
+/// FLAGGED (needs a person: cancelled in SAP, or not based on this order's ITR/SO).
+model DeliverySapDocument {
+  id         String    @id @default(cuid())
+  tenantId   String    @map("tenant_id")
+  deliveryId String    @map("delivery_id")
+  /// IT or DR.
+  docKind    String    @map("doc_kind")
+  docEntry   Int       @map("doc_entry")
+  docNum     Int       @map("doc_num")
+  /// What users see: the DR number when SAP has one, else DocNum.
+  displayNo  String    @map("display_no")
+  docDate    DateTime? @db.Date @map("doc_date")
+  status     String
+  serialCount Int      @default(0) @map("serial_count")
+  error      String?
+  attempts   Int       @default(1)
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  delivery BranchDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, docKind, docEntry])
+  @@index([deliveryId])
+  @@index([tenantId, status])
+  @@map("delivery_sap_documents")
 }
 
 /// Request to return delivered units to a warehouse. One open request per delivery (partial unique index in SQL).
