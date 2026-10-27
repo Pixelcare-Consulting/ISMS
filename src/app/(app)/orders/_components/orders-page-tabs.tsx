@@ -73,6 +73,7 @@ function tabSkeleton(tab: OrdersPageTab) {
           columns={[
             "Order #",
             "Type",
+            "Mode of payment",
             "Branch",
             "Order Qty",
             "Total Amt",

@@ -4,11 +4,12 @@ import {
   MODE_OF_PAYMENT_KIND_NOT_SET,
   type ModeOfPaymentKindValue,
 } from "@/features/lookups/constants/mode-of-payment-kind";
+import type { ResolvedOrderModeOfPayment } from "@/features/orders/constants/order-sap-doc-type";
 import { cn } from "@/utils/cn";
 
 interface ModeOfPaymentBadgeProps {
   /** The order's effective mode of payment (see `resolveOrderModeOfPayment`); null when none. */
-  modeOfPayment: { name: string; kind: ModeOfPaymentKindValue | null; override: boolean } | null;
+  modeOfPayment: ResolvedOrderModeOfPayment | null;
   className?: string;
 }
 

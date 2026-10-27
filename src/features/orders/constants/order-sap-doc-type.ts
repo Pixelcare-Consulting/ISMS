@@ -1,4 +1,7 @@
-import type { ModeOfPaymentKindValue } from "@/features/lookups/constants/mode-of-payment-kind";
+import {
+  MODE_OF_PAYMENT_KIND_LABELS,
+  type ModeOfPaymentKindValue,
+} from "@/features/lookups/constants/mode-of-payment-kind";
 
 export type OrderSapDocType = "ITR" | "SO";
 
@@ -25,6 +28,14 @@ interface ModeOfPaymentRef {
   kind?: ModeOfPaymentKindValue | null;
 }
 
+/** The mode of payment an order actually uses, as `resolveOrderModeOfPayment` returns it. */
+export interface ResolvedOrderModeOfPayment {
+  name: string;
+  kind: ModeOfPaymentKindValue | null;
+  /** True when the order overrides its dealer's mode of payment. */
+  override: boolean;
+}
+
 /**
  * The mode of payment an order actually uses: its own override, else the dealer's.
  * Null when neither is set. `kind` is null when the mode of payment is not classified yet.
@@ -32,10 +43,16 @@ interface ModeOfPaymentRef {
 export function resolveOrderModeOfPayment(input: {
   orderModeOfPayment: ModeOfPaymentRef | null | undefined;
   dealerModeOfPayment: ModeOfPaymentRef | null | undefined;
-}): { name: string; kind: ModeOfPaymentKindValue | null; override: boolean } | null {
+}): ResolvedOrderModeOfPayment | null {
   const chosen = input.orderModeOfPayment ?? input.dealerModeOfPayment;
   if (!chosen) return null;
   return { name: chosen.name, kind: chosen.kind ?? null, override: Boolean(input.orderModeOfPayment) };
+}
+
+/** "Consignment COD", so a table search finds orders by kind or by mode of payment name. */
+export function orderModeOfPaymentSearchText(resolved: ResolvedOrderModeOfPayment | null): string {
+  if (!resolved) return "";
+  return [resolved.kind ? MODE_OF_PAYMENT_KIND_LABELS[resolved.kind] : "", resolved.name].join(" ");
 }
 
 /** "ITR (Consignment) · 1234", or "—" when the order has no document type yet. */

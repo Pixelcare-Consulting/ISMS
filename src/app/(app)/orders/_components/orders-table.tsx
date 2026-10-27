@@ -54,13 +54,11 @@ import { DeleteConfirmDialog } from "@/components/data-table/delete-confirm-dial
 import { LoadingModal } from "@/components/ui/loading-modal";
 import {
   formatOrderModeOfPayment,
+  orderModeOfPaymentSearchText,
   resolveOrderModeOfPayment,
   type OrderSapDocType,
 } from "@/features/orders/constants/order-sap-doc-type";
-import {
-  MODE_OF_PAYMENT_KIND_LABELS,
-  type ModeOfPaymentKindValue,
-} from "@/features/lookups/constants/mode-of-payment-kind";
+import type { ModeOfPaymentKindValue } from "@/features/lookups/constants/mode-of-payment-kind";
 import { ModeOfPaymentBadge } from "@/features/orders/components/mode-of-payment-badge";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { matchesTableSearch } from "@/utils/match-table-search";
@@ -115,14 +113,11 @@ interface ModeOfPaymentRow {
 
 const orderColumn = createColumnHelper<DataTableFeatures, OrderRow>();
 
-/** "Consignment COD" so the search box finds orders by kind or by mode of payment name. */
-function modeOfPaymentSearchText(order: OrderRow): string {
-  const resolved = resolveOrderModeOfPayment({
+function orderRowModeOfPayment(order: OrderRow) {
+  return resolveOrderModeOfPayment({
     orderModeOfPayment: order.modeOfPayment,
     dealerModeOfPayment: order.branch.dealer?.modeOfPayment,
   });
-  if (!resolved) return "";
-  return [resolved.kind ? MODE_OF_PAYMENT_KIND_LABELS[resolved.kind] : "", resolved.name].join(" ");
 }
 
 type OrderSortField = "orderNumber" | "branch" | "orderType" | "status" | "createdAt";
@@ -417,7 +412,7 @@ export function OrdersTable({
           o.status,
           o.createdBy?.name,
           o.createdBy?.email,
-          modeOfPaymentSearchText(o),
+          orderModeOfPaymentSearchText(orderRowModeOfPayment(o)),
         ]),
       ),
     [result.items, query],
@@ -542,12 +537,7 @@ export function OrdersTable({
         header: "Mode of payment",
         enableSorting: false,
         cell: ({ row }) => (
-          <ModeOfPaymentBadge
-            modeOfPayment={resolveOrderModeOfPayment({
-              orderModeOfPayment: row.original.modeOfPayment,
-              dealerModeOfPayment: row.original.branch.dealer?.modeOfPayment,
-            })}
-          />
+          <ModeOfPaymentBadge modeOfPayment={orderRowModeOfPayment(row.original)} />
         ),
       }),
       orderColumn.display({

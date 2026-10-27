@@ -1,5 +1,8 @@
 import type { BranchOrderStatus, BranchOrderType, SkuStatus } from "@prisma/client";
-import type { OrderSapDocType } from "@/features/orders/constants/order-sap-doc-type";
+import type {
+  OrderSapDocType,
+  ResolvedOrderModeOfPayment,
+} from "@/features/orders/constants/order-sap-doc-type";
 
 /** Off-planogram shelf gap. Em dash, matching the worksheet contract. */
 export const OFF_PLANOGRAM_SUGGESTION_REASON = "N/A\u2014outside planogram";
@@ -242,6 +245,8 @@ export interface OrderHistoryRow {
   reviewSnapshotAt: string | null;
   sapDocType: OrderSapDocType | null;
   sapDocNum: number | null;
+  /** The mode of payment the order uses (its own, else the dealer's). Null when neither is set. */
+  modeOfPayment: ResolvedOrderModeOfPayment | null;
   orderQty: number;
   totalAmt: number;
   appQty: number;
@@ -268,7 +273,7 @@ export interface OrderHistoryLinkedDelivery {
 }
 
 /** One order opened from Order History, including the approval clock. */
-export interface OrderHistoryDetail extends Omit<OrderHistoryRow, "lines" | "status"> {
+export interface OrderHistoryDetail extends Omit<OrderHistoryRow, "lines" | "status" | "modeOfPayment"> {
   status: BranchOrderStatus;
   dealerName: string | null;
   /** Resolved payment name. Null when neither the order nor the dealer has one. */

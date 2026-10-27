@@ -47,6 +47,7 @@ import {
 import { getUserBranchIds } from "@/lib/aor/scope";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { resolveActiveOrderPrice } from "@/features/master-data/utils/resolve-active-order-price";
+import { resolveOrderModeOfPayment } from "@/features/orders/constants/order-sap-doc-type";
 import type { OrderHistoryRow } from "@/features/orders/types/order-analytics";
 import { toClientOrderListItem } from "@/features/orders/utils/to-client-order-list";
 import type { BranchOrderType, Prisma } from "@prisma/client";
@@ -701,6 +702,10 @@ export async function listOrderHistoryAction(input?: {
       reviewSnapshotAt: order.reviewSnapshotAt?.toISOString() ?? null,
       sapDocType: order.sapDocType,
       sapDocNum: order.sapDocNum,
+      modeOfPayment: resolveOrderModeOfPayment({
+        orderModeOfPayment: order.modeOfPayment,
+        dealerModeOfPayment: order.branch.dealer?.modeOfPayment,
+      }),
       orderQty,
       totalAmt,
       appQty,
