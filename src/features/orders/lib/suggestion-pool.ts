@@ -8,7 +8,11 @@ import {
   type OutstandingLineInput,
 } from "@/features/orders/lib/suggestion-apply-decisions";
 import { planningPoolKey, shelfPoolKey } from "@/features/orders/lib/suggestion-qty";
-import { nextSalesOrderNumber } from "@/features/orders/utils/next-sales-order-number";
+import {
+  nextSalesOrderNumber,
+  orderModeOfPaymentKind,
+  orderNumberPrefix,
+} from "@/features/orders/utils/next-sales-order-number";
 
 export type SuggestionDb = Prisma.TransactionClient;
 
@@ -379,10 +383,13 @@ export async function countStkByModel(
   return counts;
 }
 
+/** A suggested-orders draft has no mode of payment of its own, so the dealer's sets the prefix. */
 export async function nextDraftOrderNumber(
   db: SuggestionDb,
   tenantId: string,
+  branchId: string,
   now = new Date(),
 ): Promise<string> {
-  return nextSalesOrderNumber(tenantId, { db, now });
+  const kind = await orderModeOfPaymentKind(db, { tenantId, branchId });
+  return nextSalesOrderNumber(tenantId, { db, now, prefix: orderNumberPrefix(kind) });
 }

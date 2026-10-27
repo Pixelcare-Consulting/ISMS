@@ -17,9 +17,9 @@ export const BRANCH_ORDERS_PAGE_TUTORIAL: PageTutorialContent = {
     {
       title: "Orders, Analytics, and History",
       bullets: [
-        "Orders — requests waiting for your role so you can Review or Edit. Approved, rejected, and cancelled SO#s stay in Order History.",
+        "Orders — requests waiting for your role so you can Review or Edit. Approved, rejected, and cancelled orders stay in Order History.",
         "Order analytics — from an order, opens stock, sales, sell-through, and days of cover for that branch. Suggest follows the order type. It is separate from the order sheet.",
-        "Order History — past SO#s with ordered and approved quantities and amounts, date, and who last updated the request.",
+        "Order History — past orders (ITR# for consignment, SO# for outright) with ordered and approved quantities and amounts, date, and who last updated the request.",
       ],
     },
     {

@@ -71,7 +71,7 @@ function tabSkeleton(tab: OrdersPageTab) {
       return (
         <DataTableSkeleton
           columns={[
-            "SO#",
+            "Order #",
             "Type",
             "Branch",
             "Order Qty",

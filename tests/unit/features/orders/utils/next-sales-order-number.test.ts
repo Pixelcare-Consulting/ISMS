@@ -21,6 +21,7 @@ import {
   isSalesOrderNumberConflict,
   MAX_SALES_ORDER_NUMBER_ATTEMPTS,
   nextSalesOrderNumber,
+  orderNumberPrefix,
   SALES_ORDER_NUMBER_EXHAUSTED_MESSAGE,
 } from "@/features/orders/utils/next-sales-order-number";
 import { prisma } from "@/lib/database/client";
@@ -29,6 +30,14 @@ const randomIntMock = randomInt as unknown as jest.Mock;
 const findFirst = prisma.branchOrder.findFirst as jest.Mock;
 
 const OCTOBER = new Date(2026, 9, 27);
+
+/** The lookup checks one suffix under both prefixes. */
+function suffixLookup(tenantId: string, yearMonthSuffix: string) {
+  return {
+    where: { tenantId, orderNumber: { in: [`ITR#${yearMonthSuffix}`, `SO#${yearMonthSuffix}`] } },
+    select: { id: true },
+  };
+}
 
 describe("nextSalesOrderNumber", () => {
   beforeEach(() => {
@@ -46,10 +55,23 @@ describe("nextSalesOrderNumber", () => {
     expect(orderNumber).toMatch(/^SO#\d{4}-\d{2}-\d{5}$/);
     expect(isCanonicalSalesOrderNumber(orderNumber)).toBe(true);
     expect(randomIntMock).toHaveBeenCalledWith(0, 100_000);
-    expect(findFirst).toHaveBeenCalledWith({
-      where: { tenantId: "tenant-1", orderNumber: "SO#2026-10-00042" },
-      select: { id: true },
-    });
+    expect(findFirst).toHaveBeenCalledWith(suffixLookup("tenant-1", "2026-10-00042"));
+  });
+
+  it("uses the ITR prefix for a consignment order", async () => {
+    randomIntMock.mockReturnValue(42);
+    findFirst.mockResolvedValue(null);
+
+    const orderNumber = await nextSalesOrderNumber("tenant-1", { now: OCTOBER, prefix: "ITR" });
+
+    expect(orderNumber).toBe("ITR#2026-10-00042");
+    expect(isCanonicalSalesOrderNumber(orderNumber)).toBe(true);
+  });
+
+  it("maps consignment to ITR and anything else to SO", () => {
+    expect(orderNumberPrefix("CONSIGNMENT")).toBe("ITR");
+    expect(orderNumberPrefix("OUTRIGHT")).toBe("SO");
+    expect(orderNumberPrefix(null)).toBe("SO");
   });
 
   it.each([
@@ -66,20 +88,17 @@ describe("nextSalesOrderNumber", () => {
 
   it("tries another suffix when the first number is already used", async () => {
     randomIntMock.mockReturnValueOnce(7).mockReturnValueOnce(42);
-    findFirst.mockImplementation(async (args: { where: { orderNumber: string } }) => {
-      if (args.where.orderNumber === "SO#2026-10-00007") return { id: "taken" };
+    // 00007 exists as an SO; a consignment order must not reuse the suffix as ITR#…00007.
+    findFirst.mockImplementation(async (args: { where: { orderNumber: { in: string[] } } }) => {
+      if (args.where.orderNumber.in.includes("SO#2026-10-00007")) return { id: "taken" };
       return null;
     });
 
-    const orderNumber = await nextSalesOrderNumber("tenant-1", { now: OCTOBER });
+    const orderNumber = await nextSalesOrderNumber("tenant-1", { now: OCTOBER, prefix: "ITR" });
 
-    expect(orderNumber).toBe("SO#2026-10-00042");
-    expect(orderNumber).not.toBe("SO#2026-10-00007");
+    expect(orderNumber).toBe("ITR#2026-10-00042");
     expect(findFirst).toHaveBeenCalledTimes(2);
-    expect(findFirst).toHaveBeenNthCalledWith(1, {
-      where: { tenantId: "tenant-1", orderNumber: "SO#2026-10-00007" },
-      select: { id: true },
-    });
+    expect(findFirst).toHaveBeenNthCalledWith(1, suffixLookup("tenant-1", "2026-10-00007"));
   });
 
   it("throws when every attempt is already used", async () => {
@@ -93,19 +112,22 @@ describe("nextSalesOrderNumber", () => {
     expect(randomIntMock).toHaveBeenCalledTimes(MAX_SALES_ORDER_NUMBER_ATTEMPTS);
   });
 
-  it("assigns a suggested-order draft through the same allocator", async () => {
+  it.each([
+    ["CONSIGNMENT", "ITR#2026-10-00015"],
+    ["OUTRIGHT", "SO#2026-10-00015"],
+  ])("numbers a suggested-order draft from the dealer's %s mode of payment", async (kind, expected) => {
     randomIntMock.mockReturnValue(15);
     const draftFindFirst = jest.fn().mockResolvedValue(null);
     const db = {
       $executeRaw: jest.fn().mockResolvedValue(1),
       branchOrder: { findFirst: draftFindFirst },
+      branch: {
+        findFirst: jest.fn().mockResolvedValue({ dealer: { modeOfPayment: { kind } } }),
+      },
     } as unknown as Prisma.TransactionClient;
 
-    await expect(nextDraftOrderNumber(db, "tenant-2", OCTOBER)).resolves.toBe("SO#2026-10-00015");
-    expect(draftFindFirst).toHaveBeenCalledWith({
-      where: { tenantId: "tenant-2", orderNumber: "SO#2026-10-00015" },
-      select: { id: true },
-    });
+    await expect(nextDraftOrderNumber(db, "tenant-2", "branch-1", OCTOBER)).resolves.toBe(expected);
+    expect(draftFindFirst).toHaveBeenCalledWith(suffixLookup("tenant-2", "2026-10-00015"));
     expect(findFirst).not.toHaveBeenCalled();
   });
 });

@@ -126,7 +126,7 @@ export function OrderHistoryTable({
     const cols: DataTableColumn<OrderHistoryRow>[] = [
       historyColumn.accessor((row) => row.orderNumber, {
         id: "orderNumber",
-        header: "SO#",
+        header: "Order #",
         enableSorting: true,
         meta: { className: "font-mono" },
       }),

@@ -14,6 +14,8 @@ import {
   isSalesOrderNumberConflict,
   MAX_SALES_ORDER_NUMBER_ATTEMPTS,
   nextSalesOrderNumber,
+  orderModeOfPaymentKind,
+  orderNumberPrefix,
   SALES_ORDER_NUMBER_EXHAUSTED_MESSAGE,
 } from "@/features/orders/utils/next-sales-order-number";
 import type { BranchOrderStatus, BranchOrderType, Prisma, SapOrderDocType } from "@prisma/client";
@@ -392,7 +394,15 @@ export const orderRepository = {
     for (let attempt = 0; attempt < MAX_SALES_ORDER_NUMBER_ATTEMPTS; attempt += 1) {
       try {
         return await prisma.$transaction(async (tx) => {
-          const orderNumber = await nextSalesOrderNumber(tenantId, { db: tx });
+          const kind = await orderModeOfPaymentKind(tx, {
+            tenantId,
+            branchId: data.branchId,
+            modeOfPaymentId: data.modeOfPaymentId,
+          });
+          const orderNumber = await nextSalesOrderNumber(tenantId, {
+            db: tx,
+            prefix: orderNumberPrefix(kind),
+          });
           return tx.branchOrder.create({
             data: {
               tenantId,
