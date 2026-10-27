@@ -70,14 +70,50 @@ function baseRef(line: SapSerialLine) {
     : { BaseEntry: line.baseEntry, BaseLine: line.baseLine ?? 0 };
 }
 
+/**
+ * Column sizes in this company DB (OWTQ / WTQ1, read from UserFieldsMD on 2026-10-27,
+ * Comments and JournalMemo are B1's own). A longer value makes SAP refuse the document,
+ * so every free-text value is fitted before it is sent.
+ */
+const ITR_TEXT_LIMITS = {
+  comments: 254,
+  journalMemo: 50,
+  lineIsmsRef: 21,
+  lineBranchName: 20,
+  lineBranchNameLong: 100,
+} as const;
+
+/** One line of text no longer than `max`: whitespace collapsed, cut with "…" if needed. */
+export function fitSapText(value: string, max: number): string {
+  const text = value.replace(/\s+/g, " ").trim();
+  return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
+}
+
+/**
+ * An approved consignment order as an Inventory Transfer Request.
+ *
+ * Header: Remarks carry the order notes (the ISMS reference when there are none), and
+ * Journal Remarks read `ISMS <order #> · <branch>` instead of SAP's generic default.
+ * Lines: the order number (ISMS PO#) and the branch name on every line, full name in
+ * Branch Namelong and the 20-character Branch Name column filled as far as it fits.
+ */
 export function buildItrBody(i: {
   ismsRef: string;
   fromWhs: string;
   toWhs: string;
+  branchName: string;
+  notes?: string | null;
   lines: PlainLine[];
 }): Record<string, unknown> {
+  const branchName = i.branchName.trim();
+  const notes = i.notes?.trim();
   return {
     ...header(i.ismsRef),
+    Comments: fitSapText(notes || `ISMS ${i.ismsRef}`, ITR_TEXT_LIMITS.comments),
+    JournalMemo: fitSapText(
+      branchName ? `ISMS ${i.ismsRef} · ${branchName}` : `ISMS ${i.ismsRef}`,
+      ITR_TEXT_LIMITS.journalMemo,
+    ),
     FromWarehouse: i.fromWhs,
     ToWarehouse: i.toWhs,
     StockTransferLines: i.lines.map((l) => ({
@@ -85,6 +121,13 @@ export function buildItrBody(i: {
       Quantity: l.quantity,
       FromWarehouseCode: i.fromWhs,
       WarehouseCode: i.toWhs,
+      U_ISMS_PONum: fitSapText(i.ismsRef, ITR_TEXT_LIMITS.lineIsmsRef),
+      ...(branchName
+        ? {
+            U_Branch_Name: fitSapText(branchName, ITR_TEXT_LIMITS.lineBranchName),
+            U_Branch_Namelong: fitSapText(branchName, ITR_TEXT_LIMITS.lineBranchNameLong),
+          }
+        : {}),
     })),
   };
 }

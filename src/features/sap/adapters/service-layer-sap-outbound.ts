@@ -401,6 +401,8 @@ export const serviceLayerSapOutbound: SapOutboundPort = {
         ismsRef: order.orderNumber,
         fromWhs: routing.sourceWhsCode,
         toWhs: routing.branchWhsCode,
+        branchName: order.branch.name,
+        notes: order.notes,
         lines: plainLines,
       });
     }
