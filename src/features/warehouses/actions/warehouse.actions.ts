@@ -17,8 +17,8 @@ const warehouseSchema = z.object({
 
 const locationSchema = z.object({
   warehouseId: z.string().min(1),
-  code: z.string().min(1),
-  name: z.string().min(1),
+  code: z.string().trim().min(1).max(64),
+  name: z.string().trim().min(1).max(120),
 });
 
 export async function listWarehousesAction() {

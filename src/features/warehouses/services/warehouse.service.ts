@@ -1,5 +1,9 @@
 import { auditService } from "@/features/audit/services/audit.service";
 import { warehouseRepository } from "@/features/warehouses/repositories/warehouse.repository";
+import {
+  duplicateLocationCodeMessage,
+  sameLocationCode,
+} from "@/features/warehouses/utils/location-code";
 
 export const warehouseService = {
   listWarehouses(tenantId: string) {
@@ -66,10 +70,13 @@ export const warehouseService = {
   }) {
     const warehouse = await warehouseRepository.findById(input.tenantId, input.warehouseId);
     if (!warehouse) throw new Error("Warehouse not found");
+    if (warehouse.locations.some((location) => sameLocationCode(location.code, input.code))) {
+      throw new Error(duplicateLocationCodeMessage(input.code));
+    }
 
     const location = await warehouseRepository.addLocation(input.warehouseId, {
-      code: input.code,
-      name: input.name,
+      code: input.code.trim(),
+      name: input.name.trim(),
     });
 
     await auditService.log({
