@@ -54,8 +54,14 @@ import { DeleteConfirmDialog } from "@/components/data-table/delete-confirm-dial
 import { LoadingModal } from "@/components/ui/loading-modal";
 import {
   formatOrderModeOfPayment,
+  resolveOrderModeOfPayment,
   type OrderSapDocType,
 } from "@/features/orders/constants/order-sap-doc-type";
+import {
+  MODE_OF_PAYMENT_KIND_LABELS,
+  type ModeOfPaymentKindValue,
+} from "@/features/lookups/constants/mode-of-payment-kind";
+import { ModeOfPaymentBadge } from "@/features/orders/components/mode-of-payment-badge";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { matchesTableSearch } from "@/utils/match-table-search";
 import type { ManualSpecialTypeFilter } from "@/features/orders/lib/manual-special-order-scope";
@@ -77,11 +83,11 @@ interface OrderRow {
   sapDocType?: OrderSapDocType | null;
   sapDocNum?: number | null;
   deliveryDueDate?: string | Date | null;
-  modeOfPayment?: { name: string } | null;
+  modeOfPayment?: ModeOfPaymentRow | null;
   branch: {
     name: string;
     deliverySchedule?: unknown;
-    dealer?: { modeOfPayment: { name: string } | null } | null;
+    dealer?: { modeOfPayment: ModeOfPaymentRow | null } | null;
   };
   createdBy: { name: string | null; email: string };
   details: {
@@ -102,7 +108,22 @@ interface OrderRow {
   }[];
 }
 
+interface ModeOfPaymentRow {
+  name: string;
+  kind?: ModeOfPaymentKindValue | null;
+}
+
 const orderColumn = createColumnHelper<DataTableFeatures, OrderRow>();
+
+/** "Consignment COD" so the search box finds orders by kind or by mode of payment name. */
+function modeOfPaymentSearchText(order: OrderRow): string {
+  const resolved = resolveOrderModeOfPayment({
+    orderModeOfPayment: order.modeOfPayment,
+    dealerModeOfPayment: order.branch.dealer?.modeOfPayment,
+  });
+  if (!resolved) return "";
+  return [resolved.kind ? MODE_OF_PAYMENT_KIND_LABELS[resolved.kind] : "", resolved.name].join(" ");
+}
 
 type OrderSortField = "orderNumber" | "branch" | "orderType" | "status" | "createdAt";
 type OrderSortDir = "asc" | "desc";
@@ -396,6 +417,7 @@ export function OrdersTable({
           o.status,
           o.createdBy?.name,
           o.createdBy?.email,
+          modeOfPaymentSearchText(o),
         ]),
       ),
     [result.items, query],
@@ -514,6 +536,19 @@ export function OrdersTable({
         header: "Type",
         enableSorting: true,
         cell: ({ row }) => <OrderTypeBadge orderType={row.original.orderType} />,
+      }),
+      orderColumn.display({
+        id: "modeOfPayment",
+        header: "Mode of payment",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <ModeOfPaymentBadge
+            modeOfPayment={resolveOrderModeOfPayment({
+              orderModeOfPayment: row.original.modeOfPayment,
+              dealerModeOfPayment: row.original.branch.dealer?.modeOfPayment,
+            })}
+          />
+        ),
       }),
       orderColumn.display({
         id: "status",

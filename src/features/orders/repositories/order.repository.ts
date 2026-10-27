@@ -28,10 +28,10 @@ const orderListInclude = {
       name: true,
       sapCode: true,
       deliverySchedule: true,
-      dealer: { select: { name: true, modeOfPayment: { select: { name: true } } } },
+      dealer: { select: { name: true, modeOfPayment: { select: { name: true, kind: true } } } },
     },
   },
-  modeOfPayment: { select: { name: true } },
+  modeOfPayment: { select: { name: true, kind: true } },
   createdBy: { select: { id: true, name: true, email: true } },
   details: {
     include: {

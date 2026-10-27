@@ -1,3 +1,5 @@
+import type { ModeOfPaymentKindValue } from "@/features/lookups/constants/mode-of-payment-kind";
+
 export type OrderSapDocType = "ITR" | "SO";
 
 /** UI labels for the SAP document an approved branch order becomes. */
@@ -16,6 +18,24 @@ export function formatOrderModeOfPayment(input: {
 }): string {
   if (input.orderModeOfPayment) return `${input.orderModeOfPayment} (order override)`;
   return input.dealerModeOfPayment ?? "—";
+}
+
+interface ModeOfPaymentRef {
+  name: string;
+  kind?: ModeOfPaymentKindValue | null;
+}
+
+/**
+ * The mode of payment an order actually uses: its own override, else the dealer's.
+ * Null when neither is set. `kind` is null when the mode of payment is not classified yet.
+ */
+export function resolveOrderModeOfPayment(input: {
+  orderModeOfPayment: ModeOfPaymentRef | null | undefined;
+  dealerModeOfPayment: ModeOfPaymentRef | null | undefined;
+}): { name: string; kind: ModeOfPaymentKindValue | null; override: boolean } | null {
+  const chosen = input.orderModeOfPayment ?? input.dealerModeOfPayment;
+  if (!chosen) return null;
+  return { name: chosen.name, kind: chosen.kind ?? null, override: Boolean(input.orderModeOfPayment) };
 }
 
 /** "ITR (Consignment) · 1234", or "—" when the order has no document type yet. */
