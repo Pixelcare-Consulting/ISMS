@@ -1,4 +1,4 @@
-import type { SapOrderDocType } from "@prisma/client";
+import type { DeliveryReturnStatus, SapOrderDocType } from "@prisma/client";
 import { Prisma } from "@/lib/database/generated/prisma/client";
 
 import {
@@ -8,6 +8,11 @@ import {
 } from "@/features/inventory/services/serial-placement";
 import { prisma } from "@/lib/database/client";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
+import {
+  asWorkflowCode,
+  DELIVERY_WORKFLOW_CODE,
+  type DeliveryWorkflowCodeKey,
+} from "@/features/logistics/constants/workflow-codes";
 import {
   assertExclusiveClaim,
   planAccept,
@@ -34,6 +39,7 @@ import {
   lockDeliveryRow,
   txWorkflowCodeId,
 } from "@/features/logistics/services/delivery-settle";
+import type { LogisticsShipment } from "@/features/logistics/lib/shipment";
 import type { PostingActor, PostingDb } from "@/features/logistics/services/posting-support";
 
 /**
@@ -48,10 +54,7 @@ import type { PostingActor, PostingDb } from "@/features/logistics/services/post
  * a return request (delivery-return.service), which posts SAP first.
  */
 
-async function workflowCodeId(
-  tenantId: string,
-  code: "approved" | "pending" | "accepted" | "rejected" | "partial",
-) {
+async function workflowCodeId(tenantId: string, code: DeliveryWorkflowCodeKey) {
   return reasonStatusService.requireCodeId(tenantId, "delivery_workflow", code);
 }
 
@@ -116,15 +119,9 @@ export async function loadDelivery(tenantId: string, deliveryId: string): Promis
     .filter((detail) => detail.quantity > 0);
 
   const status = delivery.statusCode.code;
-  const known: DeliveryPostingView["status"] =
-    status === "approved" ||
-    status === "pending" ||
-    status === "accepted" ||
-    status === "rejected" ||
-    status === "partial" ||
-    status === "requested"
-      ? status
-      : "requested";
+  const known =
+    asWorkflowCode(DELIVERY_WORKFLOW_CODE, status) ??
+    DELIVERY_WORKFLOW_CODE.requested;
 
   return {
     id: delivery.id,
@@ -176,21 +173,93 @@ async function assertSameSerialsAsSapPost(
 
 async function loadHolds(tenantId: string, serialNumberIds: string[]): Promise<WarehouseHold[]> {
   if (serialNumberIds.length === 0) return [];
-  const rows = await prisma.warehouseInventory.findMany({
-    where: { tenantId, serialNumberId: { in: serialNumberIds } },
-    select: {
-      serialNumberId: true,
-      warehouseLocationId: true,
-      warehouseLocation: { select: { warehouseId: true } },
-      serialNumber: { select: { modelId: true } },
-    },
+  const [rows, tagged] = await Promise.all([
+    prisma.warehouseInventory.findMany({
+      where: { tenantId, serialNumberId: { in: serialNumberIds } },
+      select: {
+        serialNumberId: true,
+        warehouseLocationId: true,
+        warehouseLocation: { select: { warehouseId: true } },
+        serialNumber: { select: { modelId: true } },
+      },
+    }),
+    prisma.branchInventory.findMany({
+      where: { ...taggedStockWhere(tenantId), serialNumberId: { in: serialNumberIds } },
+      select: {
+        serialNumberId: true,
+        warehouseLocationId: true,
+        warehouseLocation: { select: { warehouseId: true } },
+        serialNumber: { select: { modelId: true } },
+      },
+    }),
+  ]);
+  return [
+    ...rows.map((row) => ({
+      serialNumberId: row.serialNumberId,
+      modelId: row.serialNumber.modelId,
+      warehouseId: row.warehouseLocation.warehouseId,
+      warehouseLocationId: row.warehouseLocationId,
+      source: "WAREHOUSE" as const,
+    })),
+    ...tagged.flatMap((row) =>
+      row.warehouseLocation && row.warehouseLocationId
+        ? [
+            {
+              serialNumberId: row.serialNumberId,
+              modelId: row.serialNumber.modelId,
+              warehouseId: row.warehouseLocation.warehouseId,
+              warehouseLocationId: row.warehouseLocationId,
+              source: "BRANCH" as const,
+            },
+          ]
+        : [],
+    ),
+  ];
+}
+
+/**
+ * Branch stock stocked into a warehouse location and still sellable stock:
+ * dispatch may take it from that location like warehouse stock.
+ */
+function taggedStockWhere(tenantId: string) {
+  return {
+    tenantId,
+    warehouseLocationId: { not: null },
+    statusCode: { code: "STK" },
+  };
+}
+
+/**
+ * Per model: serials the SAP sync places in the warehouse (`sap_whs_code`) that have no
+ * ISMS shelf location and that ISMS holds nowhere else. Dispatch only takes shelved
+ * stock, so these are counted to prompt a Stock in, never offered for picking.
+ */
+async function countUnshelvedByModel(
+  tenantId: string,
+  modelIds: string[],
+  warehouseId: string | null,
+): Promise<Map<string, number>> {
+  const warehouses = await prisma.warehouse.findMany({
+    where: { tenantId, deletedAt: null, ...(warehouseId ? { id: warehouseId } : {}) },
+    select: { code: true },
   });
-  return rows.map((row) => ({
-    serialNumberId: row.serialNumberId,
-    modelId: row.serialNumber.modelId,
-    warehouseId: row.warehouseLocation.warehouseId,
-    warehouseLocationId: row.warehouseLocationId,
-  }));
+  if (warehouses.length === 0 || modelIds.length === 0) return new Map();
+
+  const groups = await prisma.serialNumber.groupBy({
+    by: ["modelId"],
+    where: {
+      tenantId,
+      deletedAt: null,
+      modelId: { in: modelIds },
+      sapWhsCode: { in: warehouses.map((warehouse) => warehouse.code) },
+      warehouseInventories: { none: {} },
+      serviceCenterInventories: { none: {} },
+      // No branch row, or the sync's own stock-in: branch STK with no location.
+      branchInventories: { every: { warehouseLocationId: null, statusCode: { code: "STK" } } },
+    },
+    _count: { _all: true },
+  });
+  return new Map(groups.map((group) => [group.modelId, group._count._all]));
 }
 
 export interface DispatchCandidate {
@@ -199,6 +268,8 @@ export interface DispatchCandidate {
   modelId: string;
   warehouseCode: string;
   locationCode: string;
+  /** Branch holding a stocked-in branch unit; null for warehouse stock. */
+  heldBy: string | null;
 }
 
 /** One ordered model on a delivery and how many serials dispatch must pick for it. */
@@ -207,6 +278,8 @@ export interface DispatchModelRequirement {
   skuCode: string;
   modelName: string;
   requiredQty: number;
+  /** In the warehouse per SAP but not on an ISMS shelf yet, so not pickable. */
+  unshelvedQty: number;
 }
 
 export interface DeliveryReceiptLine {
@@ -273,7 +346,186 @@ export async function finalizeDeliveryIfSettled(
   return next;
 }
 
+export interface DeliveryDetail {
+  id: string;
+  deliveryNo: string;
+  drNo: string | null;
+  drDate: string | null;
+  shipment: LogisticsShipment;
+  status: { code: string; name: string; color: string | null };
+  branch: { name: string };
+  order: { orderNumber: string } | null;
+  /** Approved order lines. Shown when the delivery has no serials yet. */
+  orderLines: { id: string; skuCode: string; modelName: string; quantity: number }[];
+  serials: { serialNumberId: string; serialNo: string; skuCode: string; modelName: string }[];
+  latestReturn: {
+    id: string;
+    requestNo: string;
+    status: DeliveryReturnStatus;
+    sapError: string | null;
+  } | null;
+  history: { id: string; action: string; at: string; userName: string | null }[];
+}
+
 export const deliveryPostingService = {
+  /** Header, approved lines or serials, and audit history for the delivery page. */
+  async getDetail(actor: PostingActor, deliveryId: string): Promise<DeliveryDetail> {
+    const delivery = await prisma.branchDelivery.findFirst({
+      where: { id: deliveryId, tenantId: actor.tenantId },
+      select: {
+        id: true,
+        deliveryNo: true,
+        drNo: true,
+        drDate: true,
+        waybillNo: true,
+        courierName: true,
+        scheduledAt: true,
+        scheduledBy: { select: { name: true } },
+        branchId: true,
+        sourceWarehouseId: true,
+        branch: { select: { name: true } },
+        statusCode: { select: { code: true, name: true, color: true } },
+        order: {
+          select: {
+            orderNumber: true,
+            details: {
+              select: {
+                id: true,
+                quantity: true,
+                approvedQty: true,
+                model: { select: { skuCode: true, name: true } },
+              },
+              orderBy: { model: { skuCode: "asc" } },
+            },
+          },
+        },
+        lines: {
+          select: {
+            serialNumberId: true,
+            serialNumber: {
+              select: {
+                serialNo: true,
+                model: { select: { skuCode: true, name: true } },
+              },
+            },
+          },
+          orderBy: { serialNumber: { serialNo: "asc" } },
+        },
+        returnRequests: {
+          orderBy: { requestedAt: "desc" },
+          take: 1,
+          select: { id: true, requestNo: true, status: true, sapError: true },
+        },
+      },
+    });
+    if (!delivery) throw new Error("Delivery not found");
+    await authorizeDeliveryScope(actor, {
+      branchId: delivery.branchId,
+      sourceWarehouseId: delivery.sourceWarehouseId,
+    });
+
+    const history = await prisma.auditLog.findMany({
+      where: { tenantId: actor.tenantId, entityType: "BranchDelivery", entityId: delivery.id },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, action: true, createdAt: true, user: { select: { name: true } } },
+    });
+
+    const orderLines = (delivery.order?.details ?? []).flatMap((detail) => {
+      const quantity = detail.approvedQty ?? detail.quantity;
+      if (quantity <= 0) return [];
+      return [
+        {
+          id: detail.id,
+          skuCode: detail.model.skuCode,
+          modelName: detail.model.name,
+          quantity,
+        },
+      ];
+    });
+
+    return {
+      id: delivery.id,
+      deliveryNo: delivery.deliveryNo,
+      drNo: delivery.drNo,
+      drDate: delivery.drDate ? delivery.drDate.toISOString() : null,
+      shipment: {
+        waybillNo: delivery.waybillNo,
+        courierName: delivery.courierName,
+        scheduledAt: delivery.scheduledAt ? delivery.scheduledAt.toISOString() : null,
+        scheduledByName: delivery.scheduledBy?.name.trim() || null,
+      },
+      status: delivery.statusCode,
+      branch: { name: delivery.branch.name },
+      order: delivery.order ? { orderNumber: delivery.order.orderNumber } : null,
+      orderLines,
+      serials: delivery.lines.map((line) => ({
+        serialNumberId: line.serialNumberId,
+        serialNo: line.serialNumber.serialNo,
+        skuCode: line.serialNumber.model.skuCode,
+        modelName: line.serialNumber.model.name,
+      })),
+      latestReturn: delivery.returnRequests[0] ?? null,
+      history: history.map((row) => ({
+        id: row.id,
+        action: row.action,
+        at: row.createdAt.toISOString(),
+        userName: row.user?.name || null,
+      })),
+    };
+  },
+
+  /** Saves waybill, courier, and schedule date. Does not move stock or change status. */
+  async saveShipment(
+    actor: PostingActor,
+    deliveryId: string,
+    input: { waybillNo: string; courierName: string; scheduledAt: Date },
+  ) {
+    const delivery = await prisma.branchDelivery.findFirst({
+      where: { id: deliveryId, tenantId: actor.tenantId },
+      select: {
+        id: true,
+        deliveryNo: true,
+        branchId: true,
+        sourceWarehouseId: true,
+        statusCode: { select: { code: true } },
+      },
+    });
+    if (!delivery) throw new Error("Delivery not found");
+    await authorizeDeliveryScope(actor, {
+      branchId: delivery.branchId,
+      sourceWarehouseId: delivery.sourceWarehouseId,
+    });
+    if (delivery.statusCode.code === DELIVERY_WORKFLOW_CODE.rejected) {
+      throw new Error("This delivery is closed");
+    }
+
+    await prisma.branchDelivery.update({
+      where: { id: delivery.id },
+      data: {
+        waybillNo: input.waybillNo,
+        courierName: input.courierName,
+        scheduledAt: input.scheduledAt,
+        scheduledById: actor.userId,
+      },
+    });
+    await prisma.auditLog.create({
+      data: {
+        tenantId: actor.tenantId,
+        userId: actor.userId,
+        action: "delivery.shipment_saved",
+        entityType: "BranchDelivery",
+        entityId: delivery.id,
+        metadata: {
+          deliveryNo: delivery.deliveryNo,
+          waybillNo: input.waybillNo,
+          courierName: input.courierName,
+          scheduledAt: input.scheduledAt.toISOString().slice(0, 10),
+        },
+      },
+    });
+    return { id: delivery.id };
+  },
+
   /** Serials on a dispatched delivery, split by whether the branch has received them. */
   async listReceiptLines(
     actor: PostingActor,
@@ -368,39 +620,70 @@ export const deliveryPostingService = {
       select: { id: true, skuCode: true, name: true },
       orderBy: { skuCode: "asc" },
     });
-    const models: DispatchModelRequirement[] = modelRows.map((model) => ({
-      modelId: model.id,
-      skuCode: model.skuCode,
-      modelName: model.name,
-      requiredQty: requiredByModel.get(model.id) ?? 0,
-    }));
-
     const branch = await prisma.branch.findFirst({
       where: { id: delivery.branchId, tenantId },
       select: { primaryWarehouseId: true },
     });
 
     const primaryWarehouseId = branch?.primaryWarehouseId ?? null;
-    const rows = await prisma.warehouseInventory.findMany({
-      where: {
-        tenantId,
-        serialNumber: { modelId: { in: modelIds }, deletedAt: null },
-        ...(primaryWarehouseId
-          ? { warehouseLocation: { warehouseId: primaryWarehouseId } }
-          : {}),
-      },
-      select: {
-        serialNumberId: true,
-        serialNumber: { select: { serialNo: true, modelId: true } },
-        warehouseLocation: {
-          select: { code: true, warehouse: { select: { id: true, code: true } } },
+    const unshelvedByModel = await countUnshelvedByModel(
+      tenantId,
+      [...requiredByModel.keys()],
+      primaryWarehouseId,
+    );
+    const models: DispatchModelRequirement[] = modelRows.map((model) => ({
+      modelId: model.id,
+      skuCode: model.skuCode,
+      modelName: model.name,
+      requiredQty: requiredByModel.get(model.id) ?? 0,
+      unshelvedQty: unshelvedByModel.get(model.id) ?? 0,
+    }));
+    const locationSelect = {
+      select: { code: true, warehouse: { select: { id: true, code: true } } },
+    } as const;
+    const [rows, tagged] = await Promise.all([
+      prisma.warehouseInventory.findMany({
+        where: {
+          tenantId,
+          serialNumber: { modelId: { in: modelIds }, deletedAt: null },
+          ...(primaryWarehouseId
+            ? { warehouseLocation: { warehouseId: primaryWarehouseId } }
+            : {}),
         },
-      },
-      orderBy: { serialNumber: { serialNo: "asc" } },
-    });
+        select: {
+          serialNumberId: true,
+          serialNumber: { select: { serialNo: true, modelId: true } },
+          warehouseLocation: locationSelect,
+        },
+      }),
+      prisma.branchInventory.findMany({
+        where: {
+          ...taggedStockWhere(tenantId),
+          serialNumber: { modelId: { in: modelIds }, deletedAt: null },
+          ...(primaryWarehouseId
+            ? { warehouseLocation: { warehouseId: primaryWarehouseId } }
+            : {}),
+        },
+        select: {
+          serialNumberId: true,
+          branch: { select: { name: true } },
+          serialNumber: { select: { serialNo: true, modelId: true } },
+          warehouseLocation: locationSelect,
+        },
+      }),
+    ]);
+
+    const merged = [
+      ...rows.map((row) => ({ ...row, heldBy: null as string | null })),
+      ...tagged.flatMap((row) =>
+        row.warehouseLocation
+          ? [{ ...row, warehouseLocation: row.warehouseLocation, heldBy: row.branch.name }]
+          : [],
+      ),
+    ].sort((a, b) => a.serialNumber.serialNo.localeCompare(b.serialNumber.serialNo));
 
     const serials = selectDispatchCandidates(
-      rows.map((row) => ({
+      merged.map((row) => ({
         id: row.serialNumberId,
         serialNo: row.serialNumber.serialNo,
         modelId: row.serialNumber.modelId,
@@ -408,6 +691,7 @@ export const deliveryPostingService = {
         warehouseId: row.warehouseLocation.warehouse.id,
         warehouseCode: row.warehouseLocation.warehouse.code,
         locationCode: row.warehouseLocation.code,
+        heldBy: row.heldBy,
       })),
       modelIds,
       primaryWarehouseId,
@@ -422,6 +706,7 @@ export const deliveryPostingService = {
         modelId: row.modelId,
         warehouseCode: row.warehouseCode,
         locationCode: row.locationCode,
+        heldBy: row.heldBy,
       })),
     };
   },
@@ -482,10 +767,19 @@ export const deliveryPostingService = {
       await assertSameSerialsAsSapPost(input.tenantId, input.deliveryId, drNo, requestedIds);
     }
 
-    const [pendingCodeId, ditCodeId] = await Promise.all([
+    const [pendingCodeId, ditCodeId, stkCodeId] = await Promise.all([
       workflowCodeId(input.tenantId, "pending"),
       inventoryCodeId(input.tenantId, "DIT"),
+      inventoryCodeId(input.tenantId, "STK"),
     ]);
+    // Stocked-in branch units are relocated; warehouse rows are removed as before.
+    const relocateIds = plan.moves
+      .filter((move) => holds.find((hold) => hold.serialNumberId === move.serialNumberId)?.source === "BRANCH")
+      .map((move) => move.serialNumberId);
+    const relocating = new Set(relocateIds);
+    const warehouseMoveIds = plan.moves
+      .map((move) => move.serialNumberId)
+      .filter((serialNumberId) => !relocating.has(serialNumberId));
     const approvedCodeId = await workflowCodeId(input.tenantId, "approved");
 
     try {
@@ -508,7 +802,7 @@ export const deliveryPostingService = {
           select: { id: true, serialNo: true },
         }),
         tx.branchInventory.findMany({
-          where: { tenantId: input.tenantId, serialNumberId: { in: moveIds } },
+          where: { tenantId: input.tenantId, serialNumberId: { in: warehouseMoveIds } },
           select: {
             serialNumberId: true,
             branchId: true,
@@ -520,7 +814,7 @@ export const deliveryPostingService = {
       const serialNoById = new Map(serialRows.map((row) => [row.id, row.serialNo]));
       const placement = planDispatchBranchPlacement(
         preview.branchId,
-        moveIds.map((serialNumberId) => ({
+        warehouseMoveIds.map((serialNumberId) => ({
           serialNumberId,
           serialNo: serialNoById.get(serialNumberId) ?? serialNumberId,
         })),
@@ -539,6 +833,7 @@ export const deliveryPostingService = {
       const replacingIds = occupied
         .filter((row) => {
           if (row.table === "warehouse" && row.warehouseId === plan.warehouseId) return true;
+          if (row.table === "branch" && relocating.has(row.serialNumberId)) return true;
           return (
             row.table === "branch" &&
             row.branchId === preview.branchId &&
@@ -548,18 +843,43 @@ export const deliveryPostingService = {
         .map((row) => row.id);
       assertExclusivePlacement({ placements: occupied, replacingIds });
 
-      const removed = await tx.warehouseInventory.deleteMany({
-        where: {
-          tenantId: input.tenantId,
-          serialNumberId: { in: plan.moves.map((move) => move.serialNumberId) },
-          warehouseLocation: { warehouseId: plan.warehouseId },
-        },
-      });
-      assertExclusiveClaim(
-        removed.count,
-        plan.moves.length,
-        "One or more serials are missing, already allocated, or not in that warehouse",
-      );
+      if (warehouseMoveIds.length > 0) {
+        const removed = await tx.warehouseInventory.deleteMany({
+          where: {
+            tenantId: input.tenantId,
+            serialNumberId: { in: warehouseMoveIds },
+            warehouseLocation: { warehouseId: plan.warehouseId },
+          },
+        });
+        assertExclusiveClaim(
+          removed.count,
+          warehouseMoveIds.length,
+          "One or more serials are missing, already allocated, or not in that warehouse",
+        );
+      }
+
+      if (relocateIds.length > 0) {
+        // Still stock and still on a shelf of this warehouse, re-read under the lock.
+        const relocated = await tx.branchInventory.updateMany({
+          where: {
+            tenantId: input.tenantId,
+            serialNumberId: { in: relocateIds },
+            statusCodeId: stkCodeId,
+            warehouseLocation: { warehouseId: plan.warehouseId },
+          },
+          data: {
+            branchId: preview.branchId,
+            statusCodeId: ditCodeId,
+            warehouseLocationId: null,
+            updatedById: input.userId,
+          },
+        });
+        assertExclusiveClaim(
+          relocated.count,
+          relocateIds.length,
+          "One or more serials were sold, moved or taken off their location. Reload and pick again.",
+        );
+      }
 
       if (placement.inserts.length > 0) {
         await tx.branchInventory.createMany({

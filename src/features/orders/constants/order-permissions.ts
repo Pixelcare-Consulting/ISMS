@@ -4,6 +4,7 @@ import { hasPermission } from "@/lib/auth/permissions";
 
 export type OrderPermissionAction = "view" | "create" | "approve";
 
+/** Paths also live in order-type-route.ts so client components do not import this file. */
 export const ORDER_TYPE_ROUTE: Record<BranchOrderType, string> = {
   manual: "/orders/manual",
   special: "/orders/special",
@@ -78,6 +79,19 @@ export function hasAnyOrderPermission(
   );
 }
 
+/**
+ * Super Admin force-cancel still needs an orders view or approve permission.
+ * The role slug alone is not enough.
+ */
+export function hasOrdersForceCancelPermission(
+  permissions: string[] | undefined,
+): boolean {
+  return (
+    hasAnyOrderPermission(permissions, "view") ||
+    hasAnyOrderPermission(permissions, "approve")
+  );
+}
+
 export function canAccessOrderType(
   permissions: string[] | undefined,
   orderType: BranchOrderType,
@@ -96,6 +110,23 @@ export function firstAccessibleOrderType(
     if (canAccessOrderType(permissions, type)) {
       return type;
     }
+  }
+  return null;
+}
+
+/**
+ * Orders home. Manual and Special share `/orders/manual`.
+ * Auto replenish is the home only when the viewer cannot open either of those.
+ */
+export function ordersHomeHref(permissions: string[] | undefined): string | null {
+  if (
+    canAccessOrderType(permissions, "manual") ||
+    canAccessOrderType(permissions, "special")
+  ) {
+    return ORDER_TYPE_ROUTE.manual;
+  }
+  if (canAccessOrderType(permissions, "auto_replenish")) {
+    return ORDER_TYPE_ROUTE.auto_replenish;
   }
   return null;
 }

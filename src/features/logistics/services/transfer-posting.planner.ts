@@ -1,9 +1,11 @@
 /**
  * Branch transfer rules. Approval holds the same branch row as reserved and
- * does not add destination stock. Receipt moves that row and restores the
- * code stored on the line, so a defective unit stays defective.
+ * does not add destination stock. The receiving branch then accepts or rejects
+ * each serial into stock (STK). The releasing team leader's whole-request
+ * reject still restores the code the line stored.
  */
 
+import type { TransferWorkflowCodeKey } from "@/features/logistics/constants/workflow-codes";
 import {
   classifyAllocation,
   uniqueSerialIds,
@@ -13,17 +15,9 @@ import {
   type PlanFailure,
 } from "@/features/logistics/services/posting-planner-types";
 
-export type TransferStatus =
-  | "requested"
-  | "approved"
-  | "draft"
-  | "pending_tl"
-  | "for_transfer"
-  | "in_transit"
-  | "accepted"
-  | "rejected"
-  | "completed"
-  | "cancelled";
+export type TransferStatus = TransferWorkflowCodeKey;
+
+export type TransferLineDecision = "pending" | "accepted" | "rejected";
 
 export interface TransferLineView {
   serialNumberId: string;
@@ -31,6 +25,8 @@ export interface TransferLineView {
   inventoryCode: InventoryCode | null;
   /** Branch that currently holds the inventory row. Null when the row is missing. */
   branchId: string | null;
+  /** Receiving-branch outcome. Omitted lines are still pending. */
+  decision?: TransferLineDecision;
 }
 
 export interface TransferCreatePlan {
@@ -64,10 +60,18 @@ export interface TransferReleasePlan {
 
 export interface TransferReceivePlan {
   ok: true;
-  nextStatus: "in_transit" | "accepted";
-  moves: { serialNumberId: string; restoreCode: HoldCode }[];
+  nextStatus: "for_transfer" | "in_transit" | "accepted" | "rejected" | "completed";
+  /** Destination stock is always STK. fromCode is the hold being released. */
+  moves: { serialNumberId: string; restoreCode: "STK"; fromCode: "RSV" | "DIT" }[];
   idempotent: boolean;
 }
+
+export type TransferHeaderAfterLines =
+  | "for_transfer"
+  | "in_transit"
+  | "accepted"
+  | "rejected"
+  | "completed";
 
 const APPROVABLE: readonly TransferStatus[] = ["pending_tl", "requested"];
 const RELEASABLE: readonly TransferStatus[] = ["for_transfer", "approved"];
@@ -196,16 +200,58 @@ export function planTransferReject(input: {
   return { ok: true, nextStatus: "rejected", restores, idempotent: false };
 }
 
+const RECEIVABLE: readonly TransferStatus[] = ["for_transfer", "approved", "in_transit"];
+
+function openLines<T extends { decision?: TransferLineDecision }>(lines: readonly T[]): T[] {
+  return lines.filter((line) => line.decision !== "accepted" && line.decision !== "rejected");
+}
+
+export function headerAfterLineDecisions(
+  lines: readonly { decision?: TransferLineDecision }[],
+): TransferHeaderAfterLines {
+  let pending = 0;
+  let accepted = 0;
+  let rejected = 0;
+  for (const line of lines) {
+    const decision = line.decision ?? "pending";
+    switch (decision) {
+      case "accepted":
+        accepted += 1;
+        break;
+      case "rejected":
+        rejected += 1;
+        break;
+      case "pending":
+        pending += 1;
+        break;
+      default: {
+        const unreachable: never = decision;
+        return unreachable;
+      }
+    }
+  }
+  if (pending > 0) return accepted + rejected > 0 ? "in_transit" : "for_transfer";
+  if (accepted > 0 && rejected > 0) return "completed";
+  if (accepted > 0) return "accepted";
+  if (rejected > 0) return "rejected";
+  return "for_transfer";
+}
+
 export function planTransferRelease(input: {
   status: TransferStatus;
-  lines: readonly Pick<TransferLineView, "serialNumberId" | "priorCode" | "inventoryCode">[];
+  lines: readonly Pick<TransferLineView, "serialNumberId" | "priorCode" | "inventoryCode" | "decision">[];
 }): TransferReleasePlan | PlanFailure {
   if (input.lines.length === 0) {
     return { ok: false, error: "This transfer has no serials to release" };
   }
 
+  const pending = openLines(input.lines);
+  if (pending.length === 0) {
+    return { ok: false, error: "Every serial on this transfer is already accepted or rejected" };
+  }
+
   if (input.status === "in_transit") {
-    const allTransit = input.lines.every((line) => line.inventoryCode === "DIT");
+    const allTransit = pending.every((line) => line.inventoryCode === "DIT");
     if (!allTransit) {
       return { ok: false, error: "Some serials are not reserved for release" };
     }
@@ -217,7 +263,7 @@ export function planTransferRelease(input: {
   }
 
   const moves: TransferReleasePlan["moves"] = [];
-  for (const line of input.lines) {
+  for (const line of pending) {
     if (line.priorCode !== "STK" && line.priorCode !== "DEF") return missingPrior(line.serialNumberId);
     if (line.inventoryCode !== "RSV") {
       return { ok: false, error: "Some serials are not reserved for release" };
@@ -228,8 +274,19 @@ export function planTransferRelease(input: {
   return { ok: true, nextStatus: "in_transit", moves, idempotent: false };
 }
 
-function lineIsReceived(line: TransferLineView, toBranchId: string): boolean {
-  return line.branchId === toBranchId && line.inventoryCode === line.priorCode && line.priorCode !== null;
+function lineIsAccepted(line: TransferLineView, toBranchId: string): boolean {
+  if (line.decision === "accepted") return true;
+  if (line.decision === "rejected") return false;
+  return (
+    line.branchId === toBranchId &&
+    line.priorCode !== null &&
+    (line.inventoryCode === "STK" || line.inventoryCode === line.priorCode)
+  );
+}
+
+function holdCode(line: TransferLineView): "RSV" | "DIT" | null {
+  if (line.inventoryCode === "RSV" || line.inventoryCode === "DIT") return line.inventoryCode;
+  return null;
 }
 
 export function planTransferReceive(input: {
@@ -255,46 +312,90 @@ export function planTransferReceive(input: {
     }
   }
 
-  if (input.status === "accepted") {
+  if (input.status === "accepted" || input.status === "completed" || input.status === "rejected") {
     const alreadyThere = requested.every((serialNumberId) => {
       const line = lineById.get(serialNumberId);
-      return line ? lineIsReceived(line, input.toBranchId) : false;
+      return line ? lineIsAccepted(line, input.toBranchId) : false;
     });
     if (!alreadyThere) {
-      return { ok: false, error: "This transfer is already accepted" };
+      return { ok: false, error: "This transfer is already finished" };
     }
-    return { ok: true, nextStatus: "accepted", moves: [], idempotent: true };
+    return { ok: true, nextStatus: input.status === "rejected" ? "rejected" : input.status === "completed" ? "completed" : "accepted", moves: [], idempotent: true };
   }
 
-  if (input.status !== "in_transit") {
-    return { ok: false, error: "Receive the transfer only after it is in transit" };
+  if (!RECEIVABLE.includes(input.status)) {
+    return { ok: false, error: "Accept serials only after the releasing team leader approves" };
   }
 
   const moves: TransferReceivePlan["moves"] = [];
+  const acceptedIds = new Set<string>();
   for (const serialNumberId of requested) {
     const line = lineById.get(serialNumberId);
     if (!line) {
       return { ok: false, error: "One or more serials are not on this transfer" };
     }
+    if (line.decision === "rejected") {
+      return { ok: false, error: "A selected serial was already rejected" };
+    }
     if (line.priorCode !== "STK" && line.priorCode !== "DEF") return missingPrior(serialNumberId);
-    if (lineIsReceived(line, input.toBranchId)) continue;
-    if (line.branchId === input.fromBranchId && line.inventoryCode === "DIT") {
-      moves.push({ serialNumberId, restoreCode: line.priorCode });
+    if (lineIsAccepted(line, input.toBranchId)) {
+      acceptedIds.add(serialNumberId);
       continue;
     }
-    return { ok: false, error: "A selected serial is not in transit from the releasing branch" };
+    const fromCode = holdCode(line);
+    if (line.branchId === input.fromBranchId && fromCode) {
+      moves.push({ serialNumberId, restoreCode: "STK", fromCode });
+      acceptedIds.add(serialNumberId);
+      continue;
+    }
+    return { ok: false, error: "A selected serial is not waiting at the releasing branch" };
   }
 
-  const moving = new Set(moves.map((move) => move.serialNumberId));
-  const allReceived = input.lines.every((line) => {
-    if (moving.has(line.serialNumberId)) return true;
-    return lineIsReceived(line, input.toBranchId);
-  });
+  const projected = input.lines.map((line) =>
+    acceptedIds.has(line.serialNumberId) ? { ...line, decision: "accepted" as const } : line,
+  );
 
   return {
     ok: true,
-    nextStatus: allReceived ? "accepted" : "in_transit",
+    nextStatus: headerAfterLineDecisions(projected),
     moves,
     idempotent: moves.length === 0,
+  };
+}
+
+export function planTransferSerialReject(input: {
+  status: TransferStatus;
+  fromBranchId: string;
+  lines: readonly TransferLineView[];
+  serialNumberId: string;
+  remarks: string;
+}): TransferReceivePlan | PlanFailure {
+  const remarks = input.remarks.trim();
+  if (!remarks) return { ok: false, error: "Say why this serial was rejected" };
+  if (input.lines.length === 0) {
+    return { ok: false, error: "This transfer has no serials to reject" };
+  }
+  if (!RECEIVABLE.includes(input.status)) {
+    return { ok: false, error: "Reject serials only after the releasing team leader approves" };
+  }
+  const line = input.lines.find((row) => row.serialNumberId === input.serialNumberId);
+  if (!line) return { ok: false, error: "That serial is not on this transfer" };
+  if (line.decision === "accepted") return { ok: false, error: "This serial was already accepted" };
+  if (line.decision === "rejected") {
+    return { ok: true, nextStatus: headerAfterLineDecisions(input.lines), moves: [], idempotent: true };
+  }
+  if (line.priorCode !== "STK" && line.priorCode !== "DEF") return missingPrior(line.serialNumberId);
+  const fromCode = holdCode(line);
+  if (line.branchId !== input.fromBranchId || !fromCode) {
+    return { ok: false, error: "This serial is not waiting at the releasing branch" };
+  }
+  const projected = input.lines.map((row) =>
+    row.serialNumberId === line.serialNumberId ? { ...row, decision: "rejected" as const } : row,
+  );
+  return {
+    ok: true,
+    nextStatus: headerAfterLineDecisions(projected),
+    moves: [{ serialNumberId: line.serialNumberId, restoreCode: "STK", fromCode }],
+    idempotent: false,
   };
 }

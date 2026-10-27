@@ -4,10 +4,14 @@ import type { SapSyncEntity } from "@/features/sap/types/sap-sync-entity";
 import type { SapSyncResult } from "@/features/sap/schemas/sap-master-sync.schema";
 import { serialNumberRepository } from "@/features/serial-numbers/repositories/serial-number.repository";
 import {
-  beginSerialOnHandRun,
-  serialOnHandBlockReason,
-  stampSerialPageOnHand,
+  gateSerialPageByWarehouse,
+  readSerialPageLocations,
+  SERIAL_WAREHOUSE_MISSING_REASON,
 } from "@/features/serial-numbers/services/serial-onhand-stamp";
+import {
+  loadMasterWarehouseAllowList,
+  replicateOnHandSerialsToStk,
+} from "@/features/serial-numbers/services/serial-stock-replicate";
 
 /**
  * Serial number master data (OSRN).
@@ -108,14 +112,42 @@ export const serialNumberSyncEntity: SapSyncEntity<SerialRecord, ModelIndex> = {
     return { record: { serialNo, modelId, itemCode, docEntry: Number(row.DocEntry) } };
   },
 
+  /**
+   * A serial is only taken when SAP holds it nowhere (sold or shipped out) or in a
+   * warehouse ISMS has. One held in a warehouse ISMS lacks is neither created nor
+   * updated, and is reported by warehouse code. The engine still marks it seen, so an
+   * existing serial is not retired for it; it is picked up once that warehouse is synced.
+   */
   async applyPage(tenantId, records) {
-    const applied = await serialNumberRepository.applySapSyncPage(
-      tenantId,
-      records.map(({ serialNo, modelId, docEntry }) => ({ serialNo, modelId, docEntry })),
-    );
-    // Flags only. This does not create branch or warehouse stock.
-    await stampSerialPageOnHand(tenantId, records);
-    return applied;
+    const { onHand, notOnHand } = await readSerialPageLocations(tenantId, records);
+    const allowList = await loadMasterWarehouseAllowList(tenantId);
+    const { writable, known, missing } = gateSerialPageByWarehouse(records, onHand, allowList);
+
+    const applied =
+      writable.length > 0
+        ? await serialNumberRepository.applySapSyncPage(
+            tenantId,
+            writable.map(({ serialNo, modelId, docEntry }) => ({ serialNo, modelId, docEntry })),
+          )
+        : { created: 0, updated: 0, unchanged: 0, failures: [] };
+
+    if (writable.length > 0) {
+      const modelIds = [...new Set(writable.map((row) => row.modelId))];
+      await serialNumberRepository.setSapOnHandFlags(tenantId, modelIds, known, notOnHand);
+      // SAP stock-in: a serial in a branch's warehouse becomes Stock at that branch.
+      await replicateOnHandSerialsToStk(tenantId, known);
+    }
+
+    return {
+      ...applied,
+      failures: [
+        ...applied.failures,
+        ...missing.map((row) => ({
+          reason: SERIAL_WAREHOUSE_MISSING_REASON,
+          example: row.warehouseCode || null,
+        })),
+      ],
+    };
   },
 
   /**
@@ -135,18 +167,29 @@ export const serialNumberSyncEntity: SapSyncEntity<SerialRecord, ModelIndex> = {
   },
 };
 
+/** The prompt for serials held back because their SAP warehouse is not in ISMS. */
+function missingWarehouseNote(result: SapSyncResult): string | null {
+  const skip = result.skipped.find((entry) => entry.reason === SERIAL_WAREHOUSE_MISSING_REASON);
+  if (!skip) return null;
+  const codes = skip.examples.length > 0 ? ` (${skip.examples.join(", ")})` : "";
+  return (
+    `${skip.count.toLocaleString()} serial numbers are in SAP warehouses that are not in ` +
+    `ISMS${codes}. Sync those warehouses first, then run the serial sync again`
+  );
+}
+
 export const serialNumberSapSyncService = {
   /**
-   * Pull serial master data from SAP into the ISMS registry, and mark which of those
-   * serials SAP still has on hand.
+   * Pull serial master data from SAP into the ISMS registry, linking each serial to the
+   * SAP warehouse that holds it.
    *
    * One call is a slice of the work, not necessarily all of it: at ~4M rows a full pass
    * takes several runs, and `caughtUp` says whether SAP has more. The cron calls this
    * repeatedly until it does.
    *
-   * No inventory is created. A synced serial stays unassigned until something in ISMS
-   * places it. If the on-hand query is unavailable, the registry sync still finishes
-   * and the result says the on-hand counts were not updated.
+   * Serials in a warehouse ISMS does not have are held back and named in `notes`. If the
+   * warehouse read itself fails, the slice fails: the sync cannot tell which serials it
+   * may take.
    */
   async syncFromSap(
     tenantId: string,
@@ -154,17 +197,8 @@ export const serialNumberSapSyncService = {
     actorUserId: string | null,
     options?: { budgetMs?: number },
   ): Promise<SapSyncResult> {
-    beginSerialOnHandRun(tenantId);
-    try {
-      const result = await runSapSync(tenantId, serialNumberSyncEntity, actorUserId, options);
-      const reason = serialOnHandBlockReason(tenantId);
-      if (!reason) return result;
-      return {
-        ...result,
-        notes: [`On-hand counts were not updated: ${reason}`],
-      };
-    } finally {
-      beginSerialOnHandRun(tenantId);
-    }
+    const result = await runSapSync(tenantId, serialNumberSyncEntity, actorUserId, options);
+    const note = missingWarehouseNote(result);
+    return note ? { ...result, notes: [...(result.notes ?? []), note] } : result;
   },
 };

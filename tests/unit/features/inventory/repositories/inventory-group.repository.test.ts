@@ -62,6 +62,7 @@ describe("inventoryGroupRepository.listBranchGroups", () => {
       defective: 1,
       reserved: 0,
       pendingInspection: 0,
+      notStockedIn: 0,
       statusCounts: { DIT: 1, STK: 4, SLD: 2, DEF: 1, FW: 0 },
       total: 5,
     });

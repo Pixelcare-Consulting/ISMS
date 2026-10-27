@@ -3,7 +3,13 @@ import { resolvePagination, toPaginatedResult } from "@/lib/shared/pagination";
 import {
   getInitialOrderStatus,
   getOrderApprovalChain,
+  TEAM_LEADER_ROLE_SLUG,
 } from "@/features/orders/constants/order-workflow";
+import {
+  hasQueryableTypeScopes,
+  orderScopeWhere,
+  type OrderTypeScope,
+} from "@/features/orders/lib/order-scope-where";
 import { nextSalesOrderNumber } from "@/features/orders/utils/next-sales-order-number";
 import type { BranchOrderStatus, BranchOrderType, Prisma, SapOrderDocType } from "@prisma/client";
 
@@ -11,7 +17,16 @@ import type { BranchOrderStatus, BranchOrderType, Prisma, SapOrderDocType } from
 export const ORDER_CHANGED_MESSAGE = "This order changed. Refresh and review again.";
 
 const orderListInclude = {
-  branch: { select: { id: true, name: true, sapCode: true, deliverySchedule: true } },
+  branch: {
+    select: {
+      id: true,
+      name: true,
+      sapCode: true,
+      deliverySchedule: true,
+      dealer: { select: { name: true, modeOfPayment: { select: { name: true } } } },
+    },
+  },
+  modeOfPayment: { select: { name: true } },
   createdBy: { select: { id: true, name: true, email: true } },
   details: {
     include: {
@@ -22,6 +37,7 @@ const orderListInclude = {
           name: true,
           brandId: true,
           srp: true,
+          cbm: true,
           priceLists: {
             select: {
               amount: true,
@@ -42,19 +58,13 @@ const orderListInclude = {
   },
 } satisfies Prisma.BranchOrderInclude;
 
-function orderScopeWhere(
+function singleTypeScopeWhere(
   tenantId: string,
   branchIds: string[] | null,
   orderType?: BranchOrderType,
   statuses?: BranchOrderStatus[],
-): Prisma.BranchOrderWhereInput {
-  // null = unrestricted (full access / no AOR). [] = scoped with no branches → match none.
-  return {
-    tenantId,
-    ...(branchIds === null ? {} : { branchId: { in: branchIds } }),
-    ...(orderType ? { orderType } : {}),
-    ...(statuses ? { status: { in: statuses } } : {}),
-  };
+) {
+  return orderScopeWhere(tenantId, branchIds, { orderType, statuses });
 }
 
 export type OrderListSort =
@@ -88,6 +98,23 @@ function orderPrismaOrderBy(
 }
 
 export const orderRepository = {
+  /**
+   * Team Leaders with at least one AOR branch, for the order list filter. With a branch
+   * scope, only TLs covering at least one of those branches.
+   */
+  listTeamLeaderOptions(tenantId: string, branchIds: string[] | null) {
+    return prisma.user.findMany({
+      where: {
+        tenantId,
+        deletedAt: null,
+        userRoles: { some: { role: { slug: TEAM_LEADER_ROLE_SLUG, deletedAt: null } } },
+        aors: { some: { tenantId, branchId: branchIds ? { in: branchIds } : { not: null } } },
+      },
+      select: { id: true, name: true, email: true },
+      orderBy: [{ name: "asc" }, { email: "asc" }],
+    });
+  },
+
   async listForTenant(
     tenantId: string,
     branchIds: string[] | null,
@@ -96,19 +123,27 @@ export const orderRepository = {
       limit?: number;
       orderType?: BranchOrderType;
       statuses?: BranchOrderStatus[];
+      /** One query. Each entry is that type's own status set. Replaces orderType + statuses. */
+      typeScopes?: OrderTypeScope[];
     },
     sort?: { field?: OrderListSort; dir?: OrderListSortDir },
   ) {
     const { limit, page, skip } = resolvePagination(pagination);
-    if (pagination?.statuses && pagination.statuses.length === 0) {
+    if (pagination?.typeScopes) {
+      if (!hasQueryableTypeScopes(pagination.typeScopes)) {
+        return toPaginatedResult([], 0, page, limit);
+      }
+    } else if (pagination?.statuses && pagination.statuses.length === 0) {
       return toPaginatedResult([], 0, page, limit);
     }
-    const where = orderScopeWhere(
-      tenantId,
-      branchIds,
-      pagination?.orderType,
-      pagination?.statuses,
-    );
+    const where = pagination?.typeScopes
+      ? orderScopeWhere(tenantId, branchIds, { typeScopes: pagination.typeScopes })
+      : singleTypeScopeWhere(
+          tenantId,
+          branchIds,
+          pagination?.orderType,
+          pagination?.statuses,
+        );
     const orderBy = sort?.field
       ? orderPrismaOrderBy(sort.field, sort.dir ?? "desc")
       : { createdAt: "desc" as const };
@@ -132,10 +167,17 @@ export const orderRepository = {
     branchIds: string[] | null,
     orderType?: BranchOrderType,
     statuses?: BranchOrderStatus[],
+    typeScopes?: OrderTypeScope[],
   ) {
+    if (typeScopes) {
+      if (!hasQueryableTypeScopes(typeScopes)) return Promise.resolve(0);
+      return prisma.branchOrder.count({
+        where: orderScopeWhere(tenantId, branchIds, { typeScopes }),
+      });
+    }
     if (statuses && statuses.length === 0) return Promise.resolve(0);
     return prisma.branchOrder.count({
-      where: orderScopeWhere(tenantId, branchIds, orderType, statuses),
+      where: singleTypeScopeWhere(tenantId, branchIds, orderType, statuses),
     });
   },
 
@@ -144,11 +186,20 @@ export const orderRepository = {
     branchIds: string[] | null,
     orderType?: BranchOrderType,
     statuses?: BranchOrderStatus[],
+    typeScopes?: OrderTypeScope[],
   ) {
+    if (typeScopes) {
+      if (!hasQueryableTypeScopes(typeScopes)) return Promise.resolve([]);
+      return prisma.branchOrder.groupBy({
+        by: ["status"],
+        where: orderScopeWhere(tenantId, branchIds, { typeScopes }),
+        _count: { id: true },
+      });
+    }
     if (statuses && statuses.length === 0) return Promise.resolve([]);
     return prisma.branchOrder.groupBy({
       by: ["status"],
-      where: orderScopeWhere(tenantId, branchIds, orderType, statuses),
+      where: singleTypeScopeWhere(tenantId, branchIds, orderType, statuses),
       _count: { id: true },
     });
   },
@@ -187,9 +238,101 @@ export const orderRepository = {
     });
   },
 
+  /**
+   * Manual or special order for the submitted-order page.
+   * Branch scope matches the order list. Line amount is the stored value only.
+   */
+  findManualOrSpecialById(tenantId: string, id: string, branchIds: string[] | null) {
+    return prisma.branchOrder.findFirst({
+      where: {
+        id,
+        tenantId,
+        orderType: { in: ["manual", "special"] },
+        ...(branchIds === null ? {} : { branchId: { in: branchIds } }),
+      },
+      select: {
+        id: true,
+        orderNumber: true,
+        orderType: true,
+        status: true,
+        branchId: true,
+        notes: true,
+        sapDocType: true,
+        sapDocNum: true,
+        reviewSnapshot: true,
+        reviewSnapshotAt: true,
+        createdAt: true,
+        processedAt: true,
+        createdById: true,
+        createdBy: { select: { name: true, email: true } },
+        branch: {
+          select: {
+            name: true,
+            dealer: {
+              select: {
+                name: true,
+                modeOfPayment: { select: { name: true } },
+              },
+            },
+          },
+        },
+        modeOfPayment: { select: { name: true } },
+        details: {
+          orderBy: { model: { skuCode: "asc" } },
+          select: {
+            id: true,
+            modelId: true,
+            quantity: true,
+            amount: true,
+            remarks: true,
+            spRemarks: true,
+            model: { select: { skuCode: true, name: true, cbm: true } },
+          },
+        },
+        approvalLevels: {
+          orderBy: { level: "asc" },
+          select: {
+            level: true,
+            approvedAt: true,
+            rejectedAt: true,
+            approvedBy: { select: { name: true, email: true } },
+          },
+        },
+      },
+    });
+  },
+
   /** Branch, dealer mode of payment and main warehouse needed to pick ITR or SO. */
-  async findSapRoutingContext(tenantId: string, branchId: string) {
-    const [branch, mainWarehouse] = await Promise.all([
+  /** Active modes of payment that have a type, as named in master data. */
+  listModesOfPaymentForOrder(tenantId: string) {
+    return prisma.modeOfPayment.findMany({
+      where: { tenantId, recordStatus: "active", kind: { not: null } },
+      select: { id: true, name: true, kind: true },
+      orderBy: { name: "asc" },
+    });
+  },
+
+  /**
+   * The chosen mode of payment (active, with a type) and the branch dealer's own,
+   * so an order stores an override only when it differs from the dealer's.
+   */
+  async findModeOfPaymentChoice(tenantId: string, branchId: string, modeOfPaymentId: string) {
+    const [modeOfPayment, branch] = await Promise.all([
+      prisma.modeOfPayment.findFirst({
+        where: { id: modeOfPaymentId, tenantId, recordStatus: "active" },
+        select: { id: true, name: true, kind: true },
+      }),
+      prisma.branch.findFirst({
+        where: { id: branchId, tenantId },
+        select: { dealer: { select: { modeOfPaymentId: true } } },
+      }),
+    ]);
+    return { modeOfPayment, dealerModeOfPaymentId: branch?.dealer?.modeOfPaymentId ?? null };
+  },
+
+  /** Pass `orderId` to include that order's own mode of payment (its override of the dealer's). */
+  async findSapRoutingContext(tenantId: string, branchId: string, orderId?: string) {
+    const [branch, mainWarehouse, order] = await Promise.all([
       prisma.branch.findFirst({
         where: { id: branchId, tenantId },
         select: {
@@ -210,8 +353,14 @@ export const orderRepository = {
         select: { id: true, code: true },
         orderBy: { createdAt: "asc" },
       }),
+      orderId
+        ? prisma.branchOrder.findFirst({
+            where: { id: orderId, tenantId },
+            select: { modeOfPayment: { select: { name: true, kind: true } } },
+          })
+        : Promise.resolve(null),
     ]);
-    return { branch, mainWarehouse };
+    return { branch, mainWarehouse, orderModeOfPayment: order?.modeOfPayment ?? null };
   },
 
   async create(
@@ -222,6 +371,8 @@ export const orderRepository = {
       createdById: string;
       notes?: string;
       brandId?: string | null;
+      /** Override of the dealer's mode of payment; null follows the dealer. */
+      modeOfPaymentId?: string | null;
       details: {
         modelId: string;
         quantity: number;
@@ -245,6 +396,7 @@ export const orderRepository = {
         createdById: data.createdById,
         notes: data.notes,
         brandId: data.brandId ?? null,
+        modeOfPaymentId: data.modeOfPaymentId ?? null,
         details: {
           create: data.details.map((line) => ({
             modelId: line.modelId,

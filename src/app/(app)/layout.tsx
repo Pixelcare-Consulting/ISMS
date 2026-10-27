@@ -1,5 +1,6 @@
 import { cookies, headers } from "next/headers";
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
 import { requireAuth, resolveSessionPlatformOperator } from "@/lib/auth/permissions";
@@ -7,9 +8,18 @@ import {
   getCachedLayoutBranding,
   getCachedLayoutProfile,
 } from "@/lib/auth/layout-data";
+import { AppNavProvider } from "@/app/(app)/_components/app-nav-provider";
 import { AppNavigationProgress } from "@/app/(app)/_components/app-navigation-progress";
 import { AppSidebar } from "@/app/(app)/_components/app-sidebar";
 import { AppTopLoader } from "@/app/(app)/_components/app-top-loader";
+import {
+  ContextualSidebar,
+  ContextualSidebarTrigger,
+} from "@/app/(app)/_components/contextual-sidebar";
+import {
+  CONTEXTUAL_SIDEBAR_COOKIE,
+  parseContextualSidebarPreference,
+} from "@/app/(app)/_components/contextual-sidebar-preference";
 import { PixelcareAwareShell } from "@/app/(app)/_components/pixelcare-aware-shell";
 import { WhatsNewHeaderAction } from "@/app/(app)/_components/whats-new-header-action";
 import { DocumentTitle } from "@/components/document-title";
@@ -26,6 +36,11 @@ import { countUnreadNotificationsAction } from "@/features/notifications/actions
 import { NotificationsHeaderAction } from "@/features/notifications/components/notifications-header-action";
 import { PixelcareAiFullscreenProvider } from "@/features/pixelcare-ai/components/fullscreen-provider";
 import { canUsePixelcareAi } from "@/features/pixelcare-ai/constants/permissions";
+import {
+  SETUP_HOME,
+  isSetupPathAllowed,
+  isTenantSetupAdmin,
+} from "@/features/roles/constants/setup-access";
 import { SapSyncProgressModals } from "@/features/sap/components/sap-sync-progress-modal";
 import { SapSyncReportDialogs } from "@/features/sap/components/sap-sync-report-dialogs";
 import { pageMetadata } from "@/lib/shared/seo";
@@ -42,28 +57,46 @@ export default async function AppLayout({
   children: React.ReactNode;
 }) {
   const session = await requireAuth();
+  const isPlatformOperator = await resolveSessionPlatformOperator(session.user);
+  const pathname = (await headers()).get("x-pathname") ?? "";
+  const setupAdmin = isTenantSetupAdmin({
+    roleSlugs: session.user.roleSlugs,
+    isPlatformOperator,
+  });
+
+  if (setupAdmin && !isSetupPathAllowed(pathname)) {
+    redirect(SETUP_HOME);
+  }
 
   const [
     branding,
     profile,
-    isPlatformOperator,
     cookieStore,
-    unreadAnnouncementCount,
     unreadNotificationCount,
-    stockUnitsStkCount,
-    workflowNavCounts,
     assistantGate,
+    operationalBadges,
   ] = await Promise.all([
     getCachedLayoutBranding(session.user.tenantId),
     getCachedLayoutProfile(session.user.tenantId, session.user.id),
-    resolveSessionPlatformOperator(session.user),
     cookies(),
-    countUnreadAnnouncementsAction().catch(() => 0),
     countUnreadNotificationsAction().catch(() => 0),
-    countStockUnitsStkAction().catch(() => 0),
-    getWorkflowNavCountBadgesAction(),
     readAiAssistantGate(session.user.tenantId),
+    setupAdmin
+      ? Promise.resolve(null)
+      : Promise.all([
+          countUnreadAnnouncementsAction().catch(() => 0),
+          countStockUnitsStkAction().catch(() => 0),
+          getWorkflowNavCountBadgesAction(),
+        ]),
   ]);
+
+  const countBadges = operationalBadges
+    ? {
+        unreadAnnouncements: operationalBadges[0],
+        stockUnitsStk: operationalBadges[1],
+        ...operationalBadges[2],
+      }
+    : {};
 
   const user = {
     name: profile.name ?? session.user.name,
@@ -74,6 +107,9 @@ export default async function AppLayout({
   };
 
   const defaultOpen = cookieStore.get("sidebar_state")?.value !== "false";
+  const secondaryPreference = parseContextualSidebarPreference(
+    cookieStore.get(CONTEXTUAL_SIDEBAR_COOKIE)?.value,
+  );
 
   return (
     <SidebarProvider defaultOpen={defaultOpen}>
@@ -84,32 +120,34 @@ export default async function AppLayout({
       </Suspense>
 
       <PixelcareAiFullscreenProvider>
-        <PixelcareAwareShell
-          sidebar={
-            <AppSidebar
-              branding={branding}
-              user={user}
-              countBadges={{
-                unreadAnnouncements: unreadAnnouncementCount,
-                stockUnitsStk: stockUnitsStkCount,
-                ...workflowNavCounts,
-              }}
-            />
-          }
-          header={
-            <header className="app-header flex h-14 shrink-0 items-center gap-2 bg-white pl-2 pr-3 text-sidebar-foreground sm:pr-4 lg:pr-6">
-              <SidebarTrigger className="text-sidebar hover:bg-sidebar-accent/60 hover:text-sidebar-foreground" />
-              <WhatsNewHeaderAction />
-              <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
-                <NotificationsHeaderAction
-                  initialUnreadCount={unreadNotificationCount}
-                />
-              </div>
-            </header>
-          }
+        <AppNavProvider
+          useSetupNavigation={setupAdmin}
+          permissions={user.permissions}
+          isPlatformOperator={user.isPlatformOperator}
+          countBadges={countBadges}
+          secondaryPreference={secondaryPreference}
         >
-          {children}
-        </PixelcareAwareShell>
+          <PixelcareAwareShell
+            sidebar={
+              <AppSidebar branding={branding} user={user} />
+            }
+            contextual={<ContextualSidebar />}
+            header={
+              <header className="app-header flex h-14 shrink-0 items-center gap-2 bg-white pl-2 pr-3 text-sidebar-foreground sm:pr-4 lg:pr-6">
+                <SidebarTrigger className="text-sidebar hover:bg-sidebar-accent/60 hover:text-sidebar-foreground" />
+                <ContextualSidebarTrigger />
+                <WhatsNewHeaderAction />
+                <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+                  <NotificationsHeaderAction
+                    initialUnreadCount={unreadNotificationCount}
+                  />
+                </div>
+              </header>
+            }
+          >
+            {children}
+          </PixelcareAwareShell>
+        </AppNavProvider>
       </PixelcareAiFullscreenProvider>
 
       <SapSyncProgressModals />

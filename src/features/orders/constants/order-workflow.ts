@@ -2,6 +2,12 @@ import type { BranchOrderStatus, BranchOrderType } from "@prisma/client";
 
 import { BRANCH_ORDER_STATUS_LABELS } from "@/features/orders/constants/order-status";
 
+/** Role slug of Team Leaders: the first approver on auto-replenish orders. */
+export const TEAM_LEADER_ROLE_SLUG = "tl";
+
+/** Seeded Product Specialist role. Manual and special lists for this slug are their own orders. */
+export const PRODUCT_SPECIALIST_ROLE_SLUG = "ps";
+
 export interface OrderApprovalStep {
   level: number;
   roleSlug: string;
@@ -70,6 +76,10 @@ export const SUPPLY_PLANNING_APPROVER_SLUGS = [
   "supply_planning_associate",
 ] as const;
 
+export function isSupplyPlanningApproverRole(roleSlugs: string[]): boolean {
+  return SUPPLY_PLANNING_APPROVER_SLUGS.some((slug) => roleSlugs.includes(slug));
+}
+
 export function canApproveOrder(
   status: BranchOrderStatus,
   orderType: BranchOrderType,
@@ -78,21 +88,28 @@ export function canApproveOrder(
   if (status === "pending_logistics" && roleSlugs.includes("logistics")) {
     return true;
   }
-  if (status === "pending_ps" && orderType === "manual" && roleSlugs.includes("ps")) {
+  if (
+    status === "pending_ps" &&
+    orderType === "manual" &&
+    roleSlugs.includes(PRODUCT_SPECIALIST_ROLE_SLUG)
+  ) {
     return true;
   }
 
   const step = getOrderApprovalChain(orderType).find((s) => s.status === status);
   if (!step) return false;
   if (step.roleSlug === "sp") {
-    return SUPPLY_PLANNING_APPROVER_SLUGS.some((slug) => roleSlugs.includes(slug));
+    return isSupplyPlanningApproverRole(roleSlugs);
   }
   return roleSlugs.includes(step.roleSlug);
 }
 
 /** PS / TL may optionally edit Manual orders while they await Supply Planning. */
 export function canOptionallyEditManualOrder(roleSlugs: string[]): boolean {
-  return roleSlugs.includes("ps") || roleSlugs.includes("tl");
+  return (
+    roleSlugs.includes(PRODUCT_SPECIALIST_ROLE_SLUG) ||
+    roleSlugs.includes(TEAM_LEADER_ROLE_SLUG)
+  );
 }
 
 /**
@@ -189,6 +206,29 @@ const ORDER_QUEUE_OVERSIGHT_ROLE_SLUGS = ["super_admin", "tenant_admin"] as cons
 
 export function isOrderQueueOversightRole(roleSlugs: string[]): boolean {
   return ORDER_QUEUE_OVERSIGHT_ROLE_SLUGS.some((slug) => roleSlugs.includes(slug));
+}
+
+/**
+ * Product Specialists see only manual and special orders they created.
+ * Oversight and Supply Planning keep the wider queue, including other people's Pending SP.
+ * A Team Leader who is not a Product Specialist does not match, so that queue stays as it is.
+ */
+export function isProductSpecialistOwnOrdersOnly(roleSlugs: string[]): boolean {
+  return (
+    roleSlugs.includes(PRODUCT_SPECIALIST_ROLE_SLUG) &&
+    !isOrderQueueOversightRole(roleSlugs) &&
+    !isSupplyPlanningApproverRole(roleSlugs)
+  );
+}
+
+/** Direct order pages use the same creator limit as the manual and special lists. */
+export function mayViewOrderAsProductSpecialist(input: {
+  roleSlugs: string[];
+  viewerUserId: string;
+  createdById: string;
+}): boolean {
+  if (!isProductSpecialistOwnOrdersOnly(input.roleSlugs)) return true;
+  return input.createdById === input.viewerUserId;
 }
 
 /**

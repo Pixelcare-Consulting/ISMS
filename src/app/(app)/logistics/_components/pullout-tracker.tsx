@@ -1,80 +1,70 @@
 "use client";
 
 import {
+  progressEventsForActions,
   ProgressTracker,
-  type ProgressNode,
-  type ProgressStepState,
+  type ProgressAuditRow,
+  type ProgressStageIcon,
 } from "@/app/(app)/logistics/_components/progress-tracker";
+import {
+  PULLOUT_SETTLED_CODES,
+  PULLOUT_STOP_CODES,
+  PULLOUT_WORKFLOW_CODE,
+  type WorkflowStatusOption,
+} from "@/features/logistics/constants/workflow-codes";
+import { buildCatalogProgress } from "@/features/logistics/constants/workflow-progress";
 
 /**
- * Progress for a branch pull-out. Steps are only the statuses this flow writes.
- * A waybill or a scheduled date does not move the tracker.
+ * Progress for a branch pull-out. Steps, names, colors, and order come from
+ * the Pull-out workflow codes in Status settings. The pull-out reason is a
+ * separate catalog and is not a step.
  */
 
-const TRACKER_STEPS = [
-  { code: "pending_tl", fallback: "Reserve pull-out" },
-  { code: "for_pullout", fallback: "For pull-out" },
-  { code: "pending_logistics", fallback: "Pending logistics" },
-  { code: "in_transit", fallback: "In transit" },
-] as const;
+type PulloutAuditAction =
+  | "pullout.created"
+  | "pullout.approved"
+  | "pullout.rejected"
+  | "pullout.list_saved"
+  | "pullout.finalized";
 
-type TrackerStepCode = (typeof TRACKER_STEPS)[number]["code"];
+const PULLOUT_ICONS: Readonly<Record<string, ProgressStageIcon>> = {
+  [PULLOUT_WORKFLOW_CODE.requested]: "approval",
+  [PULLOUT_WORKFLOW_CODE.pending_tl]: "approval",
+  [PULLOUT_WORKFLOW_CODE.for_pullout]: "prepare",
+  [PULLOUT_WORKFLOW_CODE.scheduled]: "ready",
+  [PULLOUT_WORKFLOW_CODE.pending_logistics]: "ready",
+  [PULLOUT_WORKFLOW_CODE.in_transit]: "transit",
+  [PULLOUT_WORKFLOW_CODE.pulled_out]: "accepted",
+  [PULLOUT_WORKFLOW_CODE.completed]: "accepted",
+};
 
-type WorkflowCode =
-  | "requested"
-  | "approved"
-  | "draft"
-  | "pending_tl"
-  | "for_pullout"
-  | "scheduled"
-  | "pending_logistics"
-  | "in_transit"
-  | "pulled_out"
-  | "completed"
-  | "cancelled";
-
-type TrackerMode = { kind: "active"; index: number } | { kind: "cancelled" } | { kind: "recorded" };
-
-function asWorkflowCode(code: string): WorkflowCode | null {
-  switch (code) {
-    case "requested":
-    case "approved":
-    case "draft":
-    case "pending_tl":
-    case "for_pullout":
-    case "scheduled":
-    case "pending_logistics":
-    case "in_transit":
-    case "pulled_out":
-    case "completed":
-    case "cancelled":
-      return code;
+function asPulloutAuditAction(action: string): PulloutAuditAction | null {
+  switch (action) {
+    case "pullout.created":
+    case "pullout.approved":
+    case "pullout.rejected":
+    case "pullout.list_saved":
+    case "pullout.finalized":
+      return action;
     default:
       return null;
   }
 }
 
-function trackerMode(code: string): TrackerMode {
-  const known = asWorkflowCode(code);
-  if (!known) return { kind: "recorded" };
+export function pulloutAuditLabel(action: string): string {
+  const known = asPulloutAuditAction(action);
+  if (!known) return action;
   switch (known) {
-    case "pending_tl":
-      return { kind: "active", index: 0 };
-    case "for_pullout":
-      return { kind: "active", index: 1 };
-    case "pending_logistics":
-      return { kind: "active", index: 2 };
-    case "in_transit":
-      return { kind: "active", index: 3 };
-    case "cancelled":
-      return { kind: "cancelled" };
-    case "requested":
-    case "approved":
-    case "draft":
-    case "scheduled":
-    case "pulled_out":
-    case "completed":
-      return { kind: "recorded" };
+    case "pullout.created":
+      return "Request submitted";
+    case "pullout.approved":
+      return "Approved by Team Lead";
+    case "pullout.rejected":
+      return "Rejected";
+    case "pullout.list_saved":
+      return "Logistics list saved";
+    case "pullout.finalized":
+      return "Sent — in transit";
     default: {
       const unreachable: never = known;
       return unreachable;
@@ -82,7 +72,28 @@ function trackerMode(code: string): TrackerMode {
   }
 }
 
-function earliestAction(history: { action: string; at: string }[], action: string): string | null {
+function historyAction(code: string): string | null {
+  switch (code) {
+    case PULLOUT_WORKFLOW_CODE.requested:
+    case PULLOUT_WORKFLOW_CODE.pending_tl:
+    case PULLOUT_WORKFLOW_CODE.draft:
+      return "pullout.created";
+    case PULLOUT_WORKFLOW_CODE.approved:
+    case PULLOUT_WORKFLOW_CODE.for_pullout:
+      return "pullout.approved";
+    case PULLOUT_WORKFLOW_CODE.scheduled:
+    case PULLOUT_WORKFLOW_CODE.pending_logistics:
+      return "pullout.list_saved";
+    case PULLOUT_WORKFLOW_CODE.in_transit:
+    case PULLOUT_WORKFLOW_CODE.pulled_out:
+    case PULLOUT_WORKFLOW_CODE.completed:
+      return "pullout.finalized";
+    default:
+      return null;
+  }
+}
+
+function earliestAction(history: readonly ProgressAuditRow[], action: string): string | null {
   let earliest: string | null = null;
   for (const row of history) {
     if (row.action !== action) continue;
@@ -92,100 +103,55 @@ function earliestAction(history: { action: string; at: string }[], action: strin
 }
 
 function occurredAt(
-  code: TrackerStepCode,
+  code: string,
   createdAt: string,
-  history: { action: string; at: string }[],
+  history: readonly ProgressAuditRow[],
 ): string | null {
-  switch (code) {
-    case "pending_tl":
-      return earliestAction(history, "pullout.created") ?? (createdAt.trim() || null);
-    case "for_pullout":
-      return earliestAction(history, "pullout.approved");
-    case "pending_logistics":
-      return earliestAction(history, "pullout.list_saved");
-    case "in_transit":
-      return earliestAction(history, "pullout.finalized");
-    default: {
-      const unreachable: never = code;
-      return unreachable;
-    }
+  const action = historyAction(code);
+  const at = action ? earliestAction(history, action) : null;
+  if (code === PULLOUT_WORKFLOW_CODE.pending_tl || code === PULLOUT_WORKFLOW_CODE.requested) {
+    return at ?? (createdAt.trim() || null);
   }
+  return at;
 }
 
-function prefixCount(times: (string | null)[]): number {
-  let count = 0;
-  for (const time of times) {
-    if (!time) break;
-    count += 1;
-  }
-  return count;
-}
-
-function stepLabel(
-  code: TrackerStepCode,
-  fallback: string,
-  status: { code: string; name: string },
-): string {
-  return status.code === code && status.name.trim() ? status.name.trim() : fallback;
-}
-
-function buildTracker(
+export function buildPulloutTracker(
   status: { code: string; name: string; color: string | null },
   createdAt: string,
-  history: { action: string; at: string }[],
-): ProgressNode[] {
-  const mode = trackerMode(status.code);
-  const times = TRACKER_STEPS.map((step) => occurredAt(step.code, createdAt, history));
-  const provenCount = prefixCount(times);
-  const nodes: ProgressNode[] = TRACKER_STEPS.map((step, index) => {
-    const label = stepLabel(step.code, step.fallback, status);
-    if (mode.kind === "active") {
-      const state: ProgressStepState =
-        index < mode.index ? "completed" : index === mode.index ? "current" : "upcoming";
-      return {
-        key: step.code,
-        label,
-        state,
-        at: state === "upcoming" ? null : times[index] ?? null,
-        color: null,
-      };
-    }
-    const completed = index < provenCount;
-    return {
-      key: step.code,
-      label,
-      state: completed ? "completed" : "upcoming",
-      at: completed ? times[index] ?? null : null,
-      color: null,
-    };
+  history: readonly ProgressAuditRow[],
+  catalog: readonly WorkflowStatusOption[],
+) {
+  return buildCatalogProgress({
+    catalog,
+    status,
+    stopCodes: PULLOUT_STOP_CODES,
+    settledCodes: PULLOUT_SETTLED_CODES,
+    icons: PULLOUT_ICONS,
+    occurredAt: (code) => occurredAt(code, createdAt, history),
+    eventsFor: (code) => {
+      const action = historyAction(code);
+      return progressEventsForActions(history, action ? [action] : [], pulloutAuditLabel);
+    },
+    stopAt: earliestAction(history, "pullout.rejected"),
+    stopEvents: progressEventsForActions(history, ["pullout.rejected"], pulloutAuditLabel),
   });
-
-  if (mode.kind === "cancelled") {
-    nodes.splice(provenCount, 0, {
-      key: "cancelled",
-      label: status.name.trim() || "Cancelled",
-      state: "cancelled",
-      at: earliestAction(history, "pullout.rejected"),
-      color: status.color,
-    });
-  }
-
-  return nodes;
 }
 
 export function PulloutTracker({
   status,
   createdAt,
   history,
+  catalog,
 }: {
   status: { code: string; name: string; color: string | null };
   createdAt: string;
-  history: { action: string; at: string }[];
+  history: readonly ProgressAuditRow[];
+  catalog: readonly WorkflowStatusOption[];
 }) {
   return (
     <ProgressTracker
       ariaLabel="Pull-out progress"
-      items={buildTracker(status, createdAt, history)}
+      items={buildPulloutTracker(status, createdAt, history, catalog)}
     />
   );
 }

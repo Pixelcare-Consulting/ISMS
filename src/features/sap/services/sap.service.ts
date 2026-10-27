@@ -422,6 +422,26 @@ export const sapService = {
    * Process pending/failed jobs with retry handling via SapOutboundPort.
    * `target` runs only that record's job (inline posting after a user action).
    */
+  /**
+   * Run one job again now, from the SAP integration log. Only failed or
+   * dead-lettered jobs tied to a record; the record's own adapter re-checks its
+   * state, so a job whose record was cancelled in ISMS fails again harmlessly.
+   */
+  async retryJob(tenantId: string, userId: string, jobId: string) {
+    const job = await sapIntegrationRepository.findById(tenantId, jobId);
+    if (!job) throw new Error("SAP job not found");
+    if (job.status !== "failed" && job.status !== "dead_letter") {
+      throw new Error("Only a failed job can be retried");
+    }
+    if (!job.referenceType || !job.referenceId) {
+      throw new Error("This job is not linked to a record, so it cannot be retried here");
+    }
+    const target = { referenceType: job.referenceType, referenceId: job.referenceId };
+    await sapIntegrationRepository.requeueByReference(tenantId, target.referenceType, target.referenceId);
+    const [result] = await this.processPendingJobs(tenantId, userId, 1, target);
+    return result ?? { jobId, status: "pending" };
+  },
+
   async processPendingJobs(tenantId: string, userId?: string, limit = 10, target?: SapJobTarget) {
     const jobs = await sapIntegrationRepository.claimPendingJobsSafe(tenantId, limit, target);
     const results: { jobId: string; status: string; sapDocRef?: string; error?: string }[] = [];

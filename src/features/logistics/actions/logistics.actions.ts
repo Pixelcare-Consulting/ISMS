@@ -38,6 +38,12 @@ import type {
   PulloutListSort,
   TransferListSort,
 } from "@/features/logistics/repositories/logistics.repository";
+import { DELIVERY_WORKFLOW_CODE } from "@/features/logistics/constants/workflow-codes";
+import {
+  resolveLogisticsBranchScope,
+  transferListWhere,
+} from "@/features/logistics/lib/transfer-visibility";
+import { parseScheduleDate } from "@/features/logistics/lib/shipment";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
@@ -138,6 +144,12 @@ const pulloutListSchema = z.object({
   notes: z.string().optional(),
   serialNumberIds: z.array(z.string().min(1)).min(1),
 });
+const shipmentSchema = z.object({
+  waybillNo: z.string().trim().min(1).max(80),
+  courierName: z.string().trim().min(1).max(120),
+  scheduledAt: z.string().trim().min(1),
+});
+const SHIPMENT_INPUT_ERROR = "Enter the waybill, courier or forwarder, and schedule date";
 
 const serialIdsSchema = z.object({
   serialNumberIds: z.array(z.string().min(1)).min(1),
@@ -168,6 +180,13 @@ function revalidateLogisticsPaths() {
   revalidatePath("/logistics/pickups");
 }
 
+function revalidateDelivery(id: string) {
+  revalidateLogisticsPaths();
+  revalidatePath(`/logistics/deliveries/${id}`);
+  revalidatePath("/operations");
+  revalidatePath("/inventory");
+}
+
 function postingActor(session: {
   user: { tenantId: string; id: string; permissions?: string[] };
 }): PostingActor {
@@ -184,7 +203,13 @@ function actionError(error: unknown, fallback: string) {
 
 export interface LogisticsKpis {
   total: number;
-  statuses: { code: string; name: string; count: number }[];
+  statuses: {
+    code: string;
+    name: string;
+    count: number;
+    color: string | null;
+    sortOrder: number;
+  }[];
 }
 
 async function buildLogisticsKpis(
@@ -198,7 +223,13 @@ async function buildLogisticsKpis(
   const countByCodeId = new Map(statusGroups.map((g) => [g.statusCodeId, g._count.id]));
   return {
     total,
-    statuses: codes.map((c) => ({ code: c.code, name: c.name, count: countByCodeId.get(c.id) ?? 0 })),
+    statuses: codes.map((c) => ({
+      code: c.code,
+      name: c.name,
+      color: c.color,
+      sortOrder: c.sortOrder,
+      count: countByCodeId.get(c.id) ?? 0,
+    })),
   };
 }
 
@@ -216,11 +247,18 @@ export async function getDeliveryKpisAction(): Promise<LogisticsKpis> {
 export async function getTransferKpisAction(): Promise<LogisticsKpis> {
   const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
   const tid = session.user.tenantId;
+  const where = transferListWhere(
+    await resolveLogisticsBranchScope({
+      tenantId: tid,
+      userId: session.user.id,
+      permissions: session.user.permissions,
+    }),
+  );
   return buildLogisticsKpis(
     tid,
     "transfer_workflow",
-    () => logisticsRepository.countTransfersByStatus(tid),
-    () => logisticsRepository.countAllTransfers(tid),
+    () => logisticsRepository.countTransfersByStatus(tid, where),
+    () => logisticsRepository.countAllTransfers(tid, where),
   );
 }
 
@@ -252,6 +290,34 @@ export async function listDeliveriesAction(input?: {
   );
 }
 
+export async function getDeliveryDetailAction(id: string) {
+  const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
+  try {
+    const detail = await deliveryPostingService.getDetail(postingActor(session), id);
+    return { success: true as const, detail };
+  } catch (error) {
+    return actionError(error, "Delivery not found");
+  }
+}
+
+export async function saveDeliveryShipmentAction(id: string, input: unknown) {
+  const session = await requireAnyPermission([...DISPATCH_PERMISSIONS]);
+  const parsed = shipmentSchema.safeParse(input);
+  const scheduledAt = parsed.success ? parseScheduleDate(parsed.data.scheduledAt) : null;
+  if (!parsed.success || !scheduledAt) return { error: SHIPMENT_INPUT_ERROR };
+  try {
+    await deliveryPostingService.saveShipment(postingActor(session), id, {
+      waybillNo: parsed.data.waybillNo,
+      courierName: parsed.data.courierName,
+      scheduledAt,
+    });
+    revalidateDelivery(id);
+    return { success: true as const };
+  } catch (error) {
+    return actionError(error, "Failed to save waybill and schedule");
+  }
+}
+
 export async function createDeliveryAction(input: unknown) {
   const session = await requireAnyPermission([LOGISTICS_CREATE, LOGISTICS_MANAGE]);
   const parsed = deliverySchema.safeParse(input);
@@ -260,7 +326,7 @@ export async function createDeliveryAction(input: unknown) {
   const statusCodeId = await reasonStatusService.requireCodeId(
     session.user.tenantId,
     "delivery_workflow",
-    "approved",
+    DELIVERY_WORKFLOW_CODE.approved,
   );
 
   const row = await prisma.branchDelivery.create({
@@ -313,9 +379,7 @@ export async function dispatchDeliveryAction(id: string, input: unknown) {
       deliveryId: id,
       serialNumberIds: parsed.data.serialNumberIds,
     });
-    revalidateLogisticsPaths();
-    revalidatePath("/inventory");
-    revalidatePath("/operations");
+    revalidateDelivery(id);
     return { success: true as const, movedCount: result.movedCount, drNo: result.drNo };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to dispatch delivery" };
@@ -354,9 +418,7 @@ export async function acceptDeliveryAction(id: string, input?: unknown) {
       deliveryId: id,
       serialNumberIds: parsed.data.serialNumberIds,
     });
-    revalidateLogisticsPaths();
-    revalidatePath("/inventory");
-    revalidatePath("/operations");
+    revalidateDelivery(id);
     return {
       success: true as const,
       movedCount: result.movedCount,
@@ -379,9 +441,7 @@ export async function rejectDeliveryAction(id: string, notes?: string) {
       deliveryId: id,
       notes,
     });
-    revalidateLogisticsPaths();
-    revalidatePath("/inventory");
-    revalidatePath("/operations");
+    revalidateDelivery(id);
     return { success: true as const, returnedCount: result.returnedCount };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to reject delivery" };
@@ -395,6 +455,13 @@ export async function listTransfersAction(input?: {
   sortDir?: string;
 }) {
   const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
+  const where = transferListWhere(
+    await resolveLogisticsBranchScope({
+      tenantId: session.user.tenantId,
+      userId: session.user.id,
+      permissions: session.user.permissions,
+    }),
+  );
   return logisticsRepository.listTransfers(
     session.user.tenantId,
     {
@@ -402,10 +469,12 @@ export async function listTransfersAction(input?: {
       limit: parseTablePageSize(input?.limit),
     },
     { field: parseTransferSort(input?.sort), dir: parseSortDir(input?.sortDir) },
+    where,
   );
 }
 
 const TL_PERMISSIONS = ["orders.approve", LOGISTICS_MANAGE] as const;
+const RECEIVE_SERIAL_PERMISSIONS = [...LOGISTICS_WRITE_ALIASES, ...TL_PERMISSIONS] as const;
 
 function revalidateTransfer(id: string) {
   revalidateLogisticsPaths();
@@ -428,6 +497,24 @@ export async function getTransferDetailAction(id: string) {
     return { success: true as const, detail };
   } catch (error) {
     return actionError(error, "Transfer not found");
+  }
+}
+
+export async function saveTransferShipmentAction(id: string, input: unknown) {
+  const session = await requirePermission(LOGISTICS_MANAGE);
+  const parsed = shipmentSchema.safeParse(input);
+  const scheduledAt = parsed.success ? parseScheduleDate(parsed.data.scheduledAt) : null;
+  if (!parsed.success || !scheduledAt) return { error: SHIPMENT_INPUT_ERROR };
+  try {
+    await transferPostingService.saveShipment(postingActor(session), id, {
+      waybillNo: parsed.data.waybillNo,
+      courierName: parsed.data.courierName,
+      scheduledAt,
+    });
+    revalidateTransfer(id);
+    return { success: true as const };
+  } catch (error) {
+    return actionError(error, "Failed to save waybill and schedule");
   }
 }
 
@@ -467,9 +554,14 @@ export async function createTransferAction(input: unknown) {
 export async function approveTransferAction(id: string) {
   const session = await requireAnyPermission([...TL_PERMISSIONS]);
   try {
-    await transferPostingService.approve(postingActor(session), id);
+    const result = await transferPostingService.approve(postingActor(session), id);
     revalidateTransfer(id);
-    return { success: true as const };
+    return {
+      success: true as const,
+      transferNo: result.transferNo,
+      rsNo: result.rsNo,
+      drNo: result.drNo,
+    };
   } catch (error) {
     return actionError(error, "Failed to approve transfer");
   }
@@ -498,7 +590,7 @@ export async function executeTransferAction(id: string) {
 }
 
 export async function receiveTransferAction(id: string, input: unknown) {
-  const session = await requireAnyPermission([...LOGISTICS_WRITE_ALIASES]);
+  const session = await requireAnyPermission([...RECEIVE_SERIAL_PERMISSIONS]);
   const parsed = serialIdsSchema.safeParse(input);
   if (!parsed.success) return { error: "Select the serials that arrived" };
   try {
@@ -511,6 +603,29 @@ export async function receiveTransferAction(id: string, input: unknown) {
     return { success: true as const, ...result };
   } catch (error) {
     return actionError(error, "Failed to receive transfer");
+  }
+}
+
+const rejectSerialSchema = z.object({
+  serialNumberId: z.string().min(1),
+  remarks: z.string().trim().min(1).max(500),
+});
+
+export async function rejectTransferSerialAction(id: string, input: unknown) {
+  const session = await requireAnyPermission([...RECEIVE_SERIAL_PERMISSIONS]);
+  const parsed = rejectSerialSchema.safeParse(input);
+  if (!parsed.success) return { error: "Say why this serial was rejected" };
+  try {
+    const result = await transferPostingService.rejectSerial(
+      postingActor(session),
+      id,
+      parsed.data.serialNumberId,
+      parsed.data.remarks,
+    );
+    revalidateTransfer(id);
+    return { success: true as const, ...result };
+  } catch (error) {
+    return actionError(error, "Failed to reject serial");
   }
 }
 
@@ -679,7 +794,7 @@ export async function listBranchesForLogisticsAction() {
   return prisma.branch.findMany({
     where: { tenantId: session.user.tenantId, deletedAt: null },
     orderBy: { name: "asc" },
-    select: { id: true, name: true },
+    select: { id: true, name: true, dealerId: true },
   });
 }
 
@@ -854,7 +969,7 @@ export async function requestDeliveryReturnAction(deliveryId: string, reason: un
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Enter the reason for the return" };
   try {
     const row = await deliveryReturnService.request(postingActor(session), { deliveryId, reason: parsed.data });
-    revalidateDeliveryReturn();
+    revalidateDelivery(deliveryId);
     return { success: true as const, id: row.id, requestNo: row.requestNo };
   } catch (error) {
     return actionError(error, "Failed to request the return");

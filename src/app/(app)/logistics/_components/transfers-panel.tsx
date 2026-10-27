@@ -1,6 +1,6 @@
 "use client";
 
-import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
+import { createColumnHelper } from "@tanstack/react-table";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -25,6 +25,13 @@ import {
   buildLogisticsPageHref,
   LOGISTICS_TRANSFERS_PATH,
 } from "@/app/(app)/logistics/_components/logistics-paths";
+import { CompactProgressRail } from "@/app/(app)/logistics/_components/compact-progress-rail";
+import { buildTransferTracker } from "@/app/(app)/logistics/_components/transfer-tracker";
+import type { WorkflowStatusOption } from "@/features/logistics/constants/workflow-codes";
+import {
+  LogisticsListViewSwitch,
+  useLogisticsListProgressView,
+} from "@/app/(app)/logistics/_components/logistics-list-view-switch";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
 interface StatusCodeRef {
@@ -56,6 +63,7 @@ interface TransfersPanelProps {
   capabilities: LogisticsActionCapabilities;
   branchScope: string[] | null;
   currentUserName: string;
+  workflowStatuses: readonly WorkflowStatusOption[];
   initialSort?: string;
   initialSortDir?: string;
 }
@@ -70,11 +78,13 @@ export function TransfersPanel({
   capabilities,
   branchScope,
   currentUserName,
+  workflowStatuses,
   initialSort = "",
   initialSortDir = "desc",
 }: TransfersPanelProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [progressView] = useLogisticsListProgressView();
   const [query, setQuery] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const pageSize = parseTablePageSize(transfers.limit);
@@ -122,8 +132,6 @@ export function TransfersPanel({
     [transfers.items],
   );
 
-  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
-  const selectedCount = filtered.filter((row) => rowSelection[row.id]).length;
 
   const indexOffset = (transfers.page - 1) * transfers.limit;
   const columns = useMemo(() => {
@@ -147,6 +155,26 @@ export function TransfersPanel({
             {row.original.transferNo}
           </Link>
         ),
+      }),
+      transferColumn.display({
+        id: "progress",
+        header: "Progress",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <CompactProgressRail
+            ariaLabel={`${row.original.transferNo} progress`}
+            items={buildTransferTracker(
+              {
+                code: row.original.statusCode.code,
+                name: row.original.statusCode.name,
+                color: row.original.statusCode.color ?? null,
+              },
+              [],
+              workflowStatuses,
+            )}
+          />
+        ),
+        meta: { className: "w-52 min-w-52" },
       }),
       transferColumn.display({
         id: "fromBranch",
@@ -178,8 +206,10 @@ export function TransfersPanel({
         ),
       }),
     ];
-    return cols;
-  }, [indexOffset]);
+    if (!progressView) return cols.filter((column) => column.id !== "progress");
+    const progressIds = new Set(["transferNo", "progress", "fromBranch", "status", "actions"]);
+    return cols.filter((column) => column.id != null && progressIds.has(column.id));
+  }, [indexOffset, progressView, workflowStatuses]);
 
   return (
     <>
@@ -195,20 +225,11 @@ export function TransfersPanel({
           sortDir,
           onSort: (columnId) => toggleSort(columnId as TransferSortField),
         }}
-        enableRowSelection
-        rowSelection={rowSelection}
-        onRowSelectionChange={setRowSelection}
-        selectAllLabel="Select all transfers"
-        getSelectionLabel={(row) => `Select transfer ${row.transferNo}`}
         stickyHeader
         search={{ value: query, onChange: setQuery, placeholder: "Search transfers…", suggestions }}
         toolbarActions={
           <>
-            {selectedCount > 0 ? (
-              <Button variant="secondary" onClick={() => setRowSelection({})}>
-                {selectedCount} selected
-              </Button>
-            ) : null}
+          <LogisticsListViewSwitch />
           {capabilities.canCreate ? (
             <Button
               size="sm"

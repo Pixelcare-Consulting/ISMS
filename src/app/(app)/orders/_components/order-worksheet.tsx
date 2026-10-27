@@ -5,13 +5,13 @@ import type { BranchOrderType } from "@prisma/client";
 import { CircleHelp, Trash2 } from "lucide-react";
 import { createContext, useContext, useId, useMemo, useState, type ReactNode } from "react";
 
-import { WorksheetLineNote } from "@/app/(app)/orders/_components/worksheet-line-note";
 import { WorksheetModelLabel } from "@/app/(app)/orders/_components/worksheet-model-label";
 import { TablePagination } from "@/components/data-table/table-pagination";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
@@ -23,6 +23,7 @@ import {
 import {
   EMPTY_WORKSHEET_LINE_FILTER,
   paginateWorksheetLines,
+  planogramBrandOptions,
   visibleWorksheetLines,
   WORKSHEET_PAGE_SIZE,
   worksheetOrderTotals,
@@ -40,6 +41,7 @@ import {
   NO_PLANNING_SUGGESTION_MESSAGE,
   worksheetLineCbm,
 } from "@/features/orders/lib/order-worksheet-metrics";
+import { displayModelName } from "@/features/orders/lib/worksheet-model-display";
 import {
   OFF_PLANOGRAM_SUGGESTION_REASON,
   type OrderAnalyticsBrand,
@@ -103,6 +105,8 @@ export interface OrderWorksheetProps {
   /** Create-mode control on the right of the filter row. Hidden on view and review. */
   filterAction?: ReactNode;
   footer?: ReactNode;
+  /** Page layout renders DII, stock, and totals in the side card instead. */
+  hideSummary?: boolean;
 }
 
 export function OrderWorksheet({
@@ -128,6 +132,7 @@ export function OrderWorksheet({
   onRemoveAdditional,
   filterAction,
   footer,
+  hideSummary = false,
 }: OrderWorksheetProps) {
   const [filter, setFilter] = useState<WorksheetLineFilter>(EMPTY_WORKSHEET_LINE_FILTER);
   const [page, setPage] = useState(1);
@@ -178,6 +183,17 @@ export function OrderWorksheet({
       spRemarksEditable,
     ],
   );
+  const createBrands = useMemo(
+    () => (mode === "create" ? planogramBrandOptions(brands, lines) : brands),
+    [brands, lines, mode],
+  );
+  if (
+    mode === "create" &&
+    filter.brandId &&
+    !createBrands.some((brand) => brand.id === filter.brandId)
+  ) {
+    setFilter((current) => (current.brandId ? { ...current, brandId: "" } : current));
+  }
   const columns = useMemo(
     () =>
       worksheetColumns({
@@ -189,22 +205,56 @@ export function OrderWorksheet({
     [mode, orderType, showApprovedQty, showSpRemarks],
   );
 
-  return (
-    <div
-      className={cn(
-        "flex min-h-0 min-w-0 flex-1 flex-col",
-        mode === "create" ? "gap-4" : "gap-3",
-      )}
-    >
-      <WorksheetSummary
-        mode={mode}
-        summaryMode={summaryMode}
+  if (mode === "create") {
+    return (
+      <CreateOrderLineList
+        brands={createBrands}
+        filter={filter}
+        onFilterChange={(next) => {
+          setFilter(next);
+          setPage(1);
+        }}
+        loading={loading}
+        error={error ?? null}
+        lineCount={lines.length}
+        visibleCount={visibleRows.length}
+        rows={pageSlice.rows}
+        indexOffset={pageSlice.indexOffset}
+        page={pageSlice.page}
+        totalPages={pageSlice.totalPages}
+        total={pageSlice.total}
+        footerLabel={worksheetTotalsLabel(requestedFooter.lineCount, requestedFooter.quantity)}
+        onPageChange={setPage}
+        orderType={orderType}
+        onRequestedQtyChange={onRequestedQtyChange}
+        onRemarksChange={onRemarksChange}
+        onRemoveAdditional={onRemoveAdditional}
+        filterAction={filterAction}
         summary={summary}
+        summaryMode={summaryMode}
         snapshot={snapshot}
         snapshotAtLabel={snapshotAtLabel}
         totals={totals}
         showApprovedQty={showApprovedQty}
+        hideSummary={hideSummary}
+        footer={footer}
       />
+    );
+  }
+
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
+      {hideSummary ? null : (
+        <WorksheetSummary
+          mode={mode}
+          summaryMode={summaryMode}
+          summary={summary}
+          snapshot={snapshot}
+          snapshotAtLabel={snapshotAtLabel}
+          totals={totals}
+          showApprovedQty={showApprovedQty}
+        />
+      )}
       {error ? (
         <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}
@@ -218,7 +268,7 @@ export function OrderWorksheet({
             setFilter(next);
             setPage(1);
           }}
-          action={mode === "create" ? filterAction : null}
+          action={null}
         />
         {loading && lines.length === 0 ? (
           <WorksheetSkeleton showApproved={showApprovedQty} showSpRemarks={showSpRemarks} />
@@ -250,6 +300,531 @@ export function OrderWorksheet({
       {footer ? <div className="shrink-0">{footer}</div> : null}
     </div>
   );
+}
+
+function CreateOrderLineList({
+  brands,
+  filter,
+  onFilterChange,
+  loading,
+  error,
+  lineCount,
+  visibleCount,
+  rows,
+  indexOffset,
+  page,
+  totalPages,
+  total,
+  footerLabel,
+  onPageChange,
+  orderType,
+  onRequestedQtyChange,
+  onRemarksChange,
+  onRemoveAdditional,
+  filterAction,
+  summary,
+  summaryMode,
+  snapshot,
+  snapshotAtLabel,
+  totals,
+  showApprovedQty,
+  hideSummary,
+  footer,
+}: {
+  brands: OrderAnalyticsBrand[];
+  filter: WorksheetLineFilter;
+  onFilterChange: (next: WorksheetLineFilter) => void;
+  loading: boolean;
+  error: string | null;
+  lineCount: number;
+  visibleCount: number;
+  rows: ProjectedWorksheetLine[];
+  /** 0-based start of this page in the filtered list. */
+  indexOffset: number;
+  page: number;
+  totalPages: number;
+  total: number;
+  footerLabel: string;
+  onPageChange: (page: number) => void;
+  orderType: BranchOrderType;
+  onRequestedQtyChange?: OrderWorksheetProps["onRequestedQtyChange"];
+  onRemarksChange?: OrderWorksheetProps["onRemarksChange"];
+  onRemoveAdditional?: OrderWorksheetProps["onRemoveAdditional"];
+  filterAction?: ReactNode;
+  summary: OrderWorksheetSummary | null;
+  summaryMode: OrderWorksheetProps["summaryMode"];
+  snapshot: OrderReviewSnapshot | null;
+  snapshotAtLabel: string | null;
+  totals: ReturnType<typeof worksheetOrderTotals>;
+  showApprovedQty: boolean;
+  hideSummary: boolean;
+  footer?: ReactNode;
+}) {
+  const canRemove = Boolean(onRemoveAdditional);
+  const removableIds = useMemo(
+    () => (canRemove ? rows.map((row) => row.modelId) : []),
+    [canRemove, rows],
+  );
+  const [selectionPage, setSelectionPage] = useState(page);
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
+  if (selectionPage !== page) {
+    setSelectionPage(page);
+    setSelectedIds(new Set());
+  }
+  const selectedOnPage = removableIds.filter((id) => selectedIds.has(id));
+  const allOnPageSelected =
+    removableIds.length > 0 && selectedOnPage.length === removableIds.length;
+  const headerChecked: boolean | "indeterminate" =
+    allOnPageSelected || (selectedOnPage.length > 0 ? "indeterminate" : false);
+
+  function togglePage(checked: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of removableIds) {
+        if (checked) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  }
+
+  function toggleRow(modelId: string, checked: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(modelId);
+      else next.delete(modelId);
+      return next;
+    });
+  }
+
+  function removeSelected() {
+    if (!onRemoveAdditional || selectedOnPage.length === 0) return;
+    for (const id of selectedOnPage) onRemoveAdditional(id);
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of selectedOnPage) next.delete(id);
+      return next;
+    });
+  }
+
+  const removeSelectedAction =
+    selectedOnPage.length > 0 ? (
+      <Button type="button" variant="destructive" size="sm" className="h-8" onClick={removeSelected}>
+        Remove selected
+      </Button>
+    ) : null;
+
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
+      {hideSummary ? null : (
+        <WorksheetSummary
+          mode="create"
+          summaryMode={summaryMode}
+          summary={summary}
+          snapshot={snapshot}
+          snapshotAtLabel={snapshotAtLabel}
+          totals={totals}
+          showApprovedQty={showApprovedQty}
+        />
+      )}
+      {error ? (
+        <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <CreateLineToolbar
+          filter={filter}
+          brands={brands}
+          loading={loading}
+          onChange={onFilterChange}
+          action={
+            removeSelectedAction || filterAction ? (
+              <>
+                {removeSelectedAction}
+                {filterAction}
+              </>
+            ) : undefined
+          }
+        />
+        {loading && lineCount === 0 ? (
+          <div className="overflow-x-auto">
+            <div className="min-w-[54rem]">
+              <CreateLineHeader
+                showSelection={canRemove}
+                checked={false}
+                selectionDisabled
+                onToggleAll={togglePage}
+              />
+              <CreateLinesSkeleton />
+            </div>
+          </div>
+        ) : visibleCount === 0 ? (
+          <p className="py-8 text-sm text-muted-foreground">
+            {lineCount === 0 ? "This branch has no models to order yet." : "No models match."}
+          </p>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <div className="min-w-[54rem]">
+                <CreateLineHeader
+                  showSelection={canRemove}
+                  checked={headerChecked}
+                  selectionDisabled={removableIds.length === 0}
+                  onToggleAll={togglePage}
+                />
+                <ul className="divide-y divide-border/60" aria-label="Models">
+                  {rows.map((row, index) => (
+                    <CreateModelRow
+                      key={row.modelId}
+                      row={row}
+                      indexNo={indexOffset + index + 1}
+                      orderType={orderType}
+                      canRemove={canRemove}
+                      selected={selectedIds.has(row.modelId)}
+                      onSelectedChange={(checked) => toggleRow(row.modelId, checked)}
+                      onRequestedQtyChange={onRequestedQtyChange}
+                      onRemarksChange={onRemarksChange}
+                      onRemoveAdditional={onRemoveAdditional}
+                    />
+                  ))}
+                </ul>
+              </div>
+            </div>
+            <div className="-mx-4 shrink-0">
+              <TablePagination
+                page={page}
+                totalPages={totalPages}
+                total={total}
+                label="model"
+                summary={footerLabel}
+                onPageChange={onPageChange}
+              />
+            </div>
+          </>
+        )}
+      </div>
+      {footer ? <div className="shrink-0">{footer}</div> : null}
+    </div>
+  );
+}
+
+/** One dense row: number, select, model, stock figures, quantity, CBM, then note, details, and remove. */
+const CREATE_LINE_GRID =
+  "grid grid-cols-[2.75rem_1.75rem_minmax(10rem,1.8fr)_3.5rem_4rem_4.75rem_4.5rem_4.5rem_3.75rem_4.5rem_2rem] items-center gap-x-3";
+
+function CreateLineHeader({
+  showSelection,
+  checked,
+  selectionDisabled,
+  onToggleAll,
+}: {
+  showSelection: boolean;
+  checked: boolean | "indeterminate";
+  selectionDisabled: boolean;
+  onToggleAll: (checked: boolean) => void;
+}) {
+  return (
+    <div
+      className={cn(
+        CREATE_LINE_GRID,
+        "border-b border-border/70 pb-2 text-xs whitespace-nowrap text-muted-foreground",
+      )}
+    >
+      <span className="text-center">No.</span>
+      {showSelection ? (
+        <Checkbox
+          className="justify-self-center"
+          checked={checked}
+          disabled={selectionDisabled}
+          onCheckedChange={(value) => onToggleAll(value === true)}
+          aria-label="Select all models on this page"
+        />
+      ) : (
+        <span />
+      )}
+      <span>Model</span>
+      <span className="text-right">Stock</span>
+      <span className="text-right">Suggest</span>
+      <span className="text-right">Shelf max</span>
+      <span className="text-center">Qty</span>
+      <span className="text-right">CBM</span>
+      <span className="sr-only">Note</span>
+      <span className="sr-only">Details</span>
+      <span className="sr-only">Remove</span>
+    </div>
+  );
+}
+
+function CreateLineToolbar({
+  filter,
+  brands,
+  loading = false,
+  onChange,
+  action,
+}: {
+  filter: WorksheetLineFilter;
+  brands: OrderAnalyticsBrand[];
+  loading?: boolean;
+  onChange: (next: WorksheetLineFilter) => void;
+  action?: ReactNode;
+}) {
+  const searchId = useId();
+  const showBrandFilter = brands.length > 0 || loading;
+  return (
+    <div className="flex flex-col gap-2 py-3 sm:flex-row sm:flex-wrap sm:items-center">
+      <Input
+        id={searchId}
+        aria-label="Search model code or name"
+        value={filter.modelSearch}
+        placeholder="Search model code or name"
+        className="h-9 w-full min-w-0 flex-1 rounded-lg border-transparent bg-muted/70 shadow-none sm:max-w-md"
+        onChange={(event) => onChange({ ...filter, modelSearch: event.target.value })}
+      />
+      {showBrandFilter ? (
+        <SearchableSelect
+          className="w-full sm:w-52"
+          popoverClassName="z-[100]"
+          options={brands.map((brand) => ({ id: brand.id, label: brand.name }))}
+          value={filter.brandId}
+          onChange={(brandId) => onChange({ ...filter, brandId })}
+          allowClear
+          disabled={brands.length === 0}
+          placeholder="All brands"
+          searchPlaceholder="Search brands…"
+          emptyMessage="No brands on this planogram."
+        />
+      ) : null}
+      <label className="flex h-9 shrink-0 items-center gap-2 text-sm whitespace-nowrap text-muted-foreground">
+        <Checkbox
+          checked={filter.orderedOnly}
+          onCheckedChange={(checked) => onChange({ ...filter, orderedOnly: checked === true })}
+        />
+        With a quantity
+      </label>
+      {action ? <div className="flex shrink-0 items-center gap-2 sm:ml-auto">{action}</div> : null}
+    </div>
+  );
+}
+
+function CreateLinesSkeleton() {
+  return (
+    <div aria-busy="true" aria-label="Loading models" className="divide-y divide-border/60">
+      {Array.from({ length: 6 }, (_, index) => (
+        <div key={index} className={cn(CREATE_LINE_GRID, "py-2.5")}>
+          <Skeleton className="mx-auto h-4 w-4" />
+          <Skeleton className="mx-auto size-4 rounded-sm" />
+          <div className="min-w-0 space-y-1.5">
+            <Skeleton className="h-4 w-28" />
+            <Skeleton className="h-3 w-44 max-w-full" />
+          </div>
+          <Skeleton className="ml-auto h-4 w-6" />
+          <Skeleton className="ml-auto h-4 w-6" />
+          <Skeleton className="ml-auto h-4 w-8" />
+          <Skeleton className="mx-auto h-8 w-16 rounded-lg" />
+          <Skeleton className="ml-auto h-4 w-12" />
+          <span />
+          <span />
+          <span />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CreateModelRow({
+  row,
+  indexNo,
+  orderType,
+  canRemove,
+  selected,
+  onSelectedChange,
+  onRequestedQtyChange,
+  onRemarksChange,
+  onRemoveAdditional,
+}: {
+  row: ProjectedWorksheetLine;
+  indexNo: number;
+  orderType: BranchOrderType;
+  canRemove: boolean;
+  selected: boolean;
+  onSelectedChange: (checked: boolean) => void;
+  onRequestedQtyChange?: OrderWorksheetProps["onRequestedQtyChange"];
+  onRemarksChange?: OrderWorksheetProps["onRemarksChange"];
+  onRemoveAdditional?: OrderWorksheetProps["onRemoveAdditional"];
+}) {
+  const modelName = displayModelName(row.skuCode, row.name);
+  const shelfMax = row.shelfMax == null ? "—" : formatQty(row.shelfMax);
+  const lineCbm = formatWorksheetCbm(worksheetLineCbm(row.requestedQty, row.cbm));
+
+  return (
+    <li className={cn(CREATE_LINE_GRID, "py-2.5")}>
+      <span className="text-center text-sm tabular-nums text-muted-foreground">{indexNo}</span>
+      {canRemove ? (
+        <Checkbox
+          className="justify-self-center"
+          checked={selected}
+          onCheckedChange={(value) => onSelectedChange(value === true)}
+          aria-label={`Select ${row.skuCode}`}
+        />
+      ) : (
+        <span />
+      )}
+      <div className="min-w-0">
+        <p className="break-words font-medium leading-5">{row.skuCode}</p>
+        {modelName ? (
+          <p className="break-words text-sm leading-5 text-muted-foreground">{modelName}</p>
+        ) : null}
+      </div>
+      <p
+        className="text-right text-sm tabular-nums"
+        title={stockHoverTitle(row.inventory)}
+      >
+        {formatQty(row.inventory.onHandQty)}
+      </p>
+      <p
+        className="text-right text-sm tabular-nums"
+        title={suggestionCaption(row, orderType)}
+      >
+        {formatSuggestValue(row, orderType)}
+      </p>
+      <p className="text-right text-sm tabular-nums" title={suggestHelp(orderType)}>
+        {shelfMax}
+      </p>
+      <RequestedCell
+        row={row}
+        mode="create"
+        orderType={orderType}
+        onRequestedQtyChange={onRequestedQtyChange}
+        column
+      />
+      <p
+        className="text-right text-sm tabular-nums text-foreground"
+        title={WORKSHEET_COLUMN_HELP.cbm}
+      >
+        {lineCbm}
+      </p>
+      <CreateLineNote row={row} onRemarksChange={onRemarksChange} />
+      <LineDetails row={row} orderType={orderType} />
+      {onRemoveAdditional ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-8 justify-self-end text-muted-foreground hover:text-foreground"
+          onClick={() => onRemoveAdditional(row.modelId)}
+          aria-label={`Remove line ${row.skuCode}`}
+        >
+          <Trash2 className="size-4" />
+        </Button>
+      ) : (
+        <span />
+      )}
+    </li>
+  );
+}
+
+function LineNotePopover({
+  skuCode,
+  value,
+  buttonLabel,
+  label,
+  help,
+  placeholder = "Optional",
+  triggerDisabled = false,
+  fieldDisabled = false,
+  lockedTitle,
+  buttonClassName,
+  onChange,
+}: {
+  skuCode: string;
+  value: string;
+  buttonLabel: string;
+  label: string;
+  help: string;
+  placeholder?: string;
+  /** Line cannot take a note, so the button stays closed. */
+  triggerDisabled?: boolean;
+  /** Note stays visible inside the popover, but cannot be edited. */
+  fieldDisabled?: boolean;
+  lockedTitle?: string;
+  buttonClassName?: string;
+  onChange?: (value: string) => void;
+}) {
+  const trimmed = value.trim();
+  const hasNote = trimmed.length > 0;
+  return (
+    <Popover modal>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={triggerDisabled}
+          className={cn(
+            "h-7 px-2 text-xs font-normal",
+            hasNote ? "text-primary" : "text-muted-foreground",
+            buttonClassName,
+          )}
+          aria-label={label}
+          title={lockedTitle ?? (hasNote ? trimmed : help)}
+        >
+          {buttonLabel}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" collisionPadding={16} className="z-[100] w-72 space-y-2 p-3">
+        <div>
+          <p className="text-sm font-medium">{buttonLabel}</p>
+          <p className="text-xs text-muted-foreground">{skuCode}</p>
+        </div>
+        <Textarea
+          value={value}
+          disabled={fieldDisabled || onChange == null}
+          placeholder={onChange ? placeholder : "—"}
+          rows={3}
+          aria-label={label}
+          title={lockedTitle}
+          className="min-h-20 resize-none rounded-lg border-transparent bg-muted/70 shadow-none"
+          onChange={(event) => onChange?.(event.target.value)}
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function CreateLineNote({
+  row,
+  onRemarksChange,
+}: {
+  row: ProjectedWorksheetLine;
+  onRemarksChange?: OrderWorksheetProps["onRemarksChange"];
+}) {
+  const disabled = !row.requestable && row.requestedQty < 1;
+  return (
+    <LineNotePopover
+      skuCode={row.skuCode}
+      value={row.remarks}
+      buttonLabel="Note"
+      label={`Requester remarks for ${row.skuCode}`}
+      help={WORKSHEET_COLUMN_HELP.note}
+      placeholder="Optional"
+      triggerDisabled={disabled}
+      fieldDisabled={disabled}
+      buttonClassName="justify-self-end"
+      onChange={(value) => onRemarksChange?.(row.modelId, value)}
+    />
+  );
+}
+
+function formatSuggestValue(row: ProjectedWorksheetLine, orderType: BranchOrderType): string {
+  if (
+    orderType === "auto_replenish" &&
+    row.suggestionUnavailableReason === NO_PLANNING_SUGGESTION_MESSAGE
+  ) {
+    return NO_PLANNING_SUGGESTION_MESSAGE;
+  }
+  if (row.sugQty == null) return "—";
+  return formatQty(row.sugQty);
 }
 
 interface WorksheetGridContextValue {
@@ -850,11 +1425,17 @@ function RequestedCell({
   mode,
   orderType,
   onRequestedQtyChange,
+  prominent = false,
+  column = false,
 }: {
   row: ProjectedWorksheetLine;
   mode: OrderWorksheetProps["mode"];
   orderType: BranchOrderType;
   onRequestedQtyChange?: OrderWorksheetProps["onRequestedQtyChange"];
+  /** Larger quantity field. The review table keeps the compact field. */
+  prominent?: boolean;
+  /** Create-mode column: a short field centered under Qty. */
+  column?: boolean;
 }) {
   if (mode !== "create") {
     return <span>{formatQty(row.requestedQty)}</span>;
@@ -872,7 +1453,14 @@ function RequestedCell({
       min={0}
       max={orderType === "manual" && row.sugQty != null ? row.sugQty : undefined}
       disabled={!row.requestable}
-      className={cn("ml-auto h-8 w-full min-w-0 text-right", !row.requestable && "bg-muted")}
+      className={cn(
+        column
+          ? "h-8 w-16 justify-self-center rounded-lg border-transparent bg-muted px-1 text-center text-sm tabular-nums shadow-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          : prominent
+            ? "h-10 w-24 shrink-0 text-center text-base font-medium tabular-nums"
+            : "ml-auto h-8 w-full min-w-0 text-right",
+        !row.requestable && "bg-muted",
+      )}
       value={row.requestedQty}
       title={blockedReason}
       aria-label={`Requested quantity for ${row.skuCode}`}
@@ -919,16 +1507,39 @@ function RemarksCell({
   mode: OrderWorksheetProps["mode"];
   onRemarksChange?: OrderWorksheetProps["onRemarksChange"];
 }) {
-  if (mode !== "create") return <RemarkText value={row.remarks} />;
-  return (
-    <WorksheetLineNote
-      value={row.remarks}
-      disabled={!row.requestable && row.requestedQty < 1}
-      placeholder="Optional"
-      label={`Requester remarks for ${row.skuCode}`}
-      onChange={(value: string) => onRemarksChange?.(row.modelId, value)}
-    />
-  );
+  switch (mode) {
+    case "view":
+      return <RemarkText value={row.remarks} />;
+    case "review":
+      return (
+        <LineNotePopover
+          skuCode={row.skuCode}
+          value={row.remarks}
+          buttonLabel="Note"
+          label={`Requester remarks for ${row.skuCode}`}
+          help={WORKSHEET_COLUMN_HELP.note}
+          buttonClassName="whitespace-nowrap"
+        />
+      );
+    case "create":
+      return (
+        <LineNotePopover
+          skuCode={row.skuCode}
+          value={row.remarks}
+          buttonLabel="Note"
+          label={`Requester remarks for ${row.skuCode}`}
+          help={WORKSHEET_COLUMN_HELP.note}
+          placeholder="Optional"
+          triggerDisabled={!row.requestable && row.requestedQty < 1}
+          fieldDisabled={!row.requestable && row.requestedQty < 1}
+          onChange={(value) => onRemarksChange?.(row.modelId, value)}
+        />
+      );
+    default: {
+      const _exhaustive: never = mode;
+      return _exhaustive;
+    }
+  }
 }
 
 function SpRemarksCell({
@@ -943,13 +1554,19 @@ function SpRemarksCell({
   const approvalLocked = row.requestedQty < 1;
   if (!editable) return <RemarkText value={row.spRemarks} />;
   return (
-    <WorksheetLineNote
+    <LineNotePopover
+      skuCode={row.skuCode}
       value={row.spRemarks}
-      disabled={approvalLocked}
-      placeholder={approvalLocked ? "No request" : "Optional"}
+      buttonLabel="SP note"
       label={`SP remarks for ${row.skuCode}`}
-      title={approvalLocked ? "SP remarks apply only to lines with a requested quantity." : undefined}
-      onChange={(value: string) => onSpRemarksChange?.(row.modelId, value)}
+      help={WORKSHEET_COLUMN_HELP.spNote}
+      placeholder={approvalLocked ? "No request" : "Optional"}
+      fieldDisabled={approvalLocked}
+      buttonClassName="whitespace-nowrap"
+      lockedTitle={
+        approvalLocked ? "SP remarks apply only to lines with a requested quantity." : undefined
+      }
+      onChange={(value) => onSpRemarksChange?.(row.modelId, value)}
     />
   );
 }
@@ -1061,6 +1678,78 @@ function WorksheetSummary({
           {sentence}
         </p>
       ) : null}
+    </div>
+  );
+}
+
+export function OrderWorksheetAsideSummary({
+  summary,
+  totals,
+  loading = false,
+}: {
+  summary: OrderWorksheetSummary | null;
+  totals: ReturnType<typeof worksheetOrderTotals>;
+  loading?: boolean;
+}) {
+  if (!summary) {
+    return (
+      <p className="text-right text-sm text-muted-foreground">
+        {loading ? "Loading stock and totals…" : "Stock and totals appear after a branch is selected."}
+      </p>
+    );
+  }
+
+  const dii = formatDii(summary.computedDii, summary.diiUnavailableReason, summary.salesUnavailable);
+  const counted = formatAsOf(summary.inventoryAsOf);
+  const countedHint = counted === "N/A" ? null : `Counted ${counted}`;
+  const diiHint = dii.hint ?? plainSalesPeriod(summary.salesPeriodLabel);
+  const sentence = summarySentence("create", "current", null);
+  const rows: { label: string; value: string; hint: string | null; strong?: boolean }[] = [
+    { label: "DII", value: dii.value, hint: diiHint },
+    { label: "Stock value", value: formatPeso(summary.inventoryAmount), hint: countedHint },
+    {
+      label: "Requested value",
+      value: formatPeso(totals.requestedAmount),
+      hint: null,
+      strong: true,
+    },
+    { label: "Total CBM", value: formatWorksheetCbm(totals.requestedCbm), hint: null },
+  ];
+
+  return (
+    <div className="flex justify-end">
+      <div className="w-full max-w-sm space-y-3">
+        <dl className="space-y-2.5">
+          {rows.map((row) => (
+            <div key={row.label} className="flex items-start justify-between gap-8">
+              <dt
+                className={cn(
+                  "min-w-0 text-sm",
+                  row.strong ? "font-medium text-foreground" : "text-muted-foreground",
+                )}
+              >
+                {row.label}
+                {row.hint ? (
+                  <span className="mt-0.5 block text-xs font-normal leading-snug text-muted-foreground">
+                    {row.hint}
+                  </span>
+                ) : null}
+              </dt>
+              <dd
+                className={cn(
+                  "shrink-0 text-right tabular-nums text-foreground",
+                  row.strong ? "text-base font-semibold" : "text-sm",
+                )}
+              >
+                {row.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+        {sentence ? (
+          <p className="text-xs leading-relaxed text-muted-foreground">{sentence}</p>
+        ) : null}
+      </div>
     </div>
   );
 }

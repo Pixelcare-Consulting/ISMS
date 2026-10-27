@@ -8,6 +8,7 @@ export function DeliveryKpisStrip({ kpis }: { kpis: LogisticsKpis }) {
         totalLabel: "Total deliveries",
         totalValue: kpis.total,
         statuses: kpis.statuses,
+        statusBadges: true,
       })}
     />
   );

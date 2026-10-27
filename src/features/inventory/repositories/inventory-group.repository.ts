@@ -1,6 +1,8 @@
 import { Prisma } from "@prisma/client";
 
+import type { StockUnitsWarehouseRole } from "@/features/inventory/constants/stock-units-group";
 import {
+  inventoryGroupAggregatesFromParts,
   inventoryGroupAggregatesFromSqlRow,
   type InventoryGroupCountParts,
 } from "@/features/inventory/utils/stock-units-group-aggregates";
@@ -42,6 +44,21 @@ export type InventoryGroupModelRow = {
   brandName: string | null;
 } & InventoryGroupCountParts;
 
+/**
+ * One warehouse under a branch in the By warehouse view. `stockBranchId` is whose
+ * branch stock it holds: the branch itself for its primary warehouse, the alternate
+ * branch for an alternate. Models and serials below it are that branch's.
+ */
+export type InventoryGroupWarehouseRow = {
+  role: StockUnitsWarehouseRole;
+  stockBranchId: string;
+  stockBranchName: string;
+  stockBranchSapCode: string;
+  /** The branch's primary warehouse record; null for an alternate or when none is set. */
+  warehouseCode: string | null;
+  warehouseName: string | null;
+} & InventoryGroupCountParts;
+
 type BranchGroupAggRaw = {
   branch_id: string;
   branch_name: string;
@@ -50,6 +67,7 @@ type BranchGroupAggRaw = {
   def: number | bigint;
   rsv: number | bigint;
   pending_inspection: number | bigint;
+  stk_not_stocked_in: number | bigint;
   status_counts?: unknown;
 };
 
@@ -62,6 +80,7 @@ type ModelGroupAggRaw = {
   def: number | bigint;
   rsv: number | bigint;
   pending_inspection: number | bigint;
+  stk_not_stocked_in: number | bigint;
   status_counts?: unknown;
 };
 
@@ -73,6 +92,7 @@ type ModelBranchSubgroupRaw = {
   def: number | bigint;
   rsv: number | bigint;
   pending_inspection: number | bigint;
+  stk_not_stocked_in: number | bigint;
   status_counts?: unknown;
 };
 
@@ -96,19 +116,49 @@ function resolveEffectiveBranchIdsForGroups(
     : branchIds;
 }
 
+/**
+ * Whether a branch unit is stocked in, by either route:
+ * - ISMS: delivered on a DR that carries both a DR# and a DR date (the same deliveries
+ *   the DR# column reads), or placed in a warehouse location by Stock in
+ * - SAP: the serial sync linked it to the SAP warehouse that holds it
+ *
+ * Only stocked-in units count as STK on the grouped views; the rest count toward Total.
+ */
+function stockedInSql(): Prisma.Sql {
+  return Prisma.sql`(
+    bi.warehouse_location_id IS NOT NULL
+    OR sn.sap_whs_code IS NOT NULL
+    OR EXISTS (
+      SELECT 1
+      FROM branch_delivery_lines bdl
+      INNER JOIN branch_deliveries bd ON bd.id = bdl.delivery_id
+      INNER JOIN reason_status_codes dsc ON dsc.id = bd.status_code_id
+      WHERE bdl.serial_number_id = bi.serial_number_id
+        AND bd.tenant_id = bi.tenant_id
+        AND NULLIF(btrim(bd.dr_no), '') IS NOT NULL
+        AND bd.dr_date IS NOT NULL
+        AND (bd.accepted_at IS NOT NULL OR dsc.code IN ('pending', 'partial', 'accepted'))
+    )
+  )`;
+}
+
 function groupAggregateSelectSql(
   statusCodes: readonly InventoryGroupStatusCodeRef[],
 ): Prisma.Sql {
   const pending = openPendingDefectReportExistsSql();
+  const stockedIn = stockedInSql();
   const statusCountArgs = statusCodes.flatMap((status) => [
     Prisma.sql`CAST(${status.code} AS text)`,
-    Prisma.sql`COUNT(*) FILTER (WHERE bi.status_code_id = CAST(${status.id} AS text))::int`,
+    status.code === "STK"
+      ? Prisma.sql`COUNT(*) FILTER (WHERE bi.status_code_id = CAST(${status.id} AS text) AND ${stockedIn})::int`
+      : Prisma.sql`COUNT(*) FILTER (WHERE bi.status_code_id = CAST(${status.id} AS text))::int`,
   ]);
   return Prisma.sql`
-    COUNT(*) FILTER (WHERE rsc.code = 'STK' AND NOT (${pending}))::int AS stk,
+    COUNT(*) FILTER (WHERE rsc.code = 'STK' AND ${stockedIn} AND NOT (${pending}))::int AS stk,
     COUNT(*) FILTER (WHERE rsc.code = 'DEF')::int AS def,
     COUNT(*) FILTER (WHERE rsc.code = 'RSV')::int AS rsv,
-    COUNT(*) FILTER (WHERE rsc.code = 'STK' AND (${pending}))::int AS pending_inspection,
+    COUNT(*) FILTER (WHERE rsc.code = 'STK' AND ${stockedIn} AND (${pending}))::int AS pending_inspection,
+    COUNT(*) FILTER (WHERE rsc.code = 'STK' AND NOT ${stockedIn})::int AS stk_not_stocked_in,
     jsonb_build_object(${Prisma.join(statusCountArgs)}) AS status_counts
   `;
 }
@@ -321,6 +371,103 @@ export const inventoryGroupRepository = {
       },
       statusCodes,
     );
+  },
+
+  /**
+   * The branch's primary warehouse (its own units) followed by each alternate warehouse
+   * (another branch) that has stock under the current filters. Alternates outside the
+   * user's branch scope are left out. A short list, so it is not paginated.
+   */
+  async listWarehousesInBranchGroup(
+    tenantId: string,
+    branchIds: string[],
+    branchId: string,
+    filters?: InventoryGroupListFilters,
+    statusCodes: readonly InventoryGroupStatusCodeRef[] = [],
+  ): Promise<InventoryGroupWarehouseRow[]> {
+    if (!branchIds.includes(branchId)) return [];
+
+    const branch = await prisma.branch.findFirst({
+      where: { id: branchId, tenantId, deletedAt: null },
+      select: {
+        id: true,
+        name: true,
+        sapCode: true,
+        primaryWarehouse: { select: { code: true, name: true, deletedAt: true } },
+        alternateWarehouses: {
+          select: {
+            alternateBranch: {
+              select: { id: true, name: true, sapCode: true, deletedAt: true },
+            },
+          },
+          orderBy: { alternateBranch: { name: "asc" } },
+        },
+      },
+    });
+    if (!branch) return [];
+
+    const inScope = new Set(branchIds);
+    const alternates = branch.alternateWarehouses
+      .map((row) => row.alternateBranch)
+      .filter(
+        (alternate) =>
+          alternate.deletedAt === null && alternate.id !== branch.id && inScope.has(alternate.id),
+      );
+    const stockBranchIds = [branch.id, ...alternates.map((alternate) => alternate.id)];
+
+    // The URL branch filter picks the top-level branch; it must not hide its alternates.
+    const counted = await this.listBranchGroups(
+      tenantId,
+      stockBranchIds,
+      { page: 1, limit: stockBranchIds.length },
+      { ...filters, branchId: undefined },
+      statusCodes,
+    );
+    const countsByBranch = new Map(counted.items.map((row) => [row.branchId, row]));
+    const countsOf = (id: string): InventoryGroupCountParts => {
+      const row = countsByBranch.get(id);
+      if (!row) {
+        return inventoryGroupAggregatesFromParts({ stk: 0, def: 0, rsv: 0, pendingInspection: 0 });
+      }
+      return {
+        total: row.total,
+        available: row.available,
+        defective: row.defective,
+        reserved: row.reserved,
+        pendingInspection: row.pendingInspection,
+        notStockedIn: row.notStockedIn,
+        statusCounts: row.statusCounts,
+      };
+    };
+
+    const primaryWarehouse =
+      branch.primaryWarehouse && branch.primaryWarehouse.deletedAt === null
+        ? branch.primaryWarehouse
+        : null;
+    const rows: InventoryGroupWarehouseRow[] = [
+      {
+        role: "PRIMARY",
+        stockBranchId: branch.id,
+        stockBranchName: branch.name,
+        stockBranchSapCode: branch.sapCode,
+        warehouseCode: primaryWarehouse?.code ?? null,
+        warehouseName: primaryWarehouse?.name ?? null,
+        ...countsOf(branch.id),
+      },
+    ];
+    for (const alternate of alternates) {
+      if (!countsByBranch.has(alternate.id)) continue;
+      rows.push({
+        role: "ALTERNATE",
+        stockBranchId: alternate.id,
+        stockBranchName: alternate.name,
+        stockBranchSapCode: alternate.sapCode,
+        warehouseCode: null,
+        warehouseName: null,
+        ...countsOf(alternate.id),
+      });
+    }
+    return rows;
   },
 
   async listBranchesInModelGroup(

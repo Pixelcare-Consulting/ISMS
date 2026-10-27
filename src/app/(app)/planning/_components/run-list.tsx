@@ -10,13 +10,12 @@ import { RunDocumentDialog } from "@/app/(app)/planning/_components/run-document
 import {
   DeleteConfirmDialog,
   TableRowActions,
-  TableRowCheckbox,
-  TableSelectAllCheckbox,
   TableSelectionBadge,
   useTableSelection,
 } from "@/components/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   deleteDemandPlanRunAction,
@@ -233,10 +232,12 @@ export function DemandPlanningRunList({
         runColumn.display({
           id: "select",
           header: () => (
-            <TableSelectAllCheckbox
-              isAllSelected={selection.isAllSelected}
-              isPartiallySelected={selection.isPartiallySelected}
-              onToggleAll={selection.toggleAll}
+            <Checkbox
+              checked={
+                selection.isAllSelected ||
+                (selection.isPartiallySelected ? "indeterminate" : false)
+              }
+              onCheckedChange={(checked) => selection.toggleAll(checked === true)}
               aria-label="Select all deletable runs"
             />
           ),
@@ -244,12 +245,12 @@ export function DemandPlanningRunList({
           cell: ({ row }) => {
             const deletable = isDemandPlanningRunDeletable(row.original.status);
             return (
-              <TableRowCheckbox
+              <Checkbox
                 checked={selection.isRowSelected(row.original.id)}
                 disabled={!deletable}
                 onCheckedChange={(checked) => {
                   if (!deletable) return;
-                  selection.toggleRow(row.original.id, checked);
+                  selection.toggleRow(row.original.id, checked === true);
                 }}
                 aria-label={
                   deletable
@@ -259,6 +260,7 @@ export function DemandPlanningRunList({
               />
             );
           },
+          meta: { className: "w-12" },
         }),
       );
     }

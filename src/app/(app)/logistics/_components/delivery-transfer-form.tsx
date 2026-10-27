@@ -18,6 +18,7 @@ import {
   updateDeliveryTransferLineRemarksAction,
 } from "@/features/logistics/actions/logistics.actions";
 import { sapTransferNotPostedMessage } from "@/features/logistics/constants/delivery-workflow-labels";
+import type { WorkflowStatusOption } from "@/features/logistics/constants/workflow-codes";
 import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
 import type { DeliveryTransferDetail } from "@/features/logistics/services/delivery-transfer.service";
 import { Button } from "@/components/ui/button";
@@ -41,9 +42,11 @@ type ActionResult = { success: true } | { error: string };
 export function DeliveryTransferForm({
   detail,
   capabilities,
+  workflowStatuses = [],
 }: {
   detail: DeliveryTransferDetail;
   capabilities: LogisticsActionCapabilities;
+  workflowStatuses?: readonly WorkflowStatusOption[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -168,7 +171,7 @@ export function DeliveryTransferForm({
             <div>
               <dt className="text-sm text-muted-foreground">Transfer status</dt>
               <dd className="mt-1">
-                <DeliveryTransferStatusBadge status={detail.status} />
+                <DeliveryTransferStatusBadge status={detail.status} catalog={workflowStatuses} />
               </dd>
             </div>
           </dl>

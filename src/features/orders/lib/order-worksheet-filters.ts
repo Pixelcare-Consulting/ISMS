@@ -16,6 +16,35 @@ export const EMPTY_WORKSHEET_LINE_FILTER: WorksheetLineFilter = {
   brandId: "",
 };
 
+/**
+ * Brand choices for the create-order model list.
+ * Only brands that appear on this branch's planogram lines. Additional items
+ * can use other brands, and those stay out of this list.
+ */
+export function planogramBrandOptions(
+  brands: readonly { id: string; name: string }[],
+  lines: readonly { brandId: string | null; brandName?: string | null; onPlanogram: boolean }[],
+): { id: string; name: string }[] {
+  const allowed = new Set<string>();
+  const namesFromLines = new Map<string, string>();
+  for (const line of lines) {
+    if (!line.onPlanogram || !line.brandId) continue;
+    allowed.add(line.brandId);
+    const name = line.brandName?.trim();
+    if (name) namesFromLines.set(line.brandId, name);
+  }
+  const listed = brands
+    .filter((brand) => allowed.has(brand.id))
+    .map((brand) => ({ id: brand.id, name: brand.name }));
+  const seen = new Set(listed.map((brand) => brand.id));
+  for (const [id, name] of namesFromLines) {
+    if (seen.has(id)) continue;
+    listed.push({ id, name });
+  }
+  listed.sort((a, b) => a.name.localeCompare(b.name));
+  return listed;
+}
+
 /** Fixed worksheet page size. The sheet does not offer a larger page. */
 export const WORKSHEET_PAGE_SIZE = 10;
 

@@ -1,6 +1,8 @@
 import type { BranchOrderStatus, BranchOrderType, Prisma } from "@prisma/client";
 
+import { aorRepository } from "@/features/aors/repositories/aor.repository";
 import { auditService } from "@/features/audit/services/audit.service";
+import { hasOrdersForceCancelPermission } from "@/features/orders/constants/order-permissions";
 import {
   BRANCH_ORDER_STATUS_LABELS,
   BRANCH_ORDER_TYPE_LABELS,
@@ -31,6 +33,11 @@ import type {
   OrderListSort,
   OrderListSortDir,
 } from "@/features/orders/repositories/order.repository";
+import { manualSpecialQueueStatusKeys } from "@/features/orders/lib/manual-special-order-scope";
+import {
+  hasQueryableTypeScopes,
+  type OrderTypeScope,
+} from "@/features/orders/lib/order-scope-where";
 import { SAP_REFERENCE_TYPES } from "@/features/sap/constants/sap-job-types";
 import { sapService } from "@/features/sap/services/sap.service";
 import { branchQuotaService } from "@/features/branch-quotas/services/branch-quota.service";
@@ -38,6 +45,7 @@ import { planogramRepository } from "@/features/planogram/repositories/planogram
 import { masterDataRepository } from "@/features/master-data/repositories/master-data.repository";
 import { resolveActiveOrderPrice } from "@/features/master-data/utils/resolve-active-order-price";
 import { getUserBranchIds } from "@/lib/aor/scope";
+import { resolvePagination, toPaginatedResult } from "@/lib/shared/pagination";
 import { resolveDeliveryDueDate } from "@/features/orders/utils/delivery-schedule";
 import { assertOrderingAllowed } from "@/features/orders/utils/order-window";
 import { branchRepository } from "@/features/branches/repositories/branch.repository";
@@ -112,6 +120,21 @@ function indexApprovalLines(
   }
 
   return byId;
+}
+
+/**
+ * A Team Leader's AOR branches, narrowed to the viewer's scope (null = unrestricted).
+ * Unlike `getUserBranchIds`, a TL with no AOR yields no branches, never "all".
+ */
+async function teamLeaderBranchScope(
+  tenantId: string,
+  teamLeaderId: string,
+  viewerBranchIds: string[] | null,
+): Promise<string[]> {
+  const tlBranchIds = await aorRepository.listExistingBranchIds(tenantId, teamLeaderId);
+  if (viewerBranchIds === null) return [...new Set(tlBranchIds)];
+  const inScope = new Set(viewerBranchIds);
+  return [...new Set(tlBranchIds.filter((id) => inScope.has(id)))];
 }
 
 const ORDER_STATUS_ORDER = Object.keys(
@@ -229,11 +252,30 @@ export const orderService = {
       limit?: number;
       orderType?: BranchOrderType;
       statuses?: BranchOrderStatus[];
+      /** One query across types. Replaces orderType + statuses. */
+      typeScopes?: OrderTypeScope[];
+      /** Only orders from branches in this Team Leader's AOR. */
+      teamLeaderId?: string;
     },
     sort?: { field?: OrderListSort; dir?: OrderListSortDir },
   ) {
-    const branchIds = hasFullAccess ? null : await getUserBranchIds(tenantId, userId);
+    const viewerBranchIds = hasFullAccess ? null : await getUserBranchIds(tenantId, userId);
+    const branchIds = pagination?.teamLeaderId
+      ? await teamLeaderBranchScope(tenantId, pagination.teamLeaderId, viewerBranchIds)
+      : viewerBranchIds;
+    // The repository reads an empty list as unrestricted, so "no branches" stops here.
+    if (branchIds !== null && branchIds.length === 0) {
+      const { limit, page } = resolvePagination(pagination);
+      return toPaginatedResult([], 0, page, limit);
+    }
     return orderRepository.listForTenant(tenantId, branchIds, pagination, sort);
+  },
+
+  /** Team Leaders the viewer can filter the order list by. */
+  async listTeamLeaderOptions(tenantId: string, userId: string, hasFullAccess: boolean) {
+    const viewerBranchIds = hasFullAccess ? null : await getUserBranchIds(tenantId, userId);
+    const users = await orderRepository.listTeamLeaderOptions(tenantId, viewerBranchIds);
+    return users.map((user) => ({ id: user.id, name: user.name.trim() || user.email }));
   },
 
   async getKpis(
@@ -242,8 +284,11 @@ export const orderService = {
     hasFullAccess: boolean,
     orderType?: BranchOrderType,
     statuses?: BranchOrderStatus[],
+    typeScopes?: OrderTypeScope[],
   ): Promise<OrderKpis> {
-    const statusKeys = statuses ?? ORDER_STATUS_ORDER;
+    const statusKeys = typeScopes
+      ? manualSpecialQueueStatusKeys(typeScopes, ORDER_STATUS_ORDER)
+      : (statuses ?? ORDER_STATUS_ORDER);
     const emptyStatuses = statusKeys.map((status) => ({
       code: status,
       name: BRANCH_ORDER_STATUS_LABELS[status],
@@ -255,10 +300,17 @@ export const orderService = {
     if (!hasFullAccess && branchIds !== null && branchIds.length === 0) {
       return { totalOrders: 0, statuses: emptyStatuses };
     }
+    if (typeScopes && !hasQueryableTypeScopes(typeScopes)) {
+      return { totalOrders: 0, statuses: emptyStatuses };
+    }
 
     const [statusGroups, totalOrders] = await Promise.all([
-      orderRepository.countByStatus(tenantId, branchIds, orderType, statuses),
-      orderRepository.countAll(tenantId, branchIds, orderType, statuses),
+      typeScopes
+        ? orderRepository.countByStatus(tenantId, branchIds, undefined, undefined, typeScopes)
+        : orderRepository.countByStatus(tenantId, branchIds, orderType, statuses),
+      typeScopes
+        ? orderRepository.countAll(tenantId, branchIds, undefined, undefined, typeScopes)
+        : orderRepository.countAll(tenantId, branchIds, orderType, statuses),
     ]);
 
     const countByStatus = new Map(
@@ -322,6 +374,8 @@ export const orderService = {
       orderType: BranchOrderType;
       notes?: string;
       brandId?: string | null;
+      /** Mode of payment picked for this order; kept only when it differs from the dealer's. */
+      modeOfPaymentId?: string | null;
       details: {
         modelId: string;
         quantity: number;
@@ -389,10 +443,30 @@ export const orderService = {
       })),
     );
 
+    let modeOfPaymentOverride: string | null = null;
+    if (data.modeOfPaymentId) {
+      const choice = await orderRepository.findModeOfPaymentChoice(
+        tenantId,
+        data.branchId,
+        data.modeOfPaymentId,
+      );
+      if (!choice.modeOfPayment) throw new Error("That mode of payment is not available.");
+      if (!choice.modeOfPayment.kind) {
+        throw new Error(
+          `Mode of payment ${choice.modeOfPayment.name} has no type. Set it to Consignment or Outright in Settings → Master data → Modes of payment.`,
+        );
+      }
+      // Same as the dealer's: store nothing, so the order keeps following the dealer.
+      if (choice.modeOfPayment.id !== choice.dealerModeOfPaymentId) {
+        modeOfPaymentOverride = choice.modeOfPayment.id;
+      }
+    }
+
     const order = await orderRepository.create(tenantId, {
       branchId: data.branchId,
       orderType: data.orderType,
       brandId: data.brandId,
+      modeOfPaymentId: modeOfPaymentOverride,
       notes,
       details,
       createdById: userId,
@@ -639,10 +713,13 @@ export const orderService = {
     tenantId: string,
     userId: string,
     orderIds: string[],
-    opts: { roleSlugs: string[] },
+    opts: { roleSlugs: string[]; permissions: string[] | undefined },
   ) {
     if (!isSuperAdminOrderOverride(opts.roleSlugs)) {
       throw new Error("Only Super Admin can bulk cancel or discard orders.");
+    }
+    if (!hasOrdersForceCancelPermission(opts.permissions)) {
+      throw new Error("An orders permission is required to cancel or discard orders.");
     }
 
     const uniqueIds = [...new Set(orderIds.filter(Boolean))];
@@ -823,12 +900,14 @@ export const orderService = {
       const routingContext = await orderRepository.findSapRoutingContext(
         tenantId,
         order.branchId,
+        order.id,
       );
       if (!routingContext.branch) throw new Error("Branch not found");
       const routing = resolveOrderSapRouting({
         branch: routingContext.branch,
         mainWarehouse: routingContext.mainWarehouse,
         dealer: routingContext.branch.dealer,
+        orderModeOfPayment: routingContext.orderModeOfPayment,
       });
       if (!routing.ok) throw new Error(routing.error);
 

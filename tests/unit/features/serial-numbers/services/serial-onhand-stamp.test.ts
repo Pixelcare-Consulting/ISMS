@@ -1,7 +1,4 @@
 jest.mock("@/lib/database/client", () => ({ prisma: {} }));
-jest.mock("@/features/serial-numbers/repositories/serial-number.repository", () => ({
-  serialNumberRepository: { setSapOnHandFlags: jest.fn() },
-}));
 jest.mock("@/features/sap/services/sap-onhand-stock", () => ({
   ensureSapOnHandQuery: jest.fn(),
   fetchSapSerialLocations: jest.fn(),
@@ -18,6 +15,7 @@ jest.mock("@/features/serial-numbers/services/serial-stock-replicate", () => ({
 }));
 
 import {
+  gateSerialPageByWarehouse,
   onHandDocRanges,
   serialsOnHandFromLocations,
 } from "@/features/serial-numbers/services/serial-onhand-stamp";
@@ -87,7 +85,29 @@ describe("partitionOnHandByMaster", () => {
         { serialNo: "SN1", warehouseCode: "ABL001" },
         { serialNo: "SN3", warehouseCode: "PASIG-MAIN" },
       ],
-      unknownSerialNos: ["SN2"],
+      unknown: [{ serialNo: "SN2", warehouseCode: "UNKNOWN" }],
+    });
+  });
+});
+
+describe("gateSerialPageByWarehouse", () => {
+  const records = [{ serialNo: "SN1" }, { serialNo: "SN2" }, { serialNo: "SN3" }];
+
+  it("holds back serials in a warehouse ISMS lacks and keeps the rest", () => {
+    expect(
+      gateSerialPageByWarehouse(
+        records,
+        [
+          { serialNo: "SN1", warehouseCode: "ABL001" },
+          { serialNo: "SN2", warehouseCode: "NEW-WH" },
+        ],
+        new Set(["ABL001"]),
+      ),
+    ).toEqual({
+      // SN3 is on hand nowhere (sold or shipped out) and is still synced.
+      writable: [{ serialNo: "SN1" }, { serialNo: "SN3" }],
+      known: [{ serialNo: "SN1", warehouseCode: "ABL001" }],
+      missing: [{ serialNo: "SN2", warehouseCode: "NEW-WH" }],
     });
   });
 });

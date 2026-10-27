@@ -71,9 +71,11 @@ export function InventoryGroupCounts({
             count: counts.reserved,
           },
         ]);
+  // STK chips count only stocked-in units; the rest are still part of the total.
+  const notStockedIn = counts.notStockedIn ?? 0;
   const shownTotal =
     statuses.length > 0
-      ? statuses.reduce((sum, status) => sum + status.count, 0)
+      ? statuses.reduce((sum, status) => sum + status.count, 0) + notStockedIn
       : counts.total;
 
   return (
@@ -87,7 +89,15 @@ export function InventoryGroupCounts({
           className={cn(statusColorClassName(status.color, status.code), size)}
         />
       ))}
-      <Badge variant="secondary" className={cn("tabular-nums font-normal", size)}>
+      <Badge
+        variant="secondary"
+        title={
+          notStockedIn > 0
+            ? `Includes ${notStockedIn.toLocaleString()} unit(s) with no DR# and DR date or warehouse yet`
+            : undefined
+        }
+        className={cn("tabular-nums font-normal", size)}
+      >
         Total {shownTotal.toLocaleString()}
       </Badge>
     </div>

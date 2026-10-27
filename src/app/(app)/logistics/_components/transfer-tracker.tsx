@@ -1,78 +1,72 @@
 "use client";
 
 import {
+  progressEventsForActions,
   ProgressTracker,
-  type ProgressNode,
-  type ProgressStepState,
+  type ProgressAuditRow,
+  type ProgressStageIcon,
 } from "@/app/(app)/logistics/_components/progress-tracker";
+import {
+  TRANSFER_SETTLED_CODES,
+  TRANSFER_STOP_CODES,
+  TRANSFER_WORKFLOW_CODE,
+  type WorkflowStatusOption,
+} from "@/features/logistics/constants/workflow-codes";
+import { buildCatalogProgress } from "@/features/logistics/constants/workflow-progress";
 
 /**
- * Progress for a branch transfer. Steps are only the statuses this flow writes.
- * A rejected or cancelled transfer does not complete later steps.
- * A step time comes only from the history action that recorded it.
+ * Progress for a branch transfer. Steps, names, colors, and order come from
+ * the Transfer workflow codes in Status settings.
  */
 
-const TRACKER_STEPS = [
-  { code: "pending_tl", fallback: "Pending TL" },
-  { code: "for_transfer", fallback: "For transfer" },
-  { code: "in_transit", fallback: "In transit" },
-  { code: "accepted", fallback: "Accepted" },
-] as const;
+type TransferAuditAction =
+  | "transfer.created"
+  | "transfer.approved"
+  | "transfer.rejected"
+  | "transfer.released"
+  | "transfer.received"
+  | "transfer.shipment_saved";
 
-type TrackerStepCode = (typeof TRACKER_STEPS)[number]["code"];
+const TRANSFER_ICONS: Readonly<Record<string, ProgressStageIcon>> = {
+  [TRANSFER_WORKFLOW_CODE.requested]: "approval",
+  [TRANSFER_WORKFLOW_CODE.pending_tl]: "approval",
+  [TRANSFER_WORKFLOW_CODE.approved]: "ready",
+  [TRANSFER_WORKFLOW_CODE.for_transfer]: "ready",
+  [TRANSFER_WORKFLOW_CODE.in_transit]: "transit",
+  [TRANSFER_WORKFLOW_CODE.accepted]: "accepted",
+  [TRANSFER_WORKFLOW_CODE.completed]: "accepted",
+};
 
-type KnownStatus =
-  | "requested"
-  | "approved"
-  | "draft"
-  | "pending_tl"
-  | "for_transfer"
-  | "in_transit"
-  | "accepted"
-  | "rejected"
-  | "completed"
-  | "cancelled";
-
-type TrackerMode = { kind: "active"; index: number } | { kind: "stopped" } | { kind: "recorded" };
-
-function asKnownStatus(code: string): KnownStatus | null {
-  switch (code) {
-    case "requested":
-    case "approved":
-    case "draft":
-    case "pending_tl":
-    case "for_transfer":
-    case "in_transit":
-    case "accepted":
-    case "rejected":
-    case "completed":
-    case "cancelled":
-      return code;
+function asTransferAuditAction(action: string): TransferAuditAction | null {
+  switch (action) {
+    case "transfer.created":
+    case "transfer.approved":
+    case "transfer.rejected":
+    case "transfer.released":
+    case "transfer.received":
+    case "transfer.shipment_saved":
+      return action;
     default:
       return null;
   }
 }
 
-function trackerMode(code: string): TrackerMode {
-  const known = asKnownStatus(code);
-  if (!known) return { kind: "recorded" };
+export function transferAuditLabel(action: string): string {
+  const known = asTransferAuditAction(action);
+  if (!known) return action;
   switch (known) {
-    case "pending_tl":
-    case "requested":
-      return { kind: "active", index: 0 };
-    case "for_transfer":
-    case "approved":
-      return { kind: "active", index: 1 };
-    case "in_transit":
-      return { kind: "active", index: 2 };
-    case "accepted":
-      return { kind: "active", index: 3 };
-    case "rejected":
-    case "cancelled":
-      return { kind: "stopped" };
-    case "draft":
-    case "completed":
-      return { kind: "recorded" };
+    case "transfer.created":
+      return "Request submitted";
+    case "transfer.approved":
+      return "Approved by Team Lead";
+    case "transfer.rejected":
+      return "Rejected";
+    case "transfer.released":
+      return "Released — in transit";
+    case "transfer.received":
+      return "Units received";
+    case "transfer.shipment_saved":
+      return "Waybill and schedule saved";
     default: {
       const unreachable: never = known;
       return unreachable;
@@ -80,7 +74,26 @@ function trackerMode(code: string): TrackerMode {
   }
 }
 
-function earliestAction(history: { action: string; at: string }[], action: string): string | null {
+function historyAction(code: string): string | null {
+  switch (code) {
+    case TRANSFER_WORKFLOW_CODE.requested:
+    case TRANSFER_WORKFLOW_CODE.pending_tl:
+    case TRANSFER_WORKFLOW_CODE.draft:
+      return "transfer.created";
+    case TRANSFER_WORKFLOW_CODE.approved:
+    case TRANSFER_WORKFLOW_CODE.for_transfer:
+      return "transfer.approved";
+    case TRANSFER_WORKFLOW_CODE.in_transit:
+      return "transfer.released";
+    case TRANSFER_WORKFLOW_CODE.accepted:
+    case TRANSFER_WORKFLOW_CODE.completed:
+      return "transfer.received";
+    default:
+      return null;
+  }
+}
+
+function earliestAction(history: readonly ProgressAuditRow[], action: string): string | null {
   let earliest: string | null = null;
   for (const row of history) {
     if (row.action !== action) continue;
@@ -89,7 +102,7 @@ function earliestAction(history: { action: string; at: string }[], action: strin
   return earliest;
 }
 
-function latestAction(history: { action: string; at: string }[], action: string): string | null {
+function latestAction(history: readonly ProgressAuditRow[], action: string): string | null {
   let latest: string | null = null;
   for (const row of history) {
     if (row.action !== action) continue;
@@ -98,105 +111,49 @@ function latestAction(history: { action: string; at: string }[], action: string)
   return latest;
 }
 
-function occurredAt(
-  code: TrackerStepCode,
-  statusCode: string,
-  history: { action: string; at: string }[],
-): string | null {
-  switch (code) {
-    case "pending_tl":
-      return earliestAction(history, "transfer.created");
-    case "for_transfer":
-      return earliestAction(history, "transfer.approved");
-    case "in_transit":
-      return earliestAction(history, "transfer.released");
-    case "accepted":
-      return statusCode === "accepted" ? latestAction(history, "transfer.received") : null;
-    default: {
-      const unreachable: never = code;
-      return unreachable;
-    }
+function occurredAt(code: string, statusCode: string, history: readonly ProgressAuditRow[]): string | null {
+  const action = historyAction(code);
+  if (!action) return null;
+  if (code === TRANSFER_WORKFLOW_CODE.accepted || code === TRANSFER_WORKFLOW_CODE.completed) {
+    return statusCode === code ? latestAction(history, action) : null;
   }
+  return earliestAction(history, action);
 }
 
-function prefixCount(times: (string | null)[]): number {
-  let count = 0;
-  for (const time of times) {
-    if (!time) break;
-    count += 1;
-  }
-  return count;
-}
-
-function stepLabel(
-  code: string,
-  fallback: string,
-  index: number,
-  status: { code: string; name: string },
-  mode: TrackerMode,
-): string {
-  const current = mode.kind === "active" && mode.index === index;
-  const name = status.name.trim();
-  if (name && (current || status.code === code)) return name;
-  return fallback;
-}
-
-function stoppedLabel(status: { code: string; name: string }): string {
-  const name = status.name.trim();
-  if (name) return name;
-  return status.code === "cancelled" ? "Cancelled" : "Rejected";
-}
-
-function buildTracker(
+export function buildTransferTracker(
   status: { code: string; name: string; color: string | null },
-  history: { action: string; at: string }[],
-): ProgressNode[] {
-  const mode = trackerMode(status.code);
-  const times = TRACKER_STEPS.map((step) => occurredAt(step.code, status.code, history));
-  const provenCount = prefixCount(times);
-  const nodes: ProgressNode[] = TRACKER_STEPS.map((step, index) => {
-    const label = stepLabel(step.code, step.fallback, index, status, mode);
-    if (mode.kind === "active") {
-      const state: ProgressStepState =
-        index < mode.index ? "completed" : index === mode.index ? "current" : "upcoming";
-      return {
-        key: step.code,
-        label,
-        state,
-        at: state === "upcoming" ? null : times[index] ?? null,
-        color: null,
-      };
-    }
-    const completed = index < provenCount;
-    return {
-      key: step.code,
-      label,
-      state: completed ? "completed" : "upcoming",
-      at: completed ? times[index] ?? null : null,
-      color: null,
-    };
+  history: readonly ProgressAuditRow[],
+  catalog: readonly WorkflowStatusOption[],
+) {
+  return buildCatalogProgress({
+    catalog,
+    status,
+    stopCodes: TRANSFER_STOP_CODES,
+    settledCodes: TRANSFER_SETTLED_CODES,
+    icons: TRANSFER_ICONS,
+    occurredAt: (code) => occurredAt(code, status.code, history),
+    eventsFor: (code) => {
+      const action = historyAction(code);
+      return progressEventsForActions(history, action ? [action] : [], transferAuditLabel);
+    },
+    stopAt: earliestAction(history, "transfer.rejected"),
+    stopEvents: progressEventsForActions(history, ["transfer.rejected"], transferAuditLabel),
   });
-
-  if (mode.kind === "stopped") {
-    nodes.splice(provenCount, 0, {
-      key: status.code === "cancelled" ? "cancelled" : "rejected",
-      label: stoppedLabel(status),
-      state: "cancelled",
-      at: earliestAction(history, "transfer.rejected"),
-      color: status.color,
-      badgeCode: status.code,
-    });
-  }
-
-  return nodes;
 }
 
 export function TransferTracker({
   status,
   history,
+  catalog,
 }: {
   status: { code: string; name: string; color: string | null };
-  history: { action: string; at: string }[];
+  history: readonly ProgressAuditRow[];
+  catalog: readonly WorkflowStatusOption[];
 }) {
-  return <ProgressTracker ariaLabel="Transfer progress" items={buildTracker(status, history)} />;
+  return (
+    <ProgressTracker
+      ariaLabel="Transfer progress"
+      items={buildTransferTracker(status, history, catalog)}
+    />
+  );
 }

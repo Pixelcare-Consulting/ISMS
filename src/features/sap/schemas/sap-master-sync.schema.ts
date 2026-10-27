@@ -55,7 +55,7 @@ export interface SapSyncResult {
 
   /**
    * Follow-on lines for this run, shown after the row counts. The serial sync uses
-   * this when on-hand counts could not be updated and the registry sync still finished.
+   * this to name SAP warehouses that must be synced before their serials can be.
    */
   notes?: string[];
 }

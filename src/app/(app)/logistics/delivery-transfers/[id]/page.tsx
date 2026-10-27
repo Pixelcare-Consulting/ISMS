@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import { DeliveryTransferForm } from "@/app/(app)/logistics/_components/delivery-transfer-form";
 import { getDeliveryTransferDetailAction } from "@/features/logistics/actions/logistics.actions";
+import { loadWorkflowCatalog } from "@/features/logistics/constants/workflow-catalog";
 import {
   LOGISTICS_DELIVERY_TRANSFER_APPROVE,
   LOGISTICS_DELIVERY_TRANSFER_CREATE,
@@ -23,13 +24,17 @@ export default async function DeliveryTransferDetailPage({
     LOGISTICS_DELIVERY_TRANSFER_RECEIVE,
   ]);
   const { id } = await params;
-  const result = await getDeliveryTransferDetailAction(id);
+  const [result, workflowStatuses] = await Promise.all([
+    getDeliveryTransferDetailAction(id),
+    loadWorkflowCatalog(session.user.tenantId, "transfer_workflow"),
+  ]);
   if ("error" in result || !result.detail) notFound();
 
   return (
     <DeliveryTransferForm
       detail={result.detail}
       capabilities={resolveLogisticsCapabilities(session.user.permissions)}
+      workflowStatuses={workflowStatuses}
     />
   );
 }

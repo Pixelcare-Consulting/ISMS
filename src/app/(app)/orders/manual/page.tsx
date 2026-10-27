@@ -7,9 +7,13 @@ interface PageProps {
     limit?: string;
     sort?: string;
     dir?: string;
+    tl?: string;
+    type?: string;
   }>;
 }
 
 export default function ManualOrdersPage({ searchParams }: PageProps) {
-  return <OrdersTypePage orderType="manual" searchParams={searchParams} />;
+  return (
+    <OrdersTypePage orderType="manual" combinedManualSpecial searchParams={searchParams} />
+  );
 }

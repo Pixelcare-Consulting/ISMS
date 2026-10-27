@@ -1,5 +1,10 @@
 import { lockSerialNumbers } from "@/features/inventory/services/serial-placement";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
+import {
+  asWorkflowCode,
+  PULLOUT_WORKFLOW_CODE,
+  type PulloutWorkflowCodeKey,
+} from "@/features/logistics/constants/workflow-codes";
 import { sapService } from "@/features/sap/services/sap.service";
 import type { AllocatableSerial } from "@/features/logistics/services/posting-planner-types";
 import {
@@ -95,22 +100,7 @@ export interface PulloutDetail {
 }
 
 function asPulloutStatus(code: string): PulloutStatus | null {
-  switch (code) {
-    case "requested":
-    case "approved":
-    case "draft":
-    case "pending_tl":
-    case "for_pullout":
-    case "scheduled":
-    case "pending_logistics":
-    case "in_transit":
-    case "pulled_out":
-    case "completed":
-    case "cancelled":
-      return code;
-    default:
-      return null;
-  }
+  return asWorkflowCode(PULLOUT_WORKFLOW_CODE, code);
 }
 
 function nextNo() {
@@ -128,7 +118,7 @@ async function inventoryIds(tenantId: string) {
   return { STK: stk, DEF: def, RSV: rsv, FPO: fpo, DIT: dit };
 }
 
-async function workflowId(tenantId: string, code: string) {
+async function workflowId(tenantId: string, code: PulloutWorkflowCodeKey) {
   return reasonStatusService.requireCodeId(tenantId, "pullout_workflow", code);
 }
 

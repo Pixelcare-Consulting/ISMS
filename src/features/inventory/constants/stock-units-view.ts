@@ -1,6 +1,6 @@
-export type StockUnitsView = "by-branch" | "by-model" | "all";
+export type StockUnitsView = "by-branch" | "by-warehouse" | "by-model" | "all";
 
-const STOCK_UNITS_VIEWS = new Set<StockUnitsView>(["by-branch", "by-model", "all"]);
+const STOCK_UNITS_VIEWS = new Set<StockUnitsView>(["by-branch", "by-warehouse", "by-model", "all"]);
 
 export function parseStockUnitsView(value?: string | null): StockUnitsView {
   if (value && STOCK_UNITS_VIEWS.has(value as StockUnitsView)) {
@@ -11,8 +11,8 @@ export function parseStockUnitsView(value?: string | null): StockUnitsView {
 
 export function isGroupedStockUnitsView(
   view: StockUnitsView,
-): view is "by-branch" | "by-model" {
-  return view === "by-branch" || view === "by-model";
+): view is "by-branch" | "by-warehouse" | "by-model" {
+  return view === "by-branch" || view === "by-warehouse" || view === "by-model";
 }
 
 export const STOCK_UNITS_VIEW_OPTIONS: {
@@ -20,6 +20,7 @@ export const STOCK_UNITS_VIEW_OPTIONS: {
   label: string;
 }[] = [
   { id: "by-branch", label: "By branch" },
+  { id: "by-warehouse", label: "By warehouse" },
   { id: "by-model", label: "By model" },
   { id: "all", label: "All serials" },
 ];

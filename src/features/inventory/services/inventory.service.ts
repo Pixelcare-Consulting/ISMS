@@ -4,6 +4,7 @@ import { branchRepository } from "@/features/branches/repositories/branch.reposi
 import type {
   StockUnitsGroupBy,
   StockUnitsGroupChildLevel,
+  StockUnitsWarehouseRole,
 } from "@/features/inventory/constants/stock-units-group";
 import {
   inventoryRepository,
@@ -11,20 +12,19 @@ import {
   type InventoryGroupListFilters,
   type InventoryGroupModelRow,
   type InventoryGroupStatusCodeRef,
+  type InventoryGroupWarehouseRow,
   type InventoryListFilters,
   type InventoryListRow,
   type InventoryListSort,
   type InventoryListSortDir,
 } from "@/features/inventory/repositories/inventory.repository";
+import { groupStockByModelSeries } from "@/features/inventory/utils/group-stock-by-model-series";
 import {
   inventoryGroupStatusesFromCounts,
   type InventoryGroupAggregates,
   type InventoryGroupCountParts,
 } from "@/features/inventory/utils/stock-units-group-aggregates";
-import {
-  deriveSkuSeries,
-  wholeDaysBetween,
-} from "@/features/inventory/utils/sku-series";
+import { wholeDaysBetween } from "@/features/inventory/utils/sku-series";
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
 import { decimalToNumber } from "@/lib/database/decimal";
 import {
@@ -91,6 +91,16 @@ export type InventoryGroupModelSummary = {
 
 export type InventoryGroupBranchInModelSummary = {
   branch: { id: string; name: string; sapCode: string };
+  counts: InventoryGroupAggregates;
+};
+
+export type InventoryGroupWarehouseSummary = {
+  /** Stable per branch: `${role}:${stockBranch.id}`. */
+  key: string;
+  role: StockUnitsWarehouseRole;
+  /** Whose branch stock this warehouse holds; models and serials below are this branch's. */
+  stockBranch: { id: string; name: string; sapCode: string };
+  warehouse: { code: string; name: string } | null;
   counts: InventoryGroupAggregates;
 };
 
@@ -179,6 +189,29 @@ function modelRowToSummary(
   };
 }
 
+function warehouseRowToSummary(
+  row: InventoryGroupWarehouseRow,
+  codes: InventoryStatusCodeRow[],
+): InventoryGroupWarehouseSummary {
+  const {
+    role,
+    stockBranchId,
+    stockBranchName,
+    stockBranchSapCode,
+    warehouseCode,
+    warehouseName,
+    ...counts
+  } = row;
+  return {
+    key: `${role}:${stockBranchId}`,
+    role,
+    stockBranch: { id: stockBranchId, name: stockBranchName, sapCode: stockBranchSapCode },
+    warehouse:
+      warehouseCode !== null ? { code: warehouseCode, name: warehouseName ?? warehouseCode } : null,
+    counts: toGroupAggregates(counts, codes),
+  };
+}
+
 function toStatusCodeRefs(codes: InventoryStatusCodeRow[]): InventoryGroupStatusCodeRef[] {
   return codes.map((code) => ({ id: code.id, code: code.code }));
 }
@@ -209,8 +242,10 @@ export const inventoryService = {
     ]);
     const groupFilters = toGroupListFilters(filters);
     const statusCodeRefs = toStatusCodeRefs(statusCodes);
+    // By warehouse lists the same branches as By branch; the warehouses sit below them.
+    const byBranch = groupBy === "by-branch" || groupBy === "by-warehouse";
     const result =
-      groupBy === "by-branch"
+      byBranch
         ? await inventoryRepository.listBranchGroups(
             tenantId,
             branchIds,
@@ -229,7 +264,7 @@ export const inventoryService = {
     return {
       ...result,
       items:
-        groupBy === "by-branch"
+        byBranch
           ? (result.items as InventoryGroupBranchRow[]).map((row) =>
               branchRowToSummary(row, statusCodes),
             )
@@ -255,6 +290,7 @@ export const inventoryService = {
     PaginatedResult<
       | InventoryGroupModelSummary
       | InventoryGroupBranchInModelSummary
+      | InventoryGroupWarehouseSummary
       | InventoryListEnrichedItem
     >
   > {
@@ -292,7 +328,32 @@ export const inventoryService = {
       return this.enrichWithPendingDefectFlags(tenantId, withAging);
     }
 
-    if (input.groupBy === "by-branch" && input.level === "models") {
+    if (input.groupBy === "by-warehouse" && input.level === "warehouses") {
+      const { limit, page } = resolvePagination(input.pagination);
+      if (!input.branchId) {
+        return { items: [], total: 0, page, limit, totalPages: 1 };
+      }
+      const rows = await inventoryRepository.listWarehousesInBranchGroup(
+        tenantId,
+        branchIds,
+        input.branchId,
+        groupFilters,
+        statusCodeRefs,
+      );
+      return {
+        items: rows.map((row) => warehouseRowToSummary(row, statusCodes)),
+        total: rows.length,
+        page: 1,
+        limit: Math.max(limit, rows.length),
+        totalPages: 1,
+      };
+    }
+
+    // Under a warehouse, `branchId` is that warehouse's stock branch (see listWarehousesInBranchGroup).
+    if (
+      (input.groupBy === "by-branch" || input.groupBy === "by-warehouse") &&
+      input.level === "models"
+    ) {
       if (!input.branchId) {
         const { limit, page } = resolvePagination(input.pagination);
         return { items: [], total: 0, page, limit, totalPages: 1 };
@@ -450,36 +511,20 @@ export const inventoryService = {
       return { rows: [], totalQty: 0, totalValue: 0 };
     }
 
-    // SQL GROUP BY sku — avoids loading every inventory row into Node.
+    // One row per SKU price, with the series stored on that model.
     const skuRows = await inventoryRepository.aggregateSeriesBySku(
       tenantId,
       branchIds,
       toListFilters(filters),
     );
 
-    const bySeries = new Map<string, { qty: number; value: number }>();
-    for (const row of skuRows) {
-      const series = deriveSkuSeries(row.skuCode);
-      const srp = decimalToNumber(row.srp) ?? 0;
-      const current = bySeries.get(series) ?? { qty: 0, value: 0 };
-      current.qty += row.qty;
-      current.value += srp * row.qty;
-      bySeries.set(series, current);
-    }
-
-    const summaryRows = Array.from(bySeries.entries())
-      .map(([series, agg]) => ({
-        series,
-        qty: agg.qty,
-        value: agg.value,
-      }))
-      .sort((a, b) => a.series.localeCompare(b.series));
-
-    return {
-      rows: summaryRows,
-      totalQty: summaryRows.reduce((sum, r) => sum + r.qty, 0),
-      totalValue: summaryRows.reduce((sum, r) => sum + r.value, 0),
-    };
+    return groupStockByModelSeries(
+      skuRows.map((row) => ({
+        seriesName: row.seriesName,
+        srp: decimalToNumber(row.srp),
+        qty: row.qty,
+      })),
+    );
   },
 
   /** AOR-scoped STK count matching Stock units list scoping. */

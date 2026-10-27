@@ -1,5 +1,14 @@
-import { Check } from "lucide-react";
+"use client";
 
+import {
+  ProgressCompletedMark,
+  ProgressCurrentMark,
+  ProgressLink,
+  ProgressStagePopover,
+  ProgressStageSummary,
+  progressSummaryParts,
+  type ProgressNode,
+} from "@/app/(app)/logistics/_components/progress-tracker";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import {
   formatOrderHistoryWhen,
@@ -10,7 +19,7 @@ import { cn } from "@/utils/cn";
 
 function stateText(state: OrderTrackerState): string {
   switch (state) {
-    case "completed":
+    case "completed": 
       return "Completed";
     case "current":
       return "Current";
@@ -25,8 +34,8 @@ function stateText(state: OrderTrackerState): string {
       return unreachable;
     }
   }
-}
-
+} 
+  
 function TerminalMark() {
   return (
     <span className="relative z-10 flex size-6 shrink-0 items-center justify-center rounded-full border border-destructive bg-card text-destructive">
@@ -37,22 +46,14 @@ function TerminalMark() {
   );
 }
 
-function StepMark({ state }: { state: OrderTrackerState }) {
+function StepMark({ state, delayMs }: { state: OrderTrackerState; delayMs: number }) {
   const base =
     "relative z-10 flex size-6 shrink-0 items-center justify-center rounded-full border bg-card";
   switch (state) {
     case "completed":
-      return (
-        <span className={cn(base, "border-foreground bg-foreground text-background")}>
-          <Check className="size-3.5" aria-hidden />
-        </span>
-      );
+      return <ProgressCompletedMark delayMs={delayMs} />;
     case "current":
-      return (
-        <span className={cn(base, "border-foreground")}>
-          <span className="size-2 rounded-full bg-foreground" />
-        </span>
-      );
+      return <ProgressCurrentMark />;
     case "upcoming":
       return <span className={cn(base, "border-border")} />;
     case "cancelled":
@@ -66,55 +67,78 @@ function StepMark({ state }: { state: OrderTrackerState }) {
   }
 }
 
+function summaryNodes(items: readonly OrderTrackerNode[]): ProgressNode[] {
+  return items.map((item) => ({
+    key: item.key,
+    label: item.label,
+    state: item.state === "rejected" ? "cancelled" : item.state,
+    at: item.at,
+    color: null,
+  }));
+}
+
 export function OrderHistoryTracker({ items }: { items: OrderTrackerNode[] }) {
+  const summary = progressSummaryParts(summaryNodes(items));
+
   return (
-    <ol aria-label="Order progress" className="flex flex-col sm:flex-row sm:items-start">
-      {items.map((item, index) => {
-        const last = index === items.length - 1;
-        const when = item.state === "upcoming" ? null : formatOrderHistoryWhen(item.at);
-        return (
-          <li
-            key={item.key}
-            className="relative flex flex-1 gap-3 sm:flex-col sm:items-center sm:gap-2 sm:text-center"
-            aria-current={item.state === "current" ? "step" : undefined}
-          >
-            {index > 0 ? (
-              <span
-                className="absolute top-3 right-1/2 hidden h-px w-full bg-border sm:block"
-                aria-hidden
-              />
-            ) : null}
-            <div className="relative z-10 flex w-6 shrink-0 justify-center sm:w-auto">
-              <StepMark state={item.state} />
-              {last ? null : (
-                <span
-                  className="absolute top-6 bottom-0 left-1/2 w-px -translate-x-1/2 bg-border sm:hidden"
-                  aria-hidden
+    <div>
+      {summary ? <ProgressStageSummary lead={summary.lead} detail={summary.detail} /> : null}
+      <ol aria-label="Order progress" className="flex flex-col sm:flex-row sm:items-start">
+        {items.map((item, index) => {
+          const last = index === items.length - 1;
+          const when = item.state === "upcoming" ? null : formatOrderHistoryWhen(item.at);
+          const previous = index > 0 ? items[index - 1] : null;
+          const delayMs = index * 80;
+          return (
+            <li
+              key={item.key}
+              className="relative flex min-w-0 flex-1"
+              aria-current={item.state === "current" ? "step" : undefined}
+            >
+              {index > 0 ? (
+                <ProgressLink
+                  direction="horizontal"
+                  filled={previous?.state === "completed"}
+                  delayMs={(index - 1) * 80}
                 />
-              )}
-            </div>
-            <div className={cn("min-w-0 sm:px-2", last ? "pb-0" : "pb-5 sm:pb-0")}>
-              <span className="sr-only">{stateText(item.state)}. </span>
-              {item.badge ? (
-                <StatusCodeBadge code={item.badge.code} name={item.badge.name} />
-              ) : (
-                <p
-                  className={cn(
-                    "text-sm",
-                    item.state === "upcoming" ? "text-muted-foreground" : "text-foreground",
-                    item.state === "current" && "font-medium",
+              ) : null}
+              <ProgressStagePopover label={item.label} events={item.events} className="sm:gap-2">
+                <div className="relative flex w-6 shrink-0 justify-center sm:w-auto">
+                  <StepMark state={item.state} delayMs={delayMs} />
+                  {last ? null : (
+                    <ProgressLink
+                      direction="vertical"
+                      filled={item.state === "completed"}
+                      delayMs={delayMs}
+                    />
                   )}
-                >
-                  {item.label}
-                </p>
-              )}
-              {item.state === "upcoming" ? null : (
-                <p className="text-xs text-muted-foreground">{when ?? "—"}</p>
-              )}
-            </div>
-          </li>
-        );
-      })}
-    </ol>
+                </div>
+                <div className={cn("min-w-0 sm:px-2", last ? "pb-0" : "pb-5 sm:pb-0")}>
+                  <span className="sr-only">{stateText(item.state)}. </span>
+                  {item.badge ? (
+                    <StatusCodeBadge code={item.badge.code} name={item.badge.name} />
+                  ) : (
+                    <p
+                      className={cn(
+                        "text-sm underline-offset-2 group-hover:underline",
+                        item.state === "upcoming" ? "text-muted-foreground" : "text-foreground",
+                        item.state === "current" && "font-medium",
+                      )}
+                    >
+                      {item.label}
+                    </p>
+                  )}
+                  {item.state === "upcoming" ? null : (
+                    <p className="text-xs text-muted-foreground">
+                      {when ?? "Time unavailable"}
+                    </p>
+                  )}
+                </div>
+              </ProgressStagePopover>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
   );
 }

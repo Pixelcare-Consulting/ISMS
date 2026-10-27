@@ -7,6 +7,7 @@ import {
   resolveLogisticsCapabilities,
 } from "@/features/logistics/constants/logistics-permissions";
 import { PulloutKpisStrip } from "@/features/logistics/components/pullout-kpis";
+import { loadWorkflowCatalog } from "@/features/logistics/constants/workflow-catalog";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { requireAnyPermission } from "@/lib/auth/permissions";
 import { SectionPageLead } from "@/components/navigation/section-page-lead";
@@ -22,9 +23,10 @@ export default async function PickupsPage({ searchParams }: PickupsPageProps) {
   const params = await searchParams;
   const page = Number(params.page) || 1;
   const limit = parseTablePageSize(params.limit);
-  const [pullouts, kpis] = await Promise.all([
+  const [pullouts, kpis, workflowStatuses] = await Promise.all([
     listPulloutsAction({ page, limit, sort: params.sort, sortDir: params.dir }),
     getPulloutKpisAction(),
+    loadWorkflowCatalog(session.user.tenantId, "pullout_workflow"),
   ]);
   const currentUserName = session.user.name?.trim() || session.user.email || "";
 
@@ -37,6 +39,7 @@ export default async function PickupsPage({ searchParams }: PickupsPageProps) {
       <PulloutsPanel
         pullouts={pullouts}
         capabilities={capabilities}
+        workflowStatuses={workflowStatuses}
         currentUserName={currentUserName}
         initialSort={params.sort ?? ""}
         initialSortDir={params.dir ?? "desc"}

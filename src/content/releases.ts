@@ -66,6 +66,489 @@ export interface ReleaseNote {
 
 export const RELEASES: ReleaseNote[] = [
   {
+    version: "0.80.19",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T17:10:00+08:00",
+    title: "Transfers stay inside a dealer group",
+    highlights: [
+      "A transfer can go to another branch of the same dealer, even when that branch is outside your area of responsibility.",
+      "A different dealer stays blocked.",
+      "Only the releasing branch's team leader is asked to approve.",
+      "After approval, the receiving branch can accept or reject each serial, and a rejected serial needs a reason.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "The receiving branch can accept or reject each serial. Accept moves the unit to that branch as stock and updates the delivery receipt number. The original delivery date stays the same. Reject leaves the unit at the releasing branch as stock. The release slip and delivery receipt print when the releasing team leader approves.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Branches of the same dealer can transfer to each other. Approval waits only for the team leader of the releasing branch, and the receiving branch sees the request after that approval.",
+      },
+      {
+        type: "fix",
+        description:
+          "Choosing another branch of the same dealer no longer says it is outside your area of responsibility.",
+      },
+    ],
+  },
+  {
+    version: "0.80.18",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T16:45:00+08:00",
+    title: "Print after the waybill is saved",
+    highlights: [
+      "Logistics can enter the waybill, courier, and schedule date on a delivery or a transfer.",
+      "Print is available after those details are saved.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Print a delivery or a transfer after the waybill, courier, and schedule date are saved.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Transfers now include the same waybill, courier, and schedule date as deliveries.",
+      },
+    ],
+  },
+  {
+    version: "0.80.17",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T16:05:00+08:00",
+    title: "Logistics statuses follow Status settings",
+    highlights: [
+      "Deliveries, transfers, and pull-outs use the names, colors, and order saved in Organization → Status settings.",
+      "Add, rename, recolor, or turn off a delivery, transfer, or pull-out status and the lists, progress, and counts follow that change.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Delivery, transfer, and pull-out progress and counts follow the statuses in Status settings, including the name, color, and order.",
+      },
+    ],
+  },
+  {
+    version: "0.80.16",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T15:25:00+08:00",
+    title: "Series summary follows Master data",
+    highlights: [
+      "Stock units Series summary groups quantity and value by the series saved on each model.",
+      "Change a model's series in Master data and that quantity moves into the new series.",
+    ],
+    changes: [
+      {
+        type: "fix",
+        description:
+          "Series summary follows the series on the model. Moving a model from one series to another moves its quantity, and models with no series stay together.",
+      },
+    ],
+  },
+  {
+    version: "0.80.15",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T15:10:00+08:00",
+    title: "Same page as creating an order",
+    highlights: [
+      "Opening a delivery, transfer, pull-out, or saved order uses the same page and table as creating an order, with that document's progress on the page.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Opening a delivery, transfer, pull-out, or saved order uses the same page and table as creating an order, with that document's progress on the page.",
+      },
+    ],
+  },
+  {
+    version: "0.80.14",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T14:35:00+08:00",
+    title: "Open a delivery from the list",
+    highlights: [
+      "A delivery row opens the delivery, the same way a transfer or pull-out does.",
+      "Opening an order or a delivery uses the same sections as creating an order, and the order page shows the stock, request, and approval details.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "A delivery row opens the delivery, the same way a transfer or pull-out does.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Opening an order or a delivery uses the same sections as creating an order, and the order page shows the stock, request, and approval details.",
+      },
+    ],
+  },
+  {
+    version: "0.80.13",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T14:10:00+08:00",
+    title: "Review until the order moves on",
+    highlights: [
+      "Supply Planning sees Review until the order has moved on, and a delivery, transfer, or pull-out shows its progress once.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Supply Planning sees Review until the order has moved on, and a delivery, transfer, or pull-out shows its progress once.",
+      },
+    ],
+  },
+  {
+    version: "0.80.12",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T13:45:00+08:00",
+    title: "Product specialists see their own orders",
+    highlights: ["A product specialist sees only the orders they created."],
+    changes: [
+      {
+        type: "improvement",
+        description: "A product specialist sees only the orders they created.",
+      },
+    ],
+  },
+  {
+    version: "0.80.11",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T13:20:00+08:00",
+    title: "Stages show icons and recorded times",
+    highlights: [
+      "Opening a delivery, transfer, or pull-out shows its stages with icons and the time already recorded.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Opening a delivery, transfer, or pull-out shows its stages with icons and the time already recorded.",
+      },
+    ],
+  },
+  {
+    version: "0.80.10",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T12:55:00+08:00",
+    title: "See logistics as a table or with progress",
+    highlights: [
+      "Deliveries, transfers, and pull-outs can be shown as a table or with each document's progress on the row.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Deliveries, transfers, and pull-outs can be shown as a table or with each document's progress on the row.",
+      },
+    ],
+  },
+  {
+    version: "0.80.9",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T12:40:00+08:00",
+    title: "Your special order stays on the list",
+    highlights: [
+      "A special order you submitted stays on the orders list, and View details can open the full order page.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "A special order you submitted stays on the orders list, and View details can open the full order page.",
+      },
+      {
+        type: "improvement",
+        description: "On the orders list, the time sits under the date so the actions stay in view.",
+      },
+    ],
+  },
+  {
+    version: "0.80.8",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T09:55:00+08:00",
+    title: "Submit confirmation includes total CBM",
+    highlights: [
+      "Before you submit an order, the confirmation includes the total CBM already shown on that order.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Before you submit an order, the confirmation includes the total CBM already shown on that order.",
+      },
+      {
+        type: "fix",
+        description: "Confirming an order sends it one time.",
+      },
+    ],
+  },
+  {
+    version: "0.80.7",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T09:45:00+08:00",
+    title: "After you submit, you can see the order",
+    highlights: [
+      "After you submit an order, a page shows the order number, where it is waiting, and the models you sent.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "After you submit an order, a page shows the order number, where it is waiting, and the models you sent.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Before an order is submitted, you can filter models by the brands on that branch’s planogram and review a summary.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The orders list shows who created each order and when, and editing a line uses a simpler form.",
+      },
+    ],
+  },
+  {
+    version: "0.80.6",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T09:15:00+08:00",
+    title: "Create Order is easier to leave and trim",
+    highlights: [
+      "On Create Order, Back to orders is the way out, model rows can be numbered and removed together, and a special order shows a note above the models.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "On Create Order, Back to orders is the way out, model rows can be numbered and removed together, and a special order shows a note above the models.",
+      },
+    ],
+  },
+  {
+    version: "0.80.5",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T09:10:00+08:00",
+    title: "Create order reads like a form",
+    highlights: [
+      "The create-order page reads like a form, with each model on a single row.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "The create-order page reads like a form, with each model on a single row.",
+      },
+    ],
+  },
+  {
+    version: "0.80.4",
+    date: "2026-10-26",
+    releasedAt: "2026-10-26T09:05:00+08:00",
+    title: "One menu collapse button",
+    highlights: [
+      "While a section menu is open, the extra collapse button beside the version is hidden. It comes back when the menu is closed so you can open it again.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "While a section menu is open, the extra collapse button beside the version is hidden. It comes back when the menu is closed so you can open it again.",
+      },
+    ],
+  },
+  {
+    version: "0.80.3",
+    date: "2026-10-24",
+    releasedAt: "2026-10-24T16:50:00+08:00",
+    title: "Create order asks first",
+    highlights: [
+      "Choosing Create Order asks for the dealer, branch, and order type first, then shows the models for that branch.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Choosing Create Order asks for the dealer, branch, and order type first, then shows the models for that branch.",
+      },
+    ],
+  },
+  {
+    version: "0.80.2",
+    date: "2026-10-24",
+    releasedAt: "2026-10-24T15:50:00+08:00",
+    title: "Models on their own rows",
+    highlights: [
+      "Creating an order lists each model on its own row instead of a spreadsheet, with stock, quantity, and totals still on the page.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Creating an order lists each model on its own row instead of a spreadsheet, with stock, quantity, and totals still on the page.",
+      },
+    ],
+  },
+  {
+    version: "0.80.1",
+    date: "2026-10-24",
+    releasedAt: "2026-10-24T15:30:00+08:00",
+    title: "Clearer create order",
+    highlights: [
+      "Creating an order keeps the same steps, with the models, totals, and branch details easier to scan.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Creating an order keeps the same steps, with the models, totals, and branch details easier to scan.",
+      },
+    ],
+  },
+  {
+    version: "0.80.0",
+    date: "2026-10-24",
+    releasedAt: "2026-10-24T13:50:00+08:00",
+    title: "Easier menus and orders",
+    highlights: [
+      "Menus open in two steps: choose a section, then the page you need.",
+      "Manual and Special orders share one list. Choose which type to see. Auto replenish stays on its own page.",
+      "Creating an order opens its own page.",
+      "Order, delivery, transfer, and pull-out details show the real stage and the history already recorded for that stage.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "Menus open in two steps: choose a section, then the page you need.",
+      },
+      {
+        type: "feature",
+        description:
+          "Manual and Special orders share one list, with a choice of type. Auto replenish stays on its own page.",
+      },
+      {
+        type: "feature",
+        description: "Creating an order opens its own page.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Order, delivery, transfer, and pull-out details show the real stage and the history already recorded for that stage.",
+      },
+    ],
+  },
+  {
+    version: "0.79.1",
+    date: "2026-10-23",
+    releasedAt: "2026-10-23T15:45:00+08:00",
+    title: "Delivery progress",
+    highlights: [
+      "Opening a delivery shows its progress above the order, the DR, and the units.",
+      "Opening a delivery, transfer, or pull-out no longer repeats the module guide. The guide stays on the list.",
+      "Delivery, transfer, and pull-out details now share a cleaner layout with easier-to-read progress, unit lists, and history.",
+      "Delivery, transfer, and pull-out details use color so progress and each section are easier to scan.",
+      "Opening an order from Order History uses the same sections, with a plain header.",
+      "Progress steps move as an order, delivery, transfer, or pull-out moves forward.",
+      "On a pull-out, remarks sit with the requestor, next to the logistics details.",
+      "Repeated history events, such as Units received, show once.",
+      "The pull-out receipt note sits under the progress steps as a warning, not as a popup, and an in-transit document no longer uses a blue header.",
+      "Approve and Reject stay on the pull-out page. The list only opens it.",
+      "Opening a pull-out or transfer shows the current step, with the action for that step. Earlier steps stay as a short line.",
+    ],
+    changes: [
+      {
+        type: "improvement",
+        description:
+          "Opening a delivery shows its progress above the order, the DR, and the units.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Opening a delivery, transfer, or pull-out no longer repeats the module guide. The guide stays on the list.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Delivery, transfer, and pull-out details now share a cleaner layout with easier-to-read progress, unit lists, and history.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Delivery, transfer, and pull-out details use color so progress and each section are easier to scan.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Opening an order from Order History uses the same sections, with a plain header.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Progress steps move as an order, delivery, transfer, or pull-out moves forward.",
+      },
+      {
+        type: "improvement",
+        description:
+          "On a pull-out, remarks sit with the requestor, next to the logistics details.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Repeated history events, such as Units received, show once.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The pull-out receipt note sits under the progress steps as a warning, not as a popup, and an in-transit document no longer uses a blue header.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Approve and Reject stay on the pull-out page. The list only opens it.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Opening a pull-out or transfer shows the current step, with the action for that step. Earlier steps stay as a short line.",
+      },
+    ],
+  },
+  {
+    version: "0.79.0",
+    date: "2026-10-23",
+    releasedAt: "2026-10-23T14:30:00+08:00",
+    title: "Setup account",
+    highlights: [
+      "The setup account opens a Setup home instead of daily operations.",
+      "That account keeps company, people, places, product lists, and the rules orders and pull-outs need.",
+      "That account can set up custom dashboards and see who is using the site.",
+    ],
+    changes: [
+      {
+        type: "feature",
+        description:
+          "The setup account opens a Setup home and can maintain company details, people, branches, warehouses, dealers, and the product and lookup lists.",
+      },
+      {
+        type: "improvement",
+        description:
+          "Orders, deliveries, stock, sales, returns, and reports stay with the teams that run them.",
+      },
+      {
+        type: "improvement",
+        description:
+          "The setup account can set up custom dashboards and see who is using the site.",
+      },
+    ],
+  },
+  {
     version: "0.78.0",
     date: "2026-10-23",
     releasedAt: "2026-10-23T12:50:00+08:00",
@@ -140,7 +623,7 @@ export const RELEASES: ReleaseNote[] = [
       {
         type: "improvement",
         description:
-          "The warehouse-receipt note appears as a notification when you open a pull-out.",
+          "The pull-out receipt note sits under the progress steps as a warning, not as a popup.",
       },
       {
         type: "improvement",

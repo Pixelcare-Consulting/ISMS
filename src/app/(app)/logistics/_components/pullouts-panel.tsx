@@ -1,17 +1,12 @@
 "use client";
 
-import { createColumnHelper, type RowSelectionState } from "@tanstack/react-table";
+import { createColumnHelper } from "@tanstack/react-table";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
-import { toast } from "sonner";
+import { useMemo, useState } from "react";
 
 import { PulloutRequestDialog } from "@/app/(app)/logistics/_components/pullout-request-dialog";
-import {
-  approvePulloutTlAction,
-  createPulloutAction,
-  rejectPulloutAction,
-} from "@/features/logistics/actions/logistics.actions";
+import { createPulloutAction } from "@/features/logistics/actions/logistics.actions";
 import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import {
@@ -30,6 +25,13 @@ import {
   buildLogisticsPageHref,
   LOGISTICS_PICKUPS_PATH,
 } from "@/app/(app)/logistics/_components/logistics-paths";
+import { CompactProgressRail } from "@/app/(app)/logistics/_components/compact-progress-rail";
+import { buildPulloutTracker } from "@/app/(app)/logistics/_components/pullout-tracker";
+import type { WorkflowStatusOption } from "@/features/logistics/constants/workflow-codes";
+import {
+  LogisticsListViewSwitch,
+  useLogisticsListProgressView,
+} from "@/app/(app)/logistics/_components/logistics-list-view-switch";
 import { matchesTableSearch } from "@/utils/match-table-search";
 
 interface StatusCodeRef {
@@ -59,6 +61,7 @@ interface PulloutRow {
 interface PulloutsPanelProps {
   pullouts: PaginatedList<PulloutRow>;
   capabilities: LogisticsActionCapabilities;
+  workflowStatuses: readonly WorkflowStatusOption[];
   currentUserName?: string;
   initialSort?: string;
   initialSortDir?: string;
@@ -72,14 +75,15 @@ type PulloutSortDir = "asc" | "desc";
 export function PulloutsPanel({
   pullouts,
   capabilities,
+  workflowStatuses,
   currentUserName = "",
   initialSort = "",
   initialSortDir = "desc",
 }: PulloutsPanelProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [progressView] = useLogisticsListProgressView();
   const [query, setQuery] = useState("");
-  const [pending, startTransition] = useTransition();
   const [createOpen, setCreateOpen] = useState(false);
   const pageSize = parseTablePageSize(pullouts.limit);
   const sort = (searchParams.get("sort") ?? initialSort) || "";
@@ -130,23 +134,6 @@ export function PulloutsPanel({
     [pullouts.items],
   );
 
-  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
-  const selectedCount = filtered.filter((row) => rowSelection[row.id]).length;
-
-  function runAction(
-    action: () => Promise<{ error: string } | { success: true }>,
-    message: string,
-  ) {
-    startTransition(async () => {
-      const result = await action();
-      if ("error" in result) {
-        toast.error(result.error);
-        return;
-      }
-      toast.success(message);
-      router.refresh();
-    });
-  }
 
   const indexOffset = (pullouts.page - 1) * pullouts.limit;
   const columns = useMemo(() => {
@@ -170,6 +157,27 @@ export function PulloutsPanel({
             {row.original.pulloutNo}
           </Link>
         ),
+      }),
+      pulloutColumn.display({
+        id: "progress",
+        header: "Progress",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <CompactProgressRail
+            ariaLabel={`${row.original.pulloutNo} progress`}
+            items={buildPulloutTracker(
+              {
+                code: row.original.statusCode.code,
+                name: row.original.statusCode.name,
+                color: row.original.statusCode.color ?? null,
+              },
+              "",
+              [],
+              workflowStatuses,
+            )}
+          />
+        ),
+        meta: { className: "w-52 min-w-52" },
       }),
       pulloutColumn.accessor((row) => row.branch.name, {
         id: "branch",
@@ -212,43 +220,27 @@ export function PulloutsPanel({
         id: "actions",
         header: "Actions",
         enableSorting: false,
-        cell: ({ row }) => {
-          const pullout = row.original;
-          return (
-            <div className="flex flex-wrap gap-2">
-              {pullout.statusCode.code === "pending_tl" && capabilities.canApproveTl ? (
-                <Button
-                  size="sm"
-                  disabled={pending}
-                  onClick={() =>
-                    runAction(() => approvePulloutTlAction(pullout.id), "Pull-out approved")
-                  }
-                >
-                  Approve
-                </Button>
-              ) : null}
-              {pullout.statusCode.code === "pending_tl" && capabilities.canRejectTransfer ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={pending}
-                  onClick={() =>
-                    runAction(() => rejectPulloutAction(pullout.id), "Pull-out rejected")
-                  }
-                >
-                  Reject
-                </Button>
-              ) : null}
-              <Button size="sm" variant="outline" asChild>
-                <Link href={`/logistics/pickups/${pullout.id}`}>Open</Link>
-              </Button>
-            </div>
-          );
-        },
+        cell: ({ row }) => (
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" asChild>
+              <Link href={`/logistics/pickups/${row.original.id}`}>Open</Link>
+            </Button>
+          </div>
+        ),
       }),
     ];
-    return cols;
-  }, [capabilities.canApproveTl, capabilities.canRejectTransfer, indexOffset, pending]);
+    if (!progressView) return cols.filter((column) => column.id !== "progress");
+    const progressIds = new Set([
+      "pulloutNo",
+      "progress",
+      "branch",
+      "warehouse",
+      "reason",
+      "status",
+      "actions",
+    ]);
+    return cols.filter((column) => column.id != null && progressIds.has(column.id));
+  }, [indexOffset, progressView, workflowStatuses]);
 
   return (
     <>
@@ -264,25 +256,15 @@ export function PulloutsPanel({
         sortDir,
         onSort: (columnId) => toggleSort(columnId as PulloutSortField),
       }}
-      enableRowSelection
-      rowSelection={rowSelection}
-      onRowSelectionChange={setRowSelection}
-      selectAllLabel="Select all pull-outs"
-      getSelectionLabel={(row) => `Select pull-out ${row.pulloutNo}`}
       stickyHeader
       search={{ value: query, onChange: setQuery, placeholder: "Search pull-outs…", suggestions }}
       toolbarActions={
         <>
-          {selectedCount > 0 ? (
-            <Button variant="secondary" onClick={() => setRowSelection({})}>
-              {selectedCount} selected
-            </Button>
-          ) : null}
+        <LogisticsListViewSwitch />
         {capabilities.canCreate ? (
           <Button
             size="sm"
             className="w-full sm:w-auto"
-            disabled={pending}
             onClick={() => setCreateOpen(true)}
           >
             New pull-out

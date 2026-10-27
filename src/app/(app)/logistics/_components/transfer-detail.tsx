@@ -1,21 +1,41 @@
 "use client";
 
-import Link from "next/link";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useCallback, useRef, useState } from "react";
 
+import { DocumentDetailBand } from "@/app/(app)/logistics/_components/logistics-detail-ui";
+import { ShipmentPrintButton } from "@/app/(app)/logistics/_components/logistics-shipment-section";
+import { shipmentPrintDocument } from "@/app/(app)/logistics/_components/shipment-print";
 import {
+  hasTransferDocumentAction,
   TransferDocumentActionButtons,
   TransferForm,
   type TransferDocumentActions,
   type TransferFormHandle,
 } from "@/app/(app)/logistics/_components/transfer-form";
-import { TransferTracker } from "@/app/(app)/logistics/_components/transfer-tracker";
 import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
-import type { TransferDetail } from "@/features/logistics/services/transfer-posting.service";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
+import type { WorkflowStatusOption } from "@/features/logistics/constants/workflow-codes";
+import type { TransferDetail } from "@/features/logistics/services/transfer-posting.service";
 
-const EMPTY_DOCUMENT_ACTIONS: TransferDocumentActions = {
+function transferPrintDocument(detail: TransferDetail) {
+  return shipmentPrintDocument({
+    title: "Transfer",
+    documentNo: detail.transferNo,
+    shipment: detail.shipment,
+    fields: [
+      { label: "Releasing branch", value: detail.fromBranch.name },
+      { label: "Receiving branch", value: detail.toBranch.name },
+    ],
+    lines: detail.lines.map((line) => ({
+      model: `${line.skuCode} ${line.modelName}`,
+      detail: line.serialNo,
+    })),
+    lineHeaders: { model: "Model", detail: "Serial number" },
+  });
+}
+
+const NO_DOCUMENT_ACTIONS: TransferDocumentActions = {
   canApprove: false,
   canReject: false,
   canRelease: false,
@@ -26,64 +46,52 @@ export function TransferDetailView({
   detail,
   capabilities,
   branchScope,
+  workflowStatuses,
 }: {
   detail: TransferDetail;
   capabilities: LogisticsActionCapabilities;
   branchScope: string[] | null;
+  workflowStatuses: readonly WorkflowStatusOption[];
 }) {
   const router = useRouter();
   const formRef = useRef<TransferFormHandle>(null);
-  const [documentActions, setDocumentActions] = useState<TransferDocumentActions>(EMPTY_DOCUMENT_ACTIONS);
-
-  const handleDocumentActions = useCallback((next: TransferDocumentActions) => {
-    setDocumentActions((current) =>
-      current.canApprove === next.canApprove &&
-      current.canReject === next.canReject &&
-      current.canRelease === next.canRelease &&
-      current.pending === next.pending
-        ? current
-        : next,
-    );
-  }, []);
+  const [documentActions, setDocumentActions] = useState<TransferDocumentActions>(NO_DOCUMENT_ACTIONS);
 
   return (
     <div className="space-y-6">
-      <div>
-        <Link href="/logistics/transfers" className="text-sm text-muted-foreground hover:underline">
-          Back to transfers
-        </Link>
-        <div className="mt-1 flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0 space-y-2">
-            <h2 className="text-xl font-semibold">{detail.transferNo}</h2>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">Status</span>
-              <StatusCodeBadge
-                code={detail.status.code}
-                name={detail.status.name}
-                color={detail.status.color}
+      <DocumentDetailBand
+        backHref="/logistics/transfers"
+        backLabel="Back to transfers"
+        title={detail.transferNo}
+        statusLine={
+          <StatusCodeBadge
+            code={detail.status.code}
+            name={detail.status.name}
+            color={detail.status.color}
+          />
+        }
+        actions={
+          <>
+            {hasTransferDocumentAction(documentActions) ? (
+              <TransferDocumentActionButtons
+                actions={documentActions}
+                onAction={(action) => formRef.current?.openDocumentAction(action)}
               />
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <TransferDocumentActionButtons
-              actions={documentActions}
-              onAction={(action) => formRef.current?.openDocumentAction(action)}
-            />
-          </div>
-        </div>
-      </div>
-      <div className="rounded-xl border bg-card p-4 shadow-sm">
-        <TransferTracker status={detail.status} history={detail.history} />
-      </div>
+            ) : null}
+            <ShipmentPrintButton document={transferPrintDocument(detail)} />
+          </>
+        }
+      />
       <TransferForm
         ref={formRef}
         mode="view"
         layout="page"
+        actionsPlacement="external"
         detail={detail}
         capabilities={capabilities}
         branchScope={branchScope}
-        actionsPlacement="external"
-        onDocumentActionsChange={handleDocumentActions}
+        workflowStatuses={workflowStatuses}
+        onDocumentActionsChange={setDocumentActions}
         onUpdated={() => router.refresh()}
       />
     </div>

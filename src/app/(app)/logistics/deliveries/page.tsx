@@ -2,10 +2,8 @@ import {
   getDeliveryKpisAction,
   listDeliveriesAction,
 } from "@/features/logistics/actions/logistics.actions";
-import {
-  LOGISTICS_PAGE_PERMISSIONS,
-  resolveLogisticsCapabilities,
-} from "@/features/logistics/constants/logistics-permissions";
+import { loadWorkflowCatalog } from "@/features/logistics/constants/workflow-catalog";
+import { LOGISTICS_PAGE_PERMISSIONS } from "@/features/logistics/constants/logistics-permissions";
 import { DeliveryKpisStrip } from "@/features/logistics/components/delivery-kpis";
 import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { requireAnyPermission } from "@/lib/auth/permissions";
@@ -18,13 +16,13 @@ interface DeliveriesPageProps {
 
 export default async function DeliveriesPage({ searchParams }: DeliveriesPageProps) {
   const session = await requireAnyPermission([...LOGISTICS_PAGE_PERMISSIONS]);
-  const capabilities = resolveLogisticsCapabilities(session.user.permissions);
   const params = await searchParams;
   const page = Number(params.page) || 1;
   const limit = parseTablePageSize(params.limit);
-  const [deliveries, kpis] = await Promise.all([
+  const [deliveries, kpis, workflowStatuses] = await Promise.all([
     listDeliveriesAction({ page, limit, sort: params.sort, sortDir: params.dir }),
     getDeliveryKpisAction(),
+    loadWorkflowCatalog(session.user.tenantId, "delivery_workflow"),
   ]);
 
   return (
@@ -35,7 +33,7 @@ export default async function DeliveriesPage({ searchParams }: DeliveriesPagePro
       <DeliveryKpisStrip kpis={kpis} />
       <DeliveriesPanel
         deliveries={deliveries}
-        capabilities={capabilities}
+        workflowStatuses={workflowStatuses}
         initialSort={params.sort ?? ""}
         initialSortDir={params.dir ?? "desc"}
       />

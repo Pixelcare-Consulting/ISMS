@@ -7,13 +7,9 @@
  * DIT while in transit and STK only after the branch accepts.
  */
 
-export type DeliveryWorkflowCode =
-  | "approved"
-  | "pending"
-  | "accepted"
-  | "rejected"
-  | "partial"
-  | "requested";
+import type { DeliveryWorkflowCodeKey } from "@/features/logistics/constants/workflow-codes";
+
+export type DeliveryWorkflowCode = DeliveryWorkflowCodeKey;
 
 export type BranchUnitStatus = "DIT" | "STK" | "SLD" | "DEF" | "OTHER";
 
@@ -38,6 +34,11 @@ export interface WarehouseHold {
   modelId: string;
   warehouseId: string;
   warehouseLocationId: string;
+  /**
+   * WAREHOUSE: a warehouse stock row. BRANCH: branch stock stocked into a
+   * location of this warehouse; dispatch relocates that branch row.
+   */
+  source: "WAREHOUSE" | "BRANCH";
 }
 
 /**

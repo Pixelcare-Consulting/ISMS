@@ -33,6 +33,25 @@ import {
 import { getModuleNavPermission } from "@/config/app-modules";
 import { CUSTOM_DASHBOARD_ACCESS } from "@/features/custom-dashboards/constants/custom-dashboard-permissions";
 
+export type NavCountBadgeKey =
+  | "unreadAnnouncements"
+  | "stockUnitsStk"
+  | "monthlySirPending"
+  | "ordersManualQueue"
+  | "ordersSpecialQueue"
+  | "ordersAutoReplenishQueue"
+  | "returnsApprovals"
+  | "logisticsDeliveries"
+  | "logisticsTransfers"
+  | "logisticsPullouts";
+
+/** One existing queue count. Included only when the viewer can see that type. */
+export interface NavCountBadgePart {
+  key: NavCountBadgeKey;
+  permission?: string;
+  anyPermissions?: readonly string[];
+}
+
 export interface NavLinkItem {
   href: string;
   label: string;
@@ -52,17 +71,12 @@ export interface NavLinkItem {
    * (e.g. unread announcements on Overview, STK qty on Stock units,
    * pending approval queues on Monthly SIR / Orders / Returns / Logistics).
    */
-  countBadgeKey?:
-    | "unreadAnnouncements"
-    | "stockUnitsStk"
-    | "monthlySirPending"
-    | "ordersManualQueue"
-    | "ordersSpecialQueue"
-    | "ordersAutoReplenishQueue"
-    | "returnsApprovals"
-    | "logisticsDeliveries"
-    | "logisticsTransfers"
-    | "logisticsPullouts";
+  countBadgeKey?: NavCountBadgeKey;
+  /**
+   * Sum of queue counts the viewer is allowed to see.
+   * Manual Order uses this for the manual and special queues.
+   */
+  countBadgeParts?: readonly NavCountBadgePart[];
 }
 
 export interface NavLinkEntry extends NavLinkItem {
@@ -120,6 +134,24 @@ const SALES_DASHBOARD_PERMISSIONS = [
   "returns.approve",
   "returns.complete",
 ];
+
+const MANUAL_ORDER_ACCESS = [
+  "orders.manual.view",
+  "orders.manual.create",
+  "orders.manual.approve",
+  "orders.view",
+  "orders.create",
+  "orders.approve",
+] as const;
+
+const SPECIAL_ORDER_ACCESS = [
+  "orders.special.view",
+  "orders.special.create",
+  "orders.special.approve",
+  "orders.view",
+  "orders.create",
+  "orders.approve",
+] as const;
 
 export const appNavigation: NavEntry[] = [
   {
@@ -193,29 +225,12 @@ export const appNavigation: NavEntry[] = [
         href: "/orders/manual",
         label: "Manual Order",
         icon: ShoppingCart,
-        anyPermissions: [
-          "orders.manual.view",
-          "orders.manual.create",
-          "orders.manual.approve",
-          "orders.view",
-          "orders.create",
-          "orders.approve",
+        anyPermissions: [...MANUAL_ORDER_ACCESS, ...SPECIAL_ORDER_ACCESS],
+        activePathPrefixes: ["/orders/special"],
+        countBadgeParts: [
+          { key: "ordersManualQueue", anyPermissions: MANUAL_ORDER_ACCESS },
+          { key: "ordersSpecialQueue", anyPermissions: SPECIAL_ORDER_ACCESS },
         ],
-        countBadgeKey: "ordersManualQueue",
-      },
-      {
-        href: "/orders/special",
-        label: "Special Order",
-        icon: ClipboardList,
-        anyPermissions: [
-          "orders.special.view",
-          "orders.special.create",
-          "orders.special.approve",
-          "orders.view",
-          "orders.create",
-          "orders.approve",
-        ],
-        countBadgeKey: "ordersSpecialQueue",
       },
       {
         href: "/orders/auto-replenish",
@@ -724,7 +739,7 @@ export const appNavigation: NavEntry[] = [
 
 function hasNavPermission(
   permissions: string[],
-  item: NavLinkItem,
+  item: { permission?: string; anyPermissions?: readonly string[] },
 ): boolean {
   if (item.anyPermissions?.length) {
     return item.anyPermissions.some((p) => permissions.includes(p));
@@ -739,38 +754,45 @@ export function filterNavByPermissions(
 ): NavEntry[] {
   return entries
     .map((entry) => {
-      if (entry.type === "link") {
-        if (entry.platformOperatorOnly && !isPlatformOperator) {
-          return null;
-        }
-        if (!hasNavPermission(permissions, entry)) {
-          return null;
-        }
-        return entry;
-      }
-
-      const isVisible = (item: NavLinkItem) => {
-        if (item.platformOperatorOnly && !isPlatformOperator) {
-          return false;
-        }
-        return hasNavPermission(permissions, item);
-      };
-
-      const visibleItems = entry.items
-        .map((child) => {
-          if (!isNavSubGroup(child)) {
-            return isVisible(child) ? child : null;
+      switch (entry.type) {
+        case "link": {
+          if (entry.platformOperatorOnly && !isPlatformOperator) {
+            return null;
           }
-          const items = child.items.filter(isVisible);
-          return items.length > 0 ? { ...child, items } : null;
-        })
-        .filter((child): child is NavGroupChild => child !== null);
+          if (!hasNavPermission(permissions, entry)) {
+            return null;
+          }
+          return entry;
+        }
+        case "group": {
+          const isVisible = (item: NavLinkItem) => {
+            if (item.platformOperatorOnly && !isPlatformOperator) {
+              return false;
+            }
+            return hasNavPermission(permissions, item);
+          };
 
-      if (visibleItems.length === 0) {
-        return null;
+          const visibleItems = entry.items
+            .map((child) => {
+              if (!isNavSubGroup(child)) {
+                return isVisible(child) ? child : null;
+              }
+              const items = child.items.filter(isVisible);
+              return items.length > 0 ? { ...child, items } : null;
+            })
+            .filter((child): child is NavGroupChild => child !== null);
+
+          if (visibleItems.length === 0) {
+            return null;
+          }
+
+          return { ...entry, items: visibleItems };
+        }
+        default: {
+          const _exhaustive: never = entry;
+          return _exhaustive;
+        }
       }
-
-      return { ...entry, items: visibleItems };
     })
     .filter((entry): entry is NavEntry => entry !== null);
 }
@@ -802,4 +824,158 @@ export function isNavGroupActive(
       ? isNavGroupActive(pathname, child.items)
       : isNavItemActive(pathname, child.href, child.exact, child.activePathPrefixes),
   );
+}
+
+export function flattenNavLinks(items: readonly NavGroupChild[]): NavLinkItem[] {
+  const links: NavLinkItem[] = [];
+  for (const child of items) {
+    if (isNavSubGroup(child)) {
+      links.push(...child.items);
+      continue;
+    }
+    links.push(child);
+  }
+  return links;
+}
+
+export function navEntryKey(entry: NavEntry): string {
+  switch (entry.type) {
+    case "link":
+      return `link:${entry.href}`;
+    case "group":
+      return `group:${entry.label}`;
+    default: {
+      const _exhaustive: never = entry;
+      return _exhaustive;
+    }
+  }
+}
+
+export function isNavEntryActive(pathname: string, entry: NavEntry): boolean {
+  switch (entry.type) {
+    case "link":
+      return isNavItemActive(
+        pathname,
+        entry.href,
+        entry.exact,
+        entry.activePathPrefixes,
+      );
+    case "group":
+      return isNavGroupActive(pathname, entry.items);
+    default: {
+      const _exhaustive: never = entry;
+      return _exhaustive;
+    }
+  }
+}
+
+export function firstPermittedHref(entry: NavEntry): string | null {
+  switch (entry.type) {
+    case "link":
+      return entry.href;
+    case "group":
+      return flattenNavLinks(entry.items)[0]?.href ?? null;
+    default: {
+      const _exhaustive: never = entry;
+      return _exhaustive;
+    }
+  }
+}
+
+/** White secondary column is hidden when the module has a single destination. */
+export function shouldShowSecondaryNav(entry: NavEntry): boolean {
+  switch (entry.type) {
+    case "link":
+      return false;
+    case "group":
+      return flattenNavLinks(entry.items).length > 1;
+    default: {
+      const _exhaustive: never = entry;
+      return _exhaustive;
+    }
+  }
+}
+
+/**
+ * Primary rail label and icon. A module with exactly one visible page uses
+ * that page's label (and its icon when it has one). Modules with several
+ * pages keep the group label.
+ */
+export function primaryNavDisplay(entry: NavEntry): {
+  label: string;
+  icon: LucideIcon;
+} {
+  switch (entry.type) {
+    case "link":
+      return { label: entry.label, icon: entry.icon };
+    case "group": {
+      const links = flattenNavLinks(entry.items);
+      if (links.length === 1) {
+        const only = links[0];
+        return { label: only.label, icon: only.icon ?? entry.icon };
+      }
+      return { label: entry.label, icon: entry.icon };
+    }
+    default: {
+      const _exhaustive: never = entry;
+      return _exhaustive;
+    }
+  }
+}
+
+export function findActiveNavEntry(
+  pathname: string,
+  entries: readonly NavEntry[],
+): NavEntry | null {
+  for (const entry of entries) {
+    if (isNavEntryActive(pathname, entry)) return entry;
+  }
+  return null;
+}
+
+export type NavSecondarySection =
+  | { kind: "link"; item: NavLinkItem }
+  | {
+      kind: "heading";
+      label: string;
+      icon: LucideIcon;
+      items: NavLinkItem[];
+    };
+
+export function navSecondarySections(
+  items: readonly NavGroupChild[],
+): NavSecondarySection[] {
+  const sections: NavSecondarySection[] = [];
+  for (const child of items) {
+    if (isNavSubGroup(child)) {
+      if (child.items.length === 0) continue;
+      sections.push({
+        kind: "heading",
+        label: child.label,
+        icon: child.icon,
+        items: child.items,
+      });
+      continue;
+    }
+    sections.push({ kind: "link", item: child });
+  }
+  return sections;
+}
+
+/** Queue keys that should contribute to this link's count for the current user. */
+export function visibleCountBadgeKeys(
+  item: Pick<NavLinkItem, "countBadgeKey" | "countBadgeParts">,
+  permissions: string[],
+): NavCountBadgeKey[] {
+  if (item.countBadgeParts && item.countBadgeParts.length > 0) {
+    const keys: NavCountBadgeKey[] = [];
+    for (const part of item.countBadgeParts) {
+      if (!hasNavPermission(permissions, part)) continue;
+      if (keys.includes(part.key)) continue;
+      keys.push(part.key);
+    }
+    return keys;
+  }
+  if (item.countBadgeKey) return [item.countBadgeKey];
+  return [];
 }

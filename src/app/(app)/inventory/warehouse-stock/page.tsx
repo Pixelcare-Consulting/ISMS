@@ -6,7 +6,7 @@ import { parseTablePageSize } from "@/components/data-table/table-page-size";
 import { ModuleGuide } from "@/components/module-guide";
 import { SectionPageLead } from "@/components/navigation/section-page-lead";
 import { WAREHOUSE_STOCK_MODULE_GUIDE } from "@/content/module-guides/warehouse-stock";
-import { requireAnyPermission } from "@/lib/auth/permissions";
+import { hasPermission, requireAnyPermission } from "@/lib/auth/permissions";
 import { WarehouseStockTable } from "@/app/(app)/inventory/warehouse-stock/_components/warehouse-stock-table";
 
 interface WarehouseStockPageProps {
@@ -22,7 +22,8 @@ interface WarehouseStockPageProps {
 export default async function WarehouseStockPage({
   searchParams,
 }: WarehouseStockPageProps) {
-  await requireAnyPermission(["inventory.view", "warehouses.manage"]);
+  const session = await requireAnyPermission(["inventory.view", "warehouses.manage"]);
+  const canEditLocation = hasPermission(session.user.permissions, "warehouses.manage");
   const params = await searchParams;
   const page = Number(params.page) || 1;
   const limit = parseTablePageSize(params.limit);
@@ -45,11 +46,12 @@ export default async function WarehouseStockPage({
     <div className="space-y-4">
       <ModuleGuide {...WAREHOUSE_STOCK_MODULE_GUIDE} />
       <SectionPageLead>
-        Serial numbers held in warehouses. Branch shelf stock stays under Stock
-        units — this list is read-only.
+        Serials with a location in a warehouse. Branch stock stocked into a location stays
+        branch stock; Held by shows its branch.
       </SectionPageLead>
       <WarehouseStockTable
         result={result}
+        canEditLocation={canEditLocation}
         warehouses={filterOptions.warehouses}
         locations={filterOptions.locations}
         currentWarehouseId={warehouseId}

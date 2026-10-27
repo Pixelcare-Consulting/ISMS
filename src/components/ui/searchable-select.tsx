@@ -44,6 +44,9 @@ type SearchableSelectProps = {
   className?: string;
   /** Extra classes for the options popover (e.g. raise z-index above a dialog). */
   popoverClassName?: string;
+  /** Which side of the trigger the list opens on. Default is below the field. */
+  side?: "top" | "right" | "bottom" | "left";
+  align?: "start" | "center" | "end";
   onOpenChange?: (open: boolean) => void;
   /**
    * Server-search mode. When set, options are not filtered in the browser.
@@ -73,6 +76,8 @@ export function SearchableSelect({
   id,
   className,
   popoverClassName,
+  side,
+  align = "start",
   onOpenChange,
   onQueryChange,
   selectedOption,
@@ -198,7 +203,8 @@ export function SearchableSelect({
             "w-(--radix-popover-trigger-width) max-w-[min(100%,calc(100vw-2rem))] p-0",
             popoverClassName,
           )}
-          align="start"
+          side={side}
+          align={align}
           collisionPadding={12}
         >
           <Command shouldFilter={false}>

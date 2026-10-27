@@ -257,6 +257,13 @@ function SyncProgressCard({
 
           <SyncStatusLines progress={progress} />
 
+          {isRunning && (progress.skipped ?? 0) > 0 ? (
+            <p className="mt-2 text-xs text-amber-700 tabular-nums dark:text-amber-400">
+              {formatCount(progress.skipped ?? 0)} skipped so far. You will see why when the
+              sync finishes.
+            </p>
+          ) : null}
+
           {isRunning ? (
             <div className="mt-5 w-full">
               <Button

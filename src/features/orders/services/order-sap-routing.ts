@@ -25,6 +25,8 @@ export interface OrderSapRoutingInput {
     sapCode: string | null;
     modeOfPayment: { name: string; kind: "CONSIGNMENT" | "OUTRIGHT" | null } | null;
   } | null;
+  /** The order's own mode of payment. When set it overrides the dealer's for this order. */
+  orderModeOfPayment?: { name: string; kind: "CONSIGNMENT" | "OUTRIGHT" | null } | null;
 }
 
 const block = (error: string): OrderSapRouting => ({ ok: false, error });
@@ -44,7 +46,7 @@ export function resolveOrderSapRouting(input: OrderSapRoutingInput): OrderSapRou
   if (!dealer) {
     return block(`${branch.name} has no dealer. Set the dealer before final approval.`);
   }
-  const mop = dealer.modeOfPayment;
+  const mop = input.orderModeOfPayment ?? dealer.modeOfPayment;
   if (!mop) {
     return block(
       `Dealer ${dealer.name} has no mode of payment. Set it in Settings → Dealers before final approval.`,

@@ -6,7 +6,7 @@ export const MANUAL_ORDERS_MODULE_GUIDE: ModuleGuideContent = {
   description:
     "Create a live branch request; it goes straight to Supply Planning. Team Leaders may optionally edit while it is Pending SP. Orders shows requests waiting for your role (including optional edit). Order History holds approved and past SO#s. Order analytics on an order opens stock, sales, and days of cover for that branch. Logistics fulfills only after Supply Planning’s final approval.",
   tips: [
-    { label: "Use Create order for this branch. Additional item opens a separate special order" },
+    { label: "Use Create order for this branch. Additional item switches that order to Special" },
     { label: "Enter a quantity of 1 or more per model. Suggest is the shelf gap" },
     {
       label:
@@ -25,7 +25,7 @@ export const MANUAL_ORDERS_MODULE_GUIDE: ModuleGuideContent = {
 export const SPECIAL_ORDERS_MODULE_GUIDE: ModuleGuideContent = {
   title: "Special orders",
   description:
-    "Team Leaders create these requests; Supply Planning gives final approval. Orders shows only requests waiting for your role. Order History holds approved and past SO#s. Additional item opens a window to pick active models that are not already on the sheet, without changing the shelf plan. Logistics fulfills only after Supply Planning’s final approval.",
+    "Team Leaders create these requests; Supply Planning gives final approval. A special order you submitted stays on this list. Other requests appear when they are waiting for your role. Order History holds approved and past SO#s. Additional item opens a window to pick active models that are not already on the sheet, without changing the shelf plan. Logistics fulfills only after Supply Planning’s final approval.",
   tips: [
     { label: "Use Create order, then Additional item to search for a model that is not already on the sheet" },
     { label: "Filter by brand on the sheet. Adding an extra item does not change the branch shelf plan" },

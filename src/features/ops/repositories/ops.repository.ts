@@ -1,5 +1,8 @@
+import type { Prisma } from "@prisma/client";
+
 import { prisma } from "@/lib/database/client";
 import { latestReturnInclude } from "@/features/logistics/repositories/logistics.repository";
+import { DELIVERY_WORKFLOW_CODE } from "@/features/logistics/constants/workflow-codes";
 import { reasonStatusService } from "@/features/reason-status/services/reason-status.service";
 
 export const opsRepository = {
@@ -18,9 +21,9 @@ export const opsRepository = {
     });
   },
 
-  listTransfers(tenantId: string) {
+  listTransfers(tenantId: string, extra?: Prisma.BranchTransferWhereInput) {
     return prisma.branchTransfer.findMany({
-      where: { tenantId },
+      where: { tenantId, ...extra },
       include: {
         fromBranch: { select: { name: true } },
         toBranch: { select: { name: true } },
@@ -48,7 +51,7 @@ export const opsRepository = {
     const statusCodeId = await reasonStatusService.requireCodeId(
       tenantId,
       "delivery_workflow",
-      "approved",
+      DELIVERY_WORKFLOW_CODE.approved,
     );
     return prisma.branchDelivery.create({
       data: { tenantId, branchId, deliveryNo, statusCodeId },
@@ -59,7 +62,7 @@ export const opsRepository = {
     const pendingCode = await reasonStatusService.requireCodeId(
       tenantId,
       "delivery_workflow",
-      "pending",
+      DELIVERY_WORKFLOW_CODE.pending,
     );
     return prisma.branchDelivery.count({
       where: { tenantId, statusCodeId: pendingCode },
