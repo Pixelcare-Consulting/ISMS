@@ -244,7 +244,13 @@ function ReceiveBody({
             }}
           />
         </div>
-        <ul className="max-h-72 space-y-2 overflow-y-auto" aria-label="Rejected units">
+        <section className="space-y-1.5">
+          <h3 className="text-sm font-medium">Units ({ticked.length})</h3>
+          {/* Capped to the smaller of 18rem and 40% of the viewport, so a long reject still leaves the remarks and buttons on screen. */}
+          <ul
+            className="max-h-[min(18rem,40svh)] space-y-2 overflow-y-auto overscroll-contain pr-1"
+            aria-label="Rejected units"
+          >
           {ticked.map((line) => (
             <li key={line.serialNumberId} className="space-y-2 rounded-md border px-3 py-2 text-sm">
               <SerialLabel line={line} />
@@ -260,7 +266,8 @@ function ReceiveBody({
               />
             </li>
           ))}
-        </ul>
+          </ul>
+        </section>
         {rejectError ? (
           <p className="text-sm text-destructive" role="alert">
             {rejectError}
