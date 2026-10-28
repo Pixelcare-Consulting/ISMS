@@ -27,7 +27,7 @@ test.describe("authentication", () => {
 
   test("honors a safe callbackUrl after sign-in", async ({ loginPage }) => {
     await loginPage.goto("/policies");
-    const { email, password } = E2E_USERS.superAdmin;
+    const { email, password } = E2E_USERS.deptHead;
     await loginPage.loginAndWait(email, password, /\/policies/);
   });
 });
