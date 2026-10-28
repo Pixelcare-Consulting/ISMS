@@ -1,4 +1,4 @@
-import type { DeliveryReturnStatus } from "@prisma/client";
+import type { DeliveryReturnStatus, SapOrderDocType } from "@prisma/client";
 import { z } from "zod";
 
 import { Prisma } from "@/lib/database/generated/prisma/client";
@@ -88,6 +88,8 @@ export interface DeliveryReturnSummary {
 export interface DeliveryReturnDetail extends DeliveryReturnSummary {
   deliveryId: string;
   deliveryNo: string;
+  /** ITR (consignment, posts an IT) or SO (outright); null on orders from before SAP posting. */
+  orderSapDocType: SapOrderDocType | null;
   branchName: string;
   reason: string;
   requestedByName: string | null;
@@ -320,7 +322,13 @@ export const deliveryReturnService = {
     if (!row) throw new Error("Reject request not found");
     const delivery = await prisma.branchDelivery.findFirst({
       where: { id: row.deliveryId, tenantId: actor.tenantId },
-      select: { branchId: true, sourceWarehouseId: true, deliveryNo: true, branch: { select: { name: true } } },
+      select: {
+        branchId: true,
+        sourceWarehouseId: true,
+        deliveryNo: true,
+        branch: { select: { name: true } },
+        order: { select: { sapDocType: true } },
+      },
     });
     if (!delivery) throw new Error("Delivery not found");
     await authorizeDeliveryScope(actor, delivery);
@@ -331,6 +339,7 @@ export const deliveryReturnService = {
       sapError: row.sapError,
       deliveryId: row.deliveryId,
       deliveryNo: delivery.deliveryNo,
+      orderSapDocType: delivery.order?.sapDocType ?? null,
       branchName: delivery.branch.name,
       reason: row.reason,
       requestedByName: row.requestedBy.name || null,

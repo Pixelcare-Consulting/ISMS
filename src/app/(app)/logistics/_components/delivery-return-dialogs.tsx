@@ -16,6 +16,7 @@ import type {
   DeliveryReturnDetail,
   DeliveryReturnOutcome,
 } from "@/features/logistics/services/delivery-return.service";
+import { formatRejectSapDocNo } from "@/features/logistics/lib/sap-doc-number";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -284,7 +285,9 @@ function ReviewBody({
             {detail.sapDocNo ? (
               <Field
                 label="SAP document"
-                value={detail.sapDocDate ? `${detail.sapDocNo} (${detail.sapDocDate})` : detail.sapDocNo}
+                value={`${formatRejectSapDocNo(detail.sapDocNo, detail.orderSapDocType)}${
+                  detail.sapDocDate ? ` (${detail.sapDocDate})` : ""
+                }`}
               />
             ) : null}
           </dl>

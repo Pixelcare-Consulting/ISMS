@@ -52,6 +52,7 @@ import {
 import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
 import type { DeliveryDetail } from "@/features/logistics/services/delivery-posting.service";
 import {
+  formatRejectSapDocNo,
   formatSapDocNo,
   SAP_DOC_DATE_LABEL,
   SAP_DOC_NO_LABEL,
@@ -61,7 +62,7 @@ import {
   SAP_FOLLOW_STATUS_LABELS,
   SAP_FOLLOW_STATUS_TONES,
 } from "@/features/logistics/constants/sap-follow-status";
-import { orderSapDocumentFields } from "@/features/orders/constants/order-sap-doc-type";
+import { orderSapDocumentFields, type OrderSapDocType } from "@/features/orders/constants/order-sap-doc-type";
 import { cn } from "@/utils/cn";
 import { worksheetTotalsLabel } from "@/features/orders/lib/order-worksheet-filters";
 
@@ -362,6 +363,7 @@ export function DeliveryDetailView({
         {detail.returns.length > 0 ? (
           <RejectRequestsSection
             returns={detail.returns}
+            sapDocType={detail.order?.sapDocType ?? null}
             canApprove={capabilities.canApproveDeliveryReturn}
             canRetry={capabilities.canApproveDeliveryReturn || capabilities.canRequestDeliveryReturn}
             onOpen={(returnId) =>
@@ -410,11 +412,13 @@ export function DeliveryDetailView({
  */
 function RejectRequestsSection({
   returns,
+  sapDocType,
   canApprove,
   canRetry,
   onOpen,
 }: {
   returns: DeliveryDetail["returns"];
+  sapDocType: OrderSapDocType | null;
   canApprove: boolean;
   canRetry: boolean;
   onOpen: (returnId: string) => void;
@@ -439,7 +443,7 @@ function RejectRequestsSection({
               <DeliveryReturnStatusBadge status={row.status} />
               <span className="text-muted-foreground">
                 {row.unitCount} unit{row.unitCount === 1 ? "" : "s"}
-                {row.sapDocNo ? ` · SAP ${row.sapDocNo}` : ""}
+                {row.sapDocNo ? ` · ${formatRejectSapDocNo(row.sapDocNo, sapDocType)}` : ""}
               </span>
               <span className="min-w-0 flex-1 truncate text-muted-foreground" title={row.remarks}>
                 {row.remarks}
