@@ -95,7 +95,7 @@
     "recharts": "^3.10.1",
     "remark-gfm": "^4.0.1",
     "resend": "^6.32.0",
-    "sanitize-html": "^2.18.0",
+    "sanitize-html": "^2.18.1",
     "sonner": "^2.0.8",
     "stimulsoft-dashboards-js-react": "2026.4.1",
     "tailwind-merge": "^3.7.0",
