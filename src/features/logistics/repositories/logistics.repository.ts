@@ -16,7 +16,7 @@ export const latestReturnInclude = {
 
 const deliveryListInclude = {
   branch: { select: { name: true, sapCode: true } },
-  order: { select: { id: true, orderNumber: true } },
+  order: { select: { id: true, orderNumber: true, sapDocType: true } },
   statusCode: { select: { id: true, code: true, name: true, color: true } },
   ...latestReturnInclude,
 } satisfies Prisma.BranchDeliveryInclude;

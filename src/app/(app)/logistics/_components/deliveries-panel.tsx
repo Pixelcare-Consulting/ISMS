@@ -32,6 +32,12 @@ import { CompactProgressRail } from "@/app/(app)/logistics/_components/compact-p
 import { buildDeliveryTracker } from "@/app/(app)/logistics/_components/delivery-tracker";
 import type { WorkflowStatusOption } from "@/features/logistics/constants/workflow-codes";
 import {
+  formatSapDocNo,
+  SAP_DOC_DATE_LABEL,
+  SAP_DOC_NO_LABEL,
+} from "@/features/logistics/lib/sap-doc-number";
+import type { OrderSapDocType } from "@/features/orders/constants/order-sap-doc-type";
+import {
   LogisticsListViewSwitch,
   useLogisticsListProgressView,
 } from "@/app/(app)/logistics/_components/logistics-list-view-switch";
@@ -59,7 +65,7 @@ interface DeliveryRow {
   drDate: Date | string | null;
   statusCode: StatusCodeRef;
   branch: { name: string };
-  order: { orderNumber: string } | null;
+  order: { orderNumber: string; sapDocType: OrderSapDocType | null } | null;
   /** Latest return request, newest first (at most one). */
   returnRequests: LatestDeliveryReturn[];
 }
@@ -74,6 +80,10 @@ interface DeliveriesPanelProps {
 }
 
 const deliveryColumn = createColumnHelper<DataTableFeatures, DeliveryRow>();
+
+function sapDocNo(row: DeliveryRow): string | null {
+  return formatSapDocNo(row.drNo, row.order?.sapDocType);
+}
 
 type DeliverySortField = "deliveryNo" | "orderNumber" | "branch" | "status";
 type DeliverySortDir = "asc" | "desc";
@@ -113,7 +123,7 @@ export function DeliveriesPanel({
       deliveries.items.filter((d) =>
         matchesTableSearch(query, [
           d.deliveryNo,
-          d.drNo,
+          sapDocNo(d),
           d.branch.name,
           d.order?.orderNumber,
           d.statusCode.name,
@@ -127,7 +137,7 @@ export function DeliveriesPanel({
     () =>
       uniqueSearchSuggestions(
         deliveries.items.map((d) => d.deliveryNo),
-        deliveries.items.map((d) => d.drNo),
+        deliveries.items.map(sapDocNo),
         deliveries.items.map((d) => d.branch.name),
         deliveries.items.map((d) => d.order?.orderNumber),
         deliveries.items.map((d) => d.statusCode.name),
@@ -179,15 +189,15 @@ export function DeliveriesPanel({
         ),
         meta: { className: "w-52 min-w-52" },
       }),
-      deliveryColumn.accessor((row) => row.drNo ?? "", {
+      deliveryColumn.accessor((row) => sapDocNo(row) ?? "", {
         id: "drNo",
-        header: "DR#",
+        header: SAP_DOC_NO_LABEL,
         enableSorting: false,
-        cell: ({ row }) => row.original.drNo ?? "—",
+        cell: ({ row }) => sapDocNo(row.original) ?? "—",
       }),
       deliveryColumn.accessor((row) => row.drDate ?? "", {
         id: "drDate",
-        header: "DR date",
+        header: SAP_DOC_DATE_LABEL,
         enableSorting: false,
         cell: ({ row }) => formatInventoryDrDate(row.original.drDate),
       }),

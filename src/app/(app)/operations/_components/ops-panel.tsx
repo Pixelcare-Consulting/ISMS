@@ -31,6 +31,12 @@ import {
   retryDeliveryReturnSapAction,
 } from "@/features/ops/actions/ops.actions";
 import { formatInventoryDrDate } from "@/app/(app)/inventory/_components/inventory-list-format";
+import {
+  formatSapDocNo,
+  SAP_DOC_DATE_LABEL,
+  SAP_DOC_NO_LABEL,
+} from "@/features/logistics/lib/sap-doc-number";
+import type { OrderSapDocType } from "@/features/orders/constants/order-sap-doc-type";
 import { StatusCodeBadge } from "@/features/reason-status/components/status-code-badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -56,6 +62,7 @@ interface OpsPanelProps {
     drDate: Date | string | null;
     statusCode: StatusCodeRef;
     branch: { name: string };
+    order: { sapDocType: OrderSapDocType | null } | null;
     /** Latest return request, newest first (at most one). */
     returnRequests: LatestDeliveryReturn[];
   }[];
@@ -173,13 +180,14 @@ export function OpsPanel({
       }),
       deliveryColumn.display({
         id: "drNo",
-        header: "DR#",
+        header: SAP_DOC_NO_LABEL,
         enableSorting: false,
-        cell: ({ row }) => row.original.drNo ?? "—",
+        cell: ({ row }) =>
+          formatSapDocNo(row.original.drNo, row.original.order?.sapDocType) ?? "—",
       }),
       deliveryColumn.display({
         id: "drDate",
-        header: "DR date",
+        header: SAP_DOC_DATE_LABEL,
         enableSorting: false,
         cell: ({ row }) => formatInventoryDrDate(row.original.drDate),
       }),
