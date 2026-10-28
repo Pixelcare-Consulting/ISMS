@@ -16,15 +16,15 @@ import type { SapSyncSegment } from "@/features/sap/types/sap-sync-entity";
  */
 
 /**
- * How many encoded URL characters one segment's key chain may take.
+ * How many characters one segment's key chain may take, counted as plain text.
  *
- * The ceiling is the Service Layer's own request-line limit (around 8 KB on a default
- * install); the rest of the query — `$select`, `$orderby`, the entity filter, the resume
- * clause — has to fit alongside it, hence the headroom. Overridable with
- * `SAP_SYNC_SEGMENT_BUDGET` so a Service Layer behind a stricter proxy can be tuned
- * without a code change.
+ * The client's Service Layer refuses a query string over 2048 characters ("Query string
+ * exceeds the maximum length 2048", measured 2026-10-28), and it counts the decoded text,
+ * not the URL-encoded form. The rest of the query — `$select`, `$orderby`, the entity
+ * filter, the resume clause — has to fit alongside the chain, hence the headroom.
+ * Overridable with `SAP_SYNC_SEGMENT_BUDGET` for a Service Layer with another limit.
  */
-const DEFAULT_SEGMENT_BUDGET = 6000;
+const DEFAULT_SEGMENT_BUDGET = 1600;
 
 export function segmentBudget(): number {
   const raw = Number.parseInt(process.env.SAP_SYNC_SEGMENT_BUDGET ?? "", 10);
@@ -45,10 +45,33 @@ export function segmentClause(segment: SegmentField, keys: string[]): string {
   return `(${terms.join(" or ")})`;
 }
 
-/** What one key costs the URL once encoded, separator included. */
+/** What one key costs the query string as SAP counts it (plain text), separator included. */
 function termCost(segment: SegmentField, key: string): number {
-  return encodeURIComponent(`${segment.field} eq ${sapKeyLiteral(key, segment.kind)} or `)
-    .length;
+  return `${segment.field} eq ${sapKeyLiteral(key, segment.kind)} or `.length;
+}
+
+/**
+ * Split `keys` (in their given order) into batches whose `or` chains each fit one Service
+ * Layer request. Any read that filters on a list of keys goes through this, so none can
+ * cross the Service Layer's query-string limit (see `DEFAULT_SEGMENT_BUDGET`).
+ */
+export function chunkKeysForFilter(keys: readonly string[], segment: SegmentField): string[][] {
+  const budget = segmentBudget();
+  const batches: string[][] = [];
+  let batch: string[] = [];
+  let cost = 0;
+  for (const key of keys) {
+    const next = termCost(segment, key);
+    if (batch.length > 0 && cost + next > budget) {
+      batches.push(batch);
+      batch = [];
+      cost = 0;
+    }
+    batch.push(key);
+    cost += next;
+  }
+  if (batch.length > 0) batches.push(batch);
+  return batches;
 }
 
 export interface SegmentPlan {
@@ -62,7 +85,7 @@ export interface SegmentPlan {
 /**
  * The next segment to walk: as many keys from `anchor` onward as one request can carry.
  *
- * Sized by encoded bytes rather than by a key count, so the same descriptor behaves at
+ * Sized by characters rather than by a key count, so the same descriptor behaves at
  * five hundred keys and at five hundred thousand, and a company whose item codes are long
  * gets smaller segments rather than a truncated URL. At least one key is always taken —
  * a single key over budget still has to be walked, and SAP will refuse it more

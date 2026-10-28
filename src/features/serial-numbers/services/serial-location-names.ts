@@ -1,4 +1,5 @@
 import { sapText } from "@/features/sap/services/sap-master-data";
+import { chunkKeysForFilter } from "@/features/sap/services/sap-sync-segment";
 import {
   sapServiceLayerClient,
   type SapServiceLayerRequestResult,
@@ -52,7 +53,19 @@ interface WarehouseNamePage {
   "@odata.nextLink"?: string;
 }
 
+/** Names for `codes`, read in as many requests as SAP's query-string limit needs. */
 async function fetchWarehouseNames(
+  creds: SapServiceLayerCredentials,
+  codes: string[],
+): Promise<Map<string, string>> {
+  const found = new Map<string, string>();
+  for (const batch of chunkKeysForFilter(codes, { field: "WarehouseCode", kind: "string" })) {
+    for (const [code, name] of await fetchWarehouseNameBatch(creds, batch)) found.set(code, name);
+  }
+  return found;
+}
+
+async function fetchWarehouseNameBatch(
   creds: SapServiceLayerCredentials,
   codes: string[],
 ): Promise<Map<string, string>> {
