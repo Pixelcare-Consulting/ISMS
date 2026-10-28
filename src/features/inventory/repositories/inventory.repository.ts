@@ -4,6 +4,8 @@ import {
   STOCK_UNITS_DEFAULT_SORT_DIR,
 } from "@/features/inventory/constants/stock-units-sort";
 import { prisma } from "@/lib/database/client";
+import { formatSapDocNo } from "@/features/logistics/lib/sap-doc-number";
+import type { OrderSapDocType } from "@/features/orders/constants/order-sap-doc-type";
 import { inventoryGroupRepository } from "@/features/inventory/repositories/inventory-group.repository";
 import {
   inventoryListInclude,
@@ -168,7 +170,7 @@ function resolveEffectiveBranchIds(
 
 export type LatestDeliveryReceipt = {
   serialNumberId: string;
-  /** Display DR#: SAP DR number when present, else ISMS delivery number. */
+  /** Display SAP doc#: "DR: …" / "IT: …" when SAP has one, else the ISMS delivery or slip number. */
   deliveryNo: string;
   /** ISMS delivery number (links to the deliveries list). */
   internalDeliveryNo: string;
@@ -376,6 +378,7 @@ export const inventoryRepository = {
             drDate: true,
             acceptedAt: true,
             createdAt: true,
+            order: { select: { sapDocType: true } },
           },
         },
       },
@@ -389,6 +392,7 @@ export const inventoryRepository = {
         drDate: Date | null;
         acceptedAt: Date | null;
         createdAt: Date;
+        order: { sapDocType: OrderSapDocType | null } | null;
       };
     };
 
@@ -405,7 +409,9 @@ export const inventoryRepository = {
       ) {
         latest.set(line.serialNumberId, {
           serialNumberId: line.serialNumberId,
-          deliveryNo: line.delivery.drNo ?? line.delivery.deliveryNo,
+          deliveryNo:
+            formatSapDocNo(line.delivery.drNo, line.delivery.order?.sapDocType) ??
+            line.delivery.deliveryNo,
           internalDeliveryNo: line.delivery.deliveryNo,
           deliveryDate,
         });

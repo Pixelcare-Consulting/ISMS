@@ -15,6 +15,7 @@ export const opsRepository = {
       include: {
         branch: { select: { name: true, sapCode: true } },
         statusCode: { select: { id: true, code: true, name: true } },
+        order: { select: { sapDocType: true } },
         ...latestReturnInclude,
       },
       orderBy: { createdAt: "desc" },

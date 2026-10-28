@@ -110,8 +110,8 @@ export function InventoryReportPanel() {
       <div className="max-w-xl space-y-4 rounded-xl border bg-card p-4 shadow-sm sm:p-6">
         <p className="text-sm text-muted-foreground">
           Branch stock units with dealer classification and delivery validation
-          columns (serial, status, DR#, aging). Excel includes a Summary sheet of
-          quantities and a Detail sheet of serials. Date filter uses DR date when
+          columns (serial, status, SAP doc#, aging). Excel includes a Summary sheet of
+          quantities and a Detail sheet of serials. Date filter uses SAP doc date when
           present, otherwise last inventory update. Scoped to your assigned
           branch(es).
         </p>

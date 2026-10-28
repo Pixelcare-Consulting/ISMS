@@ -52,6 +52,11 @@ import {
 import type { LogisticsActionCapabilities } from "@/features/logistics/constants/logistics-permissions";
 import type { DeliveryDetail } from "@/features/logistics/services/delivery-posting.service";
 import {
+  formatSapDocNo,
+  SAP_DOC_DATE_LABEL,
+  SAP_DOC_NO_LABEL,
+} from "@/features/logistics/lib/sap-doc-number";
+import {
   SAP_FOLLOW_STATUS_HINTS,
   SAP_FOLLOW_STATUS_LABELS,
   SAP_FOLLOW_STATUS_TONES,
@@ -223,8 +228,8 @@ function deliveryPrintDocument(detail: DeliveryDetail) {
     fields: [
       { label: "Order", value: detail.order?.orderNumber ?? "—" },
       { label: "Branch", value: detail.branch.name },
-      { label: "DR number", value: detail.drNo ?? "—" },
-      { label: "DR date", value: formatInventoryDrDate(detail.drDate) },
+      { label: SAP_DOC_NO_LABEL, value: formatSapDocNo(detail.drNo, detail.order?.sapDocType) ?? "—" },
+      { label: SAP_DOC_DATE_LABEL, value: formatInventoryDrDate(detail.drDate) },
     ],
     lines: hasSerials
       ? detail.serials.map((line) => ({
@@ -340,14 +345,17 @@ export function DeliveryDetailView({
         </RecordSection>
         <RecordSection
           title="Delivery"
-          description="Order, branch, and the delivery receipt."
+          description="Order, branch, and the SAP document."
           divided
         >
           <RecordFieldGrid>
             <RecordReadout label="Order" value={detail.order?.orderNumber ?? "—"} />
             <RecordReadout label="Branch" value={detail.branch.name} />
-            <RecordReadout label="DR number" value={detail.drNo ?? "—"} />
-            <RecordReadout label="DR date" value={formatInventoryDrDate(detail.drDate)} />
+            <RecordReadout
+              label={SAP_DOC_NO_LABEL}
+              value={formatSapDocNo(detail.drNo, detail.order?.sapDocType) ?? "—"}
+            />
+            <RecordReadout label={SAP_DOC_DATE_LABEL} value={formatInventoryDrDate(detail.drDate)} />
           </RecordFieldGrid>
         </RecordSection>
         <SapDocumentsSection

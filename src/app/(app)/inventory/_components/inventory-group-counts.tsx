@@ -93,7 +93,7 @@ export function InventoryGroupCounts({
         variant="secondary"
         title={
           notStockedIn > 0
-            ? `Includes ${notStockedIn.toLocaleString()} unit(s) with no DR# and DR date or warehouse yet`
+            ? `Includes ${notStockedIn.toLocaleString()} unit(s) with no SAP doc# and date or warehouse yet`
             : undefined
         }
         className={cn("tabular-nums font-normal", size)}
