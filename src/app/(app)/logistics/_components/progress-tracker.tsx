@@ -492,7 +492,6 @@ export function ProgressTracker({
                       className={cn(
                         "text-sm underline-offset-2 group-hover:underline",
                         item.state === "upcoming" ? "text-muted-foreground" : "text-foreground",
-                        item.state === "current" && "font-medium",
                       )}
                     >
                       {item.label}
