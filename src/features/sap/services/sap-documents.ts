@@ -44,6 +44,8 @@ export interface SapSerialLine {
   serialNos: string[];
   baseEntry?: number;
   baseLine?: number;
+  /** Row "Remarks" column (U_free_text). Serials with different remarks go on separate lines. */
+  remarks?: string | null;
 }
 
 interface PlainLine {
@@ -53,12 +55,14 @@ interface PlainLine {
 
 /**
  * The ISMS reference is the idempotency key: it is what the lookup in `postSapDocument` matches on.
- * `remarks` replaces the default Comments, e.g. to name the original ITR or SO.
+ * `remarks` replaces the default Comments, e.g. to name the original ITR or SO; `journalMemo`
+ * replaces SAP's localized default Journal Remarks ("Traslados -").
  */
-function header(ismsRef: string, remarks?: string) {
+function header(ismsRef: string, remarks?: string, journalMemo?: string) {
   return {
     U_ISMS_PO_No: ismsRef,
     Comments: remarks ? fitSapText(remarks, ORDER_DOC_TEXT_LIMITS.comments) : `ISMS ${ismsRef}`,
+    ...(journalMemo ? { JournalMemo: fitSapText(journalMemo, ORDER_DOC_TEXT_LIMITS.journalMemo) } : {}),
   };
 }
 
@@ -88,6 +92,17 @@ const ORDER_DOC_TEXT_LIMITS = {
   lineBranchName: 20,
   lineBranchNameLong: 100,
 } as const;
+
+/**
+ * Row "Remarks" on an IT (WTR1) and a Return (RDN1) is the UDF U_free_text, 30 characters
+ * (UserFieldsMD, read 2026-10-28 with scripts/check-sap-line-remarks.mjs).
+ */
+export const SAP_LINE_REMARKS_MAX = 30;
+
+function lineRemarks(line: SapSerialLine) {
+  const text = line.remarks?.trim();
+  return text ? { U_free_text: fitSapText(text, SAP_LINE_REMARKS_MAX) } : {};
+}
 
 /** One line of text no longer than `max`: whitespace collapsed, cut with "…" if needed. */
 export function fitSapText(value: string, max: number): string {
@@ -211,13 +226,14 @@ export function buildSoBody(
 export function buildItBody(i: {
   ismsRef: string;
   remarks?: string;
+  journalMemo?: string;
   fromWhs: string;
   toWhs: string;
   baseItrEntry?: number;
   lines: SapSerialLine[];
 }): Record<string, unknown> {
   return {
-    ...header(i.ismsRef, i.remarks),
+    ...header(i.ismsRef, i.remarks, i.journalMemo),
     FromWarehouse: i.fromWhs,
     ToWarehouse: i.toWhs,
     StockTransferLines: i.lines.map((l) => ({
@@ -225,6 +241,7 @@ export function buildItBody(i: {
       FromWarehouseCode: i.fromWhs,
       WarehouseCode: i.toWhs,
       ...serialPayload(l),
+      ...lineRemarks(l),
       ...(l.baseEntry != null || i.baseItrEntry != null
         ? {
             BaseType: "InventoryTransferRequest",
@@ -244,14 +261,16 @@ function buildBasedDocumentBody(
   baseEntry: number,
   lines: SapSerialLine[],
   remarks?: string,
+  journalMemo?: string,
 ): Record<string, unknown> {
   return {
-    ...header(ismsRef, remarks),
+    ...header(ismsRef, remarks, journalMemo),
     CardCode: cardCode,
     DocumentLines: lines.map((l) => ({
       ItemCode: l.itemCode,
       WarehouseCode: whs,
       ...serialPayload(l),
+      ...lineRemarks(l),
       BaseType: baseType,
       ...(l.baseEntry == null ? { BaseEntry: baseEntry, BaseLine: l.baseLine ?? 0 } : baseRef(l)),
     })),
@@ -261,12 +280,22 @@ function buildBasedDocumentBody(
 export function buildReturnBody(i: {
   ismsRef: string;
   remarks?: string;
+  journalMemo?: string;
   cardCode: string;
   whs: string;
   baseDrEntry: number;
   lines: SapSerialLine[];
 }): Record<string, unknown> {
-  return buildBasedDocumentBody(i.ismsRef, i.cardCode, i.whs, BASE_TYPE_DR, i.baseDrEntry, i.lines, i.remarks);
+  return buildBasedDocumentBody(
+    i.ismsRef,
+    i.cardCode,
+    i.whs,
+    BASE_TYPE_DR,
+    i.baseDrEntry,
+    i.lines,
+    i.remarks,
+    i.journalMemo,
+  );
 }
 
 /** Comments on the IT / Return an approved delivery return posts: names the original ITR or SO. */
@@ -278,6 +307,16 @@ export function deliveryReturnRemarks(i: {
 }): string {
   const original = i.orderDocNum != null ? `${i.orderDocType} ${i.orderDocNum}` : `${i.orderDocType} (no number)`;
   return `Return of ${original} · ISMS ${i.requestNo} · ${i.reason}`;
+}
+
+/** Journal Remarks on that IT / Return, e.g. "ISMS RTN-MVRY9XCG · Reject of ITR 372656" (fits 50). */
+export function deliveryReturnJournalMemo(i: {
+  requestNo: string;
+  orderDocType: "ITR" | "SO";
+  orderDocNum: number | null;
+}): string {
+  const original = i.orderDocNum != null ? `${i.orderDocType} ${i.orderDocNum}` : i.orderDocType;
+  return `ISMS ${i.requestNo} · Reject of ${original}`;
 }
 
 interface SapDocumentResponse {

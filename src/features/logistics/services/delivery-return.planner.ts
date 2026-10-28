@@ -16,7 +16,8 @@ export const OPEN_RETURN_STATUSES = ["PENDING_APPROVAL", "APPROVED"] as const sa
 export const RETURN_ALREADY_OPEN_ERROR = "Some units are already waiting on a reject request";
 export const RETURN_ON_TRANSFER_ERROR = "Finish or remove the open unit transfer first.";
 export const RETURN_REASON_MAX = 500;
-export const RETURN_LINE_REMARKS_MAX = 200;
+/** Matches SAP's row Remarks column (U_free_text, 30), so what the branch types is what SAP shows. */
+export const RETURN_LINE_REMARKS_MAX = 30;
 /** Remarks when the branch rejects units without typing any. */
 export const DEFAULT_REJECT_REMARKS = "Rejected at branch receiving";
 

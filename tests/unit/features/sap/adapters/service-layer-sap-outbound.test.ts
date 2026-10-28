@@ -492,6 +492,57 @@ describe("serviceLayerSapOutbound.createDeliveryReturnDocument", () => {
     expect(complete).toHaveBeenCalledWith(expect.objectContaining({ kind: "RETURN", sapDocNo: "900" }));
   });
 
+  it("sends each unit's remarks as row Remarks and a plain Journal Remarks on the IT", async () => {
+    returnPrisma.deliveryReturnRequest.findFirst.mockResolvedValue(
+      returnRequest("ITR", {
+        reason: "Damaged in transit",
+        lines: [
+          { remarks: "Cracked screen", serialNumber: { serialNo: "SN1", model: { skuCode: "SKU-A" } } },
+          { remarks: "Damaged in transit", serialNumber: { serialNo: "SN2", model: { skuCode: "SKU-B" } } },
+          { remarks: "Wrong model, should be the 65-inch unit", serialNumber: { serialNo: "SN3", model: { skuCode: "SKU-A" } } },
+          { remarks: "Cracked screen", serialNumber: { serialNo: "SN4", model: { skuCode: "SKU-A" } } },
+        ],
+        delivery: { ...returnRequest("ITR").delivery, order: { sapDocType: "ITR", sapDocNum: 372656 } },
+      }),
+    );
+
+    await serviceLayerSapOutbound.createDeliveryReturnDocument({ tenantId: "t1", job: returnJob });
+
+    const body = post.mock.calls[0][3] as { JournalMemo: string; StockTransferLines: Record<string, unknown>[] };
+    expect(body.JournalMemo).toBe("ISMS RTN-1 · Reject of ITR 372656");
+    // Same item, same remarks share a line; a different remark gets its own line, cut to SAP's 30.
+    expect(body.StockTransferLines.map((l) => [l.ItemCode, l.Quantity, l.U_free_text])).toEqual([
+      ["SKU-A", 2, "Cracked screen"],
+      ["SKU-A", 1, "Wrong model, should be the 65…"],
+      ["SKU-B", 1, "Damaged in transit"],
+    ]);
+  });
+
+  it("splits a DR line into one Return line per remarks, on the same BaseLine", async () => {
+    returnPrisma.deliveryReturnRequest.findFirst.mockResolvedValue(
+      returnRequest("SO", {
+        lines: [
+          { remarks: "Dent", serialNumber: { serialNo: "SN1", model: { skuCode: "SKU-A" } } },
+          { remarks: "No remote", serialNumber: { serialNo: "SN3", model: { skuCode: "SKU-A" } } },
+        ],
+      }),
+    );
+    slRequest.mockResolvedValue({
+      statusCode: 200,
+      rawBody: "",
+      data: { DocumentLines: [{ LineNum: 0, ItemCode: "SKU-A", SerialNumbers: [{ InternalSerialNumber: "SN1" }, { InternalSerialNumber: "SN3" }] }] },
+    });
+
+    await serviceLayerSapOutbound.createDeliveryReturnDocument({ tenantId: "t1", job: returnJob });
+
+    const body = post.mock.calls[0][3] as { JournalMemo: string; DocumentLines: Record<string, unknown>[] };
+    expect(body.JournalMemo).toBe("ISMS RTN-1 · Reject of SO");
+    expect(body.DocumentLines.map((l) => [l.BaseLine, l.Quantity, l.U_free_text])).toEqual([
+      [0, 1, "Dent"],
+      [0, 1, "No remote"],
+    ]);
+  });
+
   it("refuses a serial that is not on the DR in SAP and saves the error", async () => {
     returnPrisma.deliveryReturnRequest.findFirst.mockResolvedValue(returnRequest("SO"));
     slRequest.mockResolvedValue({

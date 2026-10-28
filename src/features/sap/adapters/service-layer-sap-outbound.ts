@@ -15,6 +15,7 @@ import {
   buildItBody,
   buildItrBody,
   buildReturnBody,
+  deliveryReturnJournalMemo,
   deliveryReturnRemarks,
   buildSoBody,
   postSapDocument,
@@ -39,14 +40,28 @@ function isoDate(d: Date) {
 }
 
 /** Serials grouped by item, sorted, without a base document. */
-function groupSerialsBySku(rows: { serialNo: string; skuCode: string }[]): SapSerialLine[] {
-  const bySku = new Map<string, string[]>();
+interface SerialRow {
+  serialNo: string;
+  skuCode: string;
+  /** Per-unit row remarks; units of one item with different remarks get separate lines. */
+  remarks?: string | null;
+}
+
+function remarksKey(remarks: string | null | undefined): string {
+  return remarks?.trim() ?? "";
+}
+
+function groupSerialsBySku(rows: SerialRow[]): SapSerialLine[] {
+  const groups = new Map<string, SapSerialLine>();
   for (const row of rows) {
-    bySku.set(row.skuCode, [...(bySku.get(row.skuCode) ?? []), row.serialNo]);
+    const key = `${row.skuCode}\u0000${remarksKey(row.remarks)}`;
+    const line = groups.get(key) ?? { itemCode: row.skuCode, serialNos: [], remarks: remarksKey(row.remarks) || null };
+    line.serialNos.push(row.serialNo);
+    groups.set(key, line);
   }
-  return [...bySku.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([itemCode, serialNos]) => ({ itemCode, serialNos }));
+  return [...groups.values()].sort(
+    (a, b) => a.itemCode.localeCompare(b.itemCode) || remarksKey(a.remarks).localeCompare(remarksKey(b.remarks)),
+  );
 }
 
 interface SapDrLine {
@@ -63,7 +78,7 @@ async function mapReturnLinesFromDr(
   creds: SapServiceLayerCredentials,
   drEntry: number,
   drNo: string,
-  serials: { serialNo: string; skuCode: string }[],
+  serials: SerialRow[],
 ): Promise<SapSerialLine[]> {
   const read = await sapServiceLayerClient.request<{ DocumentLines?: SapDrLine[] }>({
     creds,
@@ -82,20 +97,26 @@ async function mapReturnLinesFromDr(
     }
   }
 
-  const byLine = new Map<number, SapSerialLine>();
+  // One Return line per DR line and remarks: units off one DR line with different remarks
+  // become separate lines on the same BaseLine, so each keeps its own Remarks.
+  const byLine = new Map<string, SapSerialLine>();
   for (const serial of serials) {
     const drLine = lineBySerial.get(serial.serialNo);
     if (!drLine) throw new Error(`Serial ${serial.serialNo} is not on DR# ${drNo} in SAP`);
-    const entry = byLine.get(drLine.LineNum) ?? {
+    const key = `${drLine.LineNum}\u0000${remarksKey(serial.remarks)}`;
+    const entry = byLine.get(key) ?? {
       itemCode: drLine.ItemCode || serial.skuCode,
       serialNos: [],
       baseEntry: drEntry,
       baseLine: drLine.LineNum,
+      remarks: remarksKey(serial.remarks) || null,
     };
     entry.serialNos.push(serial.serialNo);
-    byLine.set(drLine.LineNum, entry);
+    byLine.set(key, entry);
   }
-  return [...byLine.values()].sort((a, b) => (a.baseLine ?? 0) - (b.baseLine ?? 0));
+  return [...byLine.values()].sort(
+    (a, b) => (a.baseLine ?? 0) - (b.baseLine ?? 0) || remarksKey(a.remarks).localeCompare(remarksKey(b.remarks)),
+  );
 }
 
 /** Consignment returns post an Inventory Transfer; outright ones a Return on the DR. */
@@ -121,7 +142,10 @@ async function postDeliveryReturn(
       status: true,
       sapDocNo: true,
       lines: {
-        select: { serialNumber: { select: { serialNo: true, model: { select: { skuCode: true } } } } },
+        select: {
+          remarks: true,
+          serialNumber: { select: { serialNo: true, model: { select: { skuCode: true } } } },
+        },
         orderBy: { serialNumber: { serialNo: "asc" } },
       },
       delivery: {
@@ -150,12 +174,18 @@ async function postDeliveryReturn(
   const toWhs = delivery.sourceWarehouse?.code;
   if (!toWhs) throw new Error("Delivery has no source warehouse");
   const docType = docTypeForOrder({ sapDocType: delivery.order?.sapDocType ?? null });
-  const serials = request.lines.map((line) => ({
+  const serials: SerialRow[] = request.lines.map((line) => ({
     serialNo: line.serialNumber.serialNo,
     skuCode: line.serialNumber.model.skuCode,
+    remarks: line.remarks,
   }));
 
   const kind = returnKind(docType);
+  const journalMemo = deliveryReturnJournalMemo({
+    requestNo: request.requestNo,
+    orderDocType: docType,
+    orderDocNum: delivery.order?.sapDocNum ?? null,
+  });
   const remarks = deliveryReturnRemarks({
     requestNo: request.requestNo,
     orderDocType: docType,
@@ -171,6 +201,7 @@ async function postDeliveryReturn(
     body = buildReturnBody({
       ismsRef: request.requestNo,
       remarks,
+      journalMemo,
       cardCode,
       whs: toWhs,
       baseDrEntry: delivery.sapDocEntry,
@@ -181,6 +212,7 @@ async function postDeliveryReturn(
     body = buildItBody({
       ismsRef: request.requestNo,
       remarks,
+      journalMemo,
       fromWhs: delivery.branch.sapCode,
       toWhs,
       lines: groupSerialsBySku(serials),
