@@ -80,10 +80,12 @@ async function mapReturnLinesFromDr(
   drNo: string,
   serials: SerialRow[],
 ): Promise<SapSerialLine[]> {
+  // No $select: the Service Layer drops each line's SerialNumbers when DocumentLines is
+  // selected explicitly (seen on DR 176457, 2026-10-28), and the serials are what we match on.
   const read = await sapServiceLayerClient.request<{ DocumentLines?: SapDrLine[] }>({
     creds,
     method: "GET",
-    path: `/DeliveryNotes(${drEntry})?$select=DocEntry,DocumentLines`,
+    path: `/DeliveryNotes(${drEntry})`,
   });
   if (read.statusCode >= 400) {
     throw new Error(sapErrorMessage(read.statusCode, read.rawBody, "DeliveryNotes"));

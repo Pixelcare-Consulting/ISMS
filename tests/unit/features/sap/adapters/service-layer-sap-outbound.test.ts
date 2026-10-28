@@ -479,7 +479,8 @@ describe("serviceLayerSapOutbound.createDeliveryReturnDocument", () => {
 
     expect(ref).toBe("RETURN-900");
     expect(slRequest).toHaveBeenCalledWith(
-      expect.objectContaining({ method: "GET", path: "/DeliveryNotes(44)?$select=DocEntry,DocumentLines" }),
+      // Full document: with $select the Service Layer leaves out the lines' SerialNumbers.
+      expect.objectContaining({ method: "GET", path: "/DeliveryNotes(44)" }),
     );
     const [, kind, , body] = post.mock.calls[0];
     expect(kind).toBe("RETURN");
