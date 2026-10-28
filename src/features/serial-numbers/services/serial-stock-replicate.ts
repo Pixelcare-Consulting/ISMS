@@ -1,7 +1,7 @@
 import {
-  assertExclusivePlacement,
   loadCurrentPlacements,
   lockSerialNumbers,
+  type CurrentPlacement,
 } from "@/features/inventory/services/serial-placement";
 import { reasonStatusRepository } from "@/features/reason-status/repositories/reason-status.repository";
 import { prisma } from "@/lib/database/client";
@@ -111,26 +111,122 @@ async function resolveBranchesByWarehouseCode(
 }
 
 /**
+ * Serials replicated per transaction. Bounds how long one transaction holds row locks
+ * while keeping a sync page to a handful of round trips instead of one per serial.
+ */
+const REPLICATE_CHUNK_SIZE = 500;
+
+type ReplicateOutcome = "created" | "moved" | "skipped";
+
+interface ReplicateTarget {
+  serialNumberId: string;
+  branchId: string;
+}
+
+/**
+ * What one serial needs, given its current placements:
+ * - none: create STK at the branch
+ * - only STK branch rows: keep (or move) one at the branch and delete the rest
+ * - anything else (warehouse, service center, non-STK branch row): leave alone
+ */
+function planReplicate(
+  target: ReplicateTarget,
+  placements: readonly CurrentPlacement[],
+): { outcome: ReplicateOutcome; moveId?: string; deleteIds: string[] } {
+  if (placements.length === 0) return { outcome: "created", deleteIds: [] };
+  if (placements.some((placement) => placement.table !== "branch")) {
+    return { outcome: "skipped", deleteIds: [] };
+  }
+  if (placements.some((placement) => placement.statusCode !== "STK")) {
+    return { outcome: "skipped", deleteIds: [] };
+  }
+
+  const atTarget = placements.find((placement) => placement.branchId === target.branchId);
+  const keep = atTarget ?? placements[0];
+  if (!keep) return { outcome: "skipped", deleteIds: [] };
+  return {
+    outcome: "moved",
+    moveId: atTarget ? undefined : keep.id,
+    deleteIds: placements.filter((placement) => placement.id !== keep.id).map((p) => p.id),
+  };
+}
+
+/** Lock, read and write one chunk of serials in a single transaction. */
+async function replicateChunk(
+  tenantId: string,
+  stkId: string,
+  targets: readonly ReplicateTarget[],
+): Promise<Record<ReplicateOutcome, number>> {
+  const counts: Record<ReplicateOutcome, number> = { created: 0, moved: 0, skipped: 0 };
+  const ids = targets.map((target) => target.serialNumberId);
+
+  await prisma.$transaction(async (tx) => {
+    await lockSerialNumbers(tx, ids);
+    const placementsBySerial = new Map<string, CurrentPlacement[]>();
+    for (const placement of await loadCurrentPlacements(tx, ids)) {
+      const rows = placementsBySerial.get(placement.serialNumberId) ?? [];
+      rows.push(placement);
+      placementsBySerial.set(placement.serialNumberId, rows);
+    }
+
+    const creates: ReplicateTarget[] = [];
+    const movesByBranch = new Map<string, string[]>();
+    const deleteIds: string[] = [];
+    for (const target of targets) {
+      const plan = planReplicate(target, placementsBySerial.get(target.serialNumberId) ?? []);
+      counts[plan.outcome] += 1;
+      if (plan.outcome === "created") creates.push(target);
+      if (plan.moveId) {
+        const moves = movesByBranch.get(target.branchId) ?? [];
+        moves.push(plan.moveId);
+        movesByBranch.set(target.branchId, moves);
+      }
+      deleteIds.push(...plan.deleteIds);
+    }
+
+    // Deletes first: a serial's extra rows go before its kept row is repointed.
+    if (deleteIds.length > 0) {
+      await tx.branchInventory.deleteMany({ where: { id: { in: deleteIds } } });
+    }
+    for (const [branchId, moveIds] of movesByBranch) {
+      await tx.branchInventory.updateMany({
+        where: { id: { in: moveIds } },
+        data: { branchId, statusCodeId: stkId },
+      });
+    }
+    if (creates.length > 0) {
+      await tx.branchInventory.createMany({
+        data: creates.map((target) => ({
+          tenantId,
+          branchId: target.branchId,
+          serialNumberId: target.serialNumberId,
+          statusCodeId: stkId,
+        })),
+      });
+    }
+  });
+
+  return counts;
+}
+
+/**
  * Upsert BranchInventory STK for on-hand serials whose warehouse resolves to one branch.
  * Skips warehouse-only / multi-branch codes. Leaves non-STK placements alone.
  * Creates branch stock only when the serial has no current placement.
+ *
+ * Runs in bulk: a sync page costs a few transactions, not one per serial.
  */
 export async function replicateOnHandSerialsToStk(
   tenantId: string,
   onHand: OnHandWarehouseSerial[],
 ): Promise<{ created: number; moved: number; skipped: number }> {
-  let created = 0;
-  let moved = 0;
-  let skipped = 0;
-
-  if (onHand.length === 0) {
-    return { created, moved, skipped };
-  }
+  const totals = { created: 0, moved: 0, skipped: 0 };
+  if (onHand.length === 0) return totals;
 
   const stk = await reasonStatusRepository.findCodeId(tenantId, "inventory_system", "STK");
   if (!stk) {
     logger.warn({ tenantId }, "STK status code missing; SAP on-hand stock was not replicated");
-    return { created, moved, skipped: onHand.length };
+    return { ...totals, skipped: onHand.length };
   }
 
   const byWarehouse = await resolveBranchesByWarehouseCode(
@@ -139,88 +235,34 @@ export async function replicateOnHandSerialsToStk(
   );
 
   const resolvable = onHand.filter((row) => byWarehouse.has(row.warehouseCode));
-  skipped += onHand.length - resolvable.length;
-  if (resolvable.length === 0) return { created, moved, skipped };
+  totals.skipped += onHand.length - resolvable.length;
+  if (resolvable.length === 0) return totals;
 
-  const serialNos = resolvable.map((row) => row.serialNo);
   const serials = await prisma.serialNumber.findMany({
-    where: { tenantId, deletedAt: null, serialNo: { in: serialNos } },
+    where: { tenantId, deletedAt: null, serialNo: { in: resolvable.map((row) => row.serialNo) } },
     select: { id: true, serialNo: true },
   });
-  const serialByNo = new Map(serials.map((row) => [row.serialNo, row]));
+  const serialIdByNo = new Map(serials.map((row) => [row.serialNo, row.id]));
 
+  // One target per serial: a serial listed twice would otherwise be planned twice
+  // against the same placements.
+  const targets = new Map<string, ReplicateTarget>();
   for (const row of resolvable) {
     const branch = byWarehouse.get(row.warehouseCode);
-    const serial = serialByNo.get(row.serialNo);
-    if (!branch || !serial) {
-      skipped += 1;
+    const serialNumberId = serialIdByNo.get(row.serialNo);
+    if (!branch || !serialNumberId || targets.has(serialNumberId)) {
+      totals.skipped += 1;
       continue;
     }
-
-    const outcome = await prisma.$transaction(async (tx) => {
-      await lockSerialNumbers(tx, [serial.id]);
-      const placements = await loadCurrentPlacements(tx, [serial.id]);
-      if (placements.some((placement) => placement.table !== "branch")) {
-        return "skipped" as const;
-      }
-      const branchRows = placements.filter((placement) => placement.table === "branch");
-      if (branchRows.length === 0) {
-        assertExclusivePlacement({ placements, replacingIds: [] });
-        await tx.branchInventory.create({
-          data: {
-            tenantId,
-            branchId: branch.id,
-            serialNumberId: serial.id,
-            statusCodeId: stk.id,
-          },
-        });
-        return "created" as const;
-      }
-      if (branchRows.some((placement) => placement.statusCode !== "STK")) {
-        return "skipped" as const;
-      }
-
-      const atTarget = branchRows.find((placement) => placement.branchId === branch.id);
-      const extras = branchRows.filter((placement) => placement.id !== atTarget?.id);
-      if (atTarget) {
-        if (extras.length > 0) {
-          await tx.branchInventory.deleteMany({
-            where: { id: { in: extras.map((placement) => placement.id) } },
-          });
-        }
-        return "moved" as const;
-      }
-
-      const primary = branchRows[0];
-      if (!primary) return "skipped" as const;
-      await tx.branchInventory.update({
-        where: { id: primary.id },
-        data: { branchId: branch.id, statusCodeId: stk.id },
-      });
-      if (branchRows.length > 1) {
-        await tx.branchInventory.deleteMany({
-          where: { id: { in: branchRows.slice(1).map((placement) => placement.id) } },
-        });
-      }
-      return "moved" as const;
-    });
-
-    switch (outcome) {
-      case "created":
-        created += 1;
-        break;
-      case "moved":
-        moved += 1;
-        break;
-      case "skipped":
-        skipped += 1;
-        break;
-      default: {
-        const unreachable: never = outcome;
-        return unreachable;
-      }
-    }
+    targets.set(serialNumberId, { serialNumberId, branchId: branch.id });
   }
 
-  return { created, moved, skipped };
+  const all = [...targets.values()];
+  for (let i = 0; i < all.length; i += REPLICATE_CHUNK_SIZE) {
+    const counts = await replicateChunk(tenantId, stk.id, all.slice(i, i + REPLICATE_CHUNK_SIZE));
+    totals.created += counts.created;
+    totals.moved += counts.moved;
+    totals.skipped += counts.skipped;
+  }
+  return totals;
 }

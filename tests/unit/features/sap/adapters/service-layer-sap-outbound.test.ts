@@ -419,7 +419,7 @@ describe("serviceLayerSapOutbound.createDeliveryReturnDocument", () => {
         sapDocEntry: 44,
         drNo: "DR-44",
         sourceWarehouse: { code: "MAIN" },
-        branch: { sapCode: "BR1", dealer: { sapCode: "C001" } },
+        branch: { name: "Branch One", sapCode: "BR1", dealer: { sapCode: "C001" } },
         order: { sapDocType },
       },
       ...over,
@@ -461,53 +461,49 @@ describe("serviceLayerSapOutbound.createDeliveryReturnDocument", () => {
     );
   });
 
-  it("posts a Return based on the DR, mapping each serial to its DR line, for an outright delivery", async () => {
+  it("posts a standalone Return for an outright delivery, with no DR lookup or base reference", async () => {
     returnPrisma.deliveryReturnRequest.findFirst.mockResolvedValue(returnRequest("SO"));
-    slRequest.mockResolvedValue({
-      statusCode: 200,
-      rawBody: "",
-      data: {
-        DocEntry: 44,
-        DocumentLines: [
-          { LineNum: 0, ItemCode: "SKU-A", SerialNumbers: [{ InternalSerialNumber: "SN1" }, { InternalSerialNumber: "SN3" }] },
-          { LineNum: 1, ItemCode: "SKU-B", SerialNumbers: [{ InternalSerialNumber: "SN2" }] },
-        ],
-      },
-    });
 
     const ref = await serviceLayerSapOutbound.createDeliveryReturnDocument({ tenantId: "t1", job: returnJob });
 
     expect(ref).toBe("RETURN-900");
-    expect(slRequest).toHaveBeenCalledWith(
-      expect.objectContaining({ method: "GET", path: "/DeliveryNotes(44)?$select=DocEntry,DocumentLines" }),
-    );
+    expect(slRequest).not.toHaveBeenCalled();
     const [, kind, , body] = post.mock.calls[0];
     expect(kind).toBe("RETURN");
     expect(body).toMatchObject({ U_ISMS_PO_No: "RTN-1", CardCode: "C001" });
     const lines = (body as { DocumentLines: Record<string, unknown>[] }).DocumentLines;
-    expect(lines).toEqual([
-      expect.objectContaining({ ItemCode: "SKU-A", WarehouseCode: "MAIN", Quantity: 2, BaseType: 15, BaseEntry: 44, BaseLine: 0 }),
-      expect.objectContaining({ ItemCode: "SKU-B", WarehouseCode: "MAIN", Quantity: 1, BaseType: 15, BaseEntry: 44, BaseLine: 1 }),
+    expect(lines.map((l) => [l.ItemCode, l.Quantity, l.CostingCode2, l.CostingCode3, l.U_Branch_Name, l.U_ISMS_PONum])).toEqual([
+      ["SKU-A", 2, "BR1", "OUTRIGHT", "Branch One", "RTN-1"],
+      ["SKU-B", 1, "BR1", "OUTRIGHT", "Branch One", "RTN-1"],
     ]);
+    expect(lines.every((l) => !("BaseEntry" in l) && !("BaseType" in l))).toBe(true);
     expect(complete).toHaveBeenCalledWith(expect.objectContaining({ kind: "RETURN", sapDocNo: "900" }));
   });
 
-  it("refuses a serial that is not on the DR in SAP and saves the error", async () => {
-    returnPrisma.deliveryReturnRequest.findFirst.mockResolvedValue(returnRequest("SO"));
-    slRequest.mockResolvedValue({
-      statusCode: 200,
-      rawBody: "",
-      data: { DocumentLines: [{ LineNum: 0, ItemCode: "SKU-A", SerialNumbers: [{ InternalSerialNumber: "SN1" }] }] },
-    });
+  it("sends each unit's remarks as row Remarks and a plain Journal Remarks on the IT", async () => {
+    returnPrisma.deliveryReturnRequest.findFirst.mockResolvedValue(
+      returnRequest("ITR", {
+        reason: "Damaged in transit",
+        lines: [
+          { remarks: "Cracked screen", serialNumber: { serialNo: "SN1", model: { skuCode: "SKU-A" } } },
+          { remarks: "Damaged in transit", serialNumber: { serialNo: "SN2", model: { skuCode: "SKU-B" } } },
+          { remarks: "Wrong model, should be the 65-inch unit", serialNumber: { serialNo: "SN3", model: { skuCode: "SKU-A" } } },
+          { remarks: "Cracked screen", serialNumber: { serialNo: "SN4", model: { skuCode: "SKU-A" } } },
+        ],
+        delivery: { ...returnRequest("ITR").delivery, order: { sapDocType: "ITR", sapDocNum: 372656 } },
+      }),
+    );
 
-    await expect(
-      serviceLayerSapOutbound.createDeliveryReturnDocument({ tenantId: "t1", job: returnJob }),
-    ).rejects.toThrow("Serial SN2 is not on DR# DR-44 in SAP");
-    expect(post).not.toHaveBeenCalled();
-    expect(returnPrisma.deliveryReturnRequest.updateMany).toHaveBeenCalledWith({
-      where: { id: "r1", tenantId: "t1", status: "APPROVED" },
-      data: { sapError: "Serial SN2 is not on DR# DR-44 in SAP" },
-    });
+    await serviceLayerSapOutbound.createDeliveryReturnDocument({ tenantId: "t1", job: returnJob });
+
+    const body = post.mock.calls[0][3] as { JournalMemo: string; StockTransferLines: Record<string, unknown>[] };
+    expect(body.JournalMemo).toBe("ISMS RTN-1 · Reject of ITR 372656");
+    // Same item, same remarks share a line; a different remark gets its own line, cut to SAP's 30.
+    expect(body.StockTransferLines.map((l) => [l.ItemCode, l.Quantity, l.U_free_text])).toEqual([
+      ["SKU-A", 2, "Cracked screen"],
+      ["SKU-A", 1, "Wrong model, should be the 65…"],
+      ["SKU-B", 1, "Damaged in transit"],
+    ]);
   });
 
   it("saves sapError on the request and rethrows when SAP refuses, without moving units", async () => {

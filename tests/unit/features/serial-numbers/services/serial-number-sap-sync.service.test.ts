@@ -43,14 +43,15 @@ jest.mock("@/features/sap/services/sap-sync-engine", () => ({
     async (
       tenantId: string,
       entity: {
-        prepare: (id: string) => Promise<Map<string, string>>;
+        prepare: (id: string) => Promise<unknown>;
         parse: (
           row: Record<string, unknown>,
-          context: Map<string, string>,
+          context: unknown,
         ) => { record: unknown } | { skip: string };
         applyPage: (
           id: string,
           records: unknown[],
+          context: unknown,
         ) => Promise<{
           created: number;
           updated: number;
@@ -66,7 +67,7 @@ jest.mock("@/features/sap/services/sap-sync-engine", () => ({
         if ("record" in parsed) records.push(parsed.record);
       }
       const applied = records.length
-        ? await entity.applyPage(tenantId, records)
+        ? await entity.applyPage(tenantId, records, context)
         : { created: 0, updated: 0, unchanged: 0, failures: [] };
       // Same grouping as the engine's skip tally: one entry per reason, distinct examples.
       const byReason = new Map<string, { count: number; examples: Set<string> }>();

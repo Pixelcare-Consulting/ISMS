@@ -62,9 +62,19 @@ export function returnSapPendingMessage(sapError: string | null | undefined): st
 
 type ReturnRef = { status: DeliveryReturnStatus; sapError?: string | null } | null | undefined;
 
-/** Pending approval or approved and waiting for SAP: it holds the delivery's units. */
+/** Pending approval or approved and waiting for SAP: it holds its units. */
 export function isReturnOpen(latest: ReturnRef): boolean {
   return latest?.status === "PENDING_APPROVAL" || latest?.status === "APPROVED";
+}
+
+/** First reject request waiting for the TL, from a newest-first list. */
+export function pendingReturnOf<T extends NonNullable<ReturnRef>>(returns: readonly T[]): T | undefined {
+  return returns.find((row) => row.status === "PENDING_APPROVAL");
+}
+
+/** First approved reject request whose SAP post has not finished. */
+export function sapRetryReturnOf<T extends NonNullable<ReturnRef>>(returns: readonly T[]): T | undefined {
+  return returns.find((row) => needsSapRetry(row));
 }
 
 /**
@@ -80,4 +90,13 @@ export function sapTransferNotPostedMessage(sapError: string | null): string {
   return sapError
     ? `SAP transfer not posted yet: ${sapError}. Use Retry SAP posting below.`
     : "SAP transfer not posted yet. Use Retry SAP posting below.";
+}
+
+/**
+ * What ISMS calls the request rejected units go on: a consignment (ITR)
+ * delivery gets an IT request, an outright (SO) one a Return request. The TL
+ * approves it and approval posts the SAP IT or Return.
+ */
+export function returnRequestTerm(sapDocType: "ITR" | "SO" | null | undefined): string {
+  return sapDocType === "ITR" ? "IT request" : "Return request";
 }

@@ -6,6 +6,7 @@ jest.mock("@/lib/database/client", () => {
     $queryRaw: jest.fn(),
     deliveryReturnRequest: { count: jest.fn(), create: jest.fn(), updateMany: jest.fn() },
     deliveryTransferLine: { findMany: jest.fn() },
+    deliveryReturnLine: { findMany: jest.fn() },
     branchDelivery: { findFirst: jest.fn() },
     branchInventory: { count: jest.fn() },
     auditLog: { create: jest.fn() },
@@ -15,6 +16,7 @@ jest.mock("@/lib/database/client", () => {
     prisma: {
       deliveryReturnRequest: { count: jest.fn(), findFirst: jest.fn(), updateMany: jest.fn() },
       deliveryTransferLine: { findMany: jest.fn() },
+      deliveryReturnLine: { findMany: jest.fn() },
       $transaction: jest.fn(async (fn: (t: typeof tx) => unknown) => fn(tx)),
     },
   };
@@ -41,7 +43,6 @@ jest.mock("@/features/reason-status/services/reason-status.service", () => ({
   reasonStatusService: { requireCodeId: jest.fn() },
 }));
 
-import { Prisma } from "@/lib/database/generated/prisma/client";
 import * as dbClient from "@/lib/database/client";
 import { lockSerialNumbers } from "@/features/inventory/services/serial-placement";
 import { loadDelivery } from "@/features/logistics/services/delivery-posting.service";
@@ -95,6 +96,8 @@ beforeEach(() => {
   mockPrisma.deliveryTransferLine.findMany.mockResolvedValue([]);
   mockTx.deliveryReturnRequest.count.mockResolvedValue(0);
   mockTx.deliveryTransferLine.findMany.mockResolvedValue([]);
+  mockPrisma.deliveryReturnLine.findMany.mockResolvedValue([]);
+  mockTx.deliveryReturnLine.findMany.mockResolvedValue([]);
   mockTx.branchDelivery.findFirst.mockResolvedValue({ statusCode: { code: "partial" } });
   mockTx.branchInventory.count.mockResolvedValue(2);
   mockTx.deliveryReturnRequest.create.mockResolvedValue({ id: "r1", requestNo: "RTN-1" });
@@ -132,6 +135,31 @@ describe("deliveryReturnService.request", () => {
     );
   });
 
+  it("rejects only the ticked units; blank remarks fall back to the defaults", async () => {
+    mockTx.branchInventory.count.mockResolvedValue(1);
+    await deliveryReturnService.request(requester, {
+      deliveryId: "del1",
+      reason: "   ",
+      units: [{ serialNumberId: "s3", remarks: "  Cracked screen " }],
+    });
+    expect(mockTx.deliveryReturnRequest.create.mock.calls[0][0].data).toMatchObject({
+      reason: "Rejected at branch receiving",
+      lines: { create: [{ serialNumberId: "s3", warehouseLocationToId: "loc2", remarks: "Cracked screen" }] },
+    });
+  });
+
+  it("a unit without its own remarks carries the request remarks", async () => {
+    await deliveryReturnService.request(requester, {
+      deliveryId: "del1",
+      reason: "Wrong model",
+      units: [{ serialNumberId: "s2" }, { serialNumberId: "s3", remarks: "" }],
+    });
+    expect(mockTx.deliveryReturnRequest.create.mock.calls[0][0].data.lines.create).toEqual([
+      { serialNumberId: "s2", warehouseLocationToId: "loc1", remarks: "Wrong model" },
+      { serialNumberId: "s3", warehouseLocationToId: "loc2", remarks: "Wrong model" },
+    ]);
+  });
+
   it("needs the request capability", async () => {
     await expect(
       deliveryReturnService.request({ ...requester, permissions: [] }, { deliveryId: "del1", reason: "x" }),
@@ -151,17 +179,17 @@ describe("deliveryReturnService.request", () => {
   it("refuses a delivery whose order was approved before SAP posting (no SAP type)", async () => {
     (loadDelivery as jest.Mock).mockResolvedValue({ ...partialDelivery(), orderSapDocType: null });
     await expect(deliveryReturnService.request(requester, { deliveryId: "del1", reason: "x" })).rejects.toThrow(
-      "This delivery was dispatched before SAP posting was enabled. Accept or transfer its units instead.",
+      "This delivery was dispatched before SAP posting was enabled. Receive its units instead.",
     );
     expect(mockPrisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it("refuses an outright (SO) delivery that has no DR in SAP", async () => {
+  it("allows an outright (SO) delivery without its DR in SAP: the Return is standalone", async () => {
     (loadDelivery as jest.Mock).mockResolvedValue({ ...partialDelivery(), orderSapDocType: "SO", sapDocEntry: null });
-    await expect(deliveryReturnService.request(requester, { deliveryId: "del1", reason: "x" })).rejects.toThrow(
-      "This delivery has no DR in SAP. Accept or transfer its units instead.",
-    );
-    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    await expect(deliveryReturnService.request(requester, { deliveryId: "del1", reason: "x" })).resolves.toEqual({
+      id: "r1",
+      requestNo: "RTN-1",
+    });
   });
 
   it("allows an outright (SO) delivery with its DR", async () => {
@@ -172,24 +200,27 @@ describe("deliveryReturnService.request", () => {
     });
   });
 
-  it("refuses a second open request", async () => {
-    mockPrisma.deliveryReturnRequest.count.mockResolvedValue(1);
-    await expect(deliveryReturnService.request(requester, { deliveryId: "del1", reason: "x" })).rejects.toThrow(
-      "A return request for this delivery is already open",
-    );
+  it("refuses a unit already on an open reject request, but rejects the delivery's other units", async () => {
+    const held = [{ serialNumberId: "s2", serialNumber: { serialNo: "SN2" }, returnRequest: { id: "r0", requestNo: "RTN-0" } }];
+    mockPrisma.deliveryReturnLine.findMany.mockResolvedValue(held);
+    await expect(
+      deliveryReturnService.request(requester, { deliveryId: "del1", units: [{ serialNumberId: "s2" }] }),
+    ).rejects.toThrow("Some units are already waiting on a reject request");
+
+    mockTx.branchInventory.count.mockResolvedValue(1);
+    await expect(
+      deliveryReturnService.request(requester, { deliveryId: "del1", units: [{ serialNumberId: "s3" }] }),
+    ).resolves.toEqual({ id: "r1", requestNo: "RTN-1" });
   });
 
-  it("maps the one-open-request index violation to a plain message", async () => {
-    mockTx.deliveryReturnRequest.create.mockRejectedValue(
-      new Prisma.PrismaClientKnownRequestError("dup", {
-        code: "P2002",
-        clientVersion: "test",
-        meta: { target: ["delivery_id"] },
-      }),
-    );
+  it("re-checks the units under the serial locks", async () => {
+    mockTx.deliveryReturnLine.findMany.mockResolvedValue([
+      { serialNumberId: "s3", serialNumber: { serialNo: "SN3" }, returnRequest: { id: "r0", requestNo: "RTN-0" } },
+    ]);
     await expect(deliveryReturnService.request(requester, { deliveryId: "del1", reason: "x" })).rejects.toThrow(
-      "A return request for this delivery is already open",
+      "Some units are already waiting on a reject request",
     );
+    expect(mockTx.deliveryReturnRequest.create).not.toHaveBeenCalled();
   });
 
   it("refuses when a unit was accepted after the plan (re-check under lock)", async () => {

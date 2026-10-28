@@ -3298,6 +3298,8 @@ model DeliveryReturnLine {
   /// Null when the unit was dispatched from SAP's warehouse placement with no ISMS location;
   /// it then goes back to the delivery's source warehouse per SAP, not to a location.
   warehouseLocationToId String? @map("warehouse_location_to_id")
+  /// Why this unit was rejected at receipt; defaults to the request remarks.
+  remarks               String?
 
   returnRequest       DeliveryReturnRequest @relation(fields: [returnId], references: [id], onDelete: Cascade)
   serialNumber        SerialNumber          @relation(fields: [serialNumberId], references: [id], onDelete: Cascade)

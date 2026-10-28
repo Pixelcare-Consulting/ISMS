@@ -8,6 +8,7 @@ import {
   buildSoBody,
   fitSapText,
   buildReturnBody,
+  deliveryReturnRemarks,
   postSapDocument,
 } from "@/features/sap/services/sap-documents";
 import { sapServiceLayerClient } from "@/features/sap/services/sap-service-layer-client";
@@ -44,15 +45,45 @@ describe("SAP document builders", () => {
     expect(line.BaseType).toBe("InventoryTransferRequest");
   });
 
-  it("buildReturnBody uses BaseType 15", () => {
+  it("buildReturnBody is a standalone Return carrying the branch, Outright, ISMS ref and remarks per line", () => {
     const body = buildReturnBody({
-      ismsRef: "R-1",
+      ismsRef: "RTN-1",
       cardCode: "C1",
       whs: "W",
-      baseDrEntry: 9,
-      lines: [{ itemCode: "X", serialNos: ["S1"], baseEntry: 9, baseLine: 0 }],
+      branchCode: "ABL003",
+      branchName: "ABENSON LCC IRIGA BRANCH",
+      lines: [{ itemCode: "X", serialNos: ["S1"], remarks: "Dent" }],
     }) as Body;
-    expect(body.DocumentLines[0].BaseType).toBe(15);
+    expect(body.CardCode).toBe("C1");
+    const line = body.DocumentLines[0];
+    expect(line).not.toHaveProperty("BaseType");
+    expect(line).not.toHaveProperty("BaseEntry");
+    expect(line).toMatchObject({
+      ItemCode: "X",
+      WarehouseCode: "W",
+      Quantity: 1,
+      CostingCode2: "ABL003",
+      CostingCode3: "OUTRIGHT",
+      U_ISMS_PONum: "RTN-1",
+      U_Branch_Name: "ABENSON LCC IRIGA B…",
+      U_Branch_Namelong: "ABENSON LCC IRIGA BRANCH",
+      U_free_text: "Dent",
+    });
+  });
+
+  it("a delivery return names the original ITR / SO in Comments and keeps the ISMS ref as the key", () => {
+    const remarks = deliveryReturnRemarks({ requestNo: "RTN-1", orderDocType: "SO", orderDocNum: 5512, reason: "Defective" });
+    expect(remarks).toBe("Return of SO 5512 · ISMS RTN-1 · Defective");
+    const body = buildItBody({
+      ismsRef: "RTN-1",
+      remarks: deliveryReturnRemarks({ requestNo: "RTN-1", orderDocType: "ITR", orderDocNum: 88, reason: "x".repeat(400) }),
+      fromWhs: "A",
+      toWhs: "B",
+      lines: [{ itemCode: "X", serialNos: ["SN1"] }],
+    }) as Body;
+    expect(body.U_ISMS_PO_No).toBe("RTN-1");
+    expect(String(body.Comments).startsWith("Return of ITR 88 · ISMS RTN-1")).toBe(true);
+    expect(String(body.Comments).length).toBeLessThanOrEqual(254);
   });
 });
 
@@ -106,11 +137,12 @@ describe("buildItrBody", () => {
 });
 
 describe("buildSoBody", () => {
-  it("carries the same notes, journal remarks and line fields as the ITR", () => {
+  it("carries the ITR's text fields plus the Branch and Outright business type dimensions", () => {
     const body = buildSoBody({
       ismsRef: "SO#2026-10-00034",
       cardCode: "C001",
       whs: "FWH14P1F",
+      branchCode: "ABP001",
       dueDate: "2026-11-03",
       branchName: "ABENSON ABREEZA DAVAO",
       notes: "Rush for the mall sale.",
@@ -127,6 +159,8 @@ describe("buildSoBody", () => {
       ItemCode: "55QUHW01",
       Quantity: 2,
       WarehouseCode: "FWH14P1F",
+      CostingCode2: "ABP001",
+      CostingCode3: "OUTRIGHT",
       U_ISMS_PONum: "SO#2026-10-00034",
       U_Branch_Name: "ABENSON ABREEZA DAV…",
       U_Branch_Namelong: "ABENSON ABREEZA DAVAO",

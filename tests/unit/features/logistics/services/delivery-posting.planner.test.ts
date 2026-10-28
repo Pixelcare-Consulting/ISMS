@@ -61,14 +61,6 @@ describe("planAccept", () => {
     expect(plan.moveSerialIds).toEqual(["s1", "s2"]);
   });
 
-  it("accept refused while return pending", () => {
-    const plan = planAccept(delivery({ status: "pending", lines }), null, { openReturn: true });
-    expect(plan).toEqual({
-      ok: false,
-      error: "A return request for this delivery is waiting for approval",
-    });
-  });
-
   it("does not move serials again when the accept is retried", () => {
     const plan = planAccept(
       delivery({
