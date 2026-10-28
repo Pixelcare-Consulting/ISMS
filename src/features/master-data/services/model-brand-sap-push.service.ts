@@ -2,6 +2,7 @@ import { SAP_NO_CONNECTION_MESSAGE } from "@/config/platform";
 import { auditService } from "@/features/audit/services/audit.service";
 import { sapErrorMessage, sapText } from "@/features/sap/services/sap-master-data";
 import { sapServiceLayerClient } from "@/features/sap/services/sap-service-layer-client";
+import { chunkKeysForFilter } from "@/features/sap/services/sap-sync-segment";
 import { sapServiceLayerService } from "@/features/sap/services/sap-service-layer.service";
 import type { SapServiceLayerCredentials } from "@/features/sap/types/sap-service-layer";
 import { mapWithConcurrency } from "@/lib/shared/concurrency";
@@ -206,8 +207,14 @@ async function readCurrentBrands(
 ): Promise<Map<string, string>> {
   const current = new Map<string, string>();
 
-  for (let index = 0; index < skus.length; index += READ_BATCH) {
-    const batch = skus.slice(index, index + READ_BATCH);
+  // At most READ_BATCH per read, and fewer when long codes would cross SAP's query limit.
+  const batches = chunkKeysForFilter(skus, { field: "ItemCode", kind: "string" }).flatMap(
+    (chunk) =>
+      Array.from({ length: Math.ceil(chunk.length / READ_BATCH) }, (_, i) =>
+        chunk.slice(i * READ_BATCH, (i + 1) * READ_BATCH),
+      ),
+  );
+  for (const batch of batches) {
     const filter = batch.map((sku) => `ItemCode eq ${odataString(sku)}`).join(" or ");
     const response = await sapServiceLayerClient.request<{
       value?: Record<string, unknown>[];
