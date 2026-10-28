@@ -66,7 +66,7 @@ interface DeliveryRow {
   statusCode: StatusCodeRef;
   branch: { name: string };
   order: { orderNumber: string; sapDocType: OrderSapDocType | null } | null;
-  /** Latest return request, newest first (at most one). */
+  /** Reject requests, newest first. */
   returnRequests: LatestDeliveryReturn[];
 }
 
@@ -226,9 +226,9 @@ export function DeliveriesPanel({
       }),
       deliveryColumn.display({
         id: "return",
-        header: "Return",
+        header: "Rejected",
         enableSorting: false,
-        cell: ({ row }) => <DeliveryReturnCell latest={row.original.returnRequests[0]} />,
+        cell: ({ row }) => <DeliveryReturnCell returns={row.original.returnRequests} />,
       }),
       deliveryColumn.display({
         id: "actions",

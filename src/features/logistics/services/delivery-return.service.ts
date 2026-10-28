@@ -11,7 +11,7 @@ import {
 } from "@/features/logistics/constants/logistics-permissions";
 import { assertExclusiveClaim } from "@/features/logistics/services/delivery-posting.planner";
 import { loadDelivery } from "@/features/logistics/services/delivery-posting.service";
-import { hasOpenReturn, lockDeliveryRow } from "@/features/logistics/services/delivery-settle";
+import { findOpenReturnLines, lockDeliveryRow } from "@/features/logistics/services/delivery-settle";
 import { DELIVERY_RETURN_ENTITY } from "@/features/logistics/services/delivery-return-completion";
 import {
   nextReturnNo,
@@ -21,6 +21,8 @@ import {
   planReturnSapReady,
   RETURN_ALREADY_OPEN_ERROR,
   RETURN_ON_TRANSFER_ERROR,
+  DEFAULT_REJECT_REMARKS,
+  RETURN_LINE_REMARKS_MAX,
   RETURN_REASON_MAX,
 } from "@/features/logistics/services/delivery-return.planner";
 import { authorizeDeliveryScope } from "@/features/logistics/services/delivery-scope";
@@ -41,16 +43,31 @@ import { prisma } from "@/lib/database/client";
  */
 
 /** Input rules shared by the logistics and operations actions. */
+/** Optional: blank remarks fall back to DEFAULT_REJECT_REMARKS in the service. */
 export const deliveryReturnReasonSchema = z
   .string()
   .trim()
-  .min(1, "Enter the reason for the return")
-  .max(RETURN_REASON_MAX, `The reason can be up to ${RETURN_REASON_MAX} characters`);
-/** Ticked units to return; omitted or null returns every unit still in transit. */
-export const deliveryReturnSerialIdsSchema = z
-  .array(z.string().min(1))
-  .min(1, "Tick the units to return")
+  .max(RETURN_REASON_MAX, `The remarks can be up to ${RETURN_REASON_MAX} characters`)
   .nullish();
+/** Rejected units with optional remarks each; omitted or null rejects every unit still in transit. */
+export const deliveryReturnUnitsSchema = z
+  .array(
+    z.object({
+      serialNumberId: z.string().min(1),
+      remarks: z
+        .string()
+        .trim()
+        .max(RETURN_LINE_REMARKS_MAX, `A unit's remarks can be up to ${RETURN_LINE_REMARKS_MAX} characters`)
+        .nullish(),
+    }),
+  )
+  .min(1, "Tick the units to reject")
+  .nullish();
+
+export interface DeliveryReturnUnitInput {
+  serialNumberId: string;
+  remarks?: string | null;
+}
 export const deliveryReturnDecisionSchema = z.object({
   action: z.enum(["APPROVE", "REJECT"]),
   note: z.string().max(RETURN_REASON_MAX, `The note can be up to ${RETURN_REASON_MAX} characters`).nullish(),
@@ -80,7 +97,7 @@ export interface DeliveryReturnDetail extends DeliveryReturnSummary {
   decisionNote: string | null;
   sapDocNo: string | null;
   sapDocDate: string | null;
-  units: { serialNumberId: string; serialNo: string; skuCode: string; modelName: string }[];
+  units: { serialNumberId: string; serialNo: string; skuCode: string; modelName: string; remarks: string | null }[];
 }
 
 export interface DeliveryReturnOutcome {
@@ -106,8 +123,7 @@ function returnError(error: unknown, fallback: string): Error {
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
     const target = error.meta?.target;
     const fields = Array.isArray(target) ? target.join(",") : String(target ?? "");
-    if (/request_?no/i.test(fields)) return new Error("Could not number the return. Try again.");
-    return new Error(RETURN_ALREADY_OPEN_ERROR);
+    if (/request_?no/i.test(fields)) return new Error("Could not number the reject request. Try again.");
   }
   return error instanceof Error ? error : new Error(fallback);
 }
@@ -182,26 +198,29 @@ export const deliveryReturnService = {
   /** Operator asks to send in-transit units back (all, or the ticked ones). Units stay DIT until the return completes. */
   async request(
     actor: PostingActor,
-    input: { deliveryId: string; reason: string; serialNumberIds?: string[] | null },
+    input: { deliveryId: string; reason?: string | null; units?: DeliveryReturnUnitInput[] | null },
   ): Promise<{ id: string; requestNo: string }> {
     requireCapability(actor, "canRequestDeliveryReturn");
-    const reason = cleanText(input.reason);
-    if (!reason) throw new Error("Enter the reason for the return");
+    const reason = cleanText(input.reason) || DEFAULT_REJECT_REMARKS;
 
     const delivery = await loadDelivery(actor.tenantId, input.deliveryId);
     if (!delivery) throw new Error("Delivery not found");
     await authorizeDeliveryScope(actor, delivery);
 
     const ditIds = delivery.lines.filter((line) => line.branchStatus === "DIT").map((line) => line.serialNumberId);
-    const [openReturn, openTransfers] = await Promise.all([
-      hasOpenReturn(prisma, actor.tenantId, delivery.id),
+    const [openReturns, openTransfers] = await Promise.all([
+      findOpenReturnLines(prisma, actor.tenantId, ditIds),
       findOpenTransferLines(prisma, actor.tenantId, ditIds),
     ]);
     const plan = planReturnRequest(
       delivery,
-      openReturn,
+      new Set(openReturns.map((row) => row.serialNumberId)),
       new Set(openTransfers.map((row) => row.serialNumberId)),
-      input.serialNumberIds ?? null,
+      input.units?.map((unit) => unit.serialNumberId) ?? null,
+    );
+    // A unit with no remarks of its own carries the request remarks.
+    const remarksBySerial = new Map(
+      (input.units ?? []).map((unit) => [unit.serialNumberId, cleanText(unit.remarks)]),
     );
     if (!plan.ok) throw new Error(plan.error);
     const sapReady = planReturnSapReady(delivery);
@@ -213,7 +232,9 @@ export const deliveryReturnService = {
         // Same order as accept: serials, then the delivery row. Re-check under both locks.
         await lockSerialNumbers(tx, serialIds);
         await lockDeliveryRow(tx, actor.tenantId, delivery.id);
-        if (await hasOpenReturn(tx, actor.tenantId, delivery.id)) throw new Error(RETURN_ALREADY_OPEN_ERROR);
+        if ((await findOpenReturnLines(tx, actor.tenantId, serialIds)).length > 0) {
+          throw new Error(RETURN_ALREADY_OPEN_ERROR);
+        }
         if ((await findOpenTransferLines(tx, actor.tenantId, serialIds)).length > 0) {
           throw new Error(RETURN_ON_TRANSFER_ERROR);
         }
@@ -242,7 +263,12 @@ export const deliveryReturnService = {
             requestNo: nextReturnNo(),
             reason,
             requestedById: actor.userId,
-            lines: { create: plan.lines },
+            lines: {
+              create: plan.lines.map((line) => ({
+                ...line,
+                remarks: remarksBySerial.get(line.serialNumberId) || reason,
+              })),
+            },
           },
           select: { id: true, requestNo: true },
         });
@@ -263,20 +289,13 @@ export const deliveryReturnService = {
     }
   },
 
-  /** Latest return of a delivery, for the review dialog. Null when none was requested. */
-  async getLatestForDelivery(actor: PostingActor, deliveryId: string): Promise<DeliveryReturnDetail | null> {
-    const delivery = await prisma.branchDelivery.findFirst({
-      where: { id: deliveryId, tenantId: actor.tenantId },
-      select: { branchId: true, sourceWarehouseId: true, deliveryNo: true, branch: { select: { name: true } } },
-    });
-    if (!delivery) throw new Error("Delivery not found");
-    await authorizeDeliveryScope(actor, delivery);
-
+  /** One reject request, for the review dialog. A delivery can have several. */
+  async get(actor: PostingActor, returnId: string): Promise<DeliveryReturnDetail> {
     const row = await prisma.deliveryReturnRequest.findFirst({
-      where: { tenantId: actor.tenantId, deliveryId },
-      orderBy: { requestedAt: "desc" },
+      where: { id: returnId, tenantId: actor.tenantId },
       select: {
         id: true,
+        deliveryId: true,
         requestNo: true,
         status: true,
         reason: true,
@@ -292,18 +311,25 @@ export const deliveryReturnService = {
           orderBy: { serialNumber: { serialNo: "asc" } },
           select: {
             serialNumberId: true,
+            remarks: true,
             serialNumber: { select: { serialNo: true, model: { select: { skuCode: true, name: true } } } },
           },
         },
       },
     });
-    if (!row) return null;
+    if (!row) throw new Error("Reject request not found");
+    const delivery = await prisma.branchDelivery.findFirst({
+      where: { id: row.deliveryId, tenantId: actor.tenantId },
+      select: { branchId: true, sourceWarehouseId: true, deliveryNo: true, branch: { select: { name: true } } },
+    });
+    if (!delivery) throw new Error("Delivery not found");
+    await authorizeDeliveryScope(actor, delivery);
     return {
       id: row.id,
       requestNo: row.requestNo,
       status: row.status,
       sapError: row.sapError,
-      deliveryId,
+      deliveryId: row.deliveryId,
       deliveryNo: delivery.deliveryNo,
       branchName: delivery.branch.name,
       reason: row.reason,
@@ -319,6 +345,7 @@ export const deliveryReturnService = {
         serialNo: line.serialNumber.serialNo,
         skuCode: line.serialNumber.model.skuCode,
         modelName: line.serialNumber.model.name,
+        remarks: line.remarks,
       })),
     };
   },

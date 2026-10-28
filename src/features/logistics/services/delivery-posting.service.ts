@@ -14,7 +14,6 @@ import {
   planAccept,
   planDeliverySettle,
   receiptLineState,
-  RETURN_WAITING_ERROR,
   type BranchUnitStatus,
   type DeliveryPostingView,
   type DeliveryReceiptLineState,
@@ -25,7 +24,8 @@ import {
   findOpenTransferLines,
 } from "@/features/logistics/services/delivery-transfer-open-lines";
 import {
-  hasOpenReturn,
+  assertNotOnOpenReturn,
+  findOpenReturnLines,
   lockDeliveryRow,
   txWorkflowCodeId,
 } from "@/features/logistics/services/delivery-settle";
@@ -139,6 +139,8 @@ export interface DeliveryReceiptLine {
   inTransit: boolean;
   /** Held by a pending or approved unit transfer: not acceptable here. */
   openTransfer: { id: string; transferNo: string } | null;
+  /** Held by a pending or approved reject request: neither receivable nor rejectable here. */
+  openReturn: { id: string; requestNo: string } | null;
   /** Group in the receive dialog; TRANSFERRED units left on one of this delivery's unit transfers. */
   state: DeliveryReceiptLineState;
 }
@@ -220,12 +222,17 @@ export interface DeliveryDetail {
   /** Approved order lines. Shown when the delivery has no serials yet. */
   orderLines: { id: string; skuCode: string; modelName: string; quantity: number }[];
   serials: { serialNumberId: string; serialNo: string; skuCode: string; modelName: string }[];
-  latestReturn: {
+  /** Reject requests, newest first. Each one posts its own SAP IT / Return once approved. */
+  returns: {
     id: string;
     requestNo: string;
     status: DeliveryReturnStatus;
     sapError: string | null;
-  } | null;
+    sapDocNo: string | null;
+    remarks: string;
+    requestedAt: string;
+    unitCount: number;
+  }[];
   history: { id: string; action: string; at: string; userName: string | null }[];
 }
 
@@ -277,8 +284,16 @@ export const deliveryPostingService = {
         },
         returnRequests: {
           orderBy: { requestedAt: "desc" },
-          take: 1,
-          select: { id: true, requestNo: true, status: true, sapError: true },
+          select: {
+            id: true,
+            requestNo: true,
+            status: true,
+            sapError: true,
+            sapDocNo: true,
+            reason: true,
+            requestedAt: true,
+            _count: { select: { lines: true } },
+          },
         },
         sapDocuments: {
           orderBy: { docEntry: "desc" },
@@ -349,7 +364,16 @@ export const deliveryPostingService = {
         skuCode: line.serialNumber.model.skuCode,
         modelName: line.serialNumber.model.name,
       })),
-      latestReturn: delivery.returnRequests[0] ?? null,
+      returns: delivery.returnRequests.map((row) => ({
+        id: row.id,
+        requestNo: row.requestNo,
+        status: row.status,
+        sapError: row.sapError,
+        sapDocNo: row.sapDocNo,
+        remarks: row.reason,
+        requestedAt: row.requestedAt.toISOString(),
+        unitCount: row._count.lines,
+      })),
       history: history.map((row) => ({
         id: row.id,
         action: row.action,
@@ -439,8 +463,9 @@ export const deliveryPostingService = {
 
     const statusBySerial = new Map(preview.lines.map((line) => [line.serialNumberId, line.branchStatus]));
     const serialIds = header.lines.map((line) => line.serialNumberId);
-    const [openTransfers, receivedOnTransfer, returnedLines] = await Promise.all([
+    const [openTransfers, openReturns, receivedOnTransfer, returnedLines] = await Promise.all([
       findOpenTransferLines(prisma, actor.tenantId, serialIds),
+      findOpenReturnLines(prisma, actor.tenantId, serialIds),
       serialIds.length
         ? prisma.deliveryTransferLine.findMany({
             where: {
@@ -463,6 +488,9 @@ export const deliveryPostingService = {
     ]);
     const transferredIds = new Set(receivedOnTransfer.map((row) => row.serialNumberId));
     const returnedIds = new Set(returnedLines.map((row) => row.serialNumberId));
+    const returnBySerial = new Map(
+      openReturns.map((row) => [row.serialNumberId, { id: row.returnId, requestNo: row.requestNo }]),
+    );
     const transferBySerial = new Map(
       openTransfers.map((row) => [row.serialNumberId, { id: row.transferId, transferNo: row.transferNo }]),
     );
@@ -472,6 +500,7 @@ export const deliveryPostingService = {
       lines: header.lines.map((line) => {
         const branchStatus = statusBySerial.get(line.serialNumberId) ?? null;
         const openTransfer = transferBySerial.get(line.serialNumberId) ?? null;
+        const openReturn = returnBySerial.get(line.serialNumberId) ?? null;
         return {
           serialNumberId: line.serialNumberId,
           serialNo: line.serialNumber.serialNo,
@@ -479,9 +508,11 @@ export const deliveryPostingService = {
           modelName: line.serialNumber.model.name,
           inTransit: branchStatus === "DIT",
           openTransfer,
+          openReturn,
           state: receiptLineState({
             branchStatus,
             onOpenTransfer: openTransfer !== null,
+            onOpenReturn: openReturn !== null,
             receivedOnTransfer: transferredIds.has(line.serialNumberId),
             returned: returnedIds.has(line.serialNumberId),
           }),
@@ -500,14 +531,18 @@ export const deliveryPostingService = {
     const preview = await loadDelivery(input.tenantId, input.deliveryId);
     if (!preview) throw new Error("Delivery not found");
     await authorizeDeliveryScope(input, preview);
-    // Units on an open unit transfer are settled by that transfer, not here.
-    const requestedIds =
-      input.serialNumberIds ??
-      preview.lines.filter((line) => line.branchStatus === "DIT").map((line) => line.serialNumberId);
+    // Units on an open unit transfer or reject request are settled there, not here.
+    const ditIds = preview.lines.filter((line) => line.branchStatus === "DIT").map((line) => line.serialNumberId);
+    let explicitIds = input.serialNumberIds ?? null;
+    if (explicitIds === null && preview.status !== "accepted") {
+      // "Accept everything" means every unit still free: skip the ones a reject request holds.
+      const held = new Set((await findOpenReturnLines(prisma, input.tenantId, ditIds)).map((row) => row.serialNumberId));
+      explicitIds = ditIds.filter((id) => !held.has(id));
+    }
+    const requestedIds = explicitIds ?? ditIds;
     await assertNotOnOpenTransfer(prisma, input.tenantId, requestedIds);
-    const plan = planAccept(preview, input.serialNumberIds ?? null, {
-      openReturn: await hasOpenReturn(prisma, input.tenantId, input.deliveryId),
-    });
+    await assertNotOnOpenReturn(prisma, input.tenantId, requestedIds);
+    const plan = planAccept(preview, explicitIds);
     if (!plan.ok) throw new Error(plan.error);
 
     if (plan.idempotent && plan.moveSerialIds.length === 0 && preview.status === plan.nextStatus) {
@@ -528,15 +563,13 @@ export const deliveryPostingService = {
     let finalStatus: "accepted" | "partial" = plan.nextStatus;
     try {
     await prisma.$transaction(async (tx) => {
-      // Lock order everywhere is serials, then the delivery row. The row lock is the
-      // one a return request takes, so accept and a new request cannot interleave.
+      // Lock order everywhere is serials, then the delivery row. A reject request locks the
+      // same serials, so accept and a reject of the same unit cannot interleave.
       if (plan.moveSerialIds.length > 0) await lockSerialNumbers(tx, plan.moveSerialIds);
       await lockDeliveryRow(tx, input.tenantId, input.deliveryId);
-      if (await hasOpenReturn(tx, input.tenantId, input.deliveryId)) {
-        throw new Error(RETURN_WAITING_ERROR);
-      }
       if (plan.moveSerialIds.length > 0) {
         await assertNotOnOpenTransfer(tx, input.tenantId, plan.moveSerialIds);
+        await assertNotOnOpenReturn(tx, input.tenantId, plan.moveSerialIds);
         const moved = await tx.branchInventory.updateMany({
           where: {
             tenantId: input.tenantId,

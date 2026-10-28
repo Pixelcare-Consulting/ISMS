@@ -29,6 +29,57 @@ export async function hasOpenReturn(
   return count > 0;
 }
 
+export interface OpenReturnRef {
+  serialNumberId: string;
+  serialNo: string;
+  returnId: string;
+  requestNo: string;
+}
+
+/**
+ * Units on a PENDING_APPROVAL or APPROVED reject request. They can be neither
+ * received nor rejected again until that request completes or is cancelled;
+ * the rest of the delivery stays free.
+ */
+export async function findOpenReturnLines(
+  db: PostingDb | typeof prisma,
+  tenantId: string,
+  serialNumberIds: readonly string[],
+): Promise<OpenReturnRef[]> {
+  if (serialNumberIds.length === 0) return [];
+  const rows = await db.deliveryReturnLine.findMany({
+    where: {
+      serialNumberId: { in: [...serialNumberIds] },
+      returnRequest: { tenantId, status: { in: [...OPEN_RETURN_STATUSES] } },
+    },
+    select: {
+      serialNumberId: true,
+      serialNumber: { select: { serialNo: true } },
+      returnRequest: { select: { id: true, requestNo: true } },
+    },
+  });
+  return rows.map((row) => ({
+    serialNumberId: row.serialNumberId,
+    serialNo: row.serialNumber.serialNo,
+    returnId: row.returnRequest.id,
+    requestNo: row.returnRequest.requestNo,
+  }));
+}
+
+export function onOpenReturnError(ref: Pick<OpenReturnRef, "serialNo" | "requestNo">): string {
+  return `Unit ${ref.serialNo} is waiting on reject request ${ref.requestNo}`;
+}
+
+/** Throws for the first unit that is on an open reject request. */
+export async function assertNotOnOpenReturn(
+  db: PostingDb | typeof prisma,
+  tenantId: string,
+  serialNumberIds: readonly string[],
+): Promise<void> {
+  const [held] = await findOpenReturnLines(db, tenantId, serialNumberIds);
+  if (held) throw new Error(onOpenReturnError(held));
+}
+
 /** Resolves a delivery_workflow code id through `tx`, so the lookup shares the transaction. */
 export async function txWorkflowCodeId(tx: PostingDb, tenantId: string, code: string): Promise<string> {
   const row = await tx.reasonStatusCode.findFirst({

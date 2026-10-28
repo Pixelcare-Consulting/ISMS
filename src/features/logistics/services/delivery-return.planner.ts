@@ -10,18 +10,22 @@ import type { DeliveryPostingView, PlanFailure } from "@/features/logistics/serv
  * dispatched from SAP's placement, to the source warehouse per SAP.
  */
 
-/** A request in either status still holds the delivery: one open request per delivery (partial unique index). */
+/** A request in either status still holds its units: they cannot be received or rejected again. */
 export const OPEN_RETURN_STATUSES = ["PENDING_APPROVAL", "APPROVED"] as const satisfies readonly DeliveryReturnStatus[];
 
-export const RETURN_ALREADY_OPEN_ERROR = "A return request for this delivery is already open";
+export const RETURN_ALREADY_OPEN_ERROR = "Some units are already waiting on a reject request";
 export const RETURN_ON_TRANSFER_ERROR = "Finish or remove the open unit transfer first.";
 export const RETURN_REASON_MAX = 500;
+export const RETURN_LINE_REMARKS_MAX = 200;
+/** Remarks when the branch rejects units without typing any. */
+export const DEFAULT_REJECT_REMARKS = "Rejected at branch receiving";
 
 export type ReturnLinePlan = { serialNumberId: string; warehouseLocationToId: string | null };
 
 export function planReturnRequest(
   d: DeliveryPostingView,
-  openReturn: boolean,
+  /** DIT units already on a pending or approved reject request. */
+  onOpenReturn: ReadonlySet<string>,
   /** DIT units held by a pending or approved unit-transfer line. */
   onOpenTransfer: ReadonlySet<string> = new Set(),
   /** Units to return; null returns every unit still in transit. */
@@ -30,12 +34,13 @@ export function planReturnRequest(
   if (d.status !== "pending" && d.status !== "partial") {
     return { ok: false, error: "Only a dispatched delivery still pending acceptance can be returned" };
   }
-  if (openReturn) return { ok: false, error: RETURN_ALREADY_OPEN_ERROR };
 
   const inTransit = d.lines.filter((line) => line.branchStatus === "DIT");
   if (inTransit.length === 0) return { ok: false, error: "No units are in transit on this delivery" };
 
-  let returning = inTransit;
+  // "Reject everything" means every unit not already on a request.
+  let returning = inTransit.filter((line) => !onOpenReturn.has(line.serialNumberId));
+  if (requestedSerialIds === null && returning.length === 0) return { ok: false, error: RETURN_ALREADY_OPEN_ERROR };
   if (requestedSerialIds !== null) {
     const requested = new Set(requestedSerialIds);
     if (requested.size === 0) return { ok: false, error: "Tick the units to return" };
@@ -45,6 +50,9 @@ export function planReturnRequest(
     returning = inTransit.filter((line) => requested.has(line.serialNumberId));
     if (returning.length !== requested.size) {
       return { ok: false, error: "Some units are not in transit on this delivery" };
+    }
+    if (returning.some((line) => onOpenReturn.has(line.serialNumberId))) {
+      return { ok: false, error: RETURN_ALREADY_OPEN_ERROR };
     }
   }
   if (returning.some((line) => onOpenTransfer.has(line.serialNumberId))) {

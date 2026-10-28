@@ -23,6 +23,7 @@ import {
   type ReturnTarget,
   type ReviewReturnActions,
 } from "@/app/(app)/logistics/_components/delivery-return-dialogs";
+import { DeliveryReturnStatusBadge } from "@/app/(app)/logistics/_components/delivery-transfer-status-badge";
 import { formatInventoryDrDate } from "@/app/(app)/inventory/_components/inventory-list-format";
 import {
   CompactLineTable,
@@ -43,7 +44,7 @@ import {
   saveDeliveryShipmentAction,
   retryDeliveryReturnSapAction,
 } from "@/features/logistics/actions/logistics.actions";
-import { isReturnOpen, needsSapRetry } from "@/features/logistics/constants/delivery-workflow-labels";
+import { needsSapRetry } from "@/features/logistics/constants/delivery-workflow-labels";
 import {
   DELIVERY_WORKFLOW_CODE,
   type WorkflowStatusOption,
@@ -261,13 +262,6 @@ export function DeliveryDetailView({
   const code = detail.status.code;
   const dispatched =
     code === DELIVERY_WORKFLOW_CODE.pending || code === DELIVERY_WORKFLOW_CODE.partial;
-  const latestReturn = detail.latestReturn;
-  const returnOpen = isReturnOpen(latestReturn);
-  const returnTarget = {
-    id: detail.id,
-    deliveryNo: detail.deliveryNo,
-    branchName: detail.branch.name,
-  };
   const hasSerials = detail.serials.length > 0;
   const canEditShipment =
     (capabilities.canManage || capabilities.canDispatch) &&
@@ -292,22 +286,7 @@ export function DeliveryDetailView({
         }
         actions={
           <>
-            {latestReturn?.status === "PENDING_APPROVAL" && capabilities.canApproveDeliveryReturn ? (
-              <Button onClick={() => setReturnReviewTarget(returnTarget)}>
-                Review return
-              </Button>
-            ) : null}
-            {needsSapRetry(latestReturn) &&
-            (capabilities.canApproveDeliveryReturn || capabilities.canRequestDeliveryReturn) ? (
-              <Button
-                variant="outline"
-                onClick={() => setReturnReviewTarget(returnTarget)}
-              >
-                Retry SAP posting
-              </Button>
-            ) : null}
             {dispatched &&
-            !returnOpen &&
             (capabilities.canAcceptDelivery || capabilities.canRequestDeliveryReturn) ? (
               <Button
                 className="bg-emerald-600 text-white hover:bg-emerald-700"
@@ -380,6 +359,16 @@ export function DeliveryDetailView({
             <OrderLinesTable lines={detail.orderLines} />
           )}
         </RecordSection>
+        {detail.returns.length > 0 ? (
+          <RejectRequestsSection
+            returns={detail.returns}
+            canApprove={capabilities.canApproveDeliveryReturn}
+            canRetry={capabilities.canApproveDeliveryReturn || capabilities.canRequestDeliveryReturn}
+            onOpen={(returnId) =>
+              setReturnReviewTarget({ returnId, deliveryNo: detail.deliveryNo, branchName: detail.branch.name })
+            }
+          />
+        ) : null}
         <RecordSection title="History" divided>
           <LogisticsHistoryBody
             groupByLabel={false}
@@ -412,5 +401,61 @@ export function DeliveryDetailView({
         requestReturn={capabilities.canRequestDeliveryReturn ? requestDeliveryReturnAction : undefined}
       />
     </div>
+  );
+}
+
+/**
+ * Every reject request on the delivery. Each one is approved on its own and
+ * posts its own SAP IT (consignment) or Return (outright).
+ */
+function RejectRequestsSection({
+  returns,
+  canApprove,
+  canRetry,
+  onOpen,
+}: {
+  returns: DeliveryDetail["returns"];
+  canApprove: boolean;
+  canRetry: boolean;
+  onOpen: (returnId: string) => void;
+}) {
+  return (
+    <RecordSection
+      title="Rejected units"
+      description="Each reject goes to the TL on its own and, once approved, posts its own SAP IT or Return."
+      divided
+    >
+      <ul className="divide-y rounded-md border">
+        {returns.map((row) => {
+          const action =
+            row.status === "PENDING_APPROVAL" && canApprove
+              ? "Review"
+              : needsSapRetry(row) && canRetry
+                ? "Retry SAP posting"
+                : "View";
+          return (
+            <li key={row.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2 text-sm">
+              <span className="font-mono">{row.requestNo}</span>
+              <DeliveryReturnStatusBadge status={row.status} />
+              <span className="text-muted-foreground">
+                {row.unitCount} unit{row.unitCount === 1 ? "" : "s"}
+                {row.sapDocNo ? ` · SAP ${row.sapDocNo}` : ""}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-muted-foreground" title={row.remarks}>
+                {row.remarks}
+              </span>
+              <Button
+                size="sm"
+                variant={action === "Review" ? "default" : "outline"}
+                className="max-sm:h-11"
+                onClick={() => onOpen(row.id)}
+              >
+                {action}
+              </Button>
+            </li>
+          );
+        })}
+      </ul>
+    </RecordSection>
   );
 }

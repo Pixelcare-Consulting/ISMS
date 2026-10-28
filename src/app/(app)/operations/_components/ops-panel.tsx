@@ -17,7 +17,7 @@ import {
   type ReturnTarget,
   type ReviewReturnActions,
 } from "@/app/(app)/logistics/_components/delivery-return-dialogs";
-import { isReturnOpen, needsSapRetry } from "@/features/logistics/constants/delivery-workflow-labels";
+import { pendingReturnOf, sapRetryReturnOf } from "@/features/logistics/constants/delivery-workflow-labels";
 import {
   acceptDeliveryAction,
   createPulloutAction,
@@ -62,7 +62,7 @@ interface OpsPanelProps {
     statusCode: StatusCodeRef;
     branch: { name: string };
     order: { sapDocType: OrderSapDocType | null } | null;
-    /** Latest return request, newest first (at most one). */
+    /** Reject requests, newest first. */
     returnRequests: LatestDeliveryReturn[];
   }[];
   transfers: {
@@ -200,9 +200,9 @@ export function OpsPanel({
       }),
       deliveryColumn.display({
         id: "return",
-        header: "Return",
+        header: "Rejected",
         enableSorting: false,
-        cell: ({ row }) => <DeliveryReturnCell latest={row.original.returnRequests[0]} />,
+        cell: ({ row }) => <DeliveryReturnCell returns={row.original.returnRequests} />,
       }),
       deliveryColumn.display({
         id: "actions",
@@ -211,27 +211,32 @@ export function OpsPanel({
         cell: ({ row }) => {
           const delivery = row.original;
           const receivable = RECEIVABLE_DELIVERY_CODES.has(delivery.statusCode.code);
-          const latestReturn = delivery.returnRequests[0];
-          const returnOpen = isReturnOpen(latestReturn);
+          const pendingReturn = pendingReturnOf(delivery.returnRequests);
+          const retryReturn = sapRetryReturnOf(delivery.returnRequests);
           const target = {
             id: delivery.id,
             deliveryNo: delivery.deliveryNo,
             branchName: delivery.branch.name,
             sapDocType: delivery.order?.sapDocType ?? null,
           };
+          const reviewTarget = (returnId: string) => ({
+            returnId,
+            deliveryNo: delivery.deliveryNo,
+            branchName: delivery.branch.name,
+          });
           return (
             <div className="flex flex-wrap justify-end gap-2">
-              {latestReturn?.status === "PENDING_APPROVAL" && canApproveDeliveryReturn ? (
-                <Button size="sm" onClick={() => setReturnReviewTarget(target)}>
-                  Review return
+              {pendingReturn && canApproveDeliveryReturn ? (
+                <Button size="sm" onClick={() => setReturnReviewTarget(reviewTarget(pendingReturn.id))}>
+                  Review {pendingReturn.requestNo}
                 </Button>
               ) : null}
-              {needsSapRetry(latestReturn) && (canApproveDeliveryReturn || canRequestDeliveryReturn) ? (
-                <Button size="sm" variant="outline" onClick={() => setReturnReviewTarget(target)}>
+              {retryReturn && (canApproveDeliveryReturn || canRequestDeliveryReturn) ? (
+                <Button size="sm" variant="outline" onClick={() => setReturnReviewTarget(reviewTarget(retryReturn.id))}>
                   Retry SAP posting
                 </Button>
               ) : null}
-              {receivable && !returnOpen ? (
+              {receivable ? (
                 <Button
                   size="sm"
 

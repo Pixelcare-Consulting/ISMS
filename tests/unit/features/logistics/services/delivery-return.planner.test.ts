@@ -31,7 +31,7 @@ function delivery(overrides: Partial<DeliveryPostingView> = {}): DeliveryPosting
 
 describe("planReturnRequest", () => {
   it("plans only DIT lines", () => {
-    const plan = planReturnRequest(delivery(), false);
+    const plan = planReturnRequest(delivery(), new Set());
     expect(plan).toEqual({
       ok: true,
       lines: [
@@ -41,17 +41,30 @@ describe("planReturnRequest", () => {
     });
   });
 
-  it("refuses second open request", () => {
-    expect(planReturnRequest(delivery(), true)).toEqual({
+  it("a unit on an open reject request cannot be rejected again; the others can", () => {
+    const held = new Set(["s2"]);
+    expect(planReturnRequest(delivery(), held, new Set(), ["s2"])).toEqual({
       ok: false,
-      error: "A return request for this delivery is already open",
+      error: "Some units are already waiting on a reject request",
     });
+    expect(planReturnRequest(delivery(), held, new Set(), ["s3"])).toEqual({
+      ok: true,
+      lines: [{ serialNumberId: "s3", warehouseLocationToId: "loc-2" }],
+    });
+  });
+
+  it("reject everything skips units already on a request, and refuses when none are left", () => {
+    expect(planReturnRequest(delivery(), new Set(["s2"]))).toEqual({
+      ok: true,
+      lines: [{ serialNumberId: "s3", warehouseLocationToId: "loc-2" }],
+    });
+    expect(planReturnRequest(delivery(), new Set(["s2", "s3"])).ok).toBe(false);
   });
 
   it("returns a unit dispatched from SAP's placement with no location to go back to", () => {
     const d = delivery();
     d.lines[2] = { ...d.lines[2], warehouseLocationFromId: null };
-    const plan = planReturnRequest(d, false);
+    const plan = planReturnRequest(d, new Set());
     expect(plan.ok).toBe(true);
     expect(plan.ok && plan.lines.find((line) => line.serialNumberId === d.lines[2].serialNumberId)).toEqual({
       serialNumberId: d.lines[2].serialNumberId,
@@ -60,7 +73,7 @@ describe("planReturnRequest", () => {
   });
 
   it("refuses while a DIT unit is on an open unit transfer", () => {
-    expect(planReturnRequest(delivery(), false, new Set(["s3"]))).toEqual({
+    expect(planReturnRequest(delivery(), new Set(), new Set(["s3"]))).toEqual({
       ok: false,
       error: "Finish or remove the open unit transfer first.",
     });
@@ -68,35 +81,35 @@ describe("planReturnRequest", () => {
 
   it("refuses a delivery that is not dispatched or already settled", () => {
     for (const status of ["approved", "accepted", "rejected", "requested"] as const) {
-      const plan = planReturnRequest(delivery({ status }), false);
+      const plan = planReturnRequest(delivery({ status }), new Set());
       expect(plan.ok).toBe(false);
     }
   });
 
   it("returns only the ticked units", () => {
-    const plan = planReturnRequest(delivery(), false, new Set(), ["s3"]);
+    const plan = planReturnRequest(delivery(), new Set(), new Set(), ["s3"]);
     expect(plan).toEqual({ ok: true, lines: [{ serialNumberId: "s3", warehouseLocationToId: "loc-2" }] });
   });
 
   it("a ticked unit on an open transfer blocks; an unticked one does not", () => {
-    expect(planReturnRequest(delivery(), false, new Set(["s3"]), ["s3"]).ok).toBe(false);
-    expect(planReturnRequest(delivery(), false, new Set(["s3"]), ["s2"]).ok).toBe(true);
+    expect(planReturnRequest(delivery(), new Set(), new Set(["s3"]), ["s3"]).ok).toBe(false);
+    expect(planReturnRequest(delivery(), new Set(), new Set(["s3"]), ["s2"]).ok).toBe(true);
   });
 
   it("refuses ticked units that are not in transit, duplicates, or none", () => {
-    expect(planReturnRequest(delivery(), false, new Set(), ["s1"])).toEqual({
+    expect(planReturnRequest(delivery(), new Set(), new Set(), ["s1"])).toEqual({
       ok: false,
       error: "Some units are not in transit on this delivery",
     });
-    expect(planReturnRequest(delivery(), false, new Set(), ["s2", "s2"]).ok).toBe(false);
-    expect(planReturnRequest(delivery(), false, new Set(), [])).toEqual({ ok: false, error: "Tick the units to return" });
+    expect(planReturnRequest(delivery(), new Set(), new Set(), ["s2", "s2"]).ok).toBe(false);
+    expect(planReturnRequest(delivery(), new Set(), new Set(), [])).toEqual({ ok: false, error: "Tick the units to return" });
   });
 
   it("refuses when nothing is in transit", () => {
     const d = delivery({
       lines: [{ serialNumberId: "s1", warehouseLocationFromId: "loc-1", branchStatus: "STK" }],
     });
-    expect(planReturnRequest(d, false)).toEqual({ ok: false, error: "No units are in transit on this delivery" });
+    expect(planReturnRequest(d, new Set())).toEqual({ ok: false, error: "No units are in transit on this delivery" });
   });
 });
 

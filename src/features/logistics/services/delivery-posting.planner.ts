@@ -41,8 +41,6 @@ export interface AcceptPlan {
   idempotent: boolean;
 }
 
-export const RETURN_WAITING_ERROR = "A return request for this delivery is waiting for approval";
-
 function unique(ids: string[]): string[] | null {
   const seen = new Set<string>();
   for (const id of ids) {
@@ -52,14 +50,11 @@ function unique(ids: string[]): string[] | null {
   return ids;
 }
 
+/** Units on an open reject request are kept out by the service (assertNotOnOpenReturn), not here. */
 export function planAccept(
   delivery: DeliveryPostingView,
   requestedSerialIds: string[] | null,
-  options: { openReturn?: boolean } = {},
 ): AcceptPlan | PlanFailure {
-  if (options.openReturn && (delivery.status === "pending" || delivery.status === "partial")) {
-    return { ok: false, error: RETURN_WAITING_ERROR };
-  }
   if (delivery.lines.length === 0) {
     return { ok: false, error: "Delivery has no serials to accept" };
   }
@@ -144,10 +139,17 @@ export function assertExclusiveClaim(actual: number, expected: number, message: 
 }
 
 /** Where a dispatched unit stands, as the receive dialog groups it. */
-export type DeliveryReceiptLineState = "IN_TRANSIT" | "ON_TRANSFER" | "RECEIVED" | "TRANSFERRED" | "RETURNED";
+export type DeliveryReceiptLineState =
+  | "IN_TRANSIT"
+  | "ON_TRANSFER"
+  | "PENDING_REJECT"
+  | "RECEIVED"
+  | "TRANSFERRED"
+  | "RETURNED";
 
 /**
- * DIT units are in transit (or held by an open unit transfer). A unit that is no
+ * DIT units are in transit, or held by an open unit transfer or reject request
+ * (neither receivable nor rejectable here). A unit that is no
  * longer at the delivery branch left by transfer when one of this delivery's unit
  * transfers received it, or by return when a completed return took it; anything
  * else reached the branch.
@@ -157,8 +159,12 @@ export function receiptLineState(input: {
   onOpenTransfer: boolean;
   receivedOnTransfer: boolean;
   returned?: boolean;
+  onOpenReturn?: boolean;
 }): DeliveryReceiptLineState {
-  if (input.branchStatus === "DIT") return input.onOpenTransfer ? "ON_TRANSFER" : "IN_TRANSIT";
+  if (input.branchStatus === "DIT") {
+    if (input.onOpenTransfer) return "ON_TRANSFER";
+    return input.onOpenReturn ? "PENDING_REJECT" : "IN_TRANSIT";
+  }
   if (input.branchStatus === null && input.receivedOnTransfer) return "TRANSFERRED";
   if (input.branchStatus === null && input.returned) return "RETURNED";
   return "RECEIVED";

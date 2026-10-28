@@ -20,7 +20,7 @@ import {
   deliveryReturnCancelNoteSchema,
   deliveryReturnDecisionSchema,
   deliveryReturnReasonSchema,
-  deliveryReturnSerialIdsSchema,
+  deliveryReturnUnitsSchema,
   type DeliveryReturnDetail,
 } from "@/features/logistics/services/delivery-return.service";
 import { hasPermission, requireAnyPermission, requirePermission } from "@/lib/auth/permissions";
@@ -154,14 +154,14 @@ function revalidateDeliveryReturn() {
   revalidatePath("/inventory");
 }
 
-export async function requestDeliveryReturnAction(deliveryId: string, reason: unknown, serialNumberIds?: unknown) {
+export async function requestDeliveryReturnAction(deliveryId: string, remarks: unknown, units?: unknown) {
   const session = await requireAnyPermission([LOGISTICS_DELIVERY_RETURN_REQUEST]);
-  const parsed = deliveryReturnReasonSchema.safeParse(reason);
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Enter the reason for the return" };
-  const units = deliveryReturnSerialIdsSchema.safeParse(serialNumberIds);
-  if (!units.success) return { error: units.error.issues[0]?.message ?? "Tick the units to return" };
+  const parsed = deliveryReturnReasonSchema.safeParse(remarks);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the remarks" };
+  const parsedUnits = deliveryReturnUnitsSchema.safeParse(units);
+  if (!parsedUnits.success) return { error: parsedUnits.error.issues[0]?.message ?? "Tick the units to reject" };
   try {
-    const row = await opsService.requestDeliveryReturn(opsActor(session), { deliveryId, reason: parsed.data, serialNumberIds: units.data });
+    const row = await opsService.requestDeliveryReturn(opsActor(session), { deliveryId, reason: parsed.data, units: parsedUnits.data });
     revalidateDeliveryReturn();
     return { success: true as const, id: row.id, requestNo: row.requestNo };
   } catch (e) {
@@ -170,11 +170,11 @@ export async function requestDeliveryReturnAction(deliveryId: string, reason: un
 }
 
 export async function getDeliveryReturnAction(
-  deliveryId: string,
-): Promise<{ success: true; detail: DeliveryReturnDetail | null } | { error: string }> {
+  returnId: string,
+): Promise<{ success: true; detail: DeliveryReturnDetail } | { error: string }> {
   const session = await requirePermission("inventory.view");
   try {
-    const detail = await opsService.getDeliveryReturn(opsActor(session), deliveryId);
+    const detail = await opsService.getDeliveryReturn(opsActor(session), returnId);
     return { success: true as const, detail };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to load the return request" };
