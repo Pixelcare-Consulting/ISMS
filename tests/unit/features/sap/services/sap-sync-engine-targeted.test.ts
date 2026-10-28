@@ -71,7 +71,7 @@ it("writes the target's rows without touching the pass cursor or retiring anythi
   );
 
   expect(decodeURIComponent(request.mock.calls[0][0].path)).toContain("(SerialNumber eq 'SN1')");
-  expect(sync.applyPage).toHaveBeenCalledWith("t1", ["SN1"]);
+  expect(sync.applyPage).toHaveBeenCalledWith("t1", ["SN1"], undefined);
   // Stamped with the running pass's mark, so that pass does not treat SN1 as unseen.
   expect(sync.reconcile.markSeen).toHaveBeenCalledWith("t1", ["SN1"], passStartedAt);
   expect(sync.reconcile.retireUnseen).not.toHaveBeenCalled();

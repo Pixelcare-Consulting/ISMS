@@ -14,8 +14,8 @@ jest.mock("@/lib/database/client", () => ({
     serialNumber: { findMany: jest.fn() },
     branchInventory: {
       findMany: jest.fn(),
-      create: jest.fn(),
-      update: jest.fn(),
+      createMany: jest.fn(),
+      updateMany: jest.fn(),
       deleteMany: jest.fn(),
     },
   },
@@ -38,8 +38,10 @@ const findCodeId = reasonStatusRepository.findCodeId as jest.Mock;
 const branchFindMany = prisma.branch.findMany as jest.Mock;
 const warehouseFindMany = prisma.warehouse.findMany as jest.Mock;
 const serialFindMany = prisma.serialNumber.findMany as jest.Mock;
-const inventoryCreate = prisma.branchInventory.create as jest.Mock;
-const inventoryUpdate = prisma.branchInventory.update as jest.Mock;
+const inventoryCreate = prisma.branchInventory.createMany as jest.Mock;
+const inventoryUpdate = prisma.branchInventory.updateMany as jest.Mock;
+const inventoryDelete = prisma.branchInventory.deleteMany as jest.Mock;
+const transaction = prisma.$transaction as jest.Mock;
 const inventoryFindMany = prisma.branchInventory.findMany as jest.Mock;
 const warehouseInventoryFindMany = prisma.warehouseInventory.findMany as jest.Mock;
 const serviceInventoryFindMany = prisma.serviceCenterInventory.findMany as jest.Mock;
@@ -82,12 +84,14 @@ describe("replicateOnHandSerialsToStk", () => {
     ]);
 
     expect(inventoryCreate).toHaveBeenCalledWith({
-      data: {
-        tenantId: "t1",
-        branchId: "b1",
-        serialNumberId: "sn1",
-        statusCodeId: "stk-1",
-      },
+      data: [
+        {
+          tenantId: "t1",
+          branchId: "b1",
+          serialNumberId: "sn1",
+          statusCodeId: "stk-1",
+        },
+      ],
     });
     expect(result).toEqual({ created: 1, moved: 0, skipped: 0 });
   });
@@ -114,7 +118,7 @@ describe("replicateOnHandSerialsToStk", () => {
     ]);
 
     expect(inventoryUpdate).toHaveBeenCalledWith({
-      where: { id: "inv1" },
+      where: { id: { in: ["inv1"] } },
       data: { branchId: "b2", statusCodeId: "stk-1" },
     });
     expect(result).toEqual({ created: 0, moved: 1, skipped: 0 });
@@ -150,5 +154,51 @@ describe("replicateOnHandSerialsToStk", () => {
     expect(inventoryCreate).not.toHaveBeenCalled();
     expect(inventoryUpdate).not.toHaveBeenCalled();
     expect(result).toEqual({ created: 0, moved: 0, skipped: 2 });
+  });
+
+  it("writes a whole page in one transaction with bulk writes", async () => {
+    branchFindMany.mockResolvedValue([
+      { id: "b1", sapCode: "ABL001" },
+      { id: "b2", sapCode: "ABL002" },
+    ]);
+    warehouseFindMany.mockResolvedValue([]);
+    serialFindMany.mockResolvedValue([
+      { id: "sn1", serialNo: "SN1" },
+      { id: "sn2", serialNo: "SN2" },
+      { id: "sn3", serialNo: "SN3" },
+    ]);
+    const stkRow = (id: string, serialNumberId: string, branchId: string) => ({
+      id,
+      tenantId: "t1",
+      serialNumberId,
+      branchId,
+      branch: { name: branchId },
+      statusCode: { code: "STK" },
+      serialNumber: { serialNo: serialNumberId.toUpperCase() },
+    });
+    inventoryFindMany.mockResolvedValue([
+      // SN2 already at its branch, plus a stray duplicate elsewhere.
+      stkRow("inv2", "sn2", "b2"),
+      stkRow("inv2x", "sn2", "b1"),
+      // SN3 at the wrong branch.
+      stkRow("inv3", "sn3", "b1"),
+    ]);
+
+    const result = await replicateOnHandSerialsToStk("t1", [
+      { serialNo: "SN1", warehouseCode: "ABL001" },
+      { serialNo: "SN2", warehouseCode: "ABL002" },
+      { serialNo: "SN3", warehouseCode: "ABL002" },
+    ]);
+
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(inventoryDelete).toHaveBeenCalledWith({ where: { id: { in: ["inv2x"] } } });
+    expect(inventoryUpdate).toHaveBeenCalledWith({
+      where: { id: { in: ["inv3"] } },
+      data: { branchId: "b2", statusCodeId: "stk-1" },
+    });
+    expect(inventoryCreate).toHaveBeenCalledWith({
+      data: [{ tenantId: "t1", branchId: "b1", serialNumberId: "sn1", statusCodeId: "stk-1" }],
+    });
+    expect(result).toEqual({ created: 1, moved: 2, skipped: 0 });
   });
 });

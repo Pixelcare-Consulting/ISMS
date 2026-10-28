@@ -42,10 +42,15 @@ interface SerialRecord {
   docEntry: number;
 }
 
-/** Item codes ISMS knows, so a serial can be linked to the model it belongs to. */
-type ModelIndex = Map<string, string>;
+/** What every page needs, loaded once per run. */
+interface SerialSyncContext {
+  /** Item codes ISMS knows, so a serial can be linked to the model it belongs to. */
+  modelIdBySku: Map<string, string>;
+  /** Warehouse codes ISMS has, which gate whether an on-hand serial may be written. */
+  warehouseAllowList: ReadonlySet<string>;
+}
 
-export const serialNumberSyncEntity: SapSyncEntity<SerialRecord, ModelIndex> = {
+export const serialNumberSyncEntity: SapSyncEntity<SerialRecord, SerialSyncContext> = {
   key: "serial-number",
   noun: { one: "serial number", many: "serial numbers" },
 
@@ -74,7 +79,7 @@ export const serialNumberSyncEntity: SapSyncEntity<SerialRecord, ModelIndex> = {
   segment: {
     field: "ItemCode",
     kind: "string",
-    keys: (modelIdBySku) => [...modelIdBySku.keys()],
+    keys: ({ modelIdBySku }) => [...modelIdBySku.keys()],
   },
 
   audit: { action: "serial_number.sap_sync", entityType: "SerialNumber" },
@@ -82,7 +87,8 @@ export const serialNumberSyncEntity: SapSyncEntity<SerialRecord, ModelIndex> = {
   /**
    * `SerialNumber.modelId` is a required FK, so a serial cannot be stored until its item
    * exists in ISMS. Models number in the thousands, so this index is cheap to hold for a
-   * whole run — unlike the serials themselves.
+   * whole run — unlike the serials themselves. The warehouse allow list is small too,
+   * and loading it here rather than per page saves two queries on every page.
    *
    * With no models at all, every row SAP returns is unusable and the only thing reading
    * four million of them can establish is that fact. Stopping here says so in one step,
@@ -97,10 +103,13 @@ export const serialNumberSyncEntity: SapSyncEntity<SerialRecord, ModelIndex> = {
           "from SAP first (Settings → Master Data → Models), then run this again.",
       );
     }
-    return new Map(models.map((model) => [model.skuCode, model.id]));
+    return {
+      modelIdBySku: new Map(models.map((model) => [model.skuCode, model.id])),
+      warehouseAllowList: await loadMasterWarehouseAllowList(tenantId),
+    };
   },
 
-  parse(row, modelIdBySku) {
+  parse(row, { modelIdBySku }) {
     const serialNo = sapText(row.SerialNumber);
     const itemCode = sapText(row.ItemCode);
 
@@ -125,10 +134,13 @@ export const serialNumberSyncEntity: SapSyncEntity<SerialRecord, ModelIndex> = {
    * updated, and is reported by warehouse code. The engine still marks it seen, so an
    * existing serial is not retired for it; it is picked up once that warehouse is synced.
    */
-  async applyPage(tenantId, records) {
+  async applyPage(tenantId, records, { warehouseAllowList }) {
     const { onHand, notOnHand } = await readSerialPageLocations(tenantId, records);
-    const allowList = await loadMasterWarehouseAllowList(tenantId);
-    const { writable, known, missing } = gateSerialPageByWarehouse(records, onHand, allowList);
+    const { writable, known, missing } = gateSerialPageByWarehouse(
+      records,
+      onHand,
+      warehouseAllowList,
+    );
 
     const applied =
       writable.length > 0

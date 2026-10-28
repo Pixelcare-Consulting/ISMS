@@ -193,7 +193,7 @@ function createPageApplier(
     }
 
     if (records.length > 0) {
-      const applied = await entity.applyPage(tenantId, records);
+      const applied = await entity.applyPage(tenantId, records, context);
       totals.created += applied.created;
       totals.updated += applied.updated;
       totals.unchanged += applied.unchanged;
